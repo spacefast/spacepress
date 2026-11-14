@@ -119,7 +119,7 @@ pub(super) fn refresh(project: &Path) -> Result<(), String> {
 
 /// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks, the typed
 /// client and `openapi.json`.
-fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
+pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
     for (name, sql) in &built.migrations {
         write_new(&migrations.join(name), sql)?;
@@ -183,7 +183,7 @@ fn zip_plugin(directory: &Path) -> std::io::Result<()> {
 }
 
 /// Stage the complete artifact, publish it, then persist the sole dependency lock.
-fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Result<PathBuf> {
+pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Result<PathBuf> {
     let empty = wp_plugins::Config { plugins: Vec::new() };
     let config = built.plugins.as_ref().unwrap_or(&empty);
     let plan = wp_plugins::resolve(config, &platform::plugins(built.schema.locales.is_some()))?;
@@ -264,7 +264,12 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     let mut versions = serde_json::Map::new();
     for slug in generated {
         let directory = plugins.join(&slug);
-        php_lint_tree(&directory)?;
+        // The app plugin is generated from the project: lint it every build. First's own plugins are
+        // the same bytes for every app (embedded from runtime/); tests/php/runtime_lint.php lints
+        // those once, so a build doesn't run `php -l` on hundreds of unchanged files.
+        if slug.starts_with("first-app-") {
+            php_lint_tree(&directory)?;
+        }
         zip_plugin(&directory)?;
         let version = if slug.starts_with("first-app-") {
             format!(
@@ -288,12 +293,18 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
         .into_iter()
         .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
         .collect();
+    let mut manifest = serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
+    // Sealed mode (docs/sealed.md): the plugin slugs this site runs, for a host to enforce. No key
+    // when the app isn't sealed.
+    if let Some(sealed) = crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::first_plugins(&built.schema))
+    {
+        manifest["sealed"] = sealed.into();
+    }
     write(
         &stage.join("first-manifest.json"),
-        serde_json::to_string_pretty(
-            &serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales}),
-        )? + "\n",
+        serde_json::to_string_pretty(&manifest)? + "\n",
     )?;
+
     super::deploy::write_metadata(&stage, built)?;
     let lock_bytes = prepared.lock_bytes()?;
     std::fs::create_dir_all(lock.parent().unwrap())?;

@@ -1,7 +1,8 @@
 <?php
 /**
  * Test-only host for tests/wp/store-run.sh: selects one stored build per request, the way a host
- * with immutable versions does. HTTP names the build in X-First-Build and is served only once that
+ * with immutable versions does, with First Identity mounted (`users`). HTTP names the build in
+ * X-First-Build and is served only once that
  * build initialized; WP-CLI names it with FIRST_TEST_BUILD (`wp --exec=...`) to initialize or collect.
  */
 declare(strict_types=1);
@@ -18,5 +19,5 @@ defined('ABSPATH') || exit;
     if (!defined('FIRST_TEST_BUILD') && \First\Loader\Store::receipt($root, $build) === null) {
         return;
     }
-    \First\Loader\Loader::load($root, $build, ['variables' => [], 'url' => content_url('plugins/first-store')]);
+    \First\Loader\Loader::load($root, $build, ['variables' => [], 'users' => true, 'url' => content_url('plugins/first-store')]);
 })();

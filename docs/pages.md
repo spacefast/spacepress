@@ -94,6 +94,73 @@ checked against the app's routes and `PageProps<"notes/[slug]">` types
 { "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "first" } }
 ```
 
+## Forms
+
+`<form action={subscribe}>` posts to an action imported from your server code,
+and works without JavaScript:
+
+```tsx
+import { useFormState } from "first/app";
+import { subscribe } from "../server";
+
+export default function Page() {
+  const state = useFormState(subscribe);
+  return (
+    <form action={subscribe}>
+      {state.error ? <p>{state.error.message}</p> : null}
+      {state.result ? <p>Subscribed {state.result.email}</p> : null}
+      <input name="email" type="email" defaultValue={state.values.email ?? ""} />
+      <button>Subscribe</button>
+    </form>
+  );
+}
+```
+
+- The form posts form-encoded to the action's endpoint
+  (`/__first/api/v1/actions/<name>`), with a hidden `_first_return` (the page's
+  path and query). The action runs as the visitor, exactly as a JSON call runs
+  it, and the answer is `303 See Other` back to that page.
+- Fields read as the action's input types them: `integer()` and `number()` from
+  their digits, `boolean()` from a checkbox (unchecked is `false`), select and
+  reference lists from repeated names, an empty field as absent. A value that
+  doesn't parse reaches the action's validation, which names the field. Uploads
+  are refused (415); use the media API.
+- What came back is a flash: a cookie sealed with the site's key, named by
+  `?_flash=<id>` on the redirect, read once and deleted, gone after two
+  minutes. Nothing is stored on the server. The marked URL is never served
+  from or stored in a shared cache.
+- `useFormState(action)` reads it: `{ pending, error, result, values }`.
+  `error.fields` maps the field an input error is about to its message;
+  `values` refills the form and never holds a password field. `pending` is
+  `false` on the server; the JavaScript submit sets it.
+- A page with a form stays cacheable for signed-out visitors: it carries no
+  nonce. A page rendered for a signed-in user carries the REST nonce; without
+  it, the action runs signed out. A post with another site's `Origin` is
+  refused.
+- A `"use client"` component calls its action from `onSubmit` instead;
+  `method` and `encType` on a form with an action are build errors.
+
+## Comments
+
+```tsx
+import { Comments, type PageProps } from "first/app";
+
+export default function Note({ item }: PageProps<"notes/[slug]">) {
+  return <article><h1>{item.title}</h1><Comments for={item} /></article>;
+}
+```
+
+`<Comments for={item} />` renders the item's thread as the visitor may read it
+(approved comments, plus their own held ones) and a form that works without
+JavaScript. The item's kind must turn `comments` on; otherwise the build stops
+at the prop. Who may comment, moderation and reply depth belong to the kind, not
+the component, and are enforced wherever a comment is created: the form, the
+API and core's comment form all give the same answer. `comments: true` is
+signed-in users only, first-time moderation, and replies three levels deep (a
+deeper reply is refused); `comments: { guests, moderation, threaded,
+closeAfterDays }` changes any of them ([Comments](config-api.md#comments)). See
+[the decision](decisions/2026-11-14-comments.md).
+
 ## Markdown pages
 
 ```md
@@ -114,7 +181,8 @@ wp-admin, in the block editor, and the route shows what they saved.
   protects it, like a `page.tsx`. Its `<title>` and description come from the
   stored Page, so an editor's change to either shows.
 - Front matter: `title`, `description`, `status` (`published` or `draft`),
-  `canonical` and `robots: { index, follow }`. Without `title`, the first
+  `canonical`, `robots: { index, follow }` and `id` (keeps the Page when the
+  file moves to another URL). Without `title`, the first
   `# Heading` is the title. Any other key is a build error at its line: fields
   of your own belong to a kind with `sync`, where they have a type.
 - A later version of the file replaces the Page only while nobody edited the
@@ -180,6 +248,36 @@ visitor, unless the page's metadata says `robots: { index: false }`, and the
 items of every kind with a `url` that a signed-out visitor may read. A draft, a
 row an access rule hides and a password-protected item are never in it.
 
+### WordPress identity
+
+Each `page.tsx` route without parameters is also a **hidden, code-owned
+WordPress Page**, so the rest of WordPress sees the page as one of its own.
+
+- Menus, SEO plugins and `get_permalink()` see a normal published Page whose
+  link and canonical URL are the route's URL. `/` is the front page
+  (`page_on_front`), unless the site already chose a front page of its own.
+- The Page keeps its ID across builds, so a menu item that points at it keeps
+  working. Its title is the page's literal `metadata.title`, else its folder
+  name.
+- The route ID is the folder path (`notes/featured`). A page that sets its own
+  keeps its Page when the file moves: `export const route = { id: "notes.featured" }`
+  in a `page.tsx`, or `id: notes.featured` in a `page.md`'s front matter. The old
+  URL then redirects to the new one. Two pages with one ID are a build error
+  at the second.
+- A route under a layout `guard` stores its Page private, so search, feeds,
+  the REST API and the sitemap never list it.
+- Code Pages are absent from the wp-admin Pages list, its counts and REST
+  `context=edit` lists. `edit_post` and `delete_post` are denied on them, and a
+  write that bypasses capabilities keeps the stored fields.
+- WordPress's own addresses for the Page (its slug, `?page_id=`) redirect to
+  the route.
+- A route that goes away moves its Page to the trash; nothing is deleted. A URL
+  that another published Page already owns is not taken over: the route still
+  renders, without a Page, and the log says so.
+
+A `page.md` route owns a real Page that editors change ([Markdown
+pages](#markdown-pages)); a route with parameters has no Page.
+
 ## Client components
 
 A file that starts with `"use client"` is a client component. Its first
@@ -207,11 +305,127 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
   `useMount`, `useEvent`, `useRef` and `sharedState` come from `"first/client"`.
 - Calling an imported action posts to its endpoint with the REST nonce, as the
   visitor.
+- A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`,
+  and a conditional over elements, `{open && <p>…</p>}` or
+  `{empty ? <em>…</em> : <b>…</b>}`, re-render in the browser from a
+  `<template>`. Each item and each branch is one element; each item has a `key`.
 - The component returns one element. React context, third-party React
   components, npm imports and `dangerouslySetInnerHTML` are refused at the line.
 
 See [rendering.md §4.1](spec/rendering.md#41-client-components) for the full
 mapping and [`examples/full-site`](../examples/full-site) for a site that uses one.
+
+## Static output
+
+Pages render on WordPress per request by default. Two settings prebuild them
+instead, in [Astro](https://docs.astro.build/en/guides/on-demand-rendering/)'s
+words. The design and measurements are in
+[the decision record](decisions/2026-11-13-static-output.md).
+
+| You want | Write |
+|---|---|
+| Some pages prebuilt, the rest rendered per request, on one WordPress | `export const prerender = true` in those pages |
+| A whole site as static files, with no WordPress serving it | `defineConfig({ output: "static" })`, then `first export` |
+| Static files from a WordPress that editors use somewhere else | the same, with `first export --site https://cms.example.com` |
+
+A prebuilt page is what a signed-out visitor sees, rendered by the page's own
+compiled code. So it can't depend on the request. These are build errors at
+the page, each with its fix:
+
+- a layout `guard` above the page;
+- `export const search`;
+- a dynamic segment the build can't list;
+- calling `is_user_logged_in`, `current_user_can` or `get_current_user_id`.
+
+### Which URLs a dynamic page has
+
+A page whose folders serve a kind's `url` (`notes/[slug]` for
+`url: "/notes/:slug"`) is built once per item a signed-out visitor may read.
+Drafts and rows an access rule hides are never built.
+
+Any other dynamic page lists its URLs with `staticParams`, Astro's
+`getStaticPaths`:
+
+```tsx
+// first/app/tags/[tag]/page.tsx
+import type { PageProps, StaticParams } from "first/app";
+
+export const prerender = true;
+
+export async function staticParams(): Promise<StaticParams<"tags/[tag]">> {
+  return ["field", "lab notes"].map((tag) => ({ tag }));
+}
+
+export default function Tag({ params }: PageProps<"tags/[tag]">) {
+  return <h1>{params.tag}</h1>;
+}
+```
+
+`staticParams` runs as a signed-out visitor, so it can read the database.
+
+### Prebuilt pages on WordPress (`prerender = true`)
+
+- **When the files are made.** After a deploy, an Action Scheduler action renders each prebuilt URL
+  and writes its HTML and Markdown to `wp-content/cache/first-prebuilt/`.
+- **How they are served.** The app answers from the file before WordPress parses the request, with
+  the same `Cache-Control` as a cacheable render and the header `X-First-Prebuilt: 1`.
+- **What still renders per request.** A signed-in visitor, a request with a query string, and a URL
+  whose file isn't written yet.
+- **After a write.** A write that changes what a prebuilt page shows deletes that page's files at
+  once and schedules its rebuild. Until the rebuild runs, the page renders per request, so nobody
+  sees the old content. Other pages keep their files.
+- **The rest of the site.** Markdown twins, `llms.txt` and the sitemap are unchanged.
+- **Hosts that can't reach their own address.** The rebuild fetches the page from the site's own
+  address. A host where that fails sets the `first_prebuild_url` filter.
+
+### A static site (`first export`)
+
+```sh
+first export                                       # writes first/dist/static/
+first export --site-url https://docs.example.com   # also writes sitemap.xml and canonical links
+first export --base /docs                          # for a site served below /docs/
+```
+
+The project must say `output: "static"`, where every page is prebuilt.
+`prerender = false` is a build error there.
+
+- **Where the content comes from.** Without `--site`, `first export` starts a throwaway WordPress on
+  SQLite (the one `first dev` uses) with the build installed and `first/content/` loaded, renders
+  every page, and removes the site.
+- **The URL layout.** It is the one GitHub Pages, Netlify, Cloudflare Pages and most static servers
+  answer.
+
+| URL | File |
+|---|---|
+| `/` | `index.html`, with `index.md` |
+| `/docs/intro` | `docs/intro.html`, with `docs/intro.md` |
+| an unknown URL | `404.html` |
+| `/llms.txt`, `/robots.txt`, `/sitemap.xml` | the files of those names; `sitemap.xml` only with `--site-url` |
+| a moved item's old URL | a line in `_redirects`, and a page that redirects in the browser |
+| stylesheets, images, fonts, the Interactivity API and router modules, client component stores | the path WordPress serves them from (`wp-content/…`, `wp-includes/…`) |
+
+**What a static page can't do.** The export refuses each of these with the page and the fix:
+
+- **A client component that calls an action.** There is no server. With `--site`, a public action
+  (`access: "anyone"`) is called on the hosted site instead.
+- **A link to a URL the export doesn't contain.** For example a page left out, or WordPress's
+  sign-in or comment form. With `--site`, sign-in, comment and `wp-admin` links go to the hosted
+  site.
+- **A page that redirects, or that `staticParams` lists but that renders a 404.**
+
+### WordPress as the CMS (`first export --site`)
+
+Editors work on a hosted WordPress running the app. `first export --site https://cms.example.com`
+renders that site's published content with this checkout's pages.
+
+- **Credentials.** It needs an editor's credential in `FIRST_APP_PASSWORD` (`user:application-password`)
+  or `FIRST_TOKEN`, the same as `first sync`.
+- **The site must run this checkout's build.** Otherwise the export stops and says to deploy first.
+- **Rebuilding on publish.** Add the hosted site's `webhooks` config to call a CI job on publish
+  (`events: ["*"]`). The job runs `first export --site …` and uploads `first/dist/static/`.
+- **Client components** call public actions on the hosted site, across origins.
+- **Comments and sign-in** happen on the hosted site.
+- **Guarded pages** can't be exported: a static file is the same for everyone.
 
 ## Publish on Spacefast
 

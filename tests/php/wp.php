@@ -55,6 +55,8 @@ final class WpSite
     /** @var resource|null the php -S child that stands in for the web server (private-file probes) */
     private $server = null;
     private int $port = 0;
+    /** The path the site lives under (`/blog` for a subdirectory install), or '' at the server's root. */
+    private string $base = '';
 
     private function __construct(string $dir)
     {
@@ -70,7 +72,9 @@ final class WpSite
      *   migration: MySQL DDL for the app's `editor: false` tables ({prefix} replaced);
      *   identity: install first-identity too; users: extra WordPress users (name => role);
      *   server: start a php -S that answers the private-files probe (needed for file buckets);
-     *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one.
+     *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one;
+     *   base: a path such as `/blog` the site lives under (WordPress in a subdirectory); the web
+     *   server answers only below it.
      */
     public static function create(string $label, array $fixture): self
     {
@@ -149,7 +153,8 @@ final class WpSite
         $users = ['editor' => 'editor', 'author' => 'author', 'subscriber' => 'subscriber'] + ($fixture['users'] ?? []);
         // The site's URL is where its php -S would listen, so WordPress never redirects a client elsewhere.
         $site->port = wpFreePort();
-        file_put_contents("$dir/site.json", json_encode(['core' => $core, 'activate' => $activate, 'users' => $users, 'url' => $site->url()], JSON_THROW_ON_ERROR));
+        $site->base = rtrim((string) ($fixture['base'] ?? ''), '/');
+        file_put_contents("$dir/site.json", json_encode(['core' => $core, 'activate' => $activate, 'users' => $users, 'url' => $site->url(), 'base' => $site->base], JSON_THROW_ON_ERROR));
         if ($fixture['server'] ?? false) {
             $site->startServer();
         }
@@ -227,7 +232,7 @@ final class WpSite
     /** The site's URL (WP_HOME); `startServer()` makes it answer. */
     public function url(): string
     {
-        return "http://127.0.0.1:$this->port";
+        return "http://127.0.0.1:$this->port$this->base";
     }
 
     /**
@@ -554,6 +559,7 @@ function wpDdl(array $schema): string
     }
     $autoPk = static fn (string $c) => (bool) ($collections[$c]['columns'][$collections[$c]['primaryKey'] ?? 'id']['autoIncrement'] ?? false);
     $statements = [];
+    $joins = [];
     $revisions = false;
     foreach ($tables as $name => $table) {
         $spec = $collections[$name];
@@ -563,6 +569,15 @@ function wpDdl(array $schema): string
         $fks = [];
         foreach ($spec['columns'] as $col => $def) {
             if ($def['derived'] ?? false) {
+                continue;
+            }
+            if (($def['type'] ?? null) === 'refList') {
+                // A many-ref's links live in its join table, with cascading keys between two custom tables.
+                $join = $def['references']['join'];
+                $fk = static fn (string $side, string $c) => isset($tables[$c]) && isset($tables[$def['references']['collection']])
+                    ? ",\n\tCONSTRAINT `first_{$join}_{$side}_fk` FOREIGN KEY (`$side`) REFERENCES `{prefix}{$tables[$c]}` (`id`) ON DELETE CASCADE" : '';
+                $joins[] = "CREATE TABLE `{prefix}first_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                    . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)" . $fk('owner_id', $name) . $fk('target_id', $def['references']['collection']) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
                 continue;
             }
             $type = $def['type'] ?? 'text';
@@ -620,6 +635,20 @@ function wpDdl(array $schema): string
         $lines[] = 'PRIMARY KEY (`' . ($spec['primaryKey'] ?? 'id') . '`)';
         $statements[] = "CREATE TABLE `{prefix}$table` (\n\t" . implode(",\n\t", [...$lines, ...$keys, ...$fks]) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
     }
+    // Post-backed owners' many-refs too: the join table is First's own whatever stores the sides.
+    foreach ($collections as $name => $spec) {
+        if (isset($tables[$name])) {
+            continue;
+        }
+        foreach ($spec['columns'] ?? [] as $def) {
+            if (($def['type'] ?? null) === 'refList') {
+                $join = $def['references']['join'];
+                $joins[] = "CREATE TABLE `{prefix}first_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                    . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+            }
+        }
+    }
+    array_push($statements, ...$joins);
     if ($revisions) {
         $statements[] = "CREATE TABLE `{prefix}first__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(64) NOT NULL,"
             . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT,\n\t`row` LONGTEXT NOT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
@@ -721,6 +750,9 @@ function wpCliRoot(string $dir): string
     $site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
     $root = "$dir/wp-cli-root";
     if (!is_dir($root)) {
+        // Built aside and moved in, so a concurrent request (the test server's) never sees half of it.
+        $final = $root;
+        $root = "$final." . getmypid() . '.' . bin2hex(random_bytes(4));
         mkdir($root);
         foreach (scandir($site['core']) as $entry) {
             if ($entry !== '.' && $entry !== '..' && $entry !== 'wp-config.php' && $entry !== 'wp-content') {
@@ -731,6 +763,14 @@ function wpCliRoot(string $dir): string
             . 'require_once ' . var_export(__FILE__, true) . ";\n"
             . 'wpDefine(' . var_export($dir, true) . ', ' . var_export($site['url'], true) . ");\n"
             . "require_once ABSPATH . 'wp-settings.php';\n");
+        if (!@rename($root, $final)) {
+            array_map('unlink', glob("$root/*"));
+            rmdir($root);
+            if (!is_dir($final)) {
+                throw new RuntimeException("could not create $final");
+            }
+        }
+        $root = $final;
     }
 
     return $root;
@@ -793,7 +833,7 @@ function wpTemplate(string $file, array $fixture): string
     $vars = ['name' => $name, 'slug' => "first-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires, 'runtimeRequires' => implode(', ', $runtimeRequires),
         'wpVersion' => $platform['wordpress'], 'phpVersion' => $platform['php'], 'runtimeSeries' => wpConstant("$repo/runtime/First/Schema.php", 'SERIES'),
         'firstVersion' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'), 'version' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'),
-        'schemaHash' => substr(hash('sha256', json_encode($fixture['schema'])), 0, 16)];
+        'schemaHash' => substr(hash('sha256', json_encode($fixture['schema'])), 0, 16), 'runtimeHash' => 'tests'];
     $out = (string) file_get_contents($file);
     foreach ($vars as $k => $v) {
         $out = str_replace('{{' . $k . '}}', (string) $v, $out);

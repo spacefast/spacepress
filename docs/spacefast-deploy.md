@@ -8,7 +8,8 @@ ready. Each immutable version runs its own compiled code.
 Generated REST endpoints, actions, [HTTP routes](config-api.md#http-routes)
 and [live updates](#live-updates) work on the Space hostname, and so do the
 pages and HTTP handlers under `first/app/` with the stylesheets and SVGs they
-import. Static files in `public/` are published as they are.
+import. Static files in `public/` are published as they are, at the site root
+(`public/logo.svg` is `/logo.svg`).
 
 ## Publish an app
 
@@ -91,18 +92,18 @@ setup.
 
 ## Live updates
 
-`watch` works with no setup on Spacefast:
+Subscriptions work with no setup on Spacefast:
 
 ```ts
 import { createClient } from "./first/_generated/client/index.ts";
 
-createClient().todos.watch({ where: { done: false } }, (todos) => render(todos));
+createClient().todos.list({ where: { done: false } }).subscribe((todos) => render(todos));
 ```
 
 Spacefast registers a Publisher that sends each commit's change notice to the
 Space's realtime room. Spacefast loads the matching Cast transport on the
 Space's pages, and it registers with every client on the page. Without a live
-connection, watched reads poll. See [Live updates](realtime.md) for the API.
+connection, subscriptions poll. See [Live updates](realtime.md) for the API.
 
 ## Connectors
 

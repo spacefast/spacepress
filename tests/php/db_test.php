@@ -169,6 +169,36 @@ $schema = [
             'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['fn' => 'profiles__access__update'], 'delete' => ['role' => 'editor']],
             'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
         ],
+        // ---- ref(labels).many(): what `first build` emits (tests/compiler.rs owns that shape)
+        'labels' => [
+            'primaryKey' => 'id',
+            'columns' => [
+                'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                'name' => ['type' => 'text', 'notNull' => true],
+                'secret' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false]],
+            ],
+            'relations' => [
+                'cards' => ['kind' => 'many', 'collection' => 'cards', 'from' => 'id', 'to' => 'id', 'optional' => false, 'through' => ['table' => 'cards_labels', 'from' => 'target_id', 'to' => 'owner_id']],
+                'pinnedBy' => ['kind' => 'many', 'collection' => 'cards', 'from' => 'id', 'to' => 'id', 'optional' => false, 'through' => ['table' => 'cards_pinned', 'from' => 'target_id', 'to' => 'owner_id']],
+            ],
+            'access' => ['read' => ['fn' => 'labels__access__read'], 'create' => ['role' => 'anyone'], 'update' => ['role' => 'anyone'], 'delete' => ['role' => 'anyone']],
+            'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
+        ],
+        'cards' => [
+            'primaryKey' => 'id',
+            'columns' => [
+                'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                'title' => ['type' => 'text', 'notNull' => true],
+                'labels' => ['type' => 'refList', 'notNull' => true, 'references' => ['collection' => 'labels', 'column' => 'id', 'onDelete' => 'cascade', 'join' => 'cards_labels']],
+                'pinned' => ['type' => 'refList', 'references' => ['collection' => 'labels', 'column' => 'id', 'onDelete' => 'restrict', 'join' => 'cards_pinned']],
+            ],
+            'relations' => [
+                'labels' => ['kind' => 'many', 'collection' => 'labels', 'from' => 'id', 'to' => 'id', 'optional' => false, 'through' => ['table' => 'cards_labels', 'from' => 'owner_id', 'to' => 'target_id']],
+                'pinned' => ['kind' => 'many', 'collection' => 'labels', 'from' => 'id', 'to' => 'id', 'optional' => false, 'through' => ['table' => 'cards_pinned', 'from' => 'owner_id', 'to' => 'target_id']],
+            ],
+            'access' => $open,
+            'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
+        ],
     ],
     'actions' => [
         'restock' => [
@@ -293,6 +323,12 @@ $functions = <<<'PHP'
     function profiles__access__update($ctx)
     {
         return in_array($ctx->p['user']->p['role'] ?? null, ['editor', 'admin'], true) ? true : ['ownerId' => $ctx->p['user']->p['id'] ?? -1];
+    }
+
+    // Secret labels are hidden from guests.
+    function labels__access__read($ctx)
+    {
+        return ($ctx->p['user'] ?? null) === null ? ['secret' => false] : true;
     }
 
     function action__restock($input)
@@ -819,6 +855,35 @@ $r = http('DELETE', "/items/{$widget['id']}");
 eq('DELETE returns the deleted row', [$r['status'], $r['json']['data']['name'] ?? null, $r['json']['data']['qty'] ?? null], [200, 'Widget', 12]);
 $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'not_found');
 
+// ================================================================ afterPublish (spec §2.8)
+
+// A collection's item became published: created published, updated from a draft, or its scheduled
+// time came. Updating an already-published item, or a draft, doesn't run it.
+(static function (): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
+    $seen = [];
+    $raw = ['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [
+        'bulletins' => ['primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'first_ap_bulletins',
+            'hooks' => ['afterPublish' => static function (array $row) use (&$seen): void { $seen[] = $row['title']; }],
+            'columns' => ['id' => $id, 'title' => ['type' => 'text', 'notNull' => true], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]]],
+    ]];
+    $schema = new \First\Schema($raw);
+    $wp = $GLOBALS['wp'];
+    $wp->exec('CREATE TABLE {prefix}first_ap_bulletins (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `title` LONGTEXT NOT NULL, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $db = new \First\Db(\First\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \First\db()->media());
+    $db->insert('bulletins', ['title' => 'live']);
+    $draft = $db->insert('bulletins', ['title' => 'draft', 'status' => 'draft'], true)[0];
+    $db->update('bulletins', ['title' => 'draft, edited'], ['id' => $draft['id']]);
+    $db->update('bulletins', ['status' => 'published'], ['id' => $draft['id']]);
+    $db->update('bulletins', ['title' => 'published, edited'], ['id' => $draft['id']]);
+    $later = $db->insert('bulletins', ['title' => 'later', 'status' => 'scheduled', 'publishedAt' => gmdate('Y-m-d\\TH:i:s.000\\Z', time() + 3600)], true)[0];
+    $db->promoteDue();
+    $wp->exec("UPDATE {prefix}first_ap_bulletins SET `publishedAt` = '" . gmdate('Y-m-d\\TH:i:s.000\\Z', time() - 60) . "' WHERE `id` = " . (int) $later['id']);
+    $db->promoteDue();
+    eq('afterPublish runs once per item that became published, scheduled ones when they come due', $seen, ['live', 'draft, edited', 'later']);
+})();
+
 // ================================================================ relation filters respect the target's read access
 
 // A relation filter is an oracle over the target's columns, so it may only see target rows a direct
@@ -1119,10 +1184,11 @@ $faProblem('a malformed layout is the validator\'s to report', $as('fa_alice', '
 $rev = $db->revisions('profiles', $mine['id'])[0]['id'];
 $revRow = $as('fa_alice', 'GET', "/profiles/{$mine['id']}/revisions/$rev")[1];
 eq('a revision hides what the live row hides', [array_key_exists('email', $revRow), $revRow['salary'], $revRow['notes']], [false, 10, ['public' => 'x', 'pinned' => true, 'tag' => null]]);
-// Restore replays every user column as a patch: readable values she can't set pass unchanged, but a
-// value she can neither read nor set is refused whatever it is (an update must not probe hidden values).
-// (email, hidden from her too, is the first column the replay would overwrite)
-$faProblem('an owner can\'t restore over a value hidden from her', $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore"), 403, 'forbidden', '/email');
+// Restore puts back the whole revision as stored: what she can read through her rules, and what is
+// hidden from her (email) as trusted values she never sent, so nothing about them is probed or returned.
+$db->update('profiles', ['email' => 'later@example.test'], ['id' => $mine['id']]);
+[$restoredStatus, $restoredRow] = $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore");
+eq('an owner restores a revision, hidden fields included, and the answer hides them', [$restoredStatus, array_key_exists('email', $restoredRow ?? []), $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['email']], [200, false, 'alice@example.test']);
 eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore")[0], 200);
 
 // /_schema reports per-column summaries (no function names).
@@ -1457,6 +1523,65 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     } finally {
         \First\Db::setInstance($previous);
     }
+})();
+
+// ================================================================ ref(labels).many(): links in a join table
+
+(static function () use ($db, $wp): void {
+    $anon = new \First\Viewer(null);
+    $member = new \First\Viewer(['id' => 1, 'name' => 'm', 'role' => 'subscriber']);
+    [$red, $green, $blue, $hidden] = $db->insert('labels', [['name' => 'red'], ['name' => 'green'], ['name' => 'blue'], ['name' => 'hidden', 'secret' => true]], true);
+    $links = static fn (string $table) => array_map(static fn (array $r) => array_map('intval', $r), $wp->sql("SELECT `owner_id`, `target_id`, `position` FROM {prefix}first_$table ORDER BY `owner_id`, `position`"));
+
+    $card = $db->insert('cards', ['title' => 'one', 'labels' => [$blue['id'], $red['id']]], true)[0];
+    eq('a many-ref reads back as its ids in write order; an omitted optional one is []', [$card['labels'], $card['pinned']], [[$blue['id'], $red['id']], []]);
+    eq('the links are rows of the join table, positions 0-based in write order', $links('cards_labels'),
+        [['owner_id' => $card['id'], 'target_id' => $blue['id'], 'position' => 0], ['owner_id' => $card['id'], 'target_id' => $red['id'], 'position' => 1]]);
+    problem('a required many-ref must be given on create', fn () => $db->insert('cards', ['title' => 'none']), 422, 'invalid_input', '/labels');
+    eq('[] satisfies a required many-ref', $db->insert('cards', ['title' => 'empty', 'labels' => []], true)[0]['labels'], []);
+    problem('duplicates are refused at the repeat', fn () => $db->insert('cards', ['title' => 'dup', 'labels' => [$red['id'], $green['id'], $red['id']]]), 422, 'invalid_input', '/labels/2');
+    problem('a missing target is a reference violation at its index', fn () => $db->insert('cards', ['title' => 'gone', 'labels' => [$red['id'], 999999]]), 409, 'reference_violation', '/labels/1');
+    problem('a target the writer can\'t read refuses like a missing one', fn () => $db->insert('cards', ['title' => 'peek', 'labels' => [$hidden['id']]], false, $anon), 409, 'reference_violation', '/labels/0');
+    eq('a writer who can read the target links it', $db->insert('cards', ['title' => 'seen', 'labels' => [$hidden['id']]], true, $member)[0]['labels'], [$hidden['id']]);
+
+    $updated = $db->update('cards', ['labels' => [$green['id'], $blue['id']]], ['id' => $card['id']], true)[0];
+    eq('an update replaces the whole list, in its new order', [$updated['labels'], $updated['title']], [[$green['id'], $blue['id']], 'one']);
+    eq('an update without the field keeps its links', $db->update('cards', ['title' => 'uno'], ['id' => $card['id']], true)[0]['labels'], [$green['id'], $blue['id']]);
+
+    $two = $db->insert('cards', ['title' => 'two', 'labels' => [$red['id'], $green['id']], 'pinned' => [$green['id']]], true)[0];
+    $titles = static fn (array $opts, ?\First\Viewer $v = null) => array_column($db->findMany('cards', $opts + ['orderBy' => ['id' => 'asc']], $v), 'title');
+    eq('`has` matches rows linked to the id', $titles(['where' => ['labels' => ['has' => $green['id']]]]), ['uno', 'two']);
+    eq('NOT has, and eq [] (no links)', [$titles(['where' => ['labels' => ['NOT' => ['has' => $green['id']]]]]), $titles(['where' => ['labels' => []]])], [['empty', 'seen'], ['empty']]);
+    eq('a filter on the linked rows means some linked row matches', $titles(['where' => ['labels' => ['name' => 'red']]]), ['two']);
+    eq('true / false: some link or none', [$titles(['where' => ['pinned' => true]]), count($titles(['where' => ['pinned' => false]]))], [['two'], 3]);
+    eq('relation filters see only rows the viewer may read', $titles(['where' => ['labels' => ['name' => 'hidden']]], $anon), []);
+    problem('orderBy on a many-ref is refused', fn () => $db->findMany('cards', ['orderBy' => ['labels' => 'asc']]), 400, 'invalid_query', '/orderBy/labels');
+
+    $loaded = $db->findFirst('cards', ['where' => ['id' => $card['id']], 'with' => ['labels' => true]]);
+    eq('with loads the linked rows in position order', array_column($loaded['labels'], 'name'), ['green', 'blue']);
+    $sorted = $db->findFirst('cards', ['where' => ['id' => $card['id']], 'with' => ['labels' => ['orderBy' => ['name' => 'asc'], 'columns' => ['name' => true]]]]);
+    eq('nested options sort and pick the linked rows', $sorted['labels'], [['name' => 'blue'], ['name' => 'green']]);
+    eq('limit applies per row', array_map(static fn ($c) => array_column($c['labels'], 'name'), $db->findMany('cards', ['where' => ['id' => ['in' => [$card['id'], $two['id']]]], 'orderBy' => ['id' => 'asc'], 'with' => ['labels' => ['limit' => 1]]])), [['green'], ['red']]);
+    eq('with applies the target\'s read access', array_column($db->findFirst('cards', ['where' => ['title' => 'seen'], 'with' => ['labels' => true]], $anon)['labels'], 'name'), []);
+    eq('columns keeps a loaded many-ref', array_keys($db->findFirst('cards', ['where' => ['id' => $card['id']], 'columns' => ['title' => true], 'with' => ['labels' => true]])), ['title', 'labels']);
+    $reverse = $db->findFirst('labels', ['where' => ['id' => $green['id']], 'with' => ['cards' => ['columns' => ['title' => true]], 'pinnedBy' => true]]);
+    eq('the target lists its linking rows (reverse many)', [array_column($reverse['cards'], 'title'), array_column($reverse['pinnedBy'], 'title')], [['uno', 'two'], ['two']]);
+    eq('a filter through the reverse list', array_column($db->findMany('labels', ['where' => ['cards' => ['title' => 'two']], 'orderBy' => ['id' => 'asc']]), 'name'), ['red', 'green']);
+
+    problem('restrict refuses deleting a target that is still linked', fn () => $db->delete('labels', ['id' => $green['id']]), 409, 'reference_violation');
+    eq('… and keeps it and its links', [count($db->findMany('labels', ['where' => ['id' => $green['id']]])), $db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels']], [1, [$red['id'], $green['id']]]);
+    $db->delete('labels', ['id' => $red['id']]);
+    eq('deleting a target removes the links pointing at it', [$db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels'], count($wp->sql('SELECT 1 FROM {prefix}first_cards_labels WHERE `target_id` = ?', [$red['id']]))], [[$green['id']], 0]);
+    $db->update('cards', ['pinned' => []], ['id' => $two['id']]);
+    $db->delete('cards', ['id' => $two['id']]);
+    eq('deleting the owner removes its links', count($wp->sql('SELECT 1 FROM {prefix}first_cards_labels WHERE `owner_id` = ?', [$two['id']])), 0);
+    $db->delete('labels', ['id' => $green['id']]);
+    eq('with the last link gone, restrict lets the target go', $db->findFirst('cards', ['where' => ['id' => $card['id']]])['labels'], [$blue['id']]);
+
+    $r = http('POST', '/cards', ['title' => 'rest', 'labels' => [$blue['id']]]);
+    eq('REST writes and reads a many-ref as ids', [$r['status'], $r['json']['data']['labels'] ?? null], [201, [$blue['id']]]);
+    $r = http('GET', '/cards?' . http_build_query(['where' => json_encode(['id' => $card['id']]), 'with' => 'labels']));
+    eq('REST with loads the linked rows', [$r['status'], array_column($r['json']['data'][0]['labels'] ?? [], 'name')], [200, ['blue']]);
 })();
 
 finish('db_test');

@@ -201,4 +201,16 @@ eq('scf group: unchecked notNull toggle is false, unset nullable stays null', $s
 eq('scf group: the same through core REST meta names', $scfBack(['first_x_req' => '', 'first_x_opt' => '']), ['req' => false, 'opt' => null]);
 eq('scf group: checked toggles are true', $scfBack(['field_x_req' => 1, 'field_x_opt' => '1']), ['req' => true, 'opt' => true]);
 
+// ================================================================ comment policy (spec §2.3)
+$raw = require $fixture;
+$withComments = static function (array $posts) use ($raw): Schema {
+    $raw['collections']['posts'] = $posts + $raw['collections']['posts'];
+    return new Schema($raw);
+};
+$defaults = ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null, 'types' => []];
+eq('comments off: no policy', $withComments(['comments' => false])->commentPolicy('posts'), null);
+eq('comments: true compiled before policies existed reads as the defaults', $withComments(['comments' => true])->commentPolicy('posts'), $defaults);
+eq('an authored policy is read as compiled', $withComments(['comments' => true, 'commentPolicy' => ['guests' => true, 'moderation' => 'all', 'threaded' => 1, 'closeAfterDays' => 30, 'types' => []]])->commentPolicy('posts'),
+    ['guests' => true, 'moderation' => 'all', 'threaded' => 1, 'closeAfterDays' => 30, 'types' => []]);
+
 finish('schema_test');

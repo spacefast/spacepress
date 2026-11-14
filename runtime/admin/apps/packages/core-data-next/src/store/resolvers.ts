@@ -84,7 +84,8 @@ export const getEntityViewConfig =
 				queryArgs.variant = variant;
 			}
 
-			const path = addQueryArgs( '/wp/v2/view-config', queryArgs );
+			// First: First Admin's own route; `/wp/v2/view-config` is WordPress core's (7.1).
+			const path = addQueryArgs( '/first-admin/v1/view-config', queryArgs );
 
 			const response = await apiFetch( {
 				path,

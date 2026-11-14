@@ -48,7 +48,7 @@ fn io(error: std::io::Error) -> Diag {
     failure(error.to_string())
 }
 
-fn relative(root: &Path, path: &Path) -> std::io::Result<String> {
+pub(crate) fn relative(root: &Path, path: &Path) -> std::io::Result<String> {
     let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {
@@ -76,6 +76,17 @@ struct Recording {
 impl Fs for Recording {
     fn allow_packages(&self) -> bool {
         self.packages
+    }
+    // How the sources are read is the wrapped tree's: a raw 0.3 project (`crate::zero_bundle`) is
+    // captured with the reading its capture is compiled with.
+    fn frozen_capture(&self) -> bool {
+        self.fs.frozen_capture()
+    }
+    fn module_alias(&self) -> Option<&'static str> {
+        self.fs.module_alias()
+    }
+    fn legacy_fields(&self) -> bool {
+        self.fs.legacy_fields()
     }
     fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         self.fs.read_dir(path)
@@ -172,19 +183,14 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     }
     let app = serde_json::to_string(&app).map_err(|e| failure(e.to_string()))?;
     let vendor = serde_json::to_string(&vendor).map_err(|e| failure(e.to_string()))?;
-    let manifest = Manifest {
-        format: "first.source-bundle.v1".into(),
-        name: built.schema.name.clone(),
-        app_sha256: hash(app.as_bytes()),
-        vendor_sha256: hash(vendor.as_bytes()),
-    };
+    let manifest = manifest_for("first.source-bundle.v1", &built.schema.name, &app, &vendor);
     let mut public_files = Vec::new();
     capture_assets(&*fs, &project.join("public"), &project, &mut public_files)?;
     public_files.sort();
     Ok(Capture {
         app,
         vendor,
-        manifest: serde_json::to_string(&manifest).unwrap(),
+        manifest,
         public_files,
     })
 }
@@ -253,12 +259,40 @@ pub fn sources(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
 #[cfg(feature = "host")]
 pub(crate) fn write_sources(project: &Path, destination: &Path, packages: bool) -> Result<Manifest, Diag> {
     let captured = capture(Rc::new(loader::Disk), project, packages)?;
+    write_capture(
+        project,
+        destination,
+        [(APP_FILE, &captured.app), (VENDOR_FILE, &captured.vendor)],
+        &captured.manifest,
+    )
+}
+
+/// A capture's two bundles and manifest, and the project's `public/`, into a new directory.
+#[cfg(feature = "host")]
+pub(crate) fn write_capture(
+    project: &Path,
+    destination: &Path,
+    bundles: [(&str, &String); 2],
+    manifest: &str,
+) -> Result<Manifest, Diag> {
     std::fs::create_dir(destination).map_err(io)?;
-    std::fs::write(destination.join(APP_FILE), &captured.app).map_err(io)?;
-    std::fs::write(destination.join(VENDOR_FILE), &captured.vendor).map_err(io)?;
-    std::fs::write(destination.join(MANIFEST_FILE), &captured.manifest).map_err(io)?;
+    for (name, text) in bundles {
+        std::fs::write(destination.join(name), text).map_err(io)?;
+    }
+    std::fs::write(destination.join(MANIFEST_FILE), manifest).map_err(io)?;
     public_assets(&project.join("public"), Some(&destination.join("public")))?;
-    serde_json::from_str(&captured.manifest).map_err(|e| failure(e.to_string()))
+    serde_json::from_str(manifest).map_err(|e| failure(e.to_string()))
+}
+
+/// The manifest of a capture whose bundles are `app` and `vendor`.
+pub(crate) fn manifest_for(format: &str, name: &str, app: &str, vendor: &str) -> String {
+    serde_json::to_string(&Manifest {
+        format: format.into(),
+        name: name.into(),
+        app_sha256: hash(app.as_bytes()),
+        vendor_sha256: hash(vendor.as_bytes()),
+    })
+    .unwrap()
 }
 
 fn is_vendor(path: &str) -> bool {
@@ -408,9 +442,18 @@ pub fn compile(
 /// the bytes as captured, with every path validated and module ownership (app or vendor) checked.
 #[cfg(feature = "host")]
 pub(crate) fn read_bundles(source: &Path, files: [(&str, &String); 2]) -> Result<SourceBundle, Diag> {
+    let [(app, app_hash), (vendor, vendor_hash)] = files;
+    check_bundles([
+        (app, std::fs::read(source.join(app)).map_err(io)?, app_hash),
+        (vendor, std::fs::read(source.join(vendor)).map_err(io)?, vendor_hash),
+    ])
+}
+
+/// [`read_bundles`] on bytes already read: (file name, bytes, expected hash) for app, then vendor.
+#[cfg(feature = "host")]
+pub(crate) fn check_bundles(files: [(&str, Vec<u8>, &String); 2]) -> Result<SourceBundle, Diag> {
     let mut sources = SourceBundle::default();
-    for ((file, expected), vendor) in files.into_iter().zip([false, true]) {
-        let bytes = std::fs::read(source.join(file)).map_err(io)?;
+    for ((file, bytes, expected), vendor) in files.into_iter().zip([false, true]) {
         if hash(&bytes) != *expected {
             return Err(failure(format!("source bundle hash mismatch: {file}")));
         }
@@ -445,116 +488,22 @@ pub(crate) struct Compiled {
     /// The app has an auth collection, so it mounts `first-identity`.
     pub identity: bool,
     pub admin: bool,
+    /// `sealed: true`: the plugin slugs a host lets load, First's own and the platform's.
+    pub sealed: Option<Vec<String>>,
+    /// The names of the jobs the app declares, sorted.
+    pub jobs: Vec<String>,
 }
 
-/// `compile`, optionally without the schema-independent runtime plugins (a build store keeps
-/// those once per revision).
+/// Each synced kind's files as seed records (`wp first seed --records`), as a publish seeds a Space:
+/// one `{collection, format, records}` document per kind, by kind name, parents before children.
 #[cfg(feature = "host")]
-pub(crate) fn compile_tree(
-    source: &Path,
-    output: &Path,
-    assets: &Path,
-    previous: Option<&Path>,
-    runtime: bool,
-) -> Result<Compiled, Diag> {
-    let bytes = std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?;
-    let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
-    let legacy = manifest.format == crate::zero_bundle::FORMAT;
-    if !(legacy || manifest.format == "first.source-bundle.v1")
-        || manifest.name.is_empty()
-        || !manifest
-            .name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-    {
-        return Err(failure("invalid source bundle format or app name"));
-    }
-    let sources = if legacy {
-        crate::zero_bundle::read(source, &manifest)?
-    } else {
-        let captured = read_bundles(
-            source,
-            [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)],
-        )?;
-        // A bundle captured before `first/_generated/` names its locks and ledger at their old paths.
-        // The hashes cover the bytes as captured; only the paths are read on this layout.
-        SourceBundle {
-            files: captured
-                .files
-                .into_iter()
-                .map(|(path, text)| (crate::layout::current(&path), text))
-                .collect(),
-            canonical: captured
-                .canonical
-                .into_iter()
-                .map(|(path, real)| (crate::layout::current(&path), crate::layout::current(&real)))
-                .collect(),
-        }
-    };
-    // A capture from before `first/app/` may hold TSX pages for the old renderer (`pages/`, with
-    // their `first/pages.json` artifact). There is no renderer for them any more, and compiling the
-    // rest would publish the site without its pages.
-    if let Some(path) = sources
-        .files
-        .keys()
-        .find(|p| *p == "first/pages.json" || p.starts_with("pages/"))
-    {
-        return Err(failure(format!(
-            "this bundle has TSX pages from the old pages renderer ({path}), which First no longer has"
-        ))
-        .help("move the pages to first/app/ (docs/pages.md), then publish again with `first sources`"));
-    }
-    let name = manifest.name;
-    let root = source.join("modules");
-    let source_migrations = sources
-        .files
-        .iter()
-        // A capture is frozen: one taken by an older compiler keeps its ledger at the old path, and
-        // its archive must survive a recompile (docs/spacefast-deploy.md).
-        .filter_map(|(path, text)| {
-            [crate::pipeline::LEDGER, crate::pipeline::OLD_LEDGER]
-                .iter()
-                .find_map(|ledger| path.strip_prefix(ledger)?.strip_prefix('/'))
-                .map(|name| (name, text))
-        })
-        .map(|(name, text)| {
-            safe_migration_name(name)?;
-            Ok((name.to_owned(), text.clone()))
-        })
-        .collect::<Result<Vec<_>, Diag>>()?;
-    let fs = Rc::new(CapturedFs {
-        root: root.clone(),
-        sources,
-        module_alias: legacy.then_some(crate::zero_bundle::MODULE),
-    });
-    let program = loader::load_from(fs.clone(), &root.join("first.config.ts")).map_err(|mut d| d.remove(0))?;
-    let snapshot = previous
-        .map(|p| {
-            std::fs::read(p.join("snapshot.json"))
-                .map_err(io)
-                .and_then(|b| serde_json::from_slice(&b).map_err(|e| failure(e.to_string())))
-        })
-        .transpose()?;
-    let previous_migrations = previous.map(|p| p.join("migrations"));
-    let names: Vec<String> = match &previous_migrations {
-        Some(p) => std::fs::read_dir(p)
-            .map_err(io)?
-            .map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned()))
-            .collect::<Result<_, _>>()
-            .map_err(io)?,
-        None => Vec::new(),
-    };
-    let built = pipeline::build(
-        Path::new(&name),
-        &program,
-        || pipeline::Previous::from_project(snapshot, names.iter().map(String::as_str)),
-        crate::emit::runtime_file,
-    )?;
-    if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
-        return Err(failure("hosted apps cannot install WordPress plugins"));
-    }
+pub(crate) fn seed_records(
+    fs: &dyn Fs,
+    root: &Path,
+    schema: &crate::schema::Schema,
+) -> Result<Vec<(String, serde_json::Value)>, Diag> {
     let mut seeds = Vec::new();
-    for (name, collection) in &built.schema.collections {
+    for (name, collection) in &schema.collections {
         let Some(sync) = &collection.sync else { continue };
         let mut records = Vec::new();
         let mut uids = BTreeSet::new();
@@ -563,7 +512,7 @@ pub(crate) fn compile_tree(
         // A folder tree: (record index, the file holding its parent), resolved once every file is read.
         let mut parents: Vec<(usize, Option<String>)> = Vec::new();
         let mut by_path: BTreeMap<String, String> = BTreeMap::new();
-        for path in sync_files(&*fs, &root, sync)? {
+        for path in sync_files(fs, root, sync)? {
             let text = fs.read_to_string(&path).map_err(io)?;
             let parsed = if sync["format"] == "md" {
                 crate::sync::files::md_record(&text)
@@ -648,7 +597,7 @@ pub(crate) fn compile_tree(
                 by_path.insert(below, uid.clone());
             }
             records.push(
-                serde_json::json!({"uid":uid,"fields":fields,"body":body,"path":relative(&root,&path).map_err(io)?}),
+                serde_json::json!({"uid":uid,"fields":fields,"body":body,"path":relative(root,&path).map_err(io)?}),
             );
         }
         if nested {
@@ -676,10 +625,127 @@ pub(crate) fn compile_tree(
             records = ordered.into_iter().map(|(_, r)| r).collect();
         }
         seeds.push((
-            name,
+            name.clone(),
             serde_json::json!({"collection":name,"format":sync["format"],"records":records}),
         ));
     }
+    Ok(seeds)
+}
+
+/// `compile`, optionally without the schema-independent runtime plugins (a build store keeps
+/// those once per revision).
+#[cfg(feature = "host")]
+pub(crate) fn compile_tree(
+    source: &Path,
+    output: &Path,
+    assets: &Path,
+    previous: Option<&Path>,
+    runtime: bool,
+) -> Result<Compiled, Diag> {
+    // A raw project from a client released before the rename is captured here first, exactly as
+    // `host::sources` captures it, and read as that capture (`crate::zero_bundle::capture_raw`).
+    let (bytes, raw) = if crate::zero_bundle::is_raw(source)? {
+        let [app, vendor, manifest] = crate::zero_bundle::capture_raw(source)?;
+        (manifest.into_bytes(), Some([app, vendor]))
+    } else {
+        (std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?, None)
+    };
+    let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
+    let legacy = manifest.format == crate::zero_bundle::FORMAT;
+    if !(legacy || manifest.format == "first.source-bundle.v1")
+        || manifest.name.is_empty()
+        || !manifest
+            .name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err(failure("invalid source bundle format or app name"));
+    }
+    let sources = if legacy {
+        crate::zero_bundle::read(source, &manifest, raw)?
+    } else {
+        let captured = read_bundles(
+            source,
+            [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)],
+        )?;
+        // A bundle captured before `first/_generated/` names its locks and ledger at their old paths.
+        // The hashes cover the bytes as captured; only the paths are read on this layout.
+        SourceBundle {
+            files: captured
+                .files
+                .into_iter()
+                .map(|(path, text)| (crate::layout::current(&path), text))
+                .collect(),
+            canonical: captured
+                .canonical
+                .into_iter()
+                .map(|(path, real)| (crate::layout::current(&path), crate::layout::current(&real)))
+                .collect(),
+        }
+    };
+    // A capture from before `first/app/` may hold TSX pages for the old renderer (`pages/`, with
+    // their `first/pages.json` artifact). There is no renderer for them any more, and compiling the
+    // rest would publish the site without its pages.
+    if let Some(path) = sources
+        .files
+        .keys()
+        .find(|p| *p == "first/pages.json" || p.starts_with("pages/"))
+    {
+        return Err(failure(format!(
+            "this bundle has TSX pages from the old pages renderer ({path}), which First no longer has"
+        ))
+        .help("move the pages to first/app/ (docs/pages.md), then publish again with `first sources`"));
+    }
+    let name = manifest.name;
+    let root = source.join("modules");
+    let source_migrations = sources
+        .files
+        .iter()
+        // A capture is frozen: one taken by an older compiler keeps its ledger at the old path, and
+        // its archive must survive a recompile (docs/spacefast-deploy.md).
+        .filter_map(|(path, text)| {
+            [crate::pipeline::LEDGER, crate::pipeline::OLD_LEDGER]
+                .iter()
+                .find_map(|ledger| path.strip_prefix(ledger)?.strip_prefix('/'))
+                .map(|name| (name, text))
+        })
+        .map(|(name, text)| {
+            safe_migration_name(name)?;
+            Ok((name.to_owned(), text.clone()))
+        })
+        .collect::<Result<Vec<_>, Diag>>()?;
+    let fs = Rc::new(CapturedFs {
+        root: root.clone(),
+        sources,
+        module_alias: legacy.then_some(crate::zero_bundle::MODULE),
+    });
+    let program = loader::load_from(fs.clone(), &root.join("first.config.ts")).map_err(|mut d| d.remove(0))?;
+    let snapshot = previous
+        .map(|p| {
+            std::fs::read(p.join("snapshot.json"))
+                .map_err(io)
+                .and_then(|b| serde_json::from_slice(&b).map_err(|e| failure(e.to_string())))
+        })
+        .transpose()?;
+    let previous_migrations = previous.map(|p| p.join("migrations"));
+    let names: Vec<String> = match &previous_migrations {
+        Some(p) => std::fs::read_dir(p)
+            .map_err(io)?
+            .map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned()))
+            .collect::<Result<_, _>>()
+            .map_err(io)?,
+        None => Vec::new(),
+    };
+    let built = pipeline::build(
+        Path::new(&name),
+        &program,
+        || pipeline::Previous::from_project(snapshot, names.iter().map(String::as_str)),
+        crate::emit::runtime_file,
+    )?;
+    if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
+        return Err(failure("hosted apps cannot install WordPress plugins"));
+    }
+    let seeds = seed_records(&*fs, &root, &built.schema)?;
     public_assets(&assets.join("public"), None)?;
     std::fs::create_dir(output).map_err(io)?;
     if !source_migrations.is_empty() {
@@ -714,6 +780,7 @@ pub(crate) fn compile_tree(
         serde_json::to_vec(&built.snapshot).map_err(|e| failure(e.to_string()))?,
     )
     .map_err(io)?;
+    std::fs::write(output.join(crate::storage::FILE), crate::storage::bytes(&built.schema)).map_err(io)?;
     crate::emit::emit_generated(assets, &migrations, &output.join("plugins"), &built, runtime).map_err(io)?;
     let client = output.join("client");
     for (name, bytes) in &built.client_files {
@@ -794,9 +861,14 @@ pub(crate) fn compile_tree(
     actions.sort();
     let summary = serde_json::json!({"name": schema.name, "collections": collections, "tables": tables, "actions": actions,
         "identity": schema.collections.values().any(|c| c.auth), "admin": schema.admin});
-    let manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
+    let mut manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
         "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "routes":routes, "pagePaths":page_paths,
         "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
+    let sealed = sealed_plugins(&built.schema, hosted_first(&built.schema));
+    // No key when the app isn't sealed, so an unsealed app's tree hashes as it did before.
+    if let Some(sealed) = &sealed {
+        manifest["sealed"] = sealed.clone().into();
+    }
     std::fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -806,8 +878,62 @@ pub(crate) fn compile_tree(
         manifest,
         identity: built.schema.collections.values().any(|c| c.auth),
         admin: built.schema.admin,
+        sealed,
+        jobs: {
+            let mut jobs: Vec<String> = built.schema.jobs.keys().cloned().collect();
+            jobs.sort();
+            jobs
+        },
         name: built.schema.name,
     })
+}
+
+/// The First plugins a host mounts for this build (the build store loader's order).
+#[cfg(feature = "host")]
+fn hosted_first(schema: &crate::schema::Schema) -> Vec<String> {
+    ["first-runtime".to_string(), format!("first-app-{}", schema.name)]
+        .into_iter()
+        .chain(
+            schema
+                .collections
+                .values()
+                .any(|c| c.auth)
+                .then(|| "first-identity".to_string()),
+        )
+        .chain(schema.admin.then(|| "first-admin".to_string()))
+        .collect()
+}
+
+/// Plugins a sealed site never runs, declared or not: each serves stored content around First's
+/// read rules. The Block Data API answers a post's raw `post_content` after an item-level check
+/// only, which shows a rich text field that a field rule hides; the decoupled bundle ships that
+/// API and WPGraphQL. Kept in step with `Sealed::DENIED` in the runtime.
+pub(crate) const SEALED_DENIED: [&str; 2] = ["vip-block-data-api", "vip-decoupled-bundle"];
+
+/// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `first` (the First plugins
+/// of this target, which its caller names), First's admin, the platform pins this app needs, and
+/// the WordPress plugins the config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app
+/// plugin, so they need no entry.
+pub(crate) fn sealed_plugins(
+    schema: &crate::schema::Schema,
+    first: impl IntoIterator<Item = String>,
+) -> Option<Vec<String>> {
+    let declared = schema.sealed.as_ref()?;
+    let mut slugs: Vec<String> = first
+        .into_iter()
+        // First's admin is First's own plugin: listed whether or not this build ships it
+        // (`admin: true`), so a sealed site never refuses it however it is installed.
+        .chain(["first-admin".to_string()])
+        .chain(
+            crate::platform::plugins(schema.locales.is_some())
+                .into_iter()
+                .map(|p| p.slug),
+        )
+        .chain(declared.iter().cloned())
+        .collect();
+    slugs.sort();
+    slugs.dedup();
+    Some(slugs)
 }
 
 #[cfg(feature = "cli")]

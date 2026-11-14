@@ -23,13 +23,46 @@ final class Plugin
     {
         return new \WP_Error($error->kind, $error->getMessage(), ["status" => $error->status]);
     }
+    /**
+     * Whether a build from the store mounted identity (`First\Loader\Loader::load`): then booting
+     * installs nothing, and {@see install()} runs when the host initializes the build.
+     */
+    public static function managed(): bool
+    {
+        return class_exists(\First\Loader\Loader::class, false) && \First\Loader\Loader::loaded() !== null;
+    }
+
+    /**
+     * Everything identity writes to be ready on this site: the stored-name upgrade from before the
+     * rename, the schema, the password-check material and its inventory schedule. What a plugin-installed
+     * site does on every boot; a managed build runs it from `Loader::initialize`.
+     */
+    public static function install(): void
+    {
+        self::installStorage();
+        Accounts::provisionPasswordHash();
+    }
+
+    private static function installStorage(): void
+    {
+        // A site that ran zero-identity (before the rename to First) keeps its accounts and sessions.
+        Legacy\ZeroNames::upgrade(self::$db);
+        if ((int) get_option("first_identity_schema_version", 0) < Schema::VERSION) {
+            Schema::migrate(self::$db);
+        }
+    }
+
     public static function boot(string $file): void
     {
         global $wpdb;
         self::$db = new DB($wpdb);
         self::$security = new Security(self::$db);
         self::$accounts = new Accounts(self::$db, self::$security);
-        add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
+        // A site that installs First as plugins installs identity on boot; a build mounted from the
+        // store installs nothing until the host initializes it (install()).
+        if (!self::managed()) {
+            add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
+        }
         add_filter('cron_schedules', static function (array $schedules): array {
             $schedules['first_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
             return $schedules;
@@ -43,10 +76,8 @@ final class Plugin
             self::$security,
             new Mfa(self::$db, self::$security),
         );
-        // A site that ran zero-identity (before the rename to First) keeps its accounts and sessions.
-        Legacy\ZeroNames::upgrade(self::$db);
-        if ((int) get_option("first_identity_schema_version", 0) < Schema::VERSION) {
-            Schema::migrate(self::$db);
+        if (!self::managed()) {
+            self::installStorage();
         }
         add_action("rest_api_init", [self::$api, "register"]);
         add_filter(
@@ -87,6 +118,56 @@ final class Plugin
                 3,
             );
         });
+        // Failed password attempts through WordPress's own sign-in (wp-login.php, XML-RPC where a
+        // site turns it on, any caller of wp_authenticate) are limited per address and per login, with
+        // the limits of Identity's own password sign-in ({@see Api}, `sign-in/password`). A failure is
+        // counted when WordPress reports it; once a counter is full, every attempt is refused until
+        // the window ends, the right password too. Core's handlers (priority 20) and the email one
+        // below (21) answer whatever came before them, so the refusal comes after them.
+        $buckets = static fn(string $login): array => [
+            "wp-password:" . ($_SERVER["REMOTE_ADDR"] ?? ""),
+            "wp-password-account:" . strtolower($login),
+        ];
+        add_filter(
+            "authenticate",
+            static function ($user, $login = "", $password = "") use ($buckets) {
+                if (!is_string($login) || !is_string($password) || $login === "" || $password === "") {
+                    return $user;
+                }
+                try {
+                    foreach ($buckets($login) as $bucket) {
+                        if (self::$security->limited($bucket)) {
+                            return self::refusal(new Failure("rate_limited", "Too many attempts. Try again later.", 429));
+                        }
+                    }
+                } catch (Failure $e) {
+                    return self::refusal($e);
+                }
+                return $user;
+            },
+            30,
+            3,
+        );
+        add_action(
+            "wp_login_failed",
+            static function ($login, $error = null) use ($buckets): void {
+                // Not a wrong guess: Identity's own refusals, made after the password was accepted or
+                // before anything was checked.
+                $own = ["rate_limited", "storage_unavailable", "storage_conflict", "identity_mfa_required", "account_unavailable"];
+                if (!is_string($login) || $login === "" || ($error instanceof \WP_Error && array_intersect($error->get_error_codes(), $own))) {
+                    return;
+                }
+                foreach ($buckets($login) as $bucket) {
+                    try {
+                        self::$security->limit($bucket, PHP_INT_MAX);
+                    } catch (Failure) {
+                        // Storage can't count this one; the next attempt's check refuses if it still can't.
+                    }
+                }
+            },
+            10,
+            2,
+        );
         add_filter(
             "authenticate",
             static function ($user, $login, $password) {
@@ -113,6 +194,12 @@ final class Plugin
                     return self::refusal($e);
                 }
                 $account = $uid ? get_userdata($uid) : false;
+                // Core already checked this account's password: checking it again would make a
+                // wrong password for a known address slower than for an unknown one.
+                if ($account && is_wp_error($user) && $user->get_error_code() === "incorrect_password"
+                    && (int) (get_user_by("email", $login)->ID ?? 0) === $uid) {
+                    return $user;
+                }
                 return $account
                     ? wp_authenticate_username_password(
                         null,
@@ -151,7 +238,7 @@ final class Plugin
         );
         add_filter(
             "wp_authenticate_user",
-            static function ($user) {
+            static function ($user, $password) {
                 try {
                     if (
                         $user instanceof \WP_User &&
@@ -159,6 +246,11 @@ final class Plugin
                             (int) $user->ID,
                         )
                     ) {
+                        // Core runs this filter before it checks the password: only someone who
+                        // knows it learns that the account exists and has a second factor.
+                        if (!wp_check_password((string) $password, $user->user_pass, $user->ID)) {
+                            return new \WP_Error("incorrect_password", __("<strong>Error:</strong> Invalid username, email address or incorrect password."));
+                        }
                         return new \WP_Error(
                             "identity_mfa_required",
                             "Use the Identity sign-in page to complete multifactor authentication.",
@@ -170,6 +262,7 @@ final class Plugin
                 }
             },
             100,
+            2,
         );
         $rememberPassword = static function ($uid): void {
             $user = get_userdata((int) $uid);

@@ -104,6 +104,41 @@ $out = [
     'rest note' => $got('/wp-json/wp/v2/first_notes/' . $noteId)['status'],
     'feed' => $got('/feed/')['status'],
 ];
+// Authors: the users kind's read rule shows a visitor the editor's row only, so the editor is a public
+// author (archive, `?author=<id>`, oEmbed) and the admin, who also has a published post, is not.
+$editorId = $site->userId('editor');
+$embed = static function (string $path) use ($got, $url, $strip): array {
+    $data = (array) json_decode($got('/wp-json/oembed/1.0/embed?url=' . rawurlencode($url . $path))['body'], true);
+    return [($data['author_name'] ?? null) === get_bloginfo('name'), $strip($data['author_url'] ?? null)];
+};
+$byId = $got('/?author=' . $editorId);
+$out['authors'] = [
+    'listed' => $got('/author/editor/')['status'],
+    'unlisted' => $got('/author/admin/')['status'],
+    'unknown' => $got('/author/nobody/')['status'],
+    'listed by id' => [$byId['status'], $strip($byId['location'])],
+    'unlisted by id' => $got('/?author=1')['status'],
+    'both ids' => $got('/?author=1,' . $editorId)['status'],
+    'listed embed' => $embed('/by-the-editor/'),
+    'unlisted embed' => $embed('/hello-world/'),
+    'core route' => [$got('/wp-json/wp/v2/users/' . $editorId)['status'], $got('/wp-json/wp/v2/users')['status']],
+    // First's API serves the kind by its rule: a visitor lists and reads the listed user only.
+    'api list' => array_column((array) (json_decode($got('/__first/api/v1/members')['body'], true)['data'] ?? []), 'id') === [$editorId],
+    'api listed' => $got('/__first/api/v1/members/' . $editorId)['status'],
+    'api unlisted' => $got('/__first/api/v1/members/1')['status'],
+    'api missing' => $got('/__first/api/v1/members/99999999')['status'],
+];
+// A write to a user's row purges their archive: whether it answers depends on that row.
+delete_option('test_purges');
+wp_set_current_user(1);
+\First\db()->update('members', ['listed' => false], ['id' => $editorId]);
+$site->actAs(null);
+wp_cache_delete('test_purges', 'options');
+$out['authors']['purged'] = in_array('/author/editor/', get_option('test_purges', []), true);
+$out['authors']['unlisted after'] = $got('/author/editor/')['status'];
+wp_set_current_user(1);
+\First\db()->update('members', ['listed' => true], ['id' => $editorId]);
+$site->actAs(null);
 // A slug change: the old URL 301s to the new one, and both URLs (with twins) are purged.
 delete_option('test_purges');
 wp_set_current_user(1);
@@ -191,5 +226,14 @@ wp_cache_delete('test_purges', 'options');
 $out['sitemap']['purged by a field'] = array_values(array_filter(get_option('test_purges', []), static fn (string $p): bool => str_contains($p, 'wp-sitemap')));
 $out['sitemap']['briefs after'] = array_map($strip, $locs(fetch("$url/wp-sitemap-first-briefs-1.xml")['body']));
 $out['sitemap']['briefs status after'] = fetch("$url/wp-sitemap-first-briefs-1.xml")['status'];
+// `publicAuthors: true` with a users kind: every author is in the sitemap, as WordPress ships it.
+$schemaFile = \First\Wp\Runtime::plugin()->dir . '/first/app/schema.php';
+$schemaPhp = (string) file_get_contents($schemaFile);
+// Inserted after the `'admin'` line, whatever its value (#377 turned First Admin on by default).
+file_put_contents($schemaFile, preg_replace("/^    'admin' => (true|false),\n/m", "\$0    'publicAuthors' => true,\n", $schemaPhp, 1));
+$everyone = array_map($strip, $locs(fetch("$url/wp-sitemap-users-1.xml")['body']));
+sort($everyone);
+$out['authors']['public sitemap'] = $everyone;
+file_put_contents($schemaFile, $schemaPhp);
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

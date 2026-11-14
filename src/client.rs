@@ -1,6 +1,6 @@
 //! The typed client (§7): `first/_generated/client/types.ts` (generated interfaces),
 //! `first/_generated/client/schema.ts` (the `SCHEMA` descriptor the runtime reads), and
-//! the handwritten runtime from `runtime/client/` (`index.ts`, `README.md`).
+//! the handwritten runtime from `runtime/client/` (`index.ts`, `react.ts`, `README.md`).
 
 use crate::schema::{Access, ColType, Collection, Column, RelKind, Schema};
 use crate::types::Ty;
@@ -100,7 +100,7 @@ fn value_ts_with(c: &Column, mode: impl Into<Mode>, json_type: &dyn Fn(&Column) 
             "string".into()
         }
         ColType::Json => ty_ts(&crate::types::json_wire_type(&json_type(c)), &[]),
-        ColType::MediaList => "number[]".into(),
+        ColType::MediaList | ColType::RefList => "number[]".into(),
         ColType::Select => format!(
             "({})[]",
             c.enum_values.as_ref().map(enum_union).unwrap_or("string".into())
@@ -196,6 +196,11 @@ fn filter_ts(c: &Column) -> String {
     if c.ty.is_json_kind() {
         return format!("{v} | null | {{ eq?: {v} | null; ne?: {v} | null; isNull?: true; isNotNull?: true }}");
     }
+    if c.ty == ColType::RefList {
+        // Never null: a row with no links holds `[]`. `true`/`false` (some link or none) and a filter
+        // on the linked rows come from the relation (`collection_types`).
+        return "[] | { has?: number; eq?: []; NOT?: { has?: number } }".into();
+    }
     if c.ty.is_list_kind() {
         let el = v
             .trim_end_matches("[]")
@@ -273,6 +278,8 @@ pub const RESERVED_TYPE_NAMES: &[&str] = &[
     "StatusQuery",
     "LocaleQuery",
     "ListQuery",
+    "Query",
+    "ReadCall",
     "CollectionClient",
     "MediaQuery",
     "MediaClient",
@@ -613,6 +620,12 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     let mut filter: Vec<String> = columns()
         .filter(|col| !col.derived)
         .map(|col| match c.relations.get(&col.name) {
+            Some(r) if col.ty == ColType::RefList => format!(
+                "{}?: {} | true | false | {}Filter",
+                key(&col.name),
+                filter_ts(col),
+                names[&r.collection]
+            ),
             Some(r) => format!(
                 "{}?: {} | {}Filter",
                 key(&col.name),
@@ -771,8 +784,9 @@ pub fn files(
         out.push(("client.js".into(), javascript.into_bytes()));
         out.push(("client.d.ts".into(), declarations.into_bytes()));
     }
-    // The copied runtime half of the client is MIT; its notice travels with it.
-    for f in ["index.ts", "README.md", "LICENSE"] {
+    // The copied runtime half of the client is MIT; its notice travels with it. `react.ts` is the
+    // optional hooks entry point: it imports no React, so it type-checks in a project without one.
+    for f in ["index.ts", "react.ts", "README.md", "LICENSE"] {
         if let Some(bytes) = runtime(&format!("client/{f}")) {
             let text = String::from_utf8_lossy(bytes).replace("{{name}}", &schema.name);
             out.push((f.to_string(), text.into_bytes()));

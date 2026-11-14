@@ -318,10 +318,8 @@ fn kind(
             })?;
         options.insert("access".to_string(), value(&Json::Object(rules.clone())));
     }
-    let mut args = vec![Value::object(columns), Value::object(options)];
-    if global {
-        args.insert(0, Value::str(name));
-    }
+    // A global is named by the registry key it is listed under, as an exported one is by its export.
+    let args = vec![Value::object(columns), Value::object(options)];
     ev.kind_from_data(global, args)
         .map_err(|d| located(name, d, Code::Evaluation))
 }
@@ -456,10 +454,14 @@ pub fn apply(lock: Option<&Lock>, ev: &mut Evaluator<'_>, ext: &mut Extracted) -
 type KeyPattern = Vec<Option<String>>;
 
 /// Where a field's values are stored (`StorageKeys::of` in the PHP runtime, the same rule): Secure
-/// Custom Fields keeps a field `seo` under `seo`, a group's sub-field `title` under `seo_title`, and a
-/// repeater or blocks field's rows under `<field>_<n>_<sub>` for every row number n.
+/// Custom Fields keeps a field `seo` under `seo`, a group's sub-field `title` under `seo_title`, a
+/// repeater or blocks field's rows under `<field>_<n>_<sub>` for every row number n, and a blocks
+/// field's record of its layouts under `_<field>_layout_meta`.
 fn storage_keys(name: &str, column: &Column) -> Vec<KeyPattern> {
     let mut out = vec![vec![Some(name.to_string())]];
+    if matches!(column.ty, ColType::Blocks) {
+        out.push(vec![Some(format!("{name}_layout_meta"))]);
+    }
     let rows = matches!(column.ty, ColType::Repeater | ColType::Blocks);
     let mut nested: Vec<(&String, &Column)> = column.fields.iter().flatten().collect();
     for layout in column.layouts.iter().flat_map(|l| l.values()) {
@@ -492,12 +494,13 @@ fn joined(pattern: KeyPattern) -> KeyPattern {
     out
 }
 
-/// A pattern as characters, `None` for a row number.
+/// A pattern as lower-case characters, `None` for a row number: MySQL compares meta keys and
+/// option names with WordPress's case-insensitive collation, so `Rating` and `rating` are one row.
 fn chars(pattern: &KeyPattern) -> Vec<Option<char>> {
     pattern
         .iter()
         .flat_map(|part| match part {
-            Some(text) => text.chars().map(Some).collect::<Vec<_>>(),
+            Some(text) => text.chars().map(|c| Some(c.to_ascii_lowercase())).collect::<Vec<_>>(),
             None => vec![None],
         })
         .collect()
@@ -1179,11 +1182,29 @@ mod tests {
                 "rating",
                 "seo",
                 "links",
+                "page",
                 "status",
                 "publishedAt",
                 "subtitle"
             ]
         );
+    }
+
+    #[test]
+    fn a_lock_field_is_refused_where_a_source_field_would_write_its_keys() {
+        // The site stores `seo_title` and `page_layout_meta` as fields of their own; source declares
+        // a group `seo` and a blocks field `page`, which write `first_seo_title` and
+        // `_first_page_layout_meta`. Keys differ only in case on MySQL's collation too.
+        for field in ["seo_title", "page_layout_meta", "SEO_TITLE", "Rating"] {
+            let lock = serde_json::json!({ "format": FORMAT, "version": 1, "hash": "h", "collections": {
+                "articles": { "columns": { field: { "type": "integer" } } } } });
+            let refused = build(Some(&lock)).expect_err(field);
+            assert!(
+                refused.message.contains("would store values under"),
+                "{field}: {}",
+                refused.message
+            );
+        }
     }
 
     #[test]

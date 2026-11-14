@@ -43,6 +43,9 @@ final class Staged
     /** Core's cron hook for scheduled publishing; a staged revision's id is its argument here. */
     private const CRON = 'publish_future_post';
     public const PREVIEW_PARAM = 'first_preview';
+    /** Who scheduled a promote, besides a user id: a signed-out caller, or the trusted CLI. */
+    private const ANONYMOUS = 'anonymous';
+    private const SYSTEM = 'system';
     private const PREVIEW_TTL = 3600;
     private const PREVIEW_MAX_TTL = 86400;
 
@@ -57,6 +60,9 @@ final class Staged
             }
         }
         add_action(self::CRON, [self::class, 'due'], 10, 1);
+        // Internal, as core's `auto-draft`: a query for `any` status (get_children's default) skips it.
+        $status = static fn () => register_post_status(WpPostStore::STAGED_STATUS, ['internal' => true, 'label' => 'Staged']);
+        did_action('init') ? $status() : add_action('init', $status, 0);
         // A staged ability is listed only to a caller whose update rule may allow something.
         add_filter('wp_get_abilities_item_include', [self::class, 'listed'], 10, 2);
         add_filter('rest_request_after_callbacks', [self::class, 'abilityItem'], 10, 3);
@@ -183,6 +189,7 @@ final class Staged
             try {
                 $row = $db->update($collection, $patch, [$spec['primaryKey'] => $id], true, $viewer)[0]
                     ?? throw self::missing($spec, $collection, $pk); // the update rule, given the staged data, doesn't cover the row
+                self::restHooks($spec, $id, $patch);
             } finally {
                 $db->setActor($previous);
             }
@@ -224,7 +231,7 @@ final class Staged
                     }
                     self::checked($db, $spec, $collection, self::patch($spec, $collection, $state, $live, $viewer), $live, array_replace($live, $state['values']), $viewer);
                 }
-                $meta += ['promoteAt' => gmdate('Y-m-d\TH:i:s.000\Z', $time), 'promoteBy' => $viewer?->user['id'] ?? null];
+                $meta += ['promoteAt' => gmdate('Y-m-d\TH:i:s.000\Z', $time), 'promoteBy' => self::actor($viewer)];
             }
             self::writeMeta($rid, $meta);
             self::reschedule($rid, $meta);
@@ -400,18 +407,24 @@ final class Staged
             wp_schedule_single_event(max($at, time() + 60), self::CRON, [$post->ID]); // early, or storage is behind
             return;
         }
-        $userId = (int) ($meta['promoteBy'] ?? 0);
-        $user = $userId > 0 ? get_userdata($userId) : false;
+        $by = $meta['promoteBy'] ?? null;
         $previous = get_current_user_id();
         try {
-            if ($userId > 0) {
-                if (!$user instanceof \WP_User) {
+            // The promote runs as exactly who scheduled it. Only the trusted CLI's own schedule
+            // promotes trusted; anything else unrecognised is refused, never promoted as the system.
+            if (is_int($by) && $by > 0) {
+                if (!get_userdata($by) instanceof \WP_User) {
                     throw new HttpError(403, 'forbidden', 'The user who scheduled this promote no longer exists');
                 }
-                wp_set_current_user($userId);
+                wp_set_current_user($by);
                 $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'The account that scheduled this promote is suspended');
+            } elseif ($by === self::ANONYMOUS) {
+                wp_set_current_user(0);
+                $viewer = new Viewer(null);
+            } elseif ($by === self::SYSTEM) {
+                $viewer = null; // `wp first staged promote --at`, the trusted CLI
             } else {
-                $viewer = null; // scheduled by the trusted CLI
+                throw new HttpError(403, 'forbidden', 'This scheduled promote names no one who may make it');
             }
             self::promote($collection, (int) $post->post_parent, $viewer);
         } catch (\Throwable $e) {
@@ -426,22 +439,36 @@ final class Staged
 
     /**
      * Core's REST links count every revision of a post and name the newest one, for every reader.
-     * The staged revision is left out of both, so a reader of the post can't tell that it exists.
+     * Staged revisions, current or retired, are left out of both, so a reader can't tell that one
+     * exists or ever existed: a discard leaves the links as they were, a promote moves them as one
+     * update does.
      */
     public static function restLinks(mixed $response, mixed $post): mixed
     {
         $history = $response instanceof \WP_REST_Response && $post instanceof \WP_Post ? ($response->get_links()['version-history'][0] ?? null) : null;
         $store = is_array($history) ? Plugin::instance()?->db()->store() : null;
-        if (!$store instanceof CompositeStore || ($rid = $store->posts->stagedId($post->ID)) === null) {
+        if (!$store instanceof CompositeStore) {
             return $response;
         }
-        $count = max(0, (int) ($history['attributes']['count'] ?? 0) - 1);
+        // Every staged revision that was promoted or discarded (they keep their record,
+        // `_first_staged`): none of them is a version a reader saw. Core counts `inherit` revisions
+        // only, so the current staged revision, with its own status, is not in its count.
+        $wpdb = $store->db->wpdb();
+        $hidden = array_map('intval', array_column($store->db->run(
+            "SELECT r.ID FROM `{$wpdb->posts}` r JOIN `{$wpdb->postmeta}` m ON m.post_id = r.ID AND m.meta_key = ? WHERE r.post_parent = ? AND r.post_type = 'revision' AND r.post_status = 'inherit'",
+            [self::META, $post->ID],
+        ), 'ID'));
+        if ($hidden === []) {
+            return $response;
+        }
+        $count = max(0, (int) ($history['attributes']['count'] ?? 0) - count($hidden));
         $response->remove_link('version-history');
         $response->remove_link('predecessor-version');
         $response->add_link('version-history', (string) $history['href'], ['count' => $count]);
         $latest = $store->db->run(
-            'SELECT ID FROM `' . $store->db->wpdb()->posts . "` WHERE post_parent = ? AND post_type = 'revision' AND post_status = 'inherit' AND ID <> ? ORDER BY post_date DESC, ID DESC LIMIT 1",
-            [$post->ID, $rid],
+            "SELECT ID FROM `{$wpdb->posts}` WHERE post_parent = ? AND post_type = 'revision' AND post_status = 'inherit' AND post_name NOT LIKE ?"
+            . ' AND ID NOT IN (' . implode(', ', array_fill(0, count($hidden), '?')) . ') ORDER BY post_date DESC, ID DESC LIMIT 1',
+            [$post->ID, '%autosave%', ...$hidden],
         )[0]['ID'] ?? null;
         if ($latest !== null) {
             $response->add_link('predecessor-version', (string) $history['href'] . '/' . (int) $latest, ['id' => (int) $latest]);
@@ -472,9 +499,16 @@ final class Staged
         if ($plugin === null || $collection === null) {
             return;
         }
-        // Only what was staged comes from the revision; every other field is the live one, as in `row`.
+        // Only what was staged comes from the revision, and only the staged fields an anonymous
+        // visitor may read there, as the preview API's `row` gives them; every other field is live.
         $spec = $plugin->schema->collection($collection);
-        $fields = array_map('strval', (array) (self::readMeta($revision->ID)['fields'] ?? []));
+        $view = self::previewed($collection, $claim['id'], wp_unslash($token));
+        if ($view === null) {
+            return;
+        }
+        $fields = $view['fields'];
+        // Fields an anonymous visitor may not read: absent from the row, so blank on the page too.
+        $masked = array_values(array_diff(array_map('strval', array_keys($spec['columns'])), array_keys($view['row'])));
         $staged = clone $shown;
         foreach (['title' => 'post_title', 'content' => 'post_content'] as $designation => $native) {
             if (in_array($spec[$designation] ?? null, $fields, true)) {
@@ -487,14 +521,18 @@ final class Staged
         usort($columns, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
         // A field's meta lives under `<prefix><field>`, SCF's reference under `_<prefix><field>`, and a
         // structured field's parts under `<prefix><field>_…`: the longest field name that fits owns the key.
-        add_filter('get_post_metadata', static function (mixed $value, mixed $object, mixed $key) use ($id, $rid, $prefix, $columns, $fields): mixed {
+        add_filter('get_post_metadata', static function (mixed $value, mixed $object, mixed $key) use ($id, $rid, $prefix, $columns, $fields, $masked): mixed {
             if ((int) $object !== $id || !is_string($key) || !str_starts_with(ltrim($key, '_'), $prefix)) {
                 return $value;
             }
             $name = substr(ltrim($key, '_'), strlen($prefix));
             foreach ($columns as $column) {
                 if ($name === $column || str_starts_with($name, $column . '_')) {
-                    return in_array($column, $fields, true) ? get_metadata('post', $rid, $key, false) : $value;
+                    return match (true) {
+                        in_array($column, $masked, true) => [''],
+                        in_array($column, $fields, true) => get_metadata('post', $rid, $key, false),
+                        default => $value,
+                    };
                 }
             }
 
@@ -621,8 +659,16 @@ final class Staged
         $live = self::item($db, $spec, $collection, $pk);
         $id = (int) $pk;
         $state = self::state($posts, $spec, $collection, $id, $posts->stagedId($id));
-        if ($viewer !== null && !$db->permits($collection, 'update', $id, $viewer)
-            && ($state === null || !$db->permits($collection, 'update', $id, $viewer, $state['values']))) {
+        // Whatever is staged, a caller the rule doesn't cover gets the same 404, even from a rule
+        // that throws on the staged data.
+        $permits = static function (?array $data) use ($db, $collection, $id, $viewer): bool {
+            try {
+                return $db->permits($collection, 'update', $id, $viewer, $data);
+            } catch (\Throwable) {
+                return false;
+            }
+        };
+        if ($viewer !== null && !$permits(null) && ($state === null || !$permits($state['values']))) {
             throw self::missing($spec, $collection, $pk);
         }
 
@@ -817,6 +863,31 @@ final class Staged
         }
 
         return ['collection' => $claim[0], 'id' => $claim[1], 'revision' => $claim[2]];
+    }
+
+    /**
+     * What the API's update fires around its registered fields, in the same transaction
+     * ({@see PostsController}): `rest_insert_{type}` and `rest_after_insert_{type}`, with the update
+     * a client would have sent the core route. A plugin hooked there sees a promote as the update it
+     * is. (Registered REST fields update only when a request names them; a promote names First's
+     * fields only, so none would run.)
+     */
+    private static function restHooks(array $spec, int $id, array $patch): void
+    {
+        $type = (string) $spec['wp']['postType'];
+        $request = new \WP_REST_Request('POST', '/wp/v2/' . (get_post_type_object($type)?->rest_base ?: $type) . '/' . $id);
+        $request->set_url_params(['id' => $id]);
+        $request->set_body_params(Kinds::input(['type' => 'post', 'name' => '', 'spec' => $spec], $patch));
+        clean_post_cache($id);
+        $post = get_post($id) ?: throw new \LogicException("Post $id vanished");
+        do_action("rest_insert_$type", $post, $request, false);
+        do_action("rest_after_insert_$type", get_post($id), $request, false);
+    }
+
+    /** Who $viewer is, as a scheduled promote records it: a user id, `anonymous`, or `system` (no viewer: trusted). */
+    private static function actor(?Viewer $viewer): int|string
+    {
+        return $viewer === null ? self::SYSTEM : ($viewer->user['id'] ?? self::ANONYMOUS);
     }
 
     /** Now in epoch seconds, on the runtime's clock (`FIRST_NOW` pins it in tests). */

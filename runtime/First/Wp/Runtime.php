@@ -29,6 +29,9 @@ final class Runtime
         }
         self::$booted = true;
         self::$runtimeFile = $runtimeFile;
+        // A guarded upgrade step, not a table: staged revisions written before they had their own
+        // status get it (WpPostStore::upgradeStagedStatus), once per site with the other steps.
+        \First\SystemTables::register('__first_staged_status', [\First\SystemTables::step(1, WpPostStore::upgradeStagedStatus(...))]);
         // First's API (/__first/api/v1) is a REST request outside /wp-json: Polylang must set itself up
         // as for one (every language, the API's own `locale`), not as a front-end page whose language
         // would filter every internal query. Its context is chosen on plugins_loaded, after this file.
@@ -42,6 +45,7 @@ final class Runtime
         add_action('wp_authenticate_application_password_errors', [AgentScope::class, 'authenticating'], 10, 3);
         add_filter('rest_authentication_errors', [AgentScope::class, 'unenforced'], 95);
         register_activation_hook($runtimeFile, [self::class, 'activate']);
+        PageCaches::register();
         // A site that ran a build from before the rename to First moves its stored names first, before
         // any table, option or post type of First's exists (ZeroNames). Managed apps do it in initialize().
         add_action('init', static function (): void {
@@ -180,6 +184,48 @@ final class Runtime
         return self::$plugin->initialize($drops);
     }
 
+    /**
+     * What {@see initialize()} would run on this site for the mounted managed build, computed without
+     * writing anything: the shared system steps when the site recorded another set, the stored-name
+     * upgrade from before the rename, the identity schema, the app's migrations and the runtime-schema
+     * comparison. Refusals (platform, schema check with `$drops`, runtime schema) are listed, all at
+     * once; nothing is thrown for them.
+     *
+     * @param array<string, int> $drops
+     * @return array{platform: list<string>, legacyNames: bool, systemTables: ?array{from: mixed, to: string, steps: array<string, list<string>>}, identitySchema: ?array{from: int, to: int}, migrations: list<array>, runtimeSchema: ?array, refusals: list<array>}
+     */
+    public static function inspect(array $drops = []): array
+    {
+        if (!self::$managed || self::$plugin === null) {
+            throw new \LogicException('Mount a managed app before inspecting it');
+        }
+        global $wpdb;
+        // Read past the object cache: another process may have written since this request started.
+        $option = static function (string $name) use ($wpdb): mixed {
+            $value = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name));
+
+            return $value === null ? null : maybe_unserialize($value);
+        };
+        $platform = Platform::problems(self::$plugin->schema->locales() !== null);
+        $recorded = $option('first_runtime_tables');
+        $identity = null;
+        if (class_exists(\First\Identity\Schema::class)) {
+            $from = (int) ($option('first_identity_schema_version') ?? 0);
+            $identity = $from < \First\Identity\Schema::VERSION ? ['from' => $from, 'to' => \First\Identity\Schema::VERSION] : null;
+        }
+        $app = self::$plugin->inspect($drops);
+
+        return [
+            'platform' => $platform,
+            'legacyNames' => ZeroNames::pending(),
+            'systemTables' => $recorded === self::tablesVersion() ? null : ['from' => $recorded, 'to' => self::tablesVersion(), 'steps' => \First\SystemTables::plan()],
+            'identitySchema' => $identity,
+            'migrations' => $app['migrations'],
+            'runtimeSchema' => $app['runtimeSchema'],
+            'refusals' => array_merge(array_map(static fn (string $p): array => ['code' => 'platform', 'message' => $p], $platform), $app['refusals']),
+        ];
+    }
+
     public static function activate(): void
     {
         $problems = Platform::problems();
@@ -227,6 +273,13 @@ final class Runtime
             \First\Extensions::schemaDescribe(static function (array $description): array {
                 $description['runtime']['wp'] = Platform::versions();
                 $description['runtime']['wp']['hardening'] = Hardening::SWITCHES;
+                $description['runtime']['wp']['publicAuthors'] = Authors::public(self::$plugin->schema);
+                // The names of what is loaded are for the site's administrators (and `first doctor`
+                // signed in as one); anyone else learns only whether the site is sealed.
+                $sealed = Sealed::report();
+                if ($sealed !== null) {
+                    $description['runtime']['wp']['sealed'] = current_user_can('activate_plugins') ? $sealed : ['enforced' => $sealed['enforced']];
+                }
                 $description['runtime']['wp']['incompatibleTables'] = self::$plugin->storageProblems();
                 $description['runtime']['identity'] = self::identity();
                 $description['runtime']['version'] = self::VERSION;

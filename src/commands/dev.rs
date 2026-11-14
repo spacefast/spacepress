@@ -2,7 +2,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const STUDIO: &str = "wp-studio@2.1.1";
+const STUDIO: &str = "wp-studio@2.2.0";
 const TOOLS: &[(&str, &str)] = &[
     ("studio.mjs", include_str!("../../scripts/dev/studio.mjs")),
     ("setup.php", include_str!("../../scripts/dev/setup.php")),
@@ -40,6 +40,14 @@ fn command(project: &Path, mode: &str) -> Result<Command, String> {
     let mut command = Command::new(if cfg!(windows) { "npx.cmd" } else { "npx" });
     command.args(["--yes", "--package", STUDIO, "--", "node"]);
     command.arg(runner()?).arg(mode).arg(project);
+    Ok(command)
+}
+
+/// `first export`'s throwaway WordPress (scripts/dev/studio.mjs `export`): its arguments follow.
+pub(super) fn export_command() -> Result<Command, String> {
+    let mut command = Command::new(if cfg!(windows) { "npx.cmd" } else { "npx" });
+    command.args(["--yes", "--package", STUDIO, "--", "node"]);
+    command.arg(runner()?).arg("export");
     Ok(command)
 }
 

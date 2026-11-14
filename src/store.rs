@@ -4,6 +4,9 @@
 //! <root>/runtime/<revision>/   first-loader.php, first-runtime/, first-identity/, first-admin/
 //! <root>/app/<hash>/           the app tree compile_sources writes, minus the runtime plugins
 //! <root>/build/<id>.json       BuildManifest; <id> is the SHA-256 of these bytes
+//! <root>/baseline/<id>/        what the next compile needs from build <id> apart from its code:
+//!                              snapshot.json, migrations/, storage.json, and hashes.json (each
+//!                              file's SHA-256). Kept apart so a lost app tree can be rebuilt
 //! <root>/ready/<id>.json       written by the loader once the build initialized on this site
 //! ```
 //!
@@ -45,6 +48,22 @@ pub struct BuildManifest {
     pub snapshot: String,
     /// The generated client directory, relative to the store root, when the app has one.
     pub client: Option<String>,
+    /// `sealed: true` in the config: the only plugin slugs a host lets load, so it can enforce the
+    /// list before any plugin loads (docs/sealed.md). Absent when the app isn't sealed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed: Option<Vec<String>>,
+    /// The build whose snapshot and migrations this one was compiled against; null for a first build.
+    #[serde(default)]
+    pub baseline: Option<String>,
+    /// What the build stores and how (`crate::storage`), relative to the store root.
+    #[serde(default)]
+    pub storage: Option<String>,
+    /// The names of the jobs the app declares, sorted.
+    #[serde(default)]
+    pub jobs: Vec<String>,
+    /// The oldest WordPress the build's runtime supports.
+    #[serde(default)]
+    pub wordpress: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -130,7 +149,7 @@ struct Store {
 
 impl Store {
     fn open(root: &Path) -> Result<Self, Diag> {
-        for dir in ["runtime", "app", "build", "ready", ".tmp"] {
+        for dir in ["runtime", "app", "build", "baseline", "ready", ".tmp"] {
             fs::create_dir_all(root.join(dir)).map_err(io("create"))?;
         }
         let lock = fs::OpenOptions::new()
@@ -256,6 +275,11 @@ pub fn compile_to_store(
         admin: compiled.admin,
         snapshot: format!("app/{app_hash}/snapshot.json"),
         client,
+        sealed: compiled.sealed,
+        baseline: previous.map(str::to_owned),
+        storage: Some(format!("app/{app_hash}/{}", crate::storage::FILE)),
+        jobs: compiled.jobs,
+        wordpress: Some(crate::platform::WORDPRESS.into()),
     };
     let bytes = serde_json::to_vec_pretty(&manifest).expect("manifest serializes");
     let build_id = hex(Sha256::digest(&bytes));
@@ -265,12 +289,50 @@ pub fn compile_to_store(
         fs::write(&staged, &bytes).map_err(io("write build"))?;
         store.publish(&staged, &target)?;
     }
+    write_baseline(&store, &build_id, &root.join("app").join(&app_hash))?;
     Ok(StoredBuild {
         build_id,
         runtime_revision,
         app_hash,
         manifest,
     })
+}
+
+/// `baseline/<build>/`: the app tree's snapshot, migrations and storage description, and
+/// `hashes.json` mapping each of those paths to its SHA-256. Written once, like everything else.
+fn write_baseline(store: &Store, build_id: &str, app: &Path) -> Result<(), Diag> {
+    let target = store.root.join("baseline").join(build_id);
+    if target.is_dir() {
+        return Ok(());
+    }
+    let staged = store.staging("baseline");
+    let mut hashes = serde_json::Map::new();
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    for name in ["snapshot.json", crate::storage::FILE] {
+        files.push((name.into(), fs::read(app.join(name)).map_err(io("read baseline"))?));
+    }
+    let mut migrations: Vec<_> = fs::read_dir(app.join("migrations"))
+        .map_err(io("read baseline"))?
+        .map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned()))
+        .collect::<Result<_, _>>()
+        .map_err(io("read baseline"))?;
+    migrations.sort();
+    for name in migrations {
+        files.push((
+            format!("migrations/{name}"),
+            fs::read(app.join("migrations").join(&name)).map_err(io("read baseline"))?,
+        ));
+    }
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    fs::create_dir_all(staged.join("migrations")).map_err(io("write baseline"))?;
+    for (rel, bytes) in &files {
+        fs::write(staged.join(rel), bytes).map_err(io("write baseline"))?;
+        hashes.insert(rel.clone(), hex(Sha256::digest(bytes)).into());
+    }
+    let mut manifest = serde_json::to_vec_pretty(&serde_json::Value::Object(hashes)).expect("hashes serialize");
+    manifest.push(b'\n');
+    fs::write(staged.join("hashes.json"), manifest).map_err(io("write baseline"))?;
+    store.publish(&staged, &target)
 }
 
 /// Keep exactly the builds in `keep`; remove every other build manifest and ready marker, and every

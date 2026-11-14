@@ -43,7 +43,9 @@ final class Store
         if (!is_array($manifest) || ($manifest['format'] ?? null) !== self::FORMAT
             || !is_string($manifest['name'] ?? null) || preg_match('/\A[a-z0-9-]+\z/D', $manifest['name']) !== 1
             || !self::validId($manifest['runtime'] ?? null) || !self::validId($manifest['app'] ?? null)
-            || !is_bool($manifest['identity'] ?? null) || !is_bool($manifest['admin'] ?? null)) {
+            || !is_bool($manifest['identity'] ?? null) || !is_bool($manifest['admin'] ?? null)
+            || !(!array_key_exists('sealed', $manifest) || (is_array($manifest['sealed']) && array_is_list($manifest['sealed'])
+                && array_filter($manifest['sealed'], static fn ($s): bool => !is_string($s) || preg_match('/\A[a-z0-9._-]+\z/D', $s) !== 1) === []))) {
             throw new \RuntimeException("Invalid First build manifest $build");
         }
         return $manifest;
@@ -172,6 +174,9 @@ final class Store
 /** Mounts exactly one build per request, then initializes it once per site. */
 final class Loader
 {
+    /** Plugins a sealed site never runs ({@see \First\Wp\Sealed::DENIED}, the compiler's `SEALED_DENIED`). */
+    public const SEALED_DENIED = ['vip-block-data-api', 'vip-decoupled-bundle'];
+
     private static ?array $loaded = null;
     private static ?\First\Schema $schema = null;
 
@@ -243,6 +248,67 @@ final class Loader
         }
     }
 
+    /**
+     * A sealed build's plugin allow-list (`sealed: true` in its config), by directory slug, or null
+     * when the build isn't sealed. A host enforces it before any plugin loads (docs/sealed.md): it
+     * filters what WordPress reads as its active plugins ({@see allowedPlugins()}), and ships only its
+     * own must-use plugins and drop-ins. First never enforces it itself.
+     *
+     * @return ?list<string>
+     */
+    public static function sealed(string $root, string $build): ?array
+    {
+        $manifest = Store::manifest(rtrim($root, '/'), $build);
+
+        return isset($manifest['sealed']) ? $manifest['sealed'] : null;
+    }
+
+    /**
+     * The entries of `active_plugins` (or the keys of the network's `active_sitewide_plugins`) a sealed
+     * build lets load: a listed plugin's main file, `<slug>/<file>.php`. Anything else is left out: a
+     * single file in the plugins directory, a file deeper inside a plugin, a path with `..`.
+     *
+     * For a host's own early code, where `add_filter()` exists and WordPress hasn't read its plugin
+     * list yet: a must-use plugin of the host's, or its `sunrise.php`. Filter with
+     * `option_active_plugins`, which changes what loads in this request, and pair it with
+     * {@see keepUnlisted()}: WordPress writes the option back from the filtered value when a plugin is
+     * next activated or deactivated, which would otherwise drop the unlisted entries from storage.
+     *
+     * @param list<string> $active
+     * @param list<string> $allowed
+     * @return list<string>
+     */
+    public static function allowedPlugins(array $active, array $allowed): array
+    {
+        // Never a plugin that serves stored content around First's read rules, even if a list names it.
+        $allowed = array_diff_key(array_fill_keys($allowed, true), array_fill_keys(self::SEALED_DENIED, true));
+
+        return array_values(array_filter($active, static function ($plugin) use ($allowed): bool {
+            return is_string($plugin) && preg_match('#\A([^/]+)/[^/]+\.php\z#D', $plugin, $m) === 1
+                && $m[1] !== '..' && $m[1] !== '.' && isset($allowed[$m[1]]);
+        }));
+    }
+
+    /**
+     * The value to store for `active_plugins` when WordPress writes it while a host filters reads with
+     * {@see allowedPlugins()}: the new value plus the stored entries the filter hid, so sealing a site
+     * never removes a plugin from its stored list. For `pre_update_option_active_plugins`, with the
+     * stored value read around the filter (`$wpdb`, or `get_option` with the filter removed).
+     *
+     * @param list<string> $new what WordPress is about to store
+     * @param list<string> $stored what is stored now, unfiltered
+     * @param list<string> $allowed
+     * @return list<string>
+     */
+    public static function keepUnlisted(array $new, array $stored, array $allowed): array
+    {
+        $hidden = array_values(array_diff(array_filter($stored, 'is_string'), self::allowedPlugins($stored, $allowed)));
+        $kept = array_values(array_unique(array_merge(array_values(array_filter($new, 'is_string')), $hidden)));
+        sort($kept);
+
+        return $kept;
+    }
+
     /** The loaded build's schema; available as soon as load() returns. */
     public static function schema(): \First\Schema
     {
@@ -278,6 +344,10 @@ final class Loader
         if (!class_exists(\First\Wp\Runtime::class, false) || !\First\Wp\Runtime::managed() || \First\Wp\Runtime::plugin() === null) {
             throw new \RuntimeException('The First build did not mount; WordPress must reach plugins_loaded first');
         }
+        // Identity's tables first: the app's migration provisions its guest role and client in them.
+        if (self::$loaded['identity']) {
+            \First\Identity\Plugin::install();
+        }
         $migrations = \First\Wp\Runtime::initialize();
         if (self::$loaded['identity'] && !wp_next_scheduled('first_identity_maintenance')) {
             $scheduled = wp_schedule_event(time() + 60, 'hourly', 'first_identity_maintenance', [], true);
@@ -290,6 +360,27 @@ final class Loader
         $result = ['migrations' => array_values($migrations), 'seed' => $counts];
         Store::writeJson($root, 'ready/' . $build . '.json', ['build' => $build, 'initializedAt' => gmdate('c')] + $result);
         return $result;
+    }
+
+    /**
+     * What {@see initialize()} would run for the loaded build on this site, computed without
+     * writing anything ({@see \First\Wp\Runtime::inspect()}). `$drops` are the `--drop` confirmations
+     * the schema check would take.
+     *
+     * @param array<string, int> $drops
+     */
+    public static function inspect(string $root, string $build, array $drops = []): array
+    {
+        $root = rtrim($root, '/');
+        if (self::$loaded === null || self::$loaded['root'] !== $root || self::$loaded['build'] !== $build) {
+            throw new \LogicException('Load this First build before inspecting it');
+        }
+        if (!class_exists(\First\Wp\Runtime::class, false) || !\First\Wp\Runtime::managed() || \First\Wp\Runtime::plugin() === null) {
+            throw new \RuntimeException('The First build did not mount; WordPress must reach plugins_loaded first');
+        }
+        $seed = $root . '/app/' . self::$loaded['manifest']['app'] . '/seed';
+
+        return ['build' => $build, 'manifest' => self::$loaded['manifest'], 'seed' => is_dir($seed)] + \First\Wp\Runtime::inspect($drops);
     }
 
     /** plugins_url() for files under the store, which lives outside WP_PLUGIN_DIR. */

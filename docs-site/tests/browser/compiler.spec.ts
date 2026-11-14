@@ -114,13 +114,13 @@ test("Run in WordPress runs the config in the editor", async ({ page }) => {
   expect(plugin.resource).toBe("literal:directory");
   const appFiles = plugin.files as { first: { app: { "schema.php": string; migrations: Record<string, string> } } };
   expect(appFiles.first.app["schema.php"]).toContain("'note'");
-  expect(Object.keys(appFiles.first.app.migrations)).toEqual(["0001_init.sql", "0002_update.sql", "0003_update.sql"]);
-  expect(appFiles.first.app.migrations["0003_update.sql"]).toMatch(/note/);
+  expect(Object.keys(appFiles.first.app.migrations)).toEqual(["0001_init.sql", "0002_update.sql", "0003_update.sql", "0004_update.sql"]);
+  expect(appFiles.first.app.migrations["0004_update.sql"]).toMatch(/note/);
   // The schema changed, so the seed written for the committed schema stays out.
   expect(edited.steps.some((step) => step.step === "runPHP")).toBe(false);
   // First's shared plugins come from this site; the order is the activation order.
   const installs = edited.steps.filter((step) => step.step === "installPlugin").map((step) => step.pluginData!.url ?? step.pluginData!.name);
-  expect(installs.slice(-3)).toEqual([expect.stringMatching(/\/files\/plugins\/first-runtime\.zip$/), expect.stringMatching(/\/files\/plugins\/first-identity\.zip$/), "first-app-pantry"]);
+  expect(installs.slice(-4)).toEqual([expect.stringMatching(/\/files\/plugins\/first-runtime\.zip$/), expect.stringMatching(/\/files\/plugins\/first-identity\.zip$/), "first-app-pantry", expect.stringMatching(/\/files\/plugins\/first-admin\.zip$/)]);
   await expect(page.locator("#wordpress-note")).toContainText("sample data isn't loaded");
 });
 

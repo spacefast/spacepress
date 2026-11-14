@@ -156,8 +156,8 @@ The TSX → directive mapping, which also defines what's supported:
 | `style={{ color }}` | `data-wp-style--color` |
 | `onClick`, `onInput`, … | `data-wp-on--click`, … (`withSyncEvent` for `preventDefault`) |
 | window/document listeners via `useEvent("resize", …)` | `data-wp-on-window--resize` |
-| `{cond && <X/>}`, `{a ? <X/> : <Y/>}` | `<template>` toggled by a derived boolean, or `data-wp-bind--hidden` for static subtrees |
-| `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">` |
+| `{cond && <X/>}`, `{a ? <X/> : <Y/>}` | a `<template data-wp-each--first-shown>` per branch over a derived `[1]` or `[]`; a condition that reads nothing reactive renders once on the server |
+| `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">`, after the server's items marked `data-wp-each-child` |
 | `useEffect(fn, [deps])` | `data-wp-watch` (cleanup returned) |
 | `useMount(fn)` | `data-wp-init` |
 | `useRef()` | `getElement().ref` |
@@ -179,7 +179,10 @@ components defined inside render.
 ```
 
 - Without JavaScript, the form POSTs to the action endpoint and redirects back
-  to the page, with errors in a flash.
+  to the page, with errors in a flash. As built: form-encoded to
+  `/__first/api/v1/actions/<name>`, `303` to the hidden `_first_return` path
+  with `?_flash=<id>`, the flash a sealed read-once cookie; the marked render
+  is `private, no-store` ([pages.md](../pages.md#forms)).
 - With JavaScript, an Interactivity store submits it with `fetch`, keeps
   `pending`, `error` and `result` in context, and updates in place.
 - `useFormState()` reads those values.
@@ -190,6 +193,11 @@ The root layout marks the content region with `data-wp-router-region`. `<Link>`
 uses `actions.navigate()` from `@wordpress/interactivity-router`: it fetches the
 next page's HTML, swaps the region, and re-reads server state
 (`getServerState`/`getServerContext`). This mode is stable since WordPress 6.9.
+On a page with a `<Link>`, the region's wrapper goes through core's directive
+pass (`wp_interactivity_process_directives()`), so the page gets what a block
+theme's router region gets: `core/router`'s `state.url` from the server, the
+navigation animation styles and the loading bar. The page's own HTML is not
+processed again.
 Full-page navigation is still experimental in WordPress, so it stays off until
 core marks it stable. `<Link prefetch>` uses the router's `prefetch`.
 
@@ -217,7 +225,8 @@ Real-time co-editing is out of scope.
 
 ### 4.5 Built-in interactive components
 
-`<Comments for>` (thread + form + moderation state), `<SignIn>`,
+`<Comments for>` (thread + form + moderation state; as built, see
+[the decision](../decisions/2026-11-14-comments.md)), `<SignIn>`,
 `<Search kind>`, `<Pagination>`, `<Menu name>`. They are written in the same
 TSX subset, so they are examples as well as product.
 
@@ -248,6 +257,10 @@ TSX subset, so they are examples as well as product.
   rel="alternate"; type="text/markdown"` header and the `<link>` tag, and
   `Accept` negotiation is a convenience on top. Before relying on negotiation
   at the edge, verify whether it keys on `Accept`.
+- A site that also turns on WordPress/ai's Markdown Feeds experiment serves
+  Markdown twice (its `?output_format=markdown` and `/feed/markdown/` next to
+  the `.md` twins). The app plugin names itself on that plugin's
+  `wpai_markdown_feeds_conflicting_plugins` list, so its settings say so.
 - Items render to markdown from their stored content (`Markdown::fromBlocks`).
   Code pages render from their compiled output, as an anonymous visitor (built); prebuilt static
   twins wait for the build-time policy in §6.1.
@@ -281,7 +294,7 @@ policy for each response.
 
 | The response is | Policy |
 |---|---|
-| an anonymous visitor's 200 render of a page no layout guards | **cacheable**: Batcache stores it, and the edge caches with `public, s-maxage=<window>, max-age=0, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
+| an anonymous visitor's 200 render of a page no layout guards | **cacheable**: Batcache stores it, and the edge caches with `public, max-age=0, s-maxage=<window>, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
 | anything else (a signed-in visitor, a guarded section, an error, a 404) | `private, no-store`; still fast, because the shell has no viewer data when the viewer part is a client component |
 
 Every read in a render is bound to the visitor, so an anonymous render is what any anonymous
@@ -340,9 +353,11 @@ route's policy and the reason.
 
 ## 7. Kept from today
 
-- Hidden code-owned WordPress Page records for static routes.
+- Hidden code-owned WordPress Page records for static routes (`First\Wp\RoutePages`): one Page per
+  parameterless `page.tsx` route, its permalink the route URL, `/` the front page.
 - Escaping through the HTML API.
-- Route IDs that survive moving a file.
+- Route IDs that survive moving a file: `export const route = { id }` in a `page.tsx`, `id:` in a
+  `page.md`; the folder path otherwise.
 
 ## 8. Acceptance
 

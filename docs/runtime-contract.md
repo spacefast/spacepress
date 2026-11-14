@@ -62,7 +62,7 @@ versions, `scf`, `actionScheduler`, `mcpAdapter`, `twoFactor`, `polylang`, `iden
 Jetpack, and whether it has a key; never required), and `incompatibleTables`. `runtime.pendingMigrations` and
 `runtime.languages` report app migration and localization state. Identity is
 true only for a compatible implementation; the A3 placeholder does not enable it.
-`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`) checks this data against the same
+`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`, or `FIRST_APP_PASSWORD`) checks this data against the same
 platform policy used by runtime activation.
 
 ## schema.php
@@ -291,6 +291,30 @@ the earlier ones applied and recorded (see Migrations).
 Transactions run concurrently, so a read whose result the transaction then
 depends on takes an explicit lock (`FOR UPDATE`, `LOCK IN SHARE MODE`; see
 `Sync\Lock`, `Locale\Lock`, `Jobs\Storage`).
+
+A job queued inside a transaction (`Jobs::enqueue`, a retry, a re-queue) writes
+its `first__jobs` row and its Action Scheduler action in that transaction.
+Action Scheduler writes through the global `$wpdb`, the connection the
+transaction runs on (`Wp\Connection`), so the action commits or rolls back with
+the row, and a crash after the commit loses no job. Action Scheduler caches the
+id of each group it creates in the object cache, which a rollback doesn't undo,
+so First creates its groups (`first`, `first-<app>`) at `action_scheduler_init`,
+outside any transaction (`Wp\Jobs\ActionSchedulerQueue::prepare`). The same
+step requires Action Scheduler's actions and groups tables to be InnoDB, like
+First's own; until they are, First refuses writes. If wpdb reconnects during a
+transaction (it retries a query after a lost connection, and the server has
+rolled the transaction back), every later statement of it and its commit fail.
+A job queued before Action Scheduler is ready (a `wp-hooks` handler on `init`
+at priority 0) commits without an action and gets one once Action Scheduler is
+ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
+daily maintenance action, gives each waiting job that has no `first_job` action
+of any status one, at most 1000 per run. That covers a request that died before
+Action Scheduler was ready, deleted actions, and the jobs that runtimes before
+this one left in `first__outbox`. A job whose action an administrator cancelled
+in Tools > Scheduled Actions stays as it is; `wp first jobs cancel` cancels a
+job. The `first__outbox` table, where each job's ticket waited until after
+commit, is no longer written; its rows stay
+(`tests/php/jobs_transaction_cases.php`, run on SQLite and MariaDB).
 
 ## Validation and coercion (input → stored)
 
@@ -556,6 +580,10 @@ The v2 app plugin registers these. A WordPress without a First app is unchanged.
 - **HTML pages** with a twin send
   `Link: <twin>; rel="alternate"; type="text/markdown"` and the matching
   `<link>` in `wp_head`.
+- **WordPress/ai's Markdown Feeds.** The app plugin adds itself (its plugin
+  file and `Name` header) to the `wpai_markdown_feeds_conflicting_plugins`
+  list, so a site that also turns on that experiment is told in its settings
+  that two plugins answer Markdown requests and print Markdown `<link>` tags.
 - **`/llms.txt`** and **`Content-Signal`** (on HTML pages, twins,
   `/llms.txt`, and a `robots.txt` line). The `first_content_signal` filter
   changes the value; `''` sends none.
@@ -625,7 +653,9 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
   narrows them in two ways: a password-protected post is left out
   (`wp_sitemaps_posts_query_args`), and with a users kind an author is listed
   only when a signed-out visitor may read that user's row
-  (`wp_sitemaps_users_query_args`).
+  (`wp_sitemaps_users_query_args`). Without a users kind the users sitemap
+  is gone unless the config sets `publicAuthors`
+  ([Authors](config-api.md#authors)).
 - **First's provider** (`first`, registered on `wp_sitemaps_init` with
   `wp_register_sitemap_provider()`) adds a file per kind that has a `url`,
   `/wp-sitemap-first-<kind>-<n>.xml`, and one for `first/app/` pages,
@@ -679,7 +709,7 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
   `wp_update_user`, the profile screen, sign-up) are re-indexed on core's
   `user_register`, `profile_update` and `deleted_user`. When a build changes a
   kind's searchable fields, the first request after it queues the runtime job
-  `first.search.reindex` (outbox and Action Scheduler) for each kind that has
+  `first.search.reindex` (Action Scheduler) for each kind that has
   rows. It re-indexes 200 rows per run, each locked against a concurrent write,
   and queues the next; nothing is cleared first, so rows stay searchable during
   it, and the last run removes entries of deleted rows and dropped fields. A run
@@ -708,6 +738,22 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
 - `GET /search` runs the search on every kind with a searchable field and an
   API `list`, as the caller. A kind the caller may not read, and a `kinds=`
   name that isn't a searchable kind, are left out without a word.
+- **Core's search.** `GET /wp/v2/search` (the block editor's link picker, the
+  navigation block) also finds items of every kind with a `url`, a searchable
+  field and an API `list` (`Wp\SearchHandler`, on `wp_rest_search_handlers`).
+  The kinds are subtypes of `post`, because the editor asks for `type=post`
+  only and core keeps one handler per type. The handler wraps whichever
+  handler of `post` the site had: core's results come first, unchanged, then
+  each kind's published items as the caller reads them through First's read
+  pipeline with `search`. A kind the caller may not read is left out without a
+  word; a row the rule hides is neither found nor counted (`X-WP-Total`); a
+  title hidden from the caller comes back empty, and a kind whose `url` shows a
+  field the caller may not read (or, for `:ref.slug`, the referenced item's
+  slug) is not searched; the sitemap applies the same check. `subtype`, `include`,
+  `exclude`, `page` and `per_page` work as on core's posts. A site with
+  `frontend: false` adds nothing.
+- **Updates that change no searchable field** leave the row's entries alone
+  (the before and after rows of the write are compared field by field).
 
 ## URL purges (`Wp\Purges`)
 
@@ -726,7 +772,8 @@ listens and purges those URLs from Batcache and the edge. With no listener
 - **Paths, root-relative with their query:** the item's URL before and after
   the write (a slug change purges both), the home page, the posts page, the
   post type archive, every term archive the post had or has, the author
-  archive, page 2 of each listing, the feed, `/llms.txt`, the sitemap index
+  archive, page 2 of each listing, the site's posts and comments feeds, the
+  post's comments feed and each of its terms' feeds, `/llms.txt`, the sitemap index
   and every file of the sub-sitemap that would list the item (as many as the
   index last showed, plus one), and every page URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
   slug change purges both the old and the new archive. Adding or removing a
@@ -740,14 +787,67 @@ listens and purges those URLs from Batcache and the edge. With no listener
   paths, `.md` twins included.
 - **`first/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
   a page outside any guarded layout sends `Cache-Control: public,
-  s-maxage=300, max-age=0, must-revalidate` (the `first_app_cache_window`
-  filter sets the window); anything else sends `private, no-store` and calls
+  max-age=0, s-maxage=300, must-revalidate` (the `first_app_cache_window`
+  filter sets the window; `s-maxage` comes after `max-age` because Batcache
+  takes the last `max-age=` in the header as its own window); anything else sends `private, no-store` and calls
   `batcache_cancel()`. Each cacheable render records the rows it read in
   `first__app_reads` (kind, row id or `*` for a listing, path with query). A
   committed write to a kind announces, once after commit, every recorded path
   that read that row or listed the kind, with its `.md` twin. More than 200
   paths becomes `/*`, a whole-host purge. Nothing is recorded or announced
   without a listener.
+- **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
+  (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
+  or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack
+  Boost (`jetpack_boost_clear_page_cache_url`) is loaded, the runtime listens on
+  `first_purge_urls` and clears each path in each of them. Batcache counts only
+  while its drop-in runs (`$batcache` is set). `/*` bans the VIP site and clears
+  Boost's whole cache; a list longer than VIP queues in one request (100) bans
+  the VIP site once instead of each URL. Boost clears a URL recursively, so `/`
+  goes to its home action. Batcache has no whole-site clear, so its entries run
+  out with the window. A host's own listener runs beside these.
+
+## Reactive queries (`Live\Module`)
+
+Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md).
+
+- **Counters.** `first__versions (kind, scope, version)` holds, per collection, an `all` counter
+  and, for a collection with drafts, a `published` counter (it moves only when a row is published
+  before or after the write). `Live\Versions` listens on `Extensions::onWritten` and writes the
+  counters through `Connection::beforeCommit`, as the transaction's last statements. A rollback
+  writes none. `Live\Versions::touch($connection, $collection, $published = false)` counts a write
+  that doesn't pass the write pipeline; scheduled promotion calls it, and so does a post moved to or
+  out of the trash (`transition_post_status`).
+- **`Connection::beforeCommit(callable)`** runs a callback just before `COMMIT` of the outermost
+  transaction (at once when none is open). A throw rolls the transaction back.
+- **`POST /__first/api/v1/_live`** takes `{ queries: [{ kind, op, args?, id?, token? }] }`:
+  `kind` is the client's schema key, `op` one of `list`, `paginate`, `get`, `count`, `args` that
+  call's arguments, `id` the row for `get` (or `args.where` for a `get` by filter), `token` what
+  the previous answer to the same query returned. It answers
+  `{ data: { results: [...], poll: { minMs, maxMs } } }` with one result per query, in order:
+
+  | Result | Meaning |
+  |---|---|
+  | `{ changed: true, token, data }` | the read's result as the caller reads it |
+  | `{ changed: false, token }` | what the caller holds is current |
+  | `{ error }` | the read's problem document (401, 403, 404, 405, 422) |
+  | `{ pending: true }` | the request's time budget ran out first; ask again |
+
+  At most 20 queries and 32 KiB per request; a `list` or `paginate` is capped at 100 rows, `offset`
+  at 999999999 and `with` at three levels; after one
+  second of reads the rest are `pending`. The response is `private, no-store`. The
+  `first_live_poll` filter changes the `poll` window clients keep to.
+- **`Live\Module::evaluate(Db $db, Viewer $viewer, array $queries, int $budgetMs = 1000): array`**
+  is the same thing without HTTP, for server code that renders a read and hands its token to the
+  browser. Results also carry `json`, the encoded `data` the token's hash was taken of.
+- **Tokens** are opaque and sealed with a key derived from the site's salt. A token answers only
+  the query and visitor it was issued for.
+- A subscription is answered from the counters, without running the read, only when the visitor
+  may read every row and field of every kind the read depends on (a localized kind's published
+  rows list their drafts as translations, so it is answered by hash); otherwise the read runs on each
+  poll and its result hash decides. A counter is trusted for `Live\Module::TRUST_SECONDS` (300)
+  after the read last ran, which bounds how long a write made outside the write pipeline can go
+  unseen.
 
 ## CLI (`wp first`)
 

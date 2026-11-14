@@ -10,6 +10,7 @@ use crate::schema::*;
 use crate::value::*;
 use indexmap::IndexMap;
 use serde_json::Value as Json;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Where a compiled function's PHP name goes once it's known.
@@ -67,6 +68,10 @@ pub enum Slot {
     AppGuard {
         file: String,
     },
+    /// `export async function staticParams()` in a dynamic `first/app/` page: the params to prebuild.
+    AppStaticParams {
+        file: String,
+    },
     /// `export async function POST(req, ctx)` in a `first/app/` page or `route.ts`.
     AppHandler {
         file: String,
@@ -91,6 +96,9 @@ pub struct Extracted {
     pub collections: Vec<Rc<CollectionVal>>,
     /// Non-fatal advice printed by `first build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
+    /// Each registered action's value (its allocation) → its registered name, so a page's
+    /// `<form action={subscribe}>` and `useFormState(subscribe)` name the action they were given.
+    pub action_values: HashMap<usize, String>,
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
     pub uses: Vec<crate::plugins::Plugin>,
@@ -106,6 +114,8 @@ struct RefField {
     target: String,
     optional: bool,
     reverse: Option<String>,
+    /// `.many()`: a list through the field's join table.
+    many: bool,
     span: Span,
 }
 
@@ -126,9 +136,12 @@ const CONFIG_KEYS: &[&str] = &[
     "locales",
     "plugins",
     "admin",
+    "publicAuthors",
+    "sealed",
     "services",
     "use",
     "frontend",
+    "output",
     "runtimeSchema",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
@@ -225,6 +238,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         roots: Vec::new(),
         collections: Vec::new(),
         hints: Vec::new(),
+        action_values: HashMap::new(),
         refs: Vec::new(),
         plugins: None,
         uses: Vec::new(),
@@ -244,7 +258,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("it becomes the WordPress plugin slug `first-<name>`"));
         }
     };
-    out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    out.schema.admin = bool_option(&cfg_map, "admin", true, span_of(ev, config, "admin", config_span))?;
+    out.schema.public_authors = bool_option(
+        &cfg_map,
+        "publicAuthors",
+        false,
+        span_of(ev, config, "publicAuthors", config_span),
+    )?;
     let runtime_schema = span_of(ev, config, "runtimeSchema", config_span);
     out.schema.runtime_schema = bool_option(&cfg_map, "runtimeSchema", false, runtime_schema)?.then(Default::default);
     out.schema.frontend = match cfg_map.get("frontend") {
@@ -265,6 +285,25 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("leave it out for the default: the theme, or first/app when it exists"));
         }
     };
+    out.schema.output = match cfg_map.get("output") {
+        None | Some(Value::Undef) => crate::schema::Output::Server,
+        Some(Value::Str(s)) if s.as_ref() == "server" => crate::schema::Output::Server,
+        Some(Value::Str(s)) if s.as_ref() == "static" => crate::schema::Output::Static,
+        Some(other) => {
+            return Err(Diag::new(
+                span_of(ev, config, "output", config_span),
+                format!("`output` is \"server\" or \"static\", not {}", other.describe()),
+            )
+            .help("leave it out for \"server\": pages render on WordPress, and `export const prerender = true` prebuilds one; \"static\" prebuilds every page for `first export`"));
+        }
+    };
+    if out.schema.output == crate::schema::Output::Static && out.schema.frontend.is_some() {
+        return Err(Diag::new(
+            span_of(ev, config, "output", config_span),
+            "`output: \"static\"` renders the site from first/app/, and `frontend` hands it to another site",
+        )
+        .help("keep one: remove `frontend` to export first/app/, or remove `output` to keep the other frontend"));
+    }
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
         return Err(Diag::new(span, "duplicate plugins declaration"));
@@ -278,6 +317,27 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         crate::wp_plugins::resolve(&plugins, &crate::platform::plugins(out.schema.locales.is_some()))
             .map_err(|e| Diag::new(span, format!("plugins: {e}")))?;
         out.plugins = Some(plugins);
+    }
+    // After `plugins`: a sealed site runs the plugins it declares, by their directory slug.
+    if bool_option(&cfg_map, "sealed", false, span_of(ev, config, "sealed", config_span))? {
+        let mut declared: Vec<String> = out
+            .plugins
+            .iter()
+            .flat_map(|config| config.plugins.iter().map(|plugin| plugin.slug.clone()))
+            .collect();
+        declared.sort();
+        if let Some(denied) = declared
+            .iter()
+            .find(|slug| crate::bundle::SEALED_DENIED.contains(&slug.as_str()))
+        {
+            return Err(Diag::new(
+                span_of(ev, config, "plugins", config_span),
+                format!(
+                    "a sealed site can't run {denied}: it serves stored content around First's read rules. Remove it from plugins, or turn sealed mode off."
+                ),
+            ));
+        }
+        out.schema.sealed = Some(declared);
     }
 
     for registry in ["collections", "tables", "users"] {
@@ -381,6 +441,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     revisions: true,
                     staged: true,
                     comments: false,
+                    comment_policy: None,
                     title: None,
                     content: None,
                     slug: None,
@@ -396,6 +457,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     localized: false,
                     url: None,
                     hierarchical: false,
+                    indexes: Vec::new(),
                     api: Api {
                         list: true,
                         get: true,
@@ -432,7 +494,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
         coll.staged = opts.staged;
-        coll.comments = opts.comments;
+        coll.comments = opts.comment_policy.is_some();
+        coll.comment_policy = opts.comment_policy;
         coll.title = opts.title;
         coll.content = opts.content;
         coll.slug = opts.slug;
@@ -441,6 +504,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.uid = opts.uid;
         coll.sync = opts.sync;
         coll.hierarchical = opts.hierarchical;
+        coll.indexes = c.indexes.borrow().iter().map(|(f, u, _)| (f.clone(), *u)).collect();
         coll.auth = opts.auth;
         coll.agents = opts.agents;
         let key = coll.key.clone();
@@ -463,6 +527,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 column: "id".into(),
                 on_delete: Some(crate::schema::RefAction::SetNull),
                 on_update: None,
+                join: None,
             });
             parent.system = true;
             let mut order = Column::new("order", ColType::Integer);
@@ -480,6 +545,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     from: "parent".into(),
                     to: "id".into(),
                     optional: true,
+                    through: None,
                 },
             );
             coll.relations.insert(
@@ -491,6 +557,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     from: "id".into(),
                     to: "parent".into(),
                     optional: false,
+                    through: None,
                 },
             );
         }
@@ -542,6 +609,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     if let Some(hooks_val) = cfg_map.get("hooks") {
         hooks(hooks_val, span_of(ev, config, "hooks", config_span), ev, &mut out, None)?;
     }
+    // `.on({ ... })` on each registered kind, in call order (spec §2.8, ruling 18).
+    for c in out.collections.clone() {
+        let calls = c.hooks.borrow().clone();
+        for (handlers, span) in calls {
+            kind_hooks(c.table(), &handlers, span, ev, &mut out, None)?;
+        }
+    }
     if let Some(actions_val) = cfg_map.get("actions") {
         actions(
             actions_val,
@@ -587,12 +661,30 @@ fn hooks(
             return Err(d);
         };
         let table = coll.table.clone();
-        let Value::Object(per_map) = per else {
+        let Value::Object(_) = per else {
             return Err(Diag::new(
                 kspan,
                 format!("`hooks.{key}` must be an object of hook functions"),
             ));
         };
+        kind_hooks(&table, per, kspan, ev, out, plugin)?;
+    }
+    Ok(())
+}
+
+/// One kind's hooks, from `hooks.<kind>` or a `.on({ ... })` call: each handler becomes a hook root,
+/// and several for one event run in registration order (plugins first, then the app).
+fn kind_hooks(
+    table: &str,
+    per: &Value,
+    kspan: Span,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
+    let table = table.to_string();
+    let Value::Object(per_map) = per else { unreachable!() };
+    {
         for (hname, f) in per_map.borrow().iter() {
             let fspan = ev.key_span(per, hname).unwrap_or(kspan);
             let Some(kind) = HookKind::parse(hname) else {
@@ -608,6 +700,13 @@ fn hooks(
                     format!("`{hname}` must be a function, not {}", f.describe()),
                 ));
             };
+            if kind == HookKind::AfterPublish && !out.schema.collections[&table].drafts {
+                return Err(Diag::new(
+                    fspan,
+                    "`afterPublish` is for collections: a table() row is never published",
+                )
+                .help("use afterCreate or afterUpdate on a table()"));
+            }
             if kind == HookKind::BeforeCreate {
                 let coll = out.schema.collections.get_mut(&table).expect("collection");
                 // Plugin hooks run before the app's; any of them may fill a required column.
@@ -726,6 +825,7 @@ fn actions(
                 access_rule(v, sp, &owner, "access", format!("action__{name}__access"), out)?
             }
         };
+        out.action_values.insert(Rc::as_ptr(a) as usize, name.clone());
         out.roots.push(Root {
             closure: handler.clone(),
             slot: Slot::ActionHandler { action: name.clone() },
@@ -903,7 +1003,7 @@ struct CollOpts {
     drafts: bool,
     revisions: bool,
     staged: bool,
-    comments: bool,
+    comment_policy: Option<crate::schema::CommentPolicy>,
     title: Option<String>,
     content: Option<String>,
     slug: Option<String>,
@@ -1057,15 +1157,9 @@ fn collection_options(
         Some(on) => on,
         None => editor,
     };
-    // spec.md §6: comments are off on every kind that doesn't turn them on.
-    let comments = match flag("comments")? {
-        Some(true) if !editor => {
-            return Err(Diag::new(span("comments"), "only collection() kinds take comments")
-                .help("comments are WordPress comments on a post; use a table() with a ref for other threads"));
-        }
-        Some(on) => on,
-        None => false,
-    };
+    // spec.md §2.3: `comments: true | { guests?, moderation?, threaded?, closeAfterDays?, types? }`;
+    // comments are off on every kind that doesn't turn them on.
+    let comment_policy = comment_policy(o.get("comments"), ev, span("comments"), editor)?;
 
     if editor && c.table().len() > MAX_POST_TYPE_TABLE {
         return Err(Diag::new(
@@ -1350,7 +1444,7 @@ fn collection_options(
         drafts,
         revisions,
         staged,
-        comments,
+        comment_policy,
         title,
         content,
         slug,
@@ -1442,15 +1536,18 @@ fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, 
 }
 
 fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> Result<()> {
-    if g.name != key {
+    // The registry key (the export name) names the global; a 0.3.0 capture's own name must match it.
+    if let Some(named) = g.name.get()
+        && named != key
+    {
         return Err(Diag::new(
             span,
-            format!(
-                "`globals.{key}` holds global(\"{}\"); the key and the name must match",
-                g.name
-            ),
+            format!("`globals.{key}` holds global(\"{named}\"); the key and the name must match"),
         )
         .help(format!("write `{0}: global(\"{0}\", ...)`", key)));
+    }
+    if g.name.set(key.to_string()).is_err() && g.name.get().map(String::as_str) != Some(key) {
+        return Err(Diag::new(span, "a global can only be registered once"));
     }
     if !valid_ident(key) {
         return Err(Diag::new(g.span, format!("\"{key}\" isn't a valid global name")));
@@ -1531,7 +1628,7 @@ fn postmeta_hints(out: &mut Extracted) {
             if !c.editor || c.is_core_column(&col.name) {
                 continue;
             }
-            if col.unique || col.references.is_some() {
+            if col.unique || col.references.is_some() && col.ty != ColType::RefList {
                 hints.push((c.table.clone(), col.name.clone()));
             }
         }
@@ -1659,7 +1756,14 @@ fn column(
         .as_ref()
         .map(|v| plain_json(v, b.span_of("showIf"), "showIf"))
         .transpose()?;
-    if let Some(bucket) = &b.bucket
+    let bucket_name = match &b.bucket {
+        None => None,
+        Some(bucket) => Some(bucket.name().map(str::to_string).ok_or_else(|| {
+            Diag::new(b.span, "file() refers to a files() bucket that isn't exported")
+                .help("export it by name: `export const decks = files({ ... })`")
+        })?),
+    };
+    if let Some(bucket) = &bucket_name
         && !out.schema.files.contains_key(bucket)
     {
         return Err(Diag::new(b.span, format!("unknown file bucket {bucket:?}"))
@@ -1747,6 +1851,24 @@ fn column(
         }
         Some(DefaultVal::Value(_)) => unreachable!("$onUpdate always takes a function"),
     };
+    let many_ref = b.ty == ColType::RefList;
+    if many_ref {
+        // A many-ref is a set of links in First's join table, not a value: nothing to make unique,
+        // default, translate or regenerate (docs/decisions/2026-11-11-authoring-surface.md, ruling 3).
+        let bad = [
+            ("unique", b.unique),
+            ("default", b.default.is_some()),
+            ("$onUpdate", b.on_update.is_some()),
+            ("was", b.was.is_some()),
+        ];
+        if let Some((m, _)) = bad.iter().find(|(_, on)| *on) {
+            return Err(Diag::new(
+                b.span_of(m),
+                format!("`.{m}()` isn't valid on a `ref().many()` field (`{name}`)"),
+            )
+            .help("a many-ref is a list of links First keeps in its own table; remove the modifier"));
+        }
+    }
     let references = match &b.references {
         None => None,
         Some((target, on_delete, on_update, span)) => {
@@ -1780,7 +1902,7 @@ fn column(
                 );
             }
             let target_col = &kind.columns[&column];
-            if target_col.ty != b.ty {
+            if target_col.ty != if many_ref { ColType::Integer } else { b.ty } {
                 return Err(Diag::new(
                     *span,
                     format!(
@@ -1802,8 +1924,23 @@ fn column(
                     ),
                 ));
             }
-            // A `ref()` defaults to `restrict` when required and `setNull` when optional (spec §2.5).
+            let on_delete_span = b
+                .mods
+                .iter()
+                .rev()
+                .find(|(m, _)| *m == "onDelete")
+                .map_or(*span, |(_, s)| *s);
+            if many_ref && on_delete.is_some_and(|a| !matches!(a, RefAction::Cascade | RefAction::Restrict)) {
+                return Err(Diag::new(
+                    on_delete_span,
+                    format!("`.onDelete()` on the `ref().many()` field `{name}` takes \"cascade\" or \"restrict\""),
+                )
+                .help("\"cascade\" (the default) removes the link when a linked row is deleted; \"restrict\" refuses the delete while links exist"));
+            }
+            // A `ref()` defaults to `restrict` when required and `setNull` when optional (spec §2.5);
+            // a many-ref's links go with either side.
             let on_delete = match (on_delete, matches!(target, RefTarget::Column(_))) {
+                (None, false) if many_ref => Some(RefAction::Cascade),
                 (Some(action), _) => Some(*action),
                 (None, true) => None,
                 (None, false) if b.optional => Some(RefAction::SetNull),
@@ -1811,11 +1948,7 @@ fn column(
             };
             if on_delete == Some(RefAction::SetNull) && !b.optional {
                 return Err(Diag::new(
-                    b.mods
-                        .iter()
-                        .rev()
-                        .find(|(m, _)| *m == "onDelete")
-                        .map_or(*span, |(_, s)| *s),
+                    on_delete_span,
                     format!("`{name}` is required, so deleting what it refers to can't set it to null"),
                 )
                 .help("make it `.optional()`, or use `.onDelete(\"cascade\")` or `.onDelete(\"restrict\")`"));
@@ -1829,14 +1962,20 @@ fn column(
                     target: kind.table().to_string(),
                     optional: b.optional,
                     reverse: b.reverse.clone(),
+                    many: many_ref,
                     span: *span,
                 });
             }
+            let join = match owner {
+                Owner::Collection(table) if many_ref => Some(join_key(table, name)),
+                _ => None,
+            };
             Some(Reference {
                 collection: kind.table().to_string(),
                 column,
                 on_delete,
                 on_update: *on_update,
+                join,
             })
         }
     };
@@ -1939,7 +2078,7 @@ fn column(
         access,
         show_if,
         ui,
-        bucket: b.bucket.clone(),
+        bucket: b.bucket.as_ref().and_then(|r| r.name().map(str::to_string)),
         derived: false,
         hidden: false,
         ts_type: b.ts_type.clone(),
@@ -2087,6 +2226,7 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
             return bad("a list column (use an array)");
         }
         (ColType::Group, _) => return bad("a group column (use an object)"),
+        (ColType::RefList, _) => return bad("a many-ref (it takes no default)"),
     }
     to_json(v).ok_or_else(|| {
         Diag::new(
@@ -2179,17 +2319,46 @@ fn digits(s: &str) -> Option<u32> {
 /// say which field it follows.
 fn ref_relations(out: &mut Extracted) -> Result<()> {
     let refs = std::mem::take(&mut out.refs);
+    let mut joins: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for r in refs.iter().filter(|r| r.many) {
+        let key = join_key(&r.table, &r.field);
+        if out.schema.collections.values().any(|c| c.table == key) || joins.contains(&key) {
+            return Err(Diag::new(
+                r.span,
+                format!(
+                    "`{}`'s join table would be named \"{key}\", which another kind or many-ref already uses",
+                    r.field
+                ),
+            )
+            .help("rename the field, or give the other kind another `storageName`"));
+        }
+        joins.insert(key);
+    }
     for r in &refs {
         let coll = out.schema.collections.get_mut(&r.table).expect("collection");
         coll.relations.insert(
             r.field.clone(),
-            Relation {
-                name: r.field.clone(),
-                kind: RelKind::One,
-                collection: r.target.clone(),
-                from: r.field.clone(),
-                to: "id".into(),
-                optional: r.optional,
+            if r.many {
+                // `posts.tags` → the tags linked from this post, in position order.
+                Relation {
+                    name: r.field.clone(),
+                    kind: RelKind::Many,
+                    collection: r.target.clone(),
+                    from: "id".into(),
+                    to: "id".into(),
+                    optional: false,
+                    through: Some((join_key(&r.table, &r.field), "owner_id".into(), "target_id".into())),
+                }
+            } else {
+                Relation {
+                    name: r.field.clone(),
+                    kind: RelKind::One,
+                    collection: r.target.clone(),
+                    from: r.field.clone(),
+                    to: "id".into(),
+                    optional: r.optional,
+                    through: None,
+                }
             },
         );
     }
@@ -2229,12 +2398,21 @@ fn ref_relations(out: &mut Extracted) -> Result<()> {
                 kind: RelKind::Many,
                 collection: r.table.clone(),
                 from: "id".into(),
-                to: r.field.clone(),
+                to: if r.many { "id".into() } else { r.field.clone() },
                 optional: false,
+                through: r
+                    .many
+                    .then(|| (join_key(&r.table, &r.field), "target_id".into(), "owner_id".into())),
             },
         );
     }
     Ok(())
+}
+
+/// A many-ref's join table key (`posts` + `relatedPosts` → `posts_related_posts`), stored as
+/// `{prefix}first_<key>`.
+pub fn join_key(table: &str, field: &str) -> String {
+    format!("{table}_{}", crate::schema::physical_name(field))
 }
 
 fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -> Result<()> {
@@ -2344,6 +2522,7 @@ fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -
                                 from: fc,
                                 to: tc,
                                 optional,
+                                through: None,
                             },
                         );
                 }
@@ -2376,6 +2555,7 @@ fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -
                                 from: fc,
                                 to: tc,
                                 optional: false,
+                                through: None,
                             },
                         );
                 }
@@ -2427,6 +2607,7 @@ fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -
                     from,
                     to,
                     optional: false,
+                    through: None,
                 },
             );
     }
@@ -2550,6 +2731,103 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
 
 // Phase-2 config is normalized once here. Feature modules consume this metadata;
 // they do not reinterpret builders or apply policy during schema loading.
+/// A kind's `comments` option (spec §2.3): `true` is the defaults, an object overrides them.
+fn comment_policy(
+    v: Option<&Value>,
+    ev: &Evaluator<'_>,
+    span: Span,
+    editor: bool,
+) -> Result<Option<crate::schema::CommentPolicy>> {
+    let mut policy = crate::schema::CommentPolicy::default();
+    let fields = match v {
+        None | Some(Value::Undef) | Some(Value::Bool(false)) => return Ok(None),
+        Some(Value::Bool(true)) => None,
+        Some(o @ Value::Object(_)) => Some(o),
+        Some(other) => {
+            return Err(Diag::new(
+                span,
+                format!(
+                    "`comments` is true, false or an options object, not {}",
+                    other.describe()
+                ),
+            )
+            .help("write `comments: true`, or `comments: { guests: true, moderation: \"all\" }`"));
+        }
+    };
+    if !editor {
+        return Err(Diag::new(span, "only collection() kinds take comments")
+            .help("comments are WordPress comments on a post; use a table() with a ref for other threads"));
+    }
+    let Some(fields) = fields else {
+        return Ok(Some(policy));
+    };
+    let Value::Object(o) = fields else { unreachable!() };
+    for (k, val) in o.borrow().iter() {
+        let at = ev.key_span(fields, k).unwrap_or(span);
+        match (k.as_str(), val) {
+            (_, Value::Undef) => {}
+            ("guests", Value::Bool(b)) => policy.guests = *b,
+            ("guests", other) => {
+                return Err(Diag::new(
+                    at,
+                    format!("`comments.guests` is true or false, not {}", other.describe()),
+                ));
+            }
+            ("moderation", Value::Str(m)) => {
+                policy.moderation = match &**m {
+                    "none" => "none",
+                    "first-time" => "first-time",
+                    "all" => "all",
+                    other => {
+                        return Err(Diag::new(at, format!("`comments.moderation` can't be {other:?}"))
+                            .help("use \"none\" (approve at once), \"first-time\" (hold a commenter's first comment) or \"all\""));
+                    }
+                };
+            }
+            ("moderation", other) => {
+                return Err(Diag::new(
+                    at,
+                    format!("`comments.moderation` is a string, not {}", other.describe()),
+                )
+                .help("use \"none\", \"first-time\" or \"all\""));
+            }
+            ("threaded", Value::Bool(b)) => policy.threaded = if *b { 3 } else { 1 },
+            ("threaded", Value::Num(n)) if n.fract() == 0.0 && (1.0..=10.0).contains(n) => policy.threaded = *n as u8,
+            ("threaded", other) => {
+                return Err(
+                    Diag::new(at, format!("`comments.threaded` can't be {}", other.describe()))
+                        .help("use true (3 levels), false (flat) or a depth from 1 to 10"),
+                );
+            }
+            ("closeAfterDays", Value::Null) => policy.close_after_days = None,
+            ("closeAfterDays", Value::Num(n)) if n.fract() == 0.0 && *n >= 1.0 && *n <= 36_500.0 => {
+                policy.close_after_days = Some(*n as u32);
+            }
+            ("closeAfterDays", other) => {
+                return Err(
+                    Diag::new(at, format!("`comments.closeAfterDays` can't be {}", other.describe()))
+                        .help("use a whole number of days from 1, or leave it out to never close"),
+                );
+            }
+            ("types", Value::Array(items)) if items.borrow().is_empty() => {}
+            ("types", _) => {
+                return Err(Diag::new(at, "comment types aren't built yet")
+                    .help("leave `types` out; `wp.comments.type()` adds them"));
+            }
+            (other, _) => {
+                let mut d = Diag::new(at, format!("`comments` has no option `{other}`"));
+                if let Some(s) = suggest(other, ["guests", "moderation", "threaded", "closeAfterDays", "types"]) {
+                    d = d.help(format!("did you mean `{s}`?"));
+                } else {
+                    d = d.help("the options are guests, moderation, threaded, closeAfterDays and types");
+                }
+                return Err(d);
+            }
+        }
+    }
+    Ok(Some(policy))
+}
+
 fn object(v: &Value, span: Span, what: &str) -> Result<IndexMap<String, Value>> {
     match v {
         Value::Object(o) => Ok(o.borrow().clone()),
@@ -2776,13 +3054,16 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
         for (name, value) in object(v, span, "files")? {
             let Value::FileBucket(bucket) = value else {
                 return Err(Diag::new(span, "files entries must use files()")
-                    .help("write files(\"decks\", { accept: [\"application/pdf\"], maxBytes: 20000000 })"));
+                    .help("write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20000000 })` and list it as `files: { decks }`"));
             };
             let sp = bucket.span;
-            if name != bucket.name || !valid_ident(&name) || name == "media" {
+            // The export name (the registry key) names the bucket; a 0.3.0 capture's own name must match.
+            let named_differently = bucket.name.get().is_some_and(|n| *n != name);
+            if named_differently || !valid_ident(&name) || name == "media" {
                 return Err(Diag::new(sp, "file bucket name must match its key and cannot be media")
                     .help("use a distinct bucket name, such as decks"));
             }
+            let _ = bucket.name.set(name.clone());
             let o = object(&bucket.options, sp, "files options")?;
             keys(&o, &["accept", "maxBytes", "access"], sp, "files")?;
             let Some(Value::Array(accept)) = o.get("accept") else {
@@ -3124,6 +3405,13 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
     }
     for c in out.schema.collections.values().filter(|c| c.sync.is_some()) {
         for col in c.columns.values() {
+            if col.ty == ColType::RefList {
+                return Err(Diag::new(
+                    out.collections.iter().find(|b| b.table() == c.table).unwrap().columns[&col.name].span,
+                    format!("`{}` is a `ref().many()` list, which sync can't carry yet", col.name),
+                )
+                .help("leave the list off synced kinds, or turn sync off for this kind"));
+            }
             if let Some(r) = &col.references
                 && !out.schema.collections[&r.collection].uid
             {
@@ -3465,6 +3753,7 @@ mod legacy {
             entry.methods.insert(method, String::new());
             table.files.insert(file.clone(), entry);
             table.routes.push(AppRoute {
+                explicit_id: None,
                 id: name,
                 pattern: path,
                 page: None,
@@ -3473,6 +3762,7 @@ mod legacy {
                 error: None,
                 kind: None,
                 styles: Vec::new(),
+                prerender: false,
             });
         }
         // The runtime takes the first match: most specific first, as the 0.3.0 runtime ranked them

@@ -21,9 +21,9 @@ final class Schema
 
     /** The role ladder, lowest first; guests (§6.2) sit below subscribers. */
     public const ROLES = ['guest', 'subscriber', 'author', 'editor', 'admin'];
-    private const JSON_TYPES = ['json', 'mediaList', 'select', 'group', 'repeater', 'blocks'];
+    private const JSON_TYPES = ['json', 'mediaList', 'select', 'refList', 'group', 'repeater', 'blocks'];
     private const STRING_TYPES = ['text', 'email', 'url', 'slug', 'richText'];
-    private const LIST_TYPES = ['mediaList', 'select', 'repeater', 'blocks'];
+    private const LIST_TYPES = ['mediaList', 'select', 'refList', 'repeater', 'blocks'];
     private const SLUG_RE = '/^[a-z0-9]+(?:-[a-z0-9]+)*$/D';
 
     /** @param array{version?: int, runtime?: string, collections?: array<string, array>, globals?: array<string, array>, actions?: array<string, array>} $raw */
@@ -75,6 +75,21 @@ final class Schema
         return (string) ($this->raw['name'] ?? 'app');
     }
 
+    /** The compiler's list (src/kind_url.rs), for an app built before it was in every schema. */
+    private const RESERVED = ['wp-admin', 'wp-json', 'wp-content', 'wp-includes', 'wp-login.php', 'wp-signup.php', 'wp-cron.php', 'wp-sitemap.xml', 'xmlrpc.php', 'feed', '__first', '__spacefast', 'llms.txt', 'robots.txt', 'favicon.ico', 'sitemap.xml', 'author', 'category', 'tag', 'search', 'page', 'comments', 'embed', 'type', 'attachment', 'trackback', 'wp-activate.php', 'wp-trackback.php', 'wp-comments-post.php', 'wp-mail.php', '.well-known', '__zero', 'identity', 'index.php', 'wp-config.php', 'first-admin', 'auth'];
+
+    /**
+     * WordPress's and First's own first path segments (`wp-admin`, `wp-json`, `__first`, `feed`, …),
+     * lowercased: what the app's files never answer for.
+     *
+     * @return list<string>
+     */
+    public function reserved(): array
+    {
+        // An app built before the list was in every schema: the app router's copy, else the runtime's.
+        return array_map('strtolower', (array) ($this->raw['reserved'] ?? $this->raw['app']['reserved'] ?? self::RESERVED));
+    }
+
     /** @return array<string, array> */
     public function collections(): array
     {
@@ -116,6 +131,20 @@ final class Schema
     public function files(): array
     {
         return $this->raw['files'] ?? [];
+    }
+
+    /** `sealed`: the plugin directory slugs a sealed site runs (docs/sealed.md), or null when the site isn't sealed. */
+    public function sealed(): ?array
+    {
+        $sealed = $this->raw['sealed'] ?? null;
+
+        return is_array($sealed) ? array_values(array_filter((array) ($sealed['plugins'] ?? []), 'is_string')) : null;
+    }
+
+    /** `publicAuthors`: core's author archives and user listings stay public (spec §6). */
+    public function publicAuthors(): bool
+    {
+        return ($this->raw['publicAuthors'] ?? false) === true;
     }
 
     public function auth(): array
@@ -199,6 +228,24 @@ final class Schema
     {
         return $this->raw['collections'][$name]
             ?? throw HttpError::notFound("Unknown collection '$name'");
+    }
+
+    /**
+     * How comments behave on a collection (spec §2.3): `guests` (bool), `moderation` ("none",
+     * "first-time" or "all"), `threaded` (reply depth, 1 is flat), `closeAfterDays` (int, or null for
+     * never, counted from the item's publish date) and `types` (comment types allowed besides normal
+     * comments). Null when the collection takes no comments.
+     *
+     * @return ?array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int, types: list<string>}
+     */
+    public function commentPolicy(string $collection): ?array
+    {
+        $spec = $this->collection($collection);
+        if (($spec['comments'] ?? false) !== true) {
+            return null;
+        }
+
+        return ($spec['commentPolicy'] ?? []) + ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null, 'types' => []];
     }
 
     public function global(string $name): array
@@ -414,6 +461,7 @@ final class Schema
             'date' => is_string($v) && self::isDate($v) ? $v : throw $bad(),
             'json' => self::jsonValue($v) ?? throw $bad(),
             'mediaList' => self::idList($v, $name, $pointer) ?? throw $bad(),
+            'refList' => self::refList($v, $name, $pointer) ?? throw $bad(),
             'select' => self::selectList($col, $v, $name, $pointer) ?? throw $bad(),
             'group' => self::isObject($v) ? self::normalizeFields($col['fields'] ?? [], $v, $pointer) : throw $bad(),
             'repeater' => is_array($v) && array_is_list($v) ? self::repeater($col, $v, $name, $pointer) : throw $bad(),
@@ -521,6 +569,26 @@ final class Schema
         return $out;
     }
 
+    /** @return ?list<int> a many-ref's target ids, in write order, each once */
+    private static function refList(mixed $v, string $name, string $pointer): ?array
+    {
+        if (!is_array($v) || !array_is_list($v)) {
+            return null;
+        }
+        $out = [];
+        foreach ($v as $i => $id) {
+            if (!(is_int($id) || (is_float($id) && Js::isInteger($id) && abs($id) <= 9007199254740991))) {
+                throw HttpError::invalidInput("$name items must be ids", "$pointer/$i");
+            }
+            if (in_array((int) $id, $out, true)) {
+                throw HttpError::invalidInput("$name has a duplicate id " . (int) $id, "$pointer/$i");
+            }
+            $out[] = (int) $id;
+        }
+
+        return $out;
+    }
+
     /** @return ?list<string> */
     private static function selectList(array $col, mixed $v, string $name, string $pointer): ?array
     {
@@ -566,6 +634,7 @@ final class Schema
             'media' => 'a media id',
             'file' => 'a file id',
             'mediaList' => 'a list of media ids',
+            'refList' => 'a list of ids',
             'select' => 'a list of options',
             'group' => 'an object',
             'repeater', 'blocks' => 'a list of objects',
@@ -642,7 +711,7 @@ final class Schema
             // A json() value keeps object/list handles; structured columns are
             // normalized against their fields, so plain arrays are exact there.
             'json' => ($col['system'] ?? false) ? Seam::toPhp(is_string($v) ? self::json($v) : $v) : (is_string($v) ? self::json($v) : $v),
-            'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
+            'mediaList', 'select', 'refList' => is_string($v) ? json_decode($v, true) : $v,
             'group' => self::fillFields($col['fields'] ?? [], Seam::toPhp(is_string($v) ? self::json($v) : $v, $col)),
             'repeater' => array_map(
                 static fn ($item) => self::fillFields($col['fields'] ?? [], $item),

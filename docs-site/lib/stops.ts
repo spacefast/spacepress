@@ -60,7 +60,7 @@ export const tours: Tour[] = [
           "The config is evaluated at build time by First's own evaluator, so helpers, factories and spreads work as you expect: `named()` adds a `name` column to any set of columns, and `...timestamps` comes from another file.",
           "The evaluator has no file system and no clock. What it produces is the schema as plain data, which is all the next steps need.",
         ],
-        config: { file: "first.config.ts", lines: { from: 'export const items = table(', to: "}));" } },
+        config: { file: "first.config.ts", lines: { from: 'export const items = table(', to: "})).on({" } },
         inputs: [
           { file: "first.config.ts", lines: { from: "const named =", to: "const named =" } },
           { file: "first/lib/fields.ts", lines: { from: "export const timestamps", toLine: "};" } },
@@ -71,10 +71,10 @@ export const tours: Tour[] = [
         slug: "a-hook",
         title: "A hook is compiled to PHP",
         prose: [
-          "Hooks run inside WordPress, so they cannot be JavaScript at runtime. First compiles them: string methods become `\\First\\Js` helpers where JavaScript and PHP differ, `throw new HttpError` becomes the runtime's exception, and the `slugify` helper imported from first/lib/fields.ts comes along as a PHP function.",
+          "Hooks are declared on the kind with `.on({ ... })` and run inside WordPress, so they cannot be JavaScript at runtime. First compiles them: string methods become `\\First\\Js` helpers where JavaScript and PHP differ, `throw new HttpError` becomes the runtime's exception, and the `slugify` helper imported from first/lib/fields.ts comes along as a PHP function.",
           "Where no sound translation exists, the build fails with a location and a suggestion rather than guessing.",
         ],
-        config: { file: "first.config.ts", lines: { from: "beforeCreate(data) {", to: "afterUpdate: restock," } },
+        config: { file: "first.config.ts", lines: { from: "})).on({", to: "async afterUpdate(row)" } },
         outputs: [
           { file: { artifact: "functions.php" }, lines: { from: "function items__beforeCreate", toLine: "}" } },
           { file: { artifact: "functions.php" }, lines: { from: "function slugify(", toLine: "}" } },
@@ -167,7 +167,7 @@ export const tours: Tour[] = [
         slug: "media-and-files",
         title: "Images with sizes, files behind a signed link",
         prose: [
-          "`media()` columns reference the WordPress media library; `media.sizes` declares the crops the runtime generates. `file({ bucket })` columns point at private files that are downloaded through a signed link, with their own access rules.",
+          "`media()` columns reference the WordPress media library; `media.sizes` declares the crops the runtime generates. `file(bucket)` columns point at private files that are downloaded through a signed link, with their own access rules.",
         ],
         config: { file: "first.config.ts", lines: { from: "media: { sizes:", to: "media: { sizes:" } },
         outputs: [

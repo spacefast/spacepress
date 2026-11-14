@@ -2,15 +2,15 @@
 /**
  * Deleting the First Runtime plugin runs this without loading it.
  *
- * Removed: the runtime's options (system-tables version, private-files signing secret and probe
- * verdict) and its recurring maintenance action. Kept: the shared system tables (jobs, outbox,
- * receipts, private file records, revisions, the migration ledger) and private files on disk; they
+ * Removed: the runtime's options (system-tables version, prepared job groups, private-files signing secret and probe
+ * verdict) and its recurring maintenance action. Kept: the shared system tables (jobs, the outbox
+ * that earlier runtimes wrote, receipts, private file records, revisions, the migration ledger) and private files on disk; they
  * belong to the apps' content. A reinstalled runtime re-checks its tables on the first request.
  */
 declare(strict_types=1);
 defined('WP_UNINSTALL_PLUGIN') || exit;
 
-foreach (['first_runtime_tables', 'first_runtime_secret', 'first_runtime_private_ok', 'first_runtime_private_checked'] as $option) {
+foreach (['first_runtime_tables', 'first_jobs_prepared', 'first_runtime_secret', 'first_runtime_private_ok', 'first_runtime_private_checked'] as $option) {
     delete_option($option);
 }
 // Through Action Scheduler's API when it is active, else directly in its tables (kept on deactivation).

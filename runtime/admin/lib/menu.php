@@ -17,7 +17,7 @@ function first_admin_navigation() {
 }
 add_action( 'first_admin_init', static function () {
     first_admin_register_menu_item( 'collections', array( 'parent_type' => 'dropdown', 'label' => __( 'Collections', 'first-admin' ), 'icon' => 'dashicons-database' ) );
-    first_admin_register_menu_item( 'all-collections', array( 'to' => '/', 'label' => __( 'All collections', 'first-admin' ), 'parent' => 'collections' ) );
+    first_admin_register_menu_item( 'all-collections', array( 'to' => '/collections', 'label' => __( 'All collections', 'first-admin' ), 'parent' => 'collections' ) );
     foreach ( first_admin_navigation() as $name ) {
         $collection = \First\Wp\Runtime::plugin()->schema->collection( $name );
         first_admin_register_menu_item( 'collection-' . $name, array( 'to' => '/collections/' . rawurlencode( $name ), 'label' => $collection['label'] ?? $name, 'parent' => 'collections' ) );
@@ -36,4 +36,17 @@ add_filter( 'first_admin_native_post_types', static function ( $types ) {
         }
     }
     return $types;
+} );
+
+// Inside wp-admin, the classic menu lists First's post types and its globals page; First Admin
+// has its own entries for both (Collections, Globals), so the copied plugin menu leaves them out.
+add_filter( 'first_admin_legacy_menu_items_exclude', static function ( $slugs ) {
+    $plugin = \First\Wp\Runtime::plugin();
+    foreach ( $plugin->schema->collections() as $collection ) {
+        if ( isset( $collection['wp']['postType'] ) ) {
+            $slugs[] = 'edit.php?post_type=' . $collection['wp']['postType'];
+        }
+    }
+    $slugs[] = 'first-' . $plugin->schema->name();
+    return $slugs;
 } );

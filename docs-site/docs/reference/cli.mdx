@@ -17,9 +17,10 @@ These commands run on your machine, on the project's files.
 | `first dev stop [dir]` | Stop the local site, keeping its data. |
 | `first dev status [dir] [--json]` | Report the local site. |
 | `first build [dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]` | Write the WordPress plugins to first/dist/wp-content. |
+| `first export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]` | Write first/app/ as a static site to first/dist/static (output: "static"); --site renders a hosted site's content (FIRST_APP_PASSWORD or FIRST_TOKEN) |
 | `first check [dir] [--json] [--frozen]` | Compile and report problems; write nothing. |
-| `first add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: db (SQL tables) |
-| `first doctor [dir] [--out dir] [--site url] [--json]` | Check a build, and a running site (FIRST_TOKEN) |
+| `first add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: db (SQL tables), api-reference (pages at /api documenting the HTTP API) |
+| `first doctor [dir] [--out dir] [--site url [--links]] [--json]` | Check a build, and a running site (FIRST_TOKEN or FIRST_APP_PASSWORD); --links follows every link and #anchor its pages make. |
 | `first init [dir] [--check] [--github]` | Write AGENTS.md, .mcp.json and the agent skills for this project; --github adds the content sync workflow; --check exits 1 when they are out of date. |
 | `first mcp [dir] [--allow-remote-read] [--allow-writes]` | Serve the project to a coding agent as an MCP server on stdio. |
 | `first sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--pr [--repo owner/name] [--base branch]] [--json]` | Content files \<-\> site records (FIRST_APP_PASSWORD or FIRST_TOKEN) |

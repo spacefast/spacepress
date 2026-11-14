@@ -20,6 +20,16 @@ if ($path === '/__first_site') {
     echo $dir;
     exit;
 }
+// A site in a subdirectory (`base`) answers only below it, and the rules below read the path
+// inside it. REQUEST_URI keeps the full path, as a web server passes it to WordPress.
+$base = (string) ($site['base'] ?? '');
+if ($base !== '') {
+    if ($path !== $base && !str_starts_with($path, "$base/")) {
+        http_response_code(404);
+        exit;
+    }
+    $path = substr($path, strlen($base)) ?: '/';
+}
 if (str_starts_with($path, '/wp-content/uploads/first-private/')) {
     http_response_code(403);
     exit;
@@ -43,11 +53,42 @@ if ($static !== null && !str_ends_with($path, '.php') && !str_contains($path, '.
     readfile($static);
     exit;
 }
+// wp-login.php and wp-admin's screens run as their own files, as a web server runs them: they boot
+// through wp-load.php, which needs a wp-config.php, so they run from the site's WP-CLI root (core
+// linked in, with a wp-config.php that defines this site).
+if (preg_match('#^/(wp-login\.php|wp-admin/(?:[a-z0-9-]+\.php)?)$#', $path, $m) === 1) {
+    require __DIR__ . '/wp.php';
+    $root = wpCliRoot($dir);
+    $file = $m[1] === 'wp-admin/' ? 'wp-admin/index.php' : $m[1];
+    define('ABSPATH', "$root/");
+    // Each script and stylesheet on its own URL, so a browser test's failed request names the file.
+    define('CONCATENATE_SCRIPTS', false);
+    $_SERVER['SCRIPT_NAME'] = $_SERVER['PHP_SELF'] = "$base/$file";
+    $_SERVER['SCRIPT_FILENAME'] = "$root/$file";
+    chdir(dirname("$root/$file"));
+    require "$root/$file";
+    exit;
+}
 if (preg_match('#^/wp-json(/.*)?$#', $path, $m) === 1) {
     $_GET['rest_route'] = ($m[1] ?? '') === '' ? '/' : $m[1];
 }
-$_SERVER['SCRIPT_NAME'] = '/index.php';
-$_SERVER['PHP_SELF'] = '/index.php';
+// Core's comment form handler is a script of its own, as on any web server. The shared core has no
+// wp-config.php for its wp-load.php to find, so the site's settings load first and the script runs
+// with them already in place (wp-load.php skips its own setup once ABSPATH's settings have run).
+if ($path === '/wp-comments-post.php') {
+    $_SERVER['SCRIPT_NAME'] = $_SERVER['PHP_SELF'] = $base . $path;
+    $_SERVER['SCRIPT_FILENAME'] = "$core/wp-comments-post.php";
+    require __DIR__ . '/wp.php';
+    wpDefine($dir, $site['url']);
+    chdir($core);
+    require "$core/wp-settings.php";
+    $script = (string) file_get_contents("$core/wp-comments-post.php");
+    // The same file, minus its own `require wp-load.php` (done above).
+    eval('?>' . str_replace("require __DIR__ . '/wp-load.php';", '', $script));
+    exit;
+}
+$_SERVER['SCRIPT_NAME'] = "$base/index.php";
+$_SERVER['PHP_SELF'] = "$base/index.php";
 $_SERVER['SCRIPT_FILENAME'] = "$core/index.php";
 // What index.php → wp-blog-header.php does, with the site's constants in place of a wp-config.php.
 require __DIR__ . '/wp.php';

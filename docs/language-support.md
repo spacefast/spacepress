@@ -576,13 +576,29 @@ Locale collation depends on the host and cannot be reproduced deterministically.
 
 [Evidence](../tests/fixtures/reject-locale-compare)
 
+## object-reflect-runtime
+
+Status: **supported**.
+
+Imported JavaScript runs Object.assign(target, ...sources) on an object or array target (own enumerable string keys, then symbols, null and undefined sources skipped, TypeError on a null target), Reflect.ownKeys on plain objects and arrays (integer keys ascending, then strings in insertion order, then symbols; arrays add length), and Object.prototype.toString.call(x) at request time. Evidence: tests/differential/language/object-reflect.ts. Typed code keeps Object.assign at build time only.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## optional-chains
 
 Status: **supported**.
 
-Optional chains support guarded property/index steps and single optional method calls. A non-optional continuation after a short-circuiting link is refused at source; guard each nullable step explicitly. Parenthesized chain boundaries retain ordinary property access and call behavior.
+Optional chains support guarded property/index steps and single optional method calls. In imported JavaScript, optional calls `f?.()`, `o.m?.()` and `o[k]?.()` read the callee once (keeping its receiver) and skip the call and its arguments when it is null or undefined (tests/differential/language/optional-calls.ts). A non-optional continuation after a short-circuiting link is refused at source; guard each nullable step explicitly. Parenthesized chain boundaries retain ordinary property access and call behavior.
 
 [Evidence](../tests/compiler_contracts.rs) (`optional_chains_refuse_unguarded_continuations_at_source`)
+
+## optional-call-typed
+
+Status: **refused**. Diagnostic: `F4001`.
+
+Optional calls compile in imported JavaScript. In typed TypeScript, check the function first: `if (f) f(...)`.
+
+[Evidence](../tests/fixtures/reject-optional-call-typed)
 
 ## parameter-default-scope
 
@@ -1092,9 +1108,25 @@ SVG `animate`/`set` can rewrite their target's attributes: they never target URL
 
 Status: **supported**.
 
-A .tsx file under first/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState and server action calls compile; lists and reactive conditionals are refused for now.
+A .tsx file under first/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s.
 
 [Evidence](../tests/app_router.rs) (`client_components_compile_to_interactivity_stores`)
+
+## jsx-comments
+
+Status: **supported**.
+
+`<Comments for={item} />` from "first/app" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props.
+
+[Evidence](../tests/app_router.rs) (`comments_follow_the_kind_policy_on_every_path`)
+
+## jsx-form-action
+
+Status: **supported**.
+
+`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "first/app" reads the result or the error once. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
+
+[Evidence](../tests/app_router.rs) (`forms_work_without_javascript`)
 
 ## jsx-use-client-npm
 

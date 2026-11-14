@@ -66,6 +66,7 @@ export type ColumnKind =
   | "file"
   | "mediaList"
   | "select"
+  | "refList"
   | "group"
   | "repeater"
   | "blocks";
@@ -78,13 +79,13 @@ type GeneratedValue<TKind extends ColumnKind, TData> =
 // Which modifiers each kind allows (design §1.2). Enforced here through `this` parameters, and by
 // the compiler regardless ("`.max()` isn't valid on a boolean column").
 /** `.min/.max`: numeric bounds, string length in code points, or item count. */
-type BoundedKind = "integer" | "number" | "text" | "email" | "url" | "slug" | "richText" | "mediaList" | "select" | "repeater" | "blocks";
+type BoundedKind = "integer" | "number" | "text" | "email" | "url" | "slug" | "richText" | "mediaList" | "select" | "refList" | "repeater" | "blocks";
 /** `.pattern`: strings only. */
 type PatternKind = "text" | "email" | "url" | "slug";
 /** `.unique()`. */
 type UniqueKind = "id" | "integer" | "number" | "text" | "email" | "url" | "slug" | "boolean" | "date" | "timestamp";
 /** `.default()` and friends: every kind but media. */
-type DefaultKind = Exclude<ColumnKind, "media">;
+type DefaultKind = Exclude<ColumnKind, "media" | "refList">;
 
 /** What `.validate` sees besides the value. */
 export interface ValidateCtx {
@@ -149,12 +150,17 @@ export interface ColumnBuilder<
 
   /** The value may be null or left out. Fields are required otherwise. */
   optional(): ColumnBuilder<TKind, TData, false, THasDefault, TLocalized, TPrimary>;
-  /** A list: any number of distinct `select()` options, or of `media()` ids. */
+  /**
+   * A list: any number of distinct `select()` options, of `media()` ids, or of `ref()` targets. A
+   * many-ref holds the target ids in write order; writes replace the whole list.
+   */
   many(
-    this: ColumnBuilder<"text" | "media", TData, TNotNull, THasDefault, TLocalized, TPrimary>,
+    this: ColumnBuilder<"text" | "media" | "integer", TData, TNotNull, THasDefault, TLocalized, TPrimary>,
   ): TKind extends "media"
     ? ColumnBuilder<"mediaList", number[], TNotNull, THasDefault, TLocalized, TPrimary>
-    : ColumnBuilder<"select", TData[], TNotNull, THasDefault, TLocalized, TPrimary>;
+    : TKind extends "integer"
+      ? ColumnBuilder<"refList", number[], TNotNull, THasDefault, TLocalized, TPrimary>
+      : ColumnBuilder<"select", TData[], TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Declares a rename: this field was stored as `old`. The deploy renames the column and keeps its values. */
   was(old: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** SQL `DEFAULT value` (a constant; arrays/objects for list and structured columns). */
@@ -191,8 +197,14 @@ export interface ColumnBuilder<
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Unique text columns also need `.max(n)` with n ≤ 191 (MySQL index limit). Not allowed on sub-fields or globals. */
   unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** What deleting the referenced row does: `restrict` (the default when required), `setNull` (the default when optional) or `cascade`. `ref()` fields only. */
-  onDelete(action: "cascade" | "restrict" | "setNull"): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /**
+   * What deleting the referenced row does: `restrict` (the default when required), `setNull` (the
+   * default when optional) or `cascade`. On `ref().many()`: `cascade` (the default) removes the link,
+   * `restrict` refuses the delete while links exist. `ref()` fields only.
+   */
+  onDelete(
+    action: TKind extends "refList" ? "cascade" | "restrict" : "cascade" | "restrict" | "setNull",
+  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** The name of the list of referencing rows on the target. Default: the referencing kind's name. `ref()` fields only. */
   reverse(name: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
 
@@ -275,7 +287,7 @@ export declare function slug(config?: { source?: undefined }): ColumnBuilder<"sl
 /** With `source`, an omitted slug is derived, so it may be left out on create. */
 export declare function slug(config: { source: string }): ColumnBuilder<"slug", string, true, true>;
 /** A private-file id in the named bucket. */
-export declare function file(config: { bucket: string }): ColumnBuilder<"file", number, true, false>;
+export declare function file(bucket: FileBucket): ColumnBuilder<"file", number, true, false>;
 
 /** HTML. On WordPress the `content`-designated richText is the block editor's post_content. */
 export declare function richText(): ColumnBuilder<"richText", string, true, false>;
@@ -381,6 +393,20 @@ type ColumnsOfKind<TCols, TKind extends ColumnKind, TNotNull extends boolean = b
 }[keyof TCols] &
   string;
 
+/** How comments behave on a collection (`comments: true` is every default). */
+export interface CommentOptions {
+  /** Anonymous visitors may comment, with a name and email. Default `false`: signed-in users only. */
+  guests?: boolean;
+  /** `"none"` approves at once; `"first-time"` (default) holds a commenter's first comment; `"all"` holds every one. */
+  moderation?: "none" | "first-time" | "all";
+  /** Reply depth: `true` (default) is 3 levels, `false` is flat, or a depth from 1 to 10. */
+  threaded?: boolean | number;
+  /** Close comments this many days after the item was published. Default: never. */
+  closeAfterDays?: number | null;
+  /** Comment types allowed besides normal comments. Not built yet: leave it out. */
+  types?: readonly [];
+}
+
 /** Options shared by the `collection()` signatures; `T` is the collection being defined. */
 export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Physical resource name, without prefixes. Defaults to the registry key in snake_case.
@@ -418,8 +444,11 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
    * discarded. Default true for collections; `false` turns them off. collection() only.
    */
   staged?: boolean;
-  /** WordPress comments on this collection's post type. Default false: comments are closed on every kind that doesn't turn them on. */
-  comments?: boolean;
+  /**
+   * WordPress comments on this collection's post type: `true` for the defaults, or `CommentOptions`.
+   * Default false: comments are closed on every kind that doesn't turn them on.
+   */
+  comments?: boolean | CommentOptions;
   /** The WordPress post title: a NOT NULL `text()` column. Default: a text column named `title`. Required for collections. */
   title?: ColumnsOfKind<ColumnsOf<T>, "text", true>;
   /** The WordPress post_content (block editor): a `richText()` column. Default: a richText column named `content`. */
@@ -445,6 +474,16 @@ export interface CollectionMeta<TName extends string, TCols extends ColumnsConfi
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
   readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
+  /**
+   * Hooks on this kind (spec §2.8), in the file that declares it. Returns the kind, so calls chain;
+   * several handlers for one event run in order.
+   */
+  on<TSelf extends AnyCollection>(this: TSelf, hooks: CollectionHooks<TSelf>): TSelf;
+  /**
+   * A compound index (spec §2.9), on SQL tables; `unique: true` also refuses a second row with the same
+   * values. Fields a compiled `where` or `orderBy` names get one each without this.
+   */
+  index(fields: readonly [keyof TCols & string, ...(keyof TCols & string)[]], options?: { unique?: boolean }): this;
 }
 
 type ColumnRefs<TName extends string, TCols extends ColumnsConfig> = {
@@ -639,7 +678,7 @@ export interface JsonOperators<T> {
 
 /** The filter one column accepts, by kind (design §3.5). */
 type ColumnFilter<C> = C extends { readonly [columnBrand]: { kind: infer K; data: infer D } }
-  ? K extends "mediaList" | "select"
+  ? K extends "mediaList" | "select" | "refList"
     ? ListOperators<D extends readonly (infer I)[] ? I : never>
     : K extends "json" | "group" | "repeater" | "blocks"
       ? JsonOperators<NonNullable<D>>
@@ -676,7 +715,7 @@ export type RelationsFilter<
 
 /** Columns that can be ordered: everything but list and JSON-valued columns. */
 type OrderableKeys<TCols> = {
-  [K in keyof TCols]: ColumnKindOf<TCols[K]> extends "mediaList" | "select" | "json" | "group" | "repeater" | "blocks" ? never : K;
+  [K in keyof TCols]: ColumnKindOf<TCols[K]> extends "mediaList" | "select" | "refList" | "json" | "group" | "repeater" | "blocks" ? never : K;
 }[keyof TCols];
 
 export type OrderBy<T extends AnyCollection> = {
@@ -1022,6 +1061,8 @@ export interface CollectionHooks<T extends AnyCollection> {
   afterUpdate?: (row: Row<T>, previous: Row<T>, ctx: HookCtx) => Awaitable<void>;
   beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** A collection's item became published: created published, updated into it, or its scheduled time came. */
+  afterPublish?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
 }
 
 export type Hooks<TSchema extends Schema> = {
@@ -1084,19 +1125,18 @@ export interface Global<TName extends string = string, TFields extends FieldsCon
 export type AnyGlobal = Global<string, FieldsConfig>;
 
 /**
- * Defines a global. Fields use the column builders with the sub-field restrictions, and no
- * `.unique()`/`slug()`/`blocks()`; a required field needs a default. Default access:
- * `read: "anyone"`, `update: "editor"`.
+ * Defines a global, named by its export: `export const settings = global({ ... })`. Fields use the
+ * column builders with the sub-field restrictions, and no `.unique()`/`slug()`/`blocks()`; a
+ * required field needs a default. Default access: `read: "anyone"`, `update: "editor"`.
  */
-export declare function global<const TName extends string, TFields extends FieldsConfig>(
-  name: TName,
+export declare function global<TFields extends FieldsConfig>(
   fields: TFields,
   options?: {
     label?: string;
     agents?: boolean;
     access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
   },
-): Global<TName, TFields>;
+): Global<string, TFields>;
 
 export interface ConfigInput<
   TSchema extends Schema,
@@ -1128,8 +1168,25 @@ export interface ConfigInput<
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;
-  /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
+  /**
+   * Ship First Admin (`first-admin`), the default admin at `/wp-admin/new/`, with the build. Default `true`;
+   * `false` leaves only classic wp-admin.
+   */
   admin?: boolean;
+  /**
+   * Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users
+   * sitemap, author names in oEmbed and unauthenticated `/wp/v2/users`. Default `false`: closed, unless
+   * the users kind's read rule lets anyone read users.
+   */
+  publicAuthors?: boolean;
+  /**
+   * Sealed mode: the only code that runs as a plugin is First's own plugins, the platform plugins,
+   * the `plugins` declared here (exact versions, checksums in the committed lock) and `use` plugin
+   * packages. Activating anything else is refused; anything else already loaded is reported. A host
+   * that mounts First through the build store can enforce the list before any plugin loads.
+   * Default `false`. See docs/sealed.md for what is and isn't guaranteed.
+   */
+  sealed?: boolean;
   /**
    * Let the running site add collections, globals and fields, each change stored there as a numbered
    * schema version. The build declares the changes listed in `first/_generated/runtime-schema.json`. Default `false`.
@@ -1140,6 +1197,12 @@ export interface ConfigInput<
    * for backend only; an external site's `https://` address to point links, previews and feeds there.
    */
   frontend?: false | `https://${string}` | `http://localhost${string}` | `http://127.0.0.1${string}`;
+  /**
+   * `"server"` (the default): `first/app/` pages render on WordPress per request, and a page that
+   * exports `prerender = true` is prebuilt. `"static"`: every page is prebuilt, and `first export`
+   * writes a site that needs no WordPress to serve it.
+   */
+  output?: "server" | "static";
   /**
    * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
    * inferred from its compiled code and granted by the committed `first/_generated/plugins.lock.json`.
@@ -1274,7 +1337,8 @@ export type WebhookEvent = `${string}.created` | `${string}.updated` | `${string
 export type FileRule = AccessShorthand | "owner" | ((ctx: AccessCtx) => boolean);
 export interface FileBucket { readonly [fileBucketBrand]: true }
 export type AnyFileBucket = FileBucket;
-export declare function files(name: string, options: {
+/** A private file bucket, named by its export: `export const decks = files({ accept, maxBytes })`. */
+export declare function files(options: {
   accept: string[];
   maxBytes: number;
   access?: { read?: FileRule; create?: FileRule; delete?: FileRule };

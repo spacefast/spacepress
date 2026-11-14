@@ -1,0 +1,15 @@
+{
+	"name": "@first-admin/route-screen",
+	"version": "1.0.0",
+	"private": true,
+	"route": {
+		"path": "/screens/$id"
+	},
+	"license": "GPL-2.0-or-later",
+	"dependencies": {
+		"@first-admin/admin-toolkit": "workspace:*",
+		"@first-admin/screens": "workspace:*",
+		"@wordpress/route": "catalog:",
+		"react": "catalog:"
+	}
+}

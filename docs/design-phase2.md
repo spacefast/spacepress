@@ -893,6 +893,9 @@ __first_jobs(id TEXT PK /* uuid */, job TEXT, input TEXT, key TEXT NULL, state T
 __first_receipts(scope TEXT, key TEXT, userId INT /* 0 anonymous */, inputHash CHAR(64), state TEXT /* started|done */, result TEXT NULL, createdAt TEXT, PRIMARY KEY(scope, key, userId))
 ```
 
+> Superseded for the outbox: the runtime now writes each job's Action Scheduler action in the
+> enqueuing transaction and no longer writes `first__outbox` (docs/runtime-contract.md, transactions).
+
 `First\Jobs` (`runtime/First/Jobs/{Jobs,Outbox,Receipts,Runner,Queue}.php`):
 
 - `Jobs::enqueue(name, input, opts)`: validate input like an action
@@ -945,8 +948,9 @@ headers `First-Event-Id`, `First-Event`, `First-Signature: t=<unix>,v1=<hex hmac
 non-2xx → retry with the job backoff (retries 8); HTTP via `curl`/`stream`
 standalone, `wp_safe_remote_post` on WP. Inbound: `signature` on an action
 replaces the access check: `scheme: "first"` verifies the format above (and
-rejects `t` older than 5 min); `"hmac-sha256"` compares `hex(hmac_sha256(secret,
-raw body))` to the header; failures → 401 `invalid_signature`. Replays are the
+rejects `t` older than 5 min); `"hmac-sha256"` compares `hmac_sha256(secret,
+raw body)` to the header, given in hex (optionally `sha256=`) or standard base64
+(WooCommerce, Shopify); failures → 401 `invalid_signature`. Replays are the
 caller's job (`idempotent: true` + a key from the payload).
 
 #### Rejected
@@ -1708,7 +1712,7 @@ bottom is green), keeping the stack's base links updated (`gh stack sync`).
 | `rust` | ubuntu-24.04 | `rustup` from `rust-toolchain`, `php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd`, `node 22`, `cargo test` (includes pantry over HTTP + differential) | no |
 | `php` | ubuntu-24.04 | `tests/php/run.sh` (includes `vendor_drift`) | no |
 | `vendor` | ubuntu-24.04, `php:8.2-cli` container | `composer` + the pinned Strauss PHAR; `scripts/vendor.sh all`; `git diff --exit-code -- '**/vendor-prefixed/**'` — proves the committed trees are what the locks produce (§3.3) | no |
-| `types` | ubuntu-24.04 | `tsc -p types/first/tests`, `tsc -p examples/blog/client-tests`, `node --test runtime/client/index.test.ts` | no |
+| `types` | ubuntu-24.04 | `tsc -p types/first/tests`, `tsc -p examples/blog/client-tests`, `node --test runtime/client/index.test.ts runtime/client/committed.test.ts` (the second: every committed client matches `runtime/client/`) | no |
 | `wp` | ubuntu-24.04 (docker preinstalled) | `tests/wp/run.sh`; required-plugin zips (SCF, Action Scheduler, MCP Adapter, Polylang) restored from `actions/cache` keyed by `tests/wp/cache/*.sha256`, downloaded on miss, hash-verified by `harness.sh` | yes |
 | `identity` | ubuntu-24.04 | `tests/identity/run.sh` (identity compose, PHP 8.2 + 8.5 images as in the source repo's workflow) | yes (E1 adds the job; A4 ships it as `if: hashFiles('tests/identity/run.sh') != ''`) |
 

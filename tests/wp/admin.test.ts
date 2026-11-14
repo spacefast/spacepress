@@ -1,12 +1,13 @@
-// The optional admin plugin as `first build` ships it (design §2.2, §2.5): the test app opts in with
-// `admin: true`, so the artifact carries `first-admin` and the harness activates it after the app.
-// What this proves is the packaging: the plugin is active, serves its page under /first-admin/ to
-// signed-in users only, and the page loads the committed build rather than an empty shell.
+// First Admin as `first build` ships it to every app (docs/admin.md): the artifact carries
+// `first-admin` and the harness activates it after the app. What this proves: the plugin is active,
+// serves its page at the upstream mount /wp-admin/new/ to signed-in users only, loads the committed
+// build rather than an empty shell, lands users there after login, keeps classic wp-admin, and
+// redirects the earlier /first-admin/ address.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { harness, wp } from "./env.ts";
+import { auth, harness, wp } from "./env.ts";
 
 const site = harness.url;
 const content = fileURLToPath(new URL("./.wp-content/", import.meta.url));
@@ -20,8 +21,6 @@ test("the built artifact ships first-admin and the harness activated it after th
   const status = JSON.parse(wp("plugin", "list", "--format=json", "--fields=name,status,version"));
   const admin = status.find((p: any) => p.name === "first-admin");
   assert.deepEqual([admin?.status, admin?.version], ["active", manifest.first]);
-  // Activation registered and persisted the one rewrite rule, so pretty URLs reach the app.
-  assert.equal(wp("option", "get", "first_admin_rewrite"), manifest.first);
   // Plugins may enqueue an admin asset before REST has registered its handle.
   const assets = JSON.parse(wp("eval", `
     wp_set_current_user(${harness.users.admin.id});
@@ -50,28 +49,247 @@ test("the built artifact ships first-admin and the harness activated it after th
   assert.match(assets.data.inline_scripts.before['wp-color-picker'], /window.firstPickerConfig = true/);
 });
 
-test("/first-admin/ asks anonymous visitors to sign in and serves the committed build to users", async () => {
-  const anon = await fetch(`${site}/first-admin/`, { redirect: "manual" });
+test("/wp-admin/new/ asks anonymous visitors to sign in and serves the committed build to users", async () => {
+  // WP-CLI activated the plugin; the first web request writes the rule into .htaccess.
+  assert.equal((await fetch(`${site}/`)).status, 200);
+  assert.equal(wp("option", "get", "first_admin_rewrite"), JSON.parse(readFileSync(`${content}first-manifest.json`, "utf8")).first);
+  assert.match(wp("eval", "echo file_get_contents(ABSPATH . '.htaccess');"), /^RewriteRule \^wp-admin\/new\(\/\.\*\)\?\$ \/?wp-admin\/admin\.php\?page=first-admin \[L\]$/m);
+  const anon = await fetch(`${site}/wp-admin/new/`, { redirect: "manual" });
   assert.equal(anon.status, 302);
   assert.ok(anon.headers.get("location")!.startsWith(`${site}/wp-login.php?`), anon.headers.get("location")!);
-  const deepLink = `${site}/first-admin/collections/posts?search=Draft`;
+  const deepLink = `${site}/wp-admin/new/collections/posts?search=Draft`;
   const deep = await fetch(deepLink, { redirect: "manual" });
   assert.equal(deep.status, 302);
   assert.equal(new URL(deep.headers.get("location")!).searchParams.get("redirect_to"), deepLink);
 
   for (const role of ["editor", "subscriber"] as const) {
-    const cookie = await loginCookie(site, role);
-    assert.equal(/(?:^|; )wordpress_(?:sec_)?[a-f0-9]+=/.test(cookie), false, 'frontend does not receive admin-scoped cookies');
-    const page = await fetch(`${site}/first-admin/`, { headers: { cookie } });
-    assert.equal(page.status, 200, `${role} is served the page`);
-    assert.match(page.headers.get('cache-control') ?? '', /no-cache|no-store/);
-    const html = await page.text();
-    assert.ok(html.includes('id="first-admin-app"'), `${role} gets the app shell`);
-    // The import map names the built boot module from the plugin's own build directory: the page
-    // runs the committed bundle, not the pre-build shell.
-    const importMap = html.match(/<script[^>]*type="importmap"[^>]*>(.*?)<\/script>/s);
-    assert.ok(importMap, `${role}: the page carries an import map`);
-    const imports = JSON.parse(importMap[1]).imports as Record<string, string>;
-    assert.match(imports["@first-admin/boot"], /\/plugins\/first-admin\/build\/packages\/boot\/index\.js(\?|$)/);
+    const cookie = await loginCookie(site, role, `${site}/wp-admin/new/`);
+    for (const url of [`${site}/wp-admin/new/`, `${site}/wp-admin/new/collections/posts`, `${site}/wp-admin/admin.php?page=first-admin&p=%2Fcollections%2Fposts`]) {
+      const page = await fetch(url, { headers: { cookie }, redirect: "manual" });
+      assert.equal(page.status, 200, `${role} is served ${url}`);
+      assert.match(page.headers.get('cache-control') ?? '', /no-cache|no-store/);
+      const html = await page.text();
+      assert.ok(html.includes('id="first-admin-app"'), `${role} gets the app shell`);
+      // The import map names the built boot module from the plugin's own build directory: the page
+      // runs the committed bundle, not the pre-build shell.
+      const importMap = html.match(/<script[^>]*type="importmap"[^>]*>(.*?)<\/script>/s);
+      assert.ok(importMap, `${role}: the page carries an import map`);
+      const imports = JSON.parse(importMap[1]).imports as Record<string, string>;
+      assert.match(imports["@first-admin/boot"], /\/plugins\/first-admin\/build\/packages\/boot\/index\.js(\?|$)/);
+    }
+    // wp-admin's menu entry without a route goes to the mount.
+    const menu = await fetch(`${site}/wp-admin/admin.php?page=first-admin`, { headers: { cookie }, redirect: "manual" });
+    assert.equal(menu.status, 302);
+    assert.equal(menu.headers.get("location"), `${site}/wp-admin/new/`);
+    // Classic wp-admin is unchanged. (Polylang sends the first wp-admin load after its activation
+    // to its setup wizard; this asks for a page, so take that one-time redirect out of the way.)
+    wp("transient", "delete", "pll_activation_redirect");
+    const classic = await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie }, redirect: "manual" });
+    assert.equal(classic.status, 200, `${role} keeps classic wp-admin`);
+    assert.match(await classic.text(), /id="adminmenu"/);
   }
+});
+
+test("signing in lands on First Admin unless the visitor asked for another page", async () => {
+  const signIn = (redirect?: string) => fetch(`${site}/wp-login.php`, {
+    method: "POST", redirect: "manual",
+    headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
+    body: new URLSearchParams({ log: "subscriber", pwd: "first-test-subscriber", testcookie: "1", ...(redirect === undefined ? {} : { redirect_to: redirect }) }),
+  });
+  // WordPress's login form posts its default, `/wp-admin/`, as redirect_to even when nothing was
+  // asked for: both that and no redirect_to land on First Admin (for a subscriber too, whom core
+  // would send to profile.php).
+  const form = await (await fetch(`${site}/wp-login.php`)).text();
+  assert.match(form, new RegExp(`name="redirect_to" value="${site}/wp-admin/"`));
+  for (const redirect of [undefined, `${site}/wp-admin/`]) {
+    const response = await signIn(redirect);
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), `${site}/wp-admin/new/`, `redirect_to ${redirect ?? "absent"}`);
+  }
+  for (const redirect of [`${site}/wp-admin/edit.php`, `${site}/`]) {
+    assert.equal((await signIn(redirect)).headers.get("location"), redirect, "an asked-for page is kept");
+  }
+});
+
+test("on a server that ignores .htaccess, /wp-admin/new/ redirects to the query form and keeps the query", async () => {
+  // Take the rule out of .htaccess as such a server would leave it; WordPress then serves the path.
+  const saved = wp("eval", "echo base64_encode(file_get_contents(ABSPATH . '.htaccess'));");
+  wp("eval", "file_put_contents(ABSPATH . '.htaccess', preg_replace('/^RewriteRule \\^wp-admin\\/new.*$\\n?/m', '', file_get_contents(ABSPATH . '.htaccess')));");
+  try {
+    assert.doesNotMatch(wp("eval", "echo file_get_contents(ABSPATH . '.htaccess');"), /wp-admin\/new/);
+    const response = await fetch(`${site}/wp-admin/new/collections/posts?search=Draft&page=2`, { redirect: "manual" });
+    assert.equal(response.status, 302);
+    const to = new URL(response.headers.get("location")!);
+    assert.equal(to.pathname, new URL(`${site}/wp-admin/admin.php`).pathname);
+    // The route's query rides inside `p` (the router parses `p` as a path with its query): beside
+    // it, the route's `page` would replace wp-admin's `page=first-admin`.
+    assert.deepEqual([to.searchParams.getAll("page"), to.searchParams.get("p")], [["first-admin"], "/collections/posts?search=Draft&page=2"]);
+    const cookie = await loginCookie(site, "editor", `${site}/wp-admin/`);
+    const served = await fetch(to, { headers: { cookie }, redirect: "manual" });
+    assert.equal(served.status, 200, "the query form is First Admin's page");
+    assert.ok((await served.text()).includes('id="first-admin-app"'));
+  } finally {
+    wp("eval", `file_put_contents(ABSPATH . '.htaccess', base64_decode('${saved}'));`);
+  }
+});
+
+test("activating First Admin from the Plugins screen writes the rule without QSA", async () => {
+  // A web request, like the Plugins screen: plugins_loaded has run, so only the activation hook runs.
+  wp("plugin", "deactivate", "first-admin");
+  try {
+    const cookie = await loginCookie(site, "admin", `${site}/wp-admin/plugins.php`);
+    const screen = await (await fetch(`${site}/wp-admin/plugins.php`, { headers: { cookie } })).text();
+    const activate = screen.match(/href="([^"]*action=activate[^"]*plugin=first-admin%2Ffirst-admin\.php[^"]*)"/);
+    assert.ok(activate, "the Plugins screen offers to activate First Admin");
+    const response = await fetch(new URL(activate[1].replaceAll("&amp;", "&"), `${site}/wp-admin/`), { headers: { cookie }, redirect: "manual" });
+    assert.equal(response.status, 302);
+    assert.equal(wp("plugin", "get", "first-admin", "--field=status"), "active");
+    assert.match(wp("eval", "echo file_get_contents(ABSPATH . '.htaccess');"), /^RewriteRule \^wp-admin\/new\(\/\.\*\)\?\$ \/?wp-admin\/admin\.php\?page=first-admin \[L\]$/m);
+    // A paginated deep link keeps First Admin's page argument out of its own `page`.
+    const deep = await fetch(`${site}/wp-admin/new/collections/posts?page=2`, { headers: { cookie: await loginCookie(site, "editor", `${site}/wp-admin/new/`) }, redirect: "manual" });
+    assert.equal(deep.status, 200);
+    assert.ok((await deep.text()).includes('id="first-admin-app"'));
+  } finally {
+    if (wp("plugin", "get", "first-admin", "--field=status") !== "active") wp("plugin", "activate", "first-admin");
+  }
+});
+
+test("the earlier /first-admin/ address redirects to the same route at /wp-admin/new/", async () => {
+  for (const [from, to] of [
+    ["/first-admin", "/wp-admin/new/"],
+    ["/first-admin/", "/wp-admin/new/"],
+    ["/first-admin/collections/posts?search=Draft", "/wp-admin/new/collections/posts?search=Draft"],
+  ]) {
+    const response = await fetch(`${site}${from}`, { redirect: "manual" });
+    assert.equal(response.status, 301, from);
+    assert.equal(response.headers.get("location"), `${site}${to}`, from);
+  }
+});
+
+test("a declared screen: its declaration is served to users who may open it, with each action's method", async () => {
+  const anon = await fetch(`${site}/wp-json/first-admin/v1/screens/test-comments`);
+  assert.equal(anon.status, 401);
+  assert.equal((await fetch(`${site}/wp-json/first-admin/v1/screens/nope`, { headers: auth("admin") })).status, 404);
+  const response = await fetch(`${site}/wp-json/first-admin/v1/screens/test-comments`, { headers: auth("subscriber") });
+  assert.equal(response.status, 200);
+  const screen = await response.json();
+  assert.equal(screen.title, "Comment review");
+  assert.deepEqual(screen.view.fields.map((f: { id: string }) => f.id), ["name", "body", "approved"]);
+  // The method comes from the ability's annotations: an update runs over POST.
+  assert.deepEqual(screen.actions.map((a: { id: string; method: string }) => [a.id, a.method]), [["approve", "POST"]]);
+  assert.deepEqual(screen.data, ["Approving a comment publishes it."]);
+  // WordPress 7.2 keeps fields and actions per entity in its own registries: when the running
+  // WordPress has them, the screen's are registered there (entity firstAdminScreen/<id>) and read
+  // back from there; on 7.1 the declaration is the registry. Either way the screen is the same.
+  const core = JSON.parse(wp("eval", "echo wp_json_encode(['fields' => function_exists('wp_register_entity_fields'), 'actions' => function_exists('wp_register_entity_actions')]);"));
+  assert.deepEqual(screen.registry, { fields: core.fields ? "core" : "first-admin", actions: core.actions ? "core" : "first-admin" });
+  if (core.fields) {
+    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-fields?kind=firstAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
+    assert.deepEqual(registered.fields.map((f: { id: string; origin: { registeredBy: string } }) => [f.id, f.origin.registeredBy]), [["name", "first-admin"], ["body", "first-admin"], ["approved", "first-admin"]]);
+  }
+  if (core.actions) {
+    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-actions?kind=firstAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
+    assert.deepEqual(registered.actions.map((a: { id: string; ability: string }) => [a.id, a.ability]), [["approve", "blog/comments-update"]]);
+  }
+  // Each table kind is a screen too, with delete bound to the kind's delete ability; the method is
+  // whatever that ability's annotations make core's run route require.
+  const table = await (await fetch(`${site}/wp-json/first-admin/v1/screens/table-comments`, { headers: auth("admin") })).json();
+  assert.equal(table.view.ability, "blog/comments-list");
+  assert.deepEqual(table.actions.map((a: { ability: string }) => a.ability), ["blog/comments-delete"]);
+  // Core's run route takes the declared method: with any other one it answers 405 before running.
+  const [del] = table.actions as { method: string }[];
+  const probe = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/comments-delete/run${del.method === "POST" ? "" : "?input[id]=0"}`, {
+    method: del.method, headers: { ...auth("admin"), "content-type": "application/json" }, body: del.method === "POST" ? JSON.stringify({ input: { id: 0 } }) : undefined,
+  });
+  assert.notEqual(probe.status, 405, `${del.method}: ${await probe.text()}`);
+  // Classic wp-admin registered a page for each, under the declared parent.
+  const pages = JSON.parse(wp("eval", `
+    wp_set_current_user(${harness.users.admin.id});
+    require_once ABSPATH . 'wp-admin/includes/admin.php';
+    set_current_screen('dashboard');
+    global $menu, $submenu, $_wp_submenu_nopriv;
+    $menu = []; $submenu = [];
+    do_action('admin_menu', '');
+    echo wp_json_encode(['comments' => array_column($submenu['edit-comments.php'] ?? [], 2), 'app' => array_column($submenu['first-blog'] ?? [], 2)]);
+  `));
+  assert.ok(pages.comments.includes("first-screen-test-comments"), JSON.stringify(pages));
+  assert.ok(pages.app.includes("first-screen-table-comments"), JSON.stringify(pages));
+});
+
+// The schema lock (config-api.md, "Schema lock") refuses edits to what First generates. First's admin
+// is First's own: what it reads from its REST controllers and what its screens save are content and
+// settings, never the schema, so none of it is refused.
+test("with the schema lock on, the admin's controllers answer and its saves go through", async () => {
+  const lock = (await (await fetch(`${site}/__first/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
+  assert.ok(lock.includes("schemaLock"));
+  const json = (method: string, path: string, body?: unknown) =>
+    fetch(`${site}${path}`, { method, headers: { ...auth("admin"), ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  // The admin's own controllers.
+  for (const path of ["/wp-json/first-admin/v1/view-config?kind=postType&name=first_posts", "/wp-json/wp/v2/field-collections?kind=postType&name=first_posts", "/wp-json/wp/v2/editor/settings", "/wp-json/wp/v2/plugins"]) {
+    const res = await json("GET", path);
+    assert.equal(res.status, 200, `${path}: ${(await res.text()).slice(0, 200)}`);
+  }
+  // A collection row saved as the admin's editor saves it: core's route for the kind, fields in `meta`.
+  const created = await json("POST", "/wp-json/wp/v2/first_posts", { title: "From the admin", status: "draft", meta: { tags: ["news"] } });
+  assert.equal(created.status, 201, await created.clone().text());
+  const id = (await created.json()).id;
+  const edited = await json("POST", `/wp-json/wp/v2/first_posts/${id}`, { title: "Edited in the admin", meta: { tags: ["guide"] } });
+  assert.equal(edited.status, 200, await edited.clone().text());
+  assert.deepEqual((await edited.json()).meta.tags, ["guide"]);
+  // A global, and core's settings, as the admin's settings screens save them.
+  const global = await json("PATCH", "/__first/api/v1/settings", { siteTitle: "Admin saved" });
+  assert.equal(global.status, 200, await global.clone().text());
+  const tagline = `Admin ${Date.now().toString(36)}`;
+  const settings = await json("POST", "/wp-json/wp/v2/settings", { description: tagline });
+  assert.equal((await settings.json()).description, tagline);
+  // Deactivating and reactivating a plugin from the admin's plugins screen.
+  const off = await json("POST", "/wp-json/wp/v2/plugins/two-factor/two-factor", { status: "inactive" });
+  const on = await json("POST", "/wp-json/wp/v2/plugins/two-factor/two-factor", { status: "active" });
+  assert.deepEqual([off.status, on.status], [200, 200]);
+  await json("DELETE", `/wp-json/wp/v2/first_posts/${id}?force=true`);
+});
+
+test("WordPress's /wp/v2/view-config is core's, and core's filter reaches First Admin's view config", async () => {
+  // Core's route answers in core's shape (it was shadowed by First Admin's controller before).
+  const core = await (await fetch(`${site}/wp-json/wp/v2/view-config?kind=root&name=user`, { headers: auth("admin") })).json();
+  assert.deepEqual(Object.keys(core).sort(), ["default_layouts", "default_view", "form", "kind", "name", "version", "view_list"]);
+  assert.equal(core.default_view.perPage, 37, "the harness plugin's patch through core's filter");
+  // First Admin reads its own route, which runs the same filter over its configuration.
+  const first = await (await fetch(`${site}/wp-json/first-admin/v1/view-config?kind=root&name=user`, { headers: auth("admin") })).json();
+  assert.equal(first.default_view.perPage, 37);
+  assert.ok(first.tabs.some((t: { slug: string; label: string }) => t.slug === "harness" && t.label === "Harness tab"), JSON.stringify(first.tabs));
+  // First Admin's own entries are still there.
+  assert.ok(first.tabs.some((t: { slug: string }) => t.slug === "administrator"));
+  assert.ok(Array.isArray(first.edit_form?.fields), "the user edit form survives the round trip");
+});
+
+test("a screen's capability gates its declaration, its classic page and its sidebar entry, for every role below it", async () => {
+  wp("option", "delete", "first_harness_admin_only_data");
+  for (const role of ["editor", "subscriber"] as const) {
+    const declaration = await fetch(`${site}/wp-json/first-admin/v1/screens/test-admin-only`, { headers: auth(role) });
+    assert.equal(declaration.status, 403, `${role}: the declaration`);
+    const cookie = await loginCookie(site, role, `${site}/wp-admin/`);
+    wp("transient", "delete", "pll_activation_redirect");
+    const classic = await fetch(`${site}/wp-admin/tools.php?page=first-screen-test-admin-only`, { headers: { cookie }, redirect: "manual" });
+    assert.notEqual(classic.status, 200, `${role}: the classic page`);
+    assert.doesNotMatch(await classic.text(), /Administrators only/);
+    const page = await (await fetch(`${site}/wp-admin/new/`, { headers: { cookie } })).text();
+    assert.doesNotMatch(page, /screen-test-admin-only/, `${role}: no sidebar entry`);
+  }
+  // Its `data` ran for nobody so far: it is evaluated only for users the capability lets in.
+  assert.equal(wp("eval", "echo (int) get_option('first_harness_admin_only_data', 0);"), "0");
+  const admin = await (await fetch(`${site}/wp-json/first-admin/v1/screens/test-admin-only`, { headers: auth("admin") })).json();
+  assert.deepEqual(admin.data, ["Administrators only."]);
+  const cookie = await loginCookie(site, "admin", `${site}/wp-admin/new/`);
+  assert.match(await (await fetch(`${site}/wp-admin/new/`, { headers: { cookie } })).text(), /screen-test-admin-only/, "the administrator's sidebar has it");
+});
+
+test("table screens are named after the kind in kebab case, as its abilities are", async () => {
+  const kinds = JSON.parse(wp("eval", "echo wp_json_encode(array_keys(array_filter(\\First\\Wp\\Runtime::plugin()->schema->collections(), fn ($c) => !isset($c['wp']['postType']) && empty($c['auth']) && ($c['api']['list'] ?? true) !== false && ($c['agents'] ?? true) !== false)));"));
+  const camel = kinds.find((k: string) => /[A-Z_]/.test(k));
+  assert.ok(camel, `the test app has a table kind that isn't one lowercase word: ${kinds}`);
+  const kebab = camel.replace(/_/g, "-").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  const screen = await fetch(`${site}/wp-json/first-admin/v1/screens/table-${kebab}`, { headers: auth("admin") });
+  assert.equal(screen.status, 200, `table-${kebab}`);
+  assert.equal((await screen.json()).view.ability, `blog/${kebab}-list`);
 });

@@ -29,7 +29,8 @@ const project = join(work, "wp-site");
 const artifact = join(work, "wp-artifact");
 
 /** The order a site owner activates in: each plugin after every plugin its header requires. */
-const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "first-runtime", "first-identity", "first-app-site"];
+// First Admin ships with every build and registers only once the app has (plugins_loaded order): last.
+const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "first-runtime", "first-identity", "first-app-site", "first-admin"];
 
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const wpFails = (...args: string[]) => {
@@ -160,9 +161,9 @@ test("installing the artifact: activation order, platform requirements, doctor",
   wp("plugin", "activate", ...ORDER);
   assert.deepEqual(active().sort(), [...ORDER].sort());
 
-  // The runtime created the shared system tables; the app ran its first migration.
+  // The runtime created the shared system tables; the app ran its migrations.
   assert.equal(wp("option", "get", "first_runtime_tables"), wp("eval", "echo \\First\\Wp\\Runtime::tablesVersion();"));
-  assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init"]);
+  assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update"]);
   // Feature lanes add shared runtime tables of their own; the app's are these.
   const tables = sql("SHOW TABLES LIKE 'wp\\_first\\_%'");
   for (const table of ["wp_first__migrations", "wp_first__revisions", "wp_first_comments", "wp_first_subscribers"]) {
@@ -264,13 +265,13 @@ test("the site journey on WordPress", async (t) => {
         install(artifact);
         // The new plugin is on disk and nobody opens wp-admin: the next public API request migrates.
         // PHP's opcache revalidates files every couple of seconds, so poll that request.
-        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init"]);
+        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update"]);
         const deadline = Date.now() + 30_000;
-        while (sql("SELECT id FROM wp_first__migrations").length < 2) {
+        while (sql("SELECT id FROM wp_first__migrations").length < 3) {
           assert.ok(Date.now() < deadline, "the upgrade's migration never ran");
           assert.equal((await fetch(`${api}/comments?limit=1`)).status, 200, "the site serves throughout the upgrade");
         }
-        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update"]);
+        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update", "0003_update"]);
         assert.deepEqual(failing(doctor(project, "--out", artifact, "--site", receipt.url)), []);
         return clientOf(project, (make, role) => make({ url: api, headers: headers(role) }));
       },
@@ -362,11 +363,11 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.ok(before.revisions.some((r) => r.length > 0), "no revisions to preserve");
   assert.ok([...before.files, ...before.manuscripts].every((entry) => entry.includes(200)), "every file was served before");
 
-  wp("plugin", "deactivate", "first-app-site", "first-identity", "first-runtime");
+  wp("plugin", "deactivate", "first-admin", "first-app-site", "first-identity", "first-runtime");
   assert.equal((await fetch(`${api}/posts`)).status, 404, "the app's routes go away with the plugin");
-  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site");
+  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site", "first-admin");
   assert.deepEqual(await snapshot(), before);
-  assert.deepEqual(sql("SELECT CONCAT(app, '/', id) FROM wp_first__migrations"), ["site/0001_init", "site/0002_update"], "reactivation re-applies nothing");
+  assert.deepEqual(sql("SELECT CONCAT(app, '/', id) FROM wp_first__migrations"), ["site/0001_init", "site/0002_update", "site/0003_update"], "reactivation re-applies nothing");
 
   // Uninstall (delete in wp-admin): options, capabilities and scheduled actions go, content stays.
   const caps = () => JSON.parse(wp("eval", "echo wp_json_encode(array_map(fn ($r) => array_values(array_filter(array_keys($r->capabilities), fn ($c) => str_contains($c, 'first_') || $c === 'unrelated_cap')), wp_roles()->role_objects));"));
@@ -394,8 +395,8 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.equal(sql(`SELECT COUNT(*) FROM wp_options WHERE option_name IN ${options}`)[0], "5");
   const posts = sql("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'first_posts'")[0];
   // The owner deactivates everything, Action Scheduler included, then deletes First's plugins.
-  wp("plugin", "deactivate", "first-app-site", "first-identity", "first-runtime", "mcp-adapter", "action-scheduler");
-  wp("plugin", "uninstall", "first-app-site", "first-identity", "first-runtime");
+  wp("plugin", "deactivate", "first-admin", "first-app-site", "first-identity", "first-runtime", "mcp-adapter", "action-scheduler");
+  wp("plugin", "uninstall", "first-admin", "first-app-site", "first-identity", "first-runtime");
   // The harness's own must-use helpers aren't First's plugins; only regular plugins can be deleted.
   assert.deepEqual(JSON.parse(wp("plugin", "list", "--status=active,inactive", "--field=name", "--format=json")).filter((n: string) => n.startsWith("first-")), []);
   const left = caps();
@@ -417,7 +418,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   // Installing the same build again picks the content straight back up. The runtime minted a new
   // signing secret on reinstall, so links signed before are dead; the snapshot fetches fresh ones.
   install(artifact);
-  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site");
+  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site", "first-admin");
   const after = await snapshot();
   const queuedIndex = after.posts.findIndex((p) => p.id === pendingPost.id);
   assert.ok(queuedIndex >= 0, "the post published just before uninstall is still there");

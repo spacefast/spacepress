@@ -30,6 +30,53 @@ final class Islands
         return (string) Js::jsonStringify(new JsObject($context));
     }
 
+    /**
+     * The server render of a reactive list or conditional's items: each top-level element marked
+     * `data-wp-each-child="<namespace>::<path>"`, so the Interactivity runtime takes the elements
+     * over as the template's children instead of rendering a second copy (WordPress 6.9 +).
+     */
+    public static function eachChild(mixed $rendered, string $source): Html
+    {
+        $html = Html::child($rendered);
+        if ($html === '' || !class_exists(\WP_HTML_Tag_Processor::class)) {
+            return Html::raw($html);
+        }
+        $p = new \WP_HTML_Tag_Processor($html);
+        $depth = 0;
+        while ($p->next_token()) {
+            if ($p->get_token_type() !== '#tag') {
+                continue;
+            }
+            if ($p->is_tag_closer()) {
+                $depth--;
+                continue;
+            }
+            if ($depth === 0) {
+                $p->set_attribute('data-wp-each-child', $source);
+            }
+            if (!$p->has_self_closing_flag() && !in_array($p->get_tag(), self::VOID, true)) {
+                $depth++;
+            }
+        }
+
+        return Html::raw($p->get_updated_html());
+    }
+
+    /** HTML void elements: they have no closer, so they never open a level. */
+    private const VOID = ['AREA', 'BASE', 'BR', 'COL', 'EMBED', 'HR', 'IMG', 'INPUT', 'LINK', 'META', 'SOURCE', 'TRACK', 'WBR'];
+
+    /**
+     * The `<template>` a reactive list or conditional renders from in the browser: `$each` is the
+     * directive's name (`data-wp-each--item`), `$path` the state it reads, `$key` how each item is
+     * keyed. Its content is the item's element with every browser-computed value left empty.
+     */
+    public static function template(string $each, string $path, mixed $content, ?string $key = null): Html
+    {
+        $attributes = ' ' . $each . '="' . Html::escape($path) . '"' . ($key === null ? '' : ' data-wp-each-key="' . Html::escape($key) . '"');
+
+        return Html::raw('<template' . $attributes . '>' . Html::child($content) . '</template>');
+    }
+
     /** @return list<string> */
     public static function used(): array
     {
@@ -52,11 +99,20 @@ final class Islands
             $handle = 'first-island-' . sanitize_key(str_replace('/', '-', $namespace));
             wp_register_script_module($handle, $plugin->url('first/app/client/' . $island['file']), ['@wordpress/interactivity'], null);
             wp_enqueue_script_module($handle);
+            // A <Link> that swaps the router region onto this page loads the store then
+            // (core marks the tag `data-wp-router-options`), and merges this page's config.
+            wp_interactivity()->add_client_navigation_support_to_script_module($handle);
             $actions = [];
             foreach ($island['actions'] as $action) {
                 $actions[$action] = Wp\Facade::url('/actions/' . rawurlencode((string) $action));
             }
-            wp_interactivity_config($namespace, ['actions' => (object) $actions, 'nonce' => wp_create_nonce('wp_rest')]);
+            // A prebuilt page is the same file for days, past a nonce's lifetime, and only signed-out
+            // visitors get it: they need no nonce, and an expired one would refuse their calls.
+            $config = ['actions' => (object) $actions];
+            if (!\First\Render\Prebuilt::prerendering()) {
+                $config['nonce'] = wp_create_nonce('wp_rest');
+            }
+            wp_interactivity_config($namespace, $config);
         }
     }
 }

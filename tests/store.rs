@@ -135,3 +135,220 @@ fn a_failed_compile_leaves_the_store_unchanged() {
         assert_eq!(entries(&root.join(dir)), Vec::<String>::new(), "{dir}");
     }
 }
+
+/// Sealed mode (docs/sealed.md): a sealed app's build manifest lists the plugin directory slugs a
+/// host lets load, so the host can enforce them before any plugin loads; an unsealed one has none.
+#[test]
+fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
+    let work = tempfile::tempdir().unwrap();
+    let root = work.path().join("store");
+    let plain = capture(work.path(), "plain");
+    let built = first::host::compile_to_store(&plain, &root, &plain, None).unwrap();
+    assert_eq!(built.manifest.sealed, None);
+    let manifest = fs::read_to_string(root.join("build").join(format!("{}.json", built.build_id))).unwrap();
+    assert!(
+        !manifest.contains("sealed"),
+        "an unsealed build's manifest has no sealed key"
+    );
+    // Nor does the hosted manifest inside the app tree, so an unsealed app hashes as it did before.
+    let hosted = fs::read_to_string(root.join("app").join(&built.app_hash).join("manifest.json")).unwrap();
+    assert!(!hosted.contains("\"sealed\""), "{hosted}");
+
+    let project = work.path().join("sealed").join("pantry");
+    copy(Path::new("examples/pantry"), &project);
+    let config = project.join("first.config.ts");
+    let text = fs::read_to_string(&config).unwrap();
+    let sealed = text.replacen("defineConfig({", "defineConfig({\n  sealed: true,", 1);
+    assert_ne!(text, sealed, "the fixture edit applies");
+    fs::write(&config, sealed).unwrap();
+    let sources = work.path().join("sources-sealed");
+    first::host::sources(&project, &sources).unwrap();
+    let built = first::host::compile_to_store(&sources, &root, &sources, None).unwrap();
+    let listed = built.manifest.sealed.expect("a sealed build lists its plugins");
+    // Exactly the plugins this host mounts for this app, plus First's admin (always listed): no
+    // identity (no users kind), no pages, no Polylang (no locales).
+    assert_eq!(
+        listed,
+        [
+            "action-scheduler",
+            "first-admin",
+            "first-app-pantry",
+            "first-runtime",
+            "mcp-adapter",
+            "secure-custom-fields",
+            "two-factor"
+        ]
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("build").join(format!("{}.json", built.build_id))).unwrap())
+            .unwrap();
+    assert_eq!(manifest["sealed"], serde_json::json!(listed));
+    // The hosted manifest in the app tree carries the same list.
+    let hosted: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("app").join(&built.app_hash).join("manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(hosted["sealed"], serde_json::json!(listed));
+    // The build loader accepts this manifest and a host reads the list from it; a manifest whose
+    // list isn't plugin directory names is refused, like any other malformed manifest.
+    let loader = root
+        .join("runtime")
+        .join(&built.runtime_revision)
+        .join("first-loader.php");
+    let php = |code: &str| {
+        let out = std::process::Command::new("php")
+            .args(["-r", code])
+            .arg(&loader)
+            .arg(&root)
+            .arg(&built.build_id)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let read = php(
+        "define('ABSPATH', '/'); require $argv[1]; echo json_encode(First\\Loader\\Loader::sealed($argv[2], $argv[3]));",
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&read).unwrap(),
+        serde_json::json!(listed)
+    );
+    let kept = php(
+        "define('ABSPATH', '/'); require $argv[1]; $l = First\\Loader\\Loader::sealed($argv[2], $argv[3]);
+         echo json_encode([First\\Loader\\Loader::allowedPlugins(['akismet/akismet.php', 'two-factor/two-factor.php', 'two-factor.php', 'two-factor/x/y.php', 'two-factor/../akismet/akismet.php', 7], $l),
+            First\\Loader\\Loader::keepUnlisted(['two-factor/two-factor.php'], ['akismet/akismet.php', 'two-factor/two-factor.php', 'first-runtime/first-runtime.php'], $l)]);",
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&kept).unwrap(),
+        serde_json::json!([
+            ["two-factor/two-factor.php"],
+            ["akismet/akismet.php", "two-factor/two-factor.php"]
+        ])
+    );
+    // A plugin a sealed site never runs doesn't load even when the list a host holds names it.
+    let denied = php(
+        "define('ABSPATH', '/'); require $argv[1];
+         echo json_encode(First\\Loader\\Loader::allowedPlugins(['vip-block-data-api/vip-block-data-api.php', 'vip-decoupled-bundle/vip-decoupled.php', 'two-factor/two-factor.php'], ['vip-block-data-api', 'vip-decoupled-bundle', 'two-factor']));",
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&denied).unwrap(),
+        serde_json::json!(["two-factor/two-factor.php"])
+    );
+}
+
+/// Each build keeps `baseline/<id>/` beside its app tree: the snapshot, the migrations and
+/// `storage.json`, with each file's hash, so a lost app tree can be rebuilt. The manifest names the
+/// baseline it was compiled against, its storage description, its jobs and its WordPress floor.
+#[test]
+fn every_build_keeps_a_baseline_and_describes_its_storage() {
+    use sha2::{Digest, Sha256};
+    let work = tempfile::tempdir().unwrap();
+    let root = work.path().join("store");
+    let one = capture(work.path(), "one");
+    let two = capture(work.path(), "two");
+    let first = first::host::compile_to_store(&one, &root, &one, None).unwrap();
+    let second = first::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
+    assert_eq!(first.manifest.baseline, None);
+    assert_eq!(second.manifest.baseline.as_deref(), Some(first.build_id.as_str()));
+    assert_eq!(first.manifest.jobs, ["notifyLowStock"]);
+    assert_eq!(first.manifest.wordpress.as_deref(), Some(first::platform::WORDPRESS));
+
+    for built in [&first, &second] {
+        let baseline = root.join("baseline").join(&built.build_id);
+        let app = root.join("app").join(&built.app_hash);
+        let hashes: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_slice(&fs::read(baseline.join("hashes.json")).unwrap()).unwrap();
+        assert_eq!(
+            hashes.keys().cloned().collect::<Vec<_>>(),
+            ["migrations/0001_init.sql", "snapshot.json", "storage.json"]
+        );
+        for (rel, hash) in &hashes {
+            let bytes = fs::read(baseline.join(rel)).unwrap();
+            assert_eq!(bytes, fs::read(app.join(rel)).unwrap(), "{rel} is the app tree's");
+            let digest: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+            assert_eq!(hash.as_str(), Some(digest.as_str()), "{rel}");
+        }
+        assert_eq!(
+            built.manifest.storage.as_deref(),
+            Some(format!("app/{}/storage.json", built.app_hash).as_str())
+        );
+    }
+    // Only action code differs: both builds store the same things the same way.
+    let storage = |built: &first::store::StoredBuild| {
+        fs::read(root.join("app").join(&built.app_hash).join("storage.json")).unwrap()
+    };
+    assert_eq!(storage(&first), storage(&second));
+
+    let described: serde_json::Value = serde_json::from_slice(&storage(&first)).unwrap();
+    assert_eq!(described["format"], "first.storage.v1");
+    let items = &described["kinds"]["items"];
+    assert_eq!(items["in"], "table");
+    assert_eq!(items["table"], "first_items");
+    assert_eq!(
+        items["fields"]["slug"],
+        serde_json::json!({ "at": { "column": "slug", "table": "first_items" }, "max": 191.0, "required": true, "type": "text", "unique": true })
+    );
+    assert_eq!(items["fields"]["opened"]["default"], false);
+    assert_eq!(
+        items["indexes"],
+        serde_json::json!([{ "columns": ["id"], "name": "PRIMARY", "unique": true }, { "columns": ["slug"], "name": "slug_unique", "unique": true }, { "columns": ["locationId"], "name": "first_items_locationId_fk", "unique": false }])
+    );
+    assert_eq!(
+        described["kinds"]["locations"]["fields"]["kind"]["choices"],
+        serde_json::json!(["fridge", "freezer", "pantry"])
+    );
+    // Storage only: no access rules, actions, jobs or hooks.
+    for key in ["access", "actions", "jobs", "hooks", "ui"] {
+        assert!(
+            !String::from_utf8(storage(&first))
+                .unwrap()
+                .contains(&format!("\"{key}\"")),
+            "{key}"
+        );
+    }
+
+    // Written once: compiling the same thing again leaves the baseline as it was.
+    let marker = fs::metadata(root.join("baseline").join(&second.build_id).join("hashes.json")).unwrap();
+    let again = first::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
+    assert_eq!(again.build_id, second.build_id);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let after = fs::metadata(root.join("baseline").join(&second.build_id).join("hashes.json")).unwrap();
+        assert_eq!(after.ino(), marker.ino());
+    }
+}
+
+/// A manifest with the deployment fields loads in the build loader, whose `Store::manifest` checks
+/// named keys only (unchanged since before these fields), and a manifest from before them still
+/// reads here: they are optional.
+#[test]
+fn manifests_with_and_without_the_deployment_fields_load() {
+    let work = tempfile::tempdir().unwrap();
+    let root = work.path().join("store");
+    let one = capture(work.path(), "one");
+    let built = first::host::compile_to_store(&one, &root, &one, None).unwrap();
+    let loader = root
+        .join("runtime")
+        .join(&built.runtime_revision)
+        .join("first-loader.php");
+    let out = std::process::Command::new("php")
+        .args(["-r", "define('ABSPATH', '/'); require $argv[1]; echo json_encode(First\\Loader\\Store::manifest($argv[2], $argv[3])['jobs'] ?? null);"])
+        .arg(&loader)
+        .arg(&root)
+        .arg(&built.build_id)
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "[\"notifyLowStock\"]",
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // A manifest without the new fields, as the previous compiler wrote it, deserializes.
+    let old = serde_json::json!({ "format": "first.build.v1", "name": "pantry", "compiler": "0.3.0", "runtime": "a".repeat(64),
+        "app": "b".repeat(64), "identity": false, "admin": true, "snapshot": "app/x/snapshot.json", "client": null });
+    let manifest: first::store::BuildManifest = serde_json::from_value(old).unwrap();
+    assert_eq!(
+        (manifest.baseline, manifest.storage, manifest.jobs, manifest.wordpress),
+        (None, None, Vec::new(), None)
+    );
+}

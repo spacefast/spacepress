@@ -252,18 +252,35 @@ final class SchemaVersions
     }
 
     /**
-     * What a build that is about to run on this site would do to the site's runtime changes.
-     * Nothing is ever dropped: changes the build doesn't contain stay active and are listed in
-     * `kept`; fields both declare with the same stored shape but other rules or presentation are
-     * `changed` (the build's declaration is used); names the site removed that the build's code uses are active again and listed in
-     * `restored`. `refusals` are the cases where the build and the site disagree about stored data: a
-     * name both declare with different stored types.
+     * What a build that is about to run on this site would do to the site's runtime changes
+     * ({@see \First\RuntimeSchema\Deploy::check()}). Nothing is ever dropped: changes the build
+     * doesn't contain stay active and are listed in `kept`; fields both declare with the same stored
+     * shape but other rules or presentation are `changed` (the build's declaration is used); names
+     * the site removed that the build's code uses are active again and listed in `restored`.
+     * `refusals` are the cases where the build would read or write the site's stored values another way.
      *
      * @return array{site: array{version: int, hash: string}, build: array{version: int, hash: string}, kept: list<string>, changed: list<string>, restored: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
      */
     public function deployCheck(): array
     {
-        $rows = $this->list();
+        return $this->compare($this->list());
+    }
+
+    /**
+     * {@see deployCheck()} without its side effect: reading the versions never puts the option back
+     * or records a broken chain on it. What a deployment's preflight uses, so inspecting a candidate
+     * that is then refused leaves the site exactly as it was.
+     *
+     * @throws Refused 409 `schema_chain_broken`, as {@see list()} does, with nothing written
+     */
+    public function verify(): array
+    {
+        return $this->compare($this->exists() ? $this->verified() : []);
+    }
+
+    /** The comparison both checks make, on versions already read and verified. */
+    private function compare(array $rows): array
+    {
         $state = $rows === [] ? Loader::EMPTY : $this->replay($rows);
         $compiled = $this->compiled();
         $build = ['version' => (int) ($compiled['runtimeSchema']['version'] ?? 0), 'hash' => (string) ($compiled['runtimeSchema']['hash'] ?? '')];

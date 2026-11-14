@@ -99,7 +99,8 @@ fn is_env_name(s: &str) -> bool {
 }
 
 /// Host settings app code can't read: WordPress's database credentials and salts, and the request
-/// headers and credentials PHP-FPM exposes as environment variables. `First\Env::reserved` answers
+/// headers and credentials PHP-FPM exposes as environment variables (and Apache again under
+/// `REDIRECT_` names after a rewrite). `First\Env::reserved` answers
 /// null for the same names at runtime.
 pub(crate) fn reserved_env_name(name: &str) -> bool {
     const RESERVED: &[&str] = &[
@@ -119,7 +120,7 @@ pub(crate) fn reserved_env_name(name: &str) -> bool {
         "REMOTE_USER",
     ];
     let upper = name.to_ascii_uppercase();
-    RESERVED.contains(&upper.as_str()) || ["DB_", "HTTP_"].iter().any(|p| upper.starts_with(p))
+    RESERVED.contains(&upper.as_str()) || ["DB_", "HTTP_", "REDIRECT_"].iter().any(|p| upper.starts_with(p))
 }
 
 pub(crate) fn reserved_env_error<T>(span: Span, name: &str) -> Result<T> {

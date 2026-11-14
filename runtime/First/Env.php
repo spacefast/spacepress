@@ -13,7 +13,8 @@ final class Env
     /**
      * Host settings app code never reads, isolated or not: WordPress's database credentials and
      * salts (wp-config.php constants), and the request headers and credentials PHP-FPM exposes as
-     * environment variables (`HTTP_COOKIE`, `HTTP_AUTHORIZATION`, `PHP_AUTH_PW`). The compiler
+     * environment variables (`HTTP_COOKIE`, `HTTP_AUTHORIZATION`, `PHP_AUTH_PW`), also under the
+     * `REDIRECT_` names Apache gives them after an internal rewrite. The compiler
      * refuses the same names (`src/compile.rs`, `reserved_env_name`).
      */
     private const RESERVED = [
@@ -21,7 +22,7 @@ final class Env
         'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT', 'WP_CACHE_KEY_SALT',
         'PHP_AUTH_USER', 'PHP_AUTH_PW', 'PHP_AUTH_DIGEST', 'AUTH_TYPE', 'REMOTE_USER',
     ];
-    private const RESERVED_PREFIXES = ['DB_', 'HTTP_'];
+    private const RESERVED_PREFIXES = ['DB_', 'HTTP_', 'REDIRECT_'];
 
     public static function reserved(string $name): bool
     {

@@ -1421,7 +1421,8 @@ Handlers read the process environment with `process.env.NAME` or
 variable is unset; the process environment is read first, then a
 `wp-config.php` constant of that name.
 
-Host settings are never app variables. Names starting with `DB_` or `HTTP_`,
+Host settings are never app variables. Names starting with `DB_`, `HTTP_` or
+`REDIRECT_` (Apache's names for request values after a rewrite),
 WordPress's keys and salts (`AUTH_KEY` … `NONCE_SALT`, `WP_CACHE_KEY_SALT`) and
 the request credentials PHP-FPM exposes (`PHP_AUTH_USER`, `PHP_AUTH_PW`,
 `PHP_AUTH_DIGEST`, `AUTH_TYPE`, `REMOTE_USER`) are a build error in

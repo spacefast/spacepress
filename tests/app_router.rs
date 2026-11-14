@@ -2176,7 +2176,10 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         1,
         "{index:?}"
     );
-    assert!(!index.iter().any(|r| r.ends_with(" /about") || r.ends_with(" /about/")), "{index:?}");
+    assert!(
+        !index.iter().any(|r| r.ends_with(" /about") || r.ends_with(" /about/")),
+        "{index:?}"
+    );
     // The router answers the bare spelling too, so a host cache can hold both: both are purged.
     assert_eq!(
         seen["purged"],
@@ -2242,17 +2245,30 @@ fn one_write_announces_its_purges_once() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let seen: serde_json::Value = serde_json::from_slice(&out.stdout)
-        .unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     use serde_json::json;
     // The router answers both spellings itself (no canonical redirect): two host cache keys.
-    assert_eq!(seen["spellings"], json!({ "slash": [200, null], "bare": [200, null], "same html": true }), "{seen}");
+    assert_eq!(
+        seen["spellings"],
+        json!({ "slash": [200, null], "bare": [200, null], "same html": true }),
+        "{seen}"
+    );
     // Recorded once, under the address WordPress links: the bare fetch and the slashed one are one row.
-    assert_eq!(seen["index"], json!(["/", "/notes/hello.md", "/notes/hello/"]), "{seen}");
+    assert_eq!(
+        seen["index"],
+        json!(["/", "/notes/hello.md", "/notes/hello/"]),
+        "{seen}"
+    );
     let once = |key: &str| {
         let calls = seen[key]["calls"].as_array().unwrap_or_else(|| panic!("{key}: {seen}"));
         assert_eq!(calls.len(), 1, "{key}: one call per write: {seen}");
-        let paths: Vec<&str> = calls[0].as_array().unwrap().iter().map(|p| p.as_str().unwrap()).collect();
+        let paths: Vec<&str> = calls[0]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p.as_str().unwrap())
+            .collect();
         let mut unique = paths.clone();
         unique.sort();
         unique.dedup();
@@ -2264,9 +2280,17 @@ fn one_write_announces_its_purges_once() {
     for key in ["edit", "old row"] {
         let paths = once(key);
         // The item under both spellings, its twin once, its comments feed (the post hooks' part).
-        let mut item: Vec<&str> = paths.iter().copied().filter(|p| p.starts_with("/notes/hello")).collect();
+        let mut item: Vec<&str> = paths
+            .iter()
+            .copied()
+            .filter(|p| p.starts_with("/notes/hello"))
+            .collect();
         item.sort();
-        assert_eq!(item, ["/notes/hello", "/notes/hello.md", "/notes/hello/", "/notes/hello/feed/"], "{key}: {paths:?}");
+        assert_eq!(
+            item,
+            ["/notes/hello", "/notes/hello.md", "/notes/hello/", "/notes/hello/feed/"],
+            "{key}: {paths:?}"
+        );
         for want in ["/", "/index.md", "/llms.txt"] {
             assert!(paths.contains(&want), "{key}: {want} in {paths:?}");
         }

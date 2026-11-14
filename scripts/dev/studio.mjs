@@ -488,7 +488,7 @@ async function main() {
     const response = await fetch(`${url}/__first/api/v1`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`First application is not ready: HTTP ${response.status}. Run first doctor --site ${url}`);
     const summary = [`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`];
-    if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/wp-content/plugins/first-app-${encodeURIComponent(managed.owner.app)}/public/index.html`);
+    if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/index.html`);
     if (managed.owner.generated.includes('first-admin')) summary.push(`First Admin: ${url}/first-admin/`);
     summary.push('Initial login: admin / first-test-admin (local development only; unchanged if you edited it)\n');
     summary.push(`Data persists in ${managed.owner.site}\nStop: first dev stop ${JSON.stringify(project)}`);

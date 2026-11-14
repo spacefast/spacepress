@@ -8,7 +8,8 @@ ready. Each immutable version runs its own compiled code.
 Generated REST endpoints, actions, [HTTP routes](config-api.md#http-routes)
 and [live updates](#live-updates) work on the Space hostname, and so do the
 pages and HTTP handlers under `first/app/` with the stylesheets and SVGs they
-import. Static files in `public/` are published as they are.
+import. Static files in `public/` are published as they are, at the site root
+(`public/logo.svg` is `/logo.svg`).
 
 ## Publish an app
 

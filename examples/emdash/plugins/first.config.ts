@@ -27,7 +27,6 @@ const records = table({
 
 export default defineConfig({
   name: "official-plugins",
-  admin: true,
   collections: { entries },
   tables: { records },
   hooks: {

@@ -1,0 +1,173 @@
+<?php
+
+declare(strict_types=1);
+
+namespace First\Wp;
+
+/**
+ * The comment policy of every kind with `comments` on (spec §2.3), enforced in one place on core's
+ * public hooks, so the three ways a comment arrives get the same answer: `<Comments>`'s form, the
+ * facade's `POST /__first/api/v1/comments` (core's `/wp/v2/comments` under it), and core's
+ * `wp-comments-post.php` behind the comment blocks of a WordPress-rendered site. Each one creates
+ * through core's own path (`wp_new_comment` or the REST controller, both through
+ * `wp_allow_comment`), so duplicate and flood checks, Akismet when the site has it, and
+ * notifications behave as on any WordPress site.
+ *
+ * The policy is the app's, never the Discussion settings: a site admin changing those changes
+ * nothing an app declared. Until a kind's `comments` takes the spec's options object, every kind
+ * with comments on has the spec's defaults ({@see policy()}):
+ * - signed-in users only (`rest_allow_anonymous_comments` stays core's `false`, and a signed-out
+ *   submission is refused before it is saved);
+ * - first-time moderation: a commenter's comment is approved when they already have an approved
+ *   comment on the site, and held otherwise; users who may moderate are approved, as core does;
+ * - threaded to depth 3: a reply below that is refused, not flattened, so a reply never shows
+ *   somewhere its author didn't put it;
+ * - never closed.
+ *
+ * Hooks: `pre_comment_on_post` (wp-comments-post.php, before anything is saved), `preprocess_comment`
+ * (every path into `wp_new_comment`), `rest_pre_insert_comment` (the REST controller, which inserts
+ * with `wp_insert_comment`), `pre_comment_approved` (core's moderation decision, last), and
+ * `get_comment`-free reads through {@see visible()}.
+ */
+final class Comments
+{
+    /** @var array<string, string> post type => collection, for kinds with comments on */
+    private static array $types = [];
+
+    public static function register(Plugin $plugin): void
+    {
+        foreach ($plugin->schema->collections() as $name => $collection) {
+            if (($collection['comments'] ?? false) === true && isset($collection['wp']['postType'])) {
+                self::$types[(string) $collection['wp']['postType']] = (string) $name;
+            }
+        }
+        if (self::$types === []) {
+            return;
+        }
+        // wp-comments-post.php: refused before core reads the submission any further.
+        add_action('pre_comment_on_post', static function (int $postId): void {
+            $error = self::refusal($postId, (int) ($_POST['comment_parent'] ?? 0));
+            if ($error !== null) {
+                wp_die('<p>' . esc_html($error->get_error_message()) . '</p>', esc_html__('Comment Submission Failure'), ['response' => (int) ($error->get_error_data()['status'] ?? 403), 'back_link' => true]);
+            }
+        }, PHP_INT_MAX);
+        // Every path into wp_new_comment (core's form handler, other plugins calling it).
+        add_filter('preprocess_comment', static function (array $data): array {
+            $error = self::refusal((int) ($data['comment_post_ID'] ?? 0), (int) ($data['comment_parent'] ?? 0), (int) ($data['user_id'] ?? 0));
+            if ($error !== null) {
+                wp_die(esc_html($error->get_error_message()), esc_html__('Comment Submission Failure'), ['response' => (int) ($error->get_error_data()['status'] ?? 403)]);
+            }
+            return $data;
+        }, PHP_INT_MAX);
+        // The REST controller (the facade dispatches to it): its own WP_Error, so the API answers 4xx.
+        add_filter('rest_pre_insert_comment', static function (mixed $prepared, \WP_REST_Request $request): mixed {
+            if (!is_array($prepared) || ($prepared['comment_type'] ?? 'comment') === 'note') {
+                return $prepared;
+            }
+            return self::refusal((int) ($prepared['comment_post_ID'] ?? 0), (int) ($prepared['comment_parent'] ?? 0), (int) ($prepared['user_id'] ?? 0)) ?? $prepared;
+        }, PHP_INT_MAX, 2);
+        // Moderation, after core's own checks (the disallowed list still sends a comment to spam).
+        add_filter('pre_comment_approved', static function (mixed $approved, array $data): mixed {
+            $collection = self::collection((int) ($data['comment_post_ID'] ?? 0));
+            if ($collection === null || is_wp_error($approved) || in_array($approved, ['spam', 'trash'], true)) {
+                return $approved;
+            }
+            return self::moderate($collection, $data);
+        }, PHP_INT_MAX, 2);
+    }
+
+    /** The collection whose item $postId is, when that kind has comments on. */
+    public static function collection(int $postId): ?string
+    {
+        $type = $postId > 0 ? get_post_type($postId) : false;
+
+        return is_string($type) ? (self::$types[$type] ?? null) : null;
+    }
+
+    /**
+     * A kind's comment policy. Until `comments` takes the options object (spec §2.3), the spec's
+     * defaults for every kind that turns comments on.
+     *
+     * @return array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int}
+     */
+    public static function policy(string $collection): array
+    {
+        return ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null];
+    }
+
+    /** Why a comment on $postId (as a reply to $parent) is refused, or null when the policy allows it. */
+    private static function refusal(int $postId, int $parent, int $userId = 0): ?\WP_Error
+    {
+        $collection = self::collection($postId);
+        if ($collection === null) {
+            return null; // not a kind of the app's: Hardening's comments_open decides
+        }
+        $policy = self::policy($collection);
+        if (!$policy['guests'] && max($userId, get_current_user_id()) === 0) {
+            return new \WP_Error('first_comment_sign_in', __('Sign in to comment.'), ['status' => 401]);
+        }
+        if ($parent > 0) {
+            $depth = 1;
+            $comment = get_comment($parent);
+            if (!$comment instanceof \WP_Comment || (int) $comment->comment_post_ID !== $postId) {
+                return new \WP_Error('first_comment_parent', __('The comment you reply to is not on this item.'), ['status' => 400]);
+            }
+            while ($comment instanceof \WP_Comment && (int) $comment->comment_parent > 0 && $depth < 64) {
+                $depth++;
+                $comment = get_comment((int) $comment->comment_parent);
+            }
+            // $depth is the parent's depth; the reply would be one below it.
+            if ($depth + 1 > $policy['threaded']) {
+                return new \WP_Error('first_comment_depth', sprintf(__('Replies go %d levels deep here.'), $policy['threaded']), ['status' => 400]);
+            }
+        }
+        if ($policy['closeAfterDays'] !== null) {
+            $post = get_post($postId);
+            if ($post instanceof \WP_Post && time() - (int) strtotime($post->post_date_gmt . ' UTC') > $policy['closeAfterDays'] * DAY_IN_SECONDS) {
+                return new \WP_Error('first_comment_closed', __('Comments are closed on this item.'), ['status' => 403]);
+            }
+        }
+        return null;
+    }
+
+    /** The approval of a comment the policy allows: 1 approved, 0 held. */
+    private static function moderate(string $collection, array $data): int
+    {
+        $userId = (int) ($data['user_id'] ?? 0);
+        if ($userId > 0 && user_can($userId, 'moderate_comments')) {
+            return 1;
+        }
+        return match (self::policy($collection)['moderation']) {
+            'none' => 1,
+            'all' => 0,
+            // first-time: held until one of the commenter's comments has been approved anywhere on the site.
+            default => $userId > 0 && get_comments(['user_id' => $userId, 'status' => 'approve', 'count' => true, 'number' => 1]) > 0 ? 1 : 0,
+        };
+    }
+
+    /**
+     * The thread of $postId as $userId may read it: approved comments, and the reader's own held
+     * ones, oldest first, as rows `{ id, parent, author, authorName, content, status, createdAt }`.
+     * The caller has already decided the reader may read the item.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function thread(int $postId, int $userId): array
+    {
+        $args = ['post_id' => $postId, 'type' => 'comment', 'orderby' => 'comment_date_gmt', 'order' => 'ASC', 'update_comment_meta_cache' => false];
+        $comments = get_comments($args + ['status' => 'approve']);
+        if ($userId > 0) {
+            $comments = [...$comments, ...get_comments($args + ['status' => 'hold', 'user_id' => $userId])];
+            usort($comments, static fn (\WP_Comment $a, \WP_Comment $b): int => [$a->comment_date_gmt, (int) $a->comment_ID] <=> [$b->comment_date_gmt, (int) $b->comment_ID]);
+        }
+        return array_map(static fn (\WP_Comment $c): array => [
+            'id' => (int) $c->comment_ID,
+            'parent' => (int) $c->comment_parent ?: null,
+            'author' => (int) $c->user_id ?: null,
+            'authorName' => $c->comment_author,
+            'content' => $c->comment_content,
+            'status' => $c->comment_approved === '1' ? 'approved' : 'pending',
+            'createdAt' => gmdate('Y-m-d\TH:i:s.000\Z', (int) strtotime($c->comment_date_gmt . ' UTC')),
+        ], $comments);
+    }
+}

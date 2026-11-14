@@ -80,6 +80,12 @@ export interface FormState<TResult> {
   values: Record<string, string | undefined>;
 }
 
+/**
+ * The thread on `for` (an item of a kind with `comments` on), as the visitor may read it, and a
+ * form that posts a comment without JavaScript. Who may comment, moderation and reply depth are
+ * the kind's comment options, enforced wherever a comment is created, never props.
+ */
+export declare function Comments(props: { for: { id: number }; className?: string }): JSX.Element;
 /** A post body (block markup) rendered through `the_content`. */
 export declare function Content(props: { value: string | null | undefined }): JSX.Element;
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */

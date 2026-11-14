@@ -928,7 +928,7 @@ final class Db
             return;
         }
         $seen[$collection] = true;
-        foreach ($this->schema->collections() as $child => $spec) {
+        foreach ($this->schema->kinds() as $child => $spec) {
             foreach ($spec['columns'] as $col => $def) {
                 $ref = $def['references'] ?? null;
                 if ($ref === null || $ref['collection'] !== $collection) {
@@ -973,7 +973,7 @@ final class Db
             return;
         }
         $seen[$key] = true;
-        foreach ($this->schema->collections() as $child => $spec) {
+        foreach ($this->schema->kinds() as $child => $spec) {
             foreach ($spec['columns'] as $col => $def) {
                 $ref = $def['references'] ?? null;
                 if ($ref === null || $ref['collection'] !== $collection || !array_key_exists($ref['column'], $written)) {
@@ -1011,7 +1011,7 @@ final class Db
     {
         $this->requireDeleteVisibility($collection, $viewer);
         $spec = $this->schema->collection($collection);
-        foreach ($this->schema->collections() as $child => $cspec) {
+        foreach ($this->schema->kinds() as $child => $cspec) {
             foreach ($cspec['columns'] as $col => $c) {
                 $ref = $c['references'] ?? null;
                 if ($c['type'] === 'refList') {
@@ -1019,7 +1019,8 @@ final class Db
                     if ($child === $collection) {
                         $this->links()->unlink($ref['join'], 'owner_id', $row[$spec['primaryKey']]);
                     }
-                    if ($ref['collection'] !== $collection) {
+                    // A term's links go with the term: core's own delete removes them and recounts.
+                    if ($ref['collection'] !== $collection || str_starts_with($ref['join'], 'term:')) {
                         continue;
                     }
                     $id = $row[$ref['column']];
@@ -1346,18 +1347,23 @@ final class Db
         });
     }
 
-    private function rejectUnknown(array $columns, array $data): void
+    /** Unknown fields, and fields storage computes (a term's `count` and `url`), are refused. */
+    private function rejectUnknown(array $columns, array $data, ?array $existing = null): void
     {
-        foreach ($data as $key => $_) {
+        foreach ($data as $key => $v) {
             if (!isset($columns[$key])) {
                 throw HttpError::invalidInput("Unknown field '$key'", HttpError::seg($key));
+            }
+            // An update may resend what it read, unchanged.
+            if (($columns[$key]['readOnly'] ?? false) && ($existing === null || !Js::strictEq($v, $existing[$key] ?? null))) {
+                throw HttpError::invalidInput("$key is read-only", HttpError::seg($key));
             }
         }
     }
 
     private function checkPatch(array $spec, array $existing, array $patch): void
     {
-        $this->rejectUnknown($spec['columns'], $patch);
+        $this->rejectUnknown($spec['columns'], $patch, $existing);
         $pk = $spec['primaryKey'];
         if (array_key_exists($pk, $patch) && !Js::strictEq($patch[$pk], $existing[$pk])) {
             throw HttpError::invalidInput('The primary key cannot be changed', HttpError::seg($pk));
@@ -1689,7 +1695,7 @@ final class Db
             if ($row === null) {
                 return null;
             }
-            foreach ($this->schema->collections() as $c => $spec) {
+            foreach ($this->schema->kinds() as $c => $spec) {
                 foreach ($spec['columns'] as $col => $def) {
                     if ($def['type'] === 'media') {
                         $this->update((string) $c, [$col => null], [$col => $id]);

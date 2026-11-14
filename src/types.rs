@@ -533,6 +533,10 @@ pub fn insert(schema: &Schema, table: &str) -> Ty {
 pub fn insert_with(schema: &Schema, table: &str, json_ty: &dyn Fn(&Column) -> Ty) -> Ty {
     let c = &schema.collections[table];
     let mut t = columns_insert(&c.columns, json_ty);
+    if let Ty::Obj(fields) = &mut t {
+        // Storage computes these (a term's `count` and `url`).
+        fields.retain(|name, _| !c.columns[name].read_only);
+    }
     if c.localized
         && let Ty::Obj(fields) = &mut t
     {

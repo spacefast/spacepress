@@ -42,6 +42,8 @@ final class CoreAccess
     public static function register(): void
     {
         add_filter('map_meta_cap', [self::class, 'mapMetaCap'], 10, 4);
+        // Core lets `assign_terms` create a term in a flat taxonomy; First's create rule decides (ruling 29).
+        add_filter('pre_insert_term', [self::class, 'termCreate'], PHP_INT_MAX, 2);
         // Last: SCF adds its field links on the same filters at 10, registered later in the request.
         add_filter('rest_prepare_revision', [self::class, 'prepareChild'], PHP_INT_MAX, 3);
         add_filter('rest_prepare_autosave', [self::class, 'prepareChild'], PHP_INT_MAX, 3);
@@ -101,12 +103,56 @@ final class CoreAccess
 
             return self::grant(self::postAllowed($collection, $cap, $post, $userId));
         }
+        if (in_array($cap, ['edit_term', 'delete_term', 'assign_term'], true)) {
+            $term = isset($args[0]) ? get_term((int) $args[0]) : null;
+            $taxonomy = $term instanceof \WP_Term ? self::taxonomyKind($term->taxonomy) : null;
+            if ($taxonomy !== null) {
+                return self::grant(self::termAllowed($taxonomy, $cap, $term, $userId));
+            }
+
+            return $caps;
+        }
         [$collection, $kind] = self::primitives()[$cap] ?? [null, null];
         if ($collection === null) {
             return $caps;
         }
 
         return self::grant(self::typeAllowed($collection, $kind, $userId));
+    }
+
+    /** One term: its taxonomy's update or delete rule covers it; assigning is a write to an item. */
+    private static function termAllowed(string $taxonomy, string $cap, \WP_Term $term, int $userId): bool
+    {
+        $viewer = self::viewerFor($userId);
+        if ($viewer === null || $viewer->user === null) {
+            return false;
+        }
+
+        return match ($cap) {
+            'edit_term' => self::covers($taxonomy, 'update', $term->term_id, $viewer),
+            'delete_term' => self::covers($taxonomy, 'delete', $term->term_id, $viewer),
+            'assign_term' => self::typeAllowed($taxonomy, 'assign', $userId) && self::covers($taxonomy, 'read', $term->term_id, $viewer),
+        };
+    }
+
+    /**
+     * pre_insert_term: a signed-in user creating a term of a First taxonomy outside First's pipeline
+     * (wp-admin, core's terms route, a post save naming a new tag) needs the taxonomy's create rule.
+     */
+    public static function termCreate(mixed $term, mixed $taxonomy): mixed
+    {
+        $plugin = Plugin::instance();
+        if ($term instanceof \WP_Error || !is_string($taxonomy) || $plugin === null || $plugin->connection()->busy()
+            || get_current_user_id() === 0 || ($kind = self::taxonomyKind($taxonomy)) === null) {
+            return $term;
+        }
+        $viewer = self::viewer();
+        $rule = Access::collectionRules(self::schema()->collection($kind))['create'];
+        if ($viewer === null || Access::evaluate($rule, $viewer, 'create', ['name' => (string) $term]) === false) {
+            return new \WP_Error('rest_cannot_create', __('Sorry, you are not allowed to create terms in this taxonomy.'), ['status' => rest_authorization_required_code()]);
+        }
+
+        return $term;
     }
 
     private static function postAllowed(string $collection, string $cap, \WP_Post $post, int $userId): bool
@@ -143,6 +189,10 @@ final class CoreAccess
         // `edit_`, `create_`, `delete_`: the rule may allow some row. The `others`/`published`/`private`
         // variants speak for any row, so they need a rule that covers every row as stored.
         return match ($kind) {
+            // A taxonomy's terms are assigned by writing an item of an attached kind (ruling 29).
+            'assign' => array_filter(self::schema()->collection($collection)['wp']['on'] ?? [],
+                static fn (string $kind): bool => self::ruleMayAllow($kind, 'create', $viewer) || self::ruleMayAllow($kind, 'update', $viewer)) !== [],
+            'manage' => self::ruleMayAllow($collection, 'create', $viewer) || self::ruleMayAllow($collection, 'update', $viewer) || self::ruleMayAllow($collection, 'delete', $viewer),
             'create' => self::ruleMayAllow($collection, 'create', $viewer),
             'edit' => self::ruleMayAllow($collection, 'update', $viewer) || self::ruleMayAllow($collection, 'create', $viewer),
             'delete' => self::ruleMayAllow($collection, 'delete', $viewer),
@@ -166,6 +216,15 @@ final class CoreAccess
                     "delete_$t" => [$name, 'delete'], "delete_others_$t" => [$name, 'deleteAll'],
                     "delete_published_$t" => [$name, 'deleteAll'], "delete_private_$t" => [$name, 'deleteAll'],
                     "read_private_$t" => [$name, 'readAll'],
+                ];
+            }
+            foreach (self::schema()->taxonomies() as $name => $spec) {
+                $t = $spec['wp']['taxonomy'];
+                self::$primitives += [
+                    "manage_$t" => [$name, 'manage'],
+                    "edit_$t" => [$name, 'edit'],
+                    "delete_$t" => [$name, 'delete'],
+                    "assign_$t" => [$name, 'assign'],
                 ];
             }
         }
@@ -289,6 +348,10 @@ final class CoreAccess
                 continue;
             }
             $dropped = true;
+            if (PostMeta::terms($def)) {
+                // Core's own taxonomy field on the post.
+                unset($data[(string) (self::schema()->collection($def['references']['collection'])['wp']['taxonomy'] ?? '')]);
+            }
             match ($col) {
                 $spec['content'] ?? null => self::unset($data, ['content', 'excerpt']),
                 $spec['slug'] ?? null => self::unset($data, ['slug', 'generated_slug', 'permalink_template', 'link']),
@@ -682,6 +745,18 @@ final class CoreAccess
     {
         foreach (self::postBacked() as $name => $spec) {
             if ($spec['wp']['postType'] === $postType) {
+                return (string) $name;
+            }
+        }
+
+        return null;
+    }
+
+    /** The taxonomy kind a WordPress taxonomy (`first_<name>`) is, or null when it isn't First's. */
+    public static function taxonomyKind(string $taxonomy): ?string
+    {
+        foreach (Plugin::instance()?->schema->taxonomies() ?? [] as $name => $spec) {
+            if ($spec['wp']['taxonomy'] === $taxonomy) {
                 return (string) $name;
             }
         }

@@ -58,6 +58,10 @@ final class Kinds
                 $out[$name] = ['name' => $name, 'type' => 'table', 'route' => '/wp/v2/' . $spec['table'], 'spec' => $spec];
             }
         }
+        // A `taxonomy()` kind: its core term route, answered through First's pipeline (TermsController).
+        foreach ($plugin->schema->taxonomies() as $name => $spec) {
+            $out[(string) $name] = ['name' => (string) $name, 'type' => 'taxonomy', 'route' => '/wp/v2/' . $spec['wp']['taxonomy'], 'spec' => $spec];
+        }
         if ($auth !== null) {
             $out['users'] ??= $out[$auth]; // the spec's name for the users kind
         }
@@ -101,7 +105,7 @@ final class Kinds
     /** Whether the kind is one First's own pipeline answers (its rules, `where`, `with`), not core alone. */
     public static function first(array $kind): bool
     {
-        return in_array($kind['type'], ['post', 'users', 'table'], true);
+        return in_array($kind['type'], ['post', 'users', 'table', 'taxonomy'], true);
     }
 
     /** A core response item as the First row (fields flat, First's status, relations flattened). */
@@ -121,7 +125,7 @@ final class Kinds
             })(),
             // First's row for this viewer, or null: core may list a user First's read rule hides.
             // `with` wins: a media column loaded with `with` replaces its id with the media row.
-            'users', 'post' => ($first = $item[self::ROW] ?? null) === null ? null : array_replace(is_object($first) ? get_object_vars($first) : (array) $first, $with),
+            'users', 'post', 'taxonomy' => ($first = $item[self::ROW] ?? null) === null ? null : array_replace(is_object($first) ? get_object_vars($first) : (array) $first, $with),
             'wp-post' => self::wpPostRow($kind, $item),
             'wp-users' => self::userRow($item),
             'comments' => self::commentRow($item),
@@ -272,6 +276,8 @@ final class Kinds
         return match ($kind['type']) {
             'table' => $data,
             'post', 'users' => self::firstInput($kind, $data, $create),
+            // A term: its name as core's, everything else First's (TermsController reads `first`).
+            'taxonomy' => array_intersect_key($data, ['name' => true]) + (array_diff_key($data, ['name' => true]) === [] ? [] : ['first' => (object) array_diff_key($data, ['name' => true])]),
             'wp-post' => self::rename($data, ['content' => 'content', 'title' => 'title', 'slug' => 'slug', 'excerpt' => 'excerpt',
                 'categories' => 'categories', 'tags' => 'tags', 'featuredImage' => 'featured_media', 'sticky' => 'sticky',
                 'parent' => 'parent', 'order' => 'menu_order', 'template' => 'template', 'author' => 'author'], self::statusInput($data, $create)),

@@ -363,6 +363,7 @@ nullable with a default.
 | `media({ accept? })` | BIGINT media id | `number` (a media row with `with: { col: true }`) |
 | `media().many()` | LONGTEXT (JSON ids) | `number[]` |
 | `ref(kind).many()` | a join table (see [Relations](#relations)) | `number[]` |
+| `terms(taxonomy)` | none: WordPress's term relationships (see [Taxonomies](#taxonomies)) | `number[]` |
 | `group({ ...fields })` | LONGTEXT (JSON) | `{ ...fields }` |
 | `repeater({ ...fields })` | LONGTEXT (JSON) | `{ ...fields }[]` |
 | `blocks({ a: { ...fields }, b: { ...fields } })` | LONGTEXT (JSON) | `({ layout: "a", ...a } \| { layout: "b", ...b })[]` |
@@ -1038,6 +1039,63 @@ target that is still linked, and no other action is allowed. A many-ref takes
 no `.unique()`, default or `.localized()`, and isn't allowed in sub-fields,
 globals or action and job inputs. In the editor it is a multiple post picker
 when the target is post-backed, and a list of ids otherwise.
+
+### Taxonomies
+
+`taxonomy(fields?, options)` is a kind whose rows are WordPress terms: topics,
+tags, categories of your own. Its `on` lists the collections whose items carry
+its terms, and each gets a field named after the taxonomy's export.
+`terms(taxonomy)` is the same field written out, for another name or a modifier
+(`.access()`, `.ui()`, `.reverse()`); a taxonomy declared later is
+`terms(() => topics)`.
+
+```ts
+export const topics = taxonomy(
+  { color: text().optional() },
+  { hierarchical: true, url: "/topics/:path", on: [posts] },
+);
+export const notes = collection({ title: text(), labels: terms(tags).reverse("labelled") });
+```
+
+A term row is `id`, `name` (required), `slug` (derived from the name when left
+out, unique within the taxonomy), `description`, `parent` on a hierarchical
+taxonomy, `count` and `url`, then its own fields. `count` and `url` are
+read-only; `count` is WordPress's stored count of published items of every
+attached kind, the same for every viewer. A term has no `author` and no
+timestamps, and an authored field with one of those names is a build error.
+Term fields are `text`, `number`, `integer`, `boolean`, `date`, `timestamp`,
+`select` (with `.many()`), `email`, `url`, `json`, `media` and a single `ref`.
+
+The item field holds the term ids in the order they were written (`[]` when
+none), and a write replaces the whole set; the ids must be terms of that
+taxonomy the writer can read, and a name never creates a term. The filters are
+a many-ref's: `{ has: 5 }`, a filter on the terms, `[]`, `true` and `false`. A
+match is exact: `has` on a parent doesn't match items carrying only its
+children. `with: { topics: true }` loads the term rows in write order, and the
+taxonomy gets the reverse list named after the item kind
+(`first.topics.list({ with: { posts: true } })`). Terms list by `name`, then `id`.
+
+Access defaults to anyone reading and `editor` creating, updating and
+deleting. Assigning terms is a write to the item, under the item kind's rule
+and the field's own `.access()`; creating a term always needs the taxonomy's
+`create` rule, in wp-admin and core's `/wp/v2` too.
+
+With a `url` (`:slug`, `:id`, and `:path` for the chain of ancestor slugs) the
+taxonomy is public: the term has an archive page listing the items of attached
+kinds that have a `url`, core's sitemap lists its terms, and `:topics.slug` in
+an item's `url` is the slug of its first term. Deleting a term moves its
+children to its parent and removes its links.
+
+Storage is WordPress's own: `first_<name>` (so a storage name has at most 26
+characters), its fields as term meta `first_<field>`, and the links as
+`wp_term_relationships` rows in write order. Nothing about a taxonomy enters the
+migration snapshot. Not built yet, each a build error: `was`, `sync`, hooks,
+`abilities` and `search` on a taxonomy; translations (with `locales` set, write
+`translations: false`); terms on `table()` kinds and `ref(taxonomy)`;
+`terms(wp.categories)`; `.min()`/`.max()` on a terms field; containers,
+`richText`, `file()`, `ref().many()` and `.unique()` on term fields. A term's
+slug change leaves no redirect yet. See
+[the rulings](decisions/2026-11-11-authoring-surface.md#taxonomies).
 
 One graph covers collection↔collection, table↔table and both directions across
 storage kinds. Relation filters and `with` loads use the same runtime machinery

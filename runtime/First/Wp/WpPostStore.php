@@ -284,7 +284,7 @@ final class WpPostStore implements Store
         return $rows;
     }
 
-    private static function serializedToJson(mixed $v, bool $ints): ?string
+    public static function serializedToJson(mixed $v, bool $ints): ?string
     {
         if ($v === null || $v === '') {
             return null;

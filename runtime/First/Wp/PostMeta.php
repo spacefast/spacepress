@@ -101,13 +101,20 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields
         $out = [];
         foreach ($spec['columns'] as $col => $def) {
             $col = (string) $col;
+            // A `terms` field is core's own taxonomy field on the post (`first_<taxonomy>`), not post meta.
             if ($col !== $spec['primaryKey'] && $col !== ($spec['title'] ?? null) && $col !== ($spec['content'] ?? null)
-                && $col !== ($spec['slug'] ?? null) && !($def['system'] ?? false)) {
+                && $col !== ($spec['slug'] ?? null) && !($def['system'] ?? false) && !self::terms($def)) {
                 $out[$col] = $def;
             }
         }
 
         return $out;
+    }
+
+    /** Whether a column is a `terms` field: its links are the post's term relationships. */
+    public static function terms(array $def): bool
+    {
+        return str_starts_with((string) ($def['references']['join'] ?? ''), 'term:');
     }
 
     /** True while core's own code handles the meta that isn't First's (other plugins' registered keys). */

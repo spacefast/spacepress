@@ -17,6 +17,8 @@ final class Builtins
         'first.global' => null,
         'first.defineRelations' => null,
         'first.ref' => null,
+        'first.taxonomy' => null,
+        'first.terms' => null,
         'first.defineConfig' => null,
         'first.action' => null,
         'first.job' => null,

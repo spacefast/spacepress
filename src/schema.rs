@@ -127,8 +127,20 @@ pub struct Reference {
     pub on_delete: Option<RefAction>,
     pub on_update: Option<RefAction>,
     /// A many-ref's join table: its snapshot key, `<owner storage name>_<field snake_case>`, stored as
-    /// `{prefix}first_<key>` with `owner_id`, `target_id` and `position`.
+    /// `{prefix}first_<key>` with `owner_id`, `target_id` and `position`. A `terms()` field's links
+    /// are core's term relationships instead: `term:<taxonomy storage name>` ([`term_join`]).
     pub join: Option<String>,
+}
+
+/// The link key of a `terms()` field: the taxonomy's term relationships, read and written by the
+/// runtime's term store. The `:` keeps it apart from every join table name.
+pub fn term_join(taxonomy: &str) -> String {
+    format!("term:{taxonomy}")
+}
+
+/// Whether a link key names a taxonomy's term relationships rather than a First join table.
+pub fn is_term_join(join: &str) -> bool {
+    join.starts_with("term:")
 }
 
 /// Value rules checked by the runtime after coercion (§1.2).
@@ -193,6 +205,8 @@ pub struct Column {
     pub bucket: Option<String>,
     pub derived: bool,
     pub hidden: bool,
+    /// Computed by storage and never written: a term's `count` and `url`.
+    pub read_only: bool,
     /// `json<T>()` annotation, module and call position.
     pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
     /// `.was("old")`: the stored name before a rename (spec §2.5).
@@ -226,6 +240,7 @@ impl Column {
             bucket: None,
             derived: false,
             hidden: false,
+            read_only: false,
             ts_type: None,
             was: None,
         }
@@ -259,7 +274,10 @@ impl Column {
 
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
-        !self.not_null || self.default.is_some() || self.auto_increment
+        !self.not_null
+            || self.default.is_some()
+            || self.auto_increment
+            || self.ty == ColType::Slug && self.source.is_some()
     }
 }
 
@@ -427,10 +445,25 @@ pub struct Collection {
     /// `url: "/blog/:slug"`: the pattern as written (spec §2.7). Checked by [`crate::kind_url`].
     pub url: Option<String>,
     /// `hierarchical: true` (spec §2.6): items nest under a `parent` and sort by `order`, stored as
-    /// the post's own `post_parent` and `menu_order`; `:path` in the url is the parent chain.
+    /// the post's own `post_parent` and `menu_order`; `:path` in the url is the parent chain. On a
+    /// taxonomy it adds the term's `parent`.
     pub hierarchical: bool,
+    /// `taxonomy()`: terms in core's term tables, attached to these kinds
+    /// (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
+    pub taxonomy: Option<Taxonomy>,
     /// `.index(fields, { unique? })`: compound indexes the author declared, as (fields, unique).
     pub indexes: Vec<(Vec<String>, bool)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Taxonomy {
+    /// The kinds (storage names) with a `terms` field for it, through `on` or `terms()`.
+    pub on: Vec<String>,
+}
+
+/// A taxonomy's WordPress name: `first_<storage name>`.
+pub fn taxonomy_name(table: &str) -> String {
+    format!("first_{table}")
 }
 
 impl Collection {

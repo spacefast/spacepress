@@ -8322,7 +8322,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if let Some(s) = suggest(job, self.schema.jobs.keys().map(String::as_str)) {
                 d = d.help(format!("did you mean `{s}`?"));
             } else {
-                d = d.help("declare it in defineConfig({ jobs: { ... } })");
+                d = d.help(format!("export it: `export const {job} = job(...)`"));
             }
             return Err(d);
         };

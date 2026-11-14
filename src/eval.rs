@@ -557,6 +557,9 @@ pub struct Evaluator<'p> {
     pub method_home_fields: HashMap<(usize, String), (TyAnn, usize)>,
     /// The 0.3.0 field reading for pre-rename captures (`Fs::legacy_fields`).
     pub(crate) legacy: bool,
+    /// Every kind, global, bucket, action and job value built so far, in call order. Registration
+    /// refuses one built in app source that no export names (ruling 37).
+    pub built: Vec<Value>,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
@@ -586,6 +589,7 @@ impl<'p> Evaluator<'p> {
             method_homes: HashMap::new(),
             method_home_fields: HashMap::new(),
             legacy: program.fs.legacy_fields(),
+            built: Vec::new(),
         }
     }
 
@@ -603,7 +607,7 @@ impl<'p> Evaluator<'p> {
                 },
                 "first.config.ts has no default export",
             )
-            .help("end the file with `export default defineConfig({ collections, tables, hooks, actions })`")),
+            .help("end the file with `export default defineConfig({ name: \"my-app\" })`; kinds, actions and jobs register by their exports")),
         }
     }
 
@@ -2793,7 +2797,7 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                 };
-                Ok(Value::Collection(Rc::new(CollectionVal {
+                let value = Value::Collection(Rc::new(CollectionVal {
                     kind: *kind,
                     table: std::cell::OnceCell::new(),
                     columns,
@@ -2801,7 +2805,9 @@ impl<'p> Evaluator<'p> {
                     span,
                     hooks: RefCell::new(Vec::new()),
                     indexes: std::cell::RefCell::new(Vec::new()),
-                })))
+                }));
+                self.built.push(value.clone());
+                Ok(value)
             }
             Builtin::Column(ty) => self.make_column(ty.name(), &args, span),
             Builtin::Field(name) => self.make_column(name, &args, span),
@@ -2838,12 +2844,14 @@ impl<'p> Evaluator<'p> {
                 if let Some(name) = name {
                     let _ = cell.set(name);
                 }
-                Ok(Value::Global(Rc::new(GlobalVal {
+                let value = Value::Global(Rc::new(GlobalVal {
                     name: cell,
                     fields,
                     options,
                     span,
-                })))
+                }));
+                self.built.push(value.clone());
+                Ok(value)
             }
             Builtin::Id if self.legacy => Ok(Value::Column(Rc::new(legacy::id(span)))),
             Builtin::Id => err_help(
@@ -2955,11 +2963,13 @@ impl<'p> Evaluator<'p> {
                 if let Some(name) = name {
                     let _ = cell.set(name);
                 }
-                Ok(Value::FileBucket(Rc::new(FileBucketVal {
+                let value = Value::FileBucket(Rc::new(FileBucketVal {
                     name: cell,
                     options,
                     span,
-                })))
+                }));
+                self.built.push(value.clone());
+                Ok(value)
             }
             Builtin::Once
             | Builtin::Jobs
@@ -2984,11 +2994,15 @@ impl<'p> Evaluator<'p> {
                     );
                 }
                 let value = Rc::new(ActionVal { config: cfg, span });
-                Ok(match b {
+                let value = match b {
                     Builtin::Job => Value::Job(value),
                     Builtin::Route => Value::Route(value),
                     _ => Value::Action(value),
-                })
+                };
+                if !matches!(value, Value::Route(_)) {
+                    self.built.push(value.clone());
+                }
+                Ok(value)
             }
             Builtin::RelFn(kind, target) => {
                 let config = match arg(0) {

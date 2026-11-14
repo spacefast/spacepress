@@ -119,18 +119,12 @@ struct RefField {
     span: Span,
 }
 
+/// What `defineConfig` takes. None of these registers a named thing: kinds, globals, file buckets,
+/// actions and jobs register by their exports (ruling 36).
 const CONFIG_KEYS: &[&str] = &[
     "name",
-    "collections",
-    "tables",
-    "users",
     "relations",
-    "globals",
-    "hooks",
-    "actions",
-    "jobs",
     "webhooks",
-    "files",
     "media",
     "uploads",
     "locales",
@@ -163,6 +157,9 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "url",
     "hierarchical",
 ];
+/// The registries `crate::pipeline` fills from the app's exports (a 0.3.0 capture's config writes
+/// them itself): the model extraction reads, never an option a current config can set.
+const REGISTRIES: &[&str] = &["collections", "tables", "users", "globals", "files", "actions", "jobs"];
 /// Collection names that would shadow a built-in route (§4.8).
 const RESERVED_COLLECTIONS: &[&str] = &[
     "media", "files", "globals", "actions", "me", "_schema", "auth", "services", "search",
@@ -217,7 +214,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         |ev: &Evaluator<'_>, obj: &Value, key: &str, fallback: Span| ev.key_span(obj, key).unwrap_or(fallback);
     for key in cfg_map.keys() {
         let old_key = ev.legacy() && legacy::CONFIG_KEYS.contains(&key.as_str());
-        if !CONFIG_KEYS.contains(&key.as_str()) && !old_key {
+        if !CONFIG_KEYS.contains(&key.as_str()) && !REGISTRIES.contains(&key.as_str()) && !old_key {
             let mut d = Diag::new(
                 span_of(ev, config, key, config_span),
                 format!("defineConfig() has no option `{key}`"),
@@ -3053,8 +3050,9 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
         let valid_mime = regex::Regex::new(r"^[A-Za-z0-9!#$&^_.+-]+/(\*|[A-Za-z0-9!#$&^_.+-]+)$").unwrap();
         for (name, value) in object(v, span, "files")? {
             let Value::FileBucket(bucket) = value else {
-                return Err(Diag::new(span, "files entries must use files()")
-                    .help("write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20000000 })` and list it as `files: { decks }`"));
+                return Err(Diag::new(span, "files entries must use files()").help(
+                    "write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20000000 })`",
+                ));
             };
             let sp = bucket.span;
             // The export name (the registry key) names the bucket; a 0.3.0 capture's own name must match.
@@ -3647,7 +3645,7 @@ mod legacy {
     use super::*;
 
     /// `defineConfig()` keys this reading accepts besides the current ones.
-    pub const CONFIG_KEYS: &[&str] = &["routes"];
+    pub const CONFIG_KEYS: &[&str] = &["routes", "hooks"];
 
     /// `routes: { feed: route({ method, path, access | signature, handler }) }`, from the config or a
     /// plugin, read onto the `first/app/` route table as one handler route per entry: its path is the

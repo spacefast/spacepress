@@ -502,5 +502,11 @@ $wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `atte
 as_schedule_single_action(time() - 10, \First\Wp\Jobs\ActionSchedulerQueue::HOOK, ['id' => $backoffId], 'first-tests', false);
 \First\Jobs\Tick::run();
 eq('a due delivery for a job whose retry is later leaves the job waiting', [(int) $job($backoffId)['attempts'], $job($backoffId)['state']], [1, 'failed']);
+// Its own delivery (scheduled for its retry time, as Runner::fail does), run early by hand with
+// `wp action-scheduler action run`, runs it.
+as_schedule_single_action((int) floor(\First\Js::date($at(8 * 86400 + 3600)) / 1000), \First\Wp\Jobs\ActionSchedulerQueue::HOOK, ['id' => $backoffId], 'first-tests', false);
+ActionScheduler_QueueRunner::instance()->process_action((int) $wp->scalar('SELECT `action_id` FROM {prefix}actionscheduler_actions WHERE `hook` = ? AND `args` = ? AND `status` = ? ORDER BY `action_id` DESC',
+    [\First\Wp\Jobs\ActionSchedulerQueue::HOOK, json_encode(['id' => $backoffId]), 'pending']), 'by hand');
+eq('the job\'s own delivery, run early by hand, runs it', (int) $job($backoffId)['attempts'], 2);
 
 finish('jobs');

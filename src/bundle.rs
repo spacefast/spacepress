@@ -442,9 +442,18 @@ pub fn compile(
 /// the bytes as captured, with every path validated and module ownership (app or vendor) checked.
 #[cfg(feature = "host")]
 pub(crate) fn read_bundles(source: &Path, files: [(&str, &String); 2]) -> Result<SourceBundle, Diag> {
+    let [(app, app_hash), (vendor, vendor_hash)] = files;
+    check_bundles([
+        (app, std::fs::read(source.join(app)).map_err(io)?, app_hash),
+        (vendor, std::fs::read(source.join(vendor)).map_err(io)?, vendor_hash),
+    ])
+}
+
+/// [`read_bundles`] on bytes already read: (file name, bytes, expected hash) for app, then vendor.
+#[cfg(feature = "host")]
+pub(crate) fn check_bundles(files: [(&str, Vec<u8>, &String); 2]) -> Result<SourceBundle, Diag> {
     let mut sources = SourceBundle::default();
-    for ((file, expected), vendor) in files.into_iter().zip([false, true]) {
-        let bytes = std::fs::read(source.join(file)).map_err(io)?;
+    for ((file, bytes, expected), vendor) in files.into_iter().zip([false, true]) {
         if hash(&bytes) != *expected {
             return Err(failure(format!("source bundle hash mismatch: {file}")));
         }
@@ -493,7 +502,14 @@ pub(crate) fn compile_tree(
     previous: Option<&Path>,
     runtime: bool,
 ) -> Result<Compiled, Diag> {
-    let bytes = std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?;
+    // A raw project from a client released before the rename is captured here first, exactly as
+    // `host::sources` captures it, and read as that capture (`crate::zero_bundle::capture_raw`).
+    let (bytes, raw) = if crate::zero_bundle::is_raw(source)? {
+        let [app, vendor, manifest] = crate::zero_bundle::capture_raw(source)?;
+        (manifest.into_bytes(), Some([app, vendor]))
+    } else {
+        (std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?, None)
+    };
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
     let legacy = manifest.format == crate::zero_bundle::FORMAT;
     if !(legacy || manifest.format == "first.source-bundle.v1")
@@ -506,7 +522,7 @@ pub(crate) fn compile_tree(
         return Err(failure("invalid source bundle format or app name"));
     }
     let sources = if legacy {
-        crate::zero_bundle::read(source, &manifest)?
+        crate::zero_bundle::read(source, &manifest, raw)?
     } else {
         let captured = read_bundles(
             source,

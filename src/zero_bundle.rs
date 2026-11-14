@@ -54,7 +54,9 @@ fn failure(message: impl Into<String>) -> Diag {
 }
 
 /// The bundle's sources on the current layout, after checking both files against the manifest.
-pub(crate) fn read(source: &Path, manifest: &Manifest) -> Result<SourceBundle, Diag> {
+/// `raw` holds the bundles [`capture_raw`] made when `source` is a raw project; otherwise they are
+/// read from `source`.
+pub(crate) fn read(source: &Path, manifest: &Manifest, raw: Option<[String; 2]>) -> Result<SourceBundle, Diag> {
     for name in [bundle::APP_FILE, bundle::VENDOR_FILE] {
         if source.join(name).exists() {
             return Err(failure(format!(
@@ -65,10 +67,17 @@ pub(crate) fn read(source: &Path, manifest: &Manifest) -> Result<SourceBundle, D
             ));
         }
     }
-    let captured = bundle::read_bundles(
-        source,
-        [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)],
-    )?;
+    let [app, vendor] = match raw {
+        Some(bundles) => bundles.map(String::into_bytes),
+        None => [
+            std::fs::read(source.join(APP_FILE)).map_err(|e| failure(e.to_string()))?,
+            std::fs::read(source.join(VENDOR_FILE)).map_err(|e| failure(e.to_string()))?,
+        ],
+    };
+    let captured = bundle::check_bundles([
+        (APP_FILE, app, &manifest.app_sha256),
+        (VENDOR_FILE, vendor, &manifest.vendor_sha256),
+    ])?;
     let mut sources = SourceBundle::default();
     for (path, text) in captured.files {
         sources.files.insert(current(&path)?, text);
@@ -144,10 +153,10 @@ pub(crate) fn is_raw(project: &Path) -> Result<bool, Diag> {
 
 const OLD_CONFIG: &str = "zero.config.ts";
 
-/// Capture a raw 0.3.0 project into `destination` (new) as the `zero.source-bundle.v1` the 0.3.0
-/// host capture wrote for it: the files loading and compiling read, on their 0.3.0 paths, and
-/// `public/`. Only `host::sources` calls it, after [`is_raw`].
-pub(crate) fn write_raw(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
+/// A raw 0.3.0 project captured as the `zero.source-bundle.v1` the 0.3.0 host capture made of it:
+/// the files loading and compiling read, on their 0.3.0 paths. Returns (app, vendor, manifest).
+/// Only reached through [`is_raw`]: from `host::sources` ([`write_raw`]) and `bundle::compile_tree`.
+pub(crate) fn capture_raw(project: &Path) -> Result<[String; 3], Diag> {
     let root = project.canonicalize().map_err(|e| failure(e.to_string()))?;
     let view = Rc::new(Raw { root: root.clone() });
     if view.is_dir(&root.join("pages")) || std::fs::symlink_metadata(root.join("zero/pages.json")).is_ok() {
@@ -174,10 +183,18 @@ pub(crate) fn write_raw(project: &Path, destination: &Path) -> Result<Manifest, 
         written.push(serde_json::to_string(&old).map_err(|e| failure(e.to_string()))?);
     }
     let manifest = bundle::manifest_for(FORMAT, &name, &written[0], &written[1]);
+    let vendor = written.pop().unwrap();
+    let app = written.pop().unwrap();
+    Ok([app, vendor, manifest])
+}
+
+/// [`capture_raw`] into `destination` (new), with `public/`, as `host::sources` writes any capture.
+pub(crate) fn write_raw(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
+    let [app, vendor, manifest] = capture_raw(project)?;
     bundle::write_capture(
-        &root,
+        project,
         destination,
-        [(APP_FILE, &written[0]), (VENDOR_FILE, &written[1])],
+        [(APP_FILE, &app), (VENDOR_FILE, &vendor)],
         &manifest,
     )
 }

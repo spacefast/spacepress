@@ -573,8 +573,8 @@ export default defineConfig({ tables: { notes }, relations: {} });"#,
     }
 }
 
-/// A raw 0.3.0 project as a client released before the rename uploads it: the app directory
-/// (`zero.config.ts`, its relative modules, its ledger, `public/`), copied without `node_modules`.
+/// A raw 0.3.0 project as the hosted MCP server 0.9.0 uploads it: the app directory
+/// (`zero.config.ts`, its relative modules, its ledger, `public/`), without `node_modules`.
 fn raw(work: &Path, fixture: &str) -> PathBuf {
     let project = work.join("raw");
     copy_dir(&Path::new(FIXTURE).join(fixture), &project);
@@ -582,22 +582,170 @@ fn raw(work: &Path, fixture: &str) -> PathBuf {
     project
 }
 
+/// The raw fixture apps: (app directory, its 0.3.0 capture, its 0.3.0 compiled tree).
+const RAW: &[(&str, &str, &str)] = &[
+    ("app", "sources", "compiled"),
+    ("routes/app", "routes/sources", "routes/compiled"),
+    ("raw-forms/app", "raw-forms/sources", "raw-forms/compiled"),
+];
+
 /// The host captures a raw 0.3.0 project into exactly the bundle the 0.3.0 compiler captured from
 /// it, so it compiles, migrates and is refused exactly as that capture is.
 #[test]
 fn a_raw_zero_project_is_captured_as_the_0_3_compiler_captured_it() {
-    for (fixture, sources) in [("app", "sources"), ("routes/app", "routes/sources")] {
+    for (fixture, sources, _) in RAW {
         let work = tempfile::tempdir().unwrap();
         let project = raw(work.path(), fixture);
         let captured = work.path().join("captured");
         first::host::sources(&project, &captured).unwrap();
         let expected = Path::new(FIXTURE).join(sources);
-        for name in ["app.zero.json", "vendor.zero.json", "manifest.json"] {
-            assert_eq!(
-                String::from_utf8(fs::read(captured.join(name)).unwrap()).unwrap(),
-                String::from_utf8(fs::read(expected.join(name)).unwrap()).unwrap(),
-                "{fixture}: {name}"
-            );
-        }
+        assert_eq!(tree(&captured), tree(&expected), "{fixture}");
     }
+}
+
+/// Handed to the compile entry itself, a raw project compiles to the tree its 0.3.0 capture
+/// compiles to (manifest included: the source hashes are the capture's), and recompiling it on its
+/// 0.3.0 output plans no migration and keeps the 0.3.0 snapshot.
+#[test]
+fn a_raw_zero_project_compiles_like_its_0_3_capture() {
+    for (fixture, sources, compiled) in RAW {
+        let work = tempfile::tempdir().unwrap();
+        let project = raw(work.path(), fixture);
+        let capture = Path::new(FIXTURE).join(sources);
+        let from_raw = work.path().join("from-raw");
+        let from_capture = work.path().join("from-capture");
+        first::host::compile_sources(&project, &from_raw, &project, None).unwrap();
+        first::host::compile_sources(&capture, &from_capture, &capture, None).unwrap();
+        assert_eq!(tree(&from_raw), tree(&from_capture), "{fixture}");
+
+        // On the 0.3.0 output (its ledger under the 0.3 names, which the stored-name upgrade moves):
+        // the ledger is carried as it is, nothing new is planned, and the snapshot is 0.3.0's.
+        let previous = Path::new(FIXTURE).join(compiled);
+        let snapshot = |dir: &Path| -> serde_json::Value {
+            serde_json::from_slice(&fs::read(dir.join("snapshot.json")).unwrap()).unwrap()
+        };
+        let again = work.path().join("again");
+        first::host::compile_sources(&project, &again, &project, Some(&previous)).unwrap();
+        assert_eq!(
+            tree(&again.join("migrations")),
+            tree(&previous.join("migrations")),
+            "{fixture}"
+        );
+        assert_eq!(snapshot(&again), snapshot(&previous), "{fixture}");
+
+        // The build store compiles it the same way.
+        let store = work.path().join("store");
+        let build = first::host::compile_to_store(&project, &store, &project, None).unwrap();
+        let stored = store.join("app").join(&build.app_hash);
+        assert_eq!(
+            tree(&stored.join("migrations")),
+            tree(&from_raw.join("migrations")),
+            "{fixture}"
+        );
+        assert_eq!(snapshot(&stored), snapshot(&from_raw), "{fixture}");
+    }
+}
+
+/// What a raw 0.3.0 project is refused for, on both host entries, and that nothing else reads one.
+#[test]
+fn a_raw_zero_project_is_refused_as_its_capture_is_and_only_the_host_reads_it() {
+    let refused = |project: &Path| {
+        let work = tempfile::tempdir().unwrap();
+        let captured = work.path().join("captured");
+        let Err(a) = first::host::sources(project, &captured) else {
+            panic!("{} was captured", project.display())
+        };
+        assert!(!captured.exists());
+        let output = work.path().join("out");
+        let b = first::host::compile_sources(project, &output, project, None).unwrap_err();
+        assert!(!output.exists());
+        assert_eq!((&a.message, &a.help), (&b.message, &b.help));
+        a
+    };
+
+    // An npm import: the 0.3.0 host refused it too (it installs no packages); the owner publishes
+    // from the CLI, which captures installed packages.
+    let work = tempfile::tempdir().unwrap();
+    let forms = work.path().join("forms");
+    copy_dir(&Path::new(FIXTURE).join("forms/app"), &forms);
+    let error = refused(&forms);
+    assert_eq!(
+        error.message,
+        "npm import \"zero-plugin-seo\" needs local source capture"
+    );
+    assert_eq!(
+        error.help.as_deref(),
+        Some("publish this project from the Spacefast CLI to capture installed npm sources")
+    );
+
+    // TSX pages, with or without their rendered artifact: the refusal a capture with pages gets.
+    for page in ["pages/page.tsx", "zero/pages.json"] {
+        let work = tempfile::tempdir().unwrap();
+        let project = raw(work.path(), "app");
+        let path = project.join(page);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "export default () => null;").unwrap();
+        let error = refused(&project);
+        assert_eq!(
+            error.message, "this bundle has TSX pages (pages/) rendered by the 0.3.0 compiler, which First can't serve",
+            "{page}"
+        );
+        assert!(error.help.unwrap_or_default().contains("first/app/<path>/page.tsx"));
+    }
+
+    // Two things to publish in one tree: which one the owner meant is not the host's to guess.
+    for (extra, message) in [
+        (
+            "first.config.ts",
+            "this upload has both zero.config.ts (from before the rename to First) and first.config.ts",
+        ),
+        (
+            ".zero-source/manifest.json",
+            "this upload has both a raw zero.config.ts project and a captured bundle (.zero-source)",
+        ),
+        (
+            ".first-source/manifest.json",
+            "this upload has both a raw zero.config.ts project and a captured bundle (.first-source)",
+        ),
+        (
+            "app.zero.json",
+            "this upload has both a raw zero.config.ts project and a captured bundle (app.zero.json)",
+        ),
+        (
+            "app.first.json",
+            "this upload has both a raw zero.config.ts project and a captured bundle (app.first.json)",
+        ),
+    ] {
+        let work = tempfile::tempdir().unwrap();
+        let project = raw(work.path(), "app");
+        let path = project.join(extra);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "{}").unwrap();
+        assert_eq!(refused(&project).message, message, "{extra}");
+    }
+
+    // A First project with a stray zero.config.ts is one of those: refused on the host. Its own
+    // capture (`first sources`, the CLI and the browser compiler) never reads zero.config.ts.
+    let work = tempfile::tempdir().unwrap();
+    let pantry = work.path().join("pantry");
+    copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/pantry"), &pantry);
+    fs::copy(
+        Path::new(FIXTURE).join("app/zero.config.ts"),
+        pantry.join("zero.config.ts"),
+    )
+    .unwrap();
+    assert!(refused(&pantry).message.contains("both zero.config.ts"));
+    first::bundle::sources(&pantry, &work.path().join("native")).unwrap();
+    assert_eq!(
+        manifest(&work.path().join("native"))["format"],
+        "first.source-bundle.v1"
+    );
+
+    // A raw 0.3.0 project outside the host entries is not a project: `first sources` (and `first
+    // build`/`check`/`dev`, which read only first.config.ts) refuse it as before.
+    let project = raw(work.path(), "app");
+    let Err(error) = first::bundle::sources(&project, &work.path().join("cli")) else {
+        panic!("first sources read zero.config.ts")
+    };
+    assert!(error.message.contains("first.config.ts"), "{}", error.message);
 }

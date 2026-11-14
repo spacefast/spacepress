@@ -485,12 +485,19 @@ final class Prebuilt
 
     /**
      * plugins_loaded: answer a GET or HEAD for a prebuilt path from its file, before WordPress parses
-     * the request. Anything that could make the answer differ (a query string, a signed-in, preview or
-     * comment-author cookie, a missing file) falls through to the router.
+     * the request. Anything that could make the answer differ falls through to the router: a query
+     * string, a signed-in, preview or comment-author cookie, `Accept: text/markdown` (the Markdown
+     * negotiation's, rendering.md §5), another spelling of the path, a missing file or one past
+     * MAX_AGE, and a site that hides itself from the public.
      */
     public static function serve(): void
     {
         if (!in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'HEAD'], true) || (string) ($_SERVER['QUERY_STRING'] ?? '') !== '' || is_admin()) {
+            return;
+        }
+        // `Accept: text/markdown` on an HTML URL is the Markdown negotiation's (MarkdownTwins::negotiate,
+        // rendering.md §5): an HTML file would answer it with the wrong representation.
+        if (str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'text/markdown')) {
             return;
         }
         foreach (array_keys($_COOKIE) as $name) {

@@ -134,8 +134,15 @@ $out['product'] = [
     'switch' => texts($page['body'], "//p[@class='lang']/a/@href"),
     'reviews' => texts($page['body'], "//section[@class='reviews']//a"),
 ];
-$pageTr = fetch("$url/drives/wd-red-plus-4tb?language=tr");
-$out['product tr'] = ['lede' => texts($pageTr['body'], "//p[@class='lede']"), 'facts' => texts($pageTr['body'], "//dl[@class='facts']/dt"), 'switch' => texts($pageTr['body'], "//p[@class='lang']/a/@href")];
+// A translation is served at its own slug (the kind's pattern, without Polylang's `/tr/` prefix),
+// and so is its Markdown twin; WordPress links it there too.
+$pageTr = fetch("$url/drives/wd-red-plus-4tb-tr");
+$out['product tr'] = ['status' => $pageTr['status'], 'lede' => texts($pageTr['body'], "//p[@class='lede']"), 'facts' => texts($pageTr['body'], "//dl[@class='facts']/dt"), 'switch' => texts($pageTr['body'], "//p[@class='lang']/a/@href")];
+$twinTr = fetch("$url/drives/wd-red-plus-4tb-tr.md");
+$out['twin tr'] = [$twinTr['status'], strtok($twinTr['body'], "\n")];
+$trId = (int) array_values(array_filter(\First\db()->findMany('drives', ['locale' => '*']), static fn (array $r): bool => $r['slug'] === 'wd-red-plus-4tb-tr'))[0]['id'];
+$out['permalink tr'] = parse_url((string) get_permalink($trId), PHP_URL_PATH);
+$out['polylang prefix'] = fetch("$url/tr/drives/wd-red-plus-4tb-tr/")['status'];
 $out['untranslated tr'] = texts(fetch("$url/drives/crucial-p3-2tb?language=tr")['body'], "//p[@class='lede']");
 
 // A guest buys with scripts off: the order comes back on the page, and the stock goes down.
@@ -204,6 +211,11 @@ $out['settings'] = [texts($after['body'], "//p[@class='notice']"), texts($after[
 // The price rule holds on the API too.
 $bad = fetch("$url/__first/api/v1/drives", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('editor'))], '{"name":"X","brand":"B","model":"M","capacityGb":10,"price":1.234}');
 $out['bad price'] = [$bad['status'], json_decode($bad['body'], true)['detail'] ?? $bad['body']];
+
+// First Admin's classic list screen for a table labels its columns from `.ui({ label })`.
+$screen = fetch("$url/wp-json/first-admin/v1/screens/table-orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('editor'))]);
+$fields = json_decode($screen['body'], true)['view']['fields'] ?? [];
+$out['orders screen'] = [$screen['status'], json_decode($screen['body'], true)['title'] ?? null, array_column($fields, 'label', 'id')];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), "\n";
 $site->destroy();

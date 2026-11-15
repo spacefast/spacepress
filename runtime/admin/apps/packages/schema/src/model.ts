@@ -89,13 +89,15 @@ export function columns(value: unknown): Columns {
 		Object.entries(map(value)).map(([name, raw]) => {
 			const c = object(raw),
 				access = c.access ? object(c.access) : {},
-				d = c.default ? object(c.default) : {};
+				d = c.default ? object(c.default) : {},
+				// `.ui({ label, help })` in the app's config, as the schema describes it.
+				ui = isRow(c.ui) ? c.ui : {};
 			return [
 				name,
 				{
 					type: text(c.type) ?? 'text',
-					label: text(c.label) ?? label(name),
-					help: text(c.help) ?? text(c.description) ?? '',
+					label: text(c.label) ?? text(ui.label) ?? label(name),
+					help: text(c.help) ?? text(ui.help) ?? text(c.description) ?? '',
 					required:
 						c.notNull === true &&
 						c.default === undefined &&

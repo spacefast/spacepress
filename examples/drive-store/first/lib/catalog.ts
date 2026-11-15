@@ -19,14 +19,9 @@ export async function catalog(lang: Lang, q: string, media: string, condition: s
   const rows = q
     ? await drives.list({ locale: lang, where: { status: "published" }, search: q, orderBy: { price: "asc" }, limit: 100 })
     : await drives.list({ locale: lang, where: { status: "published" }, orderBy: { price: "asc" }, limit: 100 });
-  // Each drive has one page, at its English slug; a translation's own slug isn't an address yet.
-  const english = lang === "en" ? rows : await drives.list({ locale: "en", where: { status: "published" }, limit: 100 });
-  // `where` takes one value per field, so the optional filters apply here.
+  // `where` takes one value per field, so the optional filters apply here. Each translation has
+  // its own slug and page; a drive shown in English for want of a translation keeps the language.
   return rows
     .filter((d) => (media === "" || d.media === media) && (condition === "" || d.condition === condition))
-    .map((d) => {
-      const id = d.translations.en ?? d.id;
-      const slug = english.find((e) => e.id === id)?.slug ?? "";
-      return { ...d, href: inLang(`/drives/${slug}`, lang) };
-    });
+    .map((d) => ({ ...d, href: d.locale === lang ? `/drives/${d.slug ?? ""}` : inLang(`/drives/${d.slug ?? ""}`, lang) }));
 }

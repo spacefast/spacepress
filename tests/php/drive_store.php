@@ -212,5 +212,10 @@ $out['settings'] = [texts($after['body'], "//p[@class='notice']"), texts($after[
 $bad = fetch("$url/__first/api/v1/drives", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('editor'))], '{"name":"X","brand":"B","model":"M","capacityGb":10,"price":1.234}');
 $out['bad price'] = [$bad['status'], json_decode($bad['body'], true)['detail'] ?? $bad['body']];
 
+// First Admin's classic list screen for a table labels its columns from `.ui({ label })`.
+$screen = fetch("$url/wp-json/first-admin/v1/screens/table-orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('editor'))]);
+$fields = json_decode($screen['body'], true)['view']['fields'] ?? [];
+$out['orders screen'] = [$screen['status'], json_decode($screen['body'], true)['title'] ?? null, array_column($fields, 'label', 'id')];
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), "\n";
 $site->destroy();

@@ -405,7 +405,8 @@ add_action(
 				$fields[] = array_filter(
 					array(
 						'id'    => (string) $column,
-						'label' => $spec['label'] ?? (string) $column,
+						// `.ui({ label })` in the app's config, else the field's name.
+						'label' => $spec['label'] ?? $spec['ui']['label'] ?? (string) $column,
 						'type'  => 'integer' === $type ? 'integer' : ( 'boolean' === $type ? 'boolean' : ( in_array( $type, array( 'timestamp', 'date' ), true ) ? 'datetime' : null ) ),
 					)
 				);

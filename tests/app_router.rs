@@ -4602,6 +4602,16 @@ fn drive_store_example_sells_on_wordpress() {
     // The settings global: the notice banner on every page, and the currency on every price.
     assert_eq!(seen["settings"], json!([["Demo shop: orders are fake."], "€48.00"]));
     assert_eq!(seen["bad price"], json!([422, "A price has two decimals at most."]));
+    // First Admin's classic table screen: the kind's label, and each field's `.ui({ label })`.
+    assert_eq!(
+        seen["orders screen"],
+        json!([200, "Orders", {
+            "id": "id", "code": "Order code", "drive": "Drive", "quantity": "Quantity", "unitPrice": "Unit price",
+            "total": "Total", "buyerName": "Buyer", "buyerEmail": "Email", "buyerId": "Buyer user ID",
+            "status": "Status", "placedAt": "Placed", "shippedAt": "Shipped",
+        }]),
+        "{seen}"
+    );
 }
 
 /// examples/docs in Chromium as an anonymous visitor (tests/differential/client/docs.mjs).

@@ -20,7 +20,7 @@ the Buy button places a fake order, takes no payment and ships nothing, and the 
 | RSS | layout | WordPress's own feed of the post type, `/?feed=rss2&post_type=first_drives`, linked from every page and in `<head>` |
 | Starting stock | [`content/drives/`](content/drives) | Synced Markdown (`sync`): a publish seeds it, and `first sync` loads it into a dev site |
 | Styles | [`first/app/site.css`](first/app/site.css) | An imported stylesheet with light and dark color tokens |
-| Admin | First Admin at `/wp-admin/new/` | Generated from the kinds: drives (with their translations and reviews), orders, stock movements and the shop settings |
+| Admin | First Admin at `/wp-admin/new/` | Generated from the kinds: drives (with their translations and reviews), orders, stock movements and the shop settings, each field labelled by its `.ui({ label })` |
 
 ## Run it
 
@@ -64,7 +64,3 @@ actions, reviews, the RSS feed and the settings global.
 
 - The storefront's own words (buttons, labels) are a small table in
   [`first/app/_lib/format.ts`](first/app/_lib/format.ts), not WordPress translation files.
-- Field labels set with `.ui({ label })` show in the WordPress editor (Secure Custom Fields). First
-  Admin doesn't read them yet: its forms label a field from its name (`buyerEmail` is "Buyer
-  Email"), and the classic wp-admin table screens show the name itself. Kind labels (`Orders`,
-  `Stock movements`, `Shop settings`) do show.

@@ -1,0 +1,8 @@
+# Written by scripts/build.mjs.
+/public/
+/first/data/sources.ts
+# first dev's local WordPress, and first build's output.
+.first/*
+!.first/sync-base.json
+/first/dist/
+node_modules/

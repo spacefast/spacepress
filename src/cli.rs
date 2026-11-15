@@ -208,6 +208,9 @@ pub fn main() -> ExitCode {
         }
         "sync" => crate::commands::sync(&rest),
         "pull" => crate::commands::pull::cli(&rest),
+        "plugin" => crate::commands::plugin::cli(&rest),
+        "login" | "logout" => crate::commands::login::cli(&command, &rest),
+        "push" => crate::commands::push::cli(&rest),
         "export" => crate::commands::export::cli(&rest),
         "mcp" => crate::commands::mcp::cli(&rest),
         "init" => crate::commands::init::cli(&rest),

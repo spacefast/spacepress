@@ -26,6 +26,10 @@ These commands run on your machine, on the project's files.
 | `first sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--pr [--repo owner/name] [--base branch]] [--json]` | Content files \<-\> site records (FIRST_APP_PASSWORD or FIRST_TOKEN) |
 | `first pull [dir] [--site url] [--check]` | Write a site's runtime schema versions to first/_generated/runtime-schema.json (FIRST_APP_PASSWORD or FIRST_TOKEN) |
 | `first abilities pull [dir] --site url [--only vendor/*]` | Lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD) |
+| `first plugin [--out file.zip]` | Write the First WordPress plugin (first.zip) to upload and activate in wp-admin. |
+| `first login <site-url> [dir] [--no-browser]` | Sign in to a WordPress site that runs the First plugin; the site's owner approves an application password in the browser. |
+| `first logout <site-url>` | Forget a site's credential on this machine. |
+| `first push [dir] [--site url] [--dry-run]` | Compile the project and deploy it to the site: install the plugins it needs, upload the build, show what it changes, make it live (first login, or FIRST_APP_PASSWORD) |
 | `first deploy <inspect\|publish\|init\|status\|backup\|restore> <options>` | Artifact preflight and offline workspaces ([docs/deployment.md](https://github.com/spacefast/zero/blob/main/docs/deployment.md)) |
 
 ## Site commands

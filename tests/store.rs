@@ -165,12 +165,14 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
     first::host::sources(&project, &sources).unwrap();
     let built = first::host::compile_to_store(&sources, &root, &sources, None).unwrap();
     let listed = built.manifest.sealed.expect("a sealed build lists its plugins");
-    // Exactly the plugins this host mounts for this app, plus First's admin (always listed): no
+    // Exactly the plugins this host mounts for this app, plus the First plugin and First's admin
+    // (always listed): no
     // identity (no users kind), no pages, no Polylang (no locales).
     assert_eq!(
         listed,
         [
             "action-scheduler",
+            "first",
             "first-admin",
             "first-app-pantry",
             "first-runtime",
@@ -351,4 +353,37 @@ fn manifests_with_and_without_the_deployment_fields_load() {
         (manifest.baseline, manifest.storage, manifest.jobs, manifest.wordpress),
         (None, None, Vec::new(), None)
     );
+}
+
+/// The First plugin publishes an uploaded tree only under the name its contents hash to
+/// (runtime/first-plugin/src/Trees.php). That hash must be the compiler's, or no upload would ever
+/// be accepted: both are computed here over the same two stored trees.
+#[test]
+fn the_plugin_hashes_a_stored_tree_to_the_name_the_compiler_gave_it() {
+    let work = tempfile::tempdir().unwrap();
+    let root = work.path().join("store");
+    let sources = capture(work.path(), "digest");
+    let built = first::host::compile_to_store(&sources, &root, &sources, None).unwrap();
+    let digest = |dir: std::path::PathBuf| {
+        let out = std::process::Command::new("php")
+            .args([
+                "-r",
+                "require $argv[1]; echo FirstPlugin\\Trees::digest($argv[2]);",
+                "runtime/first-plugin/src/Trees.php",
+            ])
+            .arg(&dir)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8(out.stdout).unwrap()
+    };
+    assert_eq!(digest(root.join("app").join(&built.app_hash)), built.app_hash);
+    assert_eq!(
+        digest(root.join("runtime").join(&built.runtime_revision)),
+        built.runtime_revision
+    );
+    // One changed byte is another tree.
+    let app = root.join("app").join(&built.app_hash);
+    fs::write(app.join("snapshot.json"), b"{}").unwrap();
+    assert_ne!(digest(app), built.app_hash);
 }

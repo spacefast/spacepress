@@ -1,5 +1,9 @@
 # Deployment preflight and offline recovery
 
+To deploy an app to a running WordPress site, use the First plugin with `first login`
+and `first push`: see [Deploy to any WordPress](plugin.md). This page is about the other
+tool, `first deploy`.
+
 `first build` produces an artifact. Publishing it to a running WordPress site is
 a separate operation. This adapter inspects artifacts and runs **offline local
 WordPress workspaces** for backup and recovery qualification. It never serves

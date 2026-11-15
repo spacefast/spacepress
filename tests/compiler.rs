@@ -2948,12 +2948,12 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
 export default defineConfig({ name: "kindurls", sealed: true });
 "#,
     );
-    // The complete list for a plain WordPress build of this app: First's own plugins (its admin
-    // always, whether or not this build ships it) and the platform pins (Polylang only with
+    // The complete list for a plain WordPress build of this app: First's own plugins (the First
+    // plugin and its admin always, whether or not this build ships them) and the platform pins (Polylang only with
     // `locales`).
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
+        serde_json::json!({"plugins": ["action-scheduler", "first", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
     );
     let built = schema(
         r#"import { defineConfig } from "first";
@@ -2962,7 +2962,7 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
     );
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
+        serde_json::json!({"plugins": ["action-scheduler", "first", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
     );
     // A sealed site can't declare a plugin that hands content out around First's read rules.
     for slug in ["vip-block-data-api", "vip-decoupled-bundle"] {

@@ -71,7 +71,7 @@ allowed, and an installed package's own relative imports are its business.
 First loads `first.config.ts` and every `.ts` file under `first/`, except
 `app/`, `components/`, `wp-hooks/`, `content/`, `public/`, `_generated/` and
 `dist/`. Each exported `collection()`, `table()`, `userProjection()`,
-`global()`, `files()`, `action()` and `job()` registers under its export name,
+`global()`, `files()`, `action()`, `job()` and `adminScreen()` registers under its export name,
 so no file name is required. `defineConfig` doesn't list them: its
 `collections`, `tables`, `users`, `globals`, `files`, `actions`, `jobs` and
 `hooks` keys are refused at the key, with the export that replaces it.
@@ -1590,6 +1590,19 @@ runs anonymously. Core picks the method from the annotations: `GET` for
 `readonly`, `DELETE` for `destructive` with `idempotent`, `POST` otherwise.
 Errors are core's `WP_Error` JSON, with First's code (`first_<code>`), status
 and `data.pointer`.
+
+## Admin screens
+
+`adminScreen({ title, view | form, actions?, access? | capability?, menu?, classic?, description?, data? })`
+declares a page in First Admin (`/wp-admin/new/screens/<id>`) and in classic
+wp-admin. Its id is the export name in kebab case (`pendingOrders` →
+`pending-orders`). `view` is a DataViews list over a `readonly` action, and
+`form` is a DataForm. `actions` run First actions as their Abilities, and
+`item("field")` in an action's `input` passes the row's value. `access` takes a
+First role (`"editor"` reads as WordPress's `edit_others_posts`), and
+`capability` takes a WordPress capability. The default is administrators. The
+build checks each action reference, its input keys and the layout's field ids.
+See [admin-screens.md](admin-screens.md).
 
 ## HTTP routes
 

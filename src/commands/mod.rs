@@ -12,6 +12,7 @@ pub(crate) mod links;
 pub(crate) mod mcp;
 pub(crate) mod pull;
 pub(crate) mod site;
+pub(crate) mod styles;
 mod sync;
 
 pub(crate) use sync::run as sync;

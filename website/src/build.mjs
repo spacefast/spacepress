@@ -1,6 +1,13 @@
-// Builds ../typedpress-guide/ from guide.html and examples/.
+// Builds the TypedPress site as a First app, in the folder above this one (website/):
+//
+//   first/app/layout.tsx, page.tsx, play/page.tsx, site.css    the pages, written from guide.html
+//   public/                                                    scripts, the compiler, example data, plugin zips
+//
+// `first dev` in website/ serves it (website/README.md). Everything this script writes is
+// git-ignored; edit guide.html, play.js, the examples and this script, never the output.
+//
 // Code, file trees and diffs are rendered at build time with @pierre/diffs and @pierre/trees
-// (https://diffs.com), so the published page shows them without waiting for a script.
+// (https://diffs.com), so a page shows them without waiting for a script.
 //
 //   bun install && bun build.mjs
 //
@@ -10,14 +17,20 @@
 //   <tp-tree>indented listing, "name   note" per line</tp-tree>      a file tree
 //   <tp-diff old="examples/a.ts" new="examples/b.ts" old-name="first/a.ts" new-name="tp/b.ts"></tp-diff>
 //   <tp-example dir="examples/notes" open="tp/schema.ts"></tp-example>   a whole project: tree and files
+//   <tp-play example="tasks" open></tp-play>                         the playground component (play.js)
 import { preloadFile, preloadMultiFileDiff } from "@pierre/diffs/ssr";
 import { preloadFileTree } from "@pierre/trees/ssr";
-import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, copyFileSync, existsSync, rmSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const out = join(here, "..", "typedpress-guide");
+const site = join(here, "..");
+const out = join(site, "public");
+const app = join(site, "first", "app");
+rmSync(out, { recursive: true, force: true });
+rmSync(app, { recursive: true, force: true });
+mkdirSync(join(app, "play"), { recursive: true });
 mkdirSync(out, { recursive: true });
 
 const THEME = { dark: "pierre-dark", light: "pierre-light" };
@@ -32,7 +45,7 @@ function shareStyles(html, attribute, file) {
     const known = sheets.get(file);
     if (known !== undefined && known !== css) throw new Error(`${file}: two different stylesheets`);
     sheets.set(file, css);
-    return `<link rel="stylesheet" href="${file}">`;
+    return `<link rel="stylesheet" href="/${file}">`;
   });
 }
 // Keep only the icons a block uses; the full sprite is 16 to 38 KB per block.
@@ -157,38 +170,80 @@ const rendered = await Promise.all(jobs);
 page = page.replace(/\u0000(\d+)\u0000/g, (_, i) => rendered[Number(i)]);
 page = page.replace("<!--tp-trees-->", `<script type="application/json" id="tp-trees">${JSON.stringify(treeConfigs).replace(/</g, "\\u003c")}</script>`);
 
-for (const [file, css] of sheets) writeFileSync(join(out, file), css);
-writeFileSync(join(out, "index.html"), page);
+// ---- The First app ---------------------------------------------------------------------------
+// A page's markup is one literal handed to <Html>, which places a literal as written. First's TSX
+// refuses <script> and has no text imports, so the pre-rendered shadow roots, the scripts and the
+// inline JSON all travel inside that literal. (Sent to the First thread as a gap, 2026-11-15.)
+const literal = (html) => "`" + html.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${") + "`";
+const between = (text, start, end, last = false) => { const from = text.indexOf(start) + start.length; return text.slice(from, last ? text.lastIndexOf(end) : text.indexOf(end, from)); };
+const pageFile = (name, title, description, html) => `// Written by src/build.mjs. Do not edit: change src/guide.html or src/build.mjs and build again.
+import { Html } from "first/app";
 
+export const metadata = { title: ${JSON.stringify(title)}, description: ${JSON.stringify(description)} };
+
+export default function ${name}() {
+  return <Html value={${literal(html)}} />;
+}
+`;
+
+const css = between(page, "<style>", "</style>");
+const body = between(page, "<body>", "</body>", true);
+writeFileSync(join(app, "site.css"), `/* Written by src/build.mjs from the <style> of src/guide.html. */\n${css}`);
+writeFileSync(join(app, "layout.tsx"), `// Written by src/build.mjs. Do not edit.
+import { Html, type LayoutProps } from "first/app";
+import "./site.css";
+
+export const metadata = {
+  title: { default: "TypedPress", template: "%s · TypedPress" },
+  description: "Describe your data and pages in TypeScript. TypedPress compiles them into a WordPress plugin.",
+};
+
+export default function Root({ children }: LayoutProps) {
+  return (
+    <div className="site">
+      <header className="top">
+        <a className="brand" href="/">TypedPress</a>
+        <nav>
+          <a href="/">Guide</a>
+          <a href="/#examples">Examples</a>
+          <a href="/#compare">Compare</a>
+          <a className="play" href="/play">Playground</a>
+        </nav>
+      </header>
+      {children}
+      <Html value={${literal('<script type="module" src="/guide.js"></script><script type="module" src="/play.js"></script>')}} />
+    </div>
+  );
+}
+`);
+writeFileSync(join(app, "page.tsx"), pageFile("Home", "Building a TypedPress app", "Every feature of TypedPress and how to use it, with examples you can edit, build and run in your browser.", body.replace('<script type="module" src="guide.js"></script>', "")));
+writeFileSync(join(app, "play", "page.tsx"), pageFile("Playground", "Playground", "Edit a TypedPress app and build it in your browser. See the PHP, SQL and types the build writes, then run the app in WordPress.", `<main class="playpage">
+<h1>Playground</h1>
+<p class="lede">Pick an app, change its code and it is built in your browser by the same compiler the command line uses. Then run your version in WordPress, also in your browser. Nothing is sent to a server.</p>
+<div class="note">These are the example apps as they are in the code today, so they use the current names: <code>first.config.ts</code>, <code>first/</code>, <code>action()</code>. The guide describes the names they are moving to.</div>
+<tp-play example="full-site" picker open></tp-play>
+<script>{const q=new URLSearchParams(location.search),p=document.currentScript.previousElementSibling;if(q.get("example"))p.setAttribute("example",q.get("example"));if(q.get("file"))p.setAttribute("file",q.get("file"));}</script>
+</main>`));
+
+for (const [file, sheet] of sheets) writeFileSync(join(out, file), sheet);
 const bundle = await Bun.build({ entrypoints: [join(here, "client.js")], minify: true, target: "browser", format: "esm" });
 if (!bundle.success) throw new AggregateError(bundle.logs, "client bundle failed");
 writeFileSync(join(out, "guide.js"), await bundle.outputs[0].text());
 
-// The playground page (play.html): the compiler built for the browser, the examples the docs site
-// features with what "Run in WordPress" needs, and the plugin zips WordPress Playground installs.
-// It reuses docs-site/: run `pnpm wasm && pnpm showcase` there first (docs-site/README.md).
-const docs = join(here, "..", "..", "docs-site");
+// ---- The playground component's files, in public/ ---------------------------------------------
+// The compiler built for the browser, the apps it can load with what "Run in WordPress" needs, and
+// the plugin zips WordPress Playground installs. They come from docs-site/: run
+// `pnpm wasm && pnpm showcase` there first (docs-site/README.md).
+const docs = join(site, "..", "docs-site");
 const wasm = join(docs, "public", "compiler.wasm");
 const zips = join(docs, "public", "files", "plugins");
 if (!existsSync(wasm) || !existsSync(zips)) throw new Error("docs-site/public has no compiler.wasm or files/plugins; run `pnpm wasm && pnpm showcase` in docs-site/");
-const siteUrl = (process.env.SITE_URL ?? "https://typedpress-guide.space.fast").replace(/\/$/, "");
 const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: docs });
 if (runData.exitCode !== 0) throw new Error(`run-data.ts failed:\n${runData.stderr.toString()}`);
 writeFileSync(join(out, "play-data.json"), runData.stdout);
 copyFileSync(wasm, join(out, "compiler.wasm"));
 mkdirSync(join(out, "files", "plugins"), { recursive: true });
 for (const slug of ["first-runtime", "first-identity", "first-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "files", "plugins", `${slug}.zip`));
-// Spacefast sends .wasm as application/octet-stream, which makes the browser read the whole file
-// before compiling it.
-// WordPress Playground fetches the plugin zips under /files/ from another origin, so they need
-// exactly one Access-Control-Allow-Origin header. Measured on 2026-11-15 on this Space:
-//   no rule for /files/            the zip is served as a plain static file, with no CORS header
-//   a rule that sets the header    two headers (the host's and ours), which browsers refuse
-//   a rule that sets another one   the request goes through the Spacefast runtime, which adds
-//                                  Access-Control-Allow-Origin: * once
-// So /files/ gets a rule with a harmless header of its own.
-writeFileSync(join(out, "_headers"), "/compiler.wasm\n  Content-Type: application/wasm\n/files/*\n  X-Content-Type-Options: nosniff\n");
-writeFileSync(join(out, "play.html"), readFileSync(join(here, "play.html"), "utf8").replace("{{site}}", siteUrl));
 // Bun names a chunk after its entry; one that starts with a dot would not be served by every host.
 const play = await Bun.build({ entrypoints: [join(here, "play.js")], minify: true, target: "browser", format: "esm", splitting: true, outdir: join(out, "play"), naming: { entry: "[name].[ext]", chunk: "c-[hash].[ext]" } });
 if (!play.success) throw new AggregateError(play.logs, "playground bundle failed");
@@ -199,9 +254,9 @@ const notice = ["@pierre/diffs", "@pierre/trees"].map((pkg) => {
   const version = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version;
   return `${pkg} ${version}\n\n${readFileSync(join(dir, "LICENSE.md"), "utf8")}`;
 }).join("\n\n----------------------------------------\n\n");
-writeFileSync(join(out, "third-party-licenses.txt"), `This page renders code, file trees and diffs with these libraries.\npierre-diffs.css, pierre-trees.css and guide.js contain parts of them.\n\n${notice}\n`);
+writeFileSync(join(out, "third-party-licenses.txt"), `This site renders code, file trees and diffs with these libraries.\npierre-diffs.css, pierre-trees.css, guide.js and play/ contain parts of them.\n\n${notice}\n`);
 
-const size = (f) => statSync(join(out, f)).size;
+const kb = (f) => `${String(Math.round(statSync(f).size / 1024)).padStart(7)} KB  ${relative(site, f)}`;
 console.log(`${jobs.length} blocks, ${treeCount} trees`);
-for (const f of ["index.html", "guide.js", ...sheets.keys(), "play.html", "play-data.json", "compiler.wasm"]) console.log(`${String(size(f)).padStart(8)}  ${f}`);
-console.log(`${String(readdirSync(join(out, "play")).length).padStart(8)}  files in play/ (the playground script and the highlighter grammars it loads on demand)`);
+for (const f of [join(app, "page.tsx"), join(app, "play", "page.tsx"), join(app, "site.css"), join(out, "play-data.json"), join(out, "compiler.wasm")]) console.log(kb(f));
+console.log(`${String(readdirSync(join(out, "play")).length).padStart(7)} files in public/play/ (the playground script and the highlighter grammars it loads on demand)`);

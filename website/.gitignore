@@ -1,0 +1,8 @@
+# Written by src/build.mjs: the pages and everything in public/.
+/first/app/
+/public/
+# first dev's local WordPress, and first build's output.
+.first/
+/first/dist/
+/first/_generated/
+node_modules/

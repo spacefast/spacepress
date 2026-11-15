@@ -22,7 +22,12 @@
     --warn: light-dark(#9a6700, #e3b341);
   }
   * { box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); line-height: 1.55; font-size: 15px; margin: 0 auto; max-width: 900px; padding: 28px 16px 64px; }
+  /* WordPress's theme styles also set body colours and fonts, and load after this file.
+     body.first-app is the class First puts on its pages; it outranks the theme's plain body rule. */
+  body.first-app { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); line-height: 1.55; font-size: 15px; margin: 0; padding: 0; }
+  body.first-app .wp-site-blocks { display: block; min-height: 0; padding: 0; }
+  .site :where(h1, h2, h3, h4) { font-family: inherit; font-weight: 700; line-height: 1.25; color: inherit; }
+  .site :where(a) { color: var(--info); }
   h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.01em; }
   h2 { font-size: 19px; margin: 40px 0 8px; padding-top: 18px; border-top: 1px solid var(--line); scroll-margin-top: 12px; }
   h2 .n { color: var(--mut); font-weight: 500; margin-right: 8px; }
@@ -52,9 +57,55 @@
   table.cmp td, table.cmp th { min-width: 150px; } table.cmp td:first-child, table.cmp th:first-child { min-width: 130px; font-weight: 600; }
   table.cmp td:last-child, table.cmp th:last-child { background: var(--card); }
   table.cmp a { color: inherit; text-decoration-color: var(--line); text-underline-offset: 2px; } table.cmp a:hover { color: var(--info); }
-  .run { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 12px 0; font-size: 13.5px; color: var(--mut); }
-  .runbtn { display: inline-block; background: var(--ok); color: Canvas; font-weight: 600; font-size: 13.5px; text-decoration: none; padding: 5px 12px; border-radius: 7px; white-space: nowrap; }
-  .runbtn:hover { filter: brightness(1.1); }
+  /* The site frame and the top menu (first/app/layout.tsx). */
+  .site { max-width: 900px; margin: 0 auto; padding: 0 16px 64px; }
+  /* As wide as the widest content (the hero and the playground), so nothing shows beside it. */
+  .top { display: flex; align-items: center; gap: 18px; padding: 12px calc((min(1320px, 100vw - 32px) - min(900px, 100vw - 32px)) / 2); margin: 0 calc((900px - min(1320px, 100vw - 32px)) / 2) 18px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 5; }
+  @media (max-width: 932px) { .top { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; } }
+  /* On a phone the menu keeps the brand and the Playground entry; the in-page links are in the contents list. */
+  @media (max-width: 560px) { .top { gap: 10px; } .top nav { gap: 12px; } .top nav a:not(.play) { display: none; } }
+  .top .brand { font-weight: 700; font-size: 16px; color: var(--fg); text-decoration: none; margin-right: auto; }
+  .top nav { display: flex; gap: 16px; align-items: center; font-size: 14px; }
+  .top nav a { color: var(--mut); text-decoration: none; } .top nav a:hover { color: var(--fg); }
+  .top nav a.play { color: Canvas; background: var(--ok); font-weight: 600; padding: 4px 11px; border-radius: 7px; }
+  h2 { scroll-margin-top: 62px; } h2.plain { border-top: 0; padding-top: 0; }
+  .hero { margin: 8px calc((900px - min(1320px, 100vw - 32px)) / 2) 26px; }
+  .hero h1 { font-size: clamp(28px, 4.4vw, 46px); line-height: 1.1; letter-spacing: -0.02em; margin: 14px 0 12px; }
+  .hero .lede { max-width: 760px; font-size: 17px; } .hero .cap { max-width: 760px; margin-bottom: 14px; }
+  @media (max-width: 932px) { .hero { margin-left: 0; margin-right: 0; } }
+  .playpage { margin: 0 calc((900px - min(1320px, 100vw - 32px)) / 2); }
+  @media (max-width: 932px) { .playpage { margin: 0; } }
+  /* <tp-play>, the playground component (src/play.js). */
+  tp-play { display: block; margin: 12px 0; }
+  tp-play.tp-on { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--card); }
+  h2 ~ tp-play.tp-on, h3 ~ tp-play.tp-on { margin-left: calc((900px - min(1320px, 100vw - 32px)) / 2); margin-right: calc((900px - min(1320px, 100vw - 32px)) / 2); }
+  @media (max-width: 932px) { h2 ~ tp-play.tp-on, h3 ~ tp-play.tp-on { margin-left: 0; margin-right: 0; } }
+  tp-play button, tp-play select { font: inherit; font-size: 13.5px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 4px 10px; cursor: pointer; }
+  tp-play button:hover { border-color: var(--mut); }
+  tp-play button[aria-pressed="true"] { border-color: var(--info); color: var(--info); }
+  tp-play button.tp-go { background: var(--ok); border-color: var(--ok); color: Canvas; font-weight: 600; }
+  .tp-closed { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+  .tp-hint { font-size: 13.5px; color: var(--mut); }
+  .tp-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tp-summary { flex: 1; min-width: 200px; font-size: 13.5px; color: var(--mut); }
+  .tp-status { font-size: 13.5px; margin: 8px 0; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); }
+  .tp-status[data-state="ok"] { border-left: 3px solid var(--ok); }
+  .tp-status[data-state="problems"], .tp-status[data-state="failed"] { border-left: 3px solid var(--warn); }
+  .tp-problems { list-style: none; padding: 0; margin: 6px 0; font-size: 13.5px; } .tp-problems:empty { display: none; }
+  .tp-problems li { margin: 4px 0; } .tp-problems span { color: var(--mut); }
+  .tp-problems button { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; padding: 1px 7px; }
+  .tp-panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+  @media (max-width: 1000px) { .tp-panes { grid-template-columns: 1fr; } }
+  .tp-pane h4 { margin: 6px 0; font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  .tp-pane h4 small { font-weight: 400; color: var(--mut); font-size: 12.5px; flex: 1; }
+  .tp-pane h4 button { font-size: 12.5px; padding: 2px 9px; }
+  .tp-split { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 8px; align-items: start; }
+  @media (max-width: 620px) { .tp-split { grid-template-columns: 1fr; } }
+  .tp-tree { border: 1px solid var(--line); border-radius: 8px; overflow: hidden auto; max-height: 60vh; background: var(--bg); }
+  .tp-file { border: 1px solid var(--line); border-radius: 8px; overflow: auto; min-height: 90px; max-height: 70vh; background: var(--bg);
+    --diffs-font-size: 13px; --diffs-line-height: 20px; --diffs-font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .tp-wordpress { margin: 8px 0 12px; } .tp-wordpress p { font-size: 13.5px; color: var(--mut); margin: 0 0 6px; }
+  .tp-wordpress iframe { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
   .wide { margin-left: calc((900px - min(1180px, 100vw - 32px)) / 2); margin-right: calc((900px - min(1180px, 100vw - 32px)) / 2); }
   @media (max-width: 932px) { .wide { margin-left: 0; margin-right: 0; } }
   .c { color: var(--mut); }
@@ -85,12 +136,16 @@
 </head>
 <body>
 
-<h1>Building a TypedPress app</h1>
+<section class="hero">
+<h1>TypeScript in. A WordPress plugin out.</h1>
 <p class="lede">You describe your data and your pages in TypeScript. TypedPress compiles them into a WordPress plugin. WordPress then gives you the database, the editor, sign-in, the API and an admin, and no JavaScript runs on the server.</p>
+<p class="cap">This is a whole app. Change it and it is built again here, in your browser, by the real compiler. The right side shows every file the build writes and what your change did to them. <b>Run in WordPress</b> starts a WordPress in this tab with your version installed.</p>
+<tp-play example="tasks" open></tp-play>
+</section>
 
-<div class="note"><b>Read this first.</b> TypedPress is the new name of the framework called First. It is experimental and has no npm release yet. This page uses the new names; in the code today, <code>typedpress</code> is spelled <code>first</code> and the <code>tp/</code> folder is <code>first/</code>. Some spellings on this page may still change.</div>
+<div class="note"><b>Read this first.</b> TypedPress is the new name of the framework called First. It is experimental and has no npm release yet. The guide below uses the new names; in the code today, <code>typedpress</code> is spelled <code>first</code> and the <code>tp/</code> folder is <code>first/</code>. Everything you can edit and build on this page runs the compiler as it is today, so it uses today's names. Some spellings may still change.</div>
 
-<p class="run"><a class="runbtn" href="play">Open the playground</a> <span>Edit an app, compile it in your browser and run it in WordPress. Nothing to install.</span></p>
+<h2 class="plain">The guide</h2>
 
 <div class="legend">
   <span><span class="b built">Works today</span> in the code, under the First names</span>
@@ -164,7 +219,7 @@ tp/dist/wp-content/plugins/
   mcp-adapter/  the endpoint agents connect to
   two-factor/  two-step verification
 </tp-tree>
-<p class="run"><a class="runbtn" href="play?example=full-site">Compile it yourself</a> <span>The playground runs this same compiler in your browser and shows every file it writes.</span></p>
+<tp-play example="full-site" hint="Build that project here and read every file the build writes."></tp-play>
 <p>The <code>cheer</code> function of that project, as the compiler wrote it:</p>
 <tp-code file="first-app-fullsite/first/app/functions.php" note="real output, lines 26 to 43" src="examples/_built/functions.php"></tp-code>
 <p>And the table for <code>cheers</code>:</p>
@@ -176,12 +231,12 @@ tp/dist/wp-content/plugins/
 </ul>
 
 <h2 id="examples">Three whole projects</h2>
-<p>Each project below is complete: every file is shown. Click a file in the tree to read it. They are the real example apps that exist in the code today, written in the spelling this page describes; section {{sec:rename}} shows the exact lines that differ.</p>
+<p>Each project below is complete: every file is shown. Click a file in the tree to read it. Under each one, <b>Edit and build this</b> opens the same app for editing. They are the real example apps that exist in the code today, written in the spelling this page describes; section {{sec:rename}} shows the exact lines that differ.</p>
 
 <h3>A site with pages</h3>
 <p>Notes that an editor writes in WordPress, pages written in TSX, one button that works in the browser, a JSON feed and a signed webhook.</p>
 <tp-example dir="examples/notes" open="tp/schema.ts"></tp-example>
-<p class="run"><a class="runbtn" href="play?example=full-site">Run this in your browser</a> <span>The same app as it is written today: edit it, see what the compiler writes, and open the site in WordPress.</span></p>
+<tp-play example="full-site" hint="The same app as it is written today. Change a page, build it here, and open the site in WordPress."></tp-play>
 <div class="scroll"><table>
 <tr><th>From these files you get</th><th>Without writing it</th></tr>
 <tr><td><code>/</code>, <code>/notes</code>, <code>/notes/&lt;slug&gt;</code>, <code>/about</code>, a 404 page</td><td>routing, titles, canonical URLs, the page cache and its purges</td></tr>
@@ -195,7 +250,7 @@ tp/dist/wp-content/plugins/
 <h3>An app with its own tables, and a React front end</h3>
 <p>A pantry: SQL tables, handlers that run inside every write, a background job, a weekly schedule, and a React app that uses the backend through the one client. The whole backend is two files, because names come from exports and not from file paths.</p>
 <tp-example dir="examples/pantry" open="tp/index.ts"></tp-example>
-<p class="run"><a class="runbtn" href="play?example=pantry">Run this in your browser</a> <span>The same backend as it is written today. Add a field and watch the migration appear.</span></p>
+<tp-play example="pantry" hint="The same backend as it is written today. Add a field to a table and a migration appears."></tp-play>
 <div class="scroll"><table>
 <tr><th>What happens when the React app calls <code>consume</code></th><th>Where</th></tr>
 <tr><td>1. The client posts to the function's endpoint with the signed-in user's session</td><td>browser</td></tr>
@@ -210,7 +265,15 @@ tp/dist/wp-content/plugins/
 <h3>Content as files, and an Astro site in front</h3>
 <p>Plants kept as Markdown files in git. Editors change the same plants in the WordPress editor. A separate Astro project builds the public site from them.</p>
 <tp-example dir="examples/garden" open="cms/tp/schema.ts"></tp-example>
-<p class="cap">Two more apps run in the playground: <a href="play?example=blog">a blog</a> in two languages with comments and member accounts, and <a href="play?example=reading-list">a reading list</a> in 94 lines. The Astro project above is not one of them, because it needs a separate build.</p>
+<p class="cap">The Astro site above is a separate project with its own build, so it cannot be built here. Its TypedPress half can; that is what an Astro front end reads from.</p>
+
+<h3>A blog in two languages</h3>
+<p>Posts with translations, authors, moderated comments, member accounts, image sizes, private files and signed webhooks. One file.</p>
+<tp-play example="blog" hint="Edit the blog and build it here. It opens in the WordPress editor."></tp-play>
+
+<h3>A reading list in 94 lines</h3>
+<p>Books are WordPress posts, reads are a SQL table, and each reader sees only their own. It also serves one HTML route and uses two npm packages on the server.</p>
+<tp-play example="reading-list" hint="Edit the reading list and build it here."></tp-play>
 <p class="cap">The first two projects use spellings that are decided and not built yet: <code>query()</code>, <code>mutation()</code>, <code>.on("event", fn)</code>, <code>kind.system</code>, <code>cron()</code>, <code>@typedpress/client</code>. The same apps run today under the spellings in section {{sec:rename}}.</p>
 
 <h2 id="data">Describe your data</h2>
@@ -334,7 +397,7 @@ export const docs = collection({ title: text(), content: richText().optional() }
 </table></div>
 <p>One field added to the <code>cheers</code> table of the first project in section {{sec:examples}}:</p>
 <tp-diff old="examples/_built/schema.before.ts" new="examples/_built/schema.after.ts" old-name="tp/schema.ts" new-name="tp/schema.ts"></tp-diff>
-<p class="run"><a class="runbtn" href="play?example=full-site">Try this change</a> <span>Add the field in the playground and the new migration shows up in the output.</span></p>
+<tp-play example="tasks" hint="Try it: add a field to the table and the build writes the migration."></tp-play>
 <p>The next build writes the migration. Nobody types it. This one is real output: the same field was added to the same table in the code as it is today, which is why the table name still says <code>first</code>.</p>
 <tp-code file="tp/_generated/migrations/0002_update.sql" note="real output" src="examples/_built/0002_update.sql"></tp-code>
 <ul>
@@ -1033,7 +1096,7 @@ typedpress push                            # compile, upload, show the plan, go 
   <li><span class="b built">Works today</span> Without the one plugin: <code>typedpress build</code> writes a set of plugin ZIP files that you upload or copy like any plugin. The runtime refuses to start on a site that misses a requirement and names each one.</li>
   <li><span class="b built">Works today</span> Static hosts: <code>typedpress export</code> writes plain files (section {{sec:pages}}).</li>
   <li><span class="b built">Works today</span> <code>typedpress doctor --site &lt;url&gt;</code> checks a build and a running site.</li>
-  <li><span class="b built">Works today</span> In a browser, with nothing installed: the <a href="play">playground</a> compiles an app and runs it in WordPress.</li>
+  <li><span class="b built">Works today</span> In a browser, with nothing installed: the <a href="/play">playground</a> builds an app and runs it in WordPress.</li>
 </ul>
 
 <h2 id="cli">Commands</h2>

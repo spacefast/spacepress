@@ -68,9 +68,14 @@ final class Sessions
         $home = wp_parse_url(home_url());
         return $home['scheme'] . '://' . $home['host'] . (isset($home['port']) ? ':' . $home['port'] : '');
     }
-    public function create(int $uid): array
+    /**
+     * A new identity session for $uid. A session opened from a WordPress sign-in
+     * ({@see Plugin::browserSession}) passes when that sign-in happened as `$verifiedAt` and when the
+     * WordPress session ends as `$until`: it is never fresher, nor longer-lived, than what it came from.
+     */
+    public function create(int $uid, ?int $verifiedAt = null, ?int $until = null): array
     {
-        return $this->db->transaction(function () use ($uid) {
+        return $this->db->transaction(function () use ($uid, $verifiedAt, $until) {
             $this->db->lock($uid);
             $secret = Security::token();
             $session = [
@@ -79,8 +84,8 @@ final class Sessions
                 "secret_hash" => self::digest($secret),
                 "csrf" => bin2hex(random_bytes(32)),
                 "created_at" => time(),
-                "expires_at" => time() + 86400,
-                "verified_at" => time(),
+                "expires_at" => min(time() + 86400, $until ?? PHP_INT_MAX),
+                "verified_at" => min(time(), $verifiedAt ?? PHP_INT_MAX),
                 "label" => substr(
                     sanitize_text_field(
                         $_SERVER["HTTP_USER_AGENT"] ?? "Server session",

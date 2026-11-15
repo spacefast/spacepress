@@ -4978,3 +4978,270 @@ fn refuses_route_ids_it_cannot_keep() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `first/app/login.tsx` is wp-login.php's sign-in view (docs/decisions/2026-11-15-one-sign-in-page.md):
+/// accepted at the root only, typed with `LoginProps`, compiled into the route table as `login` with
+/// the root layout and its stylesheets, and `<LoginForm>` checks its props.
+#[test]
+fn login_tsx_is_the_sign_in_page() {
+    let project = fixture("login-page", "compile");
+    build(&project);
+    let schema =
+        std::fs::read_to_string(project.join("first/dist/wp-content/plugins/first-app-loginpage/first/app/schema.php"))
+            .unwrap();
+    let login = schema
+        .lines()
+        .find(|l| l.trim_start().starts_with("'login' =>"))
+        .unwrap_or_else(|| panic!("no login route in schema.php:\n{schema}"));
+    assert!(login.contains("'page' => 'app/login.tsx'"), "{login}");
+    assert!(login.contains("'layouts' => ['app/layout.tsx']"), "{login}");
+    assert!(login.contains("'styles' => ['site-"), "{login}");
+    let functions = std::fs::read_to_string(
+        project.join("first/dist/wp-content/plugins/first-app-loginpage/first/app/functions.php"),
+    )
+    .unwrap();
+    assert!(
+        functions.contains("\\First\\Render\\LoginView::form('signin-form', 'Sign in', false, null)"),
+        "{functions}"
+    );
+    // login.tsx is not a URL of its own: no route, no Page, nothing in routes.d.ts.
+    assert!(!schema.contains("'pattern' => '/login'"), "{schema}");
+    let _ = std::fs::remove_dir_all(&project);
+
+    let dir = std::env::temp_dir().join(format!("first-login-reject-{}", std::process::id()));
+    let page = "export default function P() { return <p/>; }\n";
+    rejects(
+        &dir,
+        &[("first/app/page.tsx", page), ("first/app/account/login.tsx", page)],
+        "login.tsx works only at the root of first/app/",
+        "first/app/account/login.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/login.tsx",
+            "export const guard = \"admin\";\nexport default function P() { return <p/>; }\n",
+        )],
+        "app/login.tsx can't export `guard`",
+        "first/app/login.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/login.tsx",
+            "import { LoginForm } from \"first/app\";\nexport default function P() { return <LoginForm action=\"/x\" />; }\n",
+        )],
+        "`<LoginForm>` has no prop `action`",
+        "first/app/login.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/login.tsx",
+            "import { LoginForm } from \"first/app\";\nexport default function P() { return <LoginForm links={1} />; }\n",
+        )],
+        "`<LoginForm links>` takes",
+        "first/app/login.tsx",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// wp-login.php renders `login.tsx` and still runs WordPress's sign-in; an account with Identity MFA
+/// signs in through Two Factor's second step there; `/identity` sends a browser to wp-login.php and
+/// treats its WordPress sign-in as signed in (tests/php/login_page.php).
+#[test]
+fn one_sign_in_page_on_wordpress() {
+    let project = fixture("login-page", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/login_page.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let generic = "Error: Invalid username, email address or incorrect password.";
+    // (a) The app's page, in its root layout and stylesheet, posting to wp-login.php; never cached or indexed.
+    let get = &seen["get"];
+    assert_eq!(get["status"], 200, "{seen}");
+    assert_eq!(get["app"], "Sign in to Field Notes", "{seen}");
+    assert_eq!(get["title"], "Sign in · Field Notes", "{seen}");
+    assert_eq!(get["wordpress"], false, "{seen}");
+    assert!(get["action"].as_str().unwrap().ends_with("/wp-login.php"), "{seen}");
+    assert_eq!(
+        get["inputs"].as_object().unwrap().keys().collect::<Vec<_>>(),
+        ["log", "pwd", "rememberme", "redirect_to", "testcookie"],
+        "{seen}"
+    );
+    assert_eq!(
+        (&get["stylesheet"], &get["robots"]),
+        (&json(true), &json(true)),
+        "{seen}"
+    );
+    assert_eq!(get["cache"], "private, no-store, max-age=0", "{seen}");
+    // A failed attempt: WordPress's answer (the loginErrors hardening's one message), the login kept
+    // after a wrong password, and the same answer for an unknown user.
+    assert_eq!(seen["wrong password"]["errors"], json([generic]), "{seen}");
+    assert_eq!(seen["wrong password"]["inputs"]["log"], "ana", "{seen}");
+    assert!(
+        seen["wrong password"]["inputs"]["redirect_to"]
+            .as_str()
+            .unwrap()
+            .ends_with("/account"),
+        "{seen}"
+    );
+    assert_eq!(seen["unknown user"]["errors"], json([generic]), "{seen}");
+    // The right password signs in where it was going.
+    assert_eq!(seen["sign in"]["status"], 302, "{seen}");
+    assert!(
+        seen["sign in"]["location"].as_str().unwrap().ends_with("/account"),
+        "{seen}"
+    );
+    assert_eq!(seen["sign in"]["signed in"], true, "{seen}");
+    assert_eq!(seen["account after sign in"], 200, "{seen}");
+    // wp-login.php's own messages reach the page; other actions keep WordPress's screens.
+    assert_eq!(seen["logout"]["signed in"], false, "{seen}");
+    assert_eq!(seen["loggedout"]["app"], "Sign in to Field Notes", "{seen}");
+    assert_eq!(
+        seen["loggedout"]["notices"],
+        json(["You are now logged out."]),
+        "{seen}"
+    );
+    assert!(
+        seen["checkemail"]["notices"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("If there is an account"),
+        "{seen}"
+    );
+    assert_eq!(seen["lost password"]["wordpress"], true, "{seen}");
+    assert_eq!(
+        seen["guard"],
+        serde_json::json!({ "status": 302, "to login": true }),
+        "{seen}"
+    );
+
+    // (b) Identity MFA through Two Factor: the password leads to the second step, never a cookie.
+    let step = &seen["mfa password step"];
+    assert_eq!(
+        (&step["second step"], &step["signed in"]),
+        (&json(true), &json(false)),
+        "{seen}"
+    );
+    assert_eq!(step["provider"], "First\\Identity\\TwoFactorProvider", "{seen}");
+    assert_eq!(
+        seen["mfa wrong code"],
+        serde_json::json!({ "status": 200, "signed in": false, "asks again": true }),
+        "{seen}"
+    );
+    assert_eq!(seen["mfa recovery code"]["status"], 302, "{seen}");
+    assert!(
+        seen["mfa recovery code"]["location"]
+            .as_str()
+            .unwrap()
+            .ends_with("/account"),
+        "{seen}"
+    );
+    assert_eq!(seen["mfa recovery code"]["signed in"], true, "{seen}");
+    assert_eq!(seen["mfa recovery code reused"]["signed in"], false, "{seen}");
+    assert_eq!(seen["mfa elsewhere"], "identity_mfa_required", "{seen}");
+    assert_eq!(seen["mfa wrong password"]["second step"], false, "{seen}");
+    assert_eq!(seen["mfa wrong password"]["errors"], json([generic]), "{seen}");
+
+    // (c) /identity signs in on wp-login.php, and a WordPress sign-in is an identity sign-in.
+    assert_eq!(seen["identity signed out"]["status"], 302, "{seen}");
+    assert!(
+        seen["identity signed out"]["location"]
+            .as_str()
+            .unwrap()
+            .contains("/wp-login.php?redirect_to="),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["identity methods"],
+        serde_json::json!({ "status": 200, "app": true }),
+        "{seen}"
+    );
+    assert_eq!(seen["authorize signed out"]["status"], 302, "{seen}");
+    assert!(
+        seen["authorize signed out"]["location"]
+            .as_str()
+            .unwrap()
+            .contains("/wp-login.php?redirect_to="),
+        "{seen}"
+    );
+    let page = &seen["authorize login page"];
+    assert_eq!(page["app"], "Sign in to Field Notes", "{seen}");
+    assert!(
+        page["inputs"]["redirect_to"]
+            .as_str()
+            .unwrap()
+            .contains("/identity/authorize?"),
+        "{seen}"
+    );
+    assert!(
+        page["methods link"].as_str().is_some(),
+        "Identity's other ways in are offered: {seen}"
+    );
+    assert_eq!(
+        seen["get"]["methods link"],
+        json(serde_json::Value::Null),
+        "only on a sign-in for Identity: {seen}"
+    );
+    assert!(
+        seen["authorize sign in"]["location"]
+            .as_str()
+            .unwrap()
+            .contains("/identity/authorize?"),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["consent"],
+        serde_json::json!({ "status": 200, "csrf": true, "identity cookie": true }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["approved"],
+        serde_json::json!({ "status": 302, "callback": true, "state": true }),
+        "{seen}"
+    );
+    assert_eq!(seen["token"]["status"], 200, "{seen}");
+    assert_eq!(seen["token"]["sub"], seen["token"]["ana"], "{seen}");
+    assert_eq!(
+        seen["identity signed in"],
+        serde_json::json!({ "status": 200, "app": true }),
+        "{seen}"
+    );
+    assert_eq!(seen["identity rest"]["status"], 200, "{seen}");
+    assert_eq!(
+        seen["identity rest"]["id"].as_str().unwrap(),
+        seen["token"]["ana"].as_str().unwrap(),
+        "{seen}"
+    );
+    let fresh = seen["prompt login"]["location"].as_str().unwrap();
+    assert!(fresh.contains("/wp-login.php?") && fresh.contains("reauth=1"), "{seen}");
+    assert_eq!(seen["prompt login"]["identity cookie"], false, "{seen}");
+    assert_eq!(
+        seen["identity sign-out"],
+        serde_json::json!({ "status": 200, "wordpress signed in": false, "identity cookie": false }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["after sign-out"],
+        serde_json::json!({ "status": 302, "to login": true }),
+        "{seen}"
+    );
+}
+
+fn json<T: serde::Serialize>(v: T) -> serde_json::Value {
+    serde_json::to_value(v).unwrap()
+}

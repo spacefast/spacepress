@@ -74,6 +74,13 @@ $out['not modified'] = [
 ];
 $out['svg policy'] = str_contains(fetch("$url/logo.svg")['headers']['content-security-policy'] ?? '', 'sandbox');
 $out['cache'] = fetch("$url/compiler.wasm")['headers']['cache-control'] ?? null;
+// Another site's page may read a public file, as it sends it (an Origin header), and a 304 says so too.
+$out['other origins'] = [
+    fetch("$url/files/blog.json", 'GET', ['Origin: https://playground.wordpress.net'])['headers']['access-control-allow-origin'] ?? null,
+    fetch("$url/logo.svg", 'GET', ["If-None-Match: $etag"])['headers']['access-control-allow-origin'] ?? null,
+    // Not the app's pages: only files.
+    fetch("$url/about")['headers']['access-control-allow-origin'] ?? null,
+];
 $out['post'] = fetch("$url/logo.svg", 'POST')['status'];
 
 $site->destroy();

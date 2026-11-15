@@ -53,8 +53,10 @@ class Play extends HTMLElement {
       this.compiler = compiler; this.data = data;
     } catch (error) { this.say("failed", `Could not load the compiler: ${error}`); return; }
     this.build();
-    const wanted = this.getAttribute("example");
-    this.open(wanted in this.data.examples ? wanted : Object.keys(this.data.examples)[0], this.getAttribute("file"));
+    // On the playground page the address picks the example and the file (see remember()).
+    const asked = this.hasAttribute("picker") ? new URLSearchParams(location.search) : new URLSearchParams();
+    const wanted = asked.get("example") ?? this.getAttribute("example");
+    this.open(wanted in this.data.examples ? wanted : Object.keys(this.data.examples)[0], asked.get("file") ?? this.getAttribute("file"));
     this.dataset.ready = "";
   }
 

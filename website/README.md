@@ -64,12 +64,28 @@ the button), `plugins` (where WordPress Playground fetches First's shared plugin
   Playground blueprint: the app plugin is what the browser build returned, the runtime, identity
   and admin plugins are the zips `pnpm showcase` wrote.
 
+## Opening it from another machine
+
+`first dev` listens on this machine's loopback only, and WordPress writes `http://localhost:8960`
+into every page. `src/share.mjs` forwards to it and rewrites that address in text answers:
+
+```sh
+PUBLIC=https://<this-machine>.<tailnet>.ts.net:8960 node src/share.mjs &   # listens on 127.0.0.1:8961
+tailscale serve --bg --https=8960 http://127.0.0.1:8961                    # tailnet only
+tailscale serve --https=8960 off                                           # to stop
+```
+
+It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://localhost:8960`.
+
 ## What First's pages needed, found while moving this site onto First (2026-11-15)
 
-- TSX refuses `<script>`, and a page cannot import a text file. Each page here is one literal
-  passed to `<Html>`, which places a literal as written; the pre-rendered shadow roots, the
-  scripts and the inline JSON travel inside it. `metadata.scripts` exists and would be the
-  cleaner place for the two script modules.
+- Browser code is a script module in `public/`, named in the layout's `metadata.scripts`
+  (`["/guide.js", "/play.js"]`). First loads each once with `wp_enqueue_script_module`. TSX
+  refuses `<script>`, and that is the way around it. The layout and `play/page.tsx` are plain
+  TSX; `<tp-play>` is a custom element, which TSX allows.
+- A page cannot import a text file, and nothing renders a code block from TSX. So the guide page
+  is still one literal passed to `<Html>`, which places a literal as written: its 80 highlighted
+  blocks are rendered by this build, not by First.
 - The active WordPress theme's styles load after the app's stylesheet and set `body` colours and
   fonts. The site's rules are under `body.first-app`, which outranks them.
 - Addresses are from the site root (`/play`, `/pierre-diffs.css`), also inside shadow roots.

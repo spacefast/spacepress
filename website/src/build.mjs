@@ -190,12 +190,14 @@ const css = between(page, "<style>", "</style>");
 const body = between(page, "<body>", "</body>", true);
 writeFileSync(join(app, "site.css"), `/* Written by src/build.mjs from the <style> of src/guide.html. */\n${css}`);
 writeFileSync(join(app, "layout.tsx"), `// Written by src/build.mjs. Do not edit.
-import { Html, type LayoutProps } from "first/app";
+import type { LayoutProps } from "first/app";
 import "./site.css";
 
 export const metadata = {
   title: { default: "TypedPress", template: "%s · TypedPress" },
   description: "Describe your data and pages in TypeScript. TypedPress compiles them into a WordPress plugin.",
+  // Browser code is a script module in public/, named here. First loads each once, as a module.
+  scripts: ["/guide.js", "/play.js"],
 };
 
 export default function Root({ children }: LayoutProps) {
@@ -211,19 +213,30 @@ export default function Root({ children }: LayoutProps) {
         </nav>
       </header>
       {children}
-      <Html value={${literal('<script type="module" src="/guide.js"></script><script type="module" src="/play.js"></script>')}} />
     </div>
   );
 }
 `);
 writeFileSync(join(app, "page.tsx"), pageFile("Home", "Building a TypedPress app", "Every feature of TypedPress and how to use it, with examples you can edit, build and run in your browser.", body.replace('<script type="module" src="guide.js"></script>', "")));
-writeFileSync(join(app, "play", "page.tsx"), pageFile("Playground", "Playground", "Edit a TypedPress app and build it in your browser. See the PHP, SQL and types the build writes, then run the app in WordPress.", `<main class="playpage">
-<h1>Playground</h1>
-<p class="lede">Pick an app, change its code and it is built in your browser by the same compiler the command line uses. Then run your version in WordPress, also in your browser. Nothing is sent to a server.</p>
-<div class="note">These are the example apps as they are in the code today, so they use the current names: <code>first.config.ts</code>, <code>first/</code>, <code>action()</code>. The guide describes the names they are moving to.</div>
-<tp-play example="full-site" picker open></tp-play>
-<script>{const q=new URLSearchParams(location.search),p=document.currentScript.previousElementSibling;if(q.get("example"))p.setAttribute("example",q.get("example"));if(q.get("file"))p.setAttribute("file",q.get("file"));}</script>
-</main>`));
+// The playground page is ordinary TSX: the component is a custom element, and its code is the
+// layout's script module. It reads ?example= and &file= from the address itself.
+writeFileSync(join(app, "play", "page.tsx"), `// Written by src/build.mjs. Do not edit.
+export const metadata = {
+  title: "Playground",
+  description: "Edit a TypedPress app and build it in your browser. See the PHP, SQL and types the build writes, then run the app in WordPress.",
+};
+
+export default function Playground() {
+  return (
+    <main className="playpage">
+      <h1>Playground</h1>
+      <p className="lede">Pick an app, change its code and it is built in your browser by the same compiler the command line uses. Then run your version in WordPress, also in your browser. Nothing is sent to a server.</p>
+      <div className="note">These are the example apps as they are in the code today, so they use the current names: <code>first.config.ts</code>, <code>first/</code>, <code>action()</code>. The guide describes the names they are moving to.</div>
+      <tp-play example="full-site" picker="" open="" />
+    </main>
+  );
+}
+`);
 
 for (const [file, sheet] of sheets) writeFileSync(join(out, file), sheet);
 const bundle = await Bun.build({ entrypoints: [join(here, "client.js")], minify: true, target: "browser", format: "esm" });

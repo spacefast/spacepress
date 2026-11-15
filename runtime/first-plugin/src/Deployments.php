@@ -34,7 +34,7 @@ final class Deployments
 
     public static function abilities(): void
     {
-        $allowed = static fn (): bool => Site::mayDeploy();
+        $allowed = static fn (): bool|\WP_Error => Receiver::authorized(false);
         $hidden = ['public' => false, 'show_in_rest' => true, 'mcp' => ['public' => false]];
         wp_register_ability(self::LIST, [
             'label' => 'List deployments',

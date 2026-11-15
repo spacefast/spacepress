@@ -448,3 +448,7 @@ emits. Everything else is MIT: the Rust compiler, the TypeScript client, the
 `"first"` types, the examples, the docs and the tests. Bundled third-party
 code keeps its own license; see the `THIRD-PARTY-LICENSES.txt` files under
 `runtime/`.
+
+The framework website is a First app in [`www/`](www/README.md). Build and deployment
+instructions live with the app. The older `docs-site/` also supplies its browser compiler
+and shared playground assets.

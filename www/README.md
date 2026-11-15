@@ -151,13 +151,13 @@ It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://loca
 - **npm imports in browser code.** `browser/` is bundled by Bun into one file in `public/` and
   loaded through `metadata.scripts`. The bundle keeps eleven grammars and two themes of the
   highlighter; a file in another language shows as plain text.
-- **Cross-origin `public/` files.** WordPress Playground fetches First's plugin zips from another
-  origin and First sends no `Access-Control-Allow-Origin`, so the zips come from the published
-  site (`plugins` in `play-data.json`; `PLUGINS_URL=… bun scripts/build.mjs` changes it).
+- **Playground plugin source.** Set `PLUGINS_URL` to the destination site when building.
+  Public files allow cross-origin reads; verify that the host preserves those headers.
+  The current default is the earlier published guide, until a destination is selected.
 - **Theme styles.** The active theme's styles load after the app's and set `body` colours and
   fonts, so the site's base rules are under `body.first-app`.
-- **A `.css` save does not rebuild** under `first dev`; save a TypeScript file. (Fixed on a
-  First branch, not on main yet.)
+- **Public files still boot WordPress.** Serving them before WordPress initializes is unfinished.
+  Stylesheet and image changes do rebuild under `first dev`.
 - **JSX only compiles in `first/components/`, pages and client components**, which is why the
   guide's sections are under `first/components/guide/`.
 - **A docs page is a 404 to WordPress's main query.** `/docs/...` answers 200 with the right

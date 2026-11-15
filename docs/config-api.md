@@ -1340,14 +1340,21 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   version it was made against; when another was applied first it is refused with 409
   `schema_conflict`.
 - **What the site trusts.** The version table is the record. Each row's hash covers it and its
-  parent's hash, and every read of the versions checks the chain; a row changed outside First
-  refuses further changes (409 `schema_chain_broken`) and `first pull`, the site keeps serving the
-  last state that checked out, and `GET /__first/api/v1` and `first doctor` report the problem.
-  The option is sealed by apply; an option written any other way is not served until a read of
-  the versions rebuilds it. When it is served, it is read as the operations a change can make: an
-  added kind is rebuilt from its stored definition, and a field, label or presentation is served
-  only in the form the rules accept, so the option can't give a kind access rules, hooks or
-  functions.
+  parent's hash, and the option names the newest version and its hash, so a row changed, inserted
+  or removed outside First (the newest ones included) breaks the chain. A broken chain refuses
+  further changes (409 `schema_chain_broken`) and `first pull`; the site keeps serving the last
+  state that checked out; `GET /__first/api/v1` and `first doctor` report the problem from the
+  next request on, and the wp-admin screen shows it. A deploy is refused with the same error and
+  writes nothing. The option is sealed by apply with an HMAC keyed by the site's own salts
+  (wp-config's keys), so only code running on the site can seal one; an option written any other
+  way, at any version, is not served (the site serves version 0 and says why) until a read of the
+  versions rebuilds it. Even a sealed option is read as the operations a change can make, under
+  the same rules: an added kind is rebuilt from its stored definition and is never a kind every
+  site has; a field is served only with a name, definition and storage keys a change could give
+  it; a label or presentation only on a collection or global and only on fields a change can
+  present. So the option can't give a kind access rules, hooks or functions, or take over
+  First's own records. A `table()` label or presentation stored before that was refused is still
+  served, can be taken off (`setLabel`/`setFieldUi` with `null`), and is left out of the lock.
 - **Loading.** The active version's additions are in one autoloaded option,
   `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
   A kind, field or relation the build declares itself is never replaced; only a label and a

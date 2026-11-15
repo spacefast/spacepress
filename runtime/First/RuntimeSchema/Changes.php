@@ -43,7 +43,7 @@ final class Changes
      */
     private const RESERVED = ['id', 'author', 'createdAt', 'updatedAt', 'status', 'publishedAt', 'url', 'terms', 'uid', 'locale', 'translations', 'system', 'staged'];
     /** Kinds every site has (spec §2.1), and the names the API serves beside them. */
-    private const BUILTIN_KINDS = ['users', 'comments', 'posts', 'pages', 'media', 'categories', 'tags', 'menus', 'settings', 'me', 'actions', 'globals', 'files', 'services', 'auth'];
+    public const BUILTIN_KINDS = ['users', 'comments', 'posts', 'pages', 'media', 'categories', 'tags', 'menus', 'settings', 'me', 'actions', 'globals', 'files', 'services', 'auth'];
 
     /**
      * @param array $compiled the build's `schema.php` ({@see Loader::compiled()})
@@ -176,8 +176,9 @@ final class Changes
             case 'setLabel':
                 [$global, $kind] = $target(true);
                 $shape([$global ? 'global' : 'kind', 'label']);
-                self::declared($schema, $global, $kind, $pointer);
                 $label = $change['label'];
+                // A table() kind is build-only; taking off a label stored before that rule is allowed.
+                self::declared($schema, $global, $kind, $pointer, $label === null);
                 if ($label !== null && (!is_string($label) || $label === '' || strlen($label) > 120)) {
                     throw new Refused('schema_format', '`label` is a string of at most 120 characters, or null to take the runtime label off', null, "$pointer/label");
                 }
@@ -188,7 +189,8 @@ final class Changes
                 [$global, $kind] = $target(true);
                 $shape([$global ? 'global' : 'kind', 'field', 'ui']);
                 $field = $name('field');
-                $definition = self::declared($schema, $global, $kind, $pointer)[$global ? 'fields' : 'columns'][$field] ?? null;
+                $clearing = $change['ui'] === null || $change['ui'] === [];
+                $definition = self::declared($schema, $global, $kind, $pointer, $clearing)[$global ? 'fields' : 'columns'][$field] ?? null;
                 if ($definition === null || ($definition['system'] ?? false) || ($definition['primaryKey'] ?? false)) {
                     throw new Refused('schema_invalid', "$kind.$field: `$kind` has no field `$field` to present", 'F3001', "$pointer/field");
                 }
@@ -241,11 +243,11 @@ final class Changes
      * The compiled-plus-runtime kind, or the compiler's refusal for a name that isn't one. A table()
      * kind is build-only, its label and presentation included (the decision record's scope).
      */
-    private static function declared(array $schema, bool $global, string $kind, string $pointer): array
+    private static function declared(array $schema, bool $global, string $kind, string $pointer, bool $clearing = false): array
     {
         $spec = $schema[$global ? 'globals' : 'collections'][$kind]
             ?? throw new Refused('schema_invalid', "$kind: this app declares no " . ($global ? 'global' : 'collection') . ' with that name', 'F3001', $pointer . ($global ? '/global' : '/kind'));
-        if (!$global && !isset($spec['wp']['postType'])) {
+        if (!$global && !$clearing && !isset($spec['wp']['postType'])) {
             throw new Refused('schema_build_only', "$kind: `$kind` is a table(), and tables change only in the project's schema file: edit it there, then build and deploy", null, "$pointer/kind");
         }
 
@@ -354,15 +356,21 @@ final class Changes
     }
 
     /** @param list<list<?string|true>> $keys */
-    private static function prefixed(string $prefix, array $keys): array
+    public static function prefixed(string $prefix, array $keys): array
     {
         return array_map(static fn (array $key): array => is_string($key[0]) ? [$prefix . $key[0], ...array_slice($key, 1)] : [$prefix, ...$key], $keys);
     }
 
     /** Whether a collection column is stored as post meta (PostMeta::fields' rule). */
-    private static function meta(array $spec, string $field, array $definition): bool
+    public static function meta(array $spec, string $field, array $definition): bool
     {
         return !in_array($field, [$spec['primaryKey'] ?? 'id', $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null], true) && !($definition['system'] ?? false);
+    }
+
+    /** Whether a runtime field may have this name ({@see named()}'s rule, as a yes or no). */
+    public static function nameable(string $field, array $allowed): bool
+    {
+        return strlen($field) <= self::MAX_NAME && (!in_array($field, self::RESERVED, true) || in_array($field, $allowed, true));
     }
 
     /** A field name the site can store and that no kind will get from a build. `$allowed`: built-in names this place may use. */
@@ -434,10 +442,18 @@ final class Changes
      * A state as `first/_generated/runtime-schema.json`: what the compiler reads
      * (src/runtime_schema.rs). `removed` and `compiled` are the site's own and stay there.
      */
-    public static function lock(array $state): array
+    public static function lock(array $state, ?array $compiled = null): array
     {
+        // A table() kind's label or presentation (stored before that was refused) is the site's own:
+        // the compiler refuses an override on a table(), so the lock leaves it out.
+        foreach (array_keys($state['overrides']['collections'] ?? []) as $kind) {
+            if ($compiled !== null && isset($compiled['collections'][$kind]) && !isset($compiled['collections'][$kind]['wp']['postType'])) {
+                unset($state['overrides']['collections'][$kind]);
+            }
+        }
+
         return ['format' => Loader::FORMAT, 'version' => (int) ($state['version'] ?? 0), 'hash' => (string) ($state['hash'] ?? '')]
-            + array_intersect_key($state, ['collections' => 1, 'globals' => 1, 'added' => 1, 'overrides' => 1]);
+            + array_intersect_key(self::tidy($state), ['collections' => 1, 'globals' => 1, 'added' => 1, 'overrides' => 1]);
     }
 
     /** No empty maps or null overrides: two states that mean the same are the same bytes. */

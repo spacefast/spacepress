@@ -302,7 +302,12 @@ final class Surfaces
                     throw HttpError::invalidInput('`parent` is the version this change was made against', '/parent');
                 }
 
-                return self::version(self::versions()->apply($parent, ['format' => Loader::FORMAT, 'changes' => $changes($in)], self::actor('ability')));
+                $row = self::versions()->apply($parent, ['format' => Loader::FORMAT, 'changes' => $changes($in)], self::actor('ability'));
+
+                // As schema-read shows it: without the login and password name for a credential
+                // scoped without personal data.
+                return \First\Wp\AgentScope::may('personal') ? self::version($row)
+                    : ['actor' => array_intersect_key($row['actor'], ['user' => 1, 'via' => 1])] + self::version($row);
             },
         ];
 
@@ -407,17 +412,26 @@ final class Surfaces
                 'layout' => ['type' => 'table', 'fields' => ['createdAt', 'by', 'summary'], 'titleField' => 'version',
                     'sort' => ['field' => 'version', 'direction' => 'desc']],
             ],
-            'data' => static function (): array {
-                $versions = self::versions();
-                $deploy = $versions->deployCheck();
-                $lines = [sprintf('Active version: %d. The build this site runs contains version %d.', $versions->active()['version'], $deploy['build']['version'])];
-                if ($deploy['kept'] !== []) {
-                    $lines[] = 'On this site but not in the build: ' . implode(', ', $deploy['kept']) . '. Run `first pull` in the project to bring them into git.';
-                }
-
-                return $lines;
-            },
+            'data' => self::summary(...),
         ]);
+    }
+
+    /** The lines above the versions on the screen: the active version, and what a deploy would keep. */
+    public static function summary(): array
+    {
+        $versions = self::versions();
+        try {
+            $deploy = $versions->deployCheck();
+        } catch (Refused $broken) {
+            // A broken chain: the screen says so instead of failing.
+            return [ucfirst($broken->getMessage()) . '.'];
+        }
+        $lines = [sprintf('Active version: %d. The build this site runs contains version %d.', $versions->active()['version'], $deploy['build']['version'])];
+        if ($deploy['kept'] !== []) {
+            $lines[] = 'On this site but not in the build: ' . implode(', ', $deploy['kept']) . '. Run `first pull` in the project to bring them into git.';
+        }
+
+        return $lines;
     }
 
     /** Who made a version, in words. */

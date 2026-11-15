@@ -143,7 +143,8 @@ class Play extends HTMLElement {
     } };
   }
 
-  defaultFile() { return this.example.shown.includes("first.config.ts") ? "first.config.ts" : this.example.shown[0]; }
+  // The file a reader should see first: the schema when the app keeps it in its own file.
+  defaultFile() { return ["first/schema.ts", "first.config.ts"].find((file) => this.example.shown.includes(file)) ?? this.example.shown[0]; }
 
   // On the playground page the address names the example and the open file, so either can be linked.
   remember() {

@@ -168,3 +168,13 @@ li { margin: 4px 0; }
 .tp-about { font-size: 12.5px; color: var(--mut); margin: 0 0 6px; min-height: 18px; }
 .tp-shared { font-size: 13.5px; margin: 8px 0; padding: 6px 10px; border: 1px solid var(--line); border-left: 3px solid var(--info); border-radius: 7px; background: var(--bg); overflow-wrap: anywhere; }
 
+/* The examples page. */
+.cards { list-style: none; padding: 0; margin: 18px 0; display: grid; gap: 12px; }
+.cards li { margin: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.cards h2 { margin: 0 0 4px; font-size: 17px; }
+.cards p { margin: 4px 0; }
+.cards .links { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; margin-top: 8px; }
+.cards .stars { color: var(--mut); margin-left: auto; }
+/* On the playground page the apps are larger, so the file tree gets more room. */
+.playpage .tp-split { grid-template-columns: 250px minmax(0, 1fr); }
+@media (max-width: 620px) { .playpage .tp-split { grid-template-columns: minmax(0, 1fr); } }

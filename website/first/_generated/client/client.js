@@ -46,10 +46,21 @@ export const SCHEMA = {
 			"media": [],
 			"mediaList": [],
 			"files": []
+		},
+		"examples": {
+			"path": "examples",
+			"primaryKey": "id",
+			"drafts": false,
+			"revisions": false,
+			"localized": false,
+			"relations": {},
+			"media": [],
+			"mediaList": [],
+			"files": []
 		}
 	},
 	"globals": [],
-	"actions": ["share"],
+	"actions": ["share", "refreshStarsNow"],
 	"buckets": []
 };
 function registry() {

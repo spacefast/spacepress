@@ -1,4 +1,4 @@
-import { collection, table, text, slug, richText, json } from "first";
+import { collection, table, text, slug, richText, json, integer, timestamp } from "first";
 
 // The docs: each file under content/docs/ is one doc. Its name is its slug, its folder its
 // parent, and a folder's index.md the page the folder stands for.
@@ -26,3 +26,18 @@ export const shares = table({
   example: text().max(40),
   files: json(),
 }, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
+
+// The examples the site lists, each with the repository its code lives in and that repository's
+// star count. An admin adds a row; the `refreshStars` job (first/server.ts) fills in `stars`.
+export const examples = table({
+  name: text().max(60).unique(),
+  title: text().max(80),
+  summary: text({ multiline: true }).max(300),
+  // "owner/name" on GitHub, and the folder of the example inside it.
+  repo: text().max(120),
+  path: text().max(200).default(""),
+  position: integer().default(0),
+  // `starsAt` is when GitHub was last asked; `stars` stays empty while it has never answered.
+  stars: integer().optional(),
+  starsAt: timestamp().optional(),
+}, { access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });

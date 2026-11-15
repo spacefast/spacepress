@@ -29,6 +29,21 @@ type Entities = {
     'example': ColumnBuilder<'text', string, true, false, false, false>;
     'files': ColumnBuilder<'json', unknown, true, false, false, false>;
   }, false, 'table'>;
+  'examples': Collection<'examples', {
+    'id': ColumnBuilder<'id', number, true, true, false, true>;
+    'name': ColumnBuilder<'text', string, true, false, false, false>;
+    'title': ColumnBuilder<'text', string, true, false, false, false>;
+    'summary': ColumnBuilder<'text', string, true, false, false, false>;
+    'repo': ColumnBuilder<'text', string, true, false, false, false>;
+    'path': ColumnBuilder<'text', string, true, true, false, false>;
+    'position': ColumnBuilder<'integer', number, true, true, false, false>;
+    'stars': ColumnBuilder<'integer', number, false, false, false, false>;
+    'starsAt': ColumnBuilder<'timestamp', string, false, false, false, false>;
+  }, false, 'table'>;
+};
+type Jobs = {
+  'refreshStars': Job<{
+  }>;
 };
 type Graph = {
   'docs': {
@@ -39,5 +54,7 @@ type Graph = {
   };
   'shares': {
   };
+  'examples': {
+  };
 };
-declare module "first" { interface Register { relations: Relations<Entities, Graph> } }
+declare module "first" { interface Register { relations: Relations<Entities, Graph>; jobs: Jobs } }

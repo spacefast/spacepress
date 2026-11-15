@@ -109,6 +109,28 @@ test("playground: a syntax error is announced with its place", async () => {
   await close();
 });
 
+test("examples: each links to its code and opens in the playground, and the list is served as JSON", async () => {
+  const { page, errors, status, close } = await open("/examples");
+  assert.equal(status, 200);
+  const cards = page.locator(".cards li");
+  assert.ok(await cards.count() >= 3);
+  assert.match(await cards.first().getByRole("link", { name: "Code on GitHub" }).getAttribute("href"), /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/tree\/main\//);
+  const data = await (await fetch(`${base}/api/examples.json`)).json();
+  assert.equal(data.length, await cards.count());
+  for (const row of data) assert.ok(row.stars === null || Number.isInteger(row.stars), `stars of ${row.name}`);
+  await cards.first().getByRole("link", { name: "Open in the playground" }).click();
+  await built(page);
+  assert.equal(await page.locator("tp-play select").inputValue(), "website");
+  assert.match(await page.locator("tp-play .tp-status").textContent(), /^Built in \d+ ms: \d+ files/);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test("the star job can only be started by an admin", async () => {
+  const response = await fetch(`${base}/__first/api/v1/actions/refreshStarsNow`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  assert.ok([401, 403].includes(response.status), `POST refreshStarsNow answered ${response.status}`);
+});
+
 test("saved edits cannot be listed by a visitor", async () => {
   const response = await fetch(`${base}/__first/api/v1/shares`);
   assert.ok([401, 403].includes(response.status), `GET /shares answered ${response.status}`);

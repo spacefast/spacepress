@@ -27,6 +27,7 @@
       "description": "A collection: WordPress posts of their own type, with the block editor."
     },
     { "name": "Shares", "description": "A table of the app's own." },
+    { "name": "Examples", "description": "A table of the app's own." },
     { "name": "Actions", "description": "The app's own server functions." },
     {
       "name": "WordPress",
@@ -2702,6 +2703,244 @@
         }
       }
     },
+    "/examples": {
+      "get": {
+        "tags": ["Examples"],
+        "operationId": "examples.list",
+        "summary": "List examples",
+        "x-first-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The examples rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "where",
+            "in": "query",
+            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExampleFilter" }
+              }
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `name`, `title`, `summary`, `repo`, `path`, `position`, `stars`, `starsAt`.",
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Example" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Examples"],
+        "operationId": "examples.create",
+        "summary": "Create in examples",
+        "x-first-access": "admin",
+        "description": "Creates one examples row and returns it.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new row's fields.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExampleInsert" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Example" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/examples/{id}": {
+      "get": {
+        "tags": ["Examples"],
+        "operationId": "examples.get",
+        "summary": "Get one of examples",
+        "x-first-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One examples row.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Example" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["Examples"],
+        "operationId": "examples.update",
+        "summary": "Update in examples",
+        "x-first-access": "admin",
+        "description": "Changes the fields sent on one examples row and returns the row.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExamplePatch" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Example" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["Examples"],
+        "operationId": "examples.delete",
+        "summary": "Delete from examples",
+        "x-first-access": "admin",
+        "description": "Deletes one examples row for good and returns the row as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deleted row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Example" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
     "/actions/share": {
       "post": {
         "tags": ["Actions"],
@@ -2753,6 +2992,51 @@
             }
           },
           "400": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/refreshStarsNow": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.refreshStarsNow",
+        "summary": "Call refreshStarsNow",
+        "x-first-access": "admin",
+        "description": "Runs the `refreshStarsNow` action with the input sent and returns its result.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "queued": { "type": "boolean" }
+                      },
+                      "required": ["queued"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
           "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
@@ -4476,7 +4760,7 @@
                       "properties": {
                         "kind": {
                           "type": "string",
-                          "enum": ["docs", "posts", "shares"],
+                          "enum": ["docs", "posts", "shares", "examples"],
                           "description": "The kind, by the name the typed client uses."
                         },
                         "op": { "type": "string", "enum": ["list", "paginate", "get", "count"] },
@@ -4572,7 +4856,7 @@
           {
             "name": "kinds",
             "in": "query",
-            "description": "Only these kinds, comma-separated: `docs`, `posts`, `shares`.",
+            "description": "Only these kinds, comma-separated: `docs`, `posts`, `shares`, `examples`.",
             "schema": { "type": "string" }
           },
           {
@@ -4599,14 +4883,15 @@
                           "items": {
                             "type": "object",
                             "properties": {
-                              "kind": { "type": "string", "enum": ["docs", "posts", "shares"] },
+                              "kind": { "type": "string", "enum": ["docs", "posts", "shares", "examples"] },
                               "rows": {
                                 "type": "array",
                                 "items": {
                                   "anyOf": [
                                     { "$ref": "#/components/schemas/Doc" },
                                     { "$ref": "#/components/schemas/Post" },
-                                    { "$ref": "#/components/schemas/Share" }
+                                    { "$ref": "#/components/schemas/Share" },
+                                    { "$ref": "#/components/schemas/Example" }
                                   ]
                                 }
                               }
@@ -5074,6 +5359,70 @@
             "items": { "$ref": "#/components/schemas/ShareFilter" }
           },
           "NOT": { "$ref": "#/components/schemas/ShareFilter" }
+        }
+      },
+      "Example": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string", "maxLength": 60 },
+          "title": { "type": "string", "maxLength": 80 },
+          "summary": { "type": "string", "maxLength": 300 },
+          "repo": { "type": "string", "maxLength": 120 },
+          "path": { "type": "string", "maxLength": 200 },
+          "position": { "type": "integer" },
+          "stars": { "type": ["integer", "null"] },
+          "starsAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "ExampleInsert": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "maxLength": 60 },
+          "title": { "type": "string", "maxLength": 80 },
+          "summary": { "type": "string", "maxLength": 300 },
+          "repo": { "type": "string", "maxLength": 120 },
+          "path": { "type": "string", "maxLength": 200 },
+          "position": { "type": "integer" },
+          "stars": { "type": ["integer", "null"] },
+          "starsAt": { "type": ["string", "integer", "null"] }
+        },
+        "required": ["name", "title", "summary", "repo"]
+      },
+      "ExamplePatch": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "maxLength": 60 },
+          "title": { "type": "string", "maxLength": 80 },
+          "summary": { "type": "string", "maxLength": 300 },
+          "repo": { "type": "string", "maxLength": 120 },
+          "path": { "type": "string", "maxLength": 200 },
+          "position": { "type": "integer" },
+          "stars": { "type": ["integer", "null"] },
+          "starsAt": { "type": ["string", "integer", "null"] }
+        }
+      },
+      "ExampleFilter": {
+        "type": "object",
+        "properties": {
+          "id": { "$ref": "#/components/schemas/IntegerFilter" },
+          "name": { "$ref": "#/components/schemas/StringFilter" },
+          "title": { "$ref": "#/components/schemas/StringFilter" },
+          "summary": { "$ref": "#/components/schemas/StringFilter" },
+          "repo": { "$ref": "#/components/schemas/StringFilter" },
+          "path": { "$ref": "#/components/schemas/StringFilter" },
+          "position": { "$ref": "#/components/schemas/IntegerFilter" },
+          "stars": { "$ref": "#/components/schemas/IntegerFilter" },
+          "starsAt": { "$ref": "#/components/schemas/StringFilter" },
+          "AND": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExampleFilter" }
+          },
+          "OR": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExampleFilter" }
+          },
+          "NOT": { "$ref": "#/components/schemas/ExampleFilter" }
         }
       },
       "WordPressPage": {

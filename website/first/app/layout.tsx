@@ -14,6 +14,7 @@ export default function Root({ children }: LayoutProps) {
         <a className="brand" href="/">TypedPress</a>
         <nav aria-label="Site">
           <a href="/">Guide</a>
+          <a href="/examples">Examples</a>
           <a href="/docs">Docs</a>
           <a className="play" href="/play">Playground</a>
         </nav>

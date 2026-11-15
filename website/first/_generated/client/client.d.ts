@@ -475,12 +475,182 @@ export interface ShareFilter {
 	NOT?: ShareFilter;
 }
 export type ShareOrder = Partial<Record<"id" | "key" | "example", "asc" | "desc">> | string;
+export interface Example {
+	id: number;
+	name: string;
+	title: string;
+	summary: string;
+	repo: string;
+	path: string;
+	position: number;
+	stars: number | null;
+	starsAt: string | null;
+}
+export interface ExampleInsert {
+	name: string;
+	title: string;
+	summary: string;
+	repo: string;
+	path?: string;
+	position?: number;
+	stars?: number | null;
+	starsAt?: string | null;
+}
+export interface ExamplePatch {
+	name?: string;
+	title?: string;
+	summary?: string;
+	repo?: string;
+	path?: string;
+	position?: number;
+	stars?: number | null;
+	starsAt?: string | null;
+}
+export interface ExampleWith {}
+export interface ExampleFilter {
+	id?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	name?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	title?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	summary?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	repo?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	path?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	position?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	stars?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	starsAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	AND?: ExampleFilter[];
+	OR?: ExampleFilter[];
+	NOT?: ExampleFilter;
+}
+export type ExampleOrder = Partial<Record<"id" | "name" | "title" | "summary" | "repo" | "path" | "position" | "stars" | "starsAt", "asc" | "desc">> | string;
 export interface ShareInput {
 	example: string;
 	files: unknown;
 }
 export type ShareOutput = {
 	key: string;
+};
+export type RefreshStarsNowInput = Record<string, never>;
+export type RefreshStarsNowOutput = {
+	queued: boolean;
 };
 export interface Collections {
 	docs: {
@@ -507,12 +677,24 @@ export interface Collections {
 		filter: ShareFilter;
 		order: ShareOrder;
 	};
+	examples: {
+		row: Example;
+		insert: ExampleInsert;
+		patch: ExamplePatch;
+		with: ExampleWith;
+		filter: ExampleFilter;
+		order: ExampleOrder;
+	};
 }
 export interface Globals {}
 export interface Actions {
 	share: {
 		input: ShareInput;
 		output: ShareOutput;
+	};
+	refreshStarsNow: {
+		input: RefreshStarsNowInput;
+		output: RefreshStarsNowOutput;
 	};
 }
 export declare const SCHEMA: {
@@ -562,9 +744,20 @@ export declare const SCHEMA: {
 			readonly mediaList: readonly [];
 			readonly files: readonly [];
 		};
+		readonly examples: {
+			readonly path: "examples";
+			readonly primaryKey: "id";
+			readonly drafts: false;
+			readonly revisions: false;
+			readonly localized: false;
+			readonly relations: {};
+			readonly media: readonly [];
+			readonly mediaList: readonly [];
+			readonly files: readonly [];
+		};
 	};
 	readonly globals: readonly [];
-	readonly actions: readonly ["share"];
+	readonly actions: readonly ["share", "refreshStarsNow"];
 	readonly buckets: readonly [];
 };
 export type SchemaDescriptor = typeof SCHEMA;

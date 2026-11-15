@@ -30,13 +30,24 @@ export interface ShareWith {  }
 export interface ShareFilter { id?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; key?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; like?: string; ilike?: string; notLike?: string; notIlike?: string; isNull?: true; isNotNull?: true }; example?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; like?: string; ilike?: string; notLike?: string; notIlike?: string; isNull?: true; isNotNull?: true }; files?: unknown | null | { eq?: unknown | null; ne?: unknown | null; isNull?: true; isNotNull?: true }; AND?: ShareFilter[]; OR?: ShareFilter[]; NOT?: ShareFilter }
 export type ShareOrder = Partial<Record<"id" | "key" | "example", "asc" | "desc">> | string;
 
+export interface Example { id: number; name: string; title: string; summary: string; repo: string; path: string; position: number; stars: number | null; starsAt: string | null }
+export interface ExampleInsert { name: string; title: string; summary: string; repo: string; path?: string; position?: number; stars?: number | null; starsAt?: string | null }
+export interface ExamplePatch { name?: string; title?: string; summary?: string; repo?: string; path?: string; position?: number; stars?: number | null; starsAt?: string | null }
+export interface ExampleWith {  }
+export interface ExampleFilter { id?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; name?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; like?: string; ilike?: string; notLike?: string; notIlike?: string; isNull?: true; isNotNull?: true }; title?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; like?: string; ilike?: string; notLike?: string; notIlike?: string; isNull?: true; isNotNull?: true }; summary?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; like?: string; ilike?: string; notLike?: string; notIlike?: string; isNull?: true; isNotNull?: true }; repo?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; like?: string; ilike?: string; notLike?: string; notIlike?: string; isNull?: true; isNotNull?: true }; path?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; like?: string; ilike?: string; notLike?: string; notIlike?: string; isNull?: true; isNotNull?: true }; position?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; stars?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; starsAt?: string | null | { eq?: string | null; ne?: string | null; gt?: string; gte?: string; lt?: string; lte?: string; in?: string[]; notIn?: string[]; isNull?: true; isNotNull?: true }; AND?: ExampleFilter[]; OR?: ExampleFilter[]; NOT?: ExampleFilter }
+export type ExampleOrder = Partial<Record<"id" | "name" | "title" | "summary" | "repo" | "path" | "position" | "stars" | "starsAt", "asc" | "desc">> | string;
+
 export interface ShareInput { example: string; files: unknown }
 export type ShareOutput = { key: string };
+
+export type RefreshStarsNowInput = Record<string, never>;
+export type RefreshStarsNowOutput = { queued: boolean };
 
 export interface Collections {
   docs: { row: Doc; insert: DocInsert; patch: DocPatch; with: DocWith; filter: DocFilter; order: DocOrder };
   posts: { row: Post; insert: PostInsert; patch: PostPatch; with: PostWith; filter: PostFilter; order: PostOrder };
   shares: { row: Share; insert: ShareInsert; patch: SharePatch; with: ShareWith; filter: ShareFilter; order: ShareOrder };
+  examples: { row: Example; insert: ExampleInsert; patch: ExamplePatch; with: ExampleWith; filter: ExampleFilter; order: ExampleOrder };
 }
 
 export interface Globals {
@@ -44,4 +55,5 @@ export interface Globals {
 
 export interface Actions {
   share: { input: ShareInput; output: ShareOutput };
+  refreshStarsNow: { input: RefreshStarsNowInput; output: RefreshStarsNowOutput };
 }

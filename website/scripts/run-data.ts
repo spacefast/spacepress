@@ -2,7 +2,7 @@
 // "Run in WordPress" needs (docs-site/lib/blueprint.ts `ExampleRun`). The four examples the docs
 // site features come through docs-site/lib; the hero's small app lives in examples/_hero.
 // Run with the working directory set to docs-site/, after `pnpm wasm` and `pnpm showcase` there.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { compileFiles, example, sources } from "../../docs-site/lib/examples.ts";
 import { platformVersions } from "../../docs-site/lib/platform.ts";
@@ -27,6 +27,35 @@ const examples: Record<string, unknown> = {};
     files,
     shown: ["first.config.ts", "first/app/page.tsx"],
     run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/", seed: readFileSync(path.join(dir, "seed.php"), "utf8"), syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: ledger(dir) },
+  };
+}
+
+// The committed migrations of a project. (`ledger()` in docs-site/lib also reads public/ as text,
+// which this site's public/ is not: it holds the compiler and the plugin zips.)
+const migrations = (dir: string) => {
+  const folder = path.join(dir, "first/_generated/migrations");
+  return {
+    snapshot: JSON.parse(readFileSync(path.join(folder, "snapshot.json"), "utf8")),
+    files: Object.fromEntries(readdirSync(folder).filter((file) => file.endsWith(".sql")).sort().map((file) => [file, readFileSync(path.join(folder, file), "utf8")])),
+    public: {},
+  };
+};
+
+// This site itself: the same source that is serving the page, so a reader can change it and see
+// what it compiles to. The docs and the first post go with it as content.
+{
+  const dir = path.join(here, "..");
+  const files = Object.fromEntries(Object.entries(sources(dir)).filter(([file]) => /^(first\.config\.ts|tsconfig\.json|first\/)/.test(file)));
+  const { check, output } = await compileFiles("typedpress-site", files);
+  if (!output) throw new Error(`the site does not compile in the browser compiler:\n${check.diagnostics.map((d) => `${d.location?.file}:${d.location?.line}: ${d.message}`).join("\n")}`);
+  const lock = JSON.parse(readFileSync(path.join(dir, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
+  const shown = Object.keys(files).filter((file) => isWritten(file) && file !== "first/data/sources.ts" && file !== "tsconfig.json");
+  examples.website = {
+    title: "This website",
+    summary: "The site you are on: its schema, its server functions and its pages.",
+    files,
+    shown,
+    run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/examples", seed: "", syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: migrations(dir) },
   };
 }
 

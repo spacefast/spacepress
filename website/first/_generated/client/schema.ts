@@ -47,11 +47,23 @@ export const SCHEMA = {
       "media": [],
       "mediaList": [],
       "files": []
+    },
+    "examples": {
+      "path": "examples",
+      "primaryKey": "id",
+      "drafts": false,
+      "revisions": false,
+      "localized": false,
+      "relations": {},
+      "media": [],
+      "mediaList": [],
+      "files": []
     }
   },
   "globals": [],
   "actions": [
-    "share"
+    "share",
+    "refreshStarsNow"
   ],
   "buckets": []
 } as const;

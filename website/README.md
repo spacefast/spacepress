@@ -1,12 +1,16 @@
 # The TypedPress site
 
 The site for TypedPress (the framework called First in the code today), built as a First app:
-a one-page guide, a playground, docs from Markdown, and a blog. WordPress serves all of it.
+a one-page guide, a playground, examples with their GitHub stars, docs from Markdown, and a blog.
+WordPress serves all of it. It is also the app First is tested with: it uses content kinds,
+tables, server functions, a background job, an HTTP route, pages, Markdown sync and First Admin.
 
 | URL | What | Written as |
 |---|---|---|
 | `/` | the guide, one page | `first/app/page.tsx` and one TSX file per section in `first/components/guide/` |
 | `/play` | the playground | `first/app/play/page.tsx` and `browser/play.js` |
+| `/examples` | the examples, with links to their code and star counts | `first/app/examples/page.tsx`, the `examples` table and the `refreshStars` job |
+| `/api/examples.json` | the same list as JSON | `first/app/api/examples.json/route.ts` |
 | `/docs/...` | the docs | Markdown in `content/docs/`, rendered by `first/app/docs/[...path]/page.tsx` |
 | `/blog`, `/blog/<slug>` | the blog | WordPress content; `first/app/blog/` renders it in the site's layout |
 | `/wp-admin/new/` | First Admin | shipped with the build |
@@ -38,8 +42,8 @@ after changing `browser/` or `examples/`.
 | Path | What |
 |---|---|
 | `first.config.ts` | the site's name; re-exports the schema and the server function |
-| `first/schema.ts` | `docs` and `posts` (WordPress content, synced from `content/`), and `shares` (a table) |
-| `first/server.ts` | `share`: saves a playground edit and answers with its key |
+| `first/schema.ts` | `docs` and `posts` (WordPress content, synced from `content/`); `shares` and `examples` (tables) |
+| `first/server.ts` | `share` saves a playground edit; `refreshStars` is the job that asks GitHub for star counts; `refreshStarsNow` lets an admin start it |
 | `first/app/layout.tsx`, `site.css` | the one layout and stylesheet every page uses |
 | `first/components/Guide.tsx` | what the guide is written with: `<Section>`, `<Ref>`, `<Code>`, `<Source>`, `<Diff>`, `<Tree>`, `<Example>`, the status badges |
 | `first/components/guide/*.tsx` | the guide's 30 sections; `sections.ts` gives their order and titles |
@@ -95,16 +99,31 @@ Share posts the files that differ from the example to `share` (`first/server.ts`
 them in the `shares` table and answers with a key; `/play?s=<key>` opens them. Visitors cannot
 list saved edits: the table's access is `admin`, and the page reads one row as the system.
 
+## Examples and stars
+
+`examples` is a table: name, title, summary, the GitHub repository and the folder inside it, and
+`stars` with `starsAt`. An admin adds rows (First Admin, or `POST /__first/api/v1/examples`).
+
+`refreshStars` is a `job`: it runs on WordPress's job queue (Action Scheduler), asks
+`https://api.github.com/repos/<owner>/<name>` once per repository and stores the count. Nothing
+polls. `/examples` enqueues it, with the key `refresh-stars` so it is queued once, when a row was
+last checked more than a day ago; `refreshStarsNow` enqueues it for an admin. GitHub is asked
+without a token (60 requests an hour), so a private repository has no count and the page says
+"no public star count". The repository these rows name is private today.
+
+The playground's "This website" entry is this folder's own `first.config.ts` and `first/`, put
+into `public/play-data.json` by `scripts/run-data.ts`.
+
 ## Tests
 
 ```sh
 SITE_URL=http://localhost:8960 node --test tests/site.test.mjs
 ```
 
-Seven tests against the running site: the guide's sections and drawn code, the guide without
+Nine tests against the running site: the guide's sections and drawn code, the guide without
 JavaScript, phone width, the docs' navigation and highlighted code, an edit that builds a
-migration and is shared and reopened, an announced syntax error, and that `/shares` is not
-listable. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
+migration and is shared and reopened, an announced syntax error, the examples page with its JSON
+and its playground link, and that a visitor can neither start the star job nor list `/shares`. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
 not wired into CI yet.
 
 ## Opening it from another machine

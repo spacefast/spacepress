@@ -69,7 +69,7 @@ build's code. It does not undo migrations: the earlier code runs on the current 
 |---|---|
 | `FIRST_VARIABLES` | `['NAME' => 'value', ...]`: the app's `process.env.NAME`. Nothing else of the server's environment reaches the app |
 | `FIRST_STORE_DIR` | where builds are kept, when the default (a directory with a random name in `wp-content`) doesn't suit: a path outside the web root is best. On a network each site keeps its builds in `site-<id>` under it |
-| `DISALLOW_FILE_MODS` | set by hosts that manage their own code: the site then takes no deployment, and `first push` says so |
+| `DISALLOW_FILE_MODS` | set by hosts that manage their own code: the site then takes no deployment, and `first push` says so. A `file_mod_allowed` filter that refuses file changes does the same |
 
 The app's mail leaves through `wp_mail`, so an SMTP plugin applies. Background jobs run through
 Action Scheduler: make sure WP-Cron or a real cron reaches the site.

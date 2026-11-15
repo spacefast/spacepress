@@ -356,10 +356,12 @@ final class Receiver
         }
         $root = Site::root();
         $parts = "$root/.tmp/deploy-{$request['id']}-$kind";
-        wp_mkdir_p($parts);
-        // One part of a tree at a time: the parts already held are counted and this one is stored
-        // under the tree's own lock, so parts sent at once can't each pass a count the other changes.
-        $lock = fopen("$root/.tmp/deploy-{$request['id']}-$kind.lock", 'c');
+        Trees::prepare($root);
+        // One part at a time: the parts already held are counted and this one is stored under a
+        // lock, so parts sent at once can't each pass a count the other changes. The lock is one
+        // file per store that is never removed: a lock file that comes and goes can be held by two
+        // requests at once, each on its own copy.
+        $lock = fopen("$root/.uploads.lock", 'c');
         if ($lock === false || !flock($lock, LOCK_EX)) {
             throw new \RuntimeException('Cannot lock the uploaded tree');
         }
@@ -368,9 +370,6 @@ final class Receiver
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
-            if (!is_dir($parts)) {
-                @unlink("$root/.tmp/deploy-{$request['id']}-$kind.lock");
-            }
         }
     }
 

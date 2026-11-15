@@ -220,6 +220,17 @@ wp option update lane_install_plugins '{"admin":false,"support":true}' --format=
 wp option delete lane_install_plugins >/dev/null
 "$harness" compose exec -T wordpress rm /var/www/html/wp-content/mu-plugins/lane-caps.php
 [[ $(status -u "$admin" "$api/site") == 200 && $(status -u "$support" "$api/site") == 403 ]] || fail "without the filter the roles decide again"
+# A site whose own code says no file may change takes no deployment, with an app live or not: the
+# policy is WordPress's (`file_mod_allowed`), and the app's own hardening is not what is asked.
+[[ $(curl -s -u "$admin" "$api/site" | json closed) == null ]] || fail "a site with a live app is open for deployments"
+"$harness" compose exec -T wordpress sh -c 'cat > /var/www/html/wp-content/mu-plugins/lane-no-file-mods.php' <<'PHP'
+<?php
+add_filter('file_mod_allowed', '__return_false');
+PHP
+[[ $(curl -s -u "$admin" "$api/site" | json closed) == *"does not allow file changes"* ]] || fail "the site says it is closed for deployments"
+[[ $(curl -s -o "$work/answer.json" -w '%{http_code}' -u "$admin" -H 'Content-Type: application/json' -d '{"manifest":"{}"}' "$api/deployments") == 403 && $(json code < "$work/answer.json") == first_closed ]] || fail "a site that allows no file changes takes no deployment: $(cat "$work/answer.json")"
+"$harness" compose exec -T wordpress rm /var/www/html/wp-content/mu-plugins/lane-no-file-mods.php
+[[ $(curl -s -u "$admin" "$api/site" | json closed) == null ]] || fail "without the filter the site is open again"
 
 # Pushes that open a deployment at the same moment each keep theirs. The manifest is the last
 # compiled build's (the refused `required` step, compiled against the live build).

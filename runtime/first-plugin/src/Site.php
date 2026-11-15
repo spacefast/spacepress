@@ -288,11 +288,26 @@ final class Site
         return is_array($granted) && !empty($granted['install_plugins']);
     }
 
+    private static ?bool $fileMods = null;
+
+    /**
+     * Whether the site itself lets code be installed: WordPress's file-modification policy, which is
+     * the `DISALLOW_FILE_MODS` constant and any `file_mod_allowed` filter, asked the way core asks for
+     * `install_plugins`. {@see Mount} reads it before a build mounts and it is kept for the request,
+     * because a live First app adds a filter of its own that refuses file changes in wp-admin (its
+     * hardening), and deploying is how such a site gets new code. A filter another plugin adds after
+     * plugins have loaded is not seen.
+     */
+    public static function fileMods(): bool
+    {
+        return self::$fileMods ??= wp_is_file_mod_allowed('capability_update_core');
+    }
+
     /** Why this site takes no deployments at all, or null. A host that manages its own code says so. */
     public static function closed(): ?string
     {
-        if (defined('DISALLOW_FILE_MODS') && DISALLOW_FILE_MODS) {
-            return 'This site does not allow file changes (DISALLOW_FILE_MODS), so it cannot take a deployment. Deploy the build with the site\'s own code instead.';
+        if (!self::fileMods()) {
+            return 'This site does not allow file changes (DISALLOW_FILE_MODS, or a file_mod_allowed filter), so it cannot take a deployment. Deploy the build with the site\'s own code instead.';
         }
         $reason = apply_filters('first_deploy_closed', null);
 

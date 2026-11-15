@@ -27,6 +27,8 @@ final class Mount
 
     public static function mount(): void
     {
+        // The site's own policy on installing code, before a build adds its hardening to it.
+        Site::fileMods();
         try {
             [$build, $mode, $deployment] = self::selected();
             if ($build === null) {

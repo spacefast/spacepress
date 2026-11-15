@@ -39,6 +39,29 @@ export interface LayoutProps<R extends keyof Routes | string = string> {
   children: JSX.Element;
 }
 
+/**
+ * What `first/app/login.tsx` receives: wp-login.php's sign-in view, after WordPress has run the
+ * sign-in. Messages are plain text (WordPress's own, after `login_errors` and `login_messages`).
+ */
+export interface LoginProps {
+  params: Record<string, never>;
+  /** Why the last attempt failed: a wrong password, too many attempts, … */
+  errors: string[];
+  /** Notices: "You are now logged out.", "Check your email…", … */
+  messages: string[];
+  /** The login to fill in again after a wrong password; empty otherwise. */
+  login: string;
+  /** Whether "Remember Me" was checked on the last attempt. */
+  remember: boolean;
+  /** Where WordPress sends the visitor after signing in. */
+  redirectTo: string;
+  /** wp-login.php's URL: where the form posts. */
+  action: string;
+  lostPasswordUrl: string;
+  /** wp-login.php's registration URL when the site lets anyone register, else null. */
+  registerUrl: string | null;
+}
+
 /** `export const metadata` in a page or layout, or a function of the page props returning it. */
 export interface Metadata {
   /** A page title, or (in a layout) a default plus a `%s` template child pages fill. */
@@ -106,6 +129,15 @@ export declare function Live(props: { id: string; children?: JSX.Children }): JS
  * only `param` (default `"page"`) changed; page 1 drops it. Many pages collapse around the current one.
  */
 export declare function Pagination(props: { page: number; pages: number; param?: string; className?: string; "aria-label"?: string }): JSX.Element;
+/**
+ * The sign-in form wp-login.php reads (`log`, `pwd`, `rememberme`, `redirect_to`), with the fields
+ * plugins add through `login_form`. It posts to wp-login.php, so WordPress runs the sign-in: the
+ * second factor, attempt limits and every `authenticate` filter apply. In `login.tsx` it shows
+ * wp-login.php's errors and messages above the fields (`notices={false}` leaves them to the page)
+ * and refills the login; anywhere else it signs in and comes back to the page it is on. `links`
+ * (default true) adds "Register" (when open) and "Lost your password?".
+ */
+export declare function LoginForm(props: { className?: string; submitLabel?: string; notices?: boolean; links?: boolean }): JSX.Element;
 /** A post body (block markup) rendered through `the_content`. */
 export declare function Content(props: { value: string | null | undefined }): JSX.Element;
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */

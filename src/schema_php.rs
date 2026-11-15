@@ -494,6 +494,9 @@ pub fn render(schema: &Schema) -> String {
             "        'notFound' => {},",
             app.not_found.as_ref().map(route).unwrap_or_else(|| "null".into())
         );
+        if let Some(login) = &app.login {
+            let _ = writeln!(out, "        'login' => {},", route(login));
+        }
         let _ = writeln!(
             out,
             "        'reserved' => [{}],",

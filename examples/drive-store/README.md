@@ -1,0 +1,71 @@
+# Drive Store
+
+A used hard-drive shop: a storefront that renders on WordPress, a custom backend of kinds, hooks
+and actions, and First Admin for the staff. It puts most of First in one app. Nothing is for sale:
+the Buy button places a fake order, takes no payment and ships nothing, and the pages say so.
+
+| What | Where | How |
+| --- | --- | --- |
+| Inventory | [`first/schema.ts`](first/schema.ts) `drives` | A `collection()`: WordPress posts with drafts and revisions, a page at `/drives/:slug` (`url`) |
+| Translations | `drives` and [`first.config.ts`](first.config.ts) | `locales: { default: "en", all: ["en", "tr"] }`. `name`, `summary` and `description` are `.localized()`; price, stock and specs are shared by a drive's English and Turkish rows. Polylang keeps the groups |
+| Orders and the stock log | `orders`, `stockMovements` | `table()` kinds with `ref()`s to drives and orders. An order's read rule is coded: staff read every order, a customer reads their own |
+| The shop's rules | `drives` and `orders` hooks | `beforeCreate` prices an order from the drive and refuses more than is in stock; `afterCreate` takes the stock down and logs it; a price has two decimals at most. They hold on every path: the storefront, the API, First Admin and wp-admin |
+| Shop settings | `shop` | A `global()`: shop name, currency, a notice banner and the low-stock threshold, edited in First Admin |
+| Actions | [`first/server.ts`](first/server.ts) | `buy` (anyone), `restock` and `markShipped` (editors and admins). Each is also a WordPress Ability and an MCP tool |
+| Storefront | [`first/app/`](first/app) | TSX pages compiled to PHP: the catalog with search and filters, a product page, My orders and a staff page |
+| Forms without JavaScript | product and staff pages | `<form action={buy}>` posts to the action and comes back with `useFormState`: the order code, or the refusal |
+| Reviews | product page | `comments: true` on `drives` and `<Comments for={item} />`: signed-in customers only, a first review is held for moderation |
+| Live stock | product page | `<Live id="stock">` updates the stock line in place when someone buys |
+| Guards | `first/app/orders/layout.tsx`, `first/app/staff/layout.tsx` | `guard = "authenticated"` and `guard = "editor"` |
+| RSS | layout | WordPress's own feed of the post type, `/?feed=rss2&post_type=first_drives`, linked from every page and in `<head>` |
+| Starting stock | [`content/drives/`](content/drives) | Synced Markdown (`sync`): a publish seeds it, and `first sync` loads it into a dev site |
+| Styles | [`first/app/site.css`](first/app/site.css) | An imported stylesheet with light and dark color tokens |
+| Admin | First Admin at `/wp-admin/new/` | Generated from the kinds: drives (with their translations and reviews), orders, stock movements and the shop settings |
+
+## Run it
+
+From the repository root:
+
+```sh
+cargo build --release
+./target/release/first dev examples/drive-store --port 8931
+```
+
+Sign in at `http://localhost:8931/wp-admin/` with `admin` / `first-test-admin` (local development
+only). A new dev site has no drives yet. Load the ones in `content/drives/` with `first sync`:
+
+```sh
+PW=$(./target/release/first wp --site examples/drive-store user application-password create admin sync --porcelain)
+FIRST_APP_PASSWORD="admin:$PW" ./target/release/first sync examples/drive-store
+```
+
+Then open `http://localhost:8931/`:
+
+- `/` is the catalog; `/?language=tr` is the same catalog in Turkish. The Crucial drive has no
+  Turkish translation, so it shows its English text.
+- `/drives/seagate-exos-x16` is a product page. Buy one as a guest; the order code comes back on
+  the page and the stock goes down. Ask for more than is left and the order is refused.
+- `/orders` lists a signed-in customer's own orders. Create a subscriber in wp-admin to try it.
+- `/staff` is for editors and admins: ship orders and restock drives that are running low.
+- Add, edit and translate drives, moderate reviews and change the shop settings in First Admin.
+
+Stop it with `first dev stop examples/drive-store`; the site's data is kept for the next start.
+
+## Tests
+
+`cargo test --test app_router drive_store_example_sells_on_wordpress` builds this example, seeds
+it from `content/drives/` as a publish does, and uses it on WordPress-on-SQLite the way a browser
+with scripts off would ([`tests/php/drive_store.php`](../../tests/php/drive_store.php)): both
+languages, search and filters, buying and the stock rule, My orders, the staff page and its
+actions, reviews, the RSS feed and the settings global.
+
+## Known limits
+
+- A Turkish translation has its own slug, but `/drives/<turkish slug>` is a 404: the page for a
+  drive is at its English slug, and `?language=tr` picks the language.
+- The storefront's own words (buttons, labels) are a small table in
+  [`first/app/_lib/format.ts`](first/app/_lib/format.ts), not WordPress translation files.
+- Field labels set with `.ui({ label })` show in the WordPress editor (Secure Custom Fields). First
+  Admin doesn't read them yet: its forms label a field from its name (`buyerEmail` is "Buyer
+  Email"), and the classic wp-admin table screens show the name itself. Kind labels (`Orders`,
+  `Stock movements`, `Shop settings`) do show.

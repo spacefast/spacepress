@@ -4411,6 +4411,183 @@ fn static_export_refuses_what_needs_a_server() {
     );
 }
 
+/// The drive-store example (examples/drive-store), the shop that shows most of First at once, on
+/// WordPress: built as committed, seeded from the records a hosted compile writes for its
+/// content/drives/, and used as a browser with scripts off would (tests/php/drive_store.php):
+/// translations, search, the buy form and its stock rule, guarded pages, staff actions, reviews,
+/// the RSS feed and the settings global.
+#[test]
+fn drive_store_example_sells_on_wordpress() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("drive-store");
+    copy(&root().join("examples/drive-store"), &project);
+    let _ = std::fs::remove_dir_all(project.join(".first"));
+    let _ = std::fs::remove_dir_all(project.join("first/dist"));
+    build(&project);
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    for args in [
+        vec![
+            "sources".as_ref(),
+            project.as_os_str(),
+            "--out".as_ref(),
+            sources.as_os_str(),
+        ],
+        vec![
+            "compile-sources".as_ref(),
+            sources.as_os_str(),
+            compiled.as_os_str(),
+            project.as_os_str(),
+        ],
+    ] {
+        let out = first().args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/drive_store.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    // content/drives/ seeds four drives, three of them with a Turkish translation in the same group.
+    assert_eq!(seen["seed"]["created"], 7, "{seen}");
+    assert_eq!(
+        seen["rows"],
+        json!([
+            ["en", "crucial-p3-2tb", ["en"]],
+            ["en", "samsung-870-evo-1tb", ["en", "tr"]],
+            ["tr", "samsung-870-evo-1tb-tr", ["en", "tr"]],
+            ["en", "seagate-exos-x16", ["en", "tr"]],
+            ["tr", "seagate-exos-x16-tr", ["en", "tr"]],
+            ["en", "wd-red-plus-4tb", ["en", "tr"]],
+            ["tr", "wd-red-plus-4tb-tr", ["en", "tr"]]
+        ])
+    );
+    // The catalog, cheapest first, links every drive's page and WordPress's feed of the post type.
+    assert_eq!(
+        seen["catalog"],
+        json!({
+            "status": 200,
+            "title": ["Catalog · Drive Store"],
+            "names": ["WD Red Plus 4 TB", "Samsung 870 EVO 1 TB", "Crucial P3 2 TB", "Seagate Exos X16 16 TB"],
+            "links": ["/drives/wd-red-plus-4tb", "/drives/samsung-870-evo-1tb", "/drives/crucial-p3-2tb", "/drives/seagate-exos-x16"],
+            "feed link": true,
+        }),
+        "{seen}"
+    );
+    // In Turkish: the translated summaries, the English one where no translation exists.
+    assert_eq!(
+        seen["catalog tr"]["summaries"],
+        json!([
+            "Ev sunucusundan çıkan sessiz ve serin CMR NAS diski.",
+            "Yazma ömrünün %96'sı kalmış 2,5 inç SATA SSD.",
+            "PCIe 3.0 NVMe stick, used as a game library drive.",
+            "Emekli bir NAS'tan çıkan kurumsal helyum disk."
+        ])
+    );
+    assert_eq!(seen["catalog tr"]["links"][0], "/drives/wd-red-plus-4tb?language=tr");
+    assert_eq!(seen["catalog tr"]["stock"][0], "2 stokta");
+    assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
+    assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));
+    assert_eq!(
+        seen["product"],
+        json!({
+            "status": 200, "h1": ["WD Red Plus 4 TB"], "stock": ["2 in stock"],
+            "switch": ["/drives/wd-red-plus-4tb?language=tr"], "reviews": ["Sign in to comment"],
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["product tr"],
+        json!({
+            "lede": ["Ev sunucusundan çıkan sessiz ve serin CMR NAS diski."],
+            "facts": ["Kapasite", "Arayüz", "Durum", "Çalışma saati"],
+            "switch": ["/drives/wd-red-plus-4tb"],
+        })
+    );
+    assert_eq!(
+        seen["untranslated tr"],
+        json!(["PCIe 3.0 NVMe stick, used as a game library drive."])
+    );
+    // Buying: the confirmation comes back on the product page; stock goes down; the hook refuses
+    // more than is left, and the buyer can't name a price.
+    assert_eq!(
+        seen["guest buy"],
+        json!([
+            303,
+            "/drives/wd-red-plus-4tb",
+            "Thanks! Your order code is CODE ($48.00)."
+        ])
+    );
+    assert_eq!(seen["stock after"], json!(["1 in stock"]));
+    assert_eq!(seen["over stock"], json!(["Only 1 left."]));
+    assert_eq!(seen["price from buyer"], 422);
+    // My orders: a customer's own orders only, and only signed in.
+    assert_eq!(seen["ann buy"], "Thanks! Your order code is CODE ($109.00).");
+    assert_eq!(
+        seen["my orders"],
+        json!({ "ann": ["Samsung 870 EVO 1 TB"], "bo": ["No orders yet. Browse the catalog."] })
+    );
+    assert_eq!(seen["my orders signed out"], json!([302, true]));
+    assert_eq!(
+        seen["orders api as ann"],
+        json!(["Ann"]),
+        "the read rule holds on the API: {seen}"
+    );
+    // Staff: editors only, on the page and on the actions.
+    assert_eq!(seen["staff as customer"], 403);
+    assert_eq!(
+        seen["staff"],
+        json!({
+            "status": 200, "to ship": 2,
+            "low": ["Crucial P3 2 TB (1 left)", "Samsung 870 EVO 1 TB (1 left)", "WD Red Plus 4 TB (1 left)"],
+        }),
+        "{seen}"
+    );
+    assert_eq!(seen["ship"], "Order CODE is shipped.");
+    assert_eq!(seen["restock"], json!(["Restocked: 5 on the shelf now."]));
+    assert_eq!(seen["movements"], json!(["restock", "sale", "sale"]));
+    assert_eq!(seen["restock as customer"], 403);
+    // Reviews: a first review is held and shown to its author only.
+    assert_eq!(seen["review"], json!([303, ["Arrived well packed, SMART clean."]]));
+    assert_eq!(seen["review signed out"], json!([[], ["Sign in to comment"]]));
+    // WordPress's RSS feed of the drives (the English rows), linking each drive's page; sorted here,
+    // since the seed publishes them within the same second.
+    assert_eq!(
+        seen["feed"],
+        json!([
+            200,
+            "application/rss+xml",
+            [
+                "Crucial P3 2 TB",
+                "Samsung 870 EVO 1 TB",
+                "Seagate Exos X16 16 TB",
+                "WD Red Plus 4 TB"
+            ],
+            [
+                "/drives/crucial-p3-2tb/",
+                "/drives/samsung-870-evo-1tb/",
+                "/drives/seagate-exos-x16/",
+                "/drives/wd-red-plus-4tb/"
+            ]
+        ]),
+        "{seen}"
+    );
+    // The settings global: the notice banner on every page, and the currency on every price.
+    assert_eq!(seen["settings"], json!([["Demo shop: orders are fake."], "€48.00"]));
+    assert_eq!(seen["bad price"], json!([422, "A price has two decimals at most."]));
+}
+
 /// examples/docs in Chromium as an anonymous visitor (tests/differential/client/docs.mjs).
 fn read_docs(url: &str) -> serde_json::Value {
     let out = Command::new("node")

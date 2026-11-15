@@ -155,6 +155,16 @@ It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://loca
   site (`plugins` in `play-data.json`; `PLUGINS_URL=… bun scripts/build.mjs` changes it).
 - **Theme styles.** The active theme's styles load after the app's and set `body` colours and
   fonts, so the site's base rules are under `body.first-app`.
-- **A `.css` save does not rebuild** under `first dev`; save a TypeScript file.
+- **A `.css` save does not rebuild** under `first dev`; save a TypeScript file. (Fixed on a
+  First branch, not on main yet.)
 - **JSX only compiles in `first/components/`, pages and client components**, which is why the
   guide's sections are under `first/components/guide/`.
+- **A docs page is a 404 to WordPress's main query.** `/docs/...` answers 200 with the right
+  content, but `<body>` has the class `error404` and the answer carries `Expires: 1984`. It is
+  being fixed in First (branch `first/docs-kind-query`); nothing here works around it. When the
+  fix is on main, add a test that a docs page has no `error404` class.
+- **Smaller things in server code.** A timestamp field takes an ISO string on write, not a
+  `Date`. `await response.json()` is `unknown`, so it needs `as { … }`. An object indexed by a
+  prop needs a fixed set of keys, so lookups here use an array and `.find`.
+- **`first sync` in a subfolder of a repository** prints a `git add` error for the ignored
+  `.first/` folder. The sync itself applies.

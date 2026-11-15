@@ -9,6 +9,7 @@ export const metadata = ({ item }: PageProps<"notes/[slug]">) => ({
   title: item.title,
   description: item.dek ?? "",
   canonical: `/notes/${item.slug}`,
+  openGraph: { type: "article" },
 });
 
 export default async function NotePage({ item }: PageProps<"notes/[slug]">) {

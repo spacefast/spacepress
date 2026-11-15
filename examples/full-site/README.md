@@ -6,6 +6,11 @@ SVG imported from TSX, a `"use client"` cheer button on the Interactivity API,
 and two HTTP routes (`route.ts`): a JSON Feed and a signed webhook. WordPress
 stays the content editor, and every page reads as the visitor.
 
+This publication pins Yoast SEO Free 28.8 for head metadata and JSON-LD. The
+note route opts into Article schema, and the public `/notes` Page supplies its
+breadcrumb parent. See the [SEO adapter reference](../../docs/seo.md) for
+metadata precedence and the exact plugin checksum.
+
 | File | What it does |
 |---|---|
 | `first.config.ts` | The `notes` collection (served at `/notes/:slug`) and the `cheers` table |

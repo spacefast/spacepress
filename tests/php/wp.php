@@ -931,6 +931,13 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
     }
     foreach ($site['activate'] as $slug) {
         $main = $slug === 'sqlite-database-integration' ? 'load.php' : "$slug.php";
+        if (!is_file(WP_PLUGIN_DIR . "/$slug/$main")) {
+            $entries = array_keys(get_plugins("/$slug"));
+            if (count($entries) !== 1) {
+                throw new RuntimeException("cannot identify the main plugin file for $slug");
+            }
+            $main = $entries[0];
+        }
         $error = activate_plugin("$slug/$main", '', false, true);
         if ($error instanceof WP_Error) {
             fwrite(STDERR, "activating $slug: " . $error->get_error_message() . "\n");

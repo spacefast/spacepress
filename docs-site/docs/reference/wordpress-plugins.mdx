@@ -19,6 +19,7 @@ First runs on WordPress 7.2-beta5 or later and PHP 8.2 or later. The database is
 | [`polylang`](https://wordpress.org/plugins/polylang/) | Installed when the config sets `locales` | `3.9` | 3.9 up to, not including, 4 |
 | [`secure-custom-fields`](https://wordpress.org/plugins/secure-custom-fields/) | Always installed | `6.9.7` | 6.9.7 up to, not including, 7 |
 | [`two-factor`](https://wordpress.org/plugins/two-factor/) | Always installed | `0.17.0` | 0.17.0 up to, not including, 0.18 |
+| [`wordpress-seo`](https://wordpress.org/plugins/wordpress-seo/) | Allowed. Add it under `plugins` in your config | None | 28.8 only |
 
 The supported versions come from [`src/wp_plugins/supported.json`](https://github.com/spacefast/zero/blob/main/src/wp_plugins/supported.json). The pinned versions come from `plugins()` in [`src/platform.rs`](https://github.com/spacefast/zero/blob/main/src/platform.rs). The Rust and PHP test suites both compare those pins with [`tests/fixtures/platform.json`](https://github.com/spacefast/zero/blob/main/tests/fixtures/platform.json).
 

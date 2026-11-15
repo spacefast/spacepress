@@ -35,4 +35,10 @@ export const cheers = table({
 export default defineConfig({
   name: "fullsite",
   admin: false,
+  plugins: {
+    "wordpress-seo": {
+      version: "28.8",
+      sha256: "27cc01cb149db7186ef750552a5cc2ae5028933473886e419918af273b075105",
+    },
+  },
 });

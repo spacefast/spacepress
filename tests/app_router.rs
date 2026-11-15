@@ -3369,6 +3369,8 @@ fn public_files_serve_at_the_site_root() {
     assert_eq!(seen["not modified"], serde_json::json!([304, 304, 304, 200]));
     assert_eq!(seen["svg policy"], true);
     assert_eq!(seen["cache"], "public, max-age=300");
+    // Any origin may read a public file, on a 200 and a 304; a page says nothing of the kind.
+    assert_eq!(seen["other origins"], serde_json::json!(["*", "*", null]));
     // A POST isn't served a file; the `[slug]` page answers it as pages do (405).
     assert_eq!(seen["post"], 405);
 }

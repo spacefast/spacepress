@@ -6830,11 +6830,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
             folded_tag.as_str(),
             "title" | "meta" | "link" | "script" | "style" | "base"
         ) {
-            return err_help(
-                span,
-                format!("a component can't render `<{tag}>`"),
-                "set titles and meta tags with `export const metadata`, and import styles and scripts as modules",
-            );
+            // The fix differs by tag, and `metadata` is where each of them goes.
+            let help = match folded_tag.as_str() {
+                "script" => {
+                    "load a script module with `scripts` in `export const metadata`: `scripts: [\"/app.js\"]` is public/app.js, and an https:// URL also works"
+                }
+                "style" => "put the rules in a .css file and import it: `import \"./site.css\"`",
+                "link" => {
+                    "import a stylesheet from TSX (`import \"./site.css\"`); any other `<link>` goes in `links` in `export const metadata`"
+                }
+                _ => "set the title, description and other head tags with `export const metadata`",
+            };
+            return err_help(span, format!("a component can't render `<{tag}>`"), help);
         }
         if folded_tag == "textarea" && !jsx.children.is_empty() {
             return err_help(

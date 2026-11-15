@@ -546,6 +546,17 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
         "a component can't render `<sCript>`",
         "first/components/Search.tsx:2:15",
     );
+    // The fix a `<script>` gets is the one that loads a script, not the one for a title.
+    rejects(
+        "reject-jsx-script-case",
+        "load a script module with `scripts` in `export const metadata`",
+        "first/components/Search.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-head",
+        "set the title, description and other head tags with `export const metadata`",
+        "first/components/Head.tsx:2:10",
+    );
     rejects(
         "reject-jsx-iframe-child",
         "`<iframe>` takes only literal text",

@@ -321,6 +321,24 @@ import compass from "./compass.svg";
   imported by a `"use client"` component (pass the URL as a prop). Other files,
   binary images and fonts among them, go in `public/`, by their URL.
 
+## Scripts
+
+```tsx
+// first/app/layout.tsx
+export const metadata = { scripts: ["/app.js", "https://cdn.example.com/widget.js"] };
+```
+
+- `scripts` in `metadata` lists the script modules a page loads: a path on this
+  site, which is a file in `public/` (`/app.js` is `public/app.js`), or an
+  `https://` URL. Each layout's and the page's all load, once each, as
+  `<script type="module">`, through WordPress's script modules.
+- A `<script>` element in TSX is a build error. A page can render a custom
+  element (`<my-widget data-id={id}></my-widget>`) that such a module defines.
+- For state and handlers in your own components, write a
+  [client component](#client-components) instead: it needs no script file.
+- First does not bundle: a module in `public/` is served as written, so it
+  imports other files by URL, not npm packages by name.
+
 ## On WordPress
 
 The router answers on `template_redirect`, before the theme. wp-admin, login,

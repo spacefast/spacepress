@@ -22,7 +22,10 @@ namespace First\Wp;
  *   site root, where WordPress's home page stays (`public/index.html` is `/index.html`).
  *
  * The answer carries the type by extension, a validator, and `public, max-age=300`; a file whose
- * name has a content hash in it can be served longer by the host.
+ * name has a content hash in it can be served longer by the host. It also says any origin may read
+ * it (`Access-Control-Allow-Origin: *`): the file is the same for everyone and needs no sign-in, so
+ * a page on another site (WordPress Playground fetching a ZIP, a font or a JSON file used elsewhere)
+ * gets what a visitor's own request would. A browser never sends cookies with such a read.
  */
 final class PublicFiles
 {
@@ -77,6 +80,7 @@ final class PublicFiles
             'Cache-Control' => 'public, max-age=300',
             'ETag' => $etag,
             'X-Content-Type-Options' => 'nosniff',
+            'Access-Control-Allow-Origin' => '*',
         ];
         if ($extension === 'svg' || $extension === 'xml') {
             // An SVG or XML document opened on its own runs no script.

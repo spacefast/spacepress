@@ -1084,7 +1084,7 @@ Props are type-checked against the component's annotation like any call; pass va
 
 Status: **refused**. Diagnostic: `F4001`.
 
-React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` into the document head, which a server component can't reproduce. Set titles and meta tags with `export const metadata`, and import styles and scripts as modules.
+React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` into the document head, which a server component can't reproduce. Set titles and meta tags with `export const metadata`, import a stylesheet from TSX (`import "./site.css"`), and load a script module with `scripts` in `metadata` (`scripts: ["/app.js"]` is `public/app.js`).
 
 [Evidence](../tests/fixtures/reject-jsx-head)
 

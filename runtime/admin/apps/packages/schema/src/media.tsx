@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import { useParams, useNavigate, useSearch } from '@wordpress/route';
 import {
@@ -10,7 +10,8 @@ import {
 	TextareaControl,
 } from '@wordpress/components';
 import { Page, RouterLink, useDocumentChanges } from '@first-admin/admin-toolkit';
-import { DataViews, type View, type Field } from '@first-admin/dataviews';
+import type { View, Field } from '@first-admin/dataviews';
+import { DataViews, useView } from '@first-admin/views';
 import { uploadAttachment } from '@first-admin/attachment-importer';
 import { allowed, object, text, type Row } from './model';
 import { api, bootstrap, message, unwrap, useLoad } from './api';
@@ -21,12 +22,36 @@ export function MediaLibrary() {
 		navigate = useNavigate();
 	const page = Math.max(1, Number(search.page) || 1),
 		query = text(search.search) ?? '';
+	const defaultView = useMemo<View>(() => ({
+		type: 'table',
+		titleField: 'title',
+		fields: ['mime_type', 'alt_text'],
+		perPage: 20,
+		sort: { field: 'date', direction: 'desc' },
+	}), []);
+	const defaultLayouts = useMemo(() => ({ table: {} }), []);
+	const onChangeQueryParams = useCallback((params: { page?: number; search?: string }) => {
+		void navigate({
+			to: '/media',
+			search: { page: params.page, search: params.search || undefined },
+		});
+	}, [navigate]);
+	const { view, updateView, isModified, resetToDefault } = useView({
+		kind: 'firstMedia',
+		name: 'attachment',
+		slug: 'all',
+		defaultView,
+		defaultLayouts,
+		queryParams: { page, search: query },
+		onChangeQueryParams,
+	});
+	const perPage = view.perPage ?? 20;
 	const [revision, setRevision] = useState(0),
 		[busy, setBusy] = useState(false),
 		[error, setError] = useState('');
 	const state = useLoad(async () => {
 		const response: Response = await apiFetch({
-			path: `/wp/v2/media?context=view&per_page=20&page=${page}&search=${encodeURIComponent(query)}`,
+			path: `/wp/v2/media?context=view&per_page=${perPage}&page=${page}&search=${encodeURIComponent(query)}`,
 			parse: false,
 		});
 		const data: unknown = await response.json();
@@ -35,32 +60,26 @@ export function MediaLibrary() {
 			rows: data.map((r: unknown) => object(r)),
 			total: Number(response.headers.get('X-WP-Total')),
 		};
-	}, [page, query, revision]);
+	}, [page, perPage, query, revision]);
 	const fields: Field<Row>[] = [
 		{
 			id: 'title',
 			label: 'Title',
 			enableSorting: false,
+			filterBy: false,
 			render: ({ item }) => (
 				<RouterLink to={`/media/${String(item.id)}`}>
 					{text(object(item.title).rendered) || `#${String(item.id)}`}
 				</RouterLink>
 			),
 		},
-		{ id: 'mime_type', label: 'Type', enableSorting: false },
-		{ id: 'alt_text', label: 'Alt text', enableSorting: false },
+		{ id: 'mime_type', label: 'Type', enableSorting: false, filterBy: false },
+		{ id: 'alt_text', label: 'Alt text', enableSorting: false, filterBy: false },
 	];
-	const view: View = {
-		type: 'table',
-		titleField: 'title',
-		fields: ['mime_type', 'alt_text'],
-		page,
-		perPage: 20,
-		search: query,
-	};
 	return (
 		<Page
 			title="Media"
+			hasPadding={false}
 			actions={
 				allowed('author', bootstrap().role) && (
 					<FormFileUpload
@@ -105,20 +124,19 @@ export function MediaLibrary() {
 					data={state.value.rows}
 					fields={fields}
 					view={view}
-					onChangeView={(v) => {
-						void navigate({
-							to: '/media',
-							search: {
-								page: v.search !== query ? 1 : v.page,
-								search: v.search || undefined,
-							},
-						});
-					}}
+					onChangeView={(next) => updateView({
+						...next,
+						page: next.search !== query || next.perPage !== perPage ? 1 : next.page,
+					})}
+					onReset={isModified ? () => {
+						resetToDefault();
+						onChangeQueryParams({ page: 1, search: query });
+					} : false}
 					getItemId={(r) => String(r.id)}
-					defaultLayouts={{ table: {} }}
+					defaultLayouts={defaultLayouts}
 					paginationInfo={{
 						totalItems: state.value.total,
-						totalPages: Math.max(1, Math.ceil(state.value.total / 20)),
+						totalPages: Math.max(1, Math.ceil(state.value.total / perPage)),
 					}}
 				/>
 			)}

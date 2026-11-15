@@ -28,8 +28,8 @@ if ((int) ini_get('memory_limit') !== -1 && (int) ini_get('memory_limit') < 512)
 
 const WP_CORE_VERSION = '7.1.4';
 const WP_CORE_SHA256 = 'a147146c159362778ecbbbfb07bb20ddf4e85b130f971c824e656a8f938c5f87';
-const WP_SQLITE_VERSION = '3.1.2';
-const WP_SQLITE_SHA256 = '04c43be5e200a1633499f7577f3fdc25345d389e1a8ffa64dbd6a4eacfbaaaf6';
+const WP_SQLITE_VERSION = '3.1.1';
+const WP_SQLITE_SHA256 = '5681502868907644ecc472739a75c72453b662c44bcc5dd7c1b1410f988bad44';
 const WP_CLI_PHAR_VERSION = '2.12.0';
 const WP_CLI_PHAR_SHA256 = 'ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c';
 

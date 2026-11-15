@@ -5,6 +5,7 @@
 //   <tp-play example="tasks"></tp-play>                 an app, closed until someone presses Edit and build
 //   <tp-play example="tasks" open></tp-play>            started at once (the hero)
 //   <tp-play example="full-site" picker file="…">       with an example menu (the playground page)
+//   <tp-play … share shared='{"first.config.ts":"…"}'>  with a Share button, opened on a saved edit
 //
 // Files, trees and diffs are @pierre/diffs and @pierre/trees. The compiler wrapper and the
 // blueprint are docs-site/lib, the same modules the docs site's playground uses.
@@ -24,6 +25,17 @@ const load = () => (shared ??= Promise.all([
   Compiler.load(fetch(new URL("compiler.wasm", base))),
   fetch(new URL("play-data.json", base)).then((r) => r.json()),
 ]).then(([compiler, data]) => ({ compiler, data })));
+
+// One line on what a generated file is.
+const describe = (file, existed) => {
+  if (file.endsWith("/schema.php")) return "Your kinds, fields, access rules and routes as PHP arrays. WordPress registers post types, tables and URLs from it.";
+  if (file.endsWith("/functions.php")) return "Every handler, server function, page and component, compiled to PHP.";
+  if (file.includes("/migrations/")) return existed ? "A migration that is already in the project." : "A migration this build wrote for your schema change.";
+  if (file.endsWith("db.d.ts")) return "Types for your kinds, so the editor checks your code.";
+  if (file.endsWith("openapi.json")) return "The description of the app's HTTP API.";
+  if (file.includes("/client/")) return "The typed client, for browsers and other frontends.";
+  return "Generated from your code. Changes as you edit.";
+};
 
 const el = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props);
@@ -56,7 +68,17 @@ class Play extends HTMLElement {
     // On the playground page the address picks the example and the file (see remember()).
     const asked = this.hasAttribute("picker") ? new URLSearchParams(location.search) : new URLSearchParams();
     const wanted = asked.get("example") ?? this.getAttribute("example");
+    // A saved edit (the `shares` table, first/server.ts): the page puts its files in `shared`.
+    let shared = null;
+    try { shared = JSON.parse(this.getAttribute("shared") ?? "null"); } catch { shared = null; }
+    this.keepAddress = shared !== null;
     this.open(wanted in this.data.examples ? wanted : Object.keys(this.data.examples)[0], asked.get("file") ?? this.getAttribute("file"));
+    if (shared && typeof shared === "object") {
+      for (const [file, text] of Object.entries(shared)) if (file in this.example.files && typeof text === "string") this.files[file] = text;
+      this.source = this.example.shown.find((file) => this.files[file] !== this.example.files[file]) ?? this.source;
+      this.showSource();
+      this.rebuild();
+    }
     this.dataset.ready = "";
   }
 
@@ -68,13 +90,18 @@ class Play extends HTMLElement {
     this.picker = el("select");
     this.picker.setAttribute("aria-label", "Example");
     this.picker.append(...Object.entries(this.data.examples).map(([name, e]) => new Option(e.title, name)));
-    this.picker.onchange = () => this.open(this.picker.value);
+    this.picker.onchange = () => { this.keepAddress = false; this.open(this.picker.value); };
     this.summary = el("span", { className: "tp-summary" });
     const bar = el("div", { className: "tp-bar" });
     if (this.hasAttribute("picker")) bar.append(this.picker);
-    bar.append(this.summary, button("Reset", () => this.open(this.name, this.source)), button("Run in WordPress", () => this.run(), "tp-go"));
+    bar.append(this.summary, button("Reset", () => { this.keepAddress = false; this.open(this.name, this.source); }));
+    if (this.hasAttribute("share")) bar.append(button("Share", () => this.share()));
+    bar.append(button("Run in WordPress", () => this.run(), "tp-go"));
+    this.sharedNote = el("p", { className: "tp-shared", hidden: true });
 
+    // Build errors are announced when they appear.
     this.problems = el("ul", { className: "tp-problems" });
+    this.problems.setAttribute("role", "alert");
     this.wordpress = el("section", { className: "tp-wordpress", hidden: true });
     this.note = el("span");
     this.tab = el("a", { target: "_blank", rel: "noopener", textContent: "Open in a new tab" });
@@ -90,11 +117,13 @@ class Play extends HTMLElement {
     this.sourceDiff = button("My changes", () => { this.showSourceDiff = !this.showSourceDiff; this.showSource(); });
     this.outputDiff = button("Diff from the previous build", () => { this.showOutputDiff = !this.showOutputDiff; this.showOutput(); });
     const left = pane("You write", "click in the file and type", [this.sourceDiff]);
-    const right = pane("The build writes", "rebuilt as you type", [this.outputDiff]);
+    const right = pane("The build writes", "rebuilt as you type", [this.outputDiff, button("Download", () => this.download())]);
     right.section.classList.add("tp-out");
+    this.about = el("p", { className: "tp-about" });
+    right.section.querySelector(".tp-split").before(this.about);
     this.sourceTree = left.tree; this.sourceBox = left.file; this.outputTree = right.tree; this.outputBox = right.file;
     this.status.remove();
-    this.append(bar, this.status, this.problems, this.wordpress, el("div", { className: "tp-panes" }, left.section, right.section));
+    this.append(bar, this.status, this.sharedNote, this.problems, this.wordpress, el("div", { className: "tp-panes" }, left.section, right.section));
   }
 
   // Every file a successful build writes, by the path `first build` writes it to.
@@ -118,7 +147,7 @@ class Play extends HTMLElement {
 
   // On the playground page the address names the example and the open file, so either can be linked.
   remember() {
-    if (!this.hasAttribute("picker")) return;
+    if (!this.hasAttribute("picker") || this.keepAddress) return;
     history.replaceState(null, "", `?example=${this.name}${this.source === this.defaultFile() ? "" : `&file=${encodeURIComponent(this.source)}`}`);
   }
 
@@ -185,6 +214,7 @@ class Play extends HTMLElement {
     this.outputBox.replaceChildren();
     this.outputDiff.setAttribute("aria-pressed", String(this.showOutputDiff));
     const name = this.output;
+    this.about.textContent = name in this.outputs ? describe(name, name in this.original) : "";
     if (!(name in this.outputs)) return;
     if (this.showOutputDiff) {
       this.outputView = new FileDiff({ ...fileOptions, diffStyle: "unified", hunkSeparators: "simple" });
@@ -242,6 +272,34 @@ class Play extends HTMLElement {
     }
     this.trees();
     this.showOutput();
+  }
+
+  // The file on screen, as a file.
+  download() {
+    if (!(this.output in this.outputs)) return;
+    const link = el("a", { href: URL.createObjectURL(new Blob([this.outputs[this.output]], { type: "text/plain" })), download: this.output.split("/").pop() });
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  // Saves the files that differ from the example on this site (the `share` function in
+  // first/server.ts) and shows the link that opens them.
+  async share() {
+    const changed = Object.fromEntries(Object.entries(this.files).filter(([file, text]) => text !== this.example.files[file]));
+    this.sharedNote.hidden = false;
+    if (Object.keys(changed).length === 0) { this.sharedNote.textContent = "Nothing to share yet: change a file first."; return; }
+    this.sharedNote.textContent = "Saving…";
+    try {
+      const response = await fetch("/__first/api/v1/actions/share", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ example: this.name, files: changed }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message ?? body?.message ?? `the site answered ${response.status}`);
+      const url = new URL(`/play?s=${body.data.key}`, location.href).href;
+      this.keepAddress = true;
+      history.replaceState(null, "", url);
+      const link = el("a", { href: url, textContent: url });
+      this.sharedNote.replaceChildren("Saved. Anyone with this link opens your version: ", link);
+      navigator.clipboard?.writeText(url).then(() => this.sharedNote.append(" (copied)"), () => {});
+    } catch (error) { this.sharedNote.textContent = `Could not save it: ${error.message}`; }
   }
 
   run() {

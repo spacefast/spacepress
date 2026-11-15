@@ -1,115 +1,141 @@
 # The TypedPress site
 
-A First app. The home page is the guide, with a hero you can edit and build; every example on it
-can be opened for editing; `/play` is the playground. One component, `<tp-play>` (`src/play.js`),
-does all three.
+The site for TypedPress (the framework called First in the code today), built as a First app:
+a one-page guide, a playground, docs from Markdown, and a blog. WordPress serves all of it.
+
+| URL | What | Written as |
+|---|---|---|
+| `/` | the guide, one page | `first/app/page.tsx` and one TSX file per section in `first/components/guide/` |
+| `/play` | the playground | `first/app/play/page.tsx` and `browser/play.js` |
+| `/docs/...` | the docs | Markdown in `content/docs/`, rendered by `first/app/docs/[...path]/page.tsx` |
+| `/blog`, `/blog/<slug>` | the blog | WordPress content; `first/app/blog/` renders it in the site's layout |
+| `/wp-admin/new/` | First Admin | shipped with the build |
+
+## Run it
 
 ```sh
-# once, and again when src/ or examples/ change: the browser compiler, the native compiler and
-# the example builds this site reuses
-(cd ../docs-site && pnpm install && pnpm wasm && pnpm showcase)
-(cd ../examples/reading-list && npm ci --ignore-scripts)   # the one example with npm packages
-
-(cd src && bun install && bun build.mjs)    # writes first/app/ and public/
-../target/release/first dev --port 8960 --detach   # http://localhost:8960/
-../target/release/first dev stop
+cargo build --release                                   # ../target/release/first
+(cd ../docs-site && pnpm install && pnpm wasm && pnpm showcase)   # the browser compiler and the example builds
+(cd ../examples/reading-list && npm ci --ignore-scripts)
+bun install && bun scripts/build.mjs                    # public/ and first/data/sources.ts
+../target/release/first dev --port 8960 --detach        # http://localhost:8960/
 ```
 
-`first dev` rebuilds when `first/app/*.tsx` or `public/` change, so `bun build.mjs` while it runs
-is enough. It does not rebuild on a `.css` save alone; `build.mjs` always rewrites the pages too.
+Then send the Markdown in `content/` to the site, once and after each change to it:
 
-## What is written by hand and what is generated
+```sh
+PW=$(../target/release/first wp user application-password create admin first-sync --porcelain | tail -1)
+FIRST_APP_PASSWORD="admin:$PW" ../target/release/first sync
+```
 
-| Path | |
-| --- | --- |
-| `first.config.ts`, `tsconfig.json` | the First app; by hand |
-| `src/guide.html` | the guide: plain HTML with the source tags below, and the site's CSS in its `<style>` |
-| `src/play.js` | the `<tp-play>` component |
-| `src/client.js` | makes the guide's pre-rendered file trees clickable |
-| `src/build.mjs` | renders code, trees and diffs at build time and writes the First app |
-| `src/run-data.ts` | collects each app the component can load, through `docs-site/lib` |
-| `src/examples/_hero` | the two-file app in the hero, with its migration ledger and plugin lock |
-| `src/examples/notes`, `pantry`, `garden` | the three whole projects the guide shows, in the decided spelling |
-| `src/examples/_today`, `_built`, `_compare` | today's files for the diffs; real compiler output; other systems' own quickstart files |
-| `first/app/`, `public/` | **generated, git-ignored**: `layout.tsx`, `page.tsx`, `play/page.tsx`, `site.css`; scripts, `compiler.wasm`, `play-data.json`, plugin zips |
+Stop with `../target/release/first dev stop`. The local login is `admin` / `first-test-admin`.
 
-## Source tags in `src/guide.html`
+`first dev` rebuilds the pages when a TypeScript file is saved. Run `bun scripts/build.mjs` again
+after changing `browser/` or `examples/`.
 
-| Tag | Renders |
-| --- | --- |
-| `<tp-code file="tp/schema.ts" note="…">` | a file with its path in the header; `src="examples/…"` reads the code from a file |
-| `<tp-code lang="ts">` | a snippet with no file |
-| `<tp-tree>` | a file tree, from an indented listing with `name   note` per line |
-| `<tp-diff old="…" new="…" old-name="…" new-name="…">` | a diff of two files |
-| `<tp-example dir="examples/notes" open="tp/schema.ts">` | a whole project: tree on the left, files on the right |
-| `<tp-play example="pantry" hint="…">` | the playground component, closed until "Edit and build this" is pressed |
-| `<tp-play example="tasks" open>` | the same, started at once (the hero) |
+## Where things are
 
-Section numbers are not written in the source. An `<h2 id="x">` gets its number from its position,
-and `{{sec:x}}` in the text becomes that number.
+| Path | What |
+|---|---|
+| `first.config.ts` | the site's name; re-exports the schema and the server function |
+| `first/schema.ts` | `docs` and `posts` (WordPress content, synced from `content/`), and `shares` (a table) |
+| `first/server.ts` | `share`: saves a playground edit and answers with its key |
+| `first/app/layout.tsx`, `site.css` | the one layout and stylesheet every page uses |
+| `first/components/Guide.tsx` | what the guide is written with: `<Section>`, `<Ref>`, `<Code>`, `<Source>`, `<Diff>`, `<Tree>`, `<Example>`, the status badges |
+| `first/components/guide/*.tsx` | the guide's 30 sections; `sections.ts` gives their order and titles |
+| `first/components/Callout.tsx` | a component Markdown may use as a block |
+| `content/docs/**/*.md`, `content/posts/*.md` | the docs and the first post |
+| `examples/` | the projects and files the guide shows, and `_hero`, the app in the hero |
+| `browser/code.js` | draws the guide's code, diffs and file trees with `@pierre/diffs` and `@pierre/trees` |
+| `browser/play.js` | `<tp-play>`, the playground component |
+| `scripts/build.mjs` | bundles `browser/` into `public/site.js`; copies the compiler, the example data and the plugin zips into `public/` |
+| `scripts/sources.mjs` | writes `first/data/sources.ts`, the text of every file in `examples/` |
+| `scripts/share.mjs` | lets another machine open the dev site (below) |
+| `tests/site.test.mjs` | reads the running site in Chromium |
 
-## The component
+Git-ignored: `public/`, `first/data/sources.ts`, `first/dist/`, `.first/` except `.first/sync-base.json`.
 
-`<tp-play example="…">` loads `compiler.wasm` (7 MB) and `play-data.json` once per page, on the
-first component that starts. Attributes: `open` (start at once), `picker` (show the example menu
-and keep the example and file in the address), `file` (the file to open), `hint` (the text beside
-the button), `plugins` (where WordPress Playground fetches First's shared plugin zips).
+## Writing the guide
 
-- **Edit:** the left file is the diffs library's editor. "My changes" shows the diff from the example as committed.
-- **Build:** 150 ms after a keystroke, with the example's migration ledger, as `first build` does.
-- **What the build writes:** every file, in a tree that marks added and changed files.
-- **Diff from the previous build:** two builds are kept, the last and the one before. After an
-  edit the pane switches to the new or changed migration, as a diff.
-- **Run in WordPress:** `docs-site/lib/blueprint.ts` turns the edited build into a WordPress
-  Playground blueprint: the app plugin is what the browser build returned, the runtime, identity
-  and admin plugins are the zips `pnpm showcase` wrote.
+A section is a component. To add one, write `first/components/guide/<id>.tsx`, add `{ id, title }`
+to `sections.ts` at its place, and add the component to `first/app/page.tsx`. Numbers, the table
+of contents and "section N" links follow `sections.ts`.
+
+```tsx
+<Section id="pages" />                                   // the numbered heading
+<p>See section <Ref to="server" />.</p>                  // a link that shows that section's number
+<Code file="tp/schema.ts" note="…">{`…`}</Code>          // code written here
+<Code lang="sh">{`…`}</Code>                             // a snippet with no file
+<Source path="_built/functions.php" as="…" />            // a file from examples/
+<Diff old="_built/schema.before.ts" new="_built/schema.after.ts" />
+<Tree>{`listing: two spaces per level, folders end with /, then two spaces and a note`}</Tree>
+<Example name="notes" open="tp/schema.ts" />             // a whole project from examples/notes/
+<tp-play example="tasks" hint="…" />                     // the playground component, closed until pressed
+```
+
+Code, diffs and trees reach the browser as text inside custom elements. `browser/code.js` draws
+them. Without JavaScript the text is still there, in monospace.
+
+## The playground component
+
+```html
+<tp-play example="tasks"></tp-play>                 closed until "Edit and build this" is pressed
+<tp-play example="tasks" open></tp-play>            started at once (the hero)
+<tp-play example="full-site" picker share open>     with an example menu and a Share button (/play)
+```
+
+It compiles in the browser with `public/compiler.wasm`, the same compiler as the command line.
+It shows every file the build writes, with one line on what each is, the diff from the previous
+build, and a Download button for the file on screen. Build errors are listed with
+`file:line:column` in a `role="alert"` region. "Run in WordPress" starts WordPress Playground
+with the edited build installed. `/play?example=pantry&file=first.config.ts` links to an example
+and a file.
+
+Share posts the files that differ from the example to `share` (`first/server.ts`), which stores
+them in the `shares` table and answers with a key; `/play?s=<key>` opens them. Visitors cannot
+list saved edits: the table's access is `admin`, and the page reads one row as the system.
+
+## Tests
+
+```sh
+SITE_URL=http://localhost:8960 node --test tests/site.test.mjs
+```
+
+Seven tests against the running site: the guide's sections and drawn code, the guide without
+JavaScript, phone width, the docs' navigation and highlighted code, an edit that builds a
+migration and is shared and reopened, an announced syntax error, and that `/shares` is not
+listable. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
+not wired into CI yet.
 
 ## Opening it from another machine
 
 `first dev` listens on this machine's loopback only, and WordPress writes `http://localhost:8960`
-into every page. `src/share.mjs` forwards to it and rewrites that address in text answers:
+into every page. `scripts/share.mjs` forwards to it and rewrites that address in text answers:
 
 ```sh
-PUBLIC=https://<this-machine>.<tailnet>.ts.net:8960 node src/share.mjs &   # listens on 127.0.0.1:8961
-tailscale serve --bg --https=8960 http://127.0.0.1:8961                    # tailnet only
-tailscale serve --https=8960 off                                           # to stop
+PUBLIC=https://<this-machine>.<tailnet>.ts.net:8960 node scripts/share.mjs &   # listens on 127.0.0.1:8961
+tailscale serve --bg --https=8960 http://127.0.0.1:8961                        # tailnet only
+tailscale serve --https=8960 off                                               # to stop
 ```
 
 It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://localhost:8960`.
 
-## What First's pages needed, found while moving this site onto First (2026-11-15)
+## What First lacks for this site (15 November 2026)
 
-- Browser code is a script module in `public/`, named in the layout's `metadata.scripts`
-  (`["/guide.js", "/play.js"]`). First loads each once with `wp_enqueue_script_module`. TSX
-  refuses `<script>`, and that is the way around it. The layout and `play/page.tsx` are plain
-  TSX; `<tp-play>` is a custom element, which TSX allows.
-- A page cannot import a text file, and nothing renders a code block from TSX. So the guide page
-  is still one literal passed to `<Html>`, which places a literal as written: its 80 highlighted
-  blocks are rendered by this build, not by First.
-- The active WordPress theme's styles load after the app's stylesheet and set `body` colours and
-  fonts. The site's rules are under `body.first-app`, which outranks them.
-- Addresses are from the site root (`/play`, `/pierre-diffs.css`), also inside shadow roots.
-- `first dev` does not send `Access-Control-Allow-Origin` on `public/` files, and WordPress
-  Playground fetches the plugin zips from another origin. So the zips come from the published
-  site (`plugins` in `play-data.json`; `PLUGINS_URL=… bun build.mjs` changes it). The local and
-  published zips had the same SHA-256 when this was written.
-- Each `public/` file is answered by WordPress in about 200 ms under `first dev`. The playground
-  used to load 28 script files (the highlighter puts every grammar and theme behind its own
-  `import()`), and its code panes filled about 1.6 s after the component was ready. `build.mjs`
-  now keeps the eleven grammars and two themes the site uses and writes one `public/play.js`
-  (2.1 MB); the panes draw as soon as the component is ready. A file in another language shows
-  as plain text.
-
-## The published copy
-
-<https://typedpress-guide.space.fast/> is an earlier static build of the same guide and playground
-(commit `a8b3fe452`, `docs/typedpress-guide-src/`). This folder no longer writes static files, so
-that Space is not updated from here.
-
-## Checked by hand, not by a test suite
-
-On 2026-11-15, in headless Chromium against `first dev`: both pages in dark, light and at phone
-width, and the home page with JavaScript off; in the hero, two edits one after the other, the
-migration each produced and the diff between the two builds; an example opened from the guide; the
-menu entry and the example menu; and an edited page built in the hero and then served by WordPress
-Playground with its sample data.
+- **WordPress's own posts as a kind.** The blog is an app collection for now. It moves to
+  `wp.posts` when that lands, and is out of the menu until then.
+- **Reading a file from a page.** There is no text import, so `scripts/sources.mjs` copies the
+  example files into a TypeScript module.
+- **A code component for TSX.** Markdown code fences are highlighted in PHP; TSX has nothing, so
+  the guide's code is drawn by a browser script.
+- **npm imports in browser code.** `browser/` is bundled by Bun into one file in `public/` and
+  loaded through `metadata.scripts`. The bundle keeps eleven grammars and two themes of the
+  highlighter; a file in another language shows as plain text.
+- **Cross-origin `public/` files.** WordPress Playground fetches First's plugin zips from another
+  origin and First sends no `Access-Control-Allow-Origin`, so the zips come from the published
+  site (`plugins` in `play-data.json`; `PLUGINS_URL=… bun scripts/build.mjs` changes it).
+- **Theme styles.** The active theme's styles load after the app's and set `body` colours and
+  fonts, so the site's base rules are under `body.first-app`.
+- **A `.css` save does not rebuild** under `first dev`; save a TypeScript file.
+- **JSX only compiles in `first/components/`, pages and client components**, which is why the
+  guide's sections are under `first/components/guide/`.

@@ -8,6 +8,9 @@
         "@pierre/diffs": "1.6.4",
         "@pierre/trees": "1.0.0",
       },
+      "devDependencies": {
+        "playwright-core": "1.57.0",
+      },
     },
   },
   "packages": {
@@ -82,6 +85,8 @@
     "oniguruma-parser": ["oniguruma-parser@0.12.2", "", {}, "sha512-6HVa5oIrgMC6aA6WF6XyyqbhRPJrKR02L20+2+zpDtO5QAzGHAUGw5TKQvwi5vctNnRHkJYmjAhRVQF2EKdTQw=="],
 
     "oniguruma-to-es": ["oniguruma-to-es@4.3.6", "", { "dependencies": { "oniguruma-parser": "^0.12.2", "regex": "^6.1.0", "regex-recursion": "^6.0.2" } }, "sha512-csuQ9x3Yr0cEIs/Zgx/OEt9iBw9vqIunAPQkx19R/fiMq2oGVTgcMqO/V3Ybqefr1TBvosI6jU539ksaBULJyA=="],
+
+    "playwright-core": ["playwright-core@1.57.0", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-agTcKlMw/mjBWOnD6kFZttAAGHgi/Nw0CZ2o6JqWSbMlI219lAFLZZCyqByTsvVAJq5XA5H8cA6PrvBRpBWEuQ=="],
 
     "preact": ["preact@11.0.0-beta.0", "", {}, "sha512-IcODoASASYwJ9kxz7+MJeiJhvLriwSb4y4mHIyxdgaRZp6kPUud7xytrk/6GZw8U3y6EFJaRb5wi9SrEK+8+lg=="],
 

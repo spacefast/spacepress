@@ -53,3 +53,34 @@ Old branch-ahead counts were not treated as missing features: main already conta
 the earlier integration in `2371ad890`.
 
 No staging or production deployment is part of this consolidation.
+
+## MacBook source transfer
+
+Completed components from the MacBook are included in this consolidation. The
+admin/screens/example/default integration uses `8af8aa6d2d0f`; styles are merged
+separately. Shared admin views were already merged by #505 and were not replayed.
+
+| Archive branch under `archive/macbook-20261115/` | Commit |
+|---|---|
+| `tip-wip-one-admin-admin` | `3fc4bfc96b18002b54d35faad9f3692dbefd79a8` |
+| `tip-wip-one-admin-example` | `5080a4d65ac1f549eb0d44868b70b3c38f4913b7` |
+| `tip-wip-one-admin-wpdefaults` | `30b02c0098fb4c0a708aec70e1fbabc4024bc5cc` |
+| `tip-wip-one-admin-screens-760e5d619747` | `760e5d6197470107eb8575d4534741f35a9d44b9` |
+| `tip-wip-one-admin-styles` | `7b311946764eb2abac9e9d669db2853770e4a982` |
+
+Independent source review found no component blockers. The combined build needed
+one adaptation: the compiler-output optimization makes `write()` return a boolean,
+so writing theme tokens discards that result, as the surrounding writes already do.
+The admin bundle was regenerated from the combined source.
+
+Unfinished login is retained at `079da382737ce22ea9ec1fbc45a852129b919e04`
+on `archive/macbook-20261115/tip-wip-one-admin-login`, tracked by
+[#506](https://github.com/spacefast/zero/issues/506). MacBook oxc, Rolldown and build-I/O
+snapshots are `ba650e73af4bfe2dc855eb09fc7f0794b77cd618`,
+`36abfeedf1a7d4ea129328b10ebdb2d779fb0134` and
+`ad1854a5a8da1f2da062a601f8e1b7ec193acb76`; they remain deferred under #491, #496
+and #502. SCF policy/wpdb investigation is tracked by
+[#507](https://github.com/spacefast/zero/issues/507). A historical CI split tip remains
+in the MacBook backup because that machine's GitHub credential could not push
+workflow changes; main already has the split test jobs. No reauthentication is
+needed to finish the product consolidation.

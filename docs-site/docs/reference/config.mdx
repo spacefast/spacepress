@@ -283,6 +283,25 @@ export declare function defineConfig<const TLocales extends LocalesConfig = Loca
 ): FirstConfig<TLocales>;
 ```
 
+### `item`
+
+```ts
+export declare function item<const P extends string>(path: P): ItemRef<P>;
+```
+
+### `adminScreen`
+
+A First Admin screen, named by its export: `export const pendingOrders = adminScreen({ ... })` is `/wp-admin/new/screens/pending-orders` and a wp-admin page. One React component draws it in both admins; its actions run as Abilities, which check each action's own `access` (docs/admin-screens.md).
+
+```ts
+export declare function adminScreen<
+  F extends string,
+  TSource extends AnyAction,
+  const TActions extends readonly AnyAction[] = [],
+  TSubmit extends AnyAction = AnyAction,
+>(definition: AdminScreenDefinition<F, TSource, TActions, TSubmit>): AdminScreen;
+```
+
 ### `definePlugin`
 
 Defines a plugin in an installed package. Its hooks keep app-hook semantics; its actions, jobs and routes are registered as `<name>_<key>`, and `jobs.<key>` inside the plugin names its own. There is no capability list: the compiler infers it, and the app's lock grants it.

@@ -2951,7 +2951,10 @@ export default defineConfig({ name: "kindurls", xmlrpc: true, pings: true });
 export default defineConfig({ name: "kindurls", xmlrpc: false, pings: false });
 "#,
     );
-    assert_eq!((&built["xmlrpc"], &built["pings"]), (&serde_json::json!(false), &serde_json::json!(false)));
+    assert_eq!(
+        (&built["xmlrpc"], &built["pings"]),
+        (&serde_json::json!(false), &serde_json::json!(false))
+    );
     let refused = tmp.path().join("app-public-authors");
     std::fs::create_dir_all(&refused).unwrap();
     std::fs::write(

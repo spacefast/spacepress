@@ -43,6 +43,9 @@ export type RestockOutput = { drive: number; stock: number };
 export interface MarkShippedInput { order: number }
 export type MarkShippedOutput = { code: string; status: "placed" | "shipped" | "cancelled" };
 
+export type PendingOrdersInput = Record<string, never>;
+export type PendingOrdersOutput = { rows: ({ id: number; code: string; buyer: string; quantity: number; total: number })[] };
+
 export interface Collections {
   drives: { row: Drive; insert: DriveInsert; patch: DrivePatch; with: DriveWith; filter: DriveFilter; order: DriveOrder };
   orders: { row: Order; insert: OrderInsert; patch: OrderPatch; with: OrderWith; filter: OrderFilter; order: OrderOrder };
@@ -57,4 +60,5 @@ export interface Actions {
   buy: { input: BuyInput; output: BuyOutput };
   restock: { input: RestockInput; output: RestockOutput };
   markShipped: { input: MarkShippedInput; output: MarkShippedOutput };
+  pendingOrders: { input: PendingOrdersInput; output: PendingOrdersOutput };
 }

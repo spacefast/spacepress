@@ -1,7 +1,7 @@
 // The actions the storefront's forms post to. Each is also a WordPress Ability and an MCP tool.
 // The shop's rules (price, stock, who sees which order) live on the kinds in first/schema.ts, so an
 // order placed here, over the API or in First Admin is checked the same way.
-import { action, db, email, HttpError, integer, text } from "first";
+import { action, adminScreen, db, email, HttpError, integer, item, text } from "first";
 import { orders } from "first:db";
 import { drives, stockMovements } from "./schema";
 
@@ -50,4 +50,38 @@ export const markShipped = action({
     const shipped = await orders.update(order, { status: "shipped", shippedAt: new Date().toISOString() });
     return { code: shipped.code, status: shipped.status };
   },
+});
+
+// Staff only: the orders still waiting to leave the warehouse, for the admin screen below.
+export const pendingOrders = action({
+  input: {},
+  access: "editor",
+  readonly: true,
+  async handler() {
+    const rows = await db.query.orders.findMany({ where: { status: "placed" } });
+    return { rows: rows.map((o) => ({ id: o.id, code: o.code, buyer: o.buyerName, quantity: o.quantity, total: o.total })) };
+  },
+});
+
+// A First Admin screen declared in TypeScript: a list over pendingOrders with a "Mark shipped"
+// action per row. It shows in First Admin's sidebar and under Tools in classic wp-admin.
+export const shipping = adminScreen({
+  title: "Shipping",
+  description: "Orders placed and not yet shipped.",
+  access: "editor",
+  view: {
+    action: pendingOrders,
+    items: "rows",
+    id: "id",
+    fields: {
+      code: { label: "Order code" },
+      buyer: { label: "Buyer" },
+      quantity: { label: "Quantity", type: "integer" },
+      total: { label: "Total", type: "number" },
+    },
+    layout: { type: "table", titleField: "code", fields: ["buyer", "quantity", "total"] },
+  },
+  actions: [{ id: "ship", label: "Mark shipped", action: markShipped, input: { order: item("id") } }],
+  menu: { icon: "dashicons-airplane" },
+  classic: { parent: "tools.php" },
 });

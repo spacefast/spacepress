@@ -379,6 +379,13 @@ pub fn render(schema: &Schema) -> String {
     if schema.public_authors {
         out.push_str("    'publicAuthors' => true,\n");
     }
+    // Written only when the config turns them off: absent is WordPress's own behaviour (spec §6).
+    if !schema.xmlrpc {
+        out.push_str("    'xmlrpc' => false,\n");
+    }
+    if !schema.pings {
+        out.push_str("    'pings' => false,\n");
+    }
     match &schema.frontend {
         None => {}
         Some(crate::kind_url::Frontend::Off) => out.push_str("    'frontend' => false,\n"),
@@ -626,7 +633,17 @@ pub fn render(schema: &Schema) -> String {
         );
         let _ = writeln!(out, "        ],");
     }
-    out.push_str("    ],\n];\n");
+    out.push_str("    ],\n");
+    // `adminScreen()` declarations, as first_admin_register_screen() takes them (First\Wp\Plugin
+    // registers them on `first_admin_screens` when First Admin is active).
+    if !schema.screens.is_empty() {
+        out.push_str("    'screens' => [\n");
+        for (id, screen) in &schema.screens {
+            let _ = writeln!(out, "        {} => {},", php_str(id), php_json(screen));
+        }
+        out.push_str("    ],\n");
+    }
+    out.push_str("];\n");
     out
 }
 

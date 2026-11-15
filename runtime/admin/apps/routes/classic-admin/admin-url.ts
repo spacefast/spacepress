@@ -1,5 +1,5 @@
 /**
- * The legacy route frames pages of this site's wp-admin and nothing else.
+ * The classic route frames pages of this site's wp-admin and nothing else.
  * `adminBase` is `admin_url()` as the page handed it in: absolute, ending in `/`.
  */
 

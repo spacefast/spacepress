@@ -2937,6 +2937,21 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
 "#,
     );
     assert_eq!(built["publicAuthors"], true);
+    // `xmlrpc` and `pings` are WordPress's own unless the config turns them off (spec.md §6): schema.php
+    // carries them only as `false`.
+    assert!(built.get("xmlrpc").is_none() && built.get("pings").is_none(), "{built}");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", xmlrpc: true, pings: true });
+"#,
+    );
+    assert!(built.get("xmlrpc").is_none() && built.get("pings").is_none(), "{built}");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", xmlrpc: false, pings: false });
+"#,
+    );
+    assert_eq!((&built["xmlrpc"], &built["pings"]), (&serde_json::json!(false), &serde_json::json!(false)));
     let refused = tmp.path().join("app-public-authors");
     std::fs::create_dir_all(&refused).unwrap();
     std::fs::write(
@@ -2948,6 +2963,18 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
     assert!(!out.status.success());
     assert!(
         String::from_utf8_lossy(&out.stderr).contains("publicAuthors must be true or false"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    std::fs::write(
+        refused.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"kindurls\", xmlrpc: \"off\" });\n",
+    )
+    .unwrap();
+    let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("xmlrpc must be true or false"),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );

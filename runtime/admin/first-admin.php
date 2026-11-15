@@ -50,6 +50,7 @@ function first_admin_boot() {
 	add_action( 'admin_menu', 'first_admin_menu_page' );
 	add_action( 'admin_init', 'first_admin_render_page' );
 	add_action( 'admin_init', 'first_admin_handle_iframe_mode' );
+	add_action( 'admin_init', 'first_admin_redirect_classic_page', 1 );
 	add_filter( 'login_redirect', 'first_admin_login_redirect', 10, 3 );
 	add_filter( 'plugin_row_meta', 'first_admin_plugin_meta_links', 10, 2 );
 }
@@ -219,7 +220,16 @@ function first_admin_render_page() {
 		return;
 	}
 	$request = wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared, never printed.
-	$pretty  = null !== first_admin_route_below( (string) wp_parse_url( $request, PHP_URL_PATH ), first_admin_url( '/' ) );
+	$below   = first_admin_route_below( (string) wp_parse_url( $request, PHP_URL_PATH ), first_admin_url( '/' ) );
+	$pretty  = null !== $below;
+	// A route that was renamed (`/legacy/<slug>` is `/classic/<slug>`) answers with its new address.
+	$route   = $pretty ? $below : ( is_string( $_GET['p'] ?? null ) ? wp_unslash( $_GET['p'] ) : null ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared, then redirected through wp_safe_redirect.
+	$renamed = null === $route ? null : first_admin_renamed_route( $route );
+	if ( null !== $renamed ) {
+		$query = $pretty ? (string) wp_parse_url( $request, PHP_URL_QUERY ) : '';
+		wp_safe_redirect( $pretty ? first_admin_url( $renamed ) . ( '' !== $query ? '?' . $query : '' ) : first_admin_query_url( $renamed ), 301 );
+		exit;
+	}
 	// The menu entry has no route: send it to the mount, like upstream.
 	if ( ! $pretty && ! is_string( $_GET['p'] ?? null ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		wp_safe_redirect( first_admin_url( '/' ) );

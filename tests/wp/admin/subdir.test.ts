@@ -1,6 +1,6 @@
 // The first-admin plugin on a WordPress installed below the origin root (lane A, design §2.4): the
 // mount, wp-admin and login URLs it derives all carry the sub-path, so a direct route resolves and
-// the legacy frame is pointed at the real wp-admin. The stack is ../admin/subdir-run.sh's; the
+// the classic frame is pointed at the real wp-admin. The stack is ../admin/subdir-run.sh's; the
 // receipt's url is http://host/blog.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -51,7 +51,7 @@ test("the admin is installed below the site root and derives every URL from it",
   assert.ok(script.pathname.startsWith(`${subdir}/wp-`), `editor asset keeps the site prefix: ${script}`);
   assert.equal((await fetch(script)).status, 200, 'the exported editor script is served');
 
-  // A legacy menu route frames `<admin_url><slug>`: the base the page handed in reaches the real
+  // A classic menu route (`/classic/<slug>`) frames `<admin_url><slug>`: the base the page handed in reaches the real
   // wp-admin of this install, where the origin-root guess (`/wp-admin/`) would not.
   const adminUrl = String(context.admin_url);
   const framed = await fetch(new URL("options-media.php", adminUrl), { headers: { cookie: await loginCookie(site, "admin", `${site}/wp-admin/options-media.php`) }, redirect: "manual" });

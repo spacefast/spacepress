@@ -1493,18 +1493,18 @@
     {
       "source": "lib/legacy-route.php",
       "sha256": "5f847d298bf0f63c44038b7865623b3b860d99ee145edd2fa865e975b0016a55",
-      "path": "lib/legacy-route.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "27d81348a2c9482202a514f3dc2f34080b0bce722575b1a94d7ba49fef110630",
+      "path": "lib/classic-route.php",
+      "adaptation": "First integration: renamed to the classic route (/classic/<slug>); review adapter patch",
+      "adaptedSha256": "6e6f113610b2fa3985ed42e886d34b5864283c81b0825865c9a37c389c16e915",
       "normalizedSha256": "27d81348a2c9482202a514f3dc2f34080b0bce722575b1a94d7ba49fef110630",
-      "retainedSourcePath": "lib/legacy-route.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/legacy-route.php"
     },
     {
       "source": "lib/load-libs.php",
       "sha256": "8a781c03a3f83c87ffb87ac714e77df6a44ab75b57eca45558b3b838ada2b8dd",
       "path": "lib/load-libs.php",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "30533d610e76328bd64c107215205c84a81be9e529cc50ee23f5025dfc6d86f3",
+      "adaptedSha256": "9b80e8c7443a0944a3599964dfe88f141c6290543be34dc51d631111049adfcd",
       "normalizedSha256": "3ad86290c58390db19e9af3b4adf7c2f9c9bfb9c3767d044c9adf6c817a37029",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/load-libs.php"
     },
@@ -1513,7 +1513,7 @@
       "sha256": "65f227f123e66a297df391daeacb4a1eb57110b44be290e3a223fa622bfc2c64",
       "path": "lib/first-admin-menu.php",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "bcd0ef26eb48a037e371a158a970565fa835a25d9e6fcebd25514727d0af960d",
+      "adaptedSha256": "2ec6d183d95069fbcb2f0cbdc61b1b2debe20eeaf3be903487f619d679c676fb",
       "normalizedSha256": "3eee912c993199ce7c6c3ccd994750a7457e201631a42608a615e720395f6910",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/next-admin-menu.php"
     },
@@ -8558,27 +8558,27 @@
     {
       "source": "routes/legacy-admin/package.json",
       "sha256": "b5c0925cbbc5bea68681dee1d893a06fe2e1da10b0230a2c4b8d54972b8d32f3",
-      "path": "apps/routes/legacy-admin/package.json",
-      "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "bd694209d4ecb1bbb38b29491ee039a6b11260a799298eae8cad6391e35adce2",
+      "path": "apps/routes/classic-admin/package.json",
+      "adaptation": "First integration: renamed to the classic route (/classic/<slug>); review adapter patch",
+      "adaptedSha256": "22090fc11bd95f57aab8e5b2d27df8ee98b7696f3acd9d67b2135ce33ccabeda",
       "normalizedSha256": "2750a00800c6e49e4225c096751264b2b2b3549d994c513d32ceba217eab517b",
       "retainedSourcePath": "upstream-metadata/adapter-originals/routes/legacy-admin/package.json"
     },
     {
       "source": "routes/legacy-admin/route.tsx",
       "sha256": "8020d27a2929e71770bd187240f3aaaaab6c0e03f0ec7ea0bc5343db655c4743",
-      "path": "apps/routes/legacy-admin/route.tsx",
-      "adaptation": "namespace/privacy normalization only",
+      "path": "apps/routes/classic-admin/route.tsx",
+      "adaptation": "First integration: renamed to the classic route (/classic/<slug>); review adapter patch",
       "adaptedSha256": "8020d27a2929e71770bd187240f3aaaaab6c0e03f0ec7ea0bc5343db655c4743",
       "normalizedSha256": "8020d27a2929e71770bd187240f3aaaaab6c0e03f0ec7ea0bc5343db655c4743",
-      "retainedSourcePath": "apps/routes/legacy-admin/route.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/legacy-admin/route.tsx"
     },
     {
       "source": "routes/legacy-admin/stage.tsx",
       "sha256": "b9b767def1eb91232bf9fbc71052d4dc1a363c5ecad93c61760984ccba865bf3",
-      "path": "apps/routes/legacy-admin/stage.tsx",
-      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "7bed7c2c67b05a413efa9ab5f3b46cb6b5c10ffa72d34ce3b3c16d9594ab0334",
+      "path": "apps/routes/classic-admin/stage.tsx",
+      "adaptation": "First integration: renamed to the classic route (/classic/<slug>); review adapter patch",
+      "adaptedSha256": "8249ca44c9acda9751450361b6f03561238eabaf32ebb5815ea51028a629ba93",
       "normalizedSha256": "078ac1f28acef075a038803a9491a97d64971611170ef302d47d21fd72c595b6",
       "retainedSourcePath": "upstream-metadata/adapter-originals/routes/legacy-admin/stage.tsx"
     },

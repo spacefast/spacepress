@@ -10,7 +10,9 @@ namespace First\Wp;
  * through `pre_option_*`/`option_*` filters, so deactivating the app leaves the owner's stored values.
  *
  * Each switch is one named method; the hardening lane (tests/wp/hardening) proves each against real
- * WordPress, and that each is gone again without the app.
+ * WordPress, and that each is gone again without the app. XML-RPC and pingbacks/trackbacks stay as
+ * WordPress ships them, the site's Discussion settings included, unless the config turns them off
+ * (`xmlrpc: false`, `pings: false`): only then do their switches apply.
  */
 final class Hardening
 {
@@ -39,15 +41,30 @@ final class Hardening
             return;
         }
         self::$applied = true;
-        foreach (self::SWITCHES as $switch) {
+        foreach (self::switches($schema) as $switch) {
             self::$switch($schema);
         }
     }
 
-    // ================================================================ always disabled
+    /**
+     * The switches this app applies, in SWITCHES order: `xmlrpc` and `pings` only when the config turns
+     * them off. `GET /__first/api/v1` lists these under `runtime.wp.hardening`.
+     *
+     * @return list<string>
+     */
+    public static function switches(\First\Schema $schema): array
+    {
+        return array_values(array_filter(self::SWITCHES, static fn (string $switch): bool => match ($switch) {
+            'xmlrpc' => !$schema->xmlrpc(),
+            'pings' => !$schema->pings(),
+            default => true,
+        }));
+    }
+
+    // ================================================================ off when the config says so
 
     /**
-     * XML-RPC answers nothing, `system.*` and `?rsd` included; no EditURI link or X-Pingback header. One
+     * `xmlrpc: false`. XML-RPC answers nothing, `system.*` and `?rsd` included; no EditURI link or X-Pingback header. One
      * narrow exception: WordPress.com reaches a site's Jetpack connection over XML-RPC (`?for=jetpack`, on
      * xmlrpc.php or Jetpack's own `?jetpack=comms` endpoint), and spam checks use the Akismet that connection
      * sets up. While Jetpack's connection is loaded, such a request gets Jetpack's `jetpack.*` methods and
@@ -88,15 +105,24 @@ final class Hardening
         return ($_GET['for'] ?? null) === 'jetpack' && did_action('jetpack_feature_connection_enabled') > 0;
     }
 
-    /** No pingbacks or trackbacks, in or out. */
+    /**
+     * `pings: false`. No pingbacks or trackbacks, in or out, whatever the Discussion settings say. With
+     * XML-RPC on, its `pingback.ping` method is gone too.
+     */
     private static function pings(): void
     {
         add_filter('pings_open', '__return_false', PHP_INT_MAX);
         add_filter('pre_option_default_ping_status', static fn (): string => 'closed');
         add_filter('pre_option_default_pingback_flag', static fn (): string => '0');
+        add_filter('xmlrpc_methods', static function (array $methods): array {
+            unset($methods['pingback.ping']);
+            return $methods;
+        }, PHP_INT_MAX);
         // A publish still queues `do_pings`; nothing it would send leaves the site.
         remove_action('do_pings', 'do_all_pings', 10);
     }
+
+    // ================================================================ always disabled
 
     /** No emoji detection script or styles on the front end, wp-admin or embeds, and no emoji images in feeds or mail. */
     private static function emoji(): void
@@ -165,8 +191,9 @@ final class Hardening
             $post = get_post($post);
             return $isOpen && $post instanceof \WP_Post && isset($open[$post->post_type]);
         }, PHP_INT_MAX, 2);
+        // A new post's ping status stays core's (`trackbacks` support and default_ping_status), or the pings switch's.
         add_filter('get_default_comment_status', static function (string $status, string $type, string $commentType) use ($open): string {
-            return $commentType === 'comment' && isset($open[$type]) ? $status : 'closed';
+            return in_array($commentType, ['pingback', 'trackback'], true) || isset($open[$type]) ? $status : 'closed';
         }, PHP_INT_MAX, 3);
     }
 

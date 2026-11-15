@@ -41,7 +41,10 @@ final class KindUrls
         $self = self::$instance = new self($plugin);
         if ($self->kinds !== [] || $self->terms !== []) {
             add_action('init', [$self, 'rewrites'], 1);
-            add_filter('post_type_link', [$self, 'link'], 10, 2);
+            // After Polylang's own (20), which prefixes a translation's link with its language
+            // (`/tr/drives/x/`): the kind's pattern is the item's one URL in every language, and a
+            // translation is told apart by its own slug.
+            add_filter('post_type_link', [$self, 'link'], 100, 2);
             add_action('template_redirect', [$self, 'oldSlug'], 0);
             add_filter('request', [$self, 'request']);
             add_filter('term_link', [$self, 'termLink'], 10, 3);

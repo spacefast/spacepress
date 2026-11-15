@@ -481,8 +481,11 @@ final class AppRouter
         if ($where === null) {
             return null;
         }
+        // A URL names one row whatever its language: each translation has its own slug, and a read
+        // without `locale` would see only the default locale's rows (Locale\Read).
+        $locale = \First\Locale\Module::localized($name) ? ['locale' => '*'] : [];
         try {
-            $row = Seam::findFirst($name, ['where' => $where]);
+            $row = Seam::findFirst($name, ['where' => $where] + $locale);
         } catch (\First\HttpError) {
             return null;
         }

@@ -285,6 +285,8 @@ pub const FIRST_EXPORTS: &[&str] = &[
     "jobs",
     "mail",
     "definePlugin",
+    "adminScreen",
+    "item",
 ];
 /// Type-only exports of `"first"`: importable, erased.
 const FIRST_TYPES: &[&str] = &[
@@ -311,6 +313,11 @@ const FIRST_TYPES: &[&str] = &[
     "AccessShorthand",
     "Job",
     "AnyJob",
+    "AdminScreen",
+    "AdminScreenDefinition",
+    "ScreenField",
+    "ScreenAction",
+    "ItemRef",
     "JobCtx",
     "JobsApi",
     "JobHandle",
@@ -2778,6 +2785,8 @@ impl<'p> Evaluator<'p> {
             Builtin::Action => Some("action"),
             Builtin::Job => Some("job"),
             Builtin::Route => Some("route"),
+            Builtin::AdminScreen => Some("adminScreen"),
+            Builtin::Item => Some("item"),
             Builtin::RelFn(..) => Some("relation"),
             _ => None,
         };
@@ -2985,6 +2994,34 @@ impl<'p> Evaluator<'p> {
                 Ok(Value::object(out))
             }
             Builtin::DefineConfig => Ok(arg(0)),
+            Builtin::AdminScreen => match arg(0) {
+                config @ Value::Object(_) => {
+                    let value = Value::Screen(Rc::new(ActionVal { config, span }));
+                    self.built.push(value.clone());
+                    Ok(value)
+                }
+                _ => err_help(
+                    span,
+                    "adminScreen() needs `{ title, view | form, ... }`",
+                    "pass the screen as an object literal: `export const orders = adminScreen({ title: \"Orders\", view: { ... } })`",
+                ),
+            },
+            // The placeholder First Admin fills from the item (runtime/admin/apps/packages/screens).
+            Builtin::Item => match arg(0) {
+                Value::Str(path)
+                    if !path.is_empty()
+                        && path
+                            .split('.')
+                            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')) =>
+                {
+                    Ok(Value::Str(Rc::from(format!("{{item.{path}}}"))))
+                }
+                other => err_help(
+                    span,
+                    format!("item() takes a field name or dot path, not {}", other.describe()),
+                    "write `item(\"id\")`: the field of the row the action runs on",
+                ),
+            },
             Builtin::DefinePlugin => match arg(0) {
                 config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal { config, span }))),
                 _ => err_help(
@@ -4259,6 +4296,8 @@ fn first_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "ref" => Builtin::Ref,
         "defineConfig" => Builtin::DefineConfig,
         "definePlugin" => Builtin::DefinePlugin,
+        "adminScreen" => Builtin::AdminScreen,
+        "item" => Builtin::Item,
         "action" => Builtin::Action,
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,

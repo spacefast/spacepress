@@ -139,6 +139,8 @@ pub enum Value {
     Route(Rc<ActionVal>),
     /// `definePlugin({ name, hooks, actions, jobs })`, registered in `defineConfig({ use })`.
     Plugin(Rc<ActionVal>),
+    /// `adminScreen({ ... })`: a First Admin screen, registered by its export (docs/admin-screens.md).
+    Screen(Rc<ActionVal>),
     FileBucket(Rc<FileBucketVal>),
     Env(Rc<str>),
     /// An imported file's URL (`import logo from "./compass.svg"`): its name below the app
@@ -277,6 +279,10 @@ pub enum Builtin {
     DefineRelations,
     DefineConfig,
     DefinePlugin,
+    /// `adminScreen({ ... })` from "first".
+    AdminScreen,
+    /// `item(path)` from "first": the `{item.<path>}` placeholder of a screen action's input.
+    Item,
     Action,
     Job,
     /// `route()`, exported only to a 0.3.0 capture (`eval::legacy`).
@@ -631,6 +637,7 @@ impl Value {
             Value::Job(_) => "a job".into(),
             Value::Route(_) => "a route".into(),
             Value::Plugin(_) => "a plugin".into(),
+            Value::Screen(_) => "an admin screen".into(),
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),
             Value::Asset(file) => format!("the URL of {file}"),

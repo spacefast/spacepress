@@ -562,6 +562,9 @@ pub struct Schema {
     pub globals: IndexMap<String, Global>,
     pub actions: IndexMap<String, Action>,
     pub jobs: IndexMap<String, Job>,
+    /// `adminScreen()` exports by screen id (the export name in kebab case): each one the
+    /// declaration `first_admin_register_screen()` takes (`crate::admin_screen`).
+    pub screens: IndexMap<String, Json>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
     /// Server components (`first/components/<file>.tsx#<export>`) → their compiled PHP function.
@@ -592,6 +595,12 @@ pub struct Schema {
     /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
     /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
     pub public_authors: bool,
+    /// `defineConfig({ xmlrpc: false })`: XML-RPC answers nothing but Jetpack's connection. `true`
+    /// (the default) leaves it as WordPress ships it.
+    pub xmlrpc: bool,
+    /// `defineConfig({ pings: false })`: pingbacks and trackbacks closed in and out. `true` (the
+    /// default) leaves them to WordPress and the site's Discussion settings.
+    pub pings: bool,
     /// `defineConfig({ sealed: true })`: the slugs of the config's `plugins`, which run as plugins with
     /// First's own and the platform's (spec §6; docs/sealed.md). `None` when the site isn't sealed.
     pub sealed: Option<Vec<String>>,
@@ -625,6 +634,7 @@ impl Default for Schema {
             globals: IndexMap::new(),
             actions: IndexMap::new(),
             jobs: IndexMap::new(),
+            screens: IndexMap::new(),
             wp_hooks: Vec::new(),
             components: IndexMap::new(),
             app: None,
@@ -641,6 +651,8 @@ impl Default for Schema {
             frontend: None,
             output: Output::Server,
             public_authors: false,
+            xmlrpc: true,
+            pings: true,
             sealed: None,
             runtime_schema: None,
         }

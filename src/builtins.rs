@@ -91,7 +91,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("first", &["ref"], overload("kind: Collection | () => Collection", arity(1, 1), None, None)),
     ("first", &["taxonomy"], overload("fields?: object, options?: object", arity(0, 2), None, None)),
     ("first", &["terms"], overload("taxonomy: Taxonomy | () => Taxonomy", arity(1, 1), None, None)),
-    ("first", &["defineConfig", "action", "job", "route", "env"], overload("one configuration or environment name", arity(1, 1), None, None)),
+    ("first", &["defineConfig", "action", "job", "route", "env", "adminScreen", "item"], overload("one configuration or environment name", arity(1, 1), None, None)),
     ("first", &["files"], overload("options: object", arity(1, 2), None, None)),
     ("first", &["relation"], overload("options?: object", arity(0, 1), None, None)),
     ("field", &["text", "slug", "media"], overload("options?: object", arity(0, 1), None, None)),

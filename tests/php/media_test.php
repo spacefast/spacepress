@@ -122,4 +122,40 @@ $final = $mediaReq('GET', "/media/{$img['id']}", null)[1];
 $mediaReq('DELETE', "/media/{$img['id']}", $asEditor);
 check('deleting media removes the attachment and its size files after commit', !is_file($onDisk($final['sizes']['thumb']['url'])) && !is_file($onDisk("$base.png")) && get_post($img['id']) === null);
 
+// The rectangles are core's image_resize_dimensions(); First moves a cover crop's origin to the focal
+// point. [dst_x, dst_y, src_x, src_y, dst_w, dst_h, src_w, src_h].
+$rect = [\First\Media\Images::class, 'dimensions'];
+eq('cover: core centres the crop without a focal point; the focal point moves it, clamped to the image', [
+    $rect(400, 200, 100, 100, true),
+    $rect(400, 200, 100, 100, true, ['x' => 0, 'y' => 0.5]),
+    $rect(400, 200, 100, 100, true, ['x' => 1, 'y' => 0.5]),
+    $rect(400, 200, 100, 100, true, ['x' => 0.4, 'y' => 0.5]),
+    $rect(200, 400, 100, 100, true, ['x' => 0.5, 'y' => 0.9]),
+], [
+    [0, 0, 100, 0, 100, 100, 200, 200],
+    [0, 0, 0, 0, 100, 100, 200, 200],
+    [0, 0, 200, 0, 100, 100, 200, 200],
+    [0, 0, 60, 0, 100, 100, 200, 200],
+    [0, 0, 0, 200, 100, 100, 200, 200],
+]);
+eq('inside scales to the width; a size core would not make (larger, or within 1px) is null', [
+    $rect(400, 200, 100, null, false),
+    $rect(80, 60, 100, 100, true),
+    $rect(400, 200, 399, null, false),
+], [[0, 0, 0, 0, 100, 50, 400, 200], null, null]);
+$upscale = static fn ($out, $ow, $oh, $w, $h, $crop) => $crop ? $out : [0, 0, 0, 0, $w, (int) round($w * $oh / $ow), $ow, $oh];
+add_filter('image_resize_dimensions', $upscale, 10, 6);
+eq("core's image_resize_dimensions filter decides the rectangle (a site that allows upscaling)", $rect(40, 20, 100, null, false), [0, 0, 0, 0, 100, 50, 40, 20]);
+remove_filter('image_resize_dimensions', $upscale, 10);
+// The optional Jetpack Image CDN adapter builds Photon arguments from the same rectangles.
+eq('CDN cover args carry the focal crop rectangle; inside args fit', [
+    \First\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => 100, 'fit' => 'cover'], ['x' => 1, 'y' => 0]),
+    \First\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
+    \First\Wp\Media\ImageCdn::args(40, 20, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
+], [
+    [['crop' => '200px,0px,200px,200px', 'resize' => '100,100'], 100, 100],
+    [['fit' => '100,50'], 100, 50],
+    [[], 40, 20],
+]);
+
 finish('media_test');

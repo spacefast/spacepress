@@ -2,26 +2,13 @@
 
 declare(strict_types=1);
 
-/* Image sizes (phase 2 §7.2): core-compatible resize rectangles and focal-aware crops; which files resize. */
+/* Image sizes (phase 2 §7.2) without WordPress: focal validation and which files resize. The resize
+ * rectangles come from core and are proven in media_test.php. */
 
 use First\Media\Images;
 
 require dirname(__DIR__, 2) . '/runtime/First/bootstrap.php';
 require __DIR__ . '/harness.php';
-
-// [dst_x, dst_y, src_x, src_y, dst_w, dst_h, src_w, src_h], as core's image_resize_dimensions().
-eq('cover centres the crop without a focal point', Images::dimensions(400, 200, 100, 100, true), [0, 0, 100, 0, 100, 100, 200, 200]);
-eq('cover: focal x=0 pins the crop to the left edge', Images::dimensions(400, 200, 100, 100, true, ['x' => 0, 'y' => 0.5]), [0, 0, 0, 0, 100, 100, 200, 200]);
-eq('cover: focal x=1 pins the crop to the right edge', Images::dimensions(400, 200, 100, 100, true, ['x' => 1, 'y' => 0.5]), [0, 0, 200, 0, 100, 100, 200, 200]);
-eq('cover: x0 = focal.x * W - w/2', Images::dimensions(400, 200, 100, 100, true, ['x' => 0.4, 'y' => 0.5]), [0, 0, 60, 0, 100, 100, 200, 200]);
-eq('cover: vertical focal on a tall image', Images::dimensions(200, 400, 100, 100, true, ['x' => 0.5, 'y' => 0.9]), [0, 0, 0, 200, 100, 100, 200, 200]);
-eq('cover larger than the original → no file (core never upscales)', Images::dimensions(80, 60, 100, 100, true), null);
-eq('cover wider than the original clamps each axis, as core does', Images::dimensions(80, 200, 100, 100, true), [0, 0, 0, 50, 80, 100, 80, 100]);
-eq('inside scales to the width, height derived', Images::dimensions(400, 200, 100, null, false), [0, 0, 0, 0, 100, 50, 400, 200]);
-eq('inside within both bounds', Images::dimensions(400, 200, 300, 50, false), [0, 0, 0, 0, 100, 50, 400, 200]);
-eq('inside never upscales', Images::dimensions(40, 20, 100, null, false), null);
-eq('inside snaps a 1px rounding shortfall, as wp_constrain_dimensions does', Images::dimensions(120, 142, 63, 76, false), [0, 0, 0, 0, 63, 76, 120, 142]);
-eq('a size within 1px of the original makes no file', Images::dimensions(400, 200, 399, null, false), null);
 
 $problem = static function (string $label, mixed $v, string $pointer): void {
     problem($label, static fn () => Images::focal($v), 422, 'invalid_input', $pointer);
@@ -66,16 +53,5 @@ eq('still GIF resizes; animated GIFs (with or without control blocks) and SVG do
     Images::resizable("$dir/src.png", 'image/svg+xml'),
 ], [true, false, false, false]);
 
-// The optional Jetpack Image CDN adapter (WP only) builds Photon arguments from the same rectangles.
-require dirname(__DIR__, 2) . '/runtime/First/Wp/Media/ImageCdn.php';
-eq('CDN cover args carry the focal crop rectangle; inside args fit', [
-    \First\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => 100, 'fit' => 'cover'], ['x' => 1, 'y' => 0]),
-    \First\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
-    \First\Wp\Media\ImageCdn::args(40, 20, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
-], [
-    [['crop' => '200px,0px,200px,200px', 'resize' => '100,100'], 100, 100],
-    [['fit' => '100,50'], 100, 50],
-    [[], 40, 20],
-]);
 
 finish('images_test');

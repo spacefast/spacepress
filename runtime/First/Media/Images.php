@@ -7,9 +7,9 @@ namespace First\Media;
 use First\HttpError;
 
 /**
- * Named image sizes (phase 2 §7.2): the rectangle math behind WpMedia's renditions. dimensions()
- * matches core's image_resize_dimensions() (same rounding, no upscaling), with the crop origin moved
- * to the focal point when one is set.
+ * Named image sizes (phase 2 §7.2): WpMedia's renditions use core's image_resize_dimensions() (its
+ * rounding, no upscaling and resize filters), with the crop origin moved to the focal point when
+ * one is set.
  */
 final class Images
 {
@@ -19,63 +19,24 @@ final class Images
     /**
      * The resize rectangle in core's shape: [dst_x, dst_y, src_x, src_y, dst_w, dst_h, src_w, src_h],
      * or null when core would make no file (larger than the original, or within 1px of it): the
-     * size is then the original. A port of image_resize_dimensions() + wp_constrain_dimensions(),
-     * with the crop origin at the focal point when one is given.
+     * size is then the original.
      *
-     * @param ?array{x: float|int, y: float|int} $focal 0..1 from the top-left; null = centre
+     * @param ?array{x: float|int, y: float|int} $focal 0..1 from the top-left; null = core's centre
      * @return ?list<int>
      */
     public static function dimensions(int $origW, int $origH, int $w, ?int $h, bool $crop, ?array $focal = null): ?array
     {
-        $h ??= 0;
-        if ($origW <= 0 || $origH <= 0 || ($w <= 0 && $h <= 0)) {
+        $dims = image_resize_dimensions($origW, $origH, $w, $h ?? 0, $crop);
+        if (!is_array($dims)) {
             return null;
         }
-        $smaller = match (true) {
-            $h === 0 => $origW < $w,
-            $w === 0 => $origH < $h,
-            default => $origW < $w && $origH < $h,
-        };
-        if ($smaller) {
-            return null;
-        }
-        if ($crop) {
-            $newW = min($w, $origW);
-            $newH = min($h, $origH);
-            $newW = $newW ?: (int) round($newH * $origW / $origH);
-            $newH = $newH ?: (int) round($newW / ($origW / $origH));
-            $ratio = max($newW / $origW, $newH / $origH);
-            $cropW = (int) round($newW / $ratio);
-            $cropH = (int) round($newH / $ratio);
-            $x = $focal === null ? (int) floor(($origW - $cropW) / 2) : self::origin((float) $focal['x'], $origW, $cropW);
-            $y = $focal === null ? (int) floor(($origH - $cropH) / 2) : self::origin((float) $focal['y'], $origH, $cropH);
-        } else {
-            [$newW, $newH] = self::constrain($origW, $origH, $w, $h);
-            [$x, $y, $cropW, $cropH] = [0, 0, $origW, $origH];
-        }
-        if (abs($newW - $origW) <= 1 && abs($newH - $origH) <= 1) {
-            return null;
+        $dims = array_map('intval', array_values($dims));
+        if ($crop && $focal !== null) {
+            $dims[2] = self::origin((float) $focal['x'], $origW, $dims[6]);
+            $dims[3] = self::origin((float) $focal['y'], $origH, $dims[7]);
         }
 
-        return [0, 0, $x, $y, $newW, $newH, $cropW, $cropH];
-    }
-
-    /** wp_constrain_dimensions(): fit inside max width/height (0 = unbounded), snapping 1px rounding shortfalls. */
-    private static function constrain(int $curW, int $curH, int $maxW, int $maxH): array
-    {
-        [$wr, $hr, $didW, $didH] = [1.0, 1.0, false, false];
-        if ($maxW > 0 && $curW > $maxW) {
-            [$wr, $didW] = [$maxW / $curW, true];
-        }
-        if ($maxH > 0 && $curH > $maxH) {
-            [$hr, $didH] = [$maxH / $curH, true];
-        }
-        $larger = max($wr, $hr);
-        $ratio = (int) round($curW * $larger) > $maxW || (int) round($curH * $larger) > $maxH ? min($wr, $hr) : $larger;
-        $w = max(1, (int) round($curW * $ratio));
-        $h = max(1, (int) round($curH * $ratio));
-
-        return [$didW && $w === $maxW - 1 ? $maxW : $w, $didH && $h === $maxH - 1 ? $maxH : $h];
+        return $dims;
     }
 
     /** x0 = clamp(focal * W - w/2, 0, W - w). */

@@ -194,6 +194,7 @@ impl Compiler<'_, '_> {
             parameter.pat.bindings(&mut bindings);
         }
         if !f.is_arrow
+            && f.uses_arguments
             && !bindings.iter().any(|(name, _)| *name == "arguments")
             && !self.fx().scopes[0].contains_key("arguments")
         {

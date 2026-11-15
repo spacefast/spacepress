@@ -20,6 +20,9 @@ pub struct Lowerer {
     pub reads_this: std::cell::Cell<bool>,
     /// The `this.<key>` names the current ordinary function reads (`Func::this_reads`).
     pub this_reads: std::cell::RefCell<Vec<String>>,
+    /// Set when the current ordinary function's body, or one of its arrows, names `arguments`
+    /// (`Func::uses_arguments`).
+    pub uses_arguments: std::cell::Cell<bool>,
     /// Inside a derived constructor's parameters, before `super()`: `this` doesn't exist yet.
     pub before_super: std::cell::Cell<bool>,
     /// A CommonJS source: module-level `this` is the module's initial `module.exports`.
@@ -1028,6 +1031,17 @@ impl Lowerer {
     }
 
     fn function_inner(&self, f: &a::Function<'_>) -> Result<Rc<Func>> {
+        // `arguments` in this function's parameters and body, and in its arrows, is its own.
+        let outer = self.uses_arguments.replace(false);
+        let result = self.function_body(f).map(|mut func| {
+            Rc::get_mut(&mut func).expect("new function").uses_arguments = self.uses_arguments.get();
+            func
+        });
+        self.uses_arguments.set(outer);
+        result
+    }
+
+    fn function_body(&self, f: &a::Function<'_>) -> Result<Rc<Func>> {
         if let Some(id) = &f.id {
             self.binding_name(id.name.as_str(), id.span)?;
         }
@@ -1061,6 +1075,7 @@ impl Lowerer {
             is_generator: f.generator,
             receives_this: false,
             this_reads: vec![],
+            uses_arguments: false,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -1084,6 +1099,7 @@ impl Lowerer {
             is_generator: false,
             receives_this: false,
             this_reads: vec![],
+            uses_arguments: false,
             ret: self.annotation(f.return_type.as_ref())?,
             type_params: self.type_params(f.type_parameters.as_deref()),
             span: self.sp(f.span),
@@ -1480,6 +1496,9 @@ impl Lowerer {
                 )
             }
             E::Identifier(id) => {
+                if id.name == "arguments" {
+                    self.uses_arguments.set(true);
+                }
                 if id.name == "undefined" {
                     self.mk(span, ExprKind::Undefined)
                 } else {
@@ -1590,6 +1609,7 @@ impl Lowerer {
                     is_generator: false,
                     receives_this: false,
                     this_reads: vec![],
+                    uses_arguments: false,
                     ret: None,
                     type_params: vec![],
                     span: self.sp(f.span),
@@ -2064,6 +2084,9 @@ impl Lowerer {
     fn simple_target(&self, t: &a::SimpleAssignmentTarget<'_>) -> Result<Expr> {
         match t {
             a::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) => {
+                if id.name == "arguments" {
+                    self.uses_arguments.set(true);
+                }
                 Ok(self.mk(id.span, ExprKind::Ident(id.name.to_string())))
             }
             a::SimpleAssignmentTarget::TSNonNullExpression(n) => {

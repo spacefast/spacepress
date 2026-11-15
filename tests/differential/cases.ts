@@ -191,6 +191,13 @@ function argumentSemanticsImpl(first: string, ...tail: string[]) {
 
 const BUILD_TIME_ARGUMENT_SEMANTICS = argumentSemanticsImpl("original", "tail");
 
+// Which functions get an `arguments` object: only one that names it, directly or in an arrow.
+function argumentsShorthand(a: string, b: string) { return { arguments }.arguments.length; }
+function argumentsInNestedArrow(a: string) { const outer = () => () => arguments[0]; return outer()(); }
+function argumentsInInnerFunction(a: string) { function inner(b: string, c: string) { return arguments.length; } return [inner("x", "y"), typeof a]; }
+function argumentsUnused(a: string) { return a; }
+function argumentsInDefault(a: string, b: number = arguments.length) { return b; }
+
 function argumentSerializationImpl(...values: string[]) {
   return JSON.stringify(arguments);
 }
@@ -584,6 +591,7 @@ export const varSemantics = run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, ru
 export const argumentSemantics = run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemanticsImpl("original", "tail") }));
 
 export const argumentSerialization = run(() => argumentSerializationImpl("original", "tail"));
+export const argumentsUse = run(() => [argumentsShorthand("a", "b"), argumentsInNestedArrow("first"), argumentsInInnerFunction("a"), argumentsUnused("kept"), argumentsInDefault("a")]);
 
 export const languageTypes = run(() => {
   const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];

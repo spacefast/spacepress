@@ -1647,6 +1647,29 @@ fn compiled_php_matches_node_on_every_differential_case() {
             && !body("nullableParameter").contains("->p[")
     );
 
+    // Only a function that names `arguments`, itself or in one of its arrows, builds the object.
+    for (name, uses) in [
+        ("argumentsUnused", false),
+        ("argumentsShorthand", true),
+        ("argumentsInNestedArrow", true),
+        ("argumentsInDefault", true),
+    ] {
+        assert_eq!(
+            body(name).contains("\\First\\Js::arguments("),
+            uses,
+            "{name}:\n{}",
+            body(name)
+        );
+    }
+    assert_eq!(
+        body("argumentsInInnerFunction")
+            .matches("\\First\\Js::arguments(")
+            .count(),
+        1,
+        "only the inner function names arguments:\n{}",
+        body("argumentsInInnerFunction")
+    );
+
     let mut mismatches = Vec::new();
     for (name, want) in expected.as_object().unwrap() {
         let parts: Vec<&str> = name.split(':').collect();

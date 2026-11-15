@@ -7,6 +7,7 @@ builds its disposable app under `.first/showcase/`, leaving its sources unchange
 | Example | What it shows |
 | --- | --- |
 | [`examples/showcase/`](../examples/showcase/README.md) | One-command seeded demo: native admin, structured fields, SQL relations, media and a compiled class/action |
+| [`examples/drive-store/`](../examples/drive-store/README.md) | Most of First at once: a used hard-drive shop with an English/Turkish catalog, a fake checkout through a form action, stock rules in hooks, SQL order tables, reviews, an RSS feed, guarded pages, a settings global and First Admin, with a WordPress test |
 | [`examples/reading-list/`](../examples/reading-list/README.md) | Each part of an app once: a collection, a table, owner-scoped access, hooks, an action, a job, a route and two npm packages compiled to PHP |
 | `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, translations, hooks and jobs |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |

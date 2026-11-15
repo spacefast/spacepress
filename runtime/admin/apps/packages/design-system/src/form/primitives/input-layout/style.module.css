@@ -6,21 +6,21 @@
 
 		display: flex;
 		height: 40px;
-		background-color: var( --wpds-color-bg-interactive-neutral-weak );
+		background-color: var( --wpds-color-background-interactive-neutral-weak );
 		border-width: var( --wpds-border-width-xs );
 		border-style: solid;
 		border-color: var( --wpds-color-stroke-interactive-neutral );
 		border-radius: var( --wpds-border-radius-sm );
-		font-family: var( --wpds-font-family-body );
+		font-family: var( --wpds-typography-font-family-body );
 		font-size: max(
-			var( --wpds-font-size-md ),
+			var( --wpds-typography-font-size-md ),
 			16px
 		); /* avoid mobile zoom */
 		line-height: 1;
-		color: var( --wpds-color-fg-interactive-neutral );
+		color: var( --wpds-color-foreground-interactive-neutral );
 
 		@media ( min-width: 600px ) {
-			font-size: var( --wpds-font-size-md );
+			font-size: var( --wpds-typography-font-size-md );
 		}
 
 		&.is-size-compact {
@@ -40,12 +40,12 @@
 		&.is-disabled,
 		&:has( [data-can-disable-input-layout][data-disabled] ) {
 			background-color: var(
-				--wpds-color-bg-interactive-neutral-weak-disabled
+				--wpds-color-background-interactive-neutral-weak-disabled
 			);
 			border-color: var(
 				--wpds-color-stroke-interactive-neutral-disabled
 			);
-			color: var( --wpds-color-fg-interactive-neutral-disabled );
+			color: var( --wpds-color-foreground-interactive-neutral-disabled );
 
 			@media ( forced-colors: active ) {
 				border-color: GrayText;

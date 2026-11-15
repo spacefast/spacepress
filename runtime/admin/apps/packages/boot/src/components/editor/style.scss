@@ -38,6 +38,6 @@ $header-height: variables.$header-height;
 
 	&:focus-visible {
 		outline: calc( 3 * var( --wpds-border-width-focus ) ) solid
-			var( --wpds-color-stroke-focus-brand );
+			var( --wpds-color-stroke-focus );
 	}
 }

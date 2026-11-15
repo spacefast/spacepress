@@ -97,23 +97,23 @@ export function AIAgent( { onClose }: AIAgentProps ) {
 
 		return {
 			sidebarBg: resolveCSSVar(
-				styles[ '--wpds-color-bg-surface-neutral-weak' ],
+				styles[ '--wpds-color-background-surface-neutral-weak' ],
 				styles
 			),
 			sidebarPrimary: resolveCSSVar(
-				styles[ '--wpds-color-bg-interactive-brand-strong' ],
+				styles[ '--wpds-color-background-interactive-brand-strong' ],
 				styles
 			),
 			fgContentNeutral: resolveCSSVar(
-				styles[ '--wpds-color-fg-content-neutral' ],
+				styles[ '--wpds-color-foreground-content-neutral' ],
 				styles
 			),
 			fgContentNeutralWeak: resolveCSSVar(
-				styles[ '--wpds-color-fg-content-neutral-weak' ],
+				styles[ '--wpds-color-foreground-content-neutral-weak' ],
 				styles
 			),
 			fgInteractiveBrandStrong: resolveCSSVar(
-				styles[ '--wpds-color-fg-interactive-brand-strong' ],
+				styles[ '--wpds-color-foreground-interactive-brand-strong' ],
 				styles
 			),
 			strokeInteractiveNeutral: resolveCSSVar(
@@ -121,7 +121,7 @@ export function AIAgent( { onClose }: AIAgentProps ) {
 				styles
 			),
 			bgSurfaceNeutral: resolveCSSVar(
-				styles[ '--wpds-color-bg-surface-neutral' ],
+				styles[ '--wpds-color-background-surface-neutral' ],
 				styles
 			),
 		};

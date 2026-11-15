@@ -2,8 +2,8 @@
 
 @layer wp-ui-components {
 	.chips-edit-area {
-		padding: calc( var( --wpds-dimension-base ) * 2 )
-			calc( var( --wpds-dimension-base ) * 3 ) 0;
+		padding: calc( var( --wpds-dimension-gap-xs ) * 2 )
+			calc( var( --wpds-dimension-gap-xs ) * 3 ) 0;
 	}
 
 	.chips-list {
@@ -14,7 +14,7 @@
 		border: none;
 		outline: none;
 		min-height: 40px;
-		padding: calc( var( --wpds-dimension-base ) * 3 );
+		padding: calc( var( --wpds-dimension-gap-xs ) * 3 );
 		font-family: inherit;
 		font-size: inherit;
 		line-height: inherit;

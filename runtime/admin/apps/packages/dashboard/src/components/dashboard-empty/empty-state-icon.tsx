@@ -8,7 +8,7 @@ export const emptyDashboardIcon = (
 	>
 		<path
 			d="M4 3.87115V44.1089C4 46.5667 5.36222 47.98 7.76667 47.98H40.1667C42.5711 47.98 43.9333 46.5578 43.9333 44.1089V3.87115C43.9333 1.41337 42.5711 4.14197e-05 40.1667 4.14197e-05H7.76667C5.36222 -0.00884747 4 1.41337 4 3.87115Z"
-			fill="var(--wpds-color-bg-surface-neutral-weak)"
+			fill="var(--wpds-color-background-surface-neutral-weak)"
 		/>
 		<path
 			d="M4 3.87111V8.48222H43.9333V3.87111C43.9333 1.41333 42.5711 0 40.1667 0H7.76667C5.36222 0 4 1.42222 4 3.87111Z"
@@ -36,7 +36,7 @@ export const emptyDashboardIcon = (
 		/>
 		<path
 			d="M32.0201 28.0956C35.9357 28.0956 39.109 24.9223 39.109 21.0067H32.0201V28.0956Z"
-			fill="var(--wpds-color-bg-surface-neutral-weak)"
+			fill="var(--wpds-color-background-surface-neutral-weak)"
 		/>
 	</svg>
 );

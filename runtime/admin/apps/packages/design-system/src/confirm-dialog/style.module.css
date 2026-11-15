@@ -3,16 +3,16 @@
 @layer wp-ui-compositions {
 	.irreversible-action {
 		--wp-ui-button-background-color: var(
-			--wpds-color-bg-interactive-error-strong
+			--wpds-color-background-interactive-error-strong
 		);
 		--wp-ui-button-background-color-active: var(
-			--wpds-color-bg-interactive-error-strong-active
+			--wpds-color-background-interactive-error-strong-active
 		);
 		--wp-ui-button-foreground-color: var(
-			--wpds-color-fg-interactive-error-strong
+			--wpds-color-foreground-interactive-error-strong
 		);
 		--wp-ui-button-foreground-color-active: var(
-			--wpds-color-fg-interactive-error-strong-active
+			--wpds-color-foreground-interactive-error-strong-active
 		);
 	}
 }

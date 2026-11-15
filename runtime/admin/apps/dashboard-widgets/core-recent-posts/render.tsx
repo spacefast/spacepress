@@ -55,7 +55,7 @@ export default function RecentPostsRender( {
 							<div
 								style={ {
 									fontSize: '0.9em',
-									color: 'var( --wpds-color-fg-content-neutral-weak )',
+									color: 'var( --wpds-color-foreground-content-neutral-weak )',
 									marginTop: '4px',
 								} }
 							>

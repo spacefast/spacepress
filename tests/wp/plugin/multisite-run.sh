@@ -17,8 +17,8 @@ export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-plugin-ms}"
 export FIRST_WP_PORT="${FIRST_WP_PORT:-8907}"
 work="$(mktemp -d)"
 cleanup() {
-  # The network activation wrote the plugins as the container's user; hand them back before removing.
-  "$harness" compose exec -T wordpress chown -R "$(id -u):$(id -g)" /var/www/html/wp-content/plugins >/dev/null 2>&1 || true
+  # The web server wrote the plugins and the build stores as its own user; hand them back before removing.
+  "$harness" compose exec -T wordpress chown -R "$(id -u):$(id -g)" /var/www/html/wp-content >/dev/null 2>&1 || true
   if [[ ${FIRST_WP_KEEP:-0} == 1 ]]; then echo "kept: $work" >&2; return; fi
   "$harness" down
   rm -rf "$work"
@@ -132,4 +132,27 @@ out=$(push newsapp "$super" "$news") || fail "the second push to /news: $out"
 [[ $out == *"run migration 0002"* && $(curl -s "$news/__first/api/v1/stories" | json data.0.section) == front ]] || fail "the second push migrates /news: $out"
 [[ $(wp --url="$shop" option get first_live_build) == "$shop_build" && $(curl -s "$shop/__first/api/v1" | json data.name) == shopapp ]] || fail "the other site keeps its build"
 ok "a deployment to one site changes nothing on another"
+
+# ---- one configured store directory for the whole network ---------------------------------------
+# FIRST_STORE_DIR is one constant for every site. Each site still keeps its own builds and its own
+# record of which it has initialized: the same app pushed to a second site is installed there too.
+# (Under wp-content only because that is the directory the lane's web and WP-CLI containers share.)
+configured=/var/www/html/wp-content/configured-store
+"$harness" compose exec -T wordpress sh -c "mkdir -p $configured && chown www-data:www-data $configured"
+wp config set FIRST_STORE_DIR "$configured" >/dev/null
+wp site create --slug=journal --title=Journal >/dev/null
+wp site create --slug=wiki --title=Wiki >/dev/null
+app sharedapp pages
+for site in journal wiki; do
+  out=$(push sharedapp "$super" "$url/$site") || fail "the push to /$site with a configured store: $out"
+  [[ $out == *"applied migration 0001_init"*"live: $url/$site now runs sharedapp"* ]] || fail "/$site installs the build itself: $out"
+done
+journal_id=$(wp --url="$url/journal" eval 'echo get_current_blog_id();'); wiki_id=$(wp --url="$url/wiki" eval 'echo get_current_blog_id();')
+tables=$("$harness" sql "SHOW TABLES LIKE '%first\\_pages'" | tail -n +2 | sort | tr '\n' ' ')
+[[ $tables == *"wp_${journal_id}_first_pages"* && $tables == *"wp_${wiki_id}_first_pages"* ]] || fail "both sites have the app's table: $tables"
+[[ $(wp --url="$url/journal" option get first_live_build) == "$(wp --url="$url/wiki" option get first_live_build)" ]] || fail "the two sites run the same build"
+"$harness" compose exec -T wordpress sh -c "test -d $configured/site-$journal_id/ready && test -d $configured/site-$wiki_id/ready && ! test -e $configured/ready" || fail "each site's store is its own directory under the configured one"
+wp --url="$url/journal" first insert pages '{"title":"In the journal"}' >/dev/null
+[[ $(curl -s "$url/journal/__first/api/v1/pages" | json data.0.title) == "In the journal" && $(curl -s "$url/wiki/__first/api/v1/pages" | json data) == "[]" ]] || fail "the same app on two sites keeps two sets of rows"
+ok "with one FIRST_STORE_DIR, each site installs and keeps its own builds"
 echo "plugin multisite lane: all checks passed"

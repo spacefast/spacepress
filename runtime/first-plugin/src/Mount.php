@@ -5,8 +5,8 @@ namespace FirstPlugin;
 
 /**
  * Mounts one build per request through First's loader (docs/host-contract.md): the live build, or,
- * for the two deploy requests that name a deployment and prove they hold its token, the build that
- * deployment uploaded. The plugin is the host here, so it also supplies what a host supplies: the
+ * for the two deploy requests that name a deployment, prove they hold its token and come from someone
+ * who may deploy, the build that deployment uploaded. The plugin is the host here, so it also supplies what a host supplies: the
  * app's variables and mail delivery.
  */
 final class Mount
@@ -72,10 +72,12 @@ final class Mount
     }
 
     /**
-     * The build for this request. `X-First-Deployment: <id>:<token>` selects that deployment's build
-     * when the token is the one issued for it; `X-First-Mount: activate` mounts it to run, anything
-     * else mounts it to inspect, where none of the app's own code runs. It is honored only on that
-     * deployment's routes, which still check who is asking: the token only decides which code is loaded.
+     * The build for this request. `X-First-Deployment: <id>:<token>` selects that deployment's build on
+     * exactly two requests: `GET …/deployments/<id>/plan` mounts it to inspect, where none of the app's
+     * own code runs, and `POST …/deployments/<id>/activate` mounts it to run. Mounting loads PHP the
+     * deployment uploaded, so everything is settled first, by this plugin's own code: the route and
+     * method, the token, and that the person asking may deploy. A request that fails any of them gets
+     * the live build, and its route then refuses it.
      *
      * @return array{0: ?string, 1: string, 2: ?string}
      */
@@ -83,15 +85,16 @@ final class Mount
     {
         $header = $_SERVER['HTTP_X_FIRST_DEPLOYMENT'] ?? null;
         if (is_string($header) && preg_match('/\A([0-9a-f]{32}):([0-9a-f]{64})\z/D', $header, $match) === 1) {
-            // Only on that deployment's own routes: the token never puts another page of the site on
-            // a build that isn't live.
-            $pending = get_option(Site::PENDING, []);
-            $record = is_array($pending) ? ($pending[$match[1]] ?? null) : null;
-            if (str_starts_with((string) Site::route(), '/deployments/' . $match[1] . '/')
-                && is_array($record) && is_string($record['token'] ?? null) && hash_equals($record['token'], hash('sha256', $match[2]))
-                && (int) ($record['expires'] ?? 0) > time() && Site::validId($record['build'] ?? null)) {
-                $mode = ($_SERVER['HTTP_X_FIRST_MOUNT'] ?? '') === 'activate' ? 'activate' : 'inspect';
-
+            $mode = match ([strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')), Site::route()]) {
+                ['GET', '/deployments/' . $match[1] . '/plan'] => 'inspect',
+                ['POST', '/deployments/' . $match[1] . '/activate'] => 'activate',
+                default => null,
+            };
+            $record = $mode === null ? null : (Site::pending()[$match[1]] ?? null);
+            if (is_array($record) && is_string($record['token'] ?? null) && hash_equals($record['token'], hash('sha256', $match[2]))
+                && (int) ($record['expires'] ?? 0) > time() && Site::validId($record['build'] ?? null)
+                // Last, and only for a holder of the token: this resolves the request's user.
+                && Receiver::authorized(true) === true) {
                 return [$record['build'], $mode, $match[1]];
             }
         }

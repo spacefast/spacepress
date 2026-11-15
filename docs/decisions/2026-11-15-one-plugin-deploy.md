@@ -23,21 +23,35 @@ sends for its last deployment, then uploads the two content-addressed trees.
 
 ## Choices
 
-- **A build is trusted by who sent it, and checked by what it is.** Deploying needs a capability
-  that already means "may run PHP here" (`activate_plugins`; `manage_network_plugins` on a
-  network). The site recomputes each tree's digest and publishes it only under the name the build's
-  manifest gives it, so an upload can't replace or add to a tree that exists.
-- **The candidate build is loaded only for its own two requests.** `plan` mounts it to inspect,
-  where none of the app's code runs; `activate` mounts it to install. A per-deployment token in a
-  header selects it, only on that deployment's routes, and the routes still require the
-  administrator. Every other request keeps the live build.
+- **A build is trusted by who sent it, and checked by what it is.** Deploying is for people whose
+  role lets them install plugins (`install_plugins`; a super admin on a network). Being allowed to
+  activate installed plugins is not enough: that does not mean "may put new PHP here". The check
+  reads the role, because a live app refuses `install_plugins` to everyone. The site recomputes each
+  tree's digest and publishes it only under the name the build's manifest gives it, so an upload
+  can't replace or add to a tree that exists. An archive is bounded in entries and unpacked size
+  before anything is unpacked.
+- **The candidate build is loaded only for its own two requests, and only for someone who may
+  deploy.** `GET …/plan` mounts it to inspect, where none of the app's code runs; `POST …/activate`
+  mounts it to install. Mounting reads PHP the deployment uploaded, and that happens before
+  WordPress's REST server checks anything, so the plugin settles it first with its own code: the
+  exact route and method, the per-deployment token, and the person asking. Every other request
+  keeps the live build.
+- **One writer at a time.** Opening a deployment, making a build live and making an earlier one
+  live again each read what is stored and write it back, behind the store's lock. The history is
+  written before the live build: a request that dies between them leaves the old code live with
+  the right baseline.
 - **The store is private by name, not by server config.** It lives in `wp-content` under a random
   directory name that no URL carries, and browser files are copied to a public directory beside it.
-  A site that can keep the store outside the web root sets `FIRST_STORE_DIR`.
+  A site that can keep the store outside the web root sets `FIRST_STORE_DIR`; on a network each
+  site gets its own directory under it (`site-<id>`), because "this build is initialized" is a fact
+  about one site's database.
 - **A build that can't mount never takes the site down.** WordPress keeps serving and the First
   screen says why.
 - **Sign-in is core's Authorize Application screen.** No new credential type; the password is an
-  ordinary application password the owner can revoke.
+  ordinary application password the owner can revoke. A running app scopes the passwords approved
+  on that screen for agents, and a scoped one can't deploy, so the command line's own approval (its
+  `app_id`, a callback on `127.0.0.1`, approved by someone who may deploy) is left unscoped and the
+  screen says so.
 - **Going back switches code only.** As the host contract says of rollback. The next compile is
   compared with the last deployment, which is what the database holds.
 

@@ -11,6 +11,12 @@ namespace FirstPlugin;
 final class Trees
 {
     private const DIRS = ['runtime', 'app', 'build', 'ready', '.tmp'];
+    /**
+     * What one tree may unpack to. First's runtime tree is about 4,700 files and 60 MB; these bounds
+     * are there so an archive that expands far past that fills no disk before its hash is checked.
+     */
+    private const FILES = 20000;
+    private const BYTES = 512 * 1048576;
 
     /** What a browser may fetch from a stored tree. Everything else stays in the private store only. */
     private const PUBLIC = ['js', 'mjs', 'css', 'svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'ico', 'woff', 'woff2', 'ttf', 'otf', 'wasm'];
@@ -150,8 +156,16 @@ final class Trees
         }
         $staged = self::staging($root, $kind);
         try {
+            if ($archive->numFiles > self::FILES) {
+                throw new \RuntimeException("The uploaded $kind tree has more files than a tree may hold (" . self::FILES . ')');
+            }
+            $bytes = 0;
             for ($i = 0; $i < $archive->numFiles; $i++) {
                 $name = (string) $archive->getNameIndex($i);
+                $bytes += (int) ($archive->statIndex($i)['size'] ?? 0);
+                if ($bytes > self::BYTES) {
+                    throw new \RuntimeException("The uploaded $kind tree unpacks to more than a tree may hold (" . intdiv(self::BYTES, 1048576) . ' MB)');
+                }
                 $segments = explode('/', rtrim($name, '/'));
                 if ($name === '' || $name[0] === '/' || str_contains($name, '\\') || str_contains($name, "\0")
                     || array_filter($segments, static fn (string $s): bool => $s === '' || $s === '.' || $s === '..') !== []) {

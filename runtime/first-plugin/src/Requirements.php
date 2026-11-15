@@ -175,6 +175,9 @@ final class Requirements
             if (is_wp_error($activated)) {
                 throw new \RuntimeException("Could not activate $label: " . $activated->get_error_message());
             }
+            // Polylang sends the next wp-admin page anyone opens to its setup wizard. First installed
+            // it for the app, which configures its languages; the owner's next click stays theirs.
+            delete_transient('pll_activation_redirect');
             $done[] = "$label {$pin['version']}";
         }
 

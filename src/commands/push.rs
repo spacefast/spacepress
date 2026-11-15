@@ -195,14 +195,24 @@ fn run(args: &[String]) -> Result<(), String> {
         for installed in answer["installed"].as_array().into_iter().flatten() {
             println!("installed {} on the site", installed.as_str().unwrap_or("a plugin"));
         }
+        // The app may run now that its plugins are back.
+        info = api.get("/site", &[]).map_err(|e| e.to_string())?;
     }
 
-    // The same source compiles to the same two trees whatever it was compared with.
+    // The same source compiles to the same two trees whatever it was compared with. That is only
+    // "nothing to deploy" when the site is running them: a site that names this code as live and
+    // can't mount it (a tree is gone from its store) gets it again.
     if info["live"]["app"].as_str() == Some(built.app_hash.as_str())
         && info["live"]["runtime"].as_str() == Some(built.runtime_revision.as_str())
     {
-        println!("{site} already runs this code; nothing to deploy");
-        return Ok(());
+        if live.is_some() && info["mounted"]["build"].as_str() == live.as_deref() {
+            println!("{site} already runs this code; nothing to deploy");
+            return Ok(());
+        }
+        println!(
+            "{site} has this code and is not running it ({}); deploying it again",
+            info["mountError"].as_str().unwrap_or("the build did not mount")
+        );
     }
 
     let created = api
@@ -268,7 +278,7 @@ fn run(args: &[String]) -> Result<(), String> {
         .post(
             &format!("/deployments/{id}/activate"),
             &json!({}),
-            &[("X-First-Deployment", &header), ("X-First-Mount", "activate")],
+            &[("X-First-Deployment", &header)],
         )
         .map_err(|e: Refused| match e.data["live"].as_str() {
             Some(build) => format!("{e}\n{site} still runs build {}", short(build)),

@@ -20,15 +20,20 @@ namespace FirstPlugin;
 final class Receiver
 {
     private const PART = 1048576;
+    /** The most a part may be: the part size the site advertises is at most {@see PART}. */
+    private const PART_LIMIT = 16 * 1048576;
+    /** A tree's ZIP, all parts together. First's own runtime tree is about 60 MB unpacked. */
+    private const ZIP_LIMIT = 256 * 1048576;
 
     public static function register(): void
     {
         // Core accepts an application password only on a request it already knows is REST. A plugin that
         // asks for the current user earlier would otherwise leave the deploy routes signed out.
         add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || Site::route() !== null);
+        self::cli();
         add_action('rest_api_init', static function (): void {
-            $read = static fn (): bool|\WP_Error => self::allowed(false);
-            $write = static fn (): bool|\WP_Error => self::allowed(true);
+            $read = static fn (): bool|\WP_Error => self::authorized(false);
+            $write = static fn (): bool|\WP_Error => self::authorized(true);
             $route = static function (string $path, string $method, callable $handler, callable $permission): void {
                 register_rest_route(Site::REST, $path, ['methods' => $method, 'permission_callback' => $permission,
                     'callback' => static function (\WP_REST_Request $request) use ($handler) {
@@ -55,7 +60,52 @@ final class Receiver
         });
     }
 
-    private static function allowed(bool $writes): bool|\WP_Error
+    /**
+     * `first login` asks for its credential on WordPress's Authorize Application screen. A running
+     * First app scopes what that screen creates for an agent (read-only, no personal data) and adds its
+     * scope form there; the command line is not an agent, and a scoped credential can't deploy. So for
+     * this one `app_id` the form gets no scope choices, and the credential is left as WordPress makes
+     * it: everything its user can do. The screen says so.
+     */
+    private static function cli(): void
+    {
+        add_action('admin_init', static function (): void {
+            // Only for someone who may deploy: anyone else approving this link gets the scoped
+            // credential every other approval gets, and the receiver turns it away.
+            $callback = wp_parse_url((string) wp_unslash($_REQUEST['success_url'] ?? ''));
+            if (($GLOBALS['pagenow'] ?? '') !== 'authorize-application.php' || ($_REQUEST['app_id'] ?? null) !== Site::CLI || !Site::mayDeploy()
+                // The command line listens on this machine. A link that names it and sends the
+                // credential anywhere else keeps the scope form.
+                || ($callback['scheme'] ?? '') !== 'http' || ($callback['host'] ?? '') !== '127.0.0.1') {
+                return;
+            }
+            remove_all_actions('wp_authorize_application_password_form');
+            add_action('wp_authorize_application_password_form', static function (): void {
+                echo '<div class="notice notice-info inline"><p>', esc_html('This is the First command line (first login). The application password it gets is not scoped: it can do everything your account can, and it is what first push deploys with. Revoke it under Users, Profile, Application Passwords.'), '</p></div>';
+            });
+        }, PHP_INT_MAX);
+        // The approval itself, from the screen's script (REST, with the browser's cookie) or its plain
+        // form. After the app's own handler, which is the one that scopes it.
+        add_action('wp_create_application_password', static function (mixed $user, mixed $item, mixed $password, mixed $args): void {
+            if (!is_array($item) || !is_array($args) || ($args['app_id'] ?? null) !== Site::CLI || array_key_exists('first_scope', $args) || !Site::deployer((int) $user)) {
+                return;
+            }
+            $passwords = \WP_Application_Passwords::get_user_application_passwords((int) $user);
+            foreach ($passwords as $i => $stored) {
+                if (($stored['uuid'] ?? null) === ($item['uuid'] ?? '') && array_key_exists('first_scope', $stored)) {
+                    unset($passwords[$i]['first_scope']);
+                    update_user_meta((int) $user, \WP_Application_Passwords::USERMETA_KEY_APPLICATION_PASSWORDS, $passwords);
+                }
+            }
+        }, PHP_INT_MAX, 4);
+    }
+
+    /**
+     * Whether this request may use the receiver: every route's permission check, and what {@see Mount}
+     * asks before it loads a deployment's uploaded code. It runs before WordPress initializes there, so
+     * it uses nothing a build supplies.
+     */
+    public static function authorized(bool $writes): bool|\WP_Error
     {
         if (!Site::mayDeploy()) {
             return new \WP_Error('first_forbidden', is_user_logged_in()
@@ -122,7 +172,10 @@ final class Receiver
         $manifest = Site::manifest($request['build']);
         $app = $manifest === null ? null : Site::root() . '/app/' . $manifest['app'];
         if ($app === null || !is_file($app . '/snapshot.json')) {
-            throw new Refusal('first_unknown_build', 'This site has no such build.', 404);
+            // Never an older build instead: the database is at this one's schema.
+            throw new Refusal('first_unknown_build', $request['build'] === Site::baseline()
+                ? 'The build this site deployed last is no longer in its build store, so the next build has nothing to be compared with. Restore the store directory from a backup.'
+                : 'This site has no such build.', 404);
         }
         $migrations = [];
         foreach (scandir($app . '/migrations') ?: [] as $name) {
@@ -218,11 +271,14 @@ final class Receiver
         if (!is_file("$root/build/$build.json")) {
             Trees::write($root, "build/$build.json", $bytes);
         }
-        $pending = array_filter((array) get_option(Site::PENDING, []), static fn ($record): bool => is_array($record) && (int) ($record['expires'] ?? 0) > time());
         $id = bin2hex(random_bytes(16));
         $token = bin2hex(random_bytes(32));
-        $pending[$id] = ['build' => $build, 'token' => hash('sha256', $token), 'expires' => time() + HOUR_IN_SECONDS, 'user' => get_current_user_id()];
-        update_option(Site::PENDING, $pending, false);
+        // Two pushes at once each add their own record to what the other stored.
+        Site::locked(static function () use ($id, $token, $build): void {
+            $pending = array_filter(Site::pending(), static fn (array $record): bool => (int) ($record['expires'] ?? 0) > time());
+            $pending[$id] = ['build' => $build, 'token' => hash('sha256', $token), 'expires' => time() + HOUR_IN_SECONDS, 'user' => get_current_user_id()];
+            update_option(Site::PENDING, $pending, false);
+        });
 
         return [
             'deployment' => $id,
@@ -253,7 +309,7 @@ final class Receiver
     /** @return array{build: string, manifest: array} */
     private static function deployment(string $id): array
     {
-        $record = ((array) get_option(Site::PENDING, []))[$id] ?? null;
+        $record = Site::pending()[$id] ?? null;
         if (!is_array($record) || (int) ($record['expires'] ?? 0) <= time()) {
             throw new Refusal('first_unknown_deployment', 'This deployment is not open: it was finished, or it expired. Run first push again.', 404);
         }
@@ -283,9 +339,22 @@ final class Receiver
         if ($body === '') {
             throw new Refusal('first_invalid', 'The part arrived empty; it may be larger than this server accepts (post_max_size).', 413);
         }
+        if (strlen($body) > self::PART_LIMIT) {
+            throw new Refusal('first_invalid', 'The part is larger than this site takes; send parts of the size it names.', 413);
+        }
         $root = Site::root();
         $parts = "$root/.tmp/deploy-{$request['id']}-$kind";
         wp_mkdir_p($parts);
+        $held = 0;
+        foreach (scandir($parts) ?: [] as $name) {
+            if (ctype_digit($name) && (int) $name !== $index) {
+                $held += (int) filesize("$parts/$name");
+            }
+        }
+        if ($held + strlen($body) > self::ZIP_LIMIT) {
+            Trees::remove($parts);
+            throw new Refusal('first_invalid', "The $kind tree is larger than a deployment may be.", 413);
+        }
         if (file_put_contents("$parts/$index", $body) === false) {
             throw new \RuntimeException('Cannot store the uploaded part');
         }
@@ -328,7 +397,7 @@ final class Receiver
     {
         $mounted = Mount::mounted();
         if ($mounted === null || $mounted['deployment'] !== $id || $mounted['build'] !== $deployment['build'] || $mounted['mode'] !== $mode) {
-            throw new Refusal('first_not_mounted', Mount::error() ?? 'Send this deployment\'s token in X-First-Deployment' . ($mode === 'activate' ? ' with X-First-Mount: activate.' : '.'), 409);
+            throw new Refusal('first_not_mounted', Mount::error() ?? 'Send this deployment\'s token in X-First-Deployment.', 409);
         }
     }
 
@@ -356,15 +425,17 @@ final class Receiver
         foreach (['runtime', 'app'] as $kind) {
             Trees::mirror($root, Site::assets(), $kind, $deployment['manifest'][$kind]);
         }
+        $id = (string) $request['id'];
         try {
-            // One deployment installs at a time; the store's lock is the one the loader's own writers
-            // take. The baseline is read again inside it: two pushes compiled against the same build
-            // can't both install.
-            $receipt = \First\Loader\Store::locked($root, static function () use ($root, $build, $deployment): array {
-                wp_cache_delete(Site::HISTORY, 'options');
+            // One deployment installs at a time. The baseline is read again inside the lock: two pushes
+            // compiled against the same build can't both install.
+            $receipt = Site::locked(static function () use ($root, $build, $deployment, $id): array {
                 self::current($deployment['manifest']);
                 $receipt = \First\Loader\Loader::initialize($root, $build);
                 Site::makeLive($build, $deployment['manifest'], 'deploy');
+                $pending = Site::pending();
+                unset($pending[$id]);
+                update_option(Site::PENDING, $pending, false);
 
                 return $receipt;
             });
@@ -373,9 +444,6 @@ final class Receiver
         } catch (\Throwable $error) {
             throw new Refusal('first_not_installed', $error->getMessage(), 409, ['live' => Site::live()]);
         }
-        $pending = (array) get_option(Site::PENDING, []);
-        unset($pending[$request['id']]);
-        update_option(Site::PENDING, $pending, false);
 
         return ['live' => $build, 'name' => $deployment['manifest']['name'], 'migrations' => $receipt['migrations'], 'seed' => $receipt['seed'], 'home' => untrailingslashit(home_url())];
     }
@@ -395,11 +463,14 @@ final class Receiver
 
     public static function rollback(string $build): void
     {
-        $manifest = Site::manifest($build);
-        if ($manifest === null || !Site::complete($manifest) || !Site::ready($build)) {
-            throw new \RuntimeException('Only a build that was live on this site before can be made live again.');
-        }
-        Site::makeLive($build, $manifest, 'rollback');
+        // Behind the same lock as a deployment, so neither loses the other's entry in the history.
+        Site::locked(static function () use ($build): void {
+            $manifest = Site::manifest($build);
+            if ($manifest === null || !Site::complete($manifest) || !Site::ready($build)) {
+                throw new \RuntimeException('Only a build that was live on this site before can be made live again.');
+            }
+            Site::makeLive($build, $manifest, 'rollback');
+        });
     }
 }
 

@@ -18,6 +18,17 @@ final class Site
 
     /** Option: the random part of the store directory's name. */
     public const KEY = 'first_store_key';
+    /** The capability the receiver and the First screen ask for; see {@see deployer()}. */
+    public const CAPABILITY = 'first_deploy';
+    /** The `app_id` `first login` names on WordPress's Authorize Application screen (src/commands/login.rs). */
+    public const CLI = '0d1f6c5e-3b55-4f0e-9c2a-6a1e5f1b7a10';
+
+    public static function register(): void
+    {
+        add_filter('map_meta_cap', static fn (array $caps, string $cap, int $user): array => $cap === self::CAPABILITY
+            ? [self::deployer($user) ? 'exist' : 'do_not_allow']
+            : $caps, 10, 3);
+    }
 
     /**
      * The build store: `FIRST_STORE_DIR`, else `wp-content/first-store-<key>`. It holds PHP, schema
@@ -27,7 +38,9 @@ final class Site
     public static function root(): string
     {
         if (defined('FIRST_STORE_DIR') && is_string(FIRST_STORE_DIR) && FIRST_STORE_DIR !== '') {
-            return rtrim(FIRST_STORE_DIR, '/');
+            // One constant serves a whole network: each site keeps its builds, and the record of which
+            // of them it has initialized, in a directory of its own.
+            return rtrim(FIRST_STORE_DIR, '/') . (is_multisite() ? '/site-' . get_current_blog_id() : '');
         }
         $key = get_option(self::KEY);
         if (!is_string($key) || preg_match('/\A[0-9a-f]{32}\z/D', $key) !== 1) {
@@ -83,6 +96,8 @@ final class Site
             return null;
         }
         $namespace = '/' . self::REST;
+        // Core's REST server drops a trailing slash before it matches a route.
+        $route = rtrim($route, '/');
 
         return $route === $namespace || str_starts_with($route, $namespace . '/') ? substr($route, strlen($namespace)) : null;
     }
@@ -155,14 +170,23 @@ final class Site
         return is_array($history) ? array_values(array_filter($history, 'is_array')) : [];
     }
 
+    /** @return array<string, array{build: string, token: string, expires: int, user: int}> open deployments by ID */
+    public static function pending(): array
+    {
+        $pending = get_option(self::PENDING, []);
+
+        return is_array($pending) ? array_filter($pending, 'is_array') : [];
+    }
+
     /**
-     * The build the next one is compiled against: the one deployed last. Making an earlier build live
-     * again switches code only, so the database stays at the schema of the last deployment.
+     * The build the next one is compiled against: the one deployed last, whether or not its files are
+     * still in the store, because the database is at its schema. Making an earlier build live again
+     * switches code only.
      */
     public static function baseline(): ?string
     {
         foreach (array_reverse(self::history()) as $entry) {
-            if (($entry['kind'] ?? null) === 'deploy' && self::validId($entry['build'] ?? null) && is_file(self::root() . '/build/' . $entry['build'] . '.json')) {
+            if (($entry['kind'] ?? null) === 'deploy' && self::validId($entry['build'] ?? null)) {
                 return $entry['build'];
             }
         }
@@ -170,10 +194,39 @@ final class Site
         return self::live();
     }
 
-    /** Make a build the live one and record who did it. */
+    /**
+     * Run $fn as the only writer of this site's deployments: creating one, making a build live and
+     * making an earlier one live again each read what is stored and write it back. The lock is the
+     * store's own (`<store>/.lock`, the one the compiler and the loader take). What another request
+     * wrote while this one waited is read from the database again.
+     */
+    public static function locked(callable $fn): mixed
+    {
+        $root = self::root();
+        Trees::prepare($root);
+        $handle = fopen($root . '/.lock', 'c');
+        if ($handle === false || !flock($handle, LOCK_EX)) {
+            throw new \RuntimeException('Cannot lock the First build store');
+        }
+        try {
+            foreach ([self::LIVE, self::HISTORY, self::PENDING, 'alloptions', 'notoptions'] as $cached) {
+                wp_cache_delete($cached, 'options');
+            }
+
+            return $fn();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    /**
+     * Make a build the live one and record who did it. Call it inside {@see locked()}. The history is
+     * written first: a request that dies between the two writes leaves the old code live with the
+     * right baseline, never new code beside a baseline the database has moved past.
+     */
     public static function makeLive(string $build, array $manifest, string $kind): void
     {
-        update_option(self::LIVE, $build, true);
         $history = self::history();
         $history[] = [
             'build' => $build,
@@ -184,21 +237,32 @@ final class Site
             'kind' => $kind,
         ];
         update_option(self::HISTORY, $history, false);
+        update_option(self::LIVE, $build, true);
     }
 
     /**
-     * Deploying installs PHP, so it is for the people who can already do that: administrators, and on a
-     * network only its super admins. A First app turns off `install_plugins` for everyone once it is
-     * live, so the check is on these capabilities instead.
+     * Deploying installs PHP, so it is for the people whose role lets them install plugins:
+     * administrators, and on a network only its super admins. Being allowed to activate plugins that
+     * are already installed is not enough.
      */
     public static function mayDeploy(): bool
     {
-        return current_user_can(self::capability());
+        return current_user_can(self::CAPABILITY);
     }
 
-    public static function capability(): string
+    /**
+     * Whether the user's own role grants `install_plugins`. It reads the role, not `current_user_can`:
+     * a live First app refuses `install_plugins` to everyone (its hardening), and deploying is how such
+     * a site still gets new code.
+     */
+    public static function deployer(int $user): bool
     {
-        return is_multisite() ? 'manage_network_plugins' : 'activate_plugins';
+        $account = get_userdata($user);
+        if (!$account instanceof \WP_User) {
+            return false;
+        }
+
+        return is_multisite() ? is_super_admin($user) : !empty($account->allcaps['install_plugins']);
     }
 
     /** Why this site takes no deployments at all, or null. A host that manages its own code says so. */

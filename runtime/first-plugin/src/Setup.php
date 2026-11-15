@@ -12,7 +12,7 @@ final class Setup
     public static function register(): void
     {
         add_action('admin_menu', static function (): void {
-            add_menu_page('First', 'First', Site::capability(), self::PAGE, [self::class, 'render'], 'dashicons-cloud-upload', 3);
+            add_menu_page('First', 'First', Site::CAPABILITY, self::PAGE, [self::class, 'render'], 'dashicons-cloud-upload', 3);
         });
         add_action('admin_post_' . self::ACTION, [self::class, 'handle']);
         // Until the site has what First needs, say so where an administrator will see it.

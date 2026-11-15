@@ -68,7 +68,7 @@ build's code. It does not undo migrations: the earlier code runs on the current 
 | Constant | What |
 |---|---|
 | `FIRST_VARIABLES` | `['NAME' => 'value', ...]`: the app's `process.env.NAME`. Nothing else of the server's environment reaches the app |
-| `FIRST_STORE_DIR` | where builds are kept, when the default (a directory with a random name in `wp-content`) doesn't suit: a path outside the web root is best |
+| `FIRST_STORE_DIR` | where builds are kept, when the default (a directory with a random name in `wp-content`) doesn't suit: a path outside the web root is best. On a network each site keeps its builds in `site-<id>` under it |
 | `DISALLOW_FILE_MODS` | set by hosts that manage their own code: the site then takes no deployment, and `first push` says so |
 
 The app's mail leaves through `wp_mail`, so an SMTP plugin applies. Background jobs run through
@@ -76,9 +76,14 @@ Action Scheduler: make sure WP-Cron or a real cron reaches the site.
 
 ## Who may deploy
 
-A deployment installs PHP, so it is for people who can already do that: administrators, and on a
-multisite network only its super admins. A credential scoped for an agent
-(`first identity agent add`) can't deploy.
+A deployment installs PHP, so it is for people whose role lets them install plugins:
+administrators, and on a multisite network only its super admins. A role that may only activate
+plugins that are already installed can't deploy. A credential scoped for an agent
+(`first identity agent add`) can't either.
+
+`first login` gets an application password that is not scoped: it can do everything the account
+that approved it can. WordPress's approval screen says so, and the password is revoked under
+Users, Profile, Application Passwords.
 
 ## A WordPress network (multisite)
 

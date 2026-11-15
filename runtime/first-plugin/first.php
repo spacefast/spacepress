@@ -24,6 +24,7 @@ require_once __DIR__ . '/src/Setup.php';
 
 // The site's live build mounts once every plugin has loaded, before WordPress initializes. A build
 // that can't mount leaves WordPress serving and is reported on the First screen.
+\FirstPlugin\Site::register();
 \FirstPlugin\Mount::run();
 \FirstPlugin\Receiver::register();
 \FirstPlugin\Setup::register();

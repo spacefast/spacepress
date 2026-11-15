@@ -19,8 +19,8 @@ export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-plugin}"
 export FIRST_WP_PORT="${FIRST_WP_PORT:-8905}"
 work="$(mktemp -d)"
 cleanup() {
-  # wp-admin wrote the uploaded plugins as the web server's user; hand them back before removing.
-  "$harness" compose exec -T wordpress chown -R "$(id -u):$(id -g)" /var/www/html/wp-content/plugins >/dev/null 2>&1 || true
+  # The web server wrote the plugins and the build store as its own user; hand them back before removing.
+  "$harness" compose exec -T wordpress chown -R "$(id -u):$(id -g)" /var/www/html/wp-content >/dev/null 2>&1 || true
   # The stack's plugins directory is under $work, so a kept stack keeps it too.
   if [[ ${FIRST_WP_KEEP:-0} == 1 ]]; then echo "kept: $work" >&2; return; fi
   "$harness" down
@@ -194,6 +194,24 @@ ok "a build the schema check refuses is not installed, and the live build stays"
 if out=$(cd "$project" && FIRST_APP_PASSWORD="$editor" "$first" push 2>&1); then fail "an editor deployed: $out"; fi
 [[ $out == *"needs an administrator"* ]] || fail "an editor is told deploying needs an administrator: $out"
 [[ $(status "$api/site") == 401 && $(status -u "$editor" "$api/site") == 403 && $(status -u "$admin" "$api/site") == 200 ]] || fail "the deploy receiver answers administrators only"
+# Deploying installs PHP. A role that may switch installed plugins on and off, and may not install
+# one, does not deploy.
+wp role create support Support --clone=editor >/dev/null
+wp cap add support activate_plugins >/dev/null
+wp user create support support@example.test --role=support >/dev/null
+support="support:$(wp user application-password create support lane --porcelain)"
+[[ $(status -u "$support" "$url/wp-json/wp/v2/plugins") == 200 ]] || fail "the support role manages installed plugins"
+[[ $(status -u "$support" "$api/site") == 403 && $(curl -s -o /dev/null -w '%{http_code}' -u "$support" -H 'Content-Type: application/json' -d '{"manifest":"{}"}' "$api/deployments") == 403 ]] || fail "being allowed to activate plugins is not being allowed to deploy"
+
+# Pushes that open a deployment at the same moment each keep theirs. The manifest is the last
+# compiled build's (the refused `required` step, compiled against the live build).
+latest=$(python3 -c 'import glob,json,os,sys; p=max(glob.glob(sys.argv[1]+"/build/*.json"), key=os.path.getmtime); print(json.dumps({"manifest": open(p).read()}))' "$project/.first/store")
+for n in 1 2 3 4 5 6; do curl -s -u "$admin" -H 'Content-Type: application/json' -d "$latest" "$api/deployments" > "$work/open-$n.json" & done
+wait
+for n in 1 2 3 4 5 6; do
+  opened=$(json deployment < "$work/open-$n.json") || fail "deployment $n opened: $(cat "$work/open-$n.json")"
+  [[ $(curl -s -u "$admin" "$api/deployments/$opened/plan" | json code) == first_not_mounted ]] || fail "deployment $n of six opened at once is still open"
+done
 
 # The receiver directly: a deployment's trees must be the ones its manifest names.
 store="$project/.first/store"
@@ -227,6 +245,21 @@ PY
 send() { curl -s -o "$work/answer.json" -w '%{http_code}' -u "$admin" -H 'Content-Type: application/octet-stream' --data-binary "@$1" "$api/deployments/$id/trees/app?index=0&total=1&sha256=$(sha256sum "$1" | cut -d' ' -f1)"; }
 [[ $(send "$work/other-tree.zip") == 422 && $(json message < "$work/answer.json") == *"is not the one the build names"* ]] || fail "a tree with other contents is refused: $(cat "$work/answer.json")"
 [[ $(send "$work/escape.zip") == 422 && $(json message < "$work/answer.json") == *"unsafe path"* ]] || fail "an archive that names a path outside the tree is refused: $(cat "$work/answer.json")"
+# A small upload that unpacks to far more than a tree holds is refused before anything is unpacked.
+python3 - "$work" <<'PY'
+import sys, zipfile
+work = sys.argv[1]
+with zipfile.ZipFile(work + "/many.zip", "w", zipfile.ZIP_DEFLATED) as z:
+    for i in range(20001):
+        z.writestr(f"f/{i}", b"")
+with zipfile.ZipFile(work + "/huge.zip", "w", zipfile.ZIP_DEFLATED) as z:
+    with z.open("zeros.bin", "w", force_zip64=True) as out:
+        for _ in range(600):
+            out.write(bytes(1 << 20))
+PY
+[[ $(send "$work/many.zip") == 422 && $(json message < "$work/answer.json") == *"more files than a tree may hold"* ]] || fail "an archive with too many entries is refused: $(cat "$work/answer.json")"
+[[ $(send "$work/huge.zip") == 422 && $(json message < "$work/answer.json") == *"unpacks to more than a tree may hold"* ]] || fail "an archive that unpacks to too much is refused: $(cat "$work/answer.json")"
+"$harness" compose exec -T wordpress sh -c "! find /var/www/html/wp-content -name zeros.bin | grep -q ." || fail "the oversized archive was not unpacked"
 "$harness" compose exec -T wordpress sh -c "! find /var/www/html/wp-content -name escaped.php | grep -q ." || fail "nothing was written outside the store"
 # The deployment's token only selects code on that deployment's own routes, for an administrator.
 [[ $(curl -s -H "X-First-Deployment: $id:$token" "$url/__first/api/v1" | json data.name) == pluginlane && $(status -H "X-First-Deployment: $id:$token" "$url/__first/api/v1/tasks") == 200 ]] || fail "a deployment token on another URL still gets the live build"
@@ -236,7 +269,58 @@ send() { curl -s -o "$work/answer.json" -w '%{http_code}' -u "$admin" -H 'Conten
 [[ $(curl -s -u "$admin" -d 'action=heartbeat' "$url/wp-admin/admin-ajax.php?rest_route=/first-deploy/v1/site") == *'"wp-auth-check":false'* ]] || fail "an application password signs nobody in on admin-ajax.php"
 [[ $(status -u "$editor" -H "X-First-Deployment: $id:$token" "$api/deployments/$id/plan") == 403 ]] || fail "the token alone does not open the plan"
 [[ $(status -u "$admin" -H "X-First-Deployment: $id:$(printf 'f%.0s' {1..64})" "$api/deployments/$id/plan") == 409 ]] || fail "a wrong token mounts nothing"
-[[ $(status -u "$admin" -X POST -H "X-First-Deployment: $id:$token" -H 'X-First-Mount: activate' "$api/deployments/$id/activate") == 409 ]] || fail "a deployment whose trees never arrived can't go live"
+[[ $(status -u "$admin" -X POST -H "X-First-Deployment: $id:$token" "$api/deployments/$id/activate") == 409 ]] || fail "a deployment whose trees never arrived can't go live"
+
+# Mounting a deployment loads PHP it uploaded, so nobody but a person who may deploy gets it loaded.
+# This candidate is complete, and its app writes a marker file the moment its code is read: the
+# compiled app with one line added, uploaded under the hash of the changed tree.
+marker=/var/www/html/wp-content/uploads/first-candidate-ran
+marked=$(python3 - "$store" "$work" "$marker" <<'PY'
+import glob, hashlib, json, os, struct, sys, zipfile
+store, work, marker = sys.argv[1:]
+path = max(glob.glob(store + "/build/*.json"), key=os.path.getmtime)
+manifest = json.load(open(path))
+tree = f"{store}/app/{manifest['app']}"
+files = {}
+for root, _, names in os.walk(tree):
+    for name in names:
+        full = os.path.join(root, name)
+        files[os.path.relpath(full, tree)] = open(full, "rb").read()
+schema = next(p for p in files if p.endswith("/first/app/schema.php"))
+# After the strict_types declaration, which PHP requires to be the file's first statement.
+declared = b"declare(strict_types=1);"
+assert files[schema].count(declared) == 1, "the compiled schema declares strict types once"
+files[schema] = files[schema].replace(declared, declared + b" @file_put_contents(" + json.dumps(marker).encode() + b", 'ran');")
+digest = hashlib.sha256()
+for name in sorted(files, key=lambda p: p.encode()):
+    digest.update(name.encode() + b"\0" + struct.pack(">Q", len(files[name])) + files[name])
+manifest["app"] = digest.hexdigest()
+with zipfile.ZipFile(work + "/marked.zip", "w", zipfile.ZIP_DEFLATED) as z:
+    for name, data in files.items():
+        z.writestr(name, data)
+print(json.dumps({"manifest": json.dumps(manifest)}))
+PY
+)
+created=$(curl -s -u "$admin" -H 'Content-Type: application/json' -d "$marked" "$api/deployments")
+mid=$(json deployment <<< "$created"); mtoken=$(json token <<< "$created")
+[[ $(json need.app <<< "$created") == true && $(json need.runtime <<< "$created") == false ]] || fail "the marked build needs its app tree only: $created"
+[[ $(curl -s -o "$work/answer.json" -w '%{http_code}' -u "$admin" -H 'Content-Type: application/octet-stream' --data-binary "@$work/marked.zip" "$api/deployments/$mid/trees/app?index=0&total=1&sha256=$(sha256sum "$work/marked.zip" | cut -d' ' -f1)") == 200 ]] || fail "the marked tree uploads: $(cat "$work/answer.json")"
+ran() { "$harness" compose exec -T wordpress test -e "$marker"; }
+mine=(-H "X-First-Deployment: $mid:$mtoken")
+# With the token and nothing else, with the token as someone who may not deploy, on a route that
+# does not exist, with the wrong method, and asking to mount it to run: its code is never read.
+[[ $(status "${mine[@]}" "$api/deployments/$mid/plan") == 401 ]] || fail "the token alone is signed out"
+[[ $(status "${mine[@]}" -X POST "$api/deployments/$mid/activate") == 401 ]] || fail "the token alone can't activate"
+[[ $(status -u "$editor" "${mine[@]}" "$api/deployments/$mid/plan") == 403 && $(status -u "$editor" "${mine[@]}" -X POST "$api/deployments/$mid/activate") == 403 ]] || fail "an editor with the token is refused"
+[[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/nothing-here") == 404 ]] || fail "a route the receiver doesn't have is not found"
+[[ $(status -u "$admin" "${mine[@]}" -X POST "$api/deployments/$mid/plan") == 404 && $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/activate") == 404 ]] || fail "the plan is read and the activation is posted"
+if ran; then fail "a deployment's uploaded code ran for a request that may not deploy, or on a route that isn't its own"; fi
+# The administrator's plan mounts it to inspect: the schema is read, so the marker is there now.
+[[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/plan") == 200 ]] || fail "the administrator reads the plan"
+ran || fail "the marker shows the candidate's code is read when an administrator inspects it"
+"$harness" compose exec -T wordpress rm -f "$marker"
+[[ $(curl -s "$url/__first/api/v1" | json data.name) == pluginlane ]] || fail "the live app serves"
+if ran; then fail "the live build is not the candidate"; fi
 [[ $(wp option get first_live_build) == "$second_build" ]] || fail "the refused requests left the live build"
 ok "the receiver refuses other people, other trees, unsafe archives and tokens used elsewhere"
 
@@ -276,11 +360,46 @@ wrong=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d["pins"]["polyl
 [[ $(pins '{"pins":{"hello-dolly":{"version":"1.7.2","sha256":"'"$(printf '0%.0s' {1..64})"'"}}}') == 502 && $(json message < "$work/answer.json") == *"is not a plugin First installs"* ]] || fail "only the plugins First depends on can be installed: $(cat "$work/answer.json")"
 [[ $(pins "$polylang") == 200 && $(wp plugin get polylang --field=status) == active ]] || fail "the receiver installs and activates a pinned plugin: $(cat "$work/answer.json")"
 [[ $(curl -s "$url/__first/api/v1" | json data.name) == pluginlane ]] || fail "the app keeps running after the install"
+# Polylang would send the next wp-admin page to its setup wizard; the owner's next page is their own.
+[[ $(browser screen 'admin.php?page=first-setup' '<div class="wrap"><h1>First') == *"Deployments"* ]] || fail "a plugin First installed doesn't send wp-admin to its own setup wizard"
 ok "with an app live, the receiver installs a pinned plugin by checksum and nothing else"
 
-# ---- first logout --------------------------------------------------------------------------------
+# ---- the site names code as live and can't run it -------------------------------------------------
+# The live build's runtime tree goes missing from the store. The same source is then not "already
+# running": push sends the tree again and the app comes back.
+live_build=$(wp option get first_live_build)
+key=$(wp option get first_store_key)
+runtime_tree=$("$harness" compose exec -T wordpress sh -c "sed -n 's/.*\"runtime\": *\"\([0-9a-f]*\)\".*/\1/p' /var/www/html/wp-content/first-store-$key/build/$live_build.json")
+[[ ${#runtime_tree} == 64 ]] || fail "the live build names its runtime tree: $runtime_tree"
+"$harness" compose exec -T wordpress mv "/var/www/html/wp-content/first-store-$key/runtime/$runtime_tree" "/var/www/html/wp-content/first-store-$key/.tmp/lost"
+[[ $(status "$url/") == 200 && $(status "$url/__first/api/v1") == 404 ]] || fail "without its runtime tree the app does not run and WordPress serves"
+out=$(push) || fail "a push to a site that lost a tree: $out"
+[[ $out == *"has this code and is not running it"*"uploading the runtime tree"*"live:"* ]] || fail "push sends the missing tree again: $out"
+[[ $(curl -s "$url/__first/api/v1" | json data.name) == pluginlane && $(curl -s "$url/__first/api/v1/notes" | json data.0.title) == "Written before the second deploy" ]] || fail "the app runs again with its content"
+ok "a site that lost a stored tree gets it again from the next push"
+
+# ---- first logout, and signing in again with an app live ------------------------------------------
 "$first" logout "$url" >/dev/null
 if out=$(push); then fail "pushed after first logout: $out"; fi
 [[ $out == *"not signed in to $url"* ]] || fail "after first logout a push asks to sign in: $out"
 ok "first logout forgets the credential on this machine"
+
+# A running app scopes the application passwords approved in wp-admin for agents (read-only), and a
+# scoped one can't deploy. The command line's own approval is left unscoped, so signing in again
+# works; any other approval on the same screen is still scoped.
+(cd "$project" && "$first" login "$url" --no-browser > "$work/login2.out" 2>&1; echo "exit $?" >> "$work/login2.out") &
+for _ in $(seq 1 100); do grep -q 'authorize-application' "$work/login2.out" 2>/dev/null && break; sleep 0.1; done
+approve=$(grep -o "$url/wp-admin/authorize-application.php[^ ]*" "$work/login2.out") || fail "first login prints the approval link: $(cat "$work/login2.out")"
+page=$(browser get "${approve#"$url/wp-admin/"}")
+[[ $page == *"This is the First command line"* && $page != *"first-scope-write"* ]] || fail "the approval screen says what the command line gets and offers no agent scope"
+curl -s "$(browser approve "$approve")" >/dev/null
+wait
+[[ $(cat "$work/login2.out") == *"signed in to $url as admin"*"exit 0" ]] || fail "first login works with an app live: $(cat "$work/login2.out")"
+out=$(push) || fail "a push with the new credential: $out"
+[[ $out == *"already runs this code; nothing to deploy"* ]] || fail "the credential approved with an app live deploys: $out"
+other=$(browser get "authorize-application.php?app_name=Agent&app_id=11111111-2222-4333-8444-555555555555&success_url=http%3A%2F%2F127.0.0.1%3A9%2Fcallback")
+[[ $other == *"first-scope-write"* && $other != *"This is the First command line"* ]] || fail "another application's approval keeps the agent scope form"
+elsewhere=$(browser get "authorize-application.php?app_name=First&app_id=0d1f6c5e-3b55-4f0e-9c2a-6a1e5f1b7a10&success_url=https%3A%2F%2Fexample.test%2Fcallback")
+[[ $elsewhere == *"first-scope-write"* && $elsewhere != *"This is the First command line"* ]] || fail "the command line's name with a callback that isn't this machine keeps the scope form"
+ok "first login works again while an app is live, and other approvals stay scoped"
 echo "plugin lane: all checks passed"

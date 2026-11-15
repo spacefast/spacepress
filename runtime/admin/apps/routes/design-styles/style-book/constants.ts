@@ -233,7 +233,7 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 	}
 
 	.first-admin-style-book__example.is-selected {
-		box-shadow: 0 0 0 1px var(--wpds-color-stroke-focus-brand);
+		box-shadow: 0 0 0 1px var(--wpds-color-stroke-focus);
 	}
 
 	.first-admin-style-book__example.is-disabled-example {
@@ -241,7 +241,7 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 	}
 
 	.first-admin-style-book__example:focus:not(:disabled) {
-		box-shadow: 0 0 0 var(--wpds-border-width-focus) var(--wpds-color-stroke-focus-brand);
+		box-shadow: 0 0 0 var(--wpds-border-width-focus) var(--wpds-color-stroke-focus);
 		outline: 3px solid transparent;
 	}
 

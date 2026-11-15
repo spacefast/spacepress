@@ -2,5 +2,5 @@
 @use "@wordpress/base-styles/colors";
 
 .first-admin-terms-list-content__no-terms {
-	margin-block-start: calc( 16 * var( --wpds-dimension-base ) );
+	margin-block-start: calc( 16 * var( --wpds-dimension-gap-xs ) );
 }

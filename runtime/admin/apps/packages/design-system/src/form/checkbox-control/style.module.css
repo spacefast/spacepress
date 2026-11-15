@@ -12,7 +12,7 @@
 		--wp-ui-checkbox-control-label-line-height: max(
 			var( --wp-ui-checkbox-control-checkbox-height ),
 			/* TODO: use token for line-height */
-				calc( 1.4 * var( --wpds-font-size-md ) )
+				calc( 1.4 * var( --wpds-typography-font-size-md ) )
 		);
 	}
 

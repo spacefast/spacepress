@@ -16,7 +16,7 @@
 		border-radius: var( --wpds-border-radius-sm );
 		border: 1px solid var( --wpds-color-stroke-interactive-neutral );
 		padding: 0;
-		background-color: var( --wpds-color-bg-interactive-neutral-weak );
+		background-color: var( --wpds-color-background-interactive-neutral-weak );
 
 		[data-highlighted] &,
 		&:hover {
@@ -26,19 +26,19 @@
 		&[aria-checked="true"],
 		&[aria-checked="mixed"] {
 			border-color: transparent;
-			background-color: var( --wpds-color-bg-interactive-brand-strong );
-			color: var( --wpds-color-fg-interactive-brand-strong );
+			background-color: var( --wpds-color-background-interactive-brand-strong );
+			color: var( --wpds-color-foreground-interactive-brand-strong );
 		}
 
 		&[disabled],
 		&[aria-disabled="true"] {
 			background-color: var(
-				--wpds-color-bg-interactive-neutral-weak-disabled
+				--wpds-color-background-interactive-neutral-weak-disabled
 			);
 			border-color: var(
 				--wpds-color-stroke-interactive-neutral-disabled
 			);
-			color: var( --wpds-color-fg-interactive-neutral-disabled );
+			color: var( --wpds-color-foreground-interactive-neutral-disabled );
 
 			@media ( forced-colors: active ) {
 				border-color: GrayText;

@@ -9,24 +9,24 @@
 	/* Brand tone */
 	.is-brand,
 	.is-brand:visited {
-		color: var( --wpds-color-fg-interactive-brand );
+		color: var( --wpds-color-foreground-interactive-brand );
 	}
 
 	.is-brand:hover,
 	.is-brand:active {
-		color: var( --wpds-color-fg-interactive-brand-active );
+		color: var( --wpds-color-foreground-interactive-brand-active );
 	}
 
 	/* Neutral tone */
 	.is-neutral,
 	.is-neutral:visited {
-		color: var( --wpds-color-fg-interactive-neutral );
+		color: var( --wpds-color-foreground-interactive-neutral );
 		text-decoration-color: var( --wpds-color-stroke-interactive-neutral );
 	}
 
 	.is-neutral:hover,
 	.is-neutral:active {
-		color: var( --wpds-color-fg-interactive-neutral-active );
+		color: var( --wpds-color-foreground-interactive-neutral-active );
 	}
 
 	/* Link icon pattern — arrow rendered via ::after pseudoelement to avoid Twemoji
@@ -48,7 +48,7 @@
 	/* Icon: only font-weight reset needed — text-decoration is already none via root */
 	.link-icon {
 		margin-inline-start: var( --wpds-dimension-padding-xs );
-		font-weight: var( --wpds-font-weight-regular );
+		font-weight: var( --wpds-typography-font-weight-default );
 	}
 
 	.link-icon::after {

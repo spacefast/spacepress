@@ -31,15 +31,15 @@
 		max-width: 90vw;
 		max-height: 90vh;
 		padding: calc(
-			8 * var( --wpds-dimension-base )
+			8 * var( --wpds-dimension-gap-xs )
 		); /* TODO: Use token: surface-lg? */
-		background-color: var( --wpds-color-bg-surface-neutral-strong );
+		background-color: var( --wpds-color-background-surface-neutral-strong );
 		border-radius: var( --wpds-border-radius-lg );
 		overflow: auto;
-		font-family: var( --wpds-font-family-body );
-		font-size: var( --wpds-font-size-md );
-		line-height: var( --wpds-font-line-height-md );
-		color: var( --wpds-color-fg-content-neutral );
+		font-family: var( --wpds-typography-font-family-body );
+		font-size: var( --wpds-typography-font-size-md );
+		line-height: var( --wpds-typography-line-height-md );
+		color: var( --wpds-color-foreground-content-neutral );
 
 		&[data-starting-style],
 		&[data-ending-style] {
@@ -77,16 +77,16 @@
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: calc(
-			4 * var( --wpds-dimension-base )
+			4 * var( --wpds-dimension-gap-xs )
 		); /* TODO: Use or create new gap token? */
 	}
 
 	.heading {
 		margin: 0;
-		font-size: var( --wpds-font-size-xl );
+		font-size: var( --wpds-typography-font-size-xl );
 		font-weight: 590;
-		line-height: var( --wpds-font-line-height-xl );
-		color: var( --wpds-color-fg-content-neutral );
+		line-height: var( --wpds-typography-line-height-xl );
+		color: var( --wpds-color-foreground-content-neutral );
 	}
 
 	.footer {
@@ -94,11 +94,11 @@
 		justify-content: flex-end;
 		align-items: center;
 		gap: calc(
-			2 * var( --wpds-dimension-base )
+			2 * var( --wpds-dimension-gap-xs )
 		); /* TODO: Use or create new gap token? (possibly control/interactive gap) */
-		margin: calc( 4 * var( --wpds-dimension-base ) ) 0 0 0; /* TODO: Use or create new gap token? */
+		margin: calc( 4 * var( --wpds-dimension-gap-xs ) ) 0 0 0; /* TODO: Use or create new gap token? */
 		padding-top: calc(
-			4 * var( --wpds-dimension-base )
+			4 * var( --wpds-dimension-gap-xs )
 		); /* TODO: Use or create new gap token? */
 	}
 }

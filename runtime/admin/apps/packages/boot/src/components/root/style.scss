@@ -7,14 +7,14 @@
 	height: 100%;
 	display: flex;
 	flex-direction: column;
-	color: var( --wpds-color-fg-content-neutral );
+	color: var( --wpds-color-foreground-content-neutral );
 
 	// Create an separate stacking context for Base UI portal rendering.
 	// See: https://base-ui.com/react/overview/quick-start#set-up-portals
 	isolation: isolate;
 
 	@include mixins.break-medium {
-		background: var( --wpds-color-bg-surface-neutral-weak );
+		background: var( --wpds-color-background-surface-neutral-weak );
 	}
 
 	.editor-visual-editor:not( .has-padding ) {
@@ -72,8 +72,8 @@
 	left: 0;
 	right: 0;
 	bottom: 0;
-	color: var( --wpds-color-fg-content-neutral );
-	background: var( --wpds-color-bg-surface-neutral );
+	color: var( --wpds-color-foreground-content-neutral );
+	background: var( --wpds-color-background-surface-neutral );
 
 	&.is-inspector {
 		z-index: 3; // Medium surface priority
@@ -173,7 +173,7 @@
 	width: 100%;
 	border-radius: 0;
 	overflow: hidden;
-	background-color: var( --wpds-color-bg-surface-neutral );
+	background-color: var( --wpds-color-background-surface-neutral );
 	border: 1px solid var( --wpds-color-stroke-surface-neutral-weak );
 
 	// Desktop: restore original positioning
@@ -209,7 +209,7 @@
 		bottom: 0;
 		width: fit-content;
 		min-width: 300px;
-		background: var( --wpds-color-bg-surface-neutral-weak );
+		background: var( --wpds-color-background-surface-neutral-weak );
 		z-index: 5; // Above backdrop and all surfaces
 	}
 }

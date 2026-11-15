@@ -4,7 +4,7 @@
 .first-admin-dashboard-widget {
 	display: flex;
 	flex-direction: column;
-	background: var( --wpds-color-bg-surface-neutral-strong );
+	background: var( --wpds-color-background-surface-neutral-strong );
 	box-sizing: border-box;
 	overflow: hidden;
 
@@ -23,7 +23,7 @@
 }
 
 .first-admin-dashboard-widget__header {
-	padding: calc( 4 * var( --wpds-dimension-base ) );
+	padding: calc( 4 * var( --wpds-dimension-gap-xs ) );
 }
 
 .first-admin-dashboard-widget__settings {
@@ -31,13 +31,13 @@
 	top: variables.$grid-unit-20;
 	right: variables.$grid-unit-20;
 	z-index: 1;
-	background-color: var( --wpds-color-bg-surface-neutral-strong );
+	background-color: var( --wpds-color-background-surface-neutral-strong );
 }
 
 .first-admin-dashboard-widget__content {
 	overflow: auto;
-	padding: 0 calc( 4 * var( --wpds-dimension-base ) )
-		calc( 4 * var( --wpds-dimension-base ) );
+	padding: 0 calc( 4 * var( --wpds-dimension-gap-xs ) )
+		calc( 4 * var( --wpds-dimension-gap-xs ) );
 	flex: 1;
 	min-height: 0; // Allows flex item to shrink and overflow
 }
@@ -56,7 +56,7 @@
 		height: 48px;
 		background: linear-gradient(
 			to top,
-			var( --wpds-color-bg-surface-neutral-strong ) 0%,
+			var( --wpds-color-background-surface-neutral-strong ) 0%,
 			transparent 100%
 		);
 		pointer-events: none;
@@ -67,15 +67,15 @@
 .first-admin-dashboard-widget__title {
 	margin: 0;
 	padding: 0;
-	color: var( --wpds-color-fg-content-neutral );
-	font-family: var( --wpds-font-family-heading );
-	font-size: var( --wpds-font-size-lg );
+	color: var( --wpds-color-foreground-content-neutral );
+	font-family: var( --wpds-typography-font-family-heading );
+	font-size: var( --wpds-typography-font-size-lg );
 	font-weight: 590;
-	line-height: var( --wpds-font-line-height-md );
+	line-height: var( --wpds-typography-line-height-md );
 }
 
 .first-admin-dashboard-widget__description {
-	color: var( --wpds-color-fg-content-neutral-weak );
+	color: var( --wpds-color-foreground-content-neutral-weak );
 }
 
 .first-admin-dashboard-widget-actions {
@@ -88,7 +88,7 @@
 }
 
 .first-admin-dashboard-widget__info-icon {
-	color: var( --wpds-color-fg-content-neutral-weak );
+	color: var( --wpds-color-foreground-content-neutral-weak );
 	display: flex;
 }
 

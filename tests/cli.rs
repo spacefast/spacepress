@@ -149,6 +149,41 @@ fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
 }
 
 #[test]
+fn styles_pull_reads_the_site_through_wp_cli_and_refuses_a_url() {
+    // The site answers through WP-CLI: an alias runs `wp @alias first styles export`.
+    let wp = fake_wp();
+    let project = tempfile::tempdir().unwrap();
+    let mut command = first();
+    command
+        .args(["styles", "pull"])
+        .arg(project.path())
+        .args(["--site", "@prod"]);
+    with_path(&mut command, wp.path());
+    let out = command.output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    // The stand-in prints its arguments, which is no answer: nothing is written.
+    assert!(
+        text(&out.stderr).contains("\"args\":[\"@prod\",\"first\",\"styles\",\"export\"]"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!project.path().join("first/theme.json").exists());
+    let out = first()
+        .args(["styles", "pull", "--site", "https://example.test"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("@alias"), "{}", text(&out.stderr));
+    let out = first().args(["styles", "push"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        text(&out.stderr).starts_with("no command styles push\nusage: first styles pull"),
+        "{}",
+        text(&out.stderr)
+    );
+}
+
+#[test]
 fn a_site_url_is_refused_for_wp_cli_commands() {
     let out = first()
         .args(["jobs", "list", "--site", "https://example.test"])
@@ -428,6 +463,51 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         "{unknown}"
     );
     mcp.finish();
+    // `first styles pull`: the owner's Global Styles on the site become the project's first/theme.json
+    // and first/_generated/theme.css; a second pull with --check finds nothing to change.
+    let mut command = Command::new(&wp);
+    command.args([
+        "@lane",
+        "eval",
+        "--user=admin",
+        // As the Styles screen saves it: the user origin's palette, unkeyed.
+        "$p = WP_Theme_JSON_Resolver::get_user_data_from_wp_global_styles(wp_get_theme(), true); \
+         wp_update_post(['ID' => $p['ID'], 'post_content' => wp_slash(wp_json_encode(['version' => 3, 'isGlobalStylesUserThemeJSON' => true, \
+         'settings' => ['color' => ['palette' => [['slug' => 'brand', 'color' => '#123456', 'name' => 'Brand']]]]]))]);",
+    ]);
+    env(&mut command);
+    let saved = command.output().unwrap();
+    assert!(saved.status.success(), "{}", text(&saved.stderr));
+    let pull = |extra: &[&str]| {
+        let mut command = first();
+        command
+            .args(["styles", "pull"])
+            .arg(project.path())
+            .args(["--site", "@lane"])
+            .args(extra);
+        env(&mut command);
+        command.output().unwrap()
+    };
+    let pulled = pull(&[]);
+    assert!(
+        pulled.status.success(),
+        "{}{}",
+        text(&pulled.stdout),
+        text(&pulled.stderr)
+    );
+    let theme: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(project.path().join("first/theme.json")).unwrap()).unwrap();
+    assert_eq!(
+        theme["settings"]["color"]["palette"],
+        serde_json::json!([{ "slug": "brand", "color": "#123456", "name": "Brand" }])
+    );
+    let tokens = std::fs::read_to_string(project.path().join("first/_generated/theme.css")).unwrap();
+    assert!(
+        tokens.contains("  --color-brand: var(--wp--preset--color--brand);\n"),
+        "{tokens}"
+    );
+    let again = pull(&["--check"]);
+    assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
     // `first wp` reaches plain WordPress commands.
     let mut command = first();
     command.args(["wp", "--site", "@lane", "option", "get", "blogname"]);

@@ -41,6 +41,11 @@ pub struct Built {
     pub wordpress_uses: Vec<compile::WordPressUse>,
     /// With `runtimeSchema`: which fields the project's source names (`first/app/references.php`).
     pub references: Option<serde_json::Value>,
+    /// `first/theme.json`, when the project has one: shipped as the app plugin's `first/app/theme.json`.
+    pub theme: Option<serde_json::Value>,
+    /// `first/_generated/theme.css`, with `first/theme.json`: Tailwind v4 tokens on WordPress's preset
+    /// variables ([`crate::theme`]).
+    pub theme_css: Option<String>,
 }
 
 /// The schema ledger, committed with the project: `snapshot.json` and the numbered SQL that
@@ -178,6 +183,7 @@ pub fn build(
     let wordpress_uses;
     let queried;
     let catalog = crate::wordpress::abilities::Catalog::new(&schema, &read_lock(program)?);
+    let theme = read_theme(program)?;
     // Each collection hook kind: its compiled functions, by owning plugin (None: the app).
     let mut hooks: HookFunctions = indexmap::IndexMap::new();
     let plugin_lock = read_plugin_lock(program, &project.join(crate::plugins::LOCK_PATH))?;
@@ -454,7 +460,10 @@ pub fn build(
         .runtime_schema
         .is_some()
         .then(|| crate::runtime_schema::references(&schema, &program.root));
+    let theme_css = theme.as_ref().map(crate::theme::tokens);
     Ok(Built {
+        theme,
+        theme_css,
         references,
         plugins: ext.plugins,
         unsupported_plugins,
@@ -688,6 +697,26 @@ fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilitie
         )
     })?;
     crate::wordpress::abilities::parse_lock(&text).map_err(|m| Diag::new(Span::NONE, m).phase(diag::Code::Import))
+}
+
+/// `first/theme.json` beside the program's `first.config.ts`, read like the abilities lock so the
+/// command line, the browser and a hosted source bundle see the same file. Absent means no styles of
+/// the project's own.
+fn read_theme(program: &loader::Program) -> Result<Option<serde_json::Value>, Diag> {
+    let entry = &program.modules[program.entry].path;
+    let path = entry
+        .parent()
+        .expect("the entry has a directory")
+        .join(crate::theme::FILE);
+    if !program.fs.exists(&path) {
+        return Ok(None);
+    }
+    let text = program.fs.read_to_string(&path).map_err(|e| {
+        Diag::new(Span::NONE, format!("can't read {}: {e}", crate::theme::FILE)).phase(diag::Code::Import)
+    })?;
+    crate::theme::parse(&text)
+        .map(Some)
+        .map_err(|m| Diag::new(Span::NONE, m).phase(diag::Code::Schema))
 }
 
 impl Built {

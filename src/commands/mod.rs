@@ -16,6 +16,7 @@ pub(crate) mod pull;
 pub(crate) mod push;
 pub(crate) mod remote;
 pub(crate) mod site;
+pub(crate) mod styles;
 mod sync;
 
 pub(crate) use sync::run as sync;

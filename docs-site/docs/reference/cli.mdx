@@ -25,6 +25,7 @@ These commands run on your machine, on the project's files.
 | `first mcp [dir] [--allow-remote-read] [--allow-writes]` | Serve the project to a coding agent as an MCP server on stdio. |
 | `first sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--pr [--repo owner/name] [--base branch]] [--json]` | Content files \<-\> site records (FIRST_APP_PASSWORD or FIRST_TOKEN) |
 | `first pull [dir] [--site url] [--check]` | Write a site's runtime schema versions to first/_generated/runtime-schema.json (FIRST_APP_PASSWORD or FIRST_TOKEN) |
+| `first styles pull [dir] [--site dir\|@alias] [--check]` | Write a site's Global Styles (the Styles screen, the Site Editor) over first/theme.json; the build ships it and generates first/_generated/theme.css. |
 | `first abilities pull [dir] --site url [--only vendor/*]` | Lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD) |
 | `first plugin [--out file.zip]` | Write the First WordPress plugin (first.zip) to upload and activate in wp-admin. |
 | `first login <site-url> [dir] [--no-browser]` | Sign in to a WordPress site that runs the First plugin; the site's owner approves an application password in the browser. |

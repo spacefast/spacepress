@@ -339,6 +339,90 @@ export const metadata = { scripts: ["/app.js", "https://cdn.example.com/widget.j
 - First does not bundle: a module in `public/` is served as written, so it
   imports other files by URL, not npm packages by name.
 
+## Styles from WordPress
+
+A page prints WordPress's global styles in its head, as a block theme's own
+templates do: every `theme.json` preset as a CSS variable
+(`--wp--preset--color--<slug>`, `--wp--preset--font-size--<slug>`,
+`--wp--preset--font-family--<slug>`, `--wp--preset--spacing--<slug>`), the site
+owner's Global Styles over the theme's values, then the Site Editor's
+Additional CSS. The site icon prints too. Write CSS against the variables and a
+change in First Admin's Styles screen or the Site Editor reaches your pages
+without a deploy:
+
+```css
+/* first/app/site.css */
+.card { background: var(--wp--preset--color--primary); font-family: var(--wp--preset--font-family--body); }
+```
+
+The values start from code. The active theme's `theme.json` (First's
+`first-default` when no installed theme is active) is the base, and
+`first/theme.json` in the project is merged over it: a theme.json document
+with `version`, `settings` and `styles` only.
+
+```json
+{
+	"version": 3,
+	"settings": {
+		"color": { "palette": [{ "slug": "primary", "color": "#0a7", "name": "Primary" }] }
+	}
+}
+```
+
+The app plugin ships it, and WordPress merges it in the theme's place: the
+owner's Global Styles still override it, and resetting them returns to it.
+
+To keep what was designed on a site, pull it into the project:
+
+```sh
+first styles pull            # the dev site: what you set in Styles on `first dev`
+first styles pull --site @prod
+first styles pull --check    # exit 1 when the site's styles differ from first/theme.json
+```
+
+It writes the project's file with the site's Global Styles merged over it to
+`first/theme.json`. Commit it; the next deploy starts from it. `first dev`
+never pulls on its own.
+
+### Tailwind
+
+`first build` writes `first/_generated/theme.css` from the presets of
+`first-default` and `first/theme.json`: Tailwind v4 tokens whose values are the
+WordPress variables.
+
+```css
+@theme inline {
+  --color-primary: var(--wp--preset--color--primary);
+  --font-system: var(--wp--preset--font-family--system);
+  --spacing-wp-40: var(--wp--preset--spacing--40);
+}
+```
+
+First doesn't run Tailwind. A project that uses it runs Tailwind's CLI and
+imports its output, a plain stylesheet, from a layout:
+
+```css
+/* tailwind.css, the CLI's input */
+@import "tailwindcss";
+@import "./first/_generated/theme.css";
+@source "./first";
+```
+
+```sh
+npx @tailwindcss/cli -i tailwind.css -o first/app/tailwind.css --watch
+```
+
+```tsx
+// first/app/layout.tsx
+import "./tailwind.css";
+```
+
+`bg-primary` then reads `--wp--preset--color--primary`, so it follows the
+owner's color. A preset added on the site has its variable at once and a token
+after `first styles pull`. Spacing tokens are `spacing-wp-<slug>` so
+WordPress's numbered sizes don't replace Tailwind's own scale. The decision is
+in [styles from WordPress](decisions/2026-11-15-styles-from-wordpress.md).
+
 ## On WordPress
 
 The router answers on `template_redirect`, before the theme. wp-admin, login,

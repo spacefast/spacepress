@@ -200,6 +200,17 @@ pub fn main() -> ExitCode {
             );
             ExitCode::from(2)
         }
+        "styles" if rest.first().is_some_and(|sub| sub == "pull") => crate::commands::styles::cli(&rest),
+        "styles" => {
+            eprintln!(
+                "{}",
+                usage_error(
+                    "styles",
+                    format!("no command styles {}", rest.first().map_or("", String::as_str))
+                )
+            );
+            ExitCode::from(2)
+        }
         "migrate" if rest.first().is_some_and(|sub| sub == "app") => crate::config_migrate::app::cli(&rest[1..]),
         "migrate" if rest.first().is_some_and(|sub| sub == "config") => crate::config_migrate::cli(),
         "migrate" if rest.first().is_some_and(|sub| !sub.starts_with('-')) => {

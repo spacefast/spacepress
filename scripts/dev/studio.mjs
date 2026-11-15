@@ -190,9 +190,9 @@ export async function publishPlugins(content, managed) {
 const IGNORED_NAMES = new Set(['.first', '.git', 'node_modules']);
 const GENERATED = new Set(['first/_generated', 'first/dist']);
 const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENERATED.has(name);
-// What a build reads: TypeScript, the stylesheets and images it imports (src/assets.rs EXTENSIONS),
-// `public/` files, and the Markdown pages under `first/app/`.
-const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^first\/app\/(.*\/)?page\.md$/.test(name);
+// What a build reads: TypeScript, imported stylesheets and images, public files,
+// Markdown pages under first/app/, and the project's first/theme.json.
+const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^first\/app\/(.*\/)?page\.md$/.test(name) || name === 'first/theme.json';
 
 export async function sourceDigest(project) {
   const digest = createHash('sha256');

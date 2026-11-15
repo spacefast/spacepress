@@ -18,6 +18,16 @@ $site = wpSite('app', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscri
 wp_set_current_user(1);
 \First\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'secret' => 'desk only', 'status' => 'published']);
 \First\db()->insert('notes', ['title' => 'Draft', 'slug' => 'draft', 'status' => 'draft']);
+// What a site owner sets in WordPress: a Global Styles color (the Styles screen, the Site Editor),
+// Additional CSS, and a site icon. First's pages must print each, as the theme's own templates do.
+$styles = WP_Theme_JSON_Resolver::get_user_data_from_wp_global_styles(wp_get_theme(), true);
+wp_update_post(['ID' => $styles['ID'], 'post_content' => wp_json_encode([
+    'version' => WP_Theme_JSON::LATEST_SCHEMA, 'isGlobalStylesUserThemeJSON' => true,
+    'settings' => ['color' => ['palette' => ['custom' => [['slug' => 'brand', 'color' => '#123456', 'name' => 'Brand']]]]],
+])]);
+wp_update_custom_css_post('.owner-css { color: #654321; }');
+$icon = wp_insert_attachment(['post_mime_type' => 'image/png', 'post_title' => 'icon', 'post_status' => 'inherit'], 'icon.png');
+update_option('site_icon', $icon);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -147,6 +157,23 @@ $out = [
     'rest' => fetch("$url/wp-json/")['status'],
     'feed' => fetch("$url/feed/")['status'],
     'reserved' => str_contains(fetch("$url/wp-content/nothing-here")['body'], 'No such page'),
+    // The theme's presets as CSS variables, the owner's Global Styles and Additional CSS, the site icon.
+    'styles' => (static function (string $head): array {
+        return [
+            'theme preset' => str_contains($head, '--wp--preset--font-family--system:'),
+            'core preset' => str_contains($head, '--wp--preset--color--black:'),
+            // The project's first/theme.json, over the theme's...
+            'project preset' => str_contains($head, '--wp--preset--color--code: #0000aa'),
+            // ...and the owner's Global Styles over the project's, for the slug both name.
+            'global styles' => str_contains($head, '--wp--preset--color--brand: #123456') && !str_contains($head, '#000001'),
+            'additional css' => str_contains($head, '.owner-css { color: #654321; }'),
+            'site icon' => (bool) preg_match('#<link rel="icon" href="[^"]*icon\.png"#', $head),
+        ];
+    })(explode('</head>', fetch("$url/notes/hello")['body'])[0]),
 ];
+// `wp first styles export`, which `first styles pull` writes to first/theme.json: the project's file
+// with the owner's Global Styles merged over it, settings and styles only.
+$export = \First\Wp\ThemeStyles::export();
+$out['styles export'] = [array_keys($export), array_map(static fn (array $c): string => $c['slug'] . ' ' . $c['color'], $export['settings']['color']['palette'] ?? [])];
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

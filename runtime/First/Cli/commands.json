@@ -12,6 +12,7 @@
     { "name": "mcp", "args": "[dir] [--allow-remote-read] [--allow-writes]", "summary": "serve the project to a coding agent as an MCP server on stdio" },
     { "name": "sync", "args": "[status | resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--pr [--repo owner/name] [--base branch]] [--json]", "summary": "content files <-> site records (FIRST_APP_PASSWORD or FIRST_TOKEN)" },
     { "name": "pull", "args": "[dir] [--site url] [--check]", "summary": "write a site's runtime schema versions to first/_generated/runtime-schema.json (FIRST_APP_PASSWORD or FIRST_TOKEN)" },
+    { "name": "styles pull", "args": "[dir] [--site dir|@alias] [--check]", "summary": "write a site's Global Styles (the Styles screen, the Site Editor) over first/theme.json; the build ships it and generates first/_generated/theme.css" },
     { "name": "abilities pull", "args": "[dir] --site url [--only vendor/*]", "summary": "lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD)" },
     { "name": "migrate app", "args": "--from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--users] [--zero-css <zero.css>] [--dry-run] [--json]", "summary": "convert a Zero 0.8 app" },
     { "name": "migrate config", "args": "--from emdash|payload|sanity|zero <input> --out <new/first.config.ts>", "summary": "import another CMS's schema" },

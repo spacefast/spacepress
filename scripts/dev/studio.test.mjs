@@ -169,7 +169,12 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
   const markdownEdit = await sourceDigest(project);
   assert.notEqual(markdownEdit, markdownPage);
   await waitForDigest(markdownEdit);
+  // The project's styles are a build input too.
+  await writeFile(join(project, 'first/theme.json'), '{"version":3}');
+  const styles = await sourceDigest(project);
+  assert.notEqual(styles, markdownEdit);
+  await waitForDigest(styles);
   await writeFile(join(project, 'README.md'), 'notes');
   await writeFile(join(project, 'first/app/about/notes.md'), 'notes');
-  assert.equal(await sourceDigest(project), markdownEdit);
+  assert.equal(await sourceDigest(project), styles);
 });

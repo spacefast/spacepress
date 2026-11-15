@@ -250,7 +250,12 @@ fn app_router_serves_pages_on_wordpress() {
     // the owner's Global Styles over them, Additional CSS and the site icon (docs/pages.md, "Styles").
     assert_eq!(
         seen["styles"],
-        serde_json::json!({ "theme preset": true, "core preset": true, "global styles": true, "additional css": true, "site icon": true })
+        serde_json::json!({ "theme preset": true, "core preset": true, "project preset": true, "global styles": true, "additional css": true, "site icon": true })
+    );
+    // What `first styles pull` writes: the project's palette with the owner's color for `brand`.
+    assert_eq!(
+        seen["styles export"],
+        serde_json::json!([["version", "settings"], ["brand #123456", "code #0000aa"]])
     );
     let _ = std::fs::remove_dir_all(project);
 }

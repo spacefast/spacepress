@@ -59,6 +59,7 @@ pub mod host_contract;
 pub mod store;
 // The front matter reader is part of the core: `page.md` routes parse with it in every build.
 pub mod sync;
+pub mod theme;
 #[cfg(target_arch = "wasm32")]
 mod wasm_host_fs;
 #[cfg(feature = "host")]

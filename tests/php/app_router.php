@@ -162,11 +162,18 @@ $out = [
         return [
             'theme preset' => str_contains($head, '--wp--preset--font-family--system:'),
             'core preset' => str_contains($head, '--wp--preset--color--black:'),
-            'global styles' => str_contains($head, '--wp--preset--color--brand: #123456'),
+            // The project's first/theme.json, over the theme's...
+            'project preset' => str_contains($head, '--wp--preset--color--code: #0000aa'),
+            // ...and the owner's Global Styles over the project's, for the slug both name.
+            'global styles' => str_contains($head, '--wp--preset--color--brand: #123456') && !str_contains($head, '#000001'),
             'additional css' => str_contains($head, '.owner-css { color: #654321; }'),
             'site icon' => (bool) preg_match('#<link rel="icon" href="[^"]*icon\.png"#', $head),
         ];
     })(explode('</head>', fetch("$url/notes/hello")['body'])[0]),
 ];
+// `wp first styles export`, which `first styles pull` writes to first/theme.json: the project's file
+// with the owner's Global Styles merged over it, settings and styles only.
+$export = \First\Wp\ThemeStyles::export();
+$out['styles export'] = [array_keys($export), array_map(static fn (array $c): string => $c['slug'] . ' ' . $c['color'], $export['settings']['color']['palette'] ?? [])];
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

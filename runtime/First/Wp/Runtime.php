@@ -51,7 +51,7 @@ final class Runtime
         // A site that ran a build from before the rename to First moves its stored names first, before
         // any table, option or post type of First's exists (ZeroNames). Managed apps do it in initialize().
         add_action('init', static function (): void {
-            if (!self::$managed && ZeroNames::pending() && Platform::problems() === []) {
+            if (self::installs() && ZeroNames::pending() && Platform::problems() === []) {
                 global $wpdb;
                 try {
                     ZeroNames::upgrade(new Connection($wpdb));
@@ -62,14 +62,15 @@ final class Runtime
                     self::notice(self::$unavailable);
                 }
             }
-            foreach (ZeroNames::kept() as $type) {
+            // The notice shows in wp-admin only, so only wp-admin reads what the upgrade kept.
+            foreach (is_admin() ? ZeroNames::kept() : [] as $type) {
                 self::notice("posts of type $type were kept under that name: WordPress limits post types to 20 characters, and its First name would be longer. Rename the collection to at most 14 characters and move its posts to first_<name>");
             }
         }, PHP_INT_MIN);
         // As with app migrations: a runtime updated by copying files in sets up its tables on the
         // first request of any kind, once, under a lock.
         add_action('init', static function (): void {
-            if (self::$managed || ZeroNames::pending() || get_option('first_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
+            if (!self::installs() || ZeroNames::pending() || get_option('first_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
                 return;
             }
             global $wpdb;
@@ -162,6 +163,15 @@ final class Runtime
     public static function managed(): bool
     {
         return self::$managed;
+    }
+
+    /**
+     * Whether this request runs the install checks: a plugin-installed site whose install marker
+     * doesn't match this build ({@see InstallMarker}). A managed build installs only from initialize().
+     */
+    public static function installs(): bool
+    {
+        return !self::$managed && !InstallMarker::current();
     }
 
     /**
@@ -389,6 +399,7 @@ final class Runtime
             wp_die(esc_html('First: ' . implode('; ', $problems)), 'First', ['back_link' => true]);
         }
         global $wpdb;
+        InstallMarker::forget();
         ZeroNames::upgrade(new Connection($wpdb));
         Migrator::locked(new Connection($wpdb), 'first_runtime_tables', [self::class, 'applySystemTables']);
     }
@@ -402,6 +413,7 @@ final class Runtime
         // Features finish their own install here (private files write their deny rules and probe).
         do_action('first_runtime_tables_installed');
         update_option('first_runtime_tables', self::tablesVersion(), false);
+        InstallMarker::forget();
     }
 
     /** `<series>+<fingerprint>`: a runtime that registers another system table or step upgrades sites. */

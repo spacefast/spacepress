@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TypedPress rendering and editing comparison</title>
+<style>
+:root{color-scheme:light dark;font-family:var(--font-sans,system-ui);color:var(--foreground,#24262b)}
+*{box-sizing:border-box}body{margin:0;font-size:14px;line-height:1.5}button,input,textarea{font:inherit}button{cursor:pointer;border:1px solid var(--border,#9ca3af);border-radius:7px;background:var(--secondary,#eee);color:inherit;padding:7px 11px}button[aria-pressed=true]{border-color:var(--primary,#4166d5);background:var(--accent,#e8edfc)}button:focus-visible,[contenteditable]:focus-visible{outline:2px solid var(--ring,#4166d5);outline-offset:3px}p{margin:8px 0}small,.muted{color:var(--muted-foreground,#686b75)}.tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}.card{background:var(--card,#f5f5f5);border:1px solid var(--border,#aaa);border-radius:var(--radius,12px);padding:16px;margin:14px 0}.chrome{border:1px dashed var(--chart-2,#aa7a32);padding:12px;border-radius:7px;display:flex;justify-content:space-between;gap:10px}.chrome small{display:block}.page{border:1px solid var(--chart-1,#4166d5);padding:20px;margin:10px 0;border-radius:7px}.page h2{margin:0 0 8px;font-size:23px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.label{font-size:12px;font-weight:650;letter-spacing:.03em}.code{font:12px/1.6 var(--font-mono,monospace);background:var(--code-background,#eee);padding:12px;white-space:pre-wrap;border-radius:7px;margin-top:12px}.editbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.edit-target{border:1px dashed transparent;border-radius:5px;padding:7px;display:block;width:100%;text-align:left;background:transparent}.editing .edit-target{border-color:var(--chart-1,#4166d5)}h3{font-size:16px;margin:0 0 6px}h4{font-size:17px;margin:8px 0}.illustration{height:80px;background:var(--accent,#e5ebf5);border-radius:7px;display:grid;place-items:center;font-size:14px}.overlay{border:1px solid var(--primary,#4166d5);border-radius:7px;padding:12px;margin:10px 0;background:var(--popover,#fff)}.overlay label{display:block}.overlay input,.overlay textarea{display:block;width:100%;padding:8px;margin:6px 0 10px;background:var(--background,#fff);color:inherit;border:1px solid var(--border,#aaa);border-radius:5px}.overlay textarea{min-height:90px}.pill{display:inline-block;font-size:11px;border:1px solid var(--border,#aaa);border-radius:20px;padding:1px 7px;margin-left:5px}.status{min-height:22px;color:var(--muted-foreground,#686b75)}a{color:var(--primary,#4166d5)}[hidden]{display:none!important}@media(max-width:550px){.grid{grid-template-columns:1fr}.chrome{display:block}.card{padding:12px}.page{padding:14px}}
+</style>
+<div class="tabs" role="group" aria-label="Page rendering options">
+ <button data-mode="theme" aria-pressed="true">Inside the theme</button>
+ <button data-mode="canvas" aria-pressed="false">Whole document</button>
+ <button data-mode="generated" aria-pressed="false">Generated block theme</button>
+</div>
+<p id="mode-note"></p>
+<div class="card" aria-label="Rendering ownership example">
+ <div class="chrome" id="header"><strong>Field Notes <small>Header and navigation</small></strong><span id="header-owner"></span></div>
+ <div class="page"><span class="label">TSX PAGE</span><h2>A garden that grows with you</h2><p>Your page renders the article, its data and its interactive components.</p></div>
+ <div class="chrome" id="footer"><strong>Field Notes <small>Footer and site links</small></strong><span id="footer-owner"></span></div>
+ <pre class="code" id="mode-code"></pre>
+ <p id="mode-tradeoff"></p>
+</div>
+<div class="editbar"><div><strong>Try the editing flow</strong><span class="pill">Local prototype</span></div><button id="toggle-edit" aria-pressed="false">Enter edit mode</button></div>
+<p class="muted">Click the title, image or body after entering edit mode. Changes affect only this demonstration.</p>
+<div class="grid" id="editing-demo">
+ <section class="card"><h3>TypedPress proposal</h3><small>Native WordPress editors, with draft changes.</small>
+  <h4 class="edit-target" id="tp-title" tabindex="0" role="button" aria-label="Edit article title">A garden that grows with you</h4>
+  <button class="edit-target illustration" data-editor="image">Garden image · edit image</button>
+  <button class="edit-target" data-editor="body" id="tp-body">Plant for the season. Keep notes, make small changes and let the garden develop.</button>
+  <div class="overlay" id="wp-overlay" hidden><strong id="overlay-heading">WordPress editor</strong><p class="muted" id="overlay-hint"></p><label id="overlay-label" for="field-value">Content</label><textarea id="field-value"></textarea><button id="save-field">Save draft change</button> <button id="close-field">Close</button></div>
+  <p class="status" id="tp-status" role="status">Published version is visible.</p><button id="tp-publish">Publish draft</button>
+ </section>
+ <section class="card"><h3>EmDash today</h3><small>Verified from upstream source; this panel simulates the interaction.</small>
+  <h4 class="edit-target" id="em-title" tabindex="0" role="button" aria-label="Edit EmDash title">A garden that grows with you</h4>
+  <div class="illustration">Image popover: media and alt text</div>
+  <p>Text is editable on the page. Portable Text uses an inline TipTap editor. Unsupported or transformed fields open the admin.</p>
+  <p class="status" id="em-status" role="status">Published version is visible.</p><button id="em-publish">Publish draft</button>
+ </section>
+</div>
+<p class="muted">For TypedPress, markers identify the record and field. A rich body opens a focused WordPress editor over the page. Matching EmDash's inline rich-text editor would require a further embedded Gutenberg implementation. Visitors receive neither markers nor editing scripts.</p>
+<p><a href="https://github.com/emdash-cms/emdash/blob/8852f3faf825b9a43595f73aedf951fae4f22d1f/docs/src/content/docs/guides/preview.mdx" target="_blank" rel="noopener">EmDash editing source</a></p>
+<script>
+const modes={theme:{note:'Proposed: TSX supplies the content area; the active block theme supplies the frame.',owner:'WordPress Site Editor',code:'// Proposed default\nexport default function Page() {\n  return <article>...</article>;\n}',tradeoff:'Best for content sites and an existing WordPress site. A TSX layout wraps only the content; it does not add another site header or footer. Theme styles and wrappers affect the page.'},canvas:{note:'Current behavior: TSX layouts own the entire visible document.',owner:'Your TSX layout',code:'// Proposed opt-out spelling\nexport const shell = false;\n// layout.tsx owns Header, main and Footer',tradeoff:'Best for an app with a precise design. WordPress head and footer hooks still run, but the theme templates do not render the visible frame. Plugins that depend on a theme template need testing.'},generated:{note:'Earlier proposal: compile templates and parts into a separate block theme.',owner:'Generated part + Site Editor overrides',code:'// Earlier proposed opt-in\n// theme.config.ts\n// → theme.json, templates, parts',tradeoff:'Gives native template editing, but needs stable theme identity and rules for whether code or saved editor changes win. The app and its theme must be released together.'}};
+function mode(key){const m=modes[key];document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===key)));document.getElementById('mode-note').textContent=m.note;for(const id of ['header-owner','footer-owner'])document.getElementById(id).textContent=m.owner;document.getElementById('mode-code').textContent=m.code;document.getElementById('mode-tradeoff').textContent=m.tradeoff}document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>mode(b.dataset.mode)));mode('theme');
+let editing=false,field='body';const demo=document.getElementById('editing-demo');document.getElementById('toggle-edit').onclick=()=>{editing=!editing;demo.classList.toggle('editing',editing);const b=document.getElementById('toggle-edit');b.textContent=editing?'Leave edit mode':'Enter edit mode';b.setAttribute('aria-pressed',String(editing));document.getElementById('tp-title').contentEditable=String(editing);document.getElementById('em-title').contentEditable=String(editing);document.getElementById('wp-overlay').hidden=true};
+for(const pair of [['tp-title','tp-status'],['em-title','em-status']]){const e=document.getElementById(pair[0]);e.addEventListener('blur',()=>{if(editing)document.getElementById(pair[1]).textContent='Title saved to draft. Published page is unchanged.'})}
+document.querySelectorAll('[data-editor]').forEach(b=>b.onclick=()=>{if(!editing)return;field=b.dataset.editor;document.getElementById('wp-overlay').hidden=false;document.getElementById('overlay-heading').textContent=field==='body'?'Focused WordPress block editor':'WordPress media library';document.getElementById('overlay-hint').textContent=field==='body'?'The production design uses WordPress blocks and existing save permissions. This prototype uses a text field.':'The production design opens the existing media picker. This prototype edits the image description.';document.getElementById('field-value').value=field==='body'?document.getElementById('tp-body').textContent:'A garden in early summer';document.getElementById('field-value').focus()});
+document.getElementById('save-field').onclick=()=>{const value=document.getElementById('field-value').value;if(field==='body')document.getElementById('tp-body').textContent=value;else document.querySelector('[data-editor="image"]').textContent=value+' · edit image';document.getElementById('wp-overlay').hidden=true;document.getElementById('tp-status').textContent='Draft change saved. Published page is unchanged.'};document.getElementById('close-field').onclick=()=>document.getElementById('wp-overlay').hidden=true;
+for(const k of ['tp','em'])document.getElementById(k+'-publish').onclick=()=>{document.getElementById(k+'-status').textContent=editing?'Draft published in this demonstration.':'Enter edit mode to try the draft workflow.'};
+</script>
+</html>

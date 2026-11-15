@@ -204,7 +204,10 @@ Setting a non-null unique value (including an explicit primary key or a generate
 slug) requires an unfiltered collection read rule and visibility of that field
 across rows. Otherwise both taken and free values return 401/403 before any
 uniqueness lookup. A filtered read, including `self` or automatic draft filtering,
-does not authorize new or changed unique values. An unchanged value is accepted
+does not authorize new or changed unique values. The one exception is an
+administrator writing the users kind: WordPress already shows them every user, so
+a taken value answers 409 and a free one is written; a column hidden from them is
+still refused. An unchanged value is accepted
 only when the viewer can read the current row and the column cannot hide values.
 That value is omitted from persistence, and native slug repair preserves it without
 querying competitors. Publishing a WordPress draft is a new uniqueness operation;

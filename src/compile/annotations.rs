@@ -289,7 +289,9 @@ impl Compiler<'_, '_> {
                     ("AbortSignal", []) => Ty::AbortSignal,
                     ("URL", []) => Ty::Url,
                     ("URLSearchParams", []) => Ty::UrlParams,
-                    ("Error", []) => Ty::Error,
+                    // The built-in subclasses are the same runtime value as `Error`: `name` tells them
+                    // apart, and `instanceof` narrows as it does for an `Error` annotation.
+                    ("Error" | "TypeError" | "RangeError" | "SyntaxError", []) => Ty::Error,
                     // JSX's result type, with the names TypeScript's React typings use for it.
                     ("JSX.Element" | "React.JSX.Element" | "React.ReactElement" | "ReactElement", []) => Ty::Html,
                     // Anything React can render. Arrays nest one level here; deeper nesting is `unknown`.

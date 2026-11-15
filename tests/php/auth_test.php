@@ -71,6 +71,19 @@ eq('"self" read: anonymous → 401', $call('GET', '/members')[0], 401);
 eq('"self" update: another member\'s row is not found', $call('PATCH', "/members/$boId", ['name' => 'Hacked'], $anaId)[0], 404);
 eq('"self" read: another member\'s row is not found', $call('GET', "/members/$boId", null, $anaId)[0], 404);
 eq('"self" is a filter, not a ladder: an administrator lists their own row only', array_column($call('GET', '/members', null, 'admin')[1]['data'], 'id'), [$wp->userId('admin')]);
+// An administrator sees every user in WordPress, so a unique write on the users kind answers plainly
+// for them; everyone else still gets the same refusal for a taken and a free value.
+$probe = static fn (string $email, string|int $as): array => $call('POST', '/members', ['email' => $email, 'name' => 'Probe', 'password' => 'another long one'], $as);
+[$takenStatus, $taken] = $probe('ana@example.test', 'admin');
+eq('an administrator is told an email is taken', [$takenStatus, $taken['code'] ?? null, $taken['pointer'] ?? null], [409, 'unique_violation', '/email']);
+eq('an administrator creates a member with an email', $probe('made-by-admin@example.test', 'admin')[0], 201);
+$madeId = (int) (get_user_by('email', 'made-by-admin@example.test')->ID ?? 0);
+check('and the member is a WordPress user', $madeId > 0);
+foreach (['bo@example.test', 'free@example.test'] as $email) {
+    [$status, $refused] = $probe($email, $anaId);
+    eq('a member still learns nothing from a unique write', [$status, $refused['pointer'] ?? null], [403, '/email']);
+}
+$db->delete('members', ['id' => $madeId]);
 eq('existing WordPress users became members with the collection\'s defaults when the app activated', $call('GET', "/members/{$wp->userId('admin')}", null, 'admin')[1]['data']['plan'] ?? null, 'free');
 
 // ================================================================ hidden columns never leave the runtime

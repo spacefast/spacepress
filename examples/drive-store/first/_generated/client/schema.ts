@@ -77,7 +77,8 @@ export const SCHEMA = {
   "actions": [
     "buy",
     "restock",
-    "markShipped"
+    "markShipped",
+    "pendingOrders"
   ],
   "buckets": []
 } as const;

@@ -798,6 +798,16 @@ export type MarkShippedOutput = {
 	code: string;
 	status: "placed" | "shipped" | "cancelled";
 };
+export type PendingOrdersInput = Record<string, never>;
+export type PendingOrdersOutput = {
+	rows: ({
+		id: number;
+		code: string;
+		buyer: string;
+		quantity: number;
+		total: number;
+	})[];
+};
 export interface Collections {
 	drives: {
 		row: Drive;
@@ -842,6 +852,10 @@ export interface Actions {
 	markShipped: {
 		input: MarkShippedInput;
 		output: MarkShippedOutput;
+	};
+	pendingOrders: {
+		input: PendingOrdersInput;
+		output: PendingOrdersOutput;
 	};
 }
 export declare const SCHEMA: {
@@ -915,7 +929,7 @@ export declare const SCHEMA: {
 		};
 	};
 	readonly globals: readonly ["shop"];
-	readonly actions: readonly ["buy", "restock", "markShipped"];
+	readonly actions: readonly ["buy", "restock", "markShipped", "pendingOrders"];
 	readonly buckets: readonly [];
 };
 export type SchemaDescriptor = typeof SCHEMA;

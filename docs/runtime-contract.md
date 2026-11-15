@@ -808,7 +808,9 @@ listens and purges those URLs from Batcache and the edge. With no listener
   `batcache_cancel()`. Each cacheable render records the rows it read in
   `first__app_reads` (kind, row id or `*` for a listing, path with query),
   under the address WordPress links the page at (`/notes/a/` for a visit to
-  `/notes/a`). A committed write to a kind adds every recorded path that read
+  `/notes/a`): one read of what the path recorded last, and nothing written
+  when the render read the same rows; otherwise the path's rows are replaced
+  with inserts of 100 rows each. A committed write to a kind adds every recorded path that read
   that row or listed the kind, with its `.md` twin, to the same announcement
   as the paths above: one `first_purge_urls` call per committed transaction.
   The router answers a page with or without its trailing slash, so both

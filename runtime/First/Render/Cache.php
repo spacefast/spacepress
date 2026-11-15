@@ -35,6 +35,8 @@ final class Cache
     public const WINDOW = 300;
     /** Rows recorded per render; a page that reads more records its kinds as listings. */
     public const MAX_IDS = 500;
+    /** Rows per insert when recording reads (at most about 900 bytes each). */
+    private const BATCH = 100;
 
     public static function register(): void
     {
@@ -96,10 +98,29 @@ final class Cache
                 }
             }
         }
+        $wanted = [];
+        foreach ($rows as [$kind, $item]) {
+            $wanted[$kind . "\0" . $item] = [$kind, $item];
+        }
+        // The same reads as the URL's last render (the usual case: a page re-rendered after its cache
+        // window): nothing to write.
+        $stored = [];
+        foreach (self::run('SELECT "kind", "item" FROM {reads} WHERE "url" = ?', [$url]) as $row) {
+            $stored[$row['kind'] . "\0" . $row['item']] = true;
+        }
+        if (array_diff_key($wanted, $stored) === [] && array_diff_key($stored, $wanted) === []) {
+            return;
+        }
         $now = gmdate('Y-m-d\TH:i:s.000\Z');
         self::run('DELETE FROM {reads} WHERE "url" = ?', [$url]);
-        foreach ($rows as [$kind, $item]) {
-            self::run('INSERT IGNORE INTO {reads} ("kind", "item", "url", "seenAt") VALUES (?, ?, ?, ?)', [$kind, $item, $url, $now]);
+        // Multi-row inserts, BATCH rows each, so a statement stays far below any packet limit
+        // (a row is at most 191 + 191 + 512 + 24 bytes).
+        foreach (array_chunk(array_values($wanted), self::BATCH) as $chunk) {
+            $params = [];
+            foreach ($chunk as [$kind, $item]) {
+                array_push($params, $kind, $item, $url, $now);
+            }
+            self::run('INSERT IGNORE INTO {reads} ("kind", "item", "url", "seenAt") VALUES ' . implode(', ', array_fill(0, count($chunk), '(?, ?, ?, ?)')), $params);
         }
     }
 

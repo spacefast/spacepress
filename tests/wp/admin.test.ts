@@ -293,3 +293,14 @@ test("table screens are named after the kind in kebab case, as its abilities are
   assert.equal(screen.status, 200, `table-${kebab}`);
   assert.equal((await screen.json()).view.ability, `blog/${kebab}-list`);
 });
+
+test("the app's own wp-admin menu entry opens its collections in First Admin; its table screens stay under it", async () => {
+  const cookie = await loginCookie(site, "editor", `${site}/wp-admin/`);
+  wp("transient", "delete", "pll_activation_redirect");
+  const top = await fetch(`${site}/wp-admin/admin.php?page=first-blog`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(top.status, 302, "the top-level entry is not an empty page");
+  assert.equal(top.headers.get("location"), `${site}/wp-admin/new/collections`);
+  const table = await fetch(`${site}/wp-admin/admin.php?page=first-screen-table-comments`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(table.status, 200, "a table screen under the entry still renders");
+  assert.match(await table.text(), /id="first-admin-screen" data-screen-id="table-comments"/);
+});

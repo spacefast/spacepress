@@ -663,9 +663,30 @@ final class Plugin
             return;
         }
         $slug = 'first-' . $this->schema->name();
-        add_menu_page(ucfirst($this->schema->name()), ucfirst($this->schema->name()), 'edit_others_posts', $slug, static function () use ($slug): void {
-            echo '<div class="wrap"><h1>' . esc_html(get_admin_page_title()) . '</h1></div>';
-        }, 'dashicons-admin-settings');
+        $hook = add_menu_page(ucfirst($this->schema->name()), ucfirst($this->schema->name()), 'edit_others_posts', $slug, static fn () => self::renderAppMenuPage($slug), 'dashicons-admin-settings');
+        // The entry itself has nothing of its own: with First Admin, it opens the app's collections there.
+        add_action('load-' . $hook, static function (): void {
+            if (function_exists('first_admin_url')) {
+                wp_safe_redirect(first_admin_url('/collections'));
+                exit;
+            }
+        });
+    }
+
+    /**
+     * The app's own wp-admin page without First Admin (`admin: false`): a list of the pages under it,
+     * the app's globals and table screens, so the entry is never an empty page.
+     */
+    public static function renderAppMenuPage(string $slug): void
+    {
+        echo '<div class="wrap"><h1>' . esc_html(get_admin_page_title()) . '</h1><ul>';
+        foreach ($GLOBALS['submenu'][$slug] ?? [] as $item) {
+            if (($item[2] ?? $slug) === $slug || !current_user_can((string) ($item[1] ?? 'do_not_allow'))) {
+                continue;
+            }
+            echo '<li><a href="' . esc_url(admin_url('admin.php?page=' . rawurlencode((string) $item[2]))) . '">' . esc_html(wp_strip_all_tags((string) $item[0])) . '</a></li>';
+        }
+        echo '</ul></div>';
     }
 
     // ================================================================ editor hooks (§4.9)

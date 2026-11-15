@@ -11,7 +11,8 @@ namespace First\Wp;
  * Two drivers answer: `mysqli` on MySQL and MariaDB, and the SQLite Database Integration plugin's
  * PDO handle, which translates MySQL to SQLite. Compiled SQL (Sql::select) runs as a real mysqli
  * prepared statement, never through `$wpdb->prepare()` (the §3.5.1 expressions contain `%` in
- * DATE_FORMAT patterns). The SQLite driver has no prepared statements, so there the positional
+ * DATE_FORMAT patterns); a statement is prepared once per request and handle, and run again with
+ * the next parameters (at most 64 kept; DDL and a reconnect drop them). The SQLite driver has no prepared statements, so there the positional
  * parameters are bound as quoted literals, rows are typed as mysqli types them, and the MySQL
  * functions the translator lacks (JSON_CONTAINS, JSON_OBJECTAGG) are registered on it.
  *
@@ -38,6 +39,11 @@ final class Connection
     private array $onRollback = [];
     /** Rows the last statement changed (SQLite driver; mysqli answers ROW_COUNT() itself). */
     private int $changes = 0;
+    /** Prepared statements kept per request on mysqli (see statement()). */
+    private const STATEMENTS = 64;
+    /** @var array<string, \mysqli_stmt> SQL => statement prepared on $statementsOn, least recently used first */
+    private array $statements = [];
+    private ?\mysqli $statementsOn = null;
     /** @var array<int, true> SQLite handles (by object id) that already carry First's functions */
     /** @var \WeakMap<\PDO, true>|null the SQLite handles that already carry First's functions */
     private static ?\WeakMap $prepared = null;
@@ -104,21 +110,92 @@ final class Connection
             return $this->runSqlite($dbh, $sql, $values);
         }
         $values = array_map(static fn ($v) => $v instanceof Bytes ? $v->value : $v, $values);
-        $mysqli = $this->mysqli();
-        $stmt = $mysqli->prepare($sql);
-        if ($stmt === false) {
-            throw new DbError($mysqli->error . ' [' . $sql . ']', $mysqli->errno);
+        if (preg_match('/\A\s*(CREATE|ALTER|DROP|RENAME|TRUNCATE)\b/i', $sql) === 1) {
+            // DDL changes what the kept statements were prepared against: run it once, and prepare
+            // the rest again on their next run.
+            $this->closeStatements();
+            $mysqli = $this->mysqli();
+            $stmt = $mysqli->prepare($sql);
+            if ($stmt === false) {
+                throw new DbError($mysqli->error . ' [' . $sql . ']', $mysqli->errno);
+            }
+            try {
+                if (!$stmt->execute($values === [] ? null : $values)) {
+                    throw new DbError($stmt->error, $stmt->errno);
+                }
+
+                return [];
+            } finally {
+                $stmt->close();
+            }
         }
+        $stmt = $this->statement($this->mysqli(), $sql);
         try {
             if (!$stmt->execute($values === [] ? null : $values)) {
                 throw new DbError($stmt->error, $stmt->errno);
             }
             $result = $stmt->get_result();
-
-            return $result === false ? [] : $result->fetch_all(MYSQLI_ASSOC);
-        } finally {
-            $stmt->close();
+            if ($result === false) {
+                return [];
+            }
+            try {
+                return $result->fetch_all(MYSQLI_ASSOC);
+            } finally {
+                $result->free();
+            }
+        } catch (\Throwable $e) {
+            // A statement that failed is not run again from the cache: the next run prepares it anew.
+            unset($this->statements[$sql]);
+            try {
+                $stmt->close();
+            } catch (\Throwable) {
+                // A lost connection took the statement with it.
+            }
+            throw $e;
         }
+    }
+
+    /**
+     * The prepared statement for $sql on this handle, prepared once per request and kept for the
+     * next run with other parameters (compiled reads repeat with each row's or page's values). Kept
+     * per handle: a reconnect drops them all. At most STATEMENTS are kept; the oldest is closed first.
+     */
+    private function statement(\mysqli $mysqli, string $sql): \mysqli_stmt
+    {
+        if ($this->statementsOn !== $mysqli) {
+            $this->closeStatements();
+            $this->statementsOn = $mysqli;
+        }
+        $stmt = $this->statements[$sql] ?? null;
+        if ($stmt !== null) {
+            // Most recently used last, so the oldest is the first one dropped.
+            unset($this->statements[$sql]);
+
+            return $this->statements[$sql] = $stmt;
+        }
+        $stmt = $mysqli->prepare($sql);
+        if ($stmt === false) {
+            throw new DbError($mysqli->error . ' [' . $sql . ']', $mysqli->errno);
+        }
+        if (count($this->statements) >= self::STATEMENTS) {
+            $oldest = array_key_first($this->statements);
+            $this->statements[$oldest]->close();
+            unset($this->statements[$oldest]);
+        }
+
+        return $this->statements[$sql] = $stmt;
+    }
+
+    private function closeStatements(): void
+    {
+        foreach ($this->statements as $stmt) {
+            try {
+                $stmt->close();
+            } catch (\Throwable) {
+                // The handle they were prepared on is gone with them.
+            }
+        }
+        $this->statements = [];
     }
 
     /**

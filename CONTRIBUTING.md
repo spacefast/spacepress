@@ -67,9 +67,10 @@ files under `runtime/` are picked up without code changes.
 ## The commands
 
 `first help` prints every command, grouped. **Build** commands (`dev`, `build`,
-`check`, `add`, `doctor`, `init`, `mcp`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `first`
+`check`, `add`, `doctor`, `init`, `mcp`, `sync`, `abilities pull`, `styles pull`, `migrate app|config`, `deploy`) run in the `first`
 binary against the project's files (`abilities pull` reads a site's abilities
-into the committed `first/_generated/abilities.json`). **Site** commands (`migrate`, `seed`,
+into the committed `first/_generated/abilities.json`; `styles pull` reads a site's Global Styles
+into `first/theme.json`). **Site** commands (`migrate`, `seed`,
 `jobs`, `run`, `identity`, …) are implemented once, as `wp first <command>` in
 the `first-runtime` plugin; `first <command>` forwards to it unchanged, and
 `first wp <args>` forwards any WP-CLI command. `--site` picks the site: absent,

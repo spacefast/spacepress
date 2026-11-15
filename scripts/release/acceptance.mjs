@@ -88,7 +88,7 @@ try {
     for (const stream of [session.stdout, session.stderr]) stream.on('data', (chunk) => {
       output += chunk;
       process.stdout.write(chunk);
-      if (output.includes('Watching config, TypeScript and public files.')) finish();
+      if (output.includes('Watching config, ')) finish();
     });
     session.once('error', finish);
     session.once('exit', (code) => finish(new Error(`npm run dev exited ${code}:\n${output}`)));

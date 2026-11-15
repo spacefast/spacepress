@@ -190,8 +190,9 @@ export async function publishPlugins(content, managed) {
 const IGNORED_NAMES = new Set(['.first', '.git', 'node_modules']);
 const GENERATED = new Set(['first/_generated', 'first/dist']);
 const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENERATED.has(name);
-// What a build reads: TypeScript, `public/` files, and the Markdown pages under `first/app/`.
-const isSource = (name) => /\.[cm]?[jt]sx?$/.test(name) || name.split('/')[0] === 'public' || /^first\/app\/(.*\/)?page\.md$/.test(name);
+// What a build reads: TypeScript, the stylesheets and images it imports (src/assets.rs EXTENSIONS),
+// `public/` files, and the Markdown pages under `first/app/`.
+const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^first\/app\/(.*\/)?page\.md$/.test(name);
 
 export async function sourceDigest(project) {
   const digest = createHash('sha256');
@@ -545,7 +546,7 @@ async function main() {
       dirty = true; clearTimeout(timer); timer = setTimeout(rebuild, 200);
     }, (error) => { console.error(`File watcher: ${error.message}`); void stop(); });
     stopTimer = setInterval(() => { exists(join(managed.state, 'stop')).then((requested) => { if (requested) void stop(); }); }, 250);
-    console.log('Watching config, TypeScript and public files. Ctrl+C stops WordPress; content is retained.');
+    console.log('Watching config, TypeScript, stylesheets, images and public files. Ctrl+C stops WordPress; content is retained.');
     void rebuild();
     await finished;
   } finally {

@@ -140,6 +140,12 @@ saving a copy of the default. A tab's filters (a role, a status) are applied on
 top of whatever the user saved, so a saved filter on the same field can't
 override the tab.
 
+Collections, Media, and declared list screens use the same view system for
+per-user columns, sorting where supported, and page size. Collections and Media
+keep page and search in the URL. Declared screens keep those navigation values
+only while the screen is open; their saved display settings are shared between
+First Admin and classic wp-admin. Each collection and screen has its own key.
+
 ## Provenance and updates
 
 The input distribution declares GPL-2.0-or-later. Its archive contains no Git

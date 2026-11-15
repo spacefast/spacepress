@@ -26,7 +26,37 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ExitCode, Stdio};
+use std::sync::LazyLock;
 use std::time::Duration;
+
+/// The patterns the export runs over every page, compiled once.
+fn pattern(source: &str) -> regex::Regex {
+    regex::Regex::new(source).expect("export pattern")
+}
+static URL_ATTRIBUTE: LazyLock<regex::Regex> =
+    LazyLock::new(|| pattern(r#"(?i)\b(href|src|action|content)=("([^"]*)"|'([^']*)')"#));
+static SRCSET: LazyLock<regex::Regex> =
+    LazyLock::new(|| pattern(r#"(?i)\b(srcset|imagesrcset)=("([^"]*)"|'([^']*)')"#));
+static CANONICAL: LazyLock<regex::Regex> =
+    LazyLock::new(|| pattern(r#"(?i)<link[^>]*\brel=["']canonical["'][^>]*>\s*"#));
+static META_URL: LazyLock<regex::Regex> = LazyLock::new(|| {
+    pattern(
+        r#"(?i)<meta[^>]*\b(?:property|name)=["'](?:og:url|og:image|og:image:url|og:image:secure_url|twitter:image|twitter:url)["'][^>]*>\s*"#,
+    )
+});
+static CONTENT: LazyLock<regex::Regex> = LazyLock::new(|| pattern(r#"(?i)\bcontent=("([^"]*)"|'([^']*)')"#));
+static STYLE: LazyLock<regex::Regex> = LazyLock::new(|| pattern(r#"(?s)(<style[^>]*>)(.*?)(</style>)"#));
+static IMPORT_MAP: LazyLock<regex::Regex> =
+    LazyLock::new(|| pattern(r#"(?s)(<script[^>]*type="importmap"[^>]*>)(.*?)(</script>)"#));
+static MODULE_DATA: LazyLock<regex::Regex> = LazyLock::new(|| {
+    pattern(r#"(?s)(<script id="wp-script-module-data-([^"]+)" type="application/json">)(.*?)(</script>)"#)
+});
+static CSS_REFERENCE: LazyLock<regex::Regex> =
+    LazyLock::new(|| pattern(r#"url\(\s*['"]?([^'")]+)['"]?\s*\)|@import\s+['"]([^'"]+)['"]()"#));
+static JS_IMPORT: LazyLock<regex::Regex> =
+    LazyLock::new(|| pattern(r#"()()(?:\bimport\s*\(\s*|\bfrom\s*|\bimport\s+)['"]((?:\./|\.\./|/)[^'"]+)['"]"#));
+static NOINDEX: LazyLock<regex::Regex> =
+    LazyLock::new(|| pattern(r#"(?i)<meta name=['"]robots['"] content=['"][^'"]*noindex"#));
 
 const USAGE: &str = "usage: first export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]\n       with --site: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token> (an editor's)";
 
@@ -628,7 +658,7 @@ impl<'a> Export<'a> {
     ) -> String {
         let html = &self.srcsets(html, assets);
         let html = &self.meta_urls(html, page);
-        let attribute = regex::Regex::new(r#"(?i)\b(href|src|action|content)=("([^"]*)"|'([^']*)')"#).expect("regex");
+        let attribute = &*URL_ATTRIBUTE;
         let mut out = String::with_capacity(html.len());
         let mut last = 0;
         for m in attribute.captures_iter(html) {
@@ -701,39 +731,37 @@ impl<'a> Export<'a> {
 
     /// `srcset` and `imagesrcset`: each candidate's same-site URL is a file of the export.
     fn srcsets(&self, html: &str, assets: &mut BTreeSet<String>) -> String {
-        let re = regex::Regex::new(r#"(?i)\b(srcset|imagesrcset)=("([^"]*)"|'([^']*)')"#).expect("regex");
-        re.replace_all(html, |c: &regex::Captures| {
-            let quote = if c.get(3).is_some() { '"' } else { '\'' };
-            let value = c.get(3).or(c.get(4)).expect("value").as_str();
-            let candidates: Vec<String> = value
-                .split(',')
-                .map(|candidate| {
-                    let candidate = candidate.trim();
-                    let (url, descriptor) = candidate.split_once(char::is_whitespace).unwrap_or((candidate, ""));
-                    match self.local_path(&url.replace("&#038;", "&").replace("&amp;", "&")) {
-                        Some(local) => {
-                            let (path, suffix) = split_suffix(&local);
-                            assets.insert(path.to_string());
-                            format!("{}{path}{} {descriptor}", self.flags.base, version_suffix(suffix))
-                                .trim_end()
-                                .to_string()
+        SRCSET
+            .replace_all(html, |c: &regex::Captures| {
+                let quote = if c.get(3).is_some() { '"' } else { '\'' };
+                let value = c.get(3).or(c.get(4)).expect("value").as_str();
+                let candidates: Vec<String> = value
+                    .split(',')
+                    .map(|candidate| {
+                        let candidate = candidate.trim();
+                        let (url, descriptor) = candidate.split_once(char::is_whitespace).unwrap_or((candidate, ""));
+                        match self.local_path(&url.replace("&#038;", "&").replace("&amp;", "&")) {
+                            Some(local) => {
+                                let (path, suffix) = split_suffix(&local);
+                                assets.insert(path.to_string());
+                                format!("{}{path}{} {descriptor}", self.flags.base, version_suffix(suffix))
+                                    .trim_end()
+                                    .to_string()
+                            }
+                            None => candidate.to_string(),
                         }
-                        None => candidate.to_string(),
-                    }
-                })
-                .collect();
-            format!("{}={quote}{}{quote}", &c[1], candidates.join(", "))
-        })
-        .into_owned()
+                    })
+                    .collect();
+                format!("{}={quote}{}{quote}", &c[1], candidates.join(", "))
+            })
+            .into_owned()
     }
 
     /// `<link rel="canonical">` and Open Graph and Twitter URLs name where the export is served:
     /// `--site-url` and the page's path. Without `--site-url` they are left out (a relative one is
     /// not a valid canonical), so no page names the WordPress that rendered it.
     fn meta_urls(&self, html: &str, page: &str) -> String {
-        let canonical = regex::Regex::new(r#"(?i)<link[^>]*\brel=["']canonical["'][^>]*>\s*"#).expect("regex");
-        let meta = regex::Regex::new(r#"(?i)<meta[^>]*\b(?:property|name)=["'](?:og:url|og:image|og:image:url|og:image:secure_url|twitter:image|twitter:url)["'][^>]*>\s*"#).expect("regex");
-        let content = regex::Regex::new(r#"(?i)\bcontent=("([^"]*)"|'([^']*)')"#).expect("regex");
+        let (canonical, meta, content) = (&*CANONICAL, &*META_URL, &*CONTENT);
         let html = match &self.flags.site_url {
             Some(_) => canonical
                 .replace_all(
@@ -770,46 +798,42 @@ impl<'a> Export<'a> {
 
     /// `<style>` blocks (core's font faces, block styles): their `url(...)` files are exported too.
     fn inline_styles(&self, html: &str, assets: &mut BTreeSet<String>) -> String {
-        let re = regex::Regex::new(r#"(?s)(<style[^>]*>)(.*?)(</style>)"#).expect("regex");
-        re.replace_all(html, |c: &regex::Captures| {
-            for found in self.referenced(&c[2], "/inline.css") {
-                assets.insert(found);
-            }
-            format!("{}{}{}", &c[1], self.relink(&c[2]), &c[3])
-        })
-        .into_owned()
+        STYLE
+            .replace_all(html, |c: &regex::Captures| {
+                for found in self.referenced(&c[2], "/inline.css") {
+                    assets.insert(found);
+                }
+                format!("{}{}{}", &c[1], self.relink(&c[2]), &c[3])
+            })
+            .into_owned()
     }
 
     /// The Interactivity API's import map: its module URLs are files of the export.
     fn import_map(&self, html: &str, assets: &mut BTreeSet<String>) -> String {
-        let re = regex::Regex::new(r#"(?s)(<script[^>]*type="importmap"[^>]*>)(.*?)(</script>)"#).expect("regex");
-        re.replace_all(html, |c: &regex::Captures| {
-            let Ok(mut map) = serde_json::from_str::<Value>(&c[2]) else {
-                return c[0].to_string();
-            };
-            if let Some(imports) = map["imports"].as_object_mut() {
-                for value in imports.values_mut() {
-                    if let Some(local) = value.as_str().and_then(|u| self.local_path(u)) {
-                        let (path, suffix) = split_suffix(&local);
-                        assets.insert(path.to_string());
-                        *value = Value::String(format!("{}{path}{}", self.flags.base, version_suffix(suffix)));
+        IMPORT_MAP
+            .replace_all(html, |c: &regex::Captures| {
+                let Ok(mut map) = serde_json::from_str::<Value>(&c[2]) else {
+                    return c[0].to_string();
+                };
+                if let Some(imports) = map["imports"].as_object_mut() {
+                    for value in imports.values_mut() {
+                        if let Some(local) = value.as_str().and_then(|u| self.local_path(u)) {
+                            let (path, suffix) = split_suffix(&local);
+                            assets.insert(path.to_string());
+                            *value = Value::String(format!("{}{path}{}", self.flags.base, version_suffix(suffix)));
+                        }
                     }
                 }
-            }
-            format!("{}{}{}", &c[1], script_json(&map), &c[3])
-        })
-        .into_owned()
+                format!("{}{}{}", &c[1], script_json(&map), &c[3])
+            })
+            .into_owned()
     }
 
     /// Client component configuration (`wp-script-module-data-*`): action endpoints stay on the
     /// hosted site with `--site` (public actions only); without one, a component that calls an action
     /// is refused.
     fn config(&self, html: &str, page: &str, refusals: &mut Vec<String>) -> String {
-        let re = regex::Regex::new(
-            r#"(?s)(<script id="wp-script-module-data-([^"]+)" type="application/json">)(.*?)(</script>)"#,
-        )
-        .expect("regex");
-        re.replace_all(html, |c: &regex::Captures| {
+        MODULE_DATA.replace_all(html, |c: &regex::Captures| {
             let Ok(mut data) = serde_json::from_str::<Value>(&c[3]) else { return c[0].to_string() };
             let mut changed = false;
             // core/router's server URL: the page's address where the export is served.
@@ -869,11 +893,10 @@ impl<'a> Export<'a> {
         // A stylesheet's `url(...)` and `@import`; a module's static and dynamic imports of a path
         // (`./x.js`, `/wp-includes/…`). Bare specifiers resolve through the import map.
         let re = if from.ends_with(".css") {
-            regex::Regex::new(r#"url\(\s*['"]?([^'")]+)['"]?\s*\)|@import\s+['"]([^'"]+)['"]()"#)
+            &*CSS_REFERENCE
         } else {
-            regex::Regex::new(r#"()()(?:\bimport\s*\(\s*|\bfrom\s*|\bimport\s+)['"]((?:\./|\.\./|/)[^'"]+)['"]"#)
-        }
-        .expect("regex");
+            &*JS_IMPORT
+        };
         let dir = from.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
         let mut out = Vec::new();
         for c in re.captures_iter(text) {
@@ -953,9 +976,7 @@ impl<'a> Export<'a> {
 }
 
 fn robots_noindex(html: &str) -> bool {
-    regex::Regex::new(r#"(?i)<meta name=['"]robots['"] content=['"][^'"]*noindex"#)
-        .expect("regex")
-        .is_match(html)
+    NOINDEX.is_match(html)
 }
 
 fn xml(s: &str) -> String {

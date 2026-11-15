@@ -2997,7 +2997,10 @@ impl<'p> Evaluator<'p> {
                 Value::Str(n) if crate::compile::reserved_env_name(&n) => {
                     crate::compile::reserved_env_error(span, &n).map_err(Ctl::Err)
                 }
-                Value::Str(n) if regex::Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap().is_match(&n) => {
+                Value::Str(n)
+                    if n.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+                        && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') =>
+                {
                     Ok(Value::Env(n))
                 }
                 _ => err_help(
@@ -5848,6 +5851,32 @@ pub fn to_json(v: &Value) -> Option<serde_json::Value> {
 
 #[cfg(test)]
 mod tests {
+    /// env() takes a name of letters, digits and `_` that doesn't start with a digit.
+    #[test]
+    fn env_takes_an_identifier_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("first.config.ts");
+        for (name, ok) in [
+            ("HOOK_SECRET", true),
+            ("_x9", true),
+            ("a", true),
+            ("", false),
+            ("9A", false),
+            ("A-B", false),
+            ("Ä", false),
+            ("A B", false),
+        ] {
+            std::fs::write(
+                &entry,
+                format!("import {{ env }} from 'first';\nexport default env({name:?});"),
+            )
+            .unwrap();
+            let program = crate::loader::load(&entry).unwrap();
+            let result = super::Evaluator::new(&program).run();
+            assert_eq!(result.is_ok(), ok, "{name:?}: {result:?}");
+        }
+    }
+
     #[test]
     fn object_enumeration_reads_string_elements() {
         let tmp = tempfile::tempdir().unwrap();

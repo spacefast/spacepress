@@ -1,6 +1,7 @@
 // The home page: the guide, as one page. Each section is a file in first/components/guide/, in the order of
 // first/components/guide/sections.ts; add a section by adding it to both.
 import { Toc, Built, Decided, Proposed } from "../components/Guide";
+import { LatestPosts } from "../components/LatestPosts";
 import { Setup } from "../components/guide/setup";
 import { Layout } from "../components/guide/layout";
 import { How } from "../components/guide/how";
@@ -86,6 +87,8 @@ export default function Home() {
       <Rename />
       <Limits />
       <Open />
+      {/* WordPress content inside a TSX page: the newest posts, read when the page is rendered. */}
+      <LatestPosts limit={3} />
     </main>
   );
 }

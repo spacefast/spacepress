@@ -192,11 +192,7 @@ pub(crate) type Files = Vec<(String, Vec<u8>)>;
 
 /// The app plugin's files (path below the plugins directory, bytes), and the `schema.php` they
 /// were made with.
-pub(crate) fn app_files(
-    project: &Path,
-    migrations: &Path,
-    built: &Built,
-) -> std::io::Result<(String, Files)> {
+pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std::io::Result<(String, Files)> {
     let schema_php = schema_php::render(&built.schema);
     let public = project.join("public");
     let public = if public.is_dir() {

@@ -321,11 +321,13 @@ pub fn check_date_literal(args: &[crate::ir::ArrEl], span: Span) -> Result<(), D
     let ExprKind::Str(text) = &expr.kind else {
         return Ok(());
     };
-    let syntax = regex::Regex::new(
-        r"^(?:([+-][0-9]{6}|[0-9]{4})(?:-[0-9]{2}(?:-[0-9]{2})?)?|([+-][0-9]{6}|[0-9]{4})-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:Z|[+-][0-9]{2}:[0-9]{2})?)$",
-    )
-    .expect("ISO date grammar");
-    if !syntax.is_match(text) || text.starts_with("-000000") {
+    static SYNTAX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"^(?:([+-][0-9]{6}|[0-9]{4})(?:-[0-9]{2}(?:-[0-9]{2})?)?|([+-][0-9]{6}|[0-9]{4})-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:Z|[+-][0-9]{2}:[0-9]{2})?)$",
+        )
+        .expect("ISO date grammar")
+    });
+    if !SYNTAX.is_match(text) || text.starts_with("-000000") {
         return Err(Diag::new(span, "Date strings require the supported ISO format")
             .help("pass an ISO date/time string or an epoch timestamp; legacy date parsing isn't supported"));
     }

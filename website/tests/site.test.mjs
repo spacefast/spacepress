@@ -126,6 +126,21 @@ test("examples: each links to its code and opens in the playground, and the list
   await close();
 });
 
+test("blog: the menu links to it, and a post renders in the site's layout", async () => {
+  const { page, errors, status, close } = await open("/");
+  assert.equal(status, 200);
+  await page.locator("header.top nav a", { hasText: "Blog" }).click();
+  await page.waitForURL(/\/blog$/);
+  const first = page.locator(".postlist li a").first();
+  const title = await first.textContent();
+  await first.click();
+  await page.waitForURL(/\/blog\/[\w-]+$/);
+  assert.equal(await page.locator("article h1").textContent(), title);
+  assert.equal(await page.locator("header.top .brand").count(), 1, "the post is not inside the site's layout");
+  assert.deepEqual(errors, []);
+  await close();
+});
+
 test("the star job can only be started by an admin", async () => {
   const response = await fetch(`${base}/__first/api/v1/actions/refreshStarsNow`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   assert.ok([401, 403].includes(response.status), `POST refreshStarsNow answered ${response.status}`);

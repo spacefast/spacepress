@@ -120,10 +120,10 @@ into `public/play-data.json` by `scripts/run-data.ts`.
 SITE_URL=http://localhost:8960 node --test tests/site.test.mjs
 ```
 
-Nine tests against the running site: the guide's sections and drawn code, the guide without
+Ten tests against the running site: the guide's sections and drawn code, the guide without
 JavaScript, phone width, the docs' navigation and highlighted code, an edit that builds a
 migration and is shared and reopened, an announced syntax error, the examples page with its JSON
-and its playground link, and that a visitor can neither start the star job nor list `/shares`. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
+and its playground link, the blog from the menu to a post, and that a visitor can neither start the star job nor list `/shares`. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
 not wired into CI yet.
 
 ## Opening it from another machine
@@ -141,8 +141,9 @@ It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://loca
 
 ## What First lacks for this site (15 November 2026)
 
-- **WordPress's own posts as a kind.** The blog is an app collection for now. It moves to
-  `wp.posts` when that lands, and is out of the menu until then.
+- **WordPress's own posts as a kind.** The blog is an app collection for now (post type
+  `first_posts`, under Collections in First Admin, not under WordPress's Posts). It moves to
+  `wp.posts` when that lands; `/blog` and `/blog/<slug>` stay the same.
 - **Reading a file from a page.** There is no text import, so `scripts/sources.mjs` copies the
   example files into a TypeScript module.
 - **A code component for TSX.** Markdown code fences are highlighted in PHP; TSX has nothing, so

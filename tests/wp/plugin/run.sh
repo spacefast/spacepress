@@ -230,6 +230,10 @@ send() { curl -s -o "$work/answer.json" -w '%{http_code}' -u "$admin" -H 'Conten
 "$harness" compose exec -T wordpress sh -c "! find /var/www/html/wp-content -name escaped.php | grep -q ." || fail "nothing was written outside the store"
 # The deployment's token only selects code on that deployment's own routes, for an administrator.
 [[ $(curl -s -H "X-First-Deployment: $id:$token" "$url/__first/api/v1" | json data.name) == pluginlane && $(status -H "X-First-Deployment: $id:$token" "$url/__first/api/v1/tasks") == 200 ]] || fail "a deployment token on another URL still gets the live build"
+# Naming the deployment's route in the query string of another URL is not being on that route.
+[[ $(status -H "X-First-Deployment: $id:$token" "$url/__first/api/v1/tasks?rest_route=/first-deploy/v1/deployments/$id/plan") == 200 ]] || fail "a deployment token with its route named in another URL's query still gets the live build"
+# Nor does it make an application password sign anyone in outside the REST API.
+[[ $(curl -s -u "$admin" -d 'action=heartbeat' "$url/wp-admin/admin-ajax.php?rest_route=/first-deploy/v1/site") == *'"wp-auth-check":false'* ]] || fail "an application password signs nobody in on admin-ajax.php"
 [[ $(status -u "$editor" -H "X-First-Deployment: $id:$token" "$api/deployments/$id/plan") == 403 ]] || fail "the token alone does not open the plan"
 [[ $(status -u "$admin" -H "X-First-Deployment: $id:$(printf 'f%.0s' {1..64})" "$api/deployments/$id/plan") == 409 ]] || fail "a wrong token mounts nothing"
 [[ $(status -u "$admin" -X POST -H "X-First-Deployment: $id:$token" -H 'X-First-Mount: activate' "$api/deployments/$id/activate") == 409 ]] || fail "a deployment whose trees never arrived can't go live"

@@ -25,11 +25,7 @@ final class Receiver
     {
         // Core accepts an application password only on a request it already knows is REST. A plugin that
         // asks for the current user earlier would otherwise leave the deploy routes signed out.
-        add_filter('application_password_is_api_request', static function (bool $api): bool {
-            $route = is_string($_GET['rest_route'] ?? null) ? $_GET['rest_route'] : (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
-
-            return $api || str_contains($route, '/' . Site::REST . '/');
-        });
+        add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || Site::route() !== null);
         add_action('rest_api_init', static function (): void {
             $read = static fn (): bool|\WP_Error => self::allowed(false);
             $write = static fn (): bool|\WP_Error => self::allowed(true);

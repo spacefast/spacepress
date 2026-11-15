@@ -85,10 +85,9 @@ final class Mount
         if (is_string($header) && preg_match('/\A([0-9a-f]{32}):([0-9a-f]{64})\z/D', $header, $match) === 1) {
             // Only on that deployment's own routes: the token never puts another page of the site on
             // a build that isn't live.
-            $route = is_string($_GET['rest_route'] ?? null) ? $_GET['rest_route'] : (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
             $pending = get_option(Site::PENDING, []);
             $record = is_array($pending) ? ($pending[$match[1]] ?? null) : null;
-            if (str_contains($route, '/' . Site::REST . '/deployments/' . $match[1] . '/')
+            if (str_starts_with((string) Site::route(), '/deployments/' . $match[1] . '/')
                 && is_array($record) && is_string($record['token'] ?? null) && hash_equals($record['token'], hash('sha256', $match[2]))
                 && (int) ($record['expires'] ?? 0) > time() && Site::validId($record['build'] ?? null)) {
                 $mode = ($_SERVER['HTTP_X_FIRST_MOUNT'] ?? '') === 'activate' ? 'activate' : 'inspect';

@@ -58,6 +58,35 @@ final class Site
         return content_url('first-assets');
     }
 
+    /**
+     * This request's route below the deploy namespace (`/deployments/<id>/plan`), or null when it is not
+     * a request WordPress serves from the REST API: the path under the site's REST prefix, or
+     * `?rest_route=` on the front controller. A deploy route named in the query string of any other
+     * script (admin-ajax.php, First's own API) is not one.
+     */
+    public static function route(): ?string
+    {
+        $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
+        $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
+        if ($base !== '' && str_starts_with($path, $base . '/')) {
+            $path = substr($path, strlen($base));
+        }
+        if (str_starts_with($path, '/index.php/')) {
+            $path = substr($path, strlen('/index.php'));
+        }
+        $prefix = '/' . rest_get_url_prefix();
+        if (str_starts_with($path, $prefix . '/')) {
+            $route = substr($path, strlen($prefix));
+        } elseif (($path === '/' || $path === '/index.php') && is_string($_GET['rest_route'] ?? null)) {
+            $route = $_GET['rest_route'];
+        } else {
+            return null;
+        }
+        $namespace = '/' . self::REST;
+
+        return $route === $namespace || str_starts_with($route, $namespace . '/') ? substr($route, strlen($namespace)) : null;
+    }
+
     public static function validId(mixed $id): bool
     {
         return is_string($id) && preg_match('/\A[0-9a-f]{64}\z/D', $id) === 1;

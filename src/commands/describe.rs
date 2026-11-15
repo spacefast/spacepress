@@ -195,6 +195,7 @@ fn routes(app: &App, schema: &Schema) -> Vec<Value> {
     app.routes
         .iter()
         .chain(&app.not_found)
+        .chain(&app.login)
         .map(|route| {
             let file = route.page.as_ref().or(route.handler.as_ref());
             let compiled = file.and_then(|file| app.files.get(file));

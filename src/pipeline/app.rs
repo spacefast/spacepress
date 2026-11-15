@@ -82,7 +82,7 @@ fn stem(file: &str) -> String {
 }
 
 pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
-    if program.app.routes.is_empty() && program.app.not_found.is_none() {
+    if program.app.routes.is_empty() && program.app.not_found.is_none() && program.app.login.is_none() {
         return Ok(());
     }
     let mut files = indexmap::IndexMap::new();
@@ -334,6 +334,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
     ext.schema.app = Some(crate::schema::App {
         routes: program.app.routes.iter().map(route).collect(),
         not_found: program.app.not_found.as_ref().map(route),
+        login: program.app.login.as_ref().map(route),
         files,
         content: indexmap::IndexMap::new(),
         legacy_routes: false,

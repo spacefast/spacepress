@@ -274,6 +274,26 @@ fn screen_mistakes_are_refused_where_they_are_written_with_a_fix() {
 }
 
 #[test]
+fn define_config_takes_no_screens_option() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("first.config.ts"),
+        format!(
+            "{ACTIONS}\nexport const s = adminScreen({{ title: \"S\", view: {{ action: listPending, fields: {{ id: {{}} }} }} }});\nexport default defineConfig({{ name: \"shop\", screens: {{ s }} }});\n"
+        ),
+    )
+    .unwrap();
+    let out = check(tmp.path());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("defineConfig() has no option `screens`"), "{stderr}");
+    assert!(
+        stderr.contains(&format!("--> first.config.ts:{}:", line(1))),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn an_agents_false_action_has_no_ability_for_a_screen() {
     let tmp = project(
         "export const hidden = action({ input: {}, readonly: true, agents: false, handler: () => [] });\nexport const s = adminScreen({ title: \"S\", view: { action: hidden, fields: { id: {} } } });",

@@ -212,6 +212,19 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             if let Some(d) = removed_key(ev, program, config, key) {
                 return Err(d);
             }
+            // `screens` is the registry exports fill, never a config option.
+            if key == "screens" {
+                let span = ev.key_span(config, key).map_or(
+                    Span {
+                        file: program.modules[program.entry].file,
+                        start: 0,
+                        end: 0,
+                    },
+                    |value| crate::diag::key_of(value, key),
+                );
+                return Err(Diag::new(span, "defineConfig() has no option `screens`: a screen registers by its export")
+                    .help("write `export const pendingOrders = adminScreen({ ... })` in first.config.ts or any file under first/; the export name is its id"));
+            }
         }
     }
     let mut taken: IndexMap<String, Taken> = IndexMap::new();

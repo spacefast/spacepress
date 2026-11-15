@@ -55,6 +55,43 @@ final class Site
     }
 
     /**
+     * What to tell the site's owner about where the store is, or null. The store holds PHP, schema
+     * snapshots, migrations and seed content. Under the web root, what keeps it from being served is
+     * its `.htaccess`, which Apache and LiteSpeed read and nginx does not; a random directory name
+     * no URL carries is the only thing left on the others. A site that can keeps it outside the web
+     * root with `FIRST_STORE_DIR`.
+     */
+    public static function exposure(): ?string
+    {
+        $store = self::real(self::root());
+        $web = self::real(ABSPATH);
+        // Core's own answer to "where does the document root end": wp-content can be moved out of it.
+        $content = self::real(WP_CONTENT_DIR);
+        $inside = static fn (string $base): bool => $base !== '' && ($store === $base || str_starts_with($store, $base . '/'));
+        if (!$inside($web) && !$inside($content)) {
+            return null;
+        }
+        $server = (string) ($_SERVER['SERVER_SOFTWARE'] ?? '');
+        if (preg_match('/apache|litespeed/i', $server) === 1) {
+            return null;
+        }
+
+        return 'First keeps this site\'s builds (PHP, database migrations, seed content) in ' . self::root()
+            . ', which is inside the folder the web server serves. '
+            . ($server === '' ? 'This server' : 'This server (' . preg_replace('/[^A-Za-z0-9 ._\/-]/', '', substr($server, 0, 40)) . ')')
+            . ' may not read the .htaccess file that blocks it, so only the folder\'s random name keeps those files private.'
+            . ' Set FIRST_STORE_DIR in wp-config.php to a folder outside the web root, or have the server deny that folder.';
+    }
+
+    /** A path with its links resolved when it exists, as written otherwise, without a trailing slash. */
+    private static function real(string $path): string
+    {
+        $real = realpath($path);
+
+        return rtrim(str_replace('\\', '/', $real === false ? $path : $real), '/');
+    }
+
+    /**
      * The public copy of each stored tree's scripts, styles, images and fonts, at the same paths. A
      * tree is named by the hash of its contents, so the sites of a network share this directory: two
      * sites that hold the same tree hold the same files. The store itself is per site (its key is a

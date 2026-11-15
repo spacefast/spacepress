@@ -175,6 +175,7 @@ final class Receiver
             'baseline' => Site::baseline(),
             'mounted' => Mount::mounted(),
             'mountError' => Mount::error(),
+            'warnings' => array_values(array_filter([Site::exposure()])),
         ];
     }
 

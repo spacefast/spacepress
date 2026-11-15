@@ -92,6 +92,12 @@ fn run(args: &[String]) -> Result<(), String> {
     if let Some(closed) = info["closed"].as_str() {
         return Err(closed.to_string());
     }
+    // What the site wants its owner to know, such as a build store a web server could serve.
+    for warning in info["warnings"].as_array().into_iter().flatten() {
+        if let Some(text) = warning.as_str() {
+            eprintln!("warning: {text}");
+        }
+    }
 
     // The build the site runs now is what this one is compared with.
     let work = tempfile::tempdir().map_err(|e| e.to_string())?;

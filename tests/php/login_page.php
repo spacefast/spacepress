@@ -133,6 +133,9 @@ $out['logout'] = ['status' => $logout['status'], 'location' => $logout['location
 $out['loggedout'] = view($b->go((string) $logout['location']));
 $out['lost password'] = view($b->go('/wp-login.php?action=lostpassword'));
 $out['checkemail'] = view($b->go('/wp-login.php?checkemail=confirm'));
+// <LoginForm /> on any other page signs in and comes back to that page.
+$home = view((new Browser($url))->go('/?from=home'));
+$out['form elsewhere'] = ['action' => $home['action'], 'redirect_to' => $home['inputs']['redirect_to'] ?? null, 'cache' => $home['cache']];
 $guard = (new Browser($url))->go('/account');
 $out['guard'] = ['status' => $guard['status'], 'to login' => str_starts_with((string) $guard['location'], $login)];
 

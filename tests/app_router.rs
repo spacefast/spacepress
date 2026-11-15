@@ -5124,6 +5124,19 @@ fn one_sign_in_page_on_wordpress() {
         "{seen}"
     );
     assert_eq!(seen["lost password"]["wordpress"], true, "{seen}");
+    let elsewhere = &seen["form elsewhere"];
+    assert!(
+        elsewhere["action"].as_str().unwrap().ends_with("/wp-login.php"),
+        "{seen}"
+    );
+    assert!(
+        elsewhere["redirect_to"].as_str().unwrap().ends_with("/?from=home"),
+        "{seen}"
+    );
+    assert_eq!(
+        elsewhere["cache"], "public, max-age=0, s-maxage=300, must-revalidate",
+        "a page with the form stays cacheable: {seen}"
+    );
     assert_eq!(
         seen["guard"],
         serde_json::json!({ "status": 302, "to login": true }),

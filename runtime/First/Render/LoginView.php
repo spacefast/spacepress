@@ -159,18 +159,13 @@ final class LoginView
     /** The view outside wp-login.php: nothing to report, and back to this page after signing in. */
     private static function fresh(): array
     {
-        $here = home_url((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH));
-        $query = (string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY);
-        // home_url() already holds a subdirectory install's path; REQUEST_URI holds it too.
-        $base = (string) wp_parse_url(home_url('/'), PHP_URL_PATH);
-        $path = (string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
-        if ($base !== '/' && str_starts_with($path, rtrim($base, '/'))) {
-            $here = home_url(substr($path, strlen(rtrim($base, '/'))) ?: '/');
-        }
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        // REQUEST_URI already holds a subdirectory install's path; home_url() would add it again.
+        $here = (string) wp_parse_url(home_url('/'), PHP_URL_SCHEME) . '://' . (string) wp_parse_url(home_url('/'), PHP_URL_HOST)
+            . (($port = wp_parse_url(home_url('/'), PHP_URL_PORT)) ? ":$port" : '') . (str_starts_with($uri, '/') ? $uri : '/');
         return [
             'errors' => '', 'messages' => '', 'errorList' => [], 'messageList' => [],
-            'login' => '', 'remember' => false,
-            'redirectTo' => $here . ($query !== '' ? '?' . $query : ''),
+            'login' => '', 'remember' => false, 'redirectTo' => $here,
         ];
     }
 

@@ -41,6 +41,8 @@ final class Connection
     /** @var array<int, true> SQLite handles (by object id) that already carry First's functions */
     /** @var \WeakMap<\PDO, true>|null the SQLite handles that already carry First's functions */
     private static ?\WeakMap $prepared = null;
+    /** @var (\Closure(string): void)|null sees every statement run() is given (tests and measurement); null otherwise */
+    public static ?\Closure $observer = null;
 
     public function __construct(private readonly \wpdb $wpdb)
     {
@@ -92,6 +94,9 @@ final class Connection
             // what follows would commit on its own. Refuse it, and the commit.
             $this->rollbackOnly = true;
             throw new DbError('the database connection was lost and replaced during the transaction', 2006);
+        }
+        if (self::$observer !== null) {
+            (self::$observer)($sql);
         }
         $values = array_map(static fn ($v) => is_float($v) ? \First\Js::numStr($v) : $v, array_values($params));
         $dbh = $this->wpdb->dbh;

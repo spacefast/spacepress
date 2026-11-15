@@ -77,8 +77,14 @@ final class RoutePages
         // After the app's post types (0) and its migrations (1), beside ContentPages (2). A managed
         // build reconciles from initialize ({@see install()}); its edit protection below is registered
         // on every request either way.
-        if (!Runtime::managed()) {
+        if (Runtime::installs()) {
             add_action('init', [$self, 'reconcile'], 2);
+        }
+        // A route's Page trashed, restored or deleted by hand: the next request checks the Pages again.
+        if (!Runtime::managed()) {
+            $changed = static fn (int $id) => $self->routeOf($id) !== null && InstallMarker::forget();
+            add_action('transition_post_status', static fn (string $new, string $old, \WP_Post $post) => $new !== $old && $changed($post->ID), 10, 3);
+            add_action('deleted_post', $changed, 10, 1);
         }
         add_filter('page_link', [$self, 'link'], 10, 2);
         add_filter('get_canonical_url', [$self, 'canonicalUrl'], 10, 2);
@@ -207,6 +213,12 @@ final class RoutePages
         }
 
         return $steps;
+    }
+
+    /** Whether the Pages match this build's routes: {@see reconcile()}'s own check. */
+    public static function reconciled(): bool
+    {
+        return self::$instance === null || self::$instance->current();
     }
 
     /** init: the Pages match this build's routes, once per build (or after something removed one). */

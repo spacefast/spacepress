@@ -44,6 +44,18 @@ final class Db
      */
     public static function instance(): self
     {
+        static $booting = false;
+        if (self::$current === null && self::$instance === null && !$booting) {
+            // On WordPress the app boots on first use (a hook that reads through `db()` before any
+            // request handler did), not on every request.
+            $booting = true;
+            try {
+                Wp\Plugin::instance()?->app();
+            } finally {
+                $booting = false;
+            }
+        }
+
         return self::$current ?? self::$instance ?? throw new \LogicException('First\Db is not initialised; call App::boot() first');
     }
 

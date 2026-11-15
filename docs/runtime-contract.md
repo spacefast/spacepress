@@ -465,7 +465,22 @@ or guarded `callable(Store): void` upgrades (a column check against
 `information_schema` before `ADD COLUMN`). `apply(Store)` rejects request
 transactions before running SQL or guards; the runtime applies registrations
 on activation and on the first request after an update, outside request
-transactions. `Store` exposes `afterCommit(callable)` and
+transactions.
+
+On a plugin-installed site, the checks behind "the first request after an
+update" (the stored-name upgrade, the system tables, the app's migration ledger,
+Action Scheduler groups and recurring actions, route and content Pages, Polylang
+languages, the search index shape, the runtime-schema capability) run until one
+request finds them all in place. That request records the autoloaded option
+`first_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
+`schema.php`, the system-tables version, the runtime version and hash, and the
+UTC day. While it matches, requests skip those checks, as a managed build always
+does (`Runtime::installs()`). It is recorded at the end of `wp_loaded` only after
+each check is read again and passes, so a failed, refused or held install never
+records it. A new build, a runtime update or a new day finds no match. Activating,
+deactivating or migrating the app, a change to an option those checks keep, to
+the active plugins or to an app route's Page, and a cancelled Action Scheduler
+action delete it. `Store` exposes `afterCommit(callable)` and
 `applySystemStatements(list<string>)` for these seams.
 
 `Wp\Scf::fieldFilter(fn)` transforms each fully-built field, including nested

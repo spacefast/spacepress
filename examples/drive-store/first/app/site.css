@@ -73,3 +73,11 @@ button.primary { background: var(--accent); color: var(--accent-ink); border-col
 .list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .reviews { margin-top: 32px; }
 code { font-family: var(--mono); font-size: 13px; }
+
+/* Sign-in page (first/app/login.tsx) */
+.signin { max-width: 24rem; margin: 2rem auto; }
+.signin-form { display: grid; gap: 0.75rem; }
+.signin-form label { display: grid; gap: 0.25rem; }
+.signin-form input[type="text"], .signin-form input[type="password"] { padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; font: inherit; }
+.signin-form input[type="submit"], .signin-form button { padding: 0.55rem 1rem; border: 0; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font: inherit; cursor: pointer; }
+.signin .problem { color: var(--bad); }

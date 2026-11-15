@@ -257,19 +257,44 @@ writeFileSync(join(out, "play-data.json"), runData.stdout);
 copyFileSync(wasm, join(out, "compiler.wasm"));
 mkdirSync(join(out, "files", "plugins"), { recursive: true });
 for (const slug of ["first-runtime", "first-identity", "first-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "files", "plugins", `${slug}.zip`));
-// Bun names a chunk after its entry; one that starts with a dot would not be served by every host.
-const play = await Bun.build({ entrypoints: [join(here, "play.js")], minify: true, target: "browser", format: "esm", splitting: true, outdir: join(out, "play"), naming: { entry: "[name].[ext]", chunk: "c-[hash].[ext]" } });
+// One script file. The highlighter ships 240 grammars and 70 themes, each behind its own
+// `import()`; under `first dev` every file costs a WordPress request, and 28 of them delayed the
+// code panes. So only the grammars these apps and their build output use, and the two themes, are
+// kept, and without `splitting` Bun puts them in the same file. Any other language is shown as
+// plain text by the library.
+const keep = {
+  "@shikijs/langs": ["typescript", "tsx", "javascript", "jsx", "json", "css", "sql", "php", "html", "xml", "markdown"],
+  "@pierre/theme": ["pierre-dark", "pierre-light"],
+  "@shikijs/themes": [],
+  "@pierre/highlights/themes": [],
+};
+// The library can also highlight with a second engine (oniguruma as 600 KB of wasm) and a second
+// highlighter; this site asks for neither, so they are left out too.
+const unused = ['import("shiki/wasm")', 'import("shiki/engine/oniguruma")', 'import("./backends/highlights.js")'];
+const missing = (name) => `Promise.reject(new Error(${JSON.stringify(`${name} is not in this build`)}))`;
+const onlyKept = {
+  name: "only-kept-grammars",
+  setup(build) {
+    build.onLoad({ filter: /(shiki\/dist\/langs-bundle-full[^/]*\.mjs|@pierre\/theming\/dist\/collections\/(pierre|shiki)\.js|@pierre\/highlights\/dist\/themes\/loader\.js|@pierre\/diffs\/dist\/highlighter\/(backends\/shiki|shared_highlighter)\.js)$/ }, (args) => {
+      let contents = readFileSync(args.path, "utf8").replace(/import\("(@shikijs\/langs|@shikijs\/themes|@pierre\/theme|@pierre\/highlights\/themes)\/([^"]+)"\)/g, (whole, pkg, name) => keep[pkg].includes(name) ? whole : missing(name));
+      for (const call of unused) contents = contents.replaceAll(call, missing(call.slice(8, -2)));
+      return { loader: "js", contents };
+    });
+  },
+};
+const play = await Bun.build({ entrypoints: [join(here, "play.js")], minify: true, target: "browser", format: "esm", plugins: [onlyKept] });
 if (!play.success) throw new AggregateError(play.logs, "playground bundle failed");
-writeFileSync(join(out, "play.js"), 'import "./play/play.js";\n');
+if (play.outputs.length !== 1) throw new Error(`the playground script came out as ${play.outputs.length} files, expected one`);
+writeFileSync(join(out, "play.js"), await play.outputs[0].text());
 
 const notice = ["@pierre/diffs", "@pierre/trees"].map((pkg) => {
   const dir = join(here, "node_modules", pkg);
   const version = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version;
   return `${pkg} ${version}\n\n${readFileSync(join(dir, "LICENSE.md"), "utf8")}`;
 }).join("\n\n----------------------------------------\n\n");
-writeFileSync(join(out, "third-party-licenses.txt"), `This site renders code, file trees and diffs with these libraries.\npierre-diffs.css, pierre-trees.css, guide.js and play/ contain parts of them.\n\n${notice}\n`);
+writeFileSync(join(out, "third-party-licenses.txt"), `This site renders code, file trees and diffs with these libraries.\npierre-diffs.css, pierre-trees.css, guide.js and play.js contain parts of them.\n\n${notice}\n`);
 
 const kb = (f) => `${String(Math.round(statSync(f).size / 1024)).padStart(7)} KB  ${relative(site, f)}`;
 console.log(`${jobs.length} blocks, ${treeCount} trees`);
 for (const f of [join(app, "page.tsx"), join(app, "play", "page.tsx"), join(app, "site.css"), join(out, "play-data.json"), join(out, "compiler.wasm")]) console.log(kb(f));
-console.log(`${String(readdirSync(join(out, "play")).length).padStart(7)} files in public/play/ (the playground script and the highlighter grammars it loads on demand)`);
+console.log(kb(join(out, "play.js")));

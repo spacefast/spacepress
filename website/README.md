@@ -94,8 +94,11 @@ It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://loca
   site (`plugins` in `play-data.json`; `PLUGINS_URL=… bun build.mjs` changes it). The local and
   published zips had the same SHA-256 when this was written.
 - Each `public/` file is answered by WordPress in about 200 ms under `first dev`. The playground
-  loads about 25 small script chunks (highlighter grammars), so its code panes fill one to two
-  seconds after the page.
+  used to load 28 script files (the highlighter puts every grammar and theme behind its own
+  `import()`), and its code panes filled about 1.6 s after the component was ready. `build.mjs`
+  now keeps the eleven grammars and two themes the site uses and writes one `public/play.js`
+  (2.1 MB); the panes draw as soon as the component is ready. A file in another language shows
+  as plain text.
 
 ## The published copy
 

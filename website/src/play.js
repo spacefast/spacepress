@@ -21,8 +21,8 @@ const base = new URL(".", import.meta.url);
 // The compiler (7 MB) and the examples are fetched once, on the first component that needs them.
 let shared;
 const load = () => (shared ??= Promise.all([
-  Compiler.load(fetch(new URL("../compiler.wasm", base))),
-  fetch(new URL("../play-data.json", base)).then((r) => r.json()),
+  Compiler.load(fetch(new URL("compiler.wasm", base))),
+  fetch(new URL("play-data.json", base)).then((r) => r.json()),
 ]).then(([compiler, data]) => ({ compiler, data })));
 
 const el = (tag, props = {}, ...children) => {

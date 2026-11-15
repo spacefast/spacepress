@@ -1271,6 +1271,24 @@ importers:
         specifier: 'catalog:'
         version: 2.1.1
 
+  routes/classic-admin:
+    dependencies:
+      '@first-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@first-admin/boot':
+        specifier: workspace:*
+        version: link:../../packages/boot
+      '@types/react':
+        specifier: 'catalog:'
+        version: 18.3.27
+      '@wordpress/compose':
+        specifier: 8.7.2-next.v.202608281122.0
+        version: 8.7.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/route':
+        specifier: 0.20.1-next.v.202608281122.0
+        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+
   routes/collection-edit:
     dependencies:
       '@first-admin/schema':
@@ -1571,24 +1589,6 @@ importers:
       '@first-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
-      '@wordpress/route':
-        specifier: 0.20.1-next.v.202608281122.0
-        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-
-  routes/legacy-admin:
-    dependencies:
-      '@first-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@first-admin/boot':
-        specifier: workspace:*
-        version: link:../../packages/boot
-      '@types/react':
-        specifier: 'catalog:'
-        version: 18.3.27
-      '@wordpress/compose':
-        specifier: 8.7.2-next.v.202608281122.0
-        version: 8.7.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)

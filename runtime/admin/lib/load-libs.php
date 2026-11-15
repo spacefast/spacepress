@@ -43,8 +43,8 @@ require_once __DIR__ . '/site-preview.php';
 // i18n support in First Admin.
 require_once __DIR__ . '/i18n.php';
 
-// Legacy routes support in First Admin.
-require_once __DIR__ . '/legacy-route.php';
+// Classic wp-admin pages framed in First Admin (/classic/<slug>), and developer mode.
+require_once __DIR__ . '/classic-route.php';
 
 // Default First Admin menu registration.
 require_once __DIR__ . '/first-admin-menu.php';

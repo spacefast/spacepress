@@ -1385,8 +1385,9 @@ fn frontend_modes_on_wordpress() {
     let off = modes("off", Some("false"), false);
     let external = modes("external", Some(r#""https://front.example""#), false);
     // In every mode wp-admin and sign-in work in a browser (spec §5): signed out, wp-admin is the
-    // login screen; signing in lands on First Admin, the default admin; classic wp-admin's dashboard
-    // and a list screen render beside it; wp-admin's REST nonce works; signing out ends the session.
+    // login screen; signing in lands on First Admin, the default admin; classic pages open framed in
+    // it until the user turns developer mode on, then classic wp-admin's dashboard and a list screen
+    // render beside it; wp-admin's REST nonce works; signing out ends the session.
     for (mode, seen) in [("theme", &theme), ("app", &app), ("off", &off), ("external", &external)] {
         assert_eq!(
             seen["admin"],
@@ -1394,6 +1395,8 @@ fn frontend_modes_on_wordpress() {
                 "signedOut": { "at": "/wp-login.php", "redirectTo": true },
                 "loginForm": 1,
                 "signedIn": "first admin",
+                "withoutDeveloperMode": { "dashboard": "/", "pages": "/classic/edit.php?post_type=page" },
+                "developerMode": true,
                 "classic": { "at": "/wp-admin/index.php", "adminBar": 1, "menu": 1, "dashboard": 1 },
                 "pages": { "title": "Pages", "table": 1 },
                 "rest": { "status": 200, "role": "administrator" },

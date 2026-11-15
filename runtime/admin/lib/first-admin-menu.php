@@ -226,6 +226,9 @@ function first_admin_register_settings_menu_items() {
 				'parent' => 'settings',
 			)
 		);
+		// The rest of wp-admin's Settings (Writing, Discussion, Media, Permalinks, Privacy and plugin
+		// pages), framed: General and Reading have screens of their own above.
+		first_admin_register_classic_children( 'settings', null, null, 'options-general.php', array( 'options-general.php', 'options-reading.php' ) );
 	}
 }
 
@@ -271,7 +274,7 @@ function first_admin_get_menu_to_from_slug( $slug, $parent_slug = 'admin.php' ) 
 	$final_slug = str_replace( '&amp;', '&', $final_slug );
 
 	// Do not wrap external URLs.
-	return empty( $parts['host'] ) ? '/legacy/' . rawurlencode( $final_slug ) : $final_slug;
+	return empty( $parts['host'] ) ? '/classic/' . rawurlencode( $final_slug ) : $final_slug;
 }
 
 /**
@@ -298,7 +301,7 @@ function first_admin_get_wp_admin_slug( $href ) {
  * This function scans the WordPress admin menu globals to find menu items
  * that are not part of core WordPress and registers them in First Admin.
  */
-function first_admin_register_legacy_menu_items() {
+function first_admin_register_classic_menu_items() {
 	global $menu, $submenu;
 
 	// Core WordPress menu items to exclude.
@@ -317,7 +320,7 @@ function first_admin_register_legacy_menu_items() {
 		'separator-last',      // Separator.
 	);
 
-	// Exclude custom post types and taxonomies from legacy menu registration.
+	// Exclude custom post types and taxonomies from classic menu registration.
 	$query             = array(
 		'public'       => true,
 		'show_ui'      => true,
@@ -333,11 +336,11 @@ function first_admin_register_legacy_menu_items() {
 	}
 
 	/**
-	 * Filter the list of core menu items to exclude from legacy menu registration.
+	 * Filter the list of core menu items to exclude from classic menu registration.
 	 *
 	 * @param array $core_menu_items Array of menu slugs to exclude.
 	 */
-	$core_menu_items = apply_filters( 'first_admin_legacy_menu_items_exclude', $core_menu_items );
+	$core_menu_items = apply_filters( 'first_admin_classic_menu_items_exclude', $core_menu_items );
 
 	if ( ! empty( $menu ) ) {
 		foreach ( $menu as $menu_item ) {
@@ -359,7 +362,7 @@ function first_admin_register_legacy_menu_items() {
 
 			$has_submenus = isset( $submenu[ $menu_slug ] ) && ! empty( $submenu[ $menu_slug ] );
 
-			$menu_id   = 'legacy-' . sanitize_key( $menu_slug );
+			$menu_id   = 'classic-' . sanitize_key( $menu_slug );
 			$menu_args = array(
 				'to'    => first_admin_get_menu_to_from_slug( $menu_slug ),
 				'label' => preg_replace( '/<.*/', '', $menu_title ),
@@ -388,7 +391,7 @@ function first_admin_register_legacy_menu_items() {
 					}
 
 					first_admin_register_menu_item(
-						'legacy-submenu-' . sanitize_key( $menu_slug . '-' . $submenu_item[2] ),
+						'classic-submenu-' . sanitize_key( $menu_slug . '-' . $submenu_item[2] ),
 						array(
 							'to'     => first_admin_get_menu_to_from_slug( $submenu_item[2], $menu_slug ),
 							'label'  => preg_replace( '/<.*/', '', $submenu_item[0] ),
@@ -407,7 +410,7 @@ function first_admin_register_legacy_menu_items() {
  * This function scans the WordPress admin bar menu items
  * that are not part of core WordPress and registers them in First Admin.
  */
-function first_admin_register_legacy_meta_menu_items() {
+function first_admin_register_classic_meta_menu_items() {
 	global $wp_admin_bar;
 	// `get_nodes` returns an array of cloned items. Mutating them is fine.
 	// See https://github.com/WordPress/wordpress-develop/blob/c726220a21d13fdb5409372b652c9460c59ce1db/src/wp-includes/class-wp-admin-bar.php#L237
@@ -423,7 +426,7 @@ function first_admin_register_legacy_meta_menu_items() {
 		'new-user',  // New User.
 	);
 
-	// Exclude custom post types and taxonomies from legacy menu registration.
+	// Exclude custom post types and taxonomies from classic menu registration.
 	$query      = array(
 		'show_ui'      => true,
 		'show_in_rest' => true,
@@ -434,11 +437,11 @@ function first_admin_register_legacy_meta_menu_items() {
 	}
 
 	/**
-	 * Filter the list of core menu items to exclude from legacy menu registration.
+	 * Filter the list of core menu items to exclude from classic menu registration.
 	 *
 	 * @param array $core_menu_items Array of menu slugs to exclude.
 	 */
-	$core_menu_items = apply_filters( 'first_admin_legacy_meta_menu_items_exclude', $core_menu_items );
+	$core_menu_items = apply_filters( 'first_admin_classic_meta_menu_items_exclude', $core_menu_items );
 
 	foreach ( $wp_admin_bar_nodes as $node ) {
 		$menu_id = $node->id;
@@ -473,6 +476,6 @@ function first_admin_register_legacy_meta_menu_items() {
 }
 
 add_action( 'first_admin_init', 'first_admin_register_menu_items' );
-add_action( 'first_admin_init', 'first_admin_register_legacy_menu_items' );
-add_action( 'first_admin_init', 'first_admin_register_legacy_meta_menu_items' );
+add_action( 'first_admin_init', 'first_admin_register_classic_menu_items' );
+add_action( 'first_admin_init', 'first_admin_register_classic_meta_menu_items' );
 add_action( 'first_admin_init', 'first_admin_register_settings_menu_items', 99999 );

@@ -44,6 +44,16 @@ async function signIn( page: Page, role: 'admin' | 'subscriber' ) {
 	await expect( page ).toHaveURL( `${ site }/wp-admin/new/` );
 }
 
+/**
+ * Classic wp-admin opens on its own only with developer mode on (otherwise a classic page is framed
+ * in First Admin): this journey looks at the classic host as itself, so it turns that on for the
+ * role, and off again after.
+ */
+async function developerMode( request: APIRequestContext, role: string, on: boolean ) {
+	const set = await request.post( `${ site }/wp-json/wp/v2/users/me`, { headers: auth( role ), data: { first_admin_developer_mode: on } } );
+	expect( set.status(), await set.text() ).toBe( 200 );
+}
+
 const hosts = {
 	'First Admin': `/wp-admin/new/screens/test-comments`,
 	'classic wp-admin': `/wp-admin/admin.php?page=first-screen-test-comments`,
@@ -84,6 +94,7 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		const body = `Screen check ${ which } ${ Date.now() }`;
 		made.push( { which, body, id: await comment( request, postId, body ) } );
 	}
+	await developerMode( request, 'admin', true );
 	await signIn( page, 'admin' );
 	const seen: Record< string, { headings: string[]; actions: string[] } > = {};
 	for ( const [ which, path ] of Object.entries( hosts ) ) {
@@ -109,6 +120,7 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		// The list reruns its ability: an approved comment is no longer waiting.
 		await expect( page.locator( '[data-screen="test-comments"]' ).getByRole( 'row' ).filter( { hasText: body } ) ).toHaveCount( 0 );
 	}
+	await developerMode( request, 'admin', false );
 	expect( seen[ 'classic wp-admin' ] ).toEqual( seen[ 'First Admin' ] );
 	expect( seen[ 'First Admin' ].actions ).toContain( 'Approve' );
 	expect( errors ).toEqual( [] );
@@ -117,6 +129,7 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 test( 'the server decides access, the same way in both admins', async ( { page, request } ) => {
 	const body = `Subscriber check ${ Date.now() }`;
 	const id = await comment( request, await post( request ), body );
+	await developerMode( request, 'subscriber', true );
 	await signIn( page, 'subscriber' );
 	for ( const path of Object.values( hosts ) ) {
 		await page.goto( `${ site }${ path }` );
@@ -129,6 +142,7 @@ test( 'the server decides access, the same way in both admins', async ( { page, 
 		expect( ( await ran ).status() ).toBe( 403 );
 		await expect( page.locator( '[data-screen="test-comments"]' ).locator( '.components-notice.is-error' ) ).toBeVisible();
 	}
+	await developerMode( request, 'subscriber', false );
 	const stored = await request.get( `${ site }/__first/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
 	expect( ( await stored.json() ).data.approved ).toBe( false );
 	// The declaration itself is refused to a user below the screen's capability, by the same route both read.

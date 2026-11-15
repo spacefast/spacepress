@@ -3363,14 +3363,33 @@ fn public_files_serve_at_the_site_root() {
     for (path, answer) in seen["refused"].as_object().unwrap() {
         assert_eq!(answer, &serde_json::json!([true, false]), "{path}");
     }
-    assert_eq!(seen["refused"].as_object().unwrap().len(), 15);
+    assert_eq!(seen["refused"].as_object().unwrap().len(), 16);
     assert_eq!(seen["head"], serde_json::json!([200, "", "11"]));
     // A matching ETag, its weak form, or one of a list: 304; another: 200.
     assert_eq!(seen["not modified"], serde_json::json!([304, 304, 304, 200]));
     assert_eq!(seen["svg policy"], true);
     assert_eq!(seen["cache"], "public, max-age=300");
-    // Any origin may read a public file, on a 200 and a 304; a page says nothing of the kind.
-    assert_eq!(seen["other origins"], serde_json::json!(["*", "*", null]));
+    // A file is answered before `init`, on a 200, a 304, a HEAD and a folder's index; a page after it.
+    assert_eq!(seen["before init"], serde_json::json!([null, null, null, null, "1"]));
+    // `Accept: text/markdown` waits for the parsed request (after `init`) and gets the file; an
+    // engine's negotiation of the same URL is never answered with the file.
+    assert_eq!(
+        seen["asks for markdown"],
+        serde_json::json!([200, "text/markdown; charset=utf-8", "# Hand-written\n", "1"])
+    );
+    assert_eq!(seen["negotiated"], serde_json::json!([404, false, "private, no-store"]));
+    // Any origin may read a public file of any type, said the same way with or without an `Origin`,
+    // on a 200, a 304 and a HEAD, so nothing varies on it. A page says nothing of the kind, and no
+    // preflight is answered.
+    assert_eq!(
+        seen["other origins"],
+        serde_json::json!({
+            "named": "*", "unnamed": "*", "not modified": "*", "head": "*", "html": "*", "markdown": "*",
+            "svg": "*", "asks for markdown": "*", "vary": null, "page": null, "preflight": null
+        })
+    );
+    // A Range request gets the whole file.
+    assert_eq!(seen["range"], serde_json::json!([200, 11, "*", null]));
     // A POST isn't served a file; the `[slug]` page answers it as pages do (405).
     assert_eq!(seen["post"], 405);
 }

@@ -1,8 +1,13 @@
 // Written by `first add api-reference`; yours to change. One operation: who may call it, what it
 // takes and answers, and a request to copy.
-import { Html, Link, notFound, type PageProps } from "first/app";
+import { Html, Link, notFound, type PageProps, type StaticParams } from "first/app";
 import { apiReference } from "first/content";
 import { ApiFields } from "../../../../components/ApiFields";
+
+// One page per operation, so a static export (`output: "static"`) builds them all.
+export async function staticParams(): Promise<StaticParams<"api/[tag]/[operation]">> {
+  return apiReference().tags.flatMap((t) => t.operations.map((o) => ({ tag: t.slug, operation: o.slug })));
+}
 
 export const metadata = ({ params }: PageProps<"api/[tag]/[operation]">) => {
   const tag = apiReference().tags.find((t) => t.slug === params.tag);

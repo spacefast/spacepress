@@ -18,7 +18,7 @@ if ( ! process.env.FIRST_ADMIN_BROWSER_OUTPUT ) {
 }
 export default defineConfig({
 	testDir: '.',
-	testMatch: [ 'admin.spec.ts', 'screens.spec.ts' ],
+	testMatch: [ 'admin.spec.ts', 'screens.spec.ts', 'views.spec.ts' ],
 	workers: 1,
 	retries: 0,
 	timeout: 90000,

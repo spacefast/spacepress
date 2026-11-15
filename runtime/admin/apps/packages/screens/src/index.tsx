@@ -4,11 +4,11 @@ import apiFetch from '@wordpress/api-fetch';
 import { Button, Modal, Notice, Spinner } from '@wordpress/components';
 import {
 	DataForm,
-	DataViews,
 	type Action,
 	type Field,
 	type View,
 } from '@first-admin/dataviews';
+import { DataViews, useView } from '@first-admin/views';
 import {
 	actionInput,
 	display,
@@ -123,13 +123,26 @@ function ScreenList( {
 		};
 	}, [ declared, reload, round ] );
 	const viewFields = useMemo( () => fields( declared.fields ), [ declared ] );
-	const [ view, setView ] = useState< View >( () => ( {
+	const defaultView = useMemo< View >( () => ( {
 		type: 'table',
 		perPage: 20,
-		page: 1,
 		fields: declared.fields.map( ( f ) => f.id ),
-		...( declared.layout as Partial< View > ),
-	} as View ) );
+		...declared.layout,
+	} ), [ declared ] );
+	const [ queryParams, setQueryParams ] = useState( { page: 1, search: '' } );
+	const { view, updateView, isModified, resetToDefault } = useView( {
+		kind: 'firstScreen',
+		name: screen.id,
+		slug: 'all',
+		defaultView,
+		queryParams,
+		onChangeQueryParams: ( { page = 1, search = '' } ) => {
+			setQueryParams( ( previous ) => ( {
+				page: search !== previous.search ? 1 : page,
+				search,
+			} ) );
+		},
+	} );
 	const run = useCallback(
 		async ( action: ScreenAction, item: Item ) => {
 			try {
@@ -177,7 +190,11 @@ function ScreenList( {
 				data={ filtered.slice( ( page - 1 ) * perPage, page * perPage ) }
 				fields={ viewFields }
 				view={ view }
-				onChangeView={ setView }
+				onChangeView={ updateView }
+				onReset={ isModified ? () => {
+					resetToDefault();
+					setQueryParams( previous => ( { ...previous, page: 1 } ) );
+				} : false }
 				actions={ actions }
 				getItemId={ ( item ) => String( at( item, key ) ) }
 				defaultLayouts={ { table: {} } }
@@ -320,7 +337,7 @@ export function ScreenBody( {
 					{ display( line ) }
 				</p>
 			) ) }
-			{ screen.view && <ScreenList screen={ screen } reload={ 0 } setNotice={ setNotice } /> }
+			{ screen.view && <ScreenList key={ screen.id } screen={ screen } reload={ 0 } setNotice={ setNotice } /> }
 			{ screen.form && <ScreenForm screen={ screen } setNotice={ setNotice } /> }
 		</div>
 	);

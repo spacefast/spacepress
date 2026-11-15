@@ -316,12 +316,28 @@ function first_admin_enqueue_classic_screen( $id ) {
 	if ( wp_style_is( 'wp-theme', 'registered' ) ) {
 		wp_enqueue_style( 'wp-theme' );
 	}
-	$asset = is_file( FIRST_ADMIN_PLUGIN_DIR . 'build/packages/screens/index.asset.php' )
-		? include FIRST_ADMIN_PLUGIN_DIR . 'build/packages/screens/index.asset.php'
-		: array( 'dependencies' => array(), 'version' => FIRST_ADMIN_VERSION );
+	// Modules can import other modules whose classic WordPress globals must also load first.
+	$modules = array();
+	foreach ( glob( FIRST_ADMIN_PLUGIN_DIR . 'build/packages/*/index.asset.php' ) as $file ) {
+		$module = include $file;
+		$modules[ $module['name'] ] = $module;
+	}
+	$pending = array( '@first-admin/screens' );
+	$seen = array();
+	$dependencies = array();
+	while ( $pending ) {
+		$name = array_pop( $pending );
+		if ( isset( $seen[ $name ] ) || ! isset( $modules[ $name ] ) ) {
+			continue;
+		}
+		$seen[ $name ] = true;
+		$dependencies = array_merge( $dependencies, $modules[ $name ]['dependencies'] ?? array() );
+		$pending = array_merge( $pending, $modules[ $name ]['moduleDependencies'] ?? array() );
+	}
+	$asset = $modules['@first-admin/screens'] ?? array( 'version' => FIRST_ADMIN_VERSION );
 	// Classic globals the module expects (React, wp.apiFetch with its nonce). The module mounts itself
 	// on the page's `#first-admin-screen` element, which names the screen in `data-screen-id` (runtime/admin/classic-screen.js).
-	wp_register_script( 'first-admin-screen-prerequisites', '', $asset['dependencies'], $asset['version'], true );
+	wp_register_script( 'first-admin-screen-prerequisites', '', array_values( array_unique( $dependencies ) ), $asset['version'], true );
 	wp_enqueue_script( 'first-admin-screen-prerequisites' );
 	wp_register_script_module( 'first-admin-screen-classic', FIRST_ADMIN_PLUGIN_URL . 'classic-screen.js', array( array( 'id' => '@first-admin/screens', 'import' => 'static' ) ), FIRST_ADMIN_VERSION );
 	wp_enqueue_script_module( 'first-admin-screen-classic' );

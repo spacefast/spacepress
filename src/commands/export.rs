@@ -1043,7 +1043,7 @@ fn segments_of(path: &str) -> Result<Vec<String>, String> {
     let raw: Vec<&str> = path.strip_prefix('/').unwrap_or(path).split('/').collect();
     let mut out = Vec::new();
     for s in raw {
-        let decoded = percent_decode(s);
+        let decoded = super::links::percent_decode(s);
         if decoded.is_empty()
             || decoded == "."
             || decoded == ".."
@@ -1057,13 +1057,6 @@ fn segments_of(path: &str) -> Result<Vec<String>, String> {
         out.push(decoded);
     }
     Ok(out)
-}
-
-fn percent_decode(s: &str) -> String {
-    url::form_urlencoded::parse(format!("x={}", s.replace('+', "%2B")).as_bytes())
-        .next()
-        .map(|(_, v)| v.into_owned())
-        .unwrap_or_default()
 }
 
 fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -1204,6 +1197,11 @@ mod tests {
         assert_eq!(
             asset_file("/wp-content/a b.css").unwrap(),
             PathBuf::from("wp-content/a b.css")
+        );
+        // A segment decodes as a URL path does: `&`, `=` and `+` are themselves.
+        assert_eq!(
+            asset_file("/wp-content/R%26D/a&b=c+d%2Be.css").unwrap(),
+            PathBuf::from("wp-content/R&D/a&b=c+d+e.css")
         );
         assert_eq!(normalize("/a/b/../c/./d.woff2"), "/a/c/d.woff2");
         assert_eq!(split_suffix("/x.js?ver=1#y"), ("/x.js", "?ver=1#y"));

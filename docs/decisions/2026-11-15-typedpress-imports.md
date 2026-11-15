@@ -195,8 +195,14 @@ and hooks: 4.8 KB + 1.5 KB gz, measured on the Preact build vendored in
 `src/config_migrate/app/client08/preact/`. The cost would be tying every
 island to a private API that WordPress says will break, and compat would
 still need its own `options` hook-up, which no export reaches. We don't
-borrow it. If a later WordPress exports Preact
-publicly, the `islands: "preact"` runtime becomes an import of that.
+borrow it.
+
+Keeping up with WordPress releases would be acceptable on its own. What
+blocks borrowing is that `options`, `createContext` and `useId` are not
+reachable at all, and compat can't be built without them. Since islands
+default to React, borrowing would only help the `islands: "preact"` opt-in,
+by about 6 KB. If a later WordPress exports Preact publicly, that runtime
+becomes an import of it.
 
 ### Radix on Preact: close, but not a drop-in
 
@@ -261,20 +267,43 @@ against this repository on 2026-11-15:
 
 For scale, the current `target/release/first` binary is 48.1 MB.
 
+What it buys, against what the compiler does in the browser today
+(`src/client_component.rs`: "No bundler runs: client files may import only
+other relative modules of the same kind"; `src/css.rs` refuses `@import`,
+`:global`, `:local` and `composes`; `src/assets.rs` takes only SVG imports):
+
+| Today | With Rolldown |
+|---|---|
+| A `"use client"` file can't import an npm package | Islands import any browser package (Radix, shadcn, date pickers, charts) |
+| No shared code between client files | One shared chunk per dependency across islands, loaded once per page |
+| No tree shaking or minification of browser code | Both |
+| CSS `@import` refused | Resolved and inlined |
+| Image imports other than SVG refused | Hashed asset files, as SVG is now |
+| No source maps for browser code | Source maps |
+
+The server side doesn't change: pages, actions and server components still
+compile to PHP through our own loader. Rolldown only bundles what runs in the
+browser.
+
+The cost is the native binary going from 48.1 MB by about 17 MB, and release
+builds taking roughly twice as long.
+
 So:
 
 1. Upgrade oxc to 0.158 in its own change, then add rolldown 1.3.2 behind
    the `host` feature. Every Rolldown release moves to a new oxc minor, so
    oxc upgrades come with Rolldown upgrades from then on.
-2. The browser compiler (docs-site Playground) can't embed it. Rolldown
-   publishes `@rolldown/browser` 1.3.2, the same bundler built for the
-   browser; the Playground calls that from JavaScript for island bundling
-   instead. Its output matching the native build is a test to write, not a
-   given.
-3. Islands are the first user. The same bundler can later replace the
-   hand-written module graph in `src/loader.rs` for browser code (CSS,
-   SVG, npm packages in `"use client"` files), which is a separate
-   decision.
+2. The browser compiler (docs-site Playground) can't embed it, and degrades
+   one step at a time:
+   - subset `"use client"` components compile as now, with no bundler;
+   - islands are bundled by `@rolldown/browser` 1.3.2, loaded only when the
+     app has an island;
+   - if that fails to load, each island is refused with a diagnostic naming
+     the component and saying the native `typedpress build` bundles it, and
+     the rest of the app still builds.
+
+   A test checks that `@rolldown/browser` and the native build produce the
+   same island output.
 
 ### How a component becomes an island
 

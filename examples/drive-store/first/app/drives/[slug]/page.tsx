@@ -1,12 +1,13 @@
 // One drive. The kind's `url` is /drives/:slug, so this page receives the drive as `item`, read as
-// the visitor. `?language=tr` shows the drive's Turkish row: a read of one row with `locale` gives
-// that row's translation, or the English row when the drive has none yet.
+// the visitor. Each translation has its own slug: /drives/wd-red-plus-4tb-tr is the Turkish row.
+// A drive nobody translated yet is shown in Turkish words with `?language=tr`: a read of one row
+// with `locale` gives that row's translation, or the English row when there is none.
 // Buying posts the form to the `buy` action; the confirmation comes back on this page.
 import { db, text } from "first";
 import { Comments, Content, Link, Live, useFormState, type PageProps } from "first/app";
 import { drives } from "first:db";
 import { buy } from "../../../server";
-import { inLang, pickLang } from "../../../lib/catalog";
+import { inLang, pickLang, type Lang } from "../../../lib/catalog";
 import { mediaName, money, size, words } from "../../_lib/format";
 
 export const search = { language: text().optional() };
@@ -17,19 +18,23 @@ export const metadata = ({ item }: PageProps<"drives/[slug]">) => ({
 });
 
 export default async function Drive({ item, search }: PageProps<"drives/[slug]", { language: string | null }>) {
-  const lang = pickLang(search.language);
+  const lang = search.language ? pickLang(search.language) : pickLang(item.locale);
+  const other: Lang = lang === "tr" ? "en" : "tr";
   const w = words(lang);
   const shop = await db.globals.shop.get();
   const state = useFormState(buy);
-  const drive = lang === "en" ? item : (await drives.get(item.id, { locale: lang })) ?? item;
-  const here = `/drives/${item.slug ?? ""}`;
+  const drive = item.locale === lang ? item : (await drives.get(item.id, { locale: lang })) ?? item;
+  // The other language's own page when the drive has one, else this page in that language.
+  const otherId = item.translations[other];
+  const otherRow = otherId ? await drives.get(otherId) : null;
+  const switchTo = otherRow && otherRow.slug ? `/drives/${otherRow.slug}` : inLang(`/drives/${item.slug ?? ""}`, other);
   return (
     <>
       <p className="crumbs">{lang === "en" ? <Link href="/">{w.back}</Link> : <a href={inLang("/", lang)}>{w.back}</a>}</p>
       <article className="product">
         <div>
           <h1>{drive.name}</h1>
-          <p className="lang"><a href={lang === "en" ? inLang(here, "tr") : here}>{w.language}</a></p>
+          <p className="lang"><a href={switchTo}>{w.language}</a></p>
           {drive.summary ? <p className="lede">{drive.summary}</p> : null}
           <dl className="facts">
             <dt>{w.capacity}</dt><dd>{size(item.capacityGb)} {mediaName(item.media)}</dd>

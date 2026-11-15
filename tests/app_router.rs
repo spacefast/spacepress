@@ -4495,7 +4495,16 @@ fn drive_store_example_sells_on_wordpress() {
             "Emekli bir NAS'tan çıkan kurumsal helyum disk."
         ])
     );
-    assert_eq!(seen["catalog tr"]["links"][0], "/drives/wd-red-plus-4tb?language=tr");
+    // Each translation links its own page; the untranslated drive keeps the language by query.
+    assert_eq!(
+        seen["catalog tr"]["links"],
+        json!([
+            "/drives/wd-red-plus-4tb-tr",
+            "/drives/samsung-870-evo-1tb-tr",
+            "/drives/crucial-p3-2tb?language=tr",
+            "/drives/seagate-exos-x16-tr"
+        ])
+    );
     assert_eq!(seen["catalog tr"]["stock"][0], "2 stokta");
     assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
     assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));
@@ -4503,18 +4512,25 @@ fn drive_store_example_sells_on_wordpress() {
         seen["product"],
         json!({
             "status": 200, "h1": ["WD Red Plus 4 TB"], "stock": ["2 in stock"],
-            "switch": ["/drives/wd-red-plus-4tb?language=tr"], "reviews": ["Sign in to comment"],
+            "switch": ["/drives/wd-red-plus-4tb-tr"], "reviews": ["Sign in to comment"],
         }),
         "{seen}"
     );
     assert_eq!(
         seen["product tr"],
         json!({
+            "status": 200,
             "lede": ["Ev sunucusundan çıkan sessiz ve serin CMR NAS diski."],
             "facts": ["Kapasite", "Arayüz", "Durum", "Çalışma saati"],
             "switch": ["/drives/wd-red-plus-4tb"],
-        })
+        }),
+        "{seen}"
     );
+    // A translated slug is a URL of the kind (runtime/First/Wp/AppRouter.php reads the item in every
+    // locale), its twin too, and WordPress's permalink for it is the kind's pattern.
+    assert_eq!(seen["twin tr"], json!([200, "# WD Red Plus 4 TB"]), "{seen}");
+    assert_eq!(seen["permalink tr"], "/drives/wd-red-plus-4tb-tr/");
+    assert_eq!(seen["polylang prefix"], 404);
     assert_eq!(
         seen["untranslated tr"],
         json!(["PCIe 3.0 NVMe stick, used as a game library drive."])

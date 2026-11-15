@@ -722,7 +722,10 @@ on its own. Create a translation with
 `{ locale: "de", translationOf: <id> }`; rows carry `locale` and
 `translations` (locale → id). Reads take `?locale=de`, which returns German
 rows and, with `fallback`, the default-locale row of any group without one;
-`locale=*` returns every row. On WordPress, Polylang owns languages and
+`locale=*` returns every row. A kind with a `url` gives every translation its
+URL from the same pattern and its own slug (`/drives/wd-red-plus-4tb-tr`), with
+no language prefix: the page for it receives that translation as `item`, and
+`get_permalink()` and the sitemap give the same address. On WordPress, Polylang owns languages and
 translation groups, and the app plugin ships a `wpml-config.xml` saying which
 fields translate.
 

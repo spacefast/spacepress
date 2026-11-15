@@ -41,8 +41,9 @@ FIRST_APP_PASSWORD="admin:$PW" ./target/release/first sync examples/drive-store
 
 Then open `http://localhost:8931/`:
 
-- `/` is the catalog; `/?language=tr` is the same catalog in Turkish. The Crucial drive has no
-  Turkish translation, so it shows its English text.
+- `/` is the catalog; `/?language=tr` is the same catalog in Turkish. Each translated drive has
+  its own page at its Turkish slug (`/drives/seagate-exos-x16-tr`). The Crucial drive has no
+  Turkish translation, so it shows its English text, at `/drives/crucial-p3-2tb?language=tr`.
 - `/drives/seagate-exos-x16` is a product page. Buy one as a guest; the order code comes back on
   the page and the stock goes down. Ask for more than is left and the order is refused.
 - `/orders` lists a signed-in customer's own orders. Create a subscriber in wp-admin to try it.
@@ -56,13 +57,11 @@ Stop it with `first dev stop examples/drive-store`; the site's data is kept for 
 `cargo test --test app_router drive_store_example_sells_on_wordpress` builds this example, seeds
 it from `content/drives/` as a publish does, and uses it on WordPress-on-SQLite the way a browser
 with scripts off would ([`tests/php/drive_store.php`](../../tests/php/drive_store.php)): both
-languages, search and filters, buying and the stock rule, My orders, the staff page and its
+languages and their URLs, search and filters, buying and the stock rule, My orders, the staff page and its
 actions, reviews, the RSS feed and the settings global.
 
 ## Known limits
 
-- A Turkish translation has its own slug, but `/drives/<turkish slug>` is a 404: the page for a
-  drive is at its English slug, and `?language=tr` picks the language.
 - The storefront's own words (buttons, labels) are a small table in
   [`first/app/_lib/format.ts`](first/app/_lib/format.ts), not WordPress translation files.
 - Field labels set with `.ui({ label })` show in the WordPress editor (Secure Custom Fields). First

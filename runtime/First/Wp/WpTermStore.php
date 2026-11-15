@@ -119,7 +119,8 @@ final class WpTermStore implements Store, Links
         $spec = $this->schema->collection($collection);
         $pk = $spec['primaryKey'];
         \First\Extensions::lookup($collection, array_column($rows, $pk));
-        $lists = array_keys(array_filter($spec['columns'], static fn (array $d) => $d['type'] === 'select'));
+        // A read that selected some columns (`columns`) finishes only those.
+        $lists = array_keys(array_filter($spec['columns'], static fn (array $d, string|int $c) => $d['type'] === 'select' && array_key_exists($c, $rows[0]), ARRAY_FILTER_USE_BOTH));
         $linked = is_string($spec['url'] ?? null);
         foreach ($rows as &$row) {
             foreach ($lists as $col) {

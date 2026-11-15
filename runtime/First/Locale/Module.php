@@ -20,7 +20,8 @@ final class Module
     public static function register(): void
     {
         Extensions::beforeRead(Read::query(...), constraintSafe: true);
-        Extensions::onRead(Read::read(...), constraintSafe: true);
+        // Db selects a localized kind's locale and translations itself.
+        Extensions::onRead(Read::read(...), constraintSafe: true, reads: static fn (): array => []);
         Extensions::normalizeWrite(GroupSync::normalize(...));
         Extensions::onWrite(GroupSync::write(...));
         Extensions::onWritten(GroupSync::written(...));

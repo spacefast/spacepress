@@ -360,7 +360,12 @@ function db(): Db;   // namespace First, in Db.php, returns Db::instance()
 - `where`: filter (below).
 - `orderBy`: `['name' => 'asc', 'createdAt' => 'desc']`.
 - `limit`, `offset`: ints.
-- `columns`: `['id' => true, 'name' => true]` → only those keys.
+- `columns`: `['id' => true, 'name' => true]` → only those keys. The SQL selects
+  (and joins) only those, plus the primary key, the fields `with` loads and the
+  keys it joins on, a relation's partition column, a localized kind's `locale`
+  and `translations`, and what read extensions declare they read. It selects
+  every column when a read extension declares nothing, or a field's read rule is
+  a function (it sees the whole row).
 - `with`: `['location' => true, 'items' => ['where' => ..., 'orderBy' => ..., 'limit' => ..., 'with' => ...]]`.
   `one` relations attach a row or null; `many` attach a list. Load with one
   extra query per relation per level (`WHERE fk IN (...)`), never N+1.
@@ -406,8 +411,10 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   and decode. Lookup receives nonempty collection pages, not system-media rows.
   Mutation results (including receipt replay) and revision snapshots also prime
   their page before read transforms; callbacks may run again after write hooks.
-- `onRead(rows, collection, ?viewer)` transforms decoded rows before `with` and
-  projection; also applies to revision reads and returning write responses.
+- `onRead(rows, collection, ?viewer, reads: ?fn(collection, ?viewer): list<string>)`
+  transforms decoded rows before `with` and projection; also applies to revision
+  reads and returning write responses. `reads` names the columns it reads beside
+  the ones the query keeps; without it every read selects every column.
   Revision restore authorizes first, then uses the full stored snapshot; display
   transforms never supply persistence input. Internal mutation selection keeps
   authorization filters and passes full decoded storage rows to normalization,

@@ -14,6 +14,10 @@ final class Extensions
     /** @var array<string, callable> */
     private static array $commands = [];
     private static bool $unprovenReadScope = false;
+    /** Whether every read extension says which columns it reads (so `columns` can narrow the SELECT). */
+    private static bool $readsAll = false;
+    /** @var list<\Closure(string $collection, ?Viewer $viewer): list<string>> the columns each read extension reads */
+    private static array $readColumns = [];
 
     /**
      * @param callable(string $collection, array &$opts, ?Viewer $viewer, string $pointer): void $fn before option validation and SQL
@@ -28,11 +32,38 @@ final class Extensions
     /**
      * @param callable(array $rows, string $collection, ?Viewer $viewer): array $fn after decode, before `with`; keep primary keys intact
      * @param bool $constraintSafe true only when row membership and constraint columns are preserved except for schema access rules
+     * @param ?\Closure(string $collection, ?Viewer $viewer): list<string> $reads the columns $fn reads, beside the
+     *   ones the query keeps: a read with `columns` selects only those. Null: $fn may read any column, so every
+     *   read selects every column.
      */
-    public static function onRead(callable $fn, bool $constraintSafe = false): void
+    public static function onRead(callable $fn, bool $constraintSafe = false, ?\Closure $reads = null): void
     {
         self::$hooks['read'][] = $fn;
         self::$unprovenReadScope = self::$unprovenReadScope || !$constraintSafe;
+        if ($reads === null) {
+            self::$readsAll = true;
+        } else {
+            self::$readColumns[] = $reads;
+        }
+    }
+
+    /**
+     * The columns the read extensions read in a read of $collection for $viewer, beyond what the
+     * query keeps; null when one of them may read any column.
+     *
+     * @return ?list<string>
+     */
+    public static function readColumns(string $collection, ?Viewer $viewer): ?array
+    {
+        if (self::$readsAll) {
+            return null;
+        }
+        $out = [];
+        foreach (self::$readColumns as $fn) {
+            array_push($out, ...$fn($collection, $viewer));
+        }
+
+        return $out;
     }
 
     /** Custom read callbacks may hide arbitrary rows/values unless their policy is already guarded. */

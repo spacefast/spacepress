@@ -51,12 +51,13 @@ final class Sql
      * @param list<array|SqlPredicate> $guards
      * @return array{sql: string, params: list<int|float|string|null>}
      */
-    public static function select(Schema $schema, Store $store, string $collection, array $opts, ?array $partition = null, string $ptr = '', array $guards = [], ?\Closure $guardsFor = null): array
+    public static function select(Schema $schema, Store $store, string $collection, array $opts, ?array $partition = null, string $ptr = '', array $guards = [], ?\Closure $guardsFor = null, ?array $only = null): array
     {
-        return (new self($schema, $store, $guardsFor))->compile($collection, $opts, $partition, $ptr, $guards);
+        return (new self($schema, $store, $guardsFor))->compile($collection, $opts, $partition, $ptr, $guards, $only);
     }
 
-    private function compile(string $collection, array $opts, ?array $partition, string $ptr, array $guards): array
+    /** @param ?array<string, mixed> $only the columns to select, by name; null selects every column */
+    private function compile(string $collection, array $opts, ?array $partition, string $ptr, array $guards, ?array $only = null): array
     {
         $spec = $this->schema->collection($collection);
         $src = $this->source($collection);
@@ -109,6 +110,9 @@ final class Sql
         $select = [];
         // Schema columns only: a Source may carry helper expressions (the post-backed translation group).
         foreach ($spec['columns'] as $name => $col) {
+            if ($only !== null && !isset($only[$name])) {
+                continue; // not selected: its expression marks no join
+            }
             // A many-ref's value is its links, which Db reads from the join table.
             $expr = match (true) {
                 $col['derived'] ?? false => $this->translations($collection, $alias),

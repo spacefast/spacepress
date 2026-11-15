@@ -4394,6 +4394,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Value::Job(_)
             | Value::Route(_)
             | Value::Plugin(_)
+            | Value::Screen(_)
             | Value::FileBucket(_)
             | Value::Bound(..) => err(
                 span,

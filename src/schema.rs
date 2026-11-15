@@ -562,6 +562,9 @@ pub struct Schema {
     pub globals: IndexMap<String, Global>,
     pub actions: IndexMap<String, Action>,
     pub jobs: IndexMap<String, Job>,
+    /// `adminScreen()` exports by screen id (the export name in kebab case): each one the
+    /// declaration `first_admin_register_screen()` takes (`crate::admin_screen`).
+    pub screens: IndexMap<String, Json>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
     /// Server components (`first/components/<file>.tsx#<export>`) → their compiled PHP function.
@@ -625,6 +628,7 @@ impl Default for Schema {
             globals: IndexMap::new(),
             actions: IndexMap::new(),
             jobs: IndexMap::new(),
+            screens: IndexMap::new(),
             wp_hooks: Vec::new(),
             components: IndexMap::new(),
             app: None,

@@ -126,6 +126,16 @@ final class Schema
         return $this->raw['actions'] ?? [];
     }
 
+    /**
+     * `adminScreen()` exports by screen id, each the declaration first_admin_register_screen() takes.
+     *
+     * @return array<string, array>
+     */
+    public function screens(): array
+    {
+        return $this->raw['screens'] ?? [];
+    }
+
     public function site(): array
     {
         return $this->raw['site'] ?? ['uidPrefix' => 'zr_'];

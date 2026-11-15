@@ -170,6 +170,7 @@ const REGISTRIES: &[&str] = &[
     "files",
     "actions",
     "jobs",
+    "screens",
 ];
 /// Collection names that would shadow a built-in route (§4.8).
 const RESERVED_COLLECTIONS: &[&str] = &[
@@ -788,6 +789,10 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     }
     if let Some(v) = cfg_map.get("use").filter(|v| !matches!(v, Value::Undef)) {
         uses(v, span_of(ev, config, "use", config_span), ev, &mut out)?;
+    }
+    // Screens name actions, the app's and its plugins', so they come after both.
+    if let Some(v) = cfg_map.get("screens").filter(|v| !matches!(v, Value::Undef)) {
+        crate::admin_screen::screens(v, span_of(ev, config, "screens", config_span), ev, &mut out, None)?;
     }
     validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)

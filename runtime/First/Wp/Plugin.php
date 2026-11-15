@@ -134,6 +134,7 @@ final class Plugin
             Hooks::register($this);
         }
         add_action('admin_menu', [$this, 'adminMenu'], 9);
+        add_action('first_admin_screens', [$this, 'registerScreens']);
         // A plugin updated by copying files in has no activation; the first request of any kind
         // (REST, front end, cron, CLI, admin) applies its pending migrations before First serves it.
         add_action('init', [$this, 'maybeMigrate'], 1);
@@ -666,6 +667,21 @@ final class Plugin
         add_menu_page(ucfirst($this->schema->name()), ucfirst($this->schema->name()), 'edit_others_posts', $slug, static function () use ($slug): void {
             echo '<div class="wrap"><h1>' . esc_html(get_admin_page_title()) . '</h1></div>';
         }, 'dashicons-admin-settings');
+    }
+
+    /**
+     * The app's `adminScreen()` exports, compiled into schema.php, declared in First Admin's one
+     * registry (runtime/admin/lib/screens.php) like any PHP screen. Without First Admin
+     * (`admin: false`) nothing listens for `first_admin_screens`, and the function is absent.
+     */
+    public function registerScreens(): void
+    {
+        if (!function_exists('first_admin_register_screen')) {
+            return;
+        }
+        foreach ($this->schema->screens() as $id => $screen) {
+            first_admin_register_screen((string) $id, $screen);
+        }
     }
 
     // ================================================================ editor hooks (§4.9)

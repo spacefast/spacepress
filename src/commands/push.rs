@@ -1,4 +1,4 @@
-//! `first push [project-dir] [--site <url>] [--install] [--dry-run]`: deploy this project to a
+//! `first push [project-dir] [--site <url>] [--dry-run]`: deploy this project to a
 //! WordPress site that runs the First plugin.
 //!
 //! The project is compiled here into a build store under `.first/store`, against the schema
@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: first push [project-dir] [--site <url>] [--install] [--dry-run]\n       sign in first with: first login <site-url>   (or FIRST_APP_PASSWORD=user:application-password)";
+const USAGE: &str = "usage: first push [project-dir] [--site <url>] [--dry-run]\n       sign in first with: first login <site-url>   (or FIRST_APP_PASSWORD=user:application-password)";
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
     match run(args) {
@@ -33,12 +33,11 @@ fn short(id: &str) -> &str {
 }
 
 fn run(args: &[String]) -> Result<(), String> {
-    let (mut project, mut site, mut install, mut dry) = (PathBuf::from("."), None, false, false);
+    let (mut project, mut site, mut dry) = (PathBuf::from("."), None, false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--site" => site = Some(it.next().ok_or(format!("--site needs a URL\n{USAGE}"))?.clone()),
-            "--install" => install = true,
             "--dry-run" => dry = true,
             other if other.starts_with('-') => return Err(format!("unknown option {other}\n{USAGE}")),
             other => project = PathBuf::from(other),
@@ -187,14 +186,9 @@ fn run(args: &[String]) -> Result<(), String> {
             );
         }
     }
+    // The plugins a build needs are not a choice: push installs them, pinned by checksum.
     if !missing.is_empty() {
-        if !install {
-            return Err(format!(
-                "{site} is missing plugins this app needs: {}.\nInstall them on the site's First screen ({}), or run: first push --install",
-                missing.join(", "),
-                info["setup"].as_str().unwrap_or("First in wp-admin")
-            ));
-        }
+        println!("the site is missing plugins this app needs: {}", missing.join(", "));
         let answer = api
             .post("/requirements", &json!({ "pins": pins }), &[])
             .map_err(|e| e.to_string())?;

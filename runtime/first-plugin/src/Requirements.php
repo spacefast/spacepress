@@ -120,11 +120,15 @@ final class Requirements
      * pinned version and is installed only when its SHA-256 is the pinned one. A plugin already there at
      * that version or newer is only activated. Returns what it touched; throws on the first failure.
      *
+     * `$network` activates them for every site of a network; left out, they follow First itself.
+     *
      * @param array<string, array{version: string, sha256: string}> $pins
      * @return list<string>
      */
-    public static function install(array $pins): array
+    public static function install(array $pins, ?bool $network = null): array
     {
+        // On a network where First is active for every site, so is what it depends on.
+        $network ??= is_multisite() && is_plugin_active_for_network(plugin_basename(FIRST_PLUGIN_FILE));
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/misc.php';
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
@@ -142,7 +146,8 @@ final class Requirements
             }
             $label = self::label($slug);
             $found = self::installed()[$slug] ?? null;
-            if ($found !== null && $found['active'] && version_compare($found['version'], $pin['version'], '>=')) {
+            $everywhere = !$network || ($found !== null && is_plugin_active_for_network((string) self::file($slug)));
+            if ($found !== null && $found['active'] && $everywhere && version_compare($found['version'], $pin['version'], '>=')) {
                 continue;
             }
             if ($found === null || version_compare($found['version'], $pin['version'], '<')) {
@@ -166,7 +171,7 @@ final class Requirements
                 wp_clean_plugins_cache();
             }
             $file = self::file($slug);
-            $activated = $file === null ? new \WP_Error('missing', 'its files are not there') : activate_plugin($file);
+            $activated = $file === null ? new \WP_Error('missing', 'its files are not there') : activate_plugin($file, '', $network);
             if (is_wp_error($activated)) {
                 throw new \RuntimeException("Could not activate $label: " . $activated->get_error_message());
             }

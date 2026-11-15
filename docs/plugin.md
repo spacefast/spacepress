@@ -14,10 +14,12 @@ first push                            # compile, upload, show the plan, go live
 ## 1. Install the plugin
 
 `first plugin` writes `first.zip` (`--out <file>` for another name). Upload and activate it in
-wp-admin. A **First** item appears in the menu. Its screen lists what First needs and what the site
-has, and its button installs the missing plugins: Secure Custom Fields, Action Scheduler, the MCP
-Adapter and Two Factor (and Polylang, only for an app with `locales`). Each is downloaded from
-wordpress.org at the version First pins and installed only if its SHA-256 is the pinned one.
+wp-admin. Activating it installs and activates the plugins First depends on: Secure Custom Fields,
+Action Scheduler, the MCP Adapter and Two Factor. Each is downloaded from wordpress.org at the
+version First pins and installed only if its SHA-256 is the pinned one. A **First** item appears in
+the menu; its screen lists what First needs and what the site has, and its button repeats the
+install if anything is missing (no network at activation, a plugin someone deactivated). Polylang is
+installed by the first push of an app with `locales`.
 
 ## 2. Sign in
 
@@ -34,7 +36,7 @@ under Users, Profile, Application Passwords.
 
 ## 3. Push
 
-`first push [dir] [--site url] [--install] [--dry-run]`:
+`first push [dir] [--site url] [--dry-run]`:
 
 1. Compiles the project on your machine, compared with the build deployed last, so the migration
    it carries is the difference from what the database holds.
@@ -48,7 +50,7 @@ The migration is planned against the site, not against `first/_generated/migrati
 project: the site's own ledger is what its database ran. If someone else deployed while your build
 was compiling, the site refuses yours and you push again.
 
-If the site lacks a plugin this build needs, `first push` says which; `--install` installs it. A
+If the site lacks a plugin this build needs, `first push` says which and installs it. A
 build the schema check refuses (a required field with no default on a kind that has rows, a dropped
 kind) is not installed, and the live build keeps serving.
 
@@ -78,6 +80,14 @@ A deployment installs PHP, so it is for people who can already do that: administ
 multisite network only its super admins. A credential scoped for an agent
 (`first identity agent add`) can't deploy.
 
+## A WordPress network (multisite)
+
+Activate First for the network. Each site of the network then takes its own app: push to that
+site's address (`first login https://example.com/news`, `first push`). A site's builds, live build,
+deployment history and tables (under that site's table prefix) are its own, and a deployment to one
+site changes nothing on another. Only the network's super admins deploy. The runtime is uploaded
+once per site, because each site keeps its own store.
+
 ## Where things are on the site
 
 | Path | What | Served |
@@ -104,6 +114,5 @@ location ~ ^/wp-content/first-store- { deny all; }
 - You deploy a build compiled on your machine. A site compiling uploaded sources itself is not
   built.
 - Old builds are kept. Nothing collects them yet.
-- Multisite: each subsite keeps its own store and live build by design; this has no test yet.
 - A site that already runs First from separately installed plugins (`first build`'s
   `first/dist/wp-content`) must deactivate those first.

@@ -51,10 +51,13 @@ sends for its last deployment, then uploads the two content-addressed trees.
 ## Not built
 
 Several apps per site, a mount path, server-side or in-browser compilation, collecting old builds,
-a closed state while a deployment changes storage, and a multisite test.
+a closed state while a deployment changes storage, undoing migrations when an earlier build is
+made live, and uploading only the files of the app tree that changed.
 
 ## Proof
 
 `tests/wp/plugin/run.sh` runs the whole path on a stock WordPress in Docker: the plugin uploaded
-and activated through wp-admin, the screen's install button, `first login` approved through core's
+and activated through wp-admin (which installs the pinned plugins), `first login` approved through core's
 screen, `first push` twice with a migration between, the refusals, and making an earlier build live.
+`tests/wp/plugin/multisite-run.sh` does it on a network: First activated for the network, two
+sites each given their own app, and each site's tables, builds and history checked to be its own.

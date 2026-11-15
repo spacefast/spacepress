@@ -18,7 +18,7 @@
     { "name": "plugin", "args": "[--out file.zip]", "summary": "write the First WordPress plugin (first.zip) to upload and activate in wp-admin" },
     { "name": "login", "args": "<site-url> [dir] [--no-browser]", "summary": "sign in to a WordPress site that runs the First plugin; the site's owner approves an application password in the browser" },
     { "name": "logout", "args": "<site-url>", "summary": "forget a site's credential on this machine" },
-    { "name": "push", "args": "[dir] [--site url] [--install] [--dry-run]", "summary": "compile the project and deploy it to the site: upload the build, show what it changes, make it live (first login, or FIRST_APP_PASSWORD)" },
+    { "name": "push", "args": "[dir] [--site url] [--dry-run]", "summary": "compile the project and deploy it to the site: install the plugins it needs, upload the build, show what it changes, make it live (first login, or FIRST_APP_PASSWORD)" },
     { "name": "deploy", "args": "<inspect|publish|init|status|backup|restore> <options>", "summary": "artifact preflight and offline workspaces (docs/deployment.md)" }
   ],
   "site": [

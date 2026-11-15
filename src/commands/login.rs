@@ -141,7 +141,7 @@ fn login(args: &[String]) -> Result<(), String> {
     }
     if info["ready"] != true {
         println!(
-            "the site still needs plugins First depends on: install them at {} or with first push --install",
+            "the site still needs plugins First depends on: first push installs them, or use the button at {}",
             info["setup"].as_str().unwrap_or("First in wp-admin")
         );
     }

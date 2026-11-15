@@ -371,8 +371,8 @@ first login https://example.com   # approve the command line in the browser
 first push                        # compile, upload, show what changes, go live
 ```
 
-The plugin's screen in wp-admin installs the plugins First needs and lists every
-deployment. See [Deploy to any WordPress](docs/plugin.md).
+Activating the plugin installs the plugins First needs, and its screen in wp-admin
+lists every deployment. See [Deploy to any WordPress](docs/plugin.md).
 
 Without the plugin, the build is `first/dist/wp-content/plugins/*.zip`, which you upload
 or copy like any plugin, and `first/dist/wp-content/first-manifest.json` records the

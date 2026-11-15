@@ -12,7 +12,7 @@ final class Setup
     public static function register(): void
     {
         add_action('admin_menu', static function (): void {
-            add_menu_page('First', 'First', is_multisite() ? 'manage_network_plugins' : 'activate_plugins', self::PAGE, [self::class, 'render'], 'dashicons-cloud-upload', 3);
+            add_menu_page('First', 'First', Site::capability(), self::PAGE, [self::class, 'render'], 'dashicons-cloud-upload', 3);
         });
         add_action('admin_post_' . self::ACTION, [self::class, 'handle']);
         // Until the site has what First needs, say so where an administrator will see it.
@@ -32,6 +32,28 @@ final class Setup
     public static function url(): string
     {
         return admin_url('admin.php?page=' . self::PAGE);
+    }
+
+    /**
+     * Activating First installs the plugins it depends on: they are not a choice. A failure here
+     * (no network, a host that blocks file changes) never stops the activation; the First screen
+     * shows what is still missing and its button tries again.
+     */
+    public static function activated(bool $network = false): void
+    {
+        // Installing plugins is for whoever may deploy (on a network, its super admins: a subsite's
+        // administrator activating First there installs nothing) and for WP-CLI, which is a shell.
+        if (Site::closed() !== null || !((defined('WP_CLI') && WP_CLI) || Site::mayDeploy())) {
+            return;
+        }
+        try {
+            $wanted = array_filter(Requirements::checks(), static fn (array $c): bool => $c['plugin'] && !$c['ok'] && !$c['optional']);
+            $installed = Requirements::install(array_intersect_key(Requirements::pinned(), array_flip(array_column($wanted, 'id'))), $network);
+            $notice = ['type' => 'success', 'text' => $installed === [] ? '' : 'First installed and activated the plugins it needs: ' . implode(', ', $installed) . '.'];
+        } catch (\Throwable $error) {
+            $notice = ['type' => 'error', 'text' => $error->getMessage()];
+        }
+        set_transient('first_setup_notice_' . get_current_user_id(), $notice, 300);
     }
 
     /** The screen's two buttons: install the plugins First needs, and make an earlier build live. */

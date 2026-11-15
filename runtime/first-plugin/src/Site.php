@@ -41,7 +41,12 @@ final class Site
         return WP_CONTENT_DIR . '/first-store-' . $key;
     }
 
-    /** The public copy of each stored tree's scripts, styles, images and fonts, at the same paths. */
+    /**
+     * The public copy of each stored tree's scripts, styles, images and fonts, at the same paths. A
+     * tree is named by the hash of its contents, so the sites of a network share this directory: two
+     * sites that hold the same tree hold the same files. The store itself is per site (its key is a
+     * site option), as is which build is live.
+     */
     public static function assets(): string
     {
         return WP_CONTENT_DIR . '/first-assets';
@@ -159,7 +164,12 @@ final class Site
      */
     public static function mayDeploy(): bool
     {
-        return current_user_can(is_multisite() ? 'manage_network_plugins' : 'activate_plugins');
+        return current_user_can(self::capability());
+    }
+
+    public static function capability(): string
+    {
+        return is_multisite() ? 'manage_network_plugins' : 'activate_plugins';
     }
 
     /** Why this site takes no deployments at all, or null. A host that manages its own code says so. */

@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: First
- * Description: Runs a First app on this site. Set it up under First in wp-admin, then deploy from a project with `first login` and `first push`.
+ * Description: Runs a First app on this site. Activating it installs the plugins First needs; then deploy from a project with `first login` and `first push`.
  * Version: {{firstVersion}}
  * Requires at least: {{wpVersion}}
  * Requires PHP: {{phpVersion}}
@@ -27,3 +27,4 @@ require_once __DIR__ . '/src/Setup.php';
 \FirstPlugin\Mount::run();
 \FirstPlugin\Receiver::register();
 \FirstPlugin\Setup::register();
+register_activation_hook(__FILE__, [\FirstPlugin\Setup::class, 'activated']);

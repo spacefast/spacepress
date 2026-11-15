@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The First plugin on a stock WordPress, the way a site owner and a developer use it:
-#   wp-admin: upload first.zip, activate it, press "Install what is missing" on the First screen
+#   wp-admin: upload first.zip and activate it, which installs the plugins First depends on
 #   CLI:      first login <url> (approved in the browser), first push, again with a schema change
 # then what the site refuses, making an earlier build live again from the screen, and what the
 # plugin supplies as the host (the app's variables, mail). Nothing is installed by the harness: the
@@ -60,22 +60,24 @@ wp config set FIRST_VARIABLES "['GREETING' => 'hello from wp-config']" --raw >/d
 [[ $("$first" login "$url" --no-browser 2>&1) == *"does not have the First plugin active"* ]] || fail "first login names the missing plugin on a site without it"
 browser login admin first-test-admin
 browser upload-plugin "$work/first.zip"
-[[ $(wp plugin list --status=active --field=name) == first ]] || fail "uploading and activating first.zip leaves exactly the First plugin active"
+wp plugin is-active first || fail "uploading and activating first.zip activates the First plugin"
 ok "first.zip uploads and activates through wp-admin's Upload Plugin"
 
-screen=$(browser screen 'admin.php?page=first-setup' '<div class="wrap"><h1>First')
-[[ $screen == *"No First app is deployed to this site yet."* && $screen == *"Secure Custom Fields | 6.9.7 or newer | missing | Not installed"* ]] || fail "the First screen lists what is missing: $screen"
-[[ $(status "$url/") == 200 && $(status "$url/__first/api/v1") == 404 ]] || fail "before a deployment WordPress serves and First's API doesn't"
-# Until the site has what First needs, other wp-admin screens point at the First screen.
-[[ $(browser screen 'index.php' 'wpbody-content') == *"needs a few plugins before an app can be deployed here"* ]] || fail "wp-admin points an administrator at the First screen"
-
-pressed=$(browser press 'admin.php?page=first-setup' 'name="install"' install=1)
-[[ $(json url <<< "$pressed") == *"page=first-setup" ]] || fail "the install button returns to the First screen: $pressed"
+# Activating First installed and activated what it depends on, each pinned by checksum.
 active=$(wp plugin list --status=active --field=name | sort | tr '\n' ' ')
-[[ $active == "action-scheduler first mcp-adapter secure-custom-fields two-factor " ]] || fail "the install button installs and activates the four pinned plugins: $active"
+[[ $active == "action-scheduler first mcp-adapter secure-custom-fields two-factor " ]] || fail "activating First installs and activates the four pinned plugins: $active"
 screen=$(browser screen 'admin.php?page=first-setup' '<div class="wrap"><h1>First')
-[[ $screen != *"Not installed"* && $screen == *"first login $url"* ]] || fail "the First screen is ready and shows the commands: $screen"
-ok "the First screen installs the pinned plugins from wordpress.org and shows the deploy commands"
+[[ $screen == *"First installed and activated the plugins it needs: Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, Two Factor 0.17.0."* ]] || fail "the First screen says what activation installed: $screen"
+[[ $screen == *"No First app is deployed to this site yet."* && $screen != *"Not installed"* && $screen == *"first login $url"* ]] || fail "the First screen is ready and shows the commands: $screen"
+[[ $(status "$url/") == 200 && $(status "$url/__first/api/v1") == 404 ]] || fail "before a deployment WordPress serves and First's API doesn't"
+# A dependency that goes missing later is named on the screen and on other wp-admin screens, and the
+# screen's button brings it back.
+wp plugin deactivate two-factor >/dev/null
+[[ $(browser screen 'index.php' 'wpbody-content') == *"needs a few plugins before an app can be deployed here"* ]] || fail "wp-admin points an administrator at the First screen"
+[[ $(browser screen 'admin.php?page=first-setup' '<div class="wrap"><h1>First') == *"Two Factor | 0.17.0 or newer | 0.17.0 (inactive) | Not installed"* ]] || fail "the First screen names the inactive plugin"
+pressed=$(browser press 'admin.php?page=first-setup' 'name="install"' install=1)
+[[ $(json url <<< "$pressed") == *"page=first-setup" && $(wp plugin is-active two-factor && echo active) == active ]] || fail "the screen's button activates it again: $pressed"
+ok "activating First installs the pinned plugins from wordpress.org; the screen shows the commands and repairs a missing plugin"
 
 # ---- the command line: first login, approved in the browser --------------------------------------
 step initial
@@ -160,10 +162,8 @@ out=$(push) || fail "a push to a site with another First plugin: $out"
 [[ $out == *"updated the First plugin on the site"* && $(curl -s -u "$admin" "$api/site" | json pluginHash) != 0000* ]] || fail "push replaces the site's plugin with the one it carries: $out"
 [[ $(curl -s "$url/__first/api/v1" | json data.name) == pluginlane ]] || fail "the app keeps running across the plugin update"
 wp plugin deactivate two-factor >/dev/null
-if out=$(push); then fail "pushed to a site missing a plugin the build needs: $out"; fi
-[[ $out == *"is missing plugins this app needs: two-factor 0.17.0 (found 0.17.0, inactive)"*"first push --install"* ]] || fail "push names the plugin the build needs: $out"
-out=$(push --install) || fail "push --install: $out"
-[[ $out == *"installed Two Factor 0.17.0 on the site"* && $(wp plugin is-active two-factor && echo active) == active ]] || fail "push --install brings the plugin back: $out"
+out=$(push) || fail "a push to a site missing a plugin the build needs: $out"
+[[ $out == *"the site is missing plugins this app needs: two-factor 0.17.0 (found 0.17.0, inactive)"*"installed Two Factor 0.17.0 on the site"* && $(wp plugin is-active two-factor && echo active) == active ]] || fail "push names the plugin the build needs and brings it back: $out"
 ok "push updates the site's First plugin and installs the plugins a build needs, with an app live"
 
 # ---- a sealed app ---------------------------------------------------------------------------------

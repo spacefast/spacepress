@@ -76,8 +76,9 @@ final class Mount
      * exactly two requests: `GET …/deployments/<id>/plan` mounts it to inspect, where none of the app's
      * own code runs, and `POST …/deployments/<id>/activate` mounts it to run. Mounting loads PHP the
      * deployment uploaded, so everything is settled first, by this plugin's own code: the route and
-     * method, the token, and that the person asking may deploy. A request that fails any of them gets
-     * the live build, and its route then refuses it.
+     * method, the token, and that the person asking may deploy and signed in with an application
+     * password (as `first push` does). A request that fails any of them gets the live build, and its
+     * route then refuses it.
      *
      * @return array{0: ?string, 1: string, 2: ?string}
      */
@@ -85,7 +86,9 @@ final class Mount
     {
         $header = $_SERVER['HTTP_X_FIRST_DEPLOYMENT'] ?? null;
         if (is_string($header) && preg_match('/\A([0-9a-f]{32}):([0-9a-f]{64})\z/D', $header, $match) === 1) {
-            $mode = match ([strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')), Site::route()]) {
+            // The request as WordPress will dispatch it: with a method override it is another request,
+            // and {@see Site::route()} is null when it names a route in more than one place.
+            $mode = Site::overridden() ? null : match ([(string) ($_SERVER['REQUEST_METHOD'] ?? ''), Site::route()]) {
                 ['GET', '/deployments/' . $match[1] . '/plan'] => 'inspect',
                 ['POST', '/deployments/' . $match[1] . '/activate'] => 'activate',
                 default => null,
@@ -93,8 +96,10 @@ final class Mount
             $record = $mode === null ? null : (Site::pending()[$match[1]] ?? null);
             if (is_array($record) && is_string($record['token'] ?? null) && hash_equals($record['token'], hash('sha256', $match[2]))
                 && (int) ($record['expires'] ?? 0) > time() && Site::validId($record['build'] ?? null)
-                // Last, and only for a holder of the token: this resolves the request's user.
-                && Receiver::authorized(true) === true) {
+                // Last, and only for a holder of the token: this resolves the request's user. It must
+                // be an application password: a browser's cookie is only good with a REST nonce, which
+                // WordPress checks after plugins have loaded, and that is too late here.
+                && Receiver::authorized(true) === true && Receiver::password() !== null) {
                 return [$record['build'], $mode, $match[1]];
             }
         }

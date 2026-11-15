@@ -83,6 +83,26 @@ elif command == "upload-plugin":
     status, url, page, _ = request(urllib.parse.urljoin(f"{base}/wp-admin/", html.unescape(link.group(1))))
     if "activate=true" not in url:
         raise SystemExit(f"activating ended at {url} ({status}): {text(page, 'wpbody-content')[:400]}")
+elif command == "rest":
+    # A REST request as the signed-in browser makes it: the login cookie, and optionally the REST
+    # nonce wp-admin's scripts send. Prints the status, then the body.
+    # `rest <METHOD> <url> <nonce or ""> <JSON body or ""> [Header: value]...`
+    headers = dict(pair.split(": ", 1) for pair in args[4:])
+    if args[2]:
+        headers["X-WP-Nonce"] = args[2]
+    body = (args[3] or "{}").encode() if args[0] != "GET" else None
+    req = urllib.request.Request(args[1], data=body, method=args[0], headers={"Content-Type": "application/json", **headers})
+    try:
+        response = opener.open(req, timeout=300)
+        print(response.status)
+        print(response.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as error:
+        print(error.code)
+        print(error.read().decode("utf-8", "replace"))
+elif command == "nonce":
+    # The REST nonce wp-admin gives this session's scripts.
+    _, _, page, _ = request(f"{base}/wp-admin/admin-ajax.php?action=rest-nonce")
+    print(page.strip())
 elif command == "get":
     # A wp-admin page's HTML, signed in.
     status, _, page, _ = request(f"{base}/wp-admin/{args[0]}")

@@ -105,6 +105,18 @@ final class Receiver
      * asks before it loads a deployment's uploaded code. It runs before WordPress initializes there, so
      * it uses nothing a build supplies.
      */
+    /** The application password this request signed in with (its UUID), or null: a cookie, or nobody. */
+    public static function password(): ?string
+    {
+        // Resolves the user first; core records the password it accepted while doing so.
+        if (get_current_user_id() === 0 || !function_exists('rest_get_authenticated_app_password')) {
+            return null;
+        }
+        $uuid = rest_get_authenticated_app_password();
+
+        return is_string($uuid) && $uuid !== '' ? $uuid : null;
+    }
+
     public static function authorized(bool $writes): bool|\WP_Error
     {
         if (!Site::mayDeploy()) {
@@ -345,6 +357,27 @@ final class Receiver
         $root = Site::root();
         $parts = "$root/.tmp/deploy-{$request['id']}-$kind";
         wp_mkdir_p($parts);
+        // One part of a tree at a time: the parts already held are counted and this one is stored
+        // under the tree's own lock, so parts sent at once can't each pass a count the other changes.
+        $lock = fopen("$root/.tmp/deploy-{$request['id']}-$kind.lock", 'c');
+        if ($lock === false || !flock($lock, LOCK_EX)) {
+            throw new \RuntimeException('Cannot lock the uploaded tree');
+        }
+        try {
+            return self::store($root, $parts, $deployment, $kind, $index, $total, $sha, $body);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+            if (!is_dir($parts)) {
+                @unlink("$root/.tmp/deploy-{$request['id']}-$kind.lock");
+            }
+        }
+    }
+
+    /** Store one part, and with the last one join, check and publish the tree. Called under the tree's lock. */
+    private static function store(string $root, string $parts, array $deployment, string $kind, int $index, int $total, string $sha, string $body): array
+    {
+        wp_mkdir_p($parts);
         $held = 0;
         foreach (scandir($parts) ?: [] as $name) {
             if (ctype_digit($name) && (int) $name !== $index) {
@@ -367,13 +400,17 @@ final class Receiver
         $zip = "$parts/tree.zip";
         try {
             $out = fopen($zip, 'wb');
+            $joined = 0;
             for ($i = 0; $i < $total; $i++) {
                 $in = @fopen("$parts/$i", 'rb');
                 if ($out === false || $in === false) {
                     throw new Refusal('first_invalid', "Part $i of the $kind tree is missing; send it again.", 409);
                 }
-                stream_copy_to_stream($in, $out);
+                $joined += (int) stream_copy_to_stream($in, $out);
                 fclose($in);
+                if ($joined > self::ZIP_LIMIT) {
+                    throw new Refusal('first_invalid', "The $kind tree is larger than a deployment may be.", 413);
+                }
             }
             fclose($out);
             if (!hash_equals($sha, (string) hash_file('sha256', $zip))) {
@@ -397,7 +434,7 @@ final class Receiver
     {
         $mounted = Mount::mounted();
         if ($mounted === null || $mounted['deployment'] !== $id || $mounted['build'] !== $deployment['build'] || $mounted['mode'] !== $mode) {
-            throw new Refusal('first_not_mounted', Mount::error() ?? 'Send this deployment\'s token in X-First-Deployment.', 409);
+            throw new Refusal('first_not_mounted', Mount::error() ?? 'Send this deployment\'s token in X-First-Deployment, signed in with an application password (first login).', 409);
         }
     }
 

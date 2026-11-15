@@ -88,7 +88,15 @@ final class Site
             $path = substr($path, strlen('/index.php'));
         }
         $prefix = '/' . rest_get_url_prefix();
+        // WordPress takes `rest_route` from the body, then the query, then the path (WP::parse_request).
+        // A request that names a route in more than one of them is not taken as a deploy request.
+        if (isset($_POST['rest_route'])) {
+            return null;
+        }
         if (str_starts_with($path, $prefix . '/')) {
+            if (isset($_GET['rest_route'])) {
+                return null;
+            }
             $route = substr($path, strlen($prefix));
         } elseif (($path === '/' || $path === '/index.php') && is_string($_GET['rest_route'] ?? null)) {
             $route = $_GET['rest_route'];
@@ -100,6 +108,15 @@ final class Site
         $route = rtrim($route, '/');
 
         return $route === $namespace || str_starts_with($route, $namespace . '/') ? substr($route, strlen($namespace)) : null;
+    }
+
+    /**
+     * Whether this request asks WordPress's REST server to treat it as another method than its own
+     * (`_method`, `X-HTTP-Method-Override`).
+     */
+    public static function overridden(): bool
+    {
+        return isset($_GET['_method']) || isset($_POST['_method']) || isset($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']);
     }
 
     public static function validId(mixed $id): bool
@@ -251,9 +268,10 @@ final class Site
     }
 
     /**
-     * Whether the user's own role grants `install_plugins`. It reads the role, not `current_user_can`:
-     * a live First app refuses `install_plugins` to everyone (its hardening), and deploying is how such
-     * a site still gets new code.
+     * Whether the user is granted `install_plugins`: by their role, as changed by any `user_has_cap`
+     * filter (a plugin that takes the capability away, or grants it, is honored). It does not go
+     * through `map_meta_cap`: a live First app refuses `install_plugins` to everyone there (its
+     * hardening), and deploying is how such a site still gets new code.
      */
     public static function deployer(int $user): bool
     {
@@ -261,8 +279,13 @@ final class Site
         if (!$account instanceof \WP_User) {
             return false;
         }
+        if (is_multisite()) {
+            return is_super_admin($user);
+        }
+        // What WP_User::has_cap does after the meta mapping, for this one primitive capability.
+        $granted = apply_filters('user_has_cap', $account->allcaps, ['install_plugins'], ['install_plugins', $user], $account);
 
-        return is_multisite() ? is_super_admin($user) : !empty($account->allcaps['install_plugins']);
+        return is_array($granted) && !empty($granted['install_plugins']);
     }
 
     /** Why this site takes no deployments at all, or null. A host that manages its own code says so. */

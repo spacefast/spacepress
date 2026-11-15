@@ -28,14 +28,17 @@ sends for its last deployment, then uploads the two content-addressed trees.
   activate installed plugins is not enough: that does not mean "may put new PHP here". The check
   reads the role, because a live app refuses `install_plugins` to everyone. The site recomputes each
   tree's digest and publishes it only under the name the build's manifest gives it, so an upload
-  can't replace or add to a tree that exists. An archive is bounded in entries and unpacked size
-  before anything is unpacked.
+  can't replace or add to a tree that exists. An archive is bounded in entries, and in unpacked
+  size as counted while it is unpacked: the sizes it declares are its own claim.
 - **The candidate build is loaded only for its own two requests, and only for someone who may
   deploy.** `GET …/plan` mounts it to inspect, where none of the app's code runs; `POST …/activate`
   mounts it to install. Mounting reads PHP the deployment uploaded, and that happens before
   WordPress's REST server checks anything, so the plugin settles it first with its own code: the
-  exact route and method, the per-deployment token, and the person asking. Every other request
-  keeps the live build.
+  route and method as WordPress will dispatch them (no method override, no second `rest_route`),
+  the per-deployment token, and the person asking, who must have signed in with an application
+  password. A browser session is not accepted there: its REST nonce is checked by WordPress after
+  plugins have loaded, which is after the build would have been read. Every other request keeps
+  the live build.
 - **One writer at a time.** Opening a deployment, making a build live and making an earlier one
   live again each read what is stored and write it back, behind the store's lock. The history is
   written before the live build: a request that dies between them leaves the old code live with

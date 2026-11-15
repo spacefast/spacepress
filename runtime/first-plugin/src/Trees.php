@@ -179,8 +179,47 @@ final class Trees
                     throw new \RuntimeException("The uploaded $kind tree has a link or special file");
                 }
             }
-            if (!mkdir($staged, 0755) || !$archive->extractTo($staged)) {
+            // Unpacked entry by entry, counting the bytes that come out: the sizes an archive declares
+            // are its own claim, and one that understates them is stopped at the same bound.
+            if (!mkdir($staged, 0755)) {
                 throw new \RuntimeException("Cannot unpack the uploaded $kind tree");
+            }
+            $written = 0;
+            for ($i = 0; $i < $archive->numFiles; $i++) {
+                $name = (string) $archive->getNameIndex($i);
+                $path = $staged . '/' . rtrim($name, '/');
+                if (str_ends_with($name, '/')) {
+                    if (!is_dir($path) && !mkdir($path, 0755, true)) {
+                        throw new \RuntimeException("Cannot unpack the uploaded $kind tree");
+                    }
+                    continue;
+                }
+                if (!is_dir(dirname($path)) && !mkdir(dirname($path), 0755, true)) {
+                    throw new \RuntimeException("Cannot unpack the uploaded $kind tree");
+                }
+                $in = $archive->getStreamIndex($i);
+                $out = $in === false ? false : fopen($path, 'xb');
+                if ($in === false || $out === false) {
+                    throw new \RuntimeException("Cannot unpack the uploaded $kind tree");
+                }
+                try {
+                    while (!feof($in)) {
+                        $chunk = fread($in, 1048576);
+                        if ($chunk === false) {
+                            throw new \RuntimeException("Cannot unpack the uploaded $kind tree");
+                        }
+                        $written += strlen($chunk);
+                        if ($written > self::BYTES) {
+                            throw new \RuntimeException("The uploaded $kind tree unpacks to more than a tree may hold (" . intdiv(self::BYTES, 1048576) . ' MB)');
+                        }
+                        if ($chunk !== '' && fwrite($out, $chunk) !== strlen($chunk)) {
+                            throw new \RuntimeException("Cannot unpack the uploaded $kind tree");
+                        }
+                    }
+                } finally {
+                    fclose($in);
+                    fclose($out);
+                }
             }
             $archive->close();
             $digest = self::digest($staged);

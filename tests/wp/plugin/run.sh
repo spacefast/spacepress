@@ -203,6 +203,24 @@ support="support:$(wp user application-password create support lane --porcelain)
 [[ $(status -u "$support" "$url/wp-json/wp/v2/plugins") == 200 ]] || fail "the support role manages installed plugins"
 [[ $(status -u "$support" "$api/site") == 403 && $(curl -s -o /dev/null -w '%{http_code}' -u "$support" -H 'Content-Type: application/json' -d '{"manifest":"{}"}' "$api/deployments") == 403 ]] || fail "being allowed to activate plugins is not being allowed to deploy"
 
+# A plugin that takes `install_plugins` from someone takes deploying from them, and one that grants
+# it gives it: here a must-use plugin that does both, by user login.
+"$harness" compose exec -T wordpress sh -c 'cat > /var/www/html/wp-content/mu-plugins/lane-caps.php' <<'PHP'
+<?php
+add_filter('user_has_cap', static function (array $all, array $caps, array $args, WP_User $user): array {
+    $rule = get_option('lane_install_plugins', []);
+    if (is_array($rule) && array_key_exists($user->user_login, $rule)) {
+        $all['install_plugins'] = (bool) $rule[$user->user_login];
+    }
+    return $all;
+}, 10, 4);
+PHP
+wp option update lane_install_plugins '{"admin":false,"support":true}' --format=json >/dev/null
+[[ $(status -u "$admin" "$api/site") == 403 && $(status -u "$support" "$api/site") == 200 ]] || fail "a user_has_cap filter decides who may install plugins, and so who may deploy"
+wp option delete lane_install_plugins >/dev/null
+"$harness" compose exec -T wordpress rm /var/www/html/wp-content/mu-plugins/lane-caps.php
+[[ $(status -u "$admin" "$api/site") == 200 && $(status -u "$support" "$api/site") == 403 ]] || fail "without the filter the roles decide again"
+
 # Pushes that open a deployment at the same moment each keep theirs. The manifest is the last
 # compiled build's (the refused `required` step, compiled against the live build).
 latest=$(python3 -c 'import glob,json,os,sys; p=max(glob.glob(sys.argv[1]+"/build/*.json"), key=os.path.getmtime); print(json.dumps({"manifest": open(p).read()}))' "$project/.first/store")
@@ -257,6 +275,30 @@ with zipfile.ZipFile(work + "/huge.zip", "w", zipfile.ZIP_DEFLATED) as z:
         for _ in range(600):
             out.write(bytes(1 << 20))
 PY
+# The same archive with every declared size rewritten to one byte: what comes out is counted, not
+# what the archive says of itself.
+python3 - "$work" <<'PY'
+import struct, sys
+work = sys.argv[1]
+data = bytearray(open(work + "/huge.zip", "rb").read())
+def patch(signature, offset, zip64_tag=True):
+    at = data.find(signature)
+    while at >= 0:
+        struct.pack_into("<I", data, at + offset, 1)          # uncompressed size
+        at = data.find(signature, at + 4)
+patch(b"PK\x03\x04", 22)   # local file header
+patch(b"PK\x01\x02", 24)   # central directory header
+# The ZIP64 extra field (tag 0x0001) repeats the uncompressed size as 8 bytes right after its header.
+at = data.find(b"\x01\x00")
+while at >= 0:
+    size = struct.unpack_from("<H", data, at + 2)[0]
+    if size in (16, 20, 24, 28) and at + 12 <= len(data) and struct.unpack_from("<Q", data, at + 4)[0] == 600 * (1 << 20):
+        struct.pack_into("<Q", data, at + 4, 1)
+    at = data.find(b"\x01\x00", at + 2)
+open(work + "/lying.zip", "wb").write(data)
+PY
+[[ $(send "$work/lying.zip") == 422 && $(json message < "$work/answer.json") == *"unpacks to more than a tree may hold"* ]] || fail "an archive that understates its unpacked size is stopped at the same bound: $(cat "$work/answer.json")"
+"$harness" compose exec -T wordpress sh -c "! find /var/www/html/wp-content -name zeros.bin | grep -q ." || fail "the understated archive left nothing unpacked"
 [[ $(send "$work/many.zip") == 422 && $(json message < "$work/answer.json") == *"more files than a tree may hold"* ]] || fail "an archive with too many entries is refused: $(cat "$work/answer.json")"
 [[ $(send "$work/huge.zip") == 422 && $(json message < "$work/answer.json") == *"unpacks to more than a tree may hold"* ]] || fail "an archive that unpacks to too much is refused: $(cat "$work/answer.json")"
 "$harness" compose exec -T wordpress sh -c "! find /var/www/html/wp-content -name zeros.bin | grep -q ." || fail "the oversized archive was not unpacked"
@@ -314,6 +356,18 @@ mine=(-H "X-First-Deployment: $mid:$mtoken")
 [[ $(status -u "$editor" "${mine[@]}" "$api/deployments/$mid/plan") == 403 && $(status -u "$editor" "${mine[@]}" -X POST "$api/deployments/$mid/activate") == 403 ]] || fail "an editor with the token is refused"
 [[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/nothing-here") == 404 ]] || fail "a route the receiver doesn't have is not found"
 [[ $(status -u "$admin" "${mine[@]}" -X POST "$api/deployments/$mid/plan") == 404 && $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/activate") == 404 ]] || fail "the plan is read and the activation is posted"
+# A request WordPress dispatches somewhere else is not this deployment's request: its path names the
+# plan and its `rest_route` or method override names something else.
+[[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/plan?rest_route=/wp/v2/types") == 200 ]] || fail "WordPress serves the route named in the query"
+[[ $(status -u "$admin" "${mine[@]}" -X POST "$api/deployments/$mid/activate?_method=DELETE") == 404 && $(status -u "$admin" "${mine[@]}" -H 'X-HTTP-Method-Override: DELETE' -X POST "$api/deployments/$mid/activate") == 404 ]] || fail "an overridden method is not the activation"
+# An administrator's browser session is not enough either: the cookie alone, the cookie with a wrong
+# nonce, and the cookie with the right one. Only an application password gets the build loaded.
+nonce=$(browser nonce)
+[[ ${#nonce} == 10 ]] || fail "wp-admin gives the session a REST nonce: $nonce"
+[[ $(browser rest GET "$api/deployments/$mid/plan" "" "" "X-First-Deployment: $mid:$mtoken" | sed -n 1p) == 401 ]] || fail "a cookie without a nonce is signed out on the REST API"
+[[ $(browser rest GET "$api/deployments/$mid/plan" "0000000000" "" "X-First-Deployment: $mid:$mtoken" | sed -n 1p) == 403 ]] || fail "a cookie with a wrong nonce is refused"
+[[ $(browser rest GET "$api/deployments/$mid/plan" "$nonce" "" "X-First-Deployment: $mid:$mtoken" | sed -n 1p) == 409 ]] || fail "a browser session reaches the route and gets no build mounted"
+[[ $(browser rest GET "$api/site" "$nonce" "" | sed -n 1p) == 200 ]] || fail "the same session may read the receiver"
 if ran; then fail "a deployment's uploaded code ran for a request that may not deploy, or on a route that isn't its own"; fi
 # The administrator's plan mounts it to inspect: the schema is read, so the marker is there now.
 [[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/plan") == 200 ]] || fail "the administrator reads the plan"
@@ -376,7 +430,18 @@ runtime_tree=$("$harness" compose exec -T wordpress sh -c "sed -n 's/.*\"runtime
 out=$(push) || fail "a push to a site that lost a tree: $out"
 [[ $out == *"has this code and is not running it"*"uploading the runtime tree"*"live:"* ]] || fail "push sends the missing tree again: $out"
 [[ $(curl -s "$url/__first/api/v1" | json data.name) == pluginlane && $(curl -s "$url/__first/api/v1/notes" | json data.0.title) == "Written before the second deploy" ]] || fail "the app runs again with its content"
-ok "a site that lost a stored tree gets it again from the next push"
+# The last deployment's manifest goes missing: the site still names that build as the baseline (the
+# database is at its schema) and says its files are gone. It never offers an older build instead.
+base=$(curl -s -u "$admin" "$api/site" | json baseline)
+[[ $base == "$(wp option get first_live_build)" ]] || fail "the last deployment is the baseline: $base"
+"$harness" compose exec -T wordpress mv "/var/www/html/wp-content/first-store-$key/build/$base.json" "/var/www/html/wp-content/first-store-$key/.tmp/held.json"
+[[ $(curl -s -u "$admin" "$api/site" | json baseline) == "$base" ]] || fail "a baseline whose manifest is gone is still the baseline"
+[[ $(curl -s -o "$work/answer.json" -w '%{http_code}' -u "$admin" "$api/builds/$base/baseline") == 404 && $(json message < "$work/answer.json") == *"no longer in its build store"* ]] || fail "the site says the baseline's files are gone: $(cat "$work/answer.json")"
+if out=$(push); then fail "a push compiled against something other than the last deployment: $out"; fi
+[[ $out == *"no longer in its build store"* ]] || fail "push stops and says why: $out"
+"$harness" compose exec -T wordpress mv "/var/www/html/wp-content/first-store-$key/.tmp/held.json" "/var/www/html/wp-content/first-store-$key/build/$base.json"
+[[ $(curl -s "$url/__first/api/v1" | json data.name) == pluginlane ]] || fail "the app runs again once the manifest is back"
+ok "a site that lost a stored tree gets it again from the next push, and a lost baseline is reported, not replaced"
 
 # ---- first logout, and signing in again with an app live ------------------------------------------
 "$first" logout "$url" >/dev/null
@@ -397,6 +462,17 @@ wait
 [[ $(cat "$work/login2.out") == *"signed in to $url as admin"*"exit 0" ]] || fail "first login works with an app live: $(cat "$work/login2.out")"
 out=$(push) || fail "a push with the new credential: $out"
 [[ $out == *"already runs this code; nothing to deploy"* ]] || fail "the credential approved with an app live deploys: $out"
+# A real browser approves through the screen's script: core's REST route, with the session's cookie
+# and nonce. That is the path the running app scopes. The command line's own approval stays unscoped
+# there, and any other application's is scoped as before.
+nonce=$(browser nonce)
+passwords="$url/wp-json/wp/v2/users/me/application-passwords"
+made=$(browser rest POST "$passwords" "$nonce" '{"name":"First CLI (script)","app_id":"0d1f6c5e-3b55-4f0e-9c2a-6a1e5f1b7a10"}')
+[[ $(sed -n 1p <<< "$made") == 201 && $(sed 1d <<< "$made" | json first_scope) == null ]] || fail "the command line's approval through the screen's script is unscoped: $made"
+[[ $(status -u "admin:$(sed 1d <<< "$made" | json password)" "$api/site") == 200 ]] || fail "that credential deploys"
+made=$(browser rest POST "$passwords" "$nonce" '{"name":"Some agent","app_id":"11111111-2222-4333-8444-555555555555"}')
+[[ $(sed -n 1p <<< "$made") == 201 && $(sed 1d <<< "$made" | json first_scope.write) == false ]] || fail "another application's approval is scoped read-only: $made"
+[[ $(status -u "admin:$(sed 1d <<< "$made" | json password)" "$api/site") == 403 ]] || fail "a scoped credential can't deploy"
 other=$(browser get "authorize-application.php?app_name=Agent&app_id=11111111-2222-4333-8444-555555555555&success_url=http%3A%2F%2F127.0.0.1%3A9%2Fcallback")
 [[ $other == *"first-scope-write"* && $other != *"This is the First command line"* ]] || fail "another application's approval keeps the agent scope form"
 elsewhere=$(browser get "authorize-application.php?app_name=First&app_id=0d1f6c5e-3b55-4f0e-9c2a-6a1e5f1b7a10&success_url=https%3A%2F%2Fexample.test%2Fcallback")

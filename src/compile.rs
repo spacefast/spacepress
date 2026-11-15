@@ -2174,7 +2174,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     let _ = writeln!(
                         out,
-                        "{p}{source} = {src};\n{p}for ({index} = 0; {index} < count({source}->a); {index}++) {{"
+                        "{p}{source} = {src};\n{p}for ({index} = 0; {index} < \\count({source}->a); {index}++) {{"
                     );
                     let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
                 }
@@ -2828,7 +2828,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 };
                 for (i, e) in elems.iter().enumerate() {
-                    let _ = writeln!(out, "{p}{done} = {done} || {i} >= count({src}->a);");
+                    let _ = writeln!(out, "{p}{done} = {done} || {i} >= \\count({src}->a);");
                     if let Some(e) = e {
                         let access =
                             format!("({done} ? \\First\\Js::undefined() : \\First\\Js::dynamicGet({src}, {i}))");
@@ -3413,7 +3413,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if parts.is_empty() {
                     Out::atom("''", Ty::Str)
                 } else {
-                    Out::atom(format!("implode('', [{}])", parts.join(", ")), Ty::Str)
+                    Out::atom(format!("\\implode('', [{}])", parts.join(", ")), Ty::Str)
                 }
             }
             ExprKind::Sequence(items) => {
@@ -4044,8 +4044,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 match op {
-                    BinOp::Div => Out::atom(format!("fdiv({}, {})", a.php, b.php), Ty::Num),
-                    BinOp::Rem => Out::atom(format!("fmod({}, {})", a.php, b.php), Ty::Num),
+                    BinOp::Div => Out::atom(format!("\\fdiv({}, {})", a.php, b.php), Ty::Num),
+                    BinOp::Rem => Out::atom(format!("\\fmod({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Exp => Out::atom(format!("\\First\\Js::pow({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Sub => Out::atom(format!("\\First\\Js::sub({}, {})", a.php, b.php), Ty::Num),
                     _ => Out::atom(format!("\\First\\Js::mul({}, {})", a.php, b.php), Ty::Num),
@@ -6417,7 +6417,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Out::atom(php, suffix_null(Ty::Num))
             }
             (Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_), "length") => {
-                let php = guarded(self, &|x| format!("count(({x})->a)"));
+                let php = guarded(self, &|x| format!("\\count(({x})->a)"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
             // `TemplateStringsArray.raw`: a tagged template's strings carry their source text.
@@ -6980,13 +6980,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // properties the style's type declares: extra keys in the data are dropped.
                     let keys: Vec<String> = fields.keys().map(|k| php_str(k)).collect();
                     let narrowed = format!(
-                        "array_intersect_key(({})->p ?? [], array_flip([{}]))",
+                        "\\array_intersect_key(({})->p ?? [], \\array_flip([{}]))",
                         v.wrapped(),
                         keys.join(", ")
                     );
                     let narrowed = match fields.iter().find(|(k, _)| k.as_str() == "style") {
                         Some((_, (style_ty, _))) => format!(
-                            "(static function (array $a): array {{ if (array_key_exists('style', $a)) {{ $a['style'] = {}; }} return $a; }})({narrowed})",
+                            "(static function (array $a): array {{ if (\\array_key_exists('style', $a)) {{ $a['style'] = {}; }} return $a; }})({narrowed})",
                             style_of("$a['style']", style_ty)
                         ),
                         None => narrowed,
@@ -7039,7 +7039,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let attrs = if spread {
             // A later attribute replaces an earlier spread key, as object spread does.
             format!(
-                "array_merge({})",
+                "\\array_merge({})",
                 entries
                     .iter()
                     .map(|e| match e.strip_prefix("...") {
@@ -8701,7 +8701,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("parseFloat", Some(v)) => {
                 Out::atom(format!("\\First\\Js::parseFloat({})", v.php), Ty::Num).checked_str(v, span)?
             }
-            ("isNaN", Some(v)) => Out::atom(format!("is_nan((float) \\First\\Js::toNumber({}))", v.php), Ty::Bool),
+            ("isNaN", Some(v)) => Out::atom(format!("\\is_nan((float) \\First\\Js::toNumber({}))", v.php), Ty::Bool),
             ("isFinite", Some(v)) => Out::atom(
                 format!("\\First\\Js::isFinite(\\First\\Js::toNumber({}))", v.php),
                 Ty::Bool,
@@ -9090,10 +9090,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 all_num(&format!("Math.{m}"))?;
                 let x = php_args();
                 let php = match m {
-                    "floor" => format!("floor({x})"),
-                    "ceil" => format!("ceil({x})"),
-                    "abs" => format!("abs({x})"),
-                    "sqrt" => format!("sqrt({x})"),
+                    "floor" => format!("\\floor({x})"),
+                    "ceil" => format!("\\ceil({x})"),
+                    "abs" => format!("\\abs({x})"),
+                    "sqrt" => format!("\\sqrt({x})"),
                     "trunc" => format!("\\First\\Js::trunc({x})"),
                     "round" => format!("\\First\\Js::round({x})"),
                     "sign" => format!("\\First\\Js::sign({x})"),
@@ -9504,8 +9504,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Str,
                 )
             }
-            "toLowerCase" => Out::atom(format!("mb_strtolower({}, 'UTF-8')", s.php), Ty::Str),
-            "toUpperCase" => Out::atom(format!("mb_strtoupper({}, 'UTF-8')", s.php), Ty::Str),
+            "toLowerCase" => Out::atom(format!("\\mb_strtolower({}, 'UTF-8')", s.php), Ty::Str),
+            "toUpperCase" => Out::atom(format!("\\mb_strtoupper({}, 'UTF-8')", s.php), Ty::Str),
             "trim" | "trimStart" | "trimEnd" => js(m, &[]),
             "includes" | "startsWith" | "endsWith" if argv.len() > 1 => {
                 return err_help(
@@ -10572,12 +10572,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn filter_value(&self, col: &crate::schema::Column, v: &Out) -> String {
         match (col.ty, &v.ty) {
             (ColType::Timestamp, Ty::Date) => format!("\\First\\Js::iso(({})->milliseconds)", v.php),
-            (ColType::Date, Ty::Date) => format!("substr(\\First\\Js::iso(({})->milliseconds), 0, 10)", v.php),
+            (ColType::Date, Ty::Date) => format!("\\substr(\\First\\Js::iso(({})->milliseconds), 0, 10)", v.php),
             (ColType::Timestamp, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
                 format!("\\First\\Js::iso({})", v.php)
             }
             (ColType::Date, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
-                format!("substr(\\First\\Js::iso({}), 0, 10)", v.php)
+                format!("\\substr(\\First\\Js::iso({}), 0, 10)", v.php)
             }
             _ => v.php.clone(),
         }

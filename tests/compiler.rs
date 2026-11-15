@@ -1610,6 +1610,18 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let runtime = plugins.join("first-runtime");
 
     let functions = std::fs::read_to_string(app.join("first/app/functions.php")).unwrap();
+    // Every PHP built-in the compiler emits is called by its full name (`\\count`), so PHP doesn't
+    // look it up in `namespace FirstApp` first.
+    let unqualified = Command::new("php")
+        .arg(root().join("tests/php/unqualified_calls.php"))
+        .arg(app.join("first/app/functions.php"))
+        .output()
+        .unwrap();
+    assert!(
+        unqualified.status.success(),
+        "unqualified built-in calls:\n{}",
+        String::from_utf8_lossy(&unqualified.stdout)
+    );
     let body = |name: &str| {
         functions
             .split(&format!("function {name}("))

@@ -208,9 +208,9 @@ impl Compiler<'_, '_> {
                 .first()
                 .is_some_and(|param| matches!(&param.pat, Pat::Id(name, _) if name == "this"))
             {
-                "array_slice(func_get_args(), 1)"
+                "\\array_slice(\\func_get_args(), 1)"
             } else {
-                "func_get_args()"
+                "\\func_get_args()"
             };
             let _ = writeln!(source, "{}{php} = \\First\\Js::arguments({args});", pad(indent));
         }

@@ -1642,10 +1642,37 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("reboundParameter").contains("\\First\\Js::dataGet($input, 'n')")
             && !body("reboundParameter").contains("->p[")
     );
+    // A nullable receiver that no assignment replaces tries the property first: `??` gives the
+    // checked read for null and undefined, so a missing value still reads as dataGet does.
     assert!(
-        body("nullableParameter").contains("\\First\\Js::dataGet($input, 'n')")
-            && !body("nullableParameter").contains("->p[")
+        body("nullableParameter").contains("($input->p['n'] ?? \\First\\Js::dataGet($input, 'n'))"),
+        "{}",
+        body("nullableParameter")
     );
+
+    // Typed number comparisons and equality are native after a run-time int/float check; a literal
+    // string side compares with `===`; a plain-variable object read tries the property first.
+    assert!(
+        !body("numberCompare").contains("dynamicBinary('<', $a, $b)")
+            || body("numberCompare").contains("\\is_float($a)")
+    );
+    assert!(
+        body("numberCompare").contains("(float) $a < (float) $b"),
+        "{}",
+        body("numberCompare")
+    );
+    assert!(body("numberCompare").contains("$a == $b"), "{}", body("numberCompare"));
+    assert!(
+        body("stringEquality").contains("$s === 'a'"),
+        "{}",
+        body("stringEquality")
+    );
+    assert!(
+        !body("stringEquality").contains("strictEq($s, 'a')"),
+        "{}",
+        body("stringEquality")
+    );
+    assert!(body("localRead").contains("->p['title'] ??"), "{}", body("localRead"));
 
     // Only a function that names `arguments`, itself or in one of its arrows, builds the object.
     for (name, uses) in [

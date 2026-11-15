@@ -4059,7 +4059,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => ">=",
                 };
                 if a.ty.is_num() && b.ty.is_num() {
-                    self.javascript_binary(op, a, b, span)?
+                    self.number_compare(sym, a, b)
                 } else if a.ty.is_str() && b.ty.is_str() {
                     Out::new(
                         format!("\\First\\Js::stringCompare({}, {}) {sym} 0", a.php, b.php),
@@ -4156,7 +4156,96 @@ impl<'a, 'p> Compiler<'a, 'p> {
         ))
     }
 
-    fn strict_eq(&self, a: &Out, b: &Out) -> String {
+    /// `a < b` (and `<=`, `>`, `>=`) on two operands typed `number`. A PHP int or float is
+    /// compared natively, both sides as floats: that is JavaScript's comparison of two numbers,
+    /// including NaN (false), -0 == 0, ±Infinity, and an exact integer past 2^53, which JavaScript
+    /// reads as the nearest double (as `Js::n` does). Anything else at run time (a value the type
+    /// system was told is a number, such as a BigInt cast with `as unknown as number`) takes
+    /// `Js::dynamicBinary`, exactly as before. A literal operand needs no check.
+    fn number_compare(&mut self, sym: &str, a: Out, b: Out) -> Out {
+        let literal = |v: &Out| matches!(v.ty, Ty::NumLit(_) | Ty::FreshNumLit(_));
+        let plain = |v: &Out| literal(v) || is_php_variable(&v.php);
+        // Operands are read left to right: when the right one must be evaluated into a temporary
+        // (it may assign the left variable, as in `x < (x = 5)`), the left one is read first.
+        let copy_a = !literal(&a) && (!plain(&a) || !plain(&b));
+        let copy_b = !plain(&b);
+        let mut assign = Vec::new();
+        let mut test = Vec::new();
+        let mut side = |c: &mut Self, v: &Out, copy: bool| {
+            let php = if copy {
+                let tmp = c.tmp_var();
+                assign.push(format!("{tmp} = {}", v.php));
+                tmp
+            } else {
+                v.php.clone()
+            };
+            if !literal(v) {
+                test.push(format!("(\\is_int({php}) || \\is_float({php}))"));
+            }
+            php
+        };
+        let x = side(self, &a, copy_a);
+        let y = side(self, &b, copy_b);
+        let native = format!("(float) {x} {sym} (float) {y}");
+        if test.is_empty() {
+            return Out::new(native, Ty::Bool);
+        }
+        // A non-empty array literal is truthy: it only sequences the assignments.
+        let prefix = if assign.is_empty() {
+            String::new()
+        } else {
+            format!("[{}] && ", assign.join(", "))
+        };
+        Out::atom(
+            format!(
+                "({prefix}{} ? {native} : \\First\\Js::dynamicBinary({}, {x}, {y}))",
+                test.join(" && "),
+                php_str(sym)
+            ),
+            Ty::Bool,
+        )
+    }
+
+    /// `===` with JavaScript's meaning. Native PHP `===` is the same comparison when either side is
+    /// a literal string, boolean, null or undefined (no int/float or BigInt case can arise), and
+    /// `==` is the same for two PHP ints or floats (int 1 == float 1.0, NaN != NaN, -0 == 0, and
+    /// PHP 8 compares an int with a float exactly as JavaScript compares the two numbers). Typed
+    /// number operands are checked at run time, as in `number_compare`; anything else keeps
+    /// `Js::strictEq`.
+    fn strict_eq(&mut self, a: &Out, b: &Out) -> String {
+        let exact = |t: &Ty| {
+            matches!(
+                t,
+                Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::BoolLit(_) | Ty::FreshBoolLit(_) | Ty::Null | Ty::Undefined
+            )
+        };
+        if (exact(&a.ty) && literal_php(a)) || (exact(&b.ty) && literal_php(b)) {
+            return format!("{} === {}", a.wrapped(), b.wrapped());
+        }
+        // Two typed numbers, each a literal or a plain variable (read twice without effect).
+        let literal = |v: &Out| matches!(v.ty, Ty::NumLit(_) | Ty::FreshNumLit(_));
+        if a.ty.is_num()
+            && b.ty.is_num()
+            && (literal(a) || is_php_variable(&a.php))
+            && (literal(b) || is_php_variable(&b.php))
+        {
+            let test: Vec<String> = [a, b]
+                .into_iter()
+                .filter(|v| !literal(v))
+                .map(|v| format!("(\\is_int({0}) || \\is_float({0}))", v.php))
+                .collect();
+            if test.is_empty() {
+                return format!("{} == {}", a.php, b.php);
+            }
+            return format!(
+                "({} ? {} == {} : \\First\\Js::strictEq({}, {}))",
+                test.join(" && "),
+                a.php,
+                b.php,
+                a.php,
+                b.php
+            );
+        }
         format!("\\First\\Js::strictEq({}, {})", a.php, b.php)
     }
 
@@ -6227,6 +6316,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(out);
         }
         let native_object = self.native_object_receiver(obj);
+        // A local or parameter no assignment ever replaces, captures included.
+        let stable_local = matches!(&obj.kind, ExprKind::Ident(name)
+            if self.scope_local(name).is_some_and(|local| !self.effects.binding_reassigned(local.binding)));
         // Namespaces: Math.PI etc.
         if let ExprKind::Ident(n) = &obj.kind
             && let Ok(Resolved::Global(g)) = self.resolve(n, obj.span)
@@ -6485,9 +6577,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return Err(self.no_field(&o.ty, prop, prop_span));
                 };
                 let map = matches!(base, Ty::Map(_));
+                // Every shape the receiver can have is a plain object (`JsObject`), never an array.
+                let plain_objects = base.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_)));
                 let php = guarded(self, &|x| {
-                    if native_object && !map && !opt_field {
-                        // Present non-null values skip the checked read; absent keys keep dataGet's semantics.
+                    // Present non-null values skip the checked read; absent keys, null values and any
+                    // receiver that is not a JsObject (null, undefined, a primitive: `??` reads them
+                    // without a diagnostic) keep dataGet's semantics. Beyond a proven parameter, the
+                    // receiver must be a local no assignment replaces, read as a plain variable.
+                    if (native_object && !map && !opt_field) || (plain_objects && stable_local && is_php_variable(x)) {
                         format!("({x}->p[{0}] ?? \\First\\Js::dataGet({x}, {0}))", php_str(prop))
                     } else {
                         format!("\\First\\Js::dataGet({x}, {})", php_str(prop))
@@ -10973,6 +11070,19 @@ fn php_local_base(name: &str) -> String {
     }
     let encoded = crate::hex(name);
     format!("__first_local_{encoded}")
+}
+
+/// A plain PHP variable (`$x`, `$__t3`): reading it twice has no effect and gives the same value.
+fn is_php_variable(php: &str) -> bool {
+    php.strip_prefix('$')
+        .is_some_and(|name| !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+}
+
+/// The PHP of a literal the compiler wrote: a quoted string, `true`/`false`, `null` or undefined.
+fn literal_php(v: &Out) -> bool {
+    let php = v.php.as_str();
+    matches!(php, "true" | "false" | "null" | "\\First\\Js::undefined()")
+        || ((php.starts_with('\'') || php.starts_with('"')) && matches!(v.ty, Ty::StrLit(_) | Ty::FreshStrLit(_)))
 }
 
 fn php_hint(t: &Ty) -> &'static str {

@@ -8,6 +8,15 @@ alone is insufficient: the emitted function signature must enforce `JsObject`,
 the parameter must have no default initializer, and the completed effects analysis
 must show no assignment to its binding, including from captured closures.
 
+Reads also take the native-first form when the receiver is any local or parameter that the
+effects analysis shows no assignment replaces, read as a plain PHP variable, and every shape its
+type allows is a plain object: `$x->p['k'] ?? Js::dataGet($x, 'k')`. No PHP entry type is needed
+for this: when `$x` is null, undefined or a primitive, `??` reads the missing property without a
+diagnostic and falls to the checked read, which then throws or answers exactly as before. Only a
+`JsObject`, `JsArray` or `JsArguments` has a public `p`, and an array-typed receiver keeps the
+checked read (its `length` and indexes live outside `p`). The left side is evaluated once even
+when it is null (PHP 8.2 and 8.5).
+
 The compiler records this proof on the binding, independently of its inferred
 field types. It recognizes direct identifier receivers, including their use in
 captured closures. Other locals, assertions, nullable parameters, dynamic reads,

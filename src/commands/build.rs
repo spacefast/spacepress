@@ -233,7 +233,7 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
         ".{}.first-build.lock",
         root.file_name().unwrap().to_string_lossy()
     )))?;
-    let prepared = wp_plugins::Prepared::acquire(&plan, &lock, &platform::cache(project))?;
+    let mut prepared = wp_plugins::Prepared::acquire(&plan, &lock, &platform::cache(project))?;
     let temp = tempfile::tempdir_in(&parent)?;
     let stage = temp.path().join("wp-content");
     if std::fs::symlink_metadata(&root).is_ok() {

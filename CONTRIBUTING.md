@@ -11,7 +11,7 @@ the SQLite Database Integration plugin; `first build` also lints with `php -l`
 when a host PHP executable is available),
 Node 22.18+, npm, and TypeScript 5.9
 (`npm install --global typescript@5.9.3`). `cargo build --release` produces
-`target/release/first`.
+`target/release/first`, stripped of debug symbols (`[profile.release]` in `Cargo.toml`).
 
 `first dev` uses pinned WordPress Studio CLI 2.2.0 through npm and needs no
 Docker or host PHP. It supplies WordPress 7.2-beta5, PHP 8.4 and SQLite Database

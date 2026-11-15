@@ -61,6 +61,10 @@ final class AppRouter
         if ($app['legacyRoutes'] ?? false) {
             return;
         }
+        // `login.tsx`: wp-login.php's sign-in view, once wp-login.php has decided what it shows.
+        if (is_array($app['login'] ?? null)) {
+            add_filter('wp_login_errors', [self::$instance, 'login'], PHP_INT_MAX, 2);
+        }
         // After the frontend-mode gate (-1) and a kind URL's old-slug redirect (0).
         add_action('template_redirect', [self::$instance, 'claim'], 1);
         add_filter('redirect_canonical', static fn (string|false $redirect): string|false => self::$instance?->serving ? false : $redirect, 10, 1);
@@ -372,6 +376,71 @@ final class AppRouter
             $this->document(404, ['title' => __('Page not found')], '<h1>' . esc_html__('Page not found') . '</h1>');
         }
         $this->serve($route, [], $viewer, 404);
+    }
+
+    /**
+     * wp-login.php's sign-in view (`action=login`, the default, and `checkemail`), rendered by
+     * `login.tsx` inside the root layout. `wp_login_errors` is the last thing wp-login.php does
+     * before printing its own page: the sign-in has already run (`wp_signon`, so `authenticate`,
+     * Identity's limits and Two Factor's second step are behind us), and what is left is markup.
+     * The form posts back to wp-login.php. Anything this can't render (an interim sign-in inside
+     * wp-admin, the Customizer's, a render error) falls through to WordPress's own page.
+     *
+     * Other actions (lost password, reset, register, logout, Two Factor's screens) keep
+     * WordPress's own pages (docs/decisions/2026-11-15-one-sign-in-page.md).
+     */
+    public function login(mixed $errors, mixed $redirectTo = ''): mixed
+    {
+        global $action;
+        if (!$errors instanceof \WP_Error || !in_array($action ?? 'login', ['login', 'checkemail'], true)
+            || isset($_REQUEST['interim-login']) || isset($_REQUEST['customize-login']) || headers_sent()
+            || $this->plugin->unavailable() !== null) {
+            return $errors;
+        }
+        $route = $this->app['login'];
+        $this->plugin->app();
+        $login = '';
+        if (isset($_POST['log']) && is_string($_POST['log']) && in_array($errors->get_error_code(), ['incorrect_password', 'empty_password'], true)) {
+            $login = wp_unslash($_POST['log']);
+        }
+        \First\Render\LoginView::capture($errors, is_string($redirectTo) ? $redirectTo : '', $login);
+        $viewer = CoreAccess::viewer() ?? new Viewer(null);
+        $page = $this->file($route['page']);
+        // The root layouts wrap the page; their `guard` doesn't apply to the page that signs people in.
+        $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
+        try {
+            [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, \First\Render\LoginView::props()));
+        } catch (Halt $halt) {
+            if ($halt->location === null) {
+                return $errors;
+            }
+            wp_redirect(str_starts_with($halt->location, '/') ? home_url($halt->location) : $halt->location, $halt->status);
+            exit;
+        } catch (\Throwable $error) {
+            error_log('First login.tsx failed, WordPress\'s sign-in page shown instead: ' . $error::class . ': ' . $error->getMessage());
+            return $errors;
+        }
+        // What wp-login.php does after the filter: a reauth drops the old cookies, and the
+        // password-reset cookie is cleared once it has named the login.
+        if (!empty($_REQUEST['reauth'])) {
+            wp_clear_auth_cookie();
+        }
+        $reset = 'wp-resetpass-' . COOKIEHASH;
+        if (isset($_COOKIE[$reset]) && is_string($_COOKIE[$reset])) {
+            [$path] = explode('?', wp_unslash((string) ($_SERVER['REQUEST_URI'] ?? '')));
+            setcookie($reset, ' ', time() - YEAR_IN_SECONDS, $path, COOKIE_DOMAIN, is_ssl(), true);
+        }
+        $this->styles = $route['styles'] ?? [];
+        // What plugins load for the sign-in form's own fields (a captcha, Two Factor's scripts), as
+        // login_header() fires it.
+        do_action('login_enqueue_scripts');
+        // Sign-in pages are never indexed (wp_robots_sensitive_page) and never shared.
+        $head['robots'] = ['index' => false, 'follow' => false];
+        add_filter('wp_robots', 'wp_robots_sensitive_page');
+        add_action('wp_head', 'wp_strict_cross_origin_referrer');
+        $this->cacheControl = 'private, no-store, max-age=0';
+        do_action('first_app_login_rendered', (string) ($_SERVER['REQUEST_URI'] ?? '/'));
+        $this->document(200, $head, $body);
     }
 
     /** @param array<string, string|list<string>> $params */

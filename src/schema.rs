@@ -760,6 +760,8 @@ pub struct App {
     /// Most specific first: the router takes the first match.
     pub routes: Vec<AppRoute>,
     pub not_found: Option<AppRoute>,
+    /// `login.tsx`: wp-login.php's sign-in view, rendered in the root layout.
+    pub login: Option<AppRoute>,
     /// Route file (relative to `first/`) → its compiled exports.
     pub files: IndexMap<String, AppFile>,
     /// Content-owned pages (`page.md`), by URL path: what the site stores as a WordPress Page.

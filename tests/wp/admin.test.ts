@@ -318,7 +318,8 @@ async function sidebar(cookie: string): Promise<{ id: string; to: string; label:
 
 test("without developer mode, a classic page opened as a page is framed in First Admin; the frame, scripts and editing are served as before", async () => {
   const admin = harness.users.admin.id;
-  wp("user", "meta", "delete", String(admin), "first_admin_developer_mode");
+  const mode = (on: boolean) => wp("eval", on ? `update_user_meta(${admin}, 'first_admin_developer_mode', '1');` : `delete_user_meta(${admin}, 'first_admin_developer_mode');`);
+  mode(false);
   const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
   wp("transient", "delete", "pll_activation_redirect");
   const open = (path: string, dest: string | null, method = "GET") =>
@@ -341,13 +342,13 @@ test("without developer mode, a classic page opened as a page is framed in First
   }
   assert.notEqual((await open("admin-ajax.php?action=heartbeat", "document", "POST")).status, 302, "admin-ajax.php is never redirected");
   // On, classic wp-admin opens as it is.
-  wp("user", "meta", "update", String(admin), "first_admin_developer_mode", "1");
+  mode(true);
   try {
     const response = await open("options-permalink.php", "document");
     assert.equal(response.status, 200);
     assert.match(await response.text(), /id="adminmenu"/);
   } finally {
-    wp("user", "meta", "delete", String(admin), "first_admin_developer_mode");
+    mode(false);
   }
 });
 
@@ -369,7 +370,7 @@ test("developer mode is a user setting on core's user route, and decides whether
   // Another user's setting is theirs: an editor may not turn it on for the administrator.
   const other = await fetch(`${site}/wp-json/wp/v2/users/${harness.users.admin.id}`, { method: "POST", headers: { ...auth("editor"), "content-type": "application/json" }, body: JSON.stringify({ first_admin_developer_mode: true }) });
   assert.notEqual(other.status, 200);
-  assert.equal(wp("user", "meta", "get", String(harness.users.admin.id), "first_admin_developer_mode"), "");
+  assert.equal(wp("eval", `echo get_user_meta(${harness.users.admin.id}, 'first_admin_developer_mode', true);`), "");
 });
 
 test("the classic route's earlier address /legacy/<slug> redirects to /classic/<slug>", async () => {

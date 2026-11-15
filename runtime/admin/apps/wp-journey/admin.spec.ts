@@ -108,7 +108,9 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await expect(page.locator('#adminmenu')).toBeVisible();
 	// Off again, for the journeys after this one.
 	await page.goto(`${site}/wp-admin/new/profile`);
+	const savedOff = page.waitForResponse((r) => /\/wp\/v2\/users\/\d+/.test(new URL(r.url()).pathname) && r.request().method() !== 'GET');
 	await developer.uncheck();
+	expect((await savedOff).status()).toBe(200);
 	await page.reload();
 	await expect(developer).not.toBeChecked();
 	await expect(classic).toHaveCount(0);

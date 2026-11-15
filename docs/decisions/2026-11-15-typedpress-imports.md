@@ -38,6 +38,28 @@ The path says where the code runs.
 Because each module is a real subpath of an installed package, TypeScript
 resolves it with no tsconfig `paths` and no ambient declarations.
 
+### How Bun does it, and what TypeScript can and can't check
+
+Bun's `bun:sqlite` is guarded by Bun's own bundler, not by TypeScript:
+`bun build --target browser` on a file that imports `bun:sqlite` fails with
+`Browser build cannot import Bun builtin: "bun:sqlite"` (checked with Bun
+1.4.4). The types come from `@types/bun`, which declares
+`declare module "bun:sqlite"` for the whole project.
+
+TypeScript has no per-file environment. Inside one tsconfig project, a
+browser file and a server file see the same modules, so types alone can't
+refuse `typedpress/server/wp` in a `"use client"` file. The guard is in
+three places:
+
+1. **`typedpress build`**, the counterpart of Bun's bundler: it already knows
+   which files are `"use client"`, and refuses a `typedpress/server/*` import
+   in one, or anything one imports, with the file and line.
+2. **Other bundlers** (Vite, Next.js, Astro) read the `browser` export
+   condition and get the throwing stub.
+3. **Editors**, optionally: a project that wants red squiggles splits its
+   frontend into a second tsconfig whose `types` omit the server
+   declarations.
+
 ## Layout
 
 | New | Replaces | Holds |
@@ -138,9 +160,91 @@ import { useLive } from "@typedpress/client/react";
   no React shipped to the page.
 - **Outside the subset** (React context, portals, `forwardRef`, Radix, so
   most shadcn components) the build refuses today, as `rendering.md` §4.1
-  says. Running those needs a real React or Preact island on the page, which
-  `rendering.md` ruled out ("no React or Preact bundle of our own"). That is a
-  separate decision, and the import layout here doesn't block it.
+  says. The next section proposes islands for them.
+
+## Components outside the subset: Preact islands
+
+### What the Interactivity API is made of
+
+`@wordpress/interactivity` 8.1.0 depends on `preact` ^10.29.1,
+`@preact/signals` and `@preact/signals-core`. Its directives are Preact
+components over a virtual DOM built from the server HTML. Its `h` and `render`
+are reachable only through `privateApis`, which require WordPress's consent
+string and come with a warning that they will break, so an island can't
+borrow that Preact copy. It ships its own.
+
+### Radix on Preact works
+
+Spike (`@radix-ui/react-dialog` 1.3.1, a component with `useState`, Portal,
+Overlay, Title, Close), bundled by Bun 1.4.4, minified, gzip -9, run in
+headless Chromium (Playwright 1.65.1):
+
+| Build | Size (gz) | Portal | `role=dialog` | Focus trapped | Outside `aria-hidden` | `useState` | Escape closes | Focus returns to trigger |
+|---|---|---|---|---|---|---|---|---|
+| React 19.3.1 + react-dom | 81.7 KB | yes | yes | yes | yes | yes | yes | yes |
+| Preact 10.29.8 with `react` → `preact/compat` | 23.1 KB | yes | yes | yes | yes | yes | yes | yes |
+
+One component, not shadcn as a whole. Next spike: Select, DropdownMenu,
+Popover and Tooltip, which add pointer handling and floating positioning.
+
+React Compiler doesn't help here: it adds memoization to React code and the
+output still needs React to run. Vite's part is the bundler, Rolldown, which
+is a Rust crate (1.3.2) and could bundle islands inside `typedpress build`
+next to the oxc crates we pin. Whether its oxc version matches our pin
+(0.152.0) is not checked yet.
+
+### How a component becomes an island
+
+1. The compiler tries the subset first. A `"use client"` component that fits
+   compiles to the Interactivity API, as now.
+2. One that doesn't (imports a React package such as `@radix-ui/*`, or uses
+   context, portals, `forwardRef`) becomes an island: the component and its
+   imports are bundled with `react`, `react-dom` and `react/jsx-runtime`
+   aliased to `preact/compat`, into one script module per island.
+   Preact itself is a shared script module, `@typedpress/preact`, loaded once
+   per page.
+3. The build prints each island with its size and the reason it is not a
+   subset component (`Dialog.tsx: island, 18.4 KB gz, imports
+   @radix-ui/react-dialog`), so the extra JavaScript is never a surprise.
+   `typedpress build --no-islands` turns that back into a refusal.
+
+### Server components and data
+
+Nothing changes on the server. Pages, layouts and server components compile
+to PHP and run per request; they `await posts.list()` directly and pass the
+result to a client component as props. An island gets its props as JSON in
+its HTML, the way a subset component gets `data-wp-context`.
+
+Inside an island:
+- server actions are called over `fetch`, as subset components do now;
+- live data comes from `useLive` in `@typedpress/client/react`, which reads
+  through the typed client;
+- `typedpress/server/*` imports are refused (see "How Bun does it").
+
+### Pre-rendering
+
+Every page is rendered on the server today: by PHP per request, cached and
+purged by what it read, or ahead of time with `export const prerender = true`
+and `output: "static"`, by an Action Scheduler action
+([static output](2026-11-13-static-output.md)). Subset components are part of
+that HTML with their real values.
+
+Islands are the exception, because the server is PHP and the island's code is
+a third-party React component:
+
+- **First version: client-rendered.** The server writes the island's
+  container with its props and, if the parent passes one, a `fallback`, then
+  the browser renders it. For Dialog, DropdownMenu, Popover and Tooltip the
+  closed state is the trigger button, so the parent can pass the trigger as
+  the fallback and the page doesn't shift.
+- **Later, if the spike holds: server-rendered.** The compiler already
+  compiles npm packages to PHP (npm compatibility). Compiling
+  `preact-render-to-string` plus the island's imports to PHP would give
+  islands real server HTML that Preact hydrates. Whether that subset of npm
+  code covers Radix is untested.
+
+Not decided yet: how islands remount after an `@wordpress/interactivity-router`
+region swap.
 
 ## How the generated client reaches the runtime
 

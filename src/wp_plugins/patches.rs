@@ -4,9 +4,21 @@ use super::{Plugin, Result, digest, invalid};
 use std::path::Path;
 
 const MCP_PIN: &str = "719d81aa1250615acfd8256f0acc8c13f1712f1ae398c3d5883c8b166024fe9b";
+/// The installed tree after the patch. A build keeps a previously installed patched tree only when
+/// it matches this, so changing the patch (and this pin with it) replaces stale output.
+const MCP_TREE: &str = "520cfc35562436a1ded3e2666c5dd619c6cbd1fe595fd59c2d3b4a2405fee7ba";
+
+fn patched(plugin: &Plugin, sha256: &str) -> bool {
+    plugin.slug == "mcp-adapter" && plugin.version == "0.7.1" && sha256 == MCP_PIN
+}
+
+/// The pinned installed-tree digest for an archive this module patches; `None` when it patches nothing.
+pub(super) fn tree(plugin: &Plugin, sha256: &str) -> Option<&'static str> {
+    patched(plugin, sha256).then_some(MCP_TREE)
+}
 
 pub(super) fn apply(plugin: &Plugin, sha256: &str, directory: &Path) -> Result<()> {
-    if plugin.slug != "mcp-adapter" || plugin.version != "0.7.1" || sha256 != MCP_PIN {
+    if !patched(plugin, sha256) {
         return Ok(());
     }
     let path = directory.join("includes/Core/McpComponentRegistry.php");

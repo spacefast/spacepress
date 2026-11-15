@@ -21,18 +21,22 @@ struct Lock {
     plugins: Vec<Dependency>,
 }
 
-/// Owns temporary plugin trees. Keep alive until the canonical assembler finishes.
-/// A3 consumes `trees()` and `dependencies()`, and persists `lock_bytes()` only on success.
+/// Verified archives for every planned dependency. Nothing is extracted until [`Prepared::install`].
 pub struct Prepared {
-    _stage: tempfile::TempDir,
-    trees: Vec<StagedPlugin>,
+    archives: Vec<Acquired>,
     previous: BTreeMap<String, Dependency>,
 }
 
-pub struct StagedPlugin {
-    pub directory: PathBuf,
-    pub archive: PathBuf,
-    pub dependency: Dependency,
+struct Acquired {
+    plugin: Plugin,
+    archive: PathBuf,
+    sha256: String,
+}
+
+/// The dependencies a build installed. A kept tree stays in the previous output, absent from the
+/// stage; the assembler moves everything it did not replace into the stage before publishing.
+pub struct Installed {
+    dependencies: Vec<Dependency>,
 }
 
 impl Prepared {
@@ -78,8 +82,7 @@ impl Prepared {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
             Err(e) => return Err(e),
         };
-        let stage = tempfile::tempdir()?;
-        let mut trees = Vec::new();
+        let mut archives = Vec::new();
         for plugin in &plan.plugins {
             let locked = previous
                 .get(&plugin.slug)
@@ -93,95 +96,106 @@ impl Prepared {
                 )));
             }
             let pin = plugin.sha256.as_deref().or_else(|| locked.map(|p| p.sha256.as_str()));
-            let (zip, sha256) = acquire(plugin, pin, cache, &resource_url(&plugin.resource()))?;
-            let directory = stage.path().join(&plugin.slug);
-            archive::extract(&zip, &directory, plugin)?;
-            super::patches::apply(plugin, &sha256, &directory)?;
-            let tree_sha256 = archive::tree_digest(&directory)?;
-            let mut requires = plugin.requires.clone();
-            requires.sort();
-            trees.push(StagedPlugin {
-                directory,
-                archive: zip,
-                dependency: Dependency {
-                    slug: plugin.slug.clone(),
-                    version: plugin.version.clone(),
-                    plugin_data: plugin.resource(),
-                    sha256,
-                    requires,
-                    tree_sha256,
-                },
+            let (archive, sha256) = acquire(plugin, pin, cache, &resource_url(&plugin.resource()))?;
+            archives.push(Acquired {
+                plugin: plugin.clone(),
+                archive,
+                sha256,
             });
         }
-        Ok(Self {
-            _stage: stage,
-            trees,
-            previous,
-        })
+        Ok(Self { archives, previous })
     }
 
-    pub fn trees(&self) -> &[StagedPlugin] {
-        &self.trees
+    /// Installs every dependency into `stage`, the assembler's private, empty plugins directory.
+    ///
+    /// `previous` is the published plugins directory, if any. A directory there under a dependency's
+    /// slug must be the tree the lock recorded; an unmanaged or locally modified one fails the build.
+    /// When `reusable` (the output was written by this Zero version) and the lock entry names the same
+    /// archive, that tree is kept in place instead of extracted again. Unrelated directories in
+    /// `previous` are left to the assembler, including formerly declared plugins (no implicit uninstall).
+    pub fn install(self, previous: Option<&Path>, reusable: bool, stage: &Path) -> Result<Installed> {
+        std::fs::create_dir_all(stage)?;
+        let existing: Vec<String> = match previous {
+            Some(previous) => std::fs::read_dir(previous)?
+                .map(|entry| Ok(entry?.file_name().to_string_lossy().into_owned()))
+                .collect::<Result<_>>()?,
+            None => Vec::new(),
+        };
+        let mut installed = Installed {
+            dependencies: Vec::new(),
+        };
+        for Acquired { plugin, archive, sha256 } in self.archives {
+            let slug = &plugin.slug;
+            // Include case collisions even on a case-sensitive build host.
+            if existing
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(slug) && name != slug)
+            {
+                return Err(invalid(format!("plugin {slug}: case-colliding output path")));
+            }
+            let locked = self.previous.get(slug);
+            let mut tree_sha256 = None;
+            if let Some(dest) = previous.map(|p| p.join(slug))
+                && std::fs::symlink_metadata(&dest).is_ok()
+            {
+                let installed_tree = std::fs::symlink_metadata(&dest)?
+                    .is_dir()
+                    .then(|| archive::tree_digest(&dest).ok())
+                    .flatten();
+                let Some(locked) = locked.filter(|p| Some(&p.tree_sha256) == installed_tree.as_ref()) else {
+                    return Err(invalid(format!(
+                        "plugin {slug}: output collision with unmanaged or locally modified plugin"
+                    )));
+                };
+                let same_archive = locked.version == plugin.version
+                    && locked.plugin_data == plugin.resource()
+                    && locked.sha256 == sha256
+                    && super::patches::tree(&plugin, &sha256).is_none_or(|tree| tree == locked.tree_sha256);
+                if reusable && same_archive {
+                    tree_sha256 = Some(locked.tree_sha256.clone());
+                }
+            }
+            let tree_sha256 = match tree_sha256 {
+                Some(tree) => tree,
+                None => {
+                    let directory = stage.join(slug);
+                    archive::extract(&archive, &directory, &plugin)?;
+                    super::patches::apply(&plugin, &sha256, &directory)?;
+                    let tree = archive::tree_digest(&directory)?;
+                    if super::patches::tree(&plugin, &sha256).is_some_and(|expected| expected != tree) {
+                        return Err(invalid(format!("plugin {slug}: patched tree differs from its pin")));
+                    }
+                    tree
+                }
+            };
+            let mut requires = plugin.requires.clone();
+            requires.sort();
+            installed.dependencies.push(Dependency {
+                slug: slug.clone(),
+                version: plugin.version.clone(),
+                plugin_data: plugin.resource(),
+                sha256,
+                requires,
+                tree_sha256,
+            });
+        }
+        Ok(installed)
     }
+}
 
+impl Installed {
     pub fn dependencies(&self) -> impl Iterator<Item = &Dependency> {
-        self.trees().iter().map(|p| &p.dependency)
+        self.dependencies.iter()
     }
 
     pub fn lock_bytes(&self) -> Result<Vec<u8>> {
         let mut bytes = serde_json::to_vec_pretty(&Lock {
             version: 1,
-            plugins: self.dependencies().cloned().collect(),
+            plugins: self.dependencies.clone(),
         })?;
         bytes.push(b'\n');
         Ok(bytes)
     }
-
-    /// Call only on the assembler's private staging tree. Existing unmanaged/local changes fail.
-    /// Unrelated plugin directories survive, including formerly declared plugins (no implicit uninstall).
-    pub fn install_into(&self, staged_plugins: &Path) -> Result<()> {
-        std::fs::create_dir_all(staged_plugins)?;
-        for tree in self.trees() {
-            if !tree.archive.is_file() {
-                return Err(invalid("staged plugin archive is missing"));
-            }
-            let dest = staged_plugins.join(&tree.dependency.slug);
-            // Include case collisions even on a case-sensitive build host.
-            for entry in std::fs::read_dir(staged_plugins)? {
-                let entry = entry?;
-                let name = entry.file_name();
-                if name.to_string_lossy().eq_ignore_ascii_case(&tree.dependency.slug)
-                    && name != tree.dependency.slug.as_str()
-                {
-                    return Err(invalid(format!(
-                        "plugin {}: case-colliding output path",
-                        tree.dependency.slug
-                    )));
-                }
-            }
-            if std::fs::symlink_metadata(&dest).is_ok() {
-                let previous = self.previous.get(&tree.dependency.slug);
-                let meta = std::fs::symlink_metadata(&dest)?;
-                if !meta.is_dir()
-                    || previous
-                        .is_none_or(|p| archive::tree_digest(&dest).ok().as_deref() != Some(p.tree_sha256.as_str()))
-                {
-                    return Err(invalid(format!(
-                        "plugin {}: output collision with unmanaged or locally modified plugin",
-                        tree.dependency.slug
-                    )));
-                }
-                std::fs::remove_dir_all(&dest)?;
-            }
-            archive::copy_tree(&tree.directory, &dest)?;
-        }
-        Ok(())
-    }
-}
-
-/// Copy existing output into the canonical assembler's private staging tree.
-pub fn copy_output(from: &Path, to: &Path) -> Result<()> {
-    archive::copy_tree(from, to)
 }
 
 #[cfg(test)]
@@ -228,21 +242,25 @@ mod tests {
         let cache = temp.path().join("cache");
         let first = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone()).unwrap();
         server.join().unwrap();
-        assert_eq!(first.trees()[0].dependency.sha256, expected_sha);
+        let stage = temp.path().join("first");
+        let installed = first.install(None, true, &stage).unwrap();
+        let dependency = installed.dependencies().next().unwrap();
+        assert_eq!(dependency.sha256, expected_sha);
         assert_eq!(
-            first.trees()[0].dependency.plugin_data,
+            dependency.plugin_data,
             Resource::WordPress {
                 slug: "example.1.0.zip".into()
             }
         );
-        assert!(first.trees()[0].directory.join("example.php").is_file());
-        let bytes = first.lock_bytes().unwrap();
+        assert!(stage.join("example/example.php").is_file());
+        let bytes = installed.lock_bytes().unwrap();
         std::fs::write(&lock, &bytes).unwrap();
         let second = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone()).unwrap();
-        assert_eq!(second.lock_bytes().unwrap(), bytes);
+        let again = temp.path().join("second");
+        assert_eq!(second.install(None, true, &again).unwrap().lock_bytes().unwrap(), bytes);
         assert_eq!(
-            std::fs::read(first.trees()[0].directory.join("example.php")).unwrap(),
-            std::fs::read(second.trees()[0].directory.join("example.php")).unwrap()
+            std::fs::read(stage.join("example/example.php")).unwrap(),
+            std::fs::read(again.join("example/example.php")).unwrap()
         );
         std::fs::write(cache.join(format!("{expected_sha}.zip")), b"changed bytes").unwrap();
         let failure = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone());

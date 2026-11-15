@@ -1,6 +1,6 @@
 # Class compilation and library reuse
 
-First parses TypeScript with OXC 0.152.0, evaluates configuration as pure data,
+First parses TypeScript with OXC 0.158.0, evaluates configuration as pure data,
 and compiles saved callbacks to PHP. Classes participate in that same pipeline.
 The [authoring reference](config-api.md#classes-in-callbacks) defines the supported
 surface and refusals. This is a bounded TypeScript backend, not an npm executor.

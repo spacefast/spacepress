@@ -27,6 +27,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast as a;
 use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -224,7 +225,7 @@ fn read(source: &str, file: u32) -> Result<Vec<Collection>> {
                 "list each collection by name",
             ));
         };
-        let Some(name) = p.key.static_name().filter(|_| !p.computed) else {
+        let Some(name) = property_name(file, p)? else {
             return Err(unsupported(
                 file,
                 p.span,
@@ -270,6 +271,32 @@ fn read(source: &str, file: u32) -> Result<Vec<Collection>> {
     Ok(out)
 }
 
+/// A property's name as UTF-8, or `None` for a computed key. A name with a lone UTF-16 surrogate,
+/// which UTF-8 can't hold, is refused.
+fn property_name<'a>(file: u32, p: &a::ObjectProperty<'a>) -> Result<Option<Cow<'a, str>>> {
+    let Some(name) = p.key.static_name().filter(|_| !p.computed) else {
+        return Ok(None);
+    };
+    match name.into_cow_str() {
+        Some(name) => Ok(Some(name)),
+        None => Err(lone_surrogate(file, p.key.span())),
+    }
+}
+
+/// A string value as UTF-8; one with a lone UTF-16 surrogate, which UTF-8 can't hold, is refused.
+fn utf8<'a>(file: u32, s: &a::StringLiteral<'a>) -> Result<&'a str> {
+    s.value.as_str().ok_or_else(|| lone_surrogate(file, s.span))
+}
+
+fn lone_surrogate(file: u32, s: oxc_span::Span) -> Diag {
+    unsupported(
+        file,
+        s,
+        "a string with a lone UTF-16 surrogate",
+        "use complete characters; a lone surrogate can't be stored as UTF-8",
+    )
+}
+
 fn unsupported(file: u32, s: oxc_span::Span, what: &str, help: &str) -> Diag {
     Diag::new(
         span(file, s),
@@ -313,7 +340,7 @@ impl<'s> Reader<'s> {
         let (mut loader, mut schema) = (None, None);
         for prop in &options.properties {
             if let a::ObjectPropertyKind::ObjectProperty(p) = prop {
-                match p.key.static_name().as_deref() {
+                match p.key.static_name().as_ref().and_then(|n| n.as_str()) {
                     Some("loader") => loader = Some(&p.value),
                     Some("schema") => schema = Some(&p.value),
                     _ => {}
@@ -440,13 +467,13 @@ impl<'s> Reader<'s> {
                 return Err(fail(prop.span(), "write `pattern` and `base` out"));
             };
             let value = match p.value.get_inner_expression() {
-                a::Expression::StringLiteral(s) => s.value.to_string(),
+                a::Expression::StringLiteral(s) => utf8(self.file, s)?.to_string(),
                 a::Expression::TemplateLiteral(t) if t.expressions.is_empty() && t.quasis.len() == 1 => {
                     t.quasis[0].value.raw.to_string()
                 }
                 other => return Err(fail(other.span(), "write the pattern and base as plain strings")),
             };
-            match p.key.static_name().as_deref() {
+            match p.key.static_name().as_ref().and_then(|n| n.as_str()) {
                 Some("pattern") => pattern = Some((value, p.value.span())),
                 Some("base") => base = Some((value, p.value.span())),
                 Some("generateId") => {
@@ -536,7 +563,7 @@ impl<'s> Reader<'s> {
                 .help("write each field out")
                 .code(Code::Schema));
             };
-            let Some(name) = p.key.static_name().filter(|_| !p.computed) else {
+            let Some(name) = property_name(self.file, p)? else {
                 return Err(
                     Diag::new(self.at(p.span), "a computed field name can't be read as a First kind")
                         .help("name the field")
@@ -654,7 +681,7 @@ impl<'s> Reader<'s> {
                         .elements
                         .iter()
                         .map(|el| match el.as_expression().map(|e| e.get_inner_expression()) {
-                            Some(a::Expression::StringLiteral(s)) => Ok(s.value.to_string()),
+                            Some(a::Expression::StringLiteral(s)) => Ok(utf8(self.file, s)?.to_string()),
                             _ => Err(refuse(
                                 el.span(),
                                 "an enum value that isn't a string".into(),
@@ -710,7 +737,9 @@ impl<'s> Reader<'s> {
                         let mut values = Vec::new();
                         for el in &arr.elements {
                             match el.as_expression().map(|e| e.get_inner_expression()) {
-                                Some(a::Expression::StringLiteral(s)) => values.push(format!("{:?}", s.value.as_str())),
+                                Some(a::Expression::StringLiteral(s)) => {
+                                    values.push(format!("{:?}", utf8(self.file, s)?))
+                                }
                                 _ => {
                                     return Err(refuse(
                                         el.span(),

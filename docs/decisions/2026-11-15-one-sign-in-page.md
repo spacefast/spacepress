@@ -1,0 +1,123 @@
+# One sign-in page
+
+## Problem
+
+A First site had one account table (`wp_users`) and two sign-in pages:
+
+- **wp-login.php**, used by wp-admin and by a layout's `guard` (`AppRouter` sends a signed-out
+  visitor to `wp_login_url()`).
+- **First Identity's hosted screens at `/identity`**: email code, password, passkey, MFA and
+  Google. They set their own 24-hour session cookie (`zi_session`), which only authenticated
+  Identity's REST API and its OpenID Connect issuer.
+
+An account with Identity MFA could not use the first page at all: Identity refused its password
+on wp-login.php with "Use the Identity sign-in page". An app could not style either page as part of
+its own front end.
+
+The owner's ruling: "WP login should be the main login, and we should be allowed to customize it
+… like a not-found thing … a login.tsx … they get the protections for free. We have one page, and
+that's WP login, and one system."
+
+## Decision
+
+**wp-login.php is the one sign-in page.**
+
+- **`first/app/login.tsx` renders it.** It is optional, root-only and special, like
+  `not-found.tsx`: no URL of its own and no `guard`. With it, wp-login.php's sign-in view renders
+  the app's page inside the root layout and its stylesheets. That covers the plain view, a failed
+  attempt, `loggedout`, `checkemail`, `reauth` and `registration=disabled`.
+  - **How.** The router takes the request on `wp_login_errors`. That is the last thing
+    wp-login.php does before it prints its page, so `wp_signon()` has already run.
+  - **Without `login.tsx`,** WordPress's own page shows, as before.
+- **The form still posts to wp-login.php.** WordPress runs every sign-in, so all of these apply
+  unchanged:
+  - `authenticate` and its filters;
+  - the loginErrors hardening (one message for an unknown user and a wrong password);
+  - Identity's attempt limits;
+  - Two Factor's second step;
+  - `login_form` fields from other plugins.
+  `<LoginForm />` from `"first/app"` renders the fields wp-login.php reads (`log`, `pwd`,
+  `rememberme`, `redirect_to`, `testcookie`). The page receives `LoginProps`:
+  - `errors` and `messages`, as text, after `login_errors` and `login_messages`;
+  - `login`, the login to fill in again;
+  - `remember`, `redirectTo` and `action`;
+  - `lostPasswordUrl`, and `registerUrl` when registration is open.
+- **What keeps WordPress's screens.** Lost password, reset, register, logout, `postpass`,
+  `confirmaction`, `confirm_admin_email`, Two Factor's `validate_2fa`, the interim sign-in inside
+  wp-admin and the Customizer's. Reasons:
+  - Each prints its own form with its own hooks, so moving one needs its own building blocks and
+    tests.
+  - Lost password in particular runs the loginErrors redirect *before* the page. A styled copy
+    would have to repeat that ordering exactly, or it would say which accounts exist.
+  - Moving them is a later change, one action at a time.
+- **A render error never locks people out.** If `login.tsx` throws, WordPress's own page shows and
+  the error is logged.
+
+**An account with Identity MFA signs in on wp-login.php, through Two Factor.**
+
+- Identity registers its authenticator (TOTP and recovery codes, `Mfa::verify`) as a Two Factor
+  provider, `First\Identity\TwoFactorProvider`. It is enabled for every account that has Identity
+  MFA. Two Factor is a platform plugin First pins, so it is there.
+- On wp-login.php, after the right password, Identity hands the user to Two Factor instead of
+  refusing. Two Factor then:
+  - suppresses the auth cookies (`send_auth_cookies` false);
+  - asks for the code on `validate_2fa`;
+  - sets the cookies only after `Mfa::verify` accepts it: current timestep only, no reuse,
+    recovery codes single use, Identity's per-address limit and Two Factor's own back-off.
+- **Anywhere else a password alone is still refused** (`identity_mfa_required`): XML-RPC, REST, a
+  plugin calling `wp_authenticate`, or a site where Two Factor isn't loaded.
+- A wrong password still reads as a wrong password and doesn't reveal the factor.
+
+**`/identity` is no longer a second sign-in page.**
+
+- **A WordPress session counts as an Identity session.** When a browser holds a valid WordPress
+  login cookie and no identity session, Identity opens one for that user
+  (`Plugin::browserSession`) and sets `zi_session`. The new session:
+  - is never fresher than the WordPress sign-in (`verified_at` = the WordPress session's `login`);
+  - never outlives it (`expires_at` ≤ its `expiration`).
+  So consent, `max_age`, the account screens and Identity's REST work as before.
+- **A signed-out browser goes to wp-login.php.** The hosted screens (`/identity`,
+  `/identity/account`) and `/identity/authorize` send it to `wp_login_url(<where it was>)`. After
+  signing in, WordPress sends it back, and the OIDC flow continues to consent and the callback.
+- **`prompt=login` and an expired `max_age`** send the browser to wp-login.php with `reauth=1`,
+  which drops the old cookies. The browser's identity session is set aside, so only a sign-in made
+  after the request resumes the authorization.
+- **Signing out is one action.**
+  - Identity's `sign-out` also ends the browser's WordPress session for the same account.
+  - Signing out of WordPress ends the identity session.
+  - Signing in on wp-login.php as someone else sets the old identity session aside.
+  - An application's RP logout with a matching `id_token_hint` ends the WordPress session too.
+- **Programmatic clients are unchanged.** Identity's REST sign-in endpoints (`sign-in/password`,
+  `email`, `verify`, `mfa`, `passkey/*`) still issue identity sessions for apps that call them, and
+  the token, revoke, handoff, userinfo, JWKS and discovery endpoints are as they were.
+
+**Sign-ins without a WordPress password stay reachable from the one page.**
+
+- When wp-login.php signs in for Identity (its `redirect_to` is under `/identity`), the form gets a
+  link: "Sign in with an email code, a passkey or another account". It opens the hosted screen
+  with `?methods=1`, which still offers email codes, passkeys and Google.
+- Those finish with an identity session, not a WordPress login cookie. That is enough for the
+  application flow and the account screens, which is what the link is for.
+- A guest's upgrade (`handoff`) and a second factor still owed after an external provider
+  (`?factor=`) also stay on the hosted screen.
+
+## Not done
+
+- **Passkeys, email codes and Google on the one page itself** (a `<SignInOptions />` that ends with
+  a WordPress auth cookie). Shipping it correctly needs three things:
+  - a way for an identity sign-in to set the WordPress cookie that keeps MFA in the loop (Two
+    Factor's step for those sign-ins);
+  - the browser WebAuthn ceremony on a compiled page;
+  - tests for each.
+  A partial version would be a second way in that skips a factor, so it is left out.
+- **Styling lost password, reset and register** (see above).
+
+## Costs
+
+- **A visitor's first request to `/identity` after a WordPress sign-in writes an identity session
+  row.** It is one row per browser and expires with the WordPress session.
+- **Identity's 24-hour cap still applies** to a session opened from a long "Remember Me"
+  WordPress session. The next request after it expires opens a new one from the same WordPress
+  session.
+- **The hosted screen no longer shows its own password form to a signed-out browser.** A site
+  without `login.tsx` sends that browser to WordPress's stock sign-in page.

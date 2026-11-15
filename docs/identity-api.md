@@ -4,7 +4,34 @@ The REST base is `https://site.example/wp-json/first-identity/v1/`. Success resp
 
 The hosted screens at `/identity` are this API's own client. A frontend app doesn't call it
 directly: it signs users in through the OpenID Connect issuer below (First's typed client does
-that for you). Registered application origins (`applications.origins`) may call this API and
+that for you).
+
+## The one sign-in page
+
+A browser signs in on the site's one sign-in page, wp-login.php, which `first/app/login.tsx` can
+render ([Pages](pages.md#the-sign-in-page)).
+
+- **A signed-out browser goes there.** Opening `/identity`, `/identity/account` or
+  `/identity/authorize` without a session redirects to `wp_login_url(<where it was>)`. WordPress
+  then sends the browser back, and an authorization continues to consent.
+- **A WordPress login is an identity session.** A browser with a valid WordPress login cookie and
+  no identity session gets one for the same user. The session:
+  - is never fresher than the WordPress sign-in (`verified_at` is its `login` time);
+  - never outlives it (`expires_at` is at most its expiration).
+  Consent, `max_age`, the account screens and this API work as before.
+- **A fresh sign-in.** `prompt=login`, or an expired `max_age`, sends the browser to wp-login.php
+  with `reauth=1` and sets its identity session aside.
+- **One sign-out.** `sign-out` also ends the browser's WordPress session for the same user.
+  Signing out of WordPress, or signing in there as someone else, ends the identity session. RP
+  logout with a matching `id_token_hint` ends both.
+- **MFA.** An account with Identity MFA signs in on wp-login.php. After the password, Two Factor
+  asks for the authenticator or a recovery code (provider `First\Identity\TwoFactorProvider`),
+  and sends no cookie until it checks out. A password alone never signs such an account in
+  anywhere else (`identity_mfa_required`).
+- **Sign-ins without a WordPress password.** When wp-login.php signs in for Identity, it links to
+  `/identity?methods=1`, where email codes, passkeys and external providers still sign in. They
+  end with an identity session, not a WordPress login.
+- **Programmatic clients.** The REST sign-in endpoints below are unchanged. Registered application origins (`applications.origins`) may call this API and
 the token endpoints cross-origin; every other origin is refused.
 
 ## Sign-in

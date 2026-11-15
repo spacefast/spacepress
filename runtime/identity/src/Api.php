@@ -309,6 +309,15 @@ final class Api
         if ($op === "sign-out" && $method === "POST") {
             $this->sessions->revoke($uid, $s["id"]);
             Sessions::cookie("", time() - 3600);
+            // One sign-in: the browser's WordPress session for the same account ends too, or the
+            // next page would open a new identity session from it.
+            if ((int) wp_validate_auth_cookie("", "logged_in") === $uid) {
+                $cookie = wp_parse_auth_cookie("", "logged_in");
+                if (is_array($cookie) && ($cookie["token"] ?? "") !== "") {
+                    \WP_Session_Tokens::get_instance($uid)->destroy($cookie["token"]);
+                }
+                wp_clear_auth_cookie();
+            }
             return ["signed_out" => true];
         }
         if ($op === "reverify" && $method === "POST") {

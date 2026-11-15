@@ -162,36 +162,119 @@ import { useLive } from "@typedpress/client/react";
   most shadcn components) the build refuses today, as `rendering.md` §4.1
   says. The next section proposes islands for them.
 
-## Components outside the subset: Preact islands
+## Components outside the subset: islands
 
 ### What the Interactivity API is made of
 
 `@wordpress/interactivity` 8.1.0 depends on `preact` ^10.29.1,
 `@preact/signals` and `@preact/signals-core`. Its directives are Preact
-components over a virtual DOM built from the server HTML. Its `h` and `render`
-are reachable only through `privateApis`, which require WordPress's consent
-string and come with a warning that they will break, so an island can't
-borrow that Preact copy. It ships its own.
+components over a virtual DOM built from the server HTML.
 
-### Radix on Preact works
+**Borrowing WordPress's Preact.** WordPress 7.1.4's shipped
+`script-modules/interactivity/index.min.js` (16.1 KB gz) hands out its Preact
+through `privateApis(consent)`, where the consent string is
+"I acknowledge that using private APIs means my theme or plugin will
+inevitably break in the next version of WordPress." Core's own
+`interactivity-router` calls it the same way. In headless Chromium, with that
+file mapped as `@wordpress/interactivity`, calling it and rendering a
+component with the module's exported `useState`, `useRef` and `useEffect`
+worked: two clicks gave `n=2`, the effect ran, and there were no errors.
+`Component` is reachable as the prototype of any rendered component.
 
-Spike (`@radix-ui/react-dialog` 1.3.1, a component with `useState`, Portal,
-Overlay, Title, Close), bundled by Bun 1.4.4, minified, gzip -9, run in
-headless Chromium (Playwright 1.65.1):
+What it doesn't hand out is what `preact/compat` needs to look like React:
 
-| Build | Size (gz) | Portal | `role=dialog` | Focus trapped | Outside `aria-hidden` | `useState` | Escape closes | Focus returns to trigger |
-|---|---|---|---|---|---|---|---|---|
-| React 19.3.1 + react-dom | 81.7 KB | yes | yes | yes | yes | yes | yes | yes |
-| Preact 10.29.8 with `react` → `preact/compat` | 23.1 KB | yes | yes | yes | yes | yes | yes | yes |
+| Missing | Why compat needs it |
+|---|---|
+| `options` | React prop and event normalisation (`className`, `onChange`, `defaultValue`), `forwardRef`, `memo`, Suspense |
+| `useId` | Radix wires `aria-controls` and `aria-labelledby` through `React.useId` |
+| `createContext`, `useContext` | Every Radix component |
+| `Fragment`, `hydrate`, `toChildArray` | Lists, server-rendered islands |
 
-One component, not shadcn as a whole. Next spike: Select, DropdownMenu,
-Popover and Tooltip, which add pointer handling and floating positioning.
+So islands ship their own runtime. With Preact, the most borrowing could save is Preact core
+and hooks: 4.8 KB + 1.5 KB gz, measured on the Preact build vendored in
+`src/config_migrate/app/client08/preact/`. The cost would be tying every
+island to a private API that WordPress says will break, and compat would
+still need its own `options` hook-up, which no export reaches. We don't
+borrow it. If a later WordPress exports Preact
+publicly, the `islands: "preact"` runtime becomes an import of that.
+
+### Radix on Preact: close, but not a drop-in
+
+Two spikes on 2026-11-15, each component built twice (Preact 10.29.8 with
+`react`, `react-dom` and `react/jsx-runtime` aliased to `preact/compat`, and
+React 19.3.1 + react-dom), bundled by Bun 1.4.4, minified, gzip -9, and
+driven with real Playwright 1.65.1 mouse and keyboard input in headless
+Chromium. Radix versions: dialog 1.3.1, select 2.4.1, dropdown-menu 2.2.1,
+popover 1.3.1, tooltip 1.4.1.
+
+| Component | Preact | React | gz, Preact / React |
+|---|---|---|---|
+| Dialog | All pass: portal, `role=dialog`, focus trap, outside `aria-hidden`, Escape, focus return | All pass | 23.1 / 81.7 KB |
+| Select | All pass: click/Space/Enter open, arrows, typeahead, select, Escape, focus return | All pass | 40.5 / 99.1 KB |
+| Popover | All pass, floating-ui placement exact and follows resize | All pass | 33.4 / 92.0 KB |
+| DropdownMenu | Fails: a click on a submenu item doesn't fire `onSelect`; keyboard open and ArrowRight focus the menu box, not the first item | All pass | 40.4 / 99.1 KB |
+| Tooltip | Fails: never shows, on hover or on focus | All pass | 29.9 / 88.5 KB |
+| Popover or Select inside a Dialog | Fails: a click inside it closes the Dialog too | All pass | |
+| All five in one bundle | | | 48.7 / 106.0 KB |
+
+No console errors in either build; `useId` ids and `aria-*` wiring were
+consistent in both. Preact 11.2.0 fixed none of the failures.
+
+Causes:
+- **Events inside a portal.** React sends a portal's events through the
+  React tree to its parents; Preact doesn't
+  ([differences to React](https://preactjs.com/guide/v10/differences-to-react/),
+  [preact#3286](https://github.com/preactjs/preact/issues/3286)). Radix's
+  outside-click detection relies on it, so a click in a nested portal counts
+  as outside. No compat fix exists. A Select in a Dialog form is a common
+  shadcn pattern, so this one matters most.
+- **Tooltip** listens for its own open event before sending it, so it closes
+  itself in the same frame
+  ([preact#3805](https://github.com/preactjs/preact/issues/3805), closed as
+  not planned). Controlling it with `open`/`onOpenChange` works around it.
+- **Menu focus** runs before the items register. No issue found.
+
+So islands run real React by default: `react` and `react-dom` as one shared
+script module per page (66.6 KB gz for `react` + `react-dom/client` + `createPortal`, Bun 1.4.4 minified; then each island's own code),
+which runs shadcn as written. Preact stays an opt-in per app
+(`islands: "preact"`) for sites that measure the size and avoid the failing
+patterns, with the failures above listed in its documentation.
 
 React Compiler doesn't help here: it adds memoization to React code and the
-output still needs React to run. Vite's part is the bundler, Rolldown, which
-is a Rust crate (1.3.2) and could bundle islands inside `typedpress build`
-next to the oxc crates we pin. Whether its oxc version matches our pin
-(0.152.0) is not checked yet.
+output still needs React to run.
+
+### Rolldown as the bundler
+
+Vite's bundler, Rolldown, is a Rust library crate, so `typedpress build` can
+embed it and get a full JavaScript bundler (resolution, aliases, tree
+shaking, minification, plugins) instead of growing one. A spike checked it
+against this repository on 2026-11-15:
+
+| Question | Answer |
+|---|---|
+| oxc version | rolldown 1.3.2 needs oxc ^0.158.0; we pin `=0.152.0`. Rolldown 1.2.12 is the last on 0.152, but its 21 `rolldown_*` sub-crates float to 1.3.2 unless each is pinned exactly |
+| Both oxc versions in one build | Resolves, but compiles two oxc trees (23 crates each) whose AST types don't mix |
+| Upgrading our oxc to 0.158 | `cargo check --all-targets`: 42 errors in 4 files (`lower.rs` 19, `astro_content.rs` 12, `config_migrate/app/client.rs` 6, `pages.rs` 5): string values are `JSStr`, property names `StaticPropertyName`, `as_str()` returns `Option`. Roughly 100 lines. Tests not run after the bump |
+| Rust API covers our use | Yes: `ResolveOptions.alias`, `BundlerOptions.external`, ESM output, minify, a `Plugin` with `resolve_id`/`load` for virtual entries, `MemoryFileSystem` through `BundleFactory::create_bundle_with_fs`. A demo bundled an in-memory JSX island with `react` aliased and `@wordpress/interactivity` external |
+| `wasm32-unknown-unknown` | No: needs tokio `fs` and `rt-multi-thread`, and rayon |
+| Release build, scratch crate with our oxc crates, without → with rolldown 1.2.12 | 28.3 s → 59.7 s wall, 1.98 MB → 19.0 MB binary (14.3 MB stripped), 108 → 242 packages |
+
+For scale, the current `target/release/first` binary is 48.1 MB.
+
+So:
+
+1. Upgrade oxc to 0.158 in its own change, then add rolldown 1.3.2 behind
+   the `host` feature. Every Rolldown release moves to a new oxc minor, so
+   oxc upgrades come with Rolldown upgrades from then on.
+2. The browser compiler (docs-site Playground) can't embed it. Rolldown
+   publishes `@rolldown/browser` 1.3.2, the same bundler built for the
+   browser; the Playground calls that from JavaScript for island bundling
+   instead. Its output matching the native build is a test to write, not a
+   given.
+3. Islands are the first user. The same bundler can later replace the
+   hand-written module graph in `src/loader.rs` for browser code (CSS,
+   SVG, npm packages in `"use client"` files), which is a separate
+   decision.
 
 ### How a component becomes an island
 
@@ -199,10 +282,10 @@ next to the oxc crates we pin. Whether its oxc version matches our pin
    compiles to the Interactivity API, as now.
 2. One that doesn't (imports a React package such as `@radix-ui/*`, or uses
    context, portals, `forwardRef`) becomes an island: the component and its
-   imports are bundled with `react`, `react-dom` and `react/jsx-runtime`
-   aliased to `preact/compat`, into one script module per island.
-   Preact itself is a shared script module, `@typedpress/preact`, loaded once
-   per page.
+   imports are bundled into one script module per island, with `react` and
+   `react-dom` left external and served as one shared script module,
+   `@typedpress/react`, loaded once per page (or aliased to `preact/compat`
+   under `islands: "preact"`).
 3. The build prints each island with its size and the reason it is not a
    subset component (`Dialog.tsx: island, 18.4 KB gz, imports
    @radix-ui/react-dialog`), so the extra JavaScript is never a surprise.
@@ -237,11 +320,11 @@ a third-party React component:
   the browser renders it. For Dialog, DropdownMenu, Popover and Tooltip the
   closed state is the trigger button, so the parent can pass the trigger as
   the fallback and the page doesn't shift.
-- **Later, if the spike holds: server-rendered.** The compiler already
-  compiles npm packages to PHP (npm compatibility). Compiling
-  `preact-render-to-string` plus the island's imports to PHP would give
-  islands real server HTML that Preact hydrates. Whether that subset of npm
-  code covers Radix is untested.
+- **Later: server-rendered.** The compiler already compiles npm packages to
+  PHP (npm compatibility). Compiling a string renderer
+  (`react-dom/server`'s, or `preact-render-to-string` under Preact) plus the
+  island's imports to PHP would give islands real server HTML to hydrate.
+  Whether that subset of npm code covers Radix is untested.
 
 Not decided yet: how islands remount after an `@wordpress/interactivity-router`
 region swap.

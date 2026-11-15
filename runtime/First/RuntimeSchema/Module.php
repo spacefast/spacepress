@@ -25,6 +25,20 @@ final class Module
     {
         Surfaces::register();
         Extensions::route('schema-versions', self::route(...));
+        // The description reports a broken chain as soon as there is one, not only once something has
+        // read the versions (and recorded the problem on the option).
+        Extensions::schemaDescribe(static function (array $description): array {
+            if (!isset($description['runtimeSchema']) || isset($description['runtimeSchema']['problem'])) {
+                return $description;
+            }
+            $plugin = class_exists(Runtime::class, false) ? Runtime::plugin() : null;
+            $problem = $plugin === null ? null : SchemaVersions::of($plugin)?->problem();
+            if ($problem !== null) {
+                $description['runtimeSchema']['problem'] = $problem;
+            }
+
+            return $description;
+        });
     }
 
     public static function route(string $method, array $parts, array $query, string $body, Viewer $viewer): array

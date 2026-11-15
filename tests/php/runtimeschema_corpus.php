@@ -331,6 +331,44 @@ eq('an override carries a label and field presentation only; presentation a chan
     [$loaded['collections']['articles']['label'], $loaded['collections']['articles']['access'], $loaded['collections']['articles']['columns']['rating']],
     ['Stories', $kinds['collections']['articles']['access'], ['type' => 'integer']]);
 
+// A state the option holds is served only as the changes could have made it: every rule a change
+// passes holds on load too, whoever wrote the option.
+$title = ['title' => ['type' => 'text', 'notNull' => true]];
+$forged = ['format' => Loader::FORMAT, 'version' => 1, 'hash' => 'h',
+    'added' => ['collections' => ['users' => ['fields' => $title], 'posts' => ['fields' => $title]]],
+    'collections' => ['articles' => ['columns' => ['staged' => ['type' => 'json'], 'system' => ['type' => 'json'], 'author' => ['type' => 'integer'],
+        str_repeat('x', 200) => $text, 'required' => ['type' => 'text', 'notNull' => true], 'seo_title' => ['type' => 'integer'], 'fine' => $text]]],
+    'overrides' => ['collections' => ['votes' => ['label' => 'Ballots', 'ui' => ['weight' => ['label' => 'W']]], 'articles' => ['ui' => ['status' => ['label' => 'S'], 'id' => ['label' => 'I']]]]]];
+$served = Loader::apply($kinds, $forged);
+eq('kinds every site has are not served from the option', [isset($served['collections']['users']), isset($served['collections']['posts'])], [false, false]);
+eq('nor fields under reserved names, over-long names, required without a default, or on another field\'s keys; a field a change could add still is',
+    array_values(array_intersect(array_keys($served['collections']['articles']['columns']), ['staged', 'system', 'author', str_repeat('x', 200), 'required', 'seo_title', 'fine'])), ['fine']);
+eq('nor a label or presentation on a table() kind, a system field or the primary key',
+    [$served['collections']['votes']['label'], $served['collections']['votes']['columns']['weight'], $served['collections']['articles']['columns']['status'], $served['collections']['articles']['columns']['id']],
+    [$kinds['collections']['votes']['label'], $kinds['collections']['votes']['columns']['weight'], $kinds['collections']['articles']['columns']['status'], $kinds['collections']['articles']['columns']['id']]);
+
+// The seal is keyed to the site: a writer who knows the algorithm but not the site's salt can't make one.
+$sealable = ['format' => Loader::FORMAT, 'version' => 3, 'hash' => 'h'] + Changes::resolve($kinds, $empty, $add('articles', 'subtitle', $text))['state'];
+$plain = $sealable;
+$plain['seal'] = hash('sha256', serialize((static function (array $s): array { ksort($s); return $s; })($sealable)));
+eq('an unkeyed hash is not a seal', Loader::sealedBy($plain), false);
+eq('a state apply seals is', Loader::sealedBy(Loader::sealed($sealable)), true);
+eq('the empty state needs none, and any other state without one is refused', [Loader::sealedBy($empty), Loader::sealedBy(['format' => 1, 'version' => 0, 'hash' => '', 'collections' => ['articles' => ['columns' => ['x' => $text]]]])], [true, false]);
+$floaty = $sealable;
+$floaty['collections']['articles']['columns']['ratio'] = ['type' => 'real', 'rules' => ['min' => 0.1]];
+$previous = ini_get('serialize_precision');
+ini_set('serialize_precision', '17');
+$sealedAt17 = Loader::sealed($floaty);
+ini_set('serialize_precision', $previous);
+eq('a seal doesn\'t depend on the PHP precision setting it was made under', Loader::sealedBy($sealedAt17), true);
+
+// A table() label stored before the rule existed can be taken off again, and isn't exported to the lock.
+$legacy = ['format' => Loader::FORMAT, 'version' => 1, 'hash' => 'h', 'overrides' => ['collections' => ['votes' => ['label' => 'Ballots']]]];
+eq('clearing a table() label is accepted; setting one is not',
+    [$verdict($set(['op' => 'setLabel', 'kind' => 'votes', 'label' => null]), $kinds, $legacy), $verdict($set(['op' => 'setFieldUi', 'kind' => 'votes', 'field' => 'weight', 'ui' => null]), $kinds, $legacy), $verdict($set(['op' => 'setLabel', 'kind' => 'votes', 'label' => 'B']), $kinds, $legacy)],
+    ['accept', 'accept', '422 schema_build_only /changes/0/kind']);
+eq('and the lock leaves table() overrides out, so `first build` takes what `first pull` writes', Changes::lock($legacy, $kinds)['overrides'] ?? [], []);
+
 // ---------------------------------------------------------------- replay
 $first = Changes::resolve($kinds, $empty, $add('articles', 'subtitle', $text));
 $second = Changes::resolve($kinds, $first['state'], $add('articles', 'stars', ['type' => 'integer', 'rules' => ['max' => 5]]));

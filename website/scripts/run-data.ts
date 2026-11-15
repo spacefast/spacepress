@@ -15,7 +15,7 @@ const examples: Record<string, unknown> = {};
 // The hero: built once by hand (`first build` in a copy), so its migration ledger and plugin lock
 // are committed beside it like any example's.
 {
-  const dir = path.join(here, "examples/_hero");
+  const dir = path.join(here, "../examples/_hero");
   const files = sources(dir);
   delete files["seed.php"];
   const { check, output } = await compileFiles("tasks", files);

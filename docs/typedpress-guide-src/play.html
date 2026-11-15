@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%231f4d3a'/%3E%3Cpath d='M4 5h8M8 5v7' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<title>TypedPress playground</title>
+<meta name="description" content="Edit a TypedPress app and compile it in your browser. See the PHP, SQL and types the compiler writes, then run the app in WordPress, also in your browser.">
+<style>
+
+  :root {
+    color-scheme: light dark;
+    --fg: CanvasText;
+    --bg: Canvas;
+    --mut: color-mix(in srgb, CanvasText 62%, Canvas);
+    --line: color-mix(in srgb, CanvasText 16%, Canvas);
+    --code: color-mix(in srgb, CanvasText 7%, Canvas);
+    --card: color-mix(in srgb, CanvasText 3%, Canvas);
+    --ok: light-dark(#1a7f37, #56d364);
+    --info: light-dark(#0969da, #79c0ff);
+    --warn: light-dark(#9a6700, #e3b341);
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); line-height: 1.55; font-size: 15px; margin: 0 auto; max-width: 900px; padding: 28px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 19px; margin: 40px 0 8px; padding-top: 18px; border-top: 1px solid var(--line); scroll-margin-top: 12px; }
+  h2 .n { color: var(--mut); font-weight: 500; margin-right: 8px; }
+  h3 { font-size: 15px; margin: 22px 0 4px; }
+  p { margin: 8px 0; }
+  a { color: var(--info); }
+  .lede { color: var(--mut); font-size: 16px; margin-bottom: 12px; }
+  .note { border: 1px solid var(--line); border-left: 3px solid var(--warn); background: var(--card); border-radius: 8px; padding: 10px 14px; margin: 14px 0; font-size: 14px; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code); padding: 13px 15px; border-radius: 8px; overflow-x: auto; margin: 10px 0; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  body { max-width: 1320px; }
+  .top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 14px 0 6px; }
+  .top label { font-size: 13px; color: var(--mut); }
+  select, button { font: inherit; font-size: 14px; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px; }
+  button { cursor: pointer; } button:hover { border-color: var(--mut); }
+  button[aria-pressed="true"] { border-color: var(--info); color: var(--info); }
+  button.go { background: var(--ok); border-color: var(--ok); color: Canvas; font-weight: 600; }
+  .spacer { flex: 1; }
+  #status { font-size: 13.5px; margin: 8px 0; padding: 6px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); }
+  #status[data-state="ok"] { border-left: 3px solid var(--ok); }
+  #status[data-state="problems"], #status[data-state="failed"] { border-left: 3px solid var(--warn); }
+  #problems { list-style: none; padding: 0; margin: 6px 0; font-size: 13.5px; }
+  #problems li { margin: 4px 0; } #problems span { color: var(--mut); }
+  #problems button { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; padding: 1px 7px; }
+  .panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (max-width: 1000px) { .panes { grid-template-columns: 1fr; } }
+  .pane h2 { border: 0; margin: 10px 0 6px; padding: 0; font-size: 15px; display: flex; gap: 10px; align-items: center; }
+  .pane h2 small { font-weight: 400; color: var(--mut); font-size: 12.5px; flex: 1; }
+  .pane h2 button { font-size: 12.5px; padding: 2px 9px; }
+  .split { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 8px; align-items: start; }
+  @media (max-width: 620px) { .split { grid-template-columns: 1fr; } }
+  .treebox { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .filebox { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-height: 120px;
+    --diffs-font-size: 13px; --diffs-line-height: 20px; --diffs-font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .treebox { max-height: 70vh; overflow-y: auto; }
+  .pane.out { position: sticky; top: 8px; }
+  #output { max-height: calc(100vh - 90px); overflow: auto; }
+  #wordpress { margin: 14px 0; }
+  #wordpress iframe { width: 100%; height: 78vh; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  #wordpress p { font-size: 13.5px; color: var(--mut); }
+  .crumb { font-size: 13.5px; }
+</style>
+</head>
+<body>
+<p class="crumb"><a href="./">← Building a TypedPress app</a></p>
+<h1>Playground</h1>
+<p class="lede">Edit an app and it is compiled in your browser by the same compiler the command line uses. Then run your version in WordPress, also in your browser. Nothing is sent to a server.</p>
+<div class="note">These are the example apps as they are in the code today, so they use the current names: <code>first.config.ts</code>, <code>first/</code>, <code>action()</code>. The guide describes the names they are moving to.</div>
+
+<main id="play" data-wasm="compiler.wasm" data-examples="play-data.json" data-site="{{site}}">
+  <div class="top">
+    <label for="example">Example</label>
+    <select id="example"></select>
+    <button id="reset" type="button">Reset</button>
+    <span class="spacer"></span>
+    <button id="run" class="go" type="button">Run in WordPress</button>
+  </div>
+  <p id="summary" class="cap"></p>
+  <p id="status" role="status" aria-live="polite" data-state="loading">Loading…</p>
+  <ul id="problems"></ul>
+  <section id="wordpress" hidden>
+    <p><span id="wordpress-note"></span> <a id="tab" target="_blank" rel="noopener">Open in a new tab</a></p>
+    <iframe id="frame" title="WordPress running your version of the example"></iframe>
+  </section>
+  <div class="panes">
+    <section class="pane">
+      <h2>You write <small>click in the file and type</small><button id="source-diff" type="button" aria-pressed="false">Show my changes</button></h2>
+      <div class="split"><div class="treebox" id="source-tree"></div><div class="filebox" id="source"></div></div>
+    </section>
+    <section class="pane out">
+      <h2>The compiler writes <small>updates as you type</small><button id="output-diff" type="button" aria-pressed="false">Show what my edit changed</button></h2>
+      <div class="split"><div class="treebox" id="output-tree"></div><div class="filebox" id="output"></div></div>
+    </section>
+  </div>
+</main>
+<footer>The compiler is the TypedPress compiler built for the browser (WebAssembly, 7 MB). WordPress runs through <a href="https://wordpress.org/playground/">WordPress Playground</a>. Files, trees and diffs are rendered with <a href="https://diffs.com">@pierre/diffs</a> and @pierre/trees (<a href="third-party-licenses.txt">licences</a>).</footer>
+<script type="module" src="play.js"></script>
+</body>
+</html>

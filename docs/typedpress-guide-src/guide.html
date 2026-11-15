@@ -1,0 +1,1250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%231f4d3a'/%3E%3Cpath d='M4 5h8M8 5v7' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<title>Building a TypedPress app</title>
+<link rel="preload" as="style" href="pierre-diffs.css">
+<link rel="preload" as="style" href="pierre-trees.css">
+<meta name="description" content="Every feature of TypedPress and how to use it: data, event handlers, server functions, pages, editing, sign-in, agents, other frontends and migration.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --fg: CanvasText;
+    --bg: Canvas;
+    --mut: color-mix(in srgb, CanvasText 62%, Canvas);
+    --line: color-mix(in srgb, CanvasText 16%, Canvas);
+    --code: color-mix(in srgb, CanvasText 7%, Canvas);
+    --card: color-mix(in srgb, CanvasText 3%, Canvas);
+    --ok: light-dark(#1a7f37, #56d364);
+    --info: light-dark(#0969da, #79c0ff);
+    --warn: light-dark(#9a6700, #e3b341);
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); line-height: 1.55; font-size: 15px; margin: 0 auto; max-width: 900px; padding: 28px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 19px; margin: 40px 0 8px; padding-top: 18px; border-top: 1px solid var(--line); scroll-margin-top: 12px; }
+  h2 .n { color: var(--mut); font-weight: 500; margin-right: 8px; }
+  h3 { font-size: 15px; margin: 22px 0 4px; }
+  p { margin: 8px 0; }
+  a { color: var(--info); }
+  .lede { color: var(--mut); font-size: 16px; margin-bottom: 12px; }
+  .note { border: 1px solid var(--line); border-left: 3px solid var(--warn); background: var(--card); border-radius: 8px; padding: 10px 14px; margin: 14px 0; font-size: 14px; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code); padding: 13px 15px; border-radius: 8px; overflow-x: auto; margin: 10px 0; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  /* Code, file trees and diffs: rendered at build time with @pierre/diffs and @pierre/trees. */
+  diffs-container.tp-file { display: block; margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+    --diffs-font-size: 13px; --diffs-line-height: 20px; --diffs-font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .tp-note { color: var(--mut); font-size: 12px; font-family: system-ui, sans-serif; white-space: nowrap; }
+  file-tree-container.tp-tree { display: block; margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .tp-example { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 10px; margin: 12px 0; align-items: start; }
+  .tp-example file-tree-container.tp-tree { margin: 0; position: sticky; top: 8px; }
+  .tp-example-files > diffs-container.tp-file { margin: 0 0 10px; }
+  .tp-example.tp-live .tp-example-files > .tp-file { display: none; margin: 0; }
+  .tp-example.tp-live .tp-example-files > .tp-file.tp-open { display: block; }
+  @media (max-width: 700px) { .tp-example { grid-template-columns: 1fr; } .tp-example file-tree-container.tp-tree { position: static; } }
+  .cmp3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px calc((900px - min(1180px, 100vw - 32px)) / 2); align-items: start; }
+  .cmp3 h4 { margin: 0 0 4px; font-size: 14px; } .cmp3 h4 a { font-weight: 400; font-size: 12px; margin-left: 6px; }
+  @media (max-width: 932px) { .cmp3 { grid-template-columns: 1fr; margin-left: 0; margin-right: 0; } }
+  table.cmp td, table.cmp th { min-width: 150px; } table.cmp td:first-child, table.cmp th:first-child { min-width: 130px; font-weight: 600; }
+  table.cmp td:last-child, table.cmp th:last-child { background: var(--card); }
+  table.cmp a { color: inherit; text-decoration-color: var(--line); text-underline-offset: 2px; } table.cmp a:hover { color: var(--info); }
+  .run { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 12px 0; font-size: 13.5px; color: var(--mut); }
+  .runbtn { display: inline-block; background: var(--ok); color: Canvas; font-weight: 600; font-size: 13.5px; text-decoration: none; padding: 5px 12px; border-radius: 7px; white-space: nowrap; }
+  .runbtn:hover { filter: brightness(1.1); }
+  .wide { margin-left: calc((900px - min(1180px, 100vw - 32px)) / 2); margin-right: calc((900px - min(1180px, 100vw - 32px)) / 2); }
+  @media (max-width: 932px) { .wide { margin-left: 0; margin-right: 0; } }
+  .c { color: var(--mut); }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; color: var(--mut); font-size: 12.5px; }
+  .scroll { overflow-x: auto; }
+  .b { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; vertical-align: 1px; }
+  .built { color: var(--ok); border-color: var(--ok); }
+  .ruled { color: var(--info); border-color: var(--info); }
+  .prop { color: var(--warn); border-color: var(--warn); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; margin: 12px 0 0; }
+  .toc { columns: 2; column-gap: 28px; font-size: 14px; margin: 16px 0 0; padding: 0; list-style: none; }
+  .toc li { margin: 3px 0; break-inside: avoid; }
+  .toc .n { color: var(--mut); display: inline-block; width: 22px; }
+  @media (max-width: 560px) { .toc { columns: 1; } }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .mock { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: var(--card); }
+  .mock .bar { display: flex; justify-content: space-between; font-size: 12px; color: var(--mut); border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 12px; }
+  .mock .t { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+  .mock .ln { height: 8px; border-radius: 4px; background: var(--code); margin: 7px 0; }
+  .mock .foot { font-size: 12px; color: var(--mut); border-top: 1px solid var(--line); padding-top: 8px; margin-top: 14px; }
+  .cap { font-size: 13px; color: var(--mut); margin-top: 6px; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--mut); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>Building a TypedPress app</h1>
+<p class="lede">You describe your data and your pages in TypeScript. TypedPress compiles them into a WordPress plugin. WordPress then gives you the database, the editor, sign-in, the API and an admin, and no JavaScript runs on the server.</p>
+
+<div class="note"><b>Read this first.</b> TypedPress is the new name of the framework called First. It is experimental and has no npm release yet. This page uses the new names; in the code today, <code>typedpress</code> is spelled <code>first</code> and the <code>tp/</code> folder is <code>first/</code>. Some spellings on this page may still change.</div>
+
+<p class="run"><a class="runbtn" href="play">Open the playground</a> <span>Edit an app, compile it in your browser and run it in WordPress. Nothing to install.</span></p>
+
+<div class="legend">
+  <span><span class="b built">Works today</span> in the code, under the First names</span>
+  <span><span class="b ruled">Decided</span> the design is settled, not built yet</span>
+  <span><span class="b prop">Proposed</span> still under discussion</span>
+</div>
+
+<!--tp-toc-->
+
+<h2 id="setup">Set it up</h2>
+<tp-code lang="sh">npm create typedpress my-site    # a project with WordPress content only
+cd my-site
+typedpress dev                   # local WordPress, rebuilds when you save
+typedpress add db                # later: SQL tables of your own
+typedpress add pages             # later: your own front end</tp-code>
+<div class="scroll"><table>
+<tr><th>Step</th><th>Status</th><th>Note</th></tr>
+<tr><td>Create a project and run <code>dev</code></td><td><span class="b built">Works today</span></td><td>Local WordPress, PHP and SQLite come from WordPress Studio. You need Node 22 or later.</td></tr>
+<tr><td><code>add db</code>, <code>add api-reference</code></td><td><span class="b built">Works today</span></td><td><code>add</code> writes files you own. It never edits your files and is safe to run again.</td></tr>
+<tr><td><code>add pages</code>, <code>react</code>, <code>next</code>, <code>tanstack</code>, <code>astro</code></td><td><span class="b prop">Proposed</span></td><td>The same rules as <code>add db</code>.</td></tr>
+<tr><td>Install from npm</td><td><span class="b ruled">Decided</span></td><td>Today the compiler is built from source.</td></tr>
+</table></div>
+<p class="cap">A new project starts with content only: things people write and publish. You add a database, pages and other frontends when you need them.</p>
+
+<h2 id="layout">The project</h2>
+<p>Everything lives in <code>tp/</code>. You declare a thing once and its export name is its name everywhere: in the API, the client, the admin and the database. File names inside <code>tp/</code> are yours to choose, except <code>app/</code>. Section {{sec:examples}} has three complete projects.</p>
+<tp-tree>
+my-site/
+  typedpress.config.ts     site name and switches
+  tp/
+    schema.ts              kinds: what your data is
+    server.ts              queries, mutations, jobs, event handlers
+    app/                   optional pages and HTTP routes
+    content/               optional Markdown, kept equal to the site by sync
+    _generated/            types, the typed client, migrations (never edit)
+</tp-tree>
+
+<h2 id="how">How it works</h2>
+<p>You write TypeScript. A compiler turns it into a WordPress plugin once, at build time. After that, WordPress runs the plugin and nothing else: there is no Node process, no JavaScript engine and no second database on the server.</p>
+<div class="scroll"><table>
+<tr><th>Step</th><th>What happens</th><th>Where it runs</th></tr>
+<tr><td>1. You write</td><td>kinds, functions, pages and components in <code>tp/</code></td><td>your editor; the TypeScript compiler checks it</td></tr>
+<tr><td>2. <code>typedpress build</code></td><td>the compiler reads every file under <code>tp/</code>, checks that the server code stays inside the subset it can translate, and writes PHP, SQL migrations, an OpenAPI document, typed client files and small browser scripts</td><td>your machine or CI</td></tr>
+<tr><td>3. Deploy</td><td>the plugin is uploaded; pending schema changes are checked against the live rows, then applied</td><td>the site</td></tr>
+<tr><td>4. A request arrives</td><td>WordPress routes it. A page is rendered by the compiled PHP as the person viewing it. An API call runs the compiled function inside one database transaction</td><td>PHP, on the site</td></tr>
+<tr><td>5. An editor saves</td><td>the WordPress editor writes the same rows, through the same access rules and the same handlers</td><td>PHP, on the site</td></tr>
+<tr><td>6. Background work</td><td>jobs and schedules are queued in the same transaction as the write and run after it commits</td><td>Action Scheduler, the queue WordPress sites already use</td></tr>
+<tr><td>7. In the browser</td><td>pages arrive as HTML. Only <code>"use client"</code> components ship a script, and they run on the WordPress Interactivity API</td><td>the visitor's browser</td></tr>
+</table></div>
+<p>The files below are what the build wrote for the first project in section {{sec:examples}}. <span class="b built">Works today</span> This listing and the two files after it are real output, copied from a build of that project as it is written today, so the names still say <code>first</code>.</p>
+<tp-tree>
+tp/dist/wp-content/plugins/
+  first-app-fullsite/  your app, 15 files
+    first-app-fullsite.php  the plugin's entry file
+    first/
+      app/
+        schema.php  the kinds, their fields and access rules
+        functions.php  every handler, function, page and component, as PHP
+        openapi.json  the API description
+        migrations/
+          0001_init.sql  written by the build
+        client/
+          first-client.js  the browser side of live reads and calls
+          cheerbutton.e3030df70ef8.js  one "use client" component
+        assets/
+          global-c5e7e023ed0d8fff.css  your stylesheet, with a content hash
+  first-runtime/  the runtime every app shares, PHP only
+  first-identity/  sign-in screens, passkeys, guests
+  secure-custom-fields/  fields in the WordPress editor
+  action-scheduler/  the job queue
+  mcp-adapter/  the endpoint agents connect to
+  two-factor/  two-step verification
+</tp-tree>
+<p class="run"><a class="runbtn" href="play?example=full-site">Compile it yourself</a> <span>The playground runs this same compiler in your browser and shows every file it writes.</span></p>
+<p>The <code>cheer</code> function of that project, as the compiler wrote it:</p>
+<tp-code file="first-app-fullsite/first/app/functions.php" note="real output, lines 26 to 43" src="examples/_built/functions.php"></tp-code>
+<p>And the table for <code>cheers</code>:</p>
+<tp-code file="first-app-fullsite/first/app/migrations/0001_init.sql" note="real output, first statement" src="examples/_built/0001_init.sql"></tp-code>
+<ul>
+  <li><b>What the compiler refuses.</b> Server code that it cannot translate fails the build at the file, line and column, with the fix. It never ships code that would behave differently in PHP.</li>
+  <li><b>What stays TypeScript.</b> Types. The same types reach the browser client, so a call such as <code>tp.cheer({ noteId })</code> is checked against the function's own parameter.</li>
+  <li><b>What WordPress supplies.</b> Storage, users and roles, the editor, revisions, the media library, the REST API, the cron and job queue, the page cache and the plugin system.</li>
+</ul>
+
+<h2 id="examples">Three whole projects</h2>
+<p>Each project below is complete: every file is shown. Click a file in the tree to read it. They are the real example apps that exist in the code today, written in the spelling this page describes; section {{sec:rename}} shows the exact lines that differ.</p>
+
+<h3>A site with pages</h3>
+<p>Notes that an editor writes in WordPress, pages written in TSX, one button that works in the browser, a JSON feed and a signed webhook.</p>
+<tp-example dir="examples/notes" open="tp/schema.ts"></tp-example>
+<p class="run"><a class="runbtn" href="play?example=full-site">Run this in your browser</a> <span>The same app as it is written today: edit it, see what the compiler writes, and open the site in WordPress.</span></p>
+<div class="scroll"><table>
+<tr><th>From these files you get</th><th>Without writing it</th></tr>
+<tr><td><code>/</code>, <code>/notes</code>, <code>/notes/&lt;slug&gt;</code>, <code>/about</code>, a 404 page</td><td>routing, titles, canonical URLs, the page cache and its purges</td></tr>
+<tr><td>Notes in the WordPress editor</td><td>drafts, revisions, scheduling, staged versions, the admin screens</td></tr>
+<tr><td><code>GET /notes</code>, <code>GET /notes/{id}</code>, <code>POST /notes</code>, <code>PATCH</code> and <code>DELETE</code>, the same for <code>cheers</code></td><td>the API under <code>/__tp/api/v1</code>, its OpenAPI document and the typed client</td></tr>
+<tr><td><code>tp.cheer({ noteId })</code></td><td>input checking from the parameter type, a rate limit, one transaction</td></tr>
+<tr><td><code>deskNotes</code> hidden from visitors</td><td>the field is absent from pages, the API, search and agent tools alike</td></tr>
+<tr><td>One agent tool per operation</td><td>the MCP endpoint and its scoped credentials</td></tr>
+</table></div>
+
+<h3>An app with its own tables, and a React front end</h3>
+<p>A pantry: SQL tables, handlers that run inside every write, a background job, a weekly schedule, and a React app that uses the backend through the one client. The whole backend is two files, because names come from exports and not from file paths.</p>
+<tp-example dir="examples/pantry" open="tp/index.ts"></tp-example>
+<p class="run"><a class="runbtn" href="play?example=pantry">Run this in your browser</a> <span>The same backend as it is written today. Add a field and watch the migration appear.</span></p>
+<div class="scroll"><table>
+<tr><th>What happens when the React app calls <code>consume</code></th><th>Where</th></tr>
+<tr><td>1. The client posts to the function's endpoint with the signed-in user's session</td><td>browser</td></tr>
+<tr><td>2. The role is checked against <code>access: "editor"</code>, and the input against the parameter type</td><td>PHP</td></tr>
+<tr><td>3. A transaction starts. <code>items.update()</code> runs the <code>afterUpdate</code> handler</td><td>PHP</td></tr>
+<tr><td>4. The handler sees the quantity is low, adds a shopping-list row and queues <code>notifyLowStock</code> in the same transaction</td><td>PHP</td></tr>
+<tr><td>5. The transaction commits. Only now can the job run</td><td>database</td></tr>
+<tr><td>6. Every open read of <code>items</code> and <code>expiringSoon</code> refreshes</td><td>browser</td></tr>
+<tr><td>7. Action Scheduler runs the job, and retries it twice if it throws</td><td>PHP</td></tr>
+</table></div>
+
+<h3>Content as files, and an Astro site in front</h3>
+<p>Plants kept as Markdown files in git. Editors change the same plants in the WordPress editor. A separate Astro project builds the public site from them.</p>
+<tp-example dir="examples/garden" open="cms/tp/schema.ts"></tp-example>
+<p class="cap">Two more apps run in the playground: <a href="play?example=blog">a blog</a> in two languages with comments and member accounts, and <a href="play?example=reading-list">a reading list</a> in 94 lines. The Astro project above is not one of them, because it needs a separate build.</p>
+<p class="cap">The first two projects use spellings that are decided and not built yet: <code>query()</code>, <code>mutation()</code>, <code>.on("event", fn)</code>, <code>kind.system</code>, <code>cron()</code>, <code>@typedpress/client</code>. The same apps run today under the spellings in section {{sec:rename}}.</p>
+
+<h2 id="data">Describe your data</h2>
+<p><span class="b built">Works today</span> A <b>kind</b> is one sort of thing your app stores. There are six, and each always stores in the same place.</p>
+<div class="scroll"><table>
+<tr><th>You write</th><th>Use it for</th><th>WordPress stores it as</th></tr>
+<tr><td><code>collection()</code></td><td>what people write and publish: posts, pages, products</td><td>a post type with a field group, drafts and revisions</td></tr>
+<tr><td><code>table()</code></td><td>rows your app filters, sorts, counts and joins</td><td>its own SQL table with typed columns and foreign keys</td></tr>
+<tr><td><code>taxonomy()</code></td><td>topics, tags, categories</td><td>a WordPress taxonomy with term fields</td></tr>
+<tr><td><code>global()</code></td><td>one record of site settings</td><td>a registered setting</td></tr>
+<tr><td><code>files()</code></td><td>private files with signed download links</td><td>a file bucket; files never get a public URL</td></tr>
+<tr><td><code>wp.users.extend()</code></td><td>your own fields on users</td><td>WordPress users and user meta; no second user table. <span class="b ruled">Decided</span> name; written <code>userProjection()</code> today</td></tr>
+</table></div>
+<tp-code file="tp/schema.ts">import { collection, table, taxonomy, global, files, file,
+         text, richText, integer, select, ref, media } from "typedpress";
+
+export const authors = collection({
+  name: text().max(80),
+  avatar: media({ accept: "image" }).optional(),
+});
+
+export const posts = collection({
+  title: text().max(200),
+  body: richText(),
+  writer: ref(authors),
+  views: integer().default(0),
+}, {
+  url: "/blog/:slug",
+  comments: true,
+  access: { read: "anyone", create: "author", update: "author", delete: "editor" },
+});
+
+export const topics = taxonomy({ color: text().optional() }, { url: "/topics/:slug", on: [posts] });
+
+export const likes = table({ post: ref(posts), count: integer().default(0) });
+
+export const settings = global({ tagline: text().default("Notes from the field") });
+
+export const decks = files({ accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner" } });</tp-code>
+
+<h3>Options on a kind</h3>
+<div class="scroll"><table>
+<tr><th>Option</th><th>What it does</th></tr>
+<tr><td><code>url: "/blog/:slug"</code></td><td>the item's address; one pattern reads incoming URLs and builds links. <code>:path</code> is a whole parent chain</td></tr>
+<tr><td><code>access</code></td><td>who may read, create, update and delete (below). Default: anyone reads, editors write</td></tr>
+<tr><td><code>title</code>, <code>content</code></td><td>which field is the WordPress title and which is the body</td></tr>
+<tr><td><code>drafts</code>, <code>revisions</code>, <code>staged</code></td><td>on for collections; a table may turn drafts and revisions on</td></tr>
+<tr><td><code>comments: true</code> or <code>{ guests, moderation, threaded, closeAfterDays }</code></td><td>WordPress comments on this kind</td></tr>
+<tr><td><code>hierarchical: true</code></td><td>items have a parent and an order, as WordPress Pages do</td></tr>
+<tr><td><code>sync: "content/posts/*.md"</code></td><td>keep the items as files too (section {{sec:files}})</td></tr>
+<tr><td><code>api: { list, get, create, update, delete }</code></td><td>switch single API operations off</td></tr>
+<tr><td><code>agents: false</code></td><td>keep this kind out of agent tools</td></tr>
+<tr><td><code>label</code>, <code>storageName</code>, <code>was</code>, <code>existingTable</code></td><td>the admin label; the stored name; a rename that keeps rows; a SQL table that already exists</td></tr>
+<tr><td><code>check: (row) =&gt; null | { field: "message" }</code></td><td><span class="b ruled">Decided</span> a rule across several fields, run on every write and shown on the fields in the editor</td></tr>
+</table></div>
+<tp-code lang="ts">// users: your own fields on WordPress users. email and name are already there.
+// Decided spelling; today this is userProjection() under a name you pick.
+import { wp } from "typedpress";
+
+export const users = wp.users.extend({
+  plan: select(["free", "pro"]).default("free"),
+  bio: text().max(500).optional(),
+}, { guests: true });
+
+// a compound index on a table
+export const votes = table({ post: ref(posts), voter: ref(users) }).index(["post", "voter"], { unique: true });
+
+// a docs section: a whole folder tree of Markdown
+export const docs = collection({ title: text(), content: richText().optional() },
+  { hierarchical: true, url: "/docs/:path", sync: "content/docs/**/*.md" });</tp-code>
+
+<h3>Field types</h3>
+<div class="scroll"><table>
+<tr><th>Field</th><th>Holds</th></tr>
+<tr><td><code>text()</code>, <code>text({ multiline: true })</code></td><td>a string</td></tr>
+<tr><td><code>richText()</code></td><td>formatted content, edited in the WordPress editor</td></tr>
+<tr><td><code>integer()</code>, <code>number()</code>, <code>boolean()</code></td><td>numbers and true or false</td></tr>
+<tr><td><code>date()</code>, <code>timestamp()</code></td><td>a calendar day, or a moment in UTC</td></tr>
+<tr><td><code>select(["a", "b"])</code></td><td>one of a fixed list; <code>.many()</code> for several</td></tr>
+<tr><td><code>email()</code>, <code>url()</code>, <code>slug({ source })</code></td><td>validated strings; a slug is unique and made from another field</td></tr>
+<tr><td><code>json&lt;T&gt;()</code></td><td>any JSON value, typed as <code>T</code></td></tr>
+<tr><td><code>media()</code>, <code>file(bucket)</code></td><td>an item in the media library, or a private file</td></tr>
+<tr><td><code>ref(kind)</code>, <code>ref(kind).many()</code></td><td>a link to one row of another kind, or an ordered list of them</td></tr>
+<tr><td><code>terms(taxonomy)</code></td><td>the terms an item carries</td></tr>
+<tr><td><code>group()</code>, <code>repeater()</code>, <code>blocks()</code></td><td>nested fields: one set, a list of sets, or a list of different layouts</td></tr>
+</table></div>
+<p>Fields are required unless you say otherwise. Add rules by chaining:</p>
+<div class="scroll"><table>
+<tr><th>Modifier</th><th>What it does</th></tr>
+<tr><td><code>.optional()</code>, <code>.default(v)</code>, <code>.defaultNow()</code></td><td>allow it to be left out</td></tr>
+<tr><td><code>.unique()</code>, <code>.min(n)</code>, <code>.max(n)</code>, <code>.pattern(/re/)</code></td><td>checks on every write</td></tr>
+<tr><td><code>.validate((value) =&gt; true | "message")</code></td><td>your own check, compiled to PHP</td></tr>
+<tr><td><code>.access({ read, create, update })</code></td><td>who may see or write this one field; a hidden field is absent, not empty</td></tr>
+<tr><td><code>.ui({ label, help, placeholder, width })</code>, <code>.showIf({ … })</code></td><td>how the field looks in the editor, and when it shows</td></tr>
+<tr><td><code>.localized()</code></td><td>one value per language</td></tr>
+<tr><td><code>.onDelete("cascade" | "restrict" | "setNull")</code>, <code>.reverse("name")</code></td><td>on a <code>ref()</code>: what a delete does, and the name of the list on the other side</td></tr>
+<tr><td><code>.was("oldName")</code></td><td>a rename that keeps the stored values</td></tr>
+</table></div>
+
+<h3>Access rules</h3>
+<p>Each of <code>read</code>, <code>create</code>, <code>update</code> and <code>delete</code> takes one of these:</p>
+<div class="scroll"><table>
+<tr><th>Value</th><th>Meaning</th></tr>
+<tr><td><code>"anyone"</code></td><td>everyone, signed in or not</td></tr>
+<tr><td><code>"authenticated"</code></td><td>anyone signed in, guests included</td></tr>
+<tr><td><code>"guest"</code> &lt; <code>"subscriber"</code> &lt; <code>"author"</code> &lt; <code>"editor"</code> &lt; <code>"admin"</code></td><td>that role or a higher one</td></tr>
+<tr><td><code>"self"</code>, <code>"owner"</code></td><td>the signed-in user's own row, or the uploader of a file</td></tr>
+<tr><td><code>(ctx) =&gt; boolean | filter</code></td><td>your own rule; a returned filter narrows what the user can read or change</td></tr>
+</table></div>
+<p class="cap">These rules are the only gate, on every way into the data: the TypedPress API, WordPress's own REST API, the admin, the editor and agent tools.</p>
+
+<h3>When the schema changes</h3>
+<p><span class="b built">Works today</span> You never write a migration. The build compares the schema with the last build and writes the SQL. At deploy, every pending change is checked against the live rows before any of them runs.</p>
+<div class="scroll"><table>
+<tr><th>Change</th><th>Result</th></tr>
+<tr><td>a new kind, a new optional field, a field with a default, a new index</td><td>applies</td></tr>
+<tr><td>a field becomes required and has a default</td><td>rows without a value get the default, then it applies</td></tr>
+<tr><td>a field becomes required, no default, and rows lack it</td><td>refused, with the row count</td></tr>
+<tr><td>a kind or field that holds rows is removed</td><td>refused, with the row count, until the deploy names it explicitly</td></tr>
+<tr><td>a rename</td><td><code>.was("oldName")</code> keeps the rows</td></tr>
+</table></div>
+<p>One field added to the <code>cheers</code> table of the first project in section {{sec:examples}}:</p>
+<tp-diff old="examples/_built/schema.before.ts" new="examples/_built/schema.after.ts" old-name="tp/schema.ts" new-name="tp/schema.ts"></tp-diff>
+<p class="run"><a class="runbtn" href="play?example=full-site">Try this change</a> <span>Add the field in the playground and the new migration shows up in the output.</span></p>
+<p>The next build writes the migration. Nobody types it. This one is real output: the same field was added to the same table in the code as it is today, which is why the table name still says <code>first</code>.</p>
+<tp-code file="tp/_generated/migrations/0002_update.sql" note="real output" src="examples/_built/0002_update.sql"></tp-code>
+<ul>
+  <li>Indexes are added for you: for unique fields, references, and every field a compiled <code>where</code> or <code>orderBy</code> names.</li>
+  <li><span class="b ruled">Decided</span> <code>export const backfill = migration(async () =&gt; { … })</code> runs your own data change once per site, in batches; a deploy waits for it.</li>
+</ul>
+
+<h2 id="rw">Read and write data</h2>
+<p><span class="b built">Works today</span> Inside pages, queries and mutations, a kind reads and writes <b>as the visitor</b>: access rules, drafts and hidden fields apply automatically.</p>
+<tp-code lang="ts">import { posts } from "typedpress:db";
+
+await posts.list({
+  where: { writer: { name: "Alice" } },       // filter through a relation
+  orderBy: { views: "desc" }, limit: 10,
+  with: { writer: true, topics: true },       // load related rows
+});
+await posts.paginate({ limit: 20, cursor });  // { rows, cursor }
+await posts.get(42);                          // the row, or null
+await posts.get({ slug: "hello" });
+await posts.count({ search: "tea" });         // full-text search on what the visitor may read
+await posts.create({ title: "Hi", writer: 3 });
+await posts.update(42, { title: "Hello" });
+await posts.delete(42);
+
+await posts.system.list();                    // trusted: no access rules, every draft</tp-code>
+<tp-code lang="ts">// staged versions, through the client: change a published item without visitors seeing it
+await tp.posts.stage(42, { title: "New title" });
+await tp.posts.compare(42);                   // what differs from the live item
+await tp.posts.promote(42);                   // or promote(42, { at: "2026-12-01T09:00:00Z" })
+await tp.posts.discard(42);
+
+// languages
+await posts.create({ locale: "de", translationOf: 42, title: "Hallo" });
+await posts.list({ locale: "de" });           // German rows, falling back to the default language</tp-code>
+<ul>
+  <li>Filters on a list of links: <code>{ tags: { has: 5 } }</code>, <code>{ tags: { name: "news" } }</code>, <code>{ tags: [] }</code> for none.</li>
+  <li>A request, a mutation and a job each run in one transaction that covers table rows and WordPress content together.</li>
+  <li><code>.system</code> is the only way around the rules. Jobs and signed webhooks have no visitor and run as the system.</li>
+  <li>Search uses an index TypedPress keeps current on every write. A draft or a hidden field is never found and never counted.</li>
+</ul>
+
+<h2 id="events">Event handlers</h2>
+<p><span class="b ruled">Decided</span> One handler per call, chained, from any file. <span class="b built">Works today</span> as the object form <code>.on({ beforeCreate })</code> in the file that declares the kind.</p>
+<tp-code file="tp/server.ts">import { posts } from "./schema";
+
+posts
+  .on("beforeCreate", (data) =&gt; { data.title = data.title.trim(); })
+  .on("change", async (c) =&gt; { await audit.system.create({ op: c.op, row: (c.after ?? c.before)!.id }); })
+  .on("committed", async (c) =&gt; {
+    if (c.op === "publish") await notifySubscribers.enqueue({ postId: c.after!.id });
+  });</tp-code>
+<div class="scroll"><table>
+<tr><th>Event</th><th>Runs</th><th>Can change the data</th><th>If it throws</th></tr>
+<tr><td><code>beforeCreate</code>, <code>beforeUpdate</code></td><td>before the write</td><td>yes</td><td>the write is rejected</td></tr>
+<tr><td><code>beforeDelete</code></td><td>before the delete</td><td>no</td><td>the delete is rejected</td></tr>
+<tr><td><code>afterCreate</code>, <code>afterUpdate</code>, <code>afterDelete</code>, <code>afterPublish</code>, <code>afterUnpublish</code></td><td>after the write, in the same transaction</td><td>no</td><td>the transaction rolls back</td></tr>
+<tr><td><code>change</code></td><td>once per write, with <code>{ op, before, after }</code></td><td>no</td><td>the transaction rolls back</td></tr>
+<tr><td><code>committed</code></td><td>after the commit, as a queued action that is retried</td><td>no</td><td>it is retried; the write stays</td></tr>
+</table></div>
+<div class="scroll"><table>
+<tr><th>Handler</th><th>Receives</th></tr>
+<tr><td><code>beforeCreate</code></td><td><code>(data, ctx)</code>; change <code>data</code> or return a replacement</td></tr>
+<tr><td><code>beforeUpdate</code></td><td><code>(patch, existing, ctx)</code></td></tr>
+<tr><td><code>afterCreate</code>, <code>afterPublish</code>, <code>afterUnpublish</code>, <code>beforeDelete</code>, <code>afterDelete</code></td><td><code>(row, ctx)</code></td></tr>
+<tr><td><code>afterUpdate</code></td><td><code>(row, previous, ctx)</code></td></tr>
+<tr><td><code>change</code>, <code>committed</code></td><td><code>({ op, before, after }, ctx)</code>; <code>op</code> is <code>create</code>, <code>update</code>, <code>delete</code>, <code>publish</code> or <code>unpublish</code></td></tr>
+</table></div>
+<ul>
+  <li>A kind can have several handlers for one event. They run in the order they were added.</li>
+  <li>Every write path runs every handler: the API, the WordPress editor, the command line and jobs.</li>
+  <li>A handler runs as the person who made the write. <code>.system</code> is the only bypass.</li>
+  <li><span class="b prop">Proposed</span> <code>c.source</code> says where the write came from: <code>api</code>, <code>editor</code>, <code>cli</code>, <code>job</code> or <code>agent</code>.</li>
+</ul>
+
+<h2 id="server">Server functions, jobs and routes</h2>
+<h3>Queries and mutations <span class="b ruled">Decided</span></h3>
+<p>A query reads, a mutation writes. Input types come from the handler's own parameter. <span class="b built">Works today</span> as one form, <code>action({ input, handler })</code>.</p>
+<tp-code lang="ts">import { query, mutation, job, cron, HttpError } from "typedpress";
+
+export const popular = query({ access: "anyone" },
+  async ({ limit = 10 }: { limit?: number }) =&gt;
+    posts.list({ orderBy: { views: "desc" }, limit }));
+
+export const like = mutation({ access: "subscriber", rateLimit: "10/min" },
+  async ({ id }: { id: number }) =&gt; {
+    const post = await posts.get(id);
+    if (!post) throw new HttpError(404, "not_found", "No such post");
+    await posts.system.update(id, { views: post.views + 1 });
+  });</tp-code>
+<div class="scroll"><table>
+<tr><th></th><th><code>query</code></th><th><code>mutation</code></th></tr>
+<tr><td>May write</td><td>no</td><td>yes, in one transaction</td></tr>
+<tr><td>Cached and subscribable</td><td>yes</td><td>no</td></tr>
+<tr><td>After it runs</td><td>nothing</td><td>purges the pages its writes changed</td></tr>
+<tr><td>As an agent tool</td><td>marked read-only</td><td>marked as a write</td></tr>
+<tr><td>As a form action</td><td>no</td><td>yes, and it works without JavaScript</td></tr>
+</table></div>
+
+<ul>
+  <li><b>From the browser</b> you call a function by its export name: <code>tp.popular({ limit: 5 })</code>, <code>tp.like({ id })</code>.</li>
+  <li><b>From server code</b> you import it and call it. It runs as the current caller with its access check, and as the system inside a job.</li>
+  <li><b>Default access is <code>"editor"</code>.</b> A mutation open to <code>"anyone"</code> gets a default rate limit. Limits count per user, or per address when signed out.</li>
+  <li><b>A mutation accepts an idempotency key</b>, so a retried call does not write twice.</li>
+  <li><b>Every function, handler and route gets one <code>ctx</code>:</b> <code>ctx.user</code>, <code>ctx.can(op, kind, row?)</code>, <code>ctx.env</code>, and <code>ctx.request</code> in routes.</li>
+  <li><b>Errors carry field messages.</b> A refused write answers a standard problem document with <code>fields</code>, a map from field name to message, so a form can show each message beside its field.</li>
+  <li><b>Old pages after a deploy.</b> A call to a function the new build removed answers <code>409 stale_client</code> and the client reloads the page. <code>.was("oldName")</code> keeps an old name answering for one release.</li>
+</ul>
+
+<h3>Background jobs and schedules</h3>
+<tp-code lang="ts">export const notifySubscribers = job({ retries: 3 }, async ({ postId }: { postId: number }) =&gt; { /* … */ });
+export const nightly = cron("0 3 * * *", async () =&gt; { /* … */ });
+
+await notifySubscribers.enqueue({ postId: 42 }, { delay: 60, key: "post-42" });</tp-code>
+<ul>
+  <li><span class="b built">Works today</span> Jobs: queued inside the request's transaction, run after it commits, retried with backoff. They run on Action Scheduler, the queue WordPress sites already use. <code>key</code> collapses duplicates that are still waiting.</li>
+  <li>Inside a job, <code>ctx.attempt</code> and <code>ctx.jobId</code> say which run this is.</li>
+  <li><span class="b ruled">Decided</span> <code>cron()</code>, the two-argument <code>job(options, handler)</code> form, <code>job({ every: "1h" }, handler)</code> for a repeat, and <code>x.enqueue()</code>. Today a job is <code>job({ input, handler })</code> and is queued with <code>jobs.x.enqueue()</code>.</li>
+</ul>
+
+<h3>HTTP routes <span class="b built">Works today</span></h3>
+<p>A <code>route.ts</code> file serves your own methods on a path of the site: a feed, a webhook, anything that is not a JSON call.</p>
+<tp-code file="tp/app/webhooks/stripe/route.ts" note="POST /webhooks/stripe">import { env, type RouteRequest } from "typedpress";
+
+export const signature = { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" };
+
+export function POST(req: RouteRequest) {
+  const event = JSON.parse(req.body) as { type: string };
+  return { status: 202, body: "ok " + event.type };
+}</tp-code>
+
+<tp-code file="tp/app/api/feed.json/route.ts" note="GET /api/feed.json">export const access = "anyone";
+
+export async function GET(req: RouteRequest) {
+  const limit = Number(req.query.get("limit") ?? "20");
+  const rows = await posts.list({ limit });
+  return { headers: { "content-type": "application/feed+json" }, body: JSON.stringify({ items: rows }) };
+}</tp-code>
+<ul>
+  <li>A route exports the methods it serves (<code>GET</code>, <code>POST</code>, …) and returns <code>{ status?, headers?, body }</code>. It has <code>access</code> or a <code>signature</code>.</li>
+  <li><code>req</code> has <code>method</code>, <code>url</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>headers</code> and the raw <code>body</code>.</li>
+  <li>A <code>page.tsx</code> can export <code>POST</code> too.</li>
+  <li><span class="b ruled">Decided</span> A file such as <code>tp/app/feed.xml.ts</code> serves <code>/feed.xml</code> without a folder.</li>
+</ul>
+
+<h3>Also on the server <span class="b built">Works today</span></h3>
+<div class="scroll"><table>
+<tr><th>Thing</th><th>How</th></tr>
+<tr><td>Email</td><td><code>await mail.send({ to, subject, text, html })</code>; sent from a queue</td></tr>
+<tr><td>Outgoing webhooks</td><td><code>webhooks: [{ url, secret, events: ["posts.created"] }]</code> in the config; signed and retried</td></tr>
+<tr><td>Secrets and settings</td><td><code>env("NAME")</code>, read on the site when it is used, never at build time</td></tr>
+<tr><td>Run something once</td><td><code>await once(key, fn)</code>; a repeat with the same key returns the first result</td></tr>
+<tr><td>Errors</td><td><code>throw new HttpError(status, code, message)</code></td></tr>
+<tr><td>Outbound HTTP</td><td><code>fetch()</code> from a handler</td></tr>
+<tr><td>Hashing and signatures</td><td><code>import { createHmac, timingSafeEqual } from "node:crypto"</code>; <code>crypto.randomUUID()</code></td></tr>
+</table></div>
+<p class="cap">Handlers are written in a checked subset of TypeScript. Anything outside it fails the build at the file, line and column, with the fix.</p>
+
+<h2 id="pages">Pages</h2>
+<p><span class="b built">Works today</span> Pages are optional. Folders under <code>tp/app/</code> are URLs, with the file names Next.js uses.</p>
+<tp-tree>
+tp/app/
+  layout.tsx                 wraps every page
+  page.tsx                   /
+  blog/[slug]/page.tsx       /blog/hello
+  about/page.md              /about, a WordPress Page an editor can change
+  account/layout.tsx         export const guard = "subscriber"
+  api/feed.json/route.ts     GET /api/feed.json
+  not-found.tsx  error.tsx   404 and 500
+</tp-tree>
+<tp-code file="tp/app/blog/[slug]/page.tsx">import { posts } from "typedpress:db";
+import { Content, Comments, notFound, type PageProps } from "typedpress/app";
+import { LikeButton } from "./LikeButton";
+
+export const metadata = ({ params }: PageProps&lt;"blog/[slug]"&gt;) =&gt;
+  ({ title: params.slug, canonical: `/blog/${params.slug}` });
+
+export default async function Post({ params }: PageProps&lt;"blog/[slug]"&gt;) {
+  const post = await posts.get({ slug: params.slug });
+  if (!post) notFound();
+  return (
+    &lt;article&gt;
+      &lt;h1&gt;{post.title}&lt;/h1&gt;
+      &lt;Content value={post.body} /&gt;
+      &lt;LikeButton id={post.id} count={post.views} /&gt;
+      &lt;Comments for={post} /&gt;
+    &lt;/article&gt;
+  );
+}</tp-code>
+<p>The page is rendered by WordPress, in PHP, as the person viewing it. Drafts and fields they may not see never reach the HTML.</p>
+<div class="scroll"><table>
+<tr><th>You want</th><th>You write</th></tr>
+<tr><td>Title, description, canonical URL, robots, social cards</td><td><code>export const metadata</code>, an object or a function of the page's props</td></tr>
+<tr><td>A typed query string</td><td><code>export const search = { page: integer().default(1), q: text().optional() }</code></td></tr>
+<tr><td>Protect a section</td><td><code>export const guard = "subscriber"</code> on a layout; a role, <code>"authenticated"</code> or a function</td></tr>
+<tr><td>A 404 or a redirect</td><td><code>notFound()</code>, <code>redirect(url, status?)</code></td></tr>
+<tr><td>Links without full page loads</td><td><code>&lt;Link href&gt;</code>, checked against your routes; <code>prefetch</code> loads on hover</td></tr>
+<tr><td>A post body</td><td><code>&lt;Content value={post.body} /&gt;</code></td></tr>
+<tr><td>Numbered page links</td><td><code>&lt;Pagination page={search.page} pages={n} /&gt;</code></td></tr>
+<tr><td>A comment thread and form</td><td><code>&lt;Comments for={item} /&gt;</code>, on a kind with <code>comments</code> on</td></tr>
+<tr><td>A search box and results</td><td><code>&lt;Search /&gt;</code> and <code>&lt;SearchResults kind="posts" q={search.q} /&gt;</code></td></tr>
+<tr><td>Part of a page that stays current</td><td><code>&lt;Live id="notes"&gt;…&lt;/Live&gt;</code>; it re-renders on the server when what it read changes</td></tr>
+<tr><td>Styles and images</td><td><code>import "./site.css"</code>, <code>import styles from "./x.module.css"</code>, <code>import logo from "./logo.svg"</code></td></tr>
+</table></div>
+
+<tp-code file="tp/app/layout.tsx">import { Link, type LayoutProps } from "typedpress/app";
+import "./global.css";
+
+export const metadata = {
+  title: { default: "Field Notes", template: "%s · Field Notes" },   // wraps each page's title
+  description: "Short notes from the field.",
+};
+
+export default function RootLayout({ children }: LayoutProps) {
+  return &lt;main className="site"&gt;&lt;nav&gt;&lt;Link href="/blog"&gt;Blog&lt;/Link&gt;&lt;/nav&gt;{children}&lt;/main&gt;;
+}</tp-code>
+<tp-code file="tp/app/about/page.md" note="a page an editor can change">---
+title: Colophon
+description: How this site is made.
+---
+
+Set in a system font, served by **WordPress**.</tp-code>
+<p class="cap">A <code>page.md</code> becomes a real WordPress Page on the first request after a build. From then on an editor changes it in the WordPress editor.</p>
+<div class="scroll"><table>
+<tr><th>Helper for documentation sites</th><th>Gives you</th></tr>
+<tr><td><code>nav(docs, current)</code></td><td>the section's tree, for a sidebar</td></tr>
+<tr><td><code>pager(docs, current)</code></td><td>the previous and next page</td></tr>
+<tr><td><code>headings(item)</code></td><td>the item's headings with their anchor ids, for a table of contents</td></tr>
+<tr><td><code>apiReference()</code></td><td>your API's operations and fields, to render an API reference page</td></tr>
+</table></div>
+<p class="cap">Fenced code blocks in content are highlighted on the server, in light and dark, with titles, marked lines and tabs. No script is added to the page.</p>
+
+<h3>Forms that work without JavaScript</h3>
+<tp-code lang="tsx">import { useFormState } from "typedpress/app";
+import { subscribe } from "../server";
+
+export default function Page() {
+  const state = useFormState(subscribe);
+  return (
+    &lt;form action={subscribe}&gt;
+      {state.error ? &lt;p&gt;{state.error.message}&lt;/p&gt; : null}
+      {state.result ? &lt;p&gt;Subscribed {state.result.email}&lt;/p&gt; : null}
+      &lt;input name="email" type="email" defaultValue={state.values.email ?? ""} /&gt;
+      &lt;button&gt;Subscribe&lt;/button&gt;
+    &lt;/form&gt;
+  );
+}</tp-code>
+<p class="cap">The form posts to the mutation, which runs as the visitor, and the browser is sent back to the page with the result or the error for each field. <code>useFormState</code> returns <code>{ pending, error, result, values }</code>, and <code>error.fields</code> holds one message per field.</p>
+
+<h3>Caching</h3>
+<p><span class="b built">Works today</span> A signed-out visitor's page is cacheable by the page cache and the edge. Each cached page records the rows it read, so a write purges exactly the URLs that showed it. Signed-in visitors and guarded sections are never cached.</p>
+
+<h3>Static output</h3>
+<div class="scroll"><table>
+<tr><th>You want</th><th>You write</th></tr>
+<tr><td>Some pages prebuilt, the rest rendered per request</td><td><code>export const prerender = true</code> in those pages</td></tr>
+<tr><td>A whole site as static files, with no WordPress serving it</td><td><code>output: "static"</code> in the config, then <code>typedpress export</code></td></tr>
+<tr><td>Static files from a WordPress that editors use somewhere else</td><td>the same, with <code>typedpress export --site https://cms.example.com</code></td></tr>
+</table></div>
+<p class="cap">A write that changes what a prebuilt page shows deletes that page's file at once and schedules its rebuild, so nobody sees old content.</p>
+
+<h2 id="client">Interactive components</h2>
+<p><span class="b built">Works today</span> A file that starts with <code>"use client"</code> is rendered on the server first, then stays interactive in the browser through the WordPress Interactivity API. It can call your mutations directly.</p>
+<tp-code file="tp/app/blog/[slug]/LikeButton.tsx">"use client";
+import { useState } from "typedpress/state";
+import { like } from "../../../server";
+
+export function LikeButton({ id, count: start }: { id: number; count: number }) {
+  const [count, setCount] = useState(start);
+  return &lt;button onClick={async () =&gt; { await like({ id }); setCount(count + 1); }}&gt;{count} likes&lt;/button&gt;;
+}</tp-code>
+<div class="scroll"><table>
+<tr><th>Hook</th><th>For</th></tr>
+<tr><td><code>useState</code>, <code>useRef</code></td><td>state of one component</td></tr>
+<tr><td><code>useEffect</code>, <code>useMount</code></td><td>code that runs in the browser after render</td></tr>
+<tr><td><code>useEvent("resize", fn)</code></td><td>window and document listeners</td></tr>
+<tr><td><code>sharedState({ … })</code></td><td>state shared by several components on a page</td></tr>
+<tr><td><code>useQuery(popular, { limit: 5 })</code></td><td>a read that stays current (<span class="b ruled">Decided</span>; called <code>useLive</code> today)</td></tr>
+</table></div>
+<p class="cap">These are not React. A client component cannot import React components from npm.</p>
+
+<h2 id="output">What it turns into</h2>
+<p><code>typedpress build</code> compiles the project to WordPress plugins. The compiler is written in Rust and runs at build time only. On the site everything is PHP, with no JavaScript engine.</p>
+<div class="scroll"><table>
+<tr><th>You write</th><th>WordPress gets</th></tr>
+<tr><td><code>collection()</code></td><td>a post type, a field group and registered post meta</td></tr>
+<tr><td><code>table()</code></td><td>a SQL table, with migrations written for you by comparing with the last build</td></tr>
+<tr><td><code>taxonomy()</code>, <code>global()</code></td><td>a taxonomy with term meta; a registered setting</td></tr>
+<tr><td><code>url: "/blog/:slug"</code></td><td>rewrite rules, permalinks, and a redirect when a slug changes</td></tr>
+<tr><td>handlers, queries, mutations</td><td>plain PHP functions</td></tr>
+<tr><td><code>job()</code>, <code>cron()</code></td><td>Action Scheduler actions</td></tr>
+<tr><td><code>page.tsx</code></td><td>a PHP renderer; the HTML matches what React would render</td></tr>
+<tr><td><code>"use client"</code></td><td>an Interactivity API store and directives</td></tr>
+<tr><td>every operation</td><td>a WordPress Ability, also offered to agents over MCP</td></tr>
+</table></div>
+<p>A handler such as <code>beforeCreate(data) { data.title = data.title.trim() }</code> becomes:</p>
+<tp-code lang="php">function posts__beforeCreate(\TypedPress\JsObject $data)
+{
+    \TypedPress\Js::set($data, 'title', \TypedPress\Js::trim(\TypedPress\Js::prop($data, 'title')));
+}</tp-code>
+
+<h2 id="box">What you get without writing it</h2>
+<p><span class="b built">Works today</span> All of this comes from the schema alone.</p>
+<div class="scroll"><table>
+<tr><th>Thing</th><th>What it is</th></tr>
+<tr><td>TypedPress Admin</td><td>a modern admin at <code>/wp-admin/new/</code>; the classic admin stays complete beside it</td></tr>
+<tr><td>Editor</td><td>the WordPress editor for every collection, with drafts, revisions and scheduling</td></tr>
+<tr><td>API</td><td>typed endpoints for every kind and function, with an OpenAPI 3.1 document; WordPress's own REST API follows the same rules</td></tr>
+<tr><td>Typed client</td><td>plain <code>fetch</code>, no dependencies; every argument and result is typed from your schema</td></tr>
+<tr><td>Sign-in</td><td>password, passkeys, email code, Google, two-step verification with recovery codes, and guests who keep their rows when they sign up; members are WordPress users</td></tr>
+<tr><td>Media and files</td><td>the media library with named image sizes and focal-point crops; private buckets with signed links; S3-compatible storage</td></tr>
+<tr><td>Live reads</td><td><code>subscribe()</code> on any read; it polls, and a host can add a push transport</td></tr>
+<tr><td>Staged versions</td><td>save a change to a published item that visitors do not see, then compare, preview, schedule, promote or discard it</td></tr>
+<tr><td>Languages</td><td><code>locales: { default: "en", all: ["en", "de"] }</code> and <code>.localized()</code> fields; one row per language, through Polylang</td></tr>
+<tr><td>Search</td><td>an index kept current on every write, respecting access rules</td></tr>
+<tr><td>Comments</td><td>threads, moderation and guest rules, set per kind</td></tr>
+<tr><td>Sitemap and redirects</td><td>WordPress's sitemap with your pages in it; old slugs redirect</td></tr>
+<tr><td>For agents</td><td>MCP tools for every operation, a Markdown version of every public page at <code>&lt;url&gt;.md</code>, and <code>llms.txt</code></td></tr>
+<tr><td>Schema check at deploy</td><td>a change that would lose rows is refused, with the row count</td></tr>
+<tr><td>Services</td><td>contact forms with queued email, and Stripe hosted checkout, switched on in the config</td></tr>
+</table></div>
+
+<h2 id="visitor">What a visitor sees</h2>
+<p><span class="b ruled">Decided</span> One built-in theme, always active. Its templates and styles are edited in the WordPress Site Editor. There is no choice between themes.</p>
+<div class="grid">
+  <div>
+    <div class="mock">
+      <div class="bar"><span>My Site</span><span>Home</span></div>
+      <p class="t">Hello, world</p>
+      <div class="ln" style="width:96%"></div><div class="ln" style="width:88%"></div><div class="ln" style="width:92%"></div><div class="ln" style="width:55%"></div>
+      <div class="foot">My Site</div>
+    </div>
+    <p class="cap"><b>You add a post and open it.</b> With no pages of your own, the built-in theme shows the title and the body between a header and a footer.</p>
+  </div>
+  <div>
+    <div class="mock">
+      <div class="bar"><span>theme header</span><span>menu</span></div>
+      <p class="t">Hello, world</p>
+      <div class="ln" style="width:90%"></div><div class="ln" style="width:70%"></div>
+      <p style="margin:10px 0 0"><span class="b built">12 likes</span></p>
+      <div class="foot">theme footer</div>
+    </div>
+    <p class="cap"><b>You add <code>tp/app/blog/[slug]/page.tsx</code>.</b> That file now renders every URL that matches the kind's <code>url</code>.</p>
+  </div>
+</div>
+<div class="scroll"><table>
+<tr><th>Your project has</th><th>Who renders a URL</th><th>Status</th></tr>
+<tr><td>no <code>tp/app/</code></td><td>the theme: posts, term pages, home, archives, search</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>tp/app/</code></td><td>your pages; a kind's URL with no page still goes to the theme</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>frontend: false</code></td><td>nobody: the site is an API only</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>frontend: "https://…"</code></td><td>another site, such as an Astro or Next.js app</td><td><span class="b built">Works today</span></td></tr>
+</table></div>
+<p><span class="b prop">Proposed</span> Today a page in <code>tp/app/</code> writes its whole HTML document itself. The proposal is that it renders inside the theme: the page becomes one block that a template places between the theme's header and footer, so the Site Editor can change what surrounds it. <code>export const shell = false</code> would keep the whole document for a page that wants it.</p>
+<tp-code lang="html">&lt;!-- wp:template-part {"slug":"header"} /--&gt;
+&lt;!-- wp:typedpress/route /--&gt;
+&lt;!-- wp:template-part {"slug":"footer"} /--&gt;</tp-code>
+
+<h2 id="editing">Who edits what</h2>
+<p><span class="b ruled">Decided</span> Editing uses the standard WordPress experience wherever it can.</p>
+<div class="scroll"><table>
+<tr><th>Thing</th><th>Edited in</th><th>Status</th></tr>
+<tr><td>An item's fields and body</td><td>the WordPress editor</td><td><span class="b built">Works today</span></td></tr>
+<tr><td>A component used inside a body</td><td>the WordPress editor, as a block with its props in the sidebar</td><td><span class="b built">Works today</span></td></tr>
+<tr><td>The same content as Markdown files</td><td>your code editor; <code>sync</code> keeps both sides equal</td><td><span class="b built">Works today</span></td></tr>
+<tr><td>A <code>page.md</code> page</td><td>the WordPress editor, after its first build</td><td><span class="b built">Works today</span></td></tr>
+<tr><td>Theme templates and styles</td><td>the WordPress Site Editor</td><td><span class="b built">Works today</span></td></tr>
+<tr><td>What surrounds a <code>tp/app/</code> page</td><td>the WordPress Site Editor</td><td><span class="b prop">Proposed</span></td></tr>
+<tr><td>The markup inside a <code>tp/app/</code> page</td><td>code only</td><td>by design</td></tr>
+</table></div>
+
+<h3>Your components as editor blocks <span class="b built">Works today</span></h3>
+<tp-code file="tp/components/Callout.tsx" note="listing a component makes it a block">export const blocks = ["Callout"];
+
+export function Callout({ type, children }: { type: "note" | "warning"; children?: JSX.Element }) {
+  return &lt;aside className={`callout callout-${type}`}&gt;{children}&lt;/aside&gt;;
+}</tp-code>
+<p class="cap">In the editor it is a block. In a Markdown file it is the tag <code>&lt;Callout type="warning"&gt;</code>. Both store the same thing.</p>
+
+<h3>Editing on the page <span class="b prop">Proposed</span></h3>
+<p>A signed-in editor clicks content on the live page to change it. The page marks what is editable, and WordPress does the editing. There is no second editor.</p>
+<tp-code lang="tsx">&lt;h1 {...post.edit.title}&gt;{post.title}&lt;/h1&gt;
+&lt;Content value={post.body} {...post.edit.body} /&gt;</tp-code>
+<div class="scroll"><table>
+<tr><th>You click</th><th>What happens</th></tr>
+<tr><td>a plain text field, such as a title</td><td>you type on the page; it saves as a draft change</td></tr>
+<tr><td>an image</td><td>the WordPress media library opens</td></tr>
+<tr><td>the body</td><td>the WordPress editor opens over the page for that item; on save, that part of the page refreshes</td></tr>
+<tr><td>the header, footer or styles</td><td>the WordPress Site Editor</td></tr>
+</table></div>
+<p class="cap">Visitors never receive the markers or the script.</p>
+
+<h2 id="frontend">Use it from another frontend</h2>
+<p><span class="b ruled">Decided</span> One client for every frontend. It gives you data and sign-in, and it is the same client TypedPress pages use. <span class="b built">Works today</span> as files generated into each project; the npm package is the new part.</p>
+<tp-code lang="ts">import { createClient } from "@typedpress/client";
+import { useQuery, useMutation } from "@typedpress/client/react";
+
+const tp = createClient({ url: "https://my-site.example" });
+
+await tp.posts.list({ where: { writer: 3 }, with: { writer: true }, limit: 10 });  // read
+await tp.posts.create({ title: "Hello", writer: 3 });                              // write
+await tp.like({ id: 42 });                                                         // a mutation, by its export name
+tp.popular({ limit: 5 }).subscribe((rows) =&gt; render(rows));                        // stays current
+
+await tp.auth.signIn();                                    // goes to the sign-in screens, then back
+const client = createClient({ url, auth: { guests: true } }); // visitors can write before they sign up
+
+const { data } = useQuery(tp.popular, { limit: 5 });       // React</tp-code>
+<tp-code lang="tsx">// React
+function Todos() {
+  const open = tp.todos.list({ where: { done: false } });
+  const todos = useQuery(open);                                   // { data, error, loading }
+  const add = useMutation((title: string) =&gt; tp.todos.create({ title }), {
+    optimistic: (apply, title) =&gt; apply(open, (rows) =&gt; [...rows, { id: -1, title, done: false }]),
+  });                                                             // { mutate, pending, error, reset }
+  return &lt;button disabled={add.pending} onClick={() =&gt; add.mutate("Buy milk")}&gt;Add&lt;/button&gt;;
+}</tp-code>
+<tp-code lang="ts">// Astro: src/content.config.ts
+import { defineCollection } from "astro:content";
+import { loader, liveLoader, webhook } from "@typedpress/astro";
+
+export const collections = {
+  posts: defineCollection({ loader: loader("posts") }),                      // build time
+  featured: defineCollection({ loader: loader("posts", { where: { featured: true } }) }),
+};</tp-code>
+<div class="scroll"><table>
+<tr><th>Client call</th><th>What it does</th></tr>
+<tr><td><code>tp.posts.list / get / count / paginate</code></td><td>reads; <code>await</code> one for a single answer, or <code>.subscribe(onData, onError?)</code> to keep it current</td></tr>
+<tr><td><code>tp.posts.create / update / delete</code></td><td>writes; they refresh every subscription that reads that kind</td></tr>
+<tr><td><code>read.optimistic(update)</code></td><td>show a write before the server answers; <code>.settle()</code> or <code>.rollback()</code></td></tr>
+<tr><td><code>tp.posts.stage / compare / promote / discard</code></td><td>staged versions</td></tr>
+<tr><td><code>tp.auth.signIn()</code>, <code>handleCallback()</code>, <code>signOut()</code>, <code>upgrade()</code></td><td>sign-in through the site's screens; <code>upgrade()</code> turns a guest into a member and keeps their rows</td></tr>
+<tr><td><code>tp.media</code>, <code>tp.files.decks</code></td><td>uploads to the media library and to private buckets</td></tr>
+<tr><td><code>registerRealtimeTransport(transport)</code></td><td>a push transport from the host; without one, subscriptions poll</td></tr>
+</table></div>
+<div class="scroll"><table>
+<tr><th>Your frontend</th><th>You run</th><th>What arrives</th></tr>
+<tr><td>React or static Next.js</td><td><code>typedpress add react</code></td><td>the client and a hooks example</td></tr>
+<tr><td>Next.js with server caching</td><td><code>typedpress add next</code></td><td>one webhook route that revalidates by tag</td></tr>
+<tr><td>TanStack Start</td><td><code>typedpress add tanstack</code></td><td>a query example</td></tr>
+<tr><td>Astro</td><td><code>typedpress add astro</code></td><td><code>@typedpress/astro</code> loaders in your content config</td></tr>
+</table></div>
+<ul>
+  <li>The per-framework files stay thin. Cache tags, webhook checks and preview live in the client; each framework file only calls that framework's own cache API.</li>
+  <li><span class="b built">Works today</span> The Astro loaders: build-time collections that fetch only what changed, request-time collections with cache tags, and a webhook endpoint that purges or rebuilds on a write.</li>
+  <li>Built-in components such as comments and search work only in TypedPress pages. Another frontend gets data and sign-in.</li>
+</ul>
+
+<h2 id="files">Content as files</h2>
+<p><span class="b built">Works today</span> A kind with <code>sync</code> keeps its items as Markdown files in <code>tp/content/</code> as well as on the site. <code>typedpress sync</code> moves changes both ways, with a three-way merge and a conflict file when both sides changed the same thing.</p>
+<tp-code lang="sh">typedpress sync                  # files to the site, and the site's edits back to files
+typedpress sync --check          # report differences, change nothing
+typedpress sync --pr             # open a pull request with the site's edits</tp-code>
+<tp-code file="tp/content/posts/hello.md">---
+uid: zr_37d65a42b8767e790ced
+title: "Hello"
+slug: hello
+status: published
+tags: [news]
+---
+
+Front matter holds the item's fields. The body is its content. The uid ties the file to its record.
+
+&lt;Callout type="warning" title="Before you start"&gt;
+Back up the **database**.
+&lt;/Callout&gt;</tp-code>
+<p class="cap">So a writer can work in the WordPress editor and a developer in git, on the same content. <code>typedpress init --github</code> adds a workflow that does this through pull requests.</p>
+
+<h2 id="agents">Agents that use your app</h2>
+<p><span class="b built">Works today</span> An agent meets a project in two places.</p>
+<div class="scroll"><table>
+<tr><th></th><th>While you build</th><th>When the app runs</th></tr>
+<tr><td>What it is</td><td><code>typedpress mcp</code>, a local MCP server</td><td>the site's MCP endpoint, <code>/wp-json/mcp/typedpress-&lt;app&gt;</code></td></tr>
+<tr><td>Who uses it</td><td>a coding agent working on the source</td><td>any agent using the app's data and functions</td></tr>
+<tr><td>What it answers</td><td>the schema, compiler errors, the documentation, the dev site</td><td>one tool per kind operation and per function</td></tr>
+<tr><td>Access</td><td>the local files and dev site</td><td>a WordPress user's access rules; scoped agent credentials</td></tr>
+</table></div>
+<ul>
+  <li><code>typedpress init</code> writes <code>AGENTS.md</code>, <code>.mcp.json</code> and the agent skill into the project.</li>
+  <li>An agent credential is read-only with no access to personal data until you grant more: <code>--write</code>, <code>--personal</code>, or <code>--abilities=blog/posts-list,blog/*</code>. A scope only narrows what the user's role already allows.</li>
+  <li><code>agents: false</code> on a kind, function or job keeps it out of agent tools. Uploads are never offered. <span class="b prop">Proposed</span> This option becomes <code>abilities: false</code>, so that the word agent only means the agents in section {{sec:app-agents}}.</li>
+  <li>Every public page also has a Markdown version at the same address plus <code>.md</code>, and the site serves <code>llms.txt</code>.</li>
+  <li><span class="b ruled">Decided</span> One skill shipped inside the npm package, with a path for each task, and the documentation shipped with it.</li>
+</ul>
+
+<h2 id="app-agents">Agents you build into your app</h2>
+<p><span class="b ruled">Decided</span> An app can declare its own agents: an assistant that answers from the app's data, or one that does a task every morning. Agents are a separate add-on that comes after the rest of TypedPress, and an app that does not add it gets nothing extra. The add-on brings no engine, scheduler or key store of its own. It uses what WordPress and TypedPress already have.</p>
+<div class="note"><b>Not built.</b> This is a design. The spelling below is a proposal.</div>
+<div class="scroll"><table>
+<tr><th>Part</th><th>Where it comes from</th></tr>
+<tr><td>The agent: instructions, tools, who may start it</td><td>your project, in <code>tp/</code>, after <code>typedpress add agents</code></td></tr>
+<tr><td>The tools</td><td>your own queries, mutations and kinds. Each one is already a WordPress ability with typed input and output <span class="b built">Works today</span></td></tr>
+<tr><td>The call to the model</td><td>WordPress's built-in AI client</td></tr>
+<tr><td>The model and its key</td><td>a provider set up in WordPress under Settings, Connectors. A host can register its own provider there, so its sites need no setup. Never a key in the project</td></tr>
+<tr><td>Schedules, background runs, retries</td><td><code>cron()</code> and <code>job()</code>, the same ones as in section {{sec:server}}. An agent has no schedule of its own</td></tr>
+<tr><td>A person approving a content change</td><td>staged versions (section {{sec:rw}}): the agent stages, a person promotes</td></tr>
+<tr><td>Replies appearing in a chat</td><td>live reads (<code>useQuery</code>), the same as any other data</td></tr>
+<tr><td>The loop that calls the model and the tools, and the conversation history</td><td><span class="b prop">Proposed</span> <a href="https://github.com/Automattic/agents-api">Agents API</a>, Automattic's library for WordPress agents. WordPress itself has no such loop yet</td></tr>
+</table></div>
+<tp-code file="tp/agents.ts">import { query, mutation, job, cron } from "typedpress";
+import { agent } from "@typedpress/agents";
+import { items } from "typedpress:db";
+
+export const expiringSoon = query({ access: "author" },
+  async ({ days = 3 }: { days?: number }) =&gt; {
+    const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+    return items.list({ where: { expiresOn: { lte: cutoff }, quantity: { gt: 0 } } });
+  });
+
+export const discard = mutation({ access: "author" },
+  async ({ id }: { id: number }) =&gt; items.update(id, { quantity: 0 }));
+
+export const pantryHelper = agent({
+  label: "Pantry helper",
+  instructions: "./agents/pantry.md",        // a Markdown file, bundled at build time
+  tools: [expiringSoon, discard],            // the same functions the browser calls
+  access: "author",                          // who may start it
+  runAs: "pantry-bot",                       // the WordPress user it acts as when a schedule starts it
+  maxTurns: 8,
+});
+
+// a schedule is an ordinary cron()
+export const morning = cron("0 8 * * *", () =&gt;
+  pantryHelper.run("List what expires in the next 3 days and say what to use first."));
+
+// a chat is an ordinary job, mutation and query
+export const answer = job({},
+  async ({ session, message }: { session: string; message: string }) =&gt; {
+    await pantryHelper.run(message, { session });
+  });
+
+export const ask = mutation({ access: "author", rateLimit: "20/min" },
+  async (input: { session: string; message: string }) =&gt; { await answer.enqueue(input); });
+
+export const thread = query({ access: "author" },
+  async ({ session }: { session: string }) =&gt; pantryHelper.messages(session));</tp-code>
+<p class="cap"><span class="b prop">Proposed</span> In the browser, <code>useMutation</code> on <code>ask</code> sends a message and <code>useQuery</code> on <code>thread</code> shows the replies as they arrive.</p>
+<h3>The rules an agent runs under</h3>
+<ul>
+  <li><b>It always acts as a WordPress user.</b> A run started by a signed-in person acts as that person. A run started by a schedule acts as the account named in <code>runAs</code>, which may not be an admin. It never runs with the trusted access that <code>.system</code> gives.</li>
+  <li><b>It can call only the tools it lists.</b> Each call passes the same access rules as a call from the browser.</li>
+  <li><b>It has a turn limit</b>, and a failed run is retried the way a failed job is.</li>
+  <li><b>The project holds no model key.</b> If the site has no model set up, the run fails with a message that says so.</li>
+</ul>
+<h3>Building the rest from the same parts</h3>
+<div class="scroll"><table>
+<tr><th>You want</th><th>How you build it</th><th>Status</th></tr>
+<tr><td>An agent on a schedule</td><td><code>cron()</code> that calls <code>agent.run()</code></td><td>first version</td></tr>
+<tr><td>A chat inside your app</td><td>a job, a mutation and a query, as above; your own page for the chat window</td><td>first version</td></tr>
+<tr><td>Slack, email or another channel</td><td>a <code>route.ts</code> that receives the message and queues the same job, with the thread as the session</td><td>first version, you write the route</td></tr>
+<tr><td>Memory</td><td>a table of your own, with a query and a mutation the agent lists as tools</td><td>first version</td></tr>
+<tr><td>A person approving a content change</td><td>give the agent's account the right to stage and not to promote, on a kind with <code>staged: true</code></td><td>first version</td></tr>
+<tr><td>A person approving any other change</td><td><code>approval: { by: "editor" }</code> on the mutation, so it stores a proposal instead of running</td><td>later; it needs a place to keep proposals</td></tr>
+<tr><td>One agent handing work to another</td><td>list the other agent in <code>tools</code></td><td>later</td></tr>
+<tr><td>Skills loaded only when needed</td><td>more Markdown files next to the instructions</td><td>later</td></tr>
+<tr><td>An agent that runs code in a sandbox</td><td>not planned</td><td>no</td></tr>
+</table></div>
+
+<h2 id="wordpress">Use WordPress directly</h2>
+<p><span class="b built">Works today</span> When you need WordPress itself, you can reach it from TypeScript.</p>
+<tp-code lang="ts">// a short, checked list of WordPress functions
+import { current_user_can, get_post, esc_html, update_option, abilities } from "php/wordpress";
+
+if (!current_user_can("edit_posts")) throw new HttpError(403, "forbidden", "Editors only");
+const result = await abilities.call("acme/word-count", { text });   // any ability on the site, a plugin's included</tp-code>
+<tp-code file="tp/wp-hooks/the_content/20-frame.ts" note="a WordPress filter, named by its file">import type { Handler } from "php/wordpress";
+
+const frame: Handler&lt;"the_content"&gt; = (content) =&gt; `&lt;div class="frame"&gt;${content}&lt;/div&gt;`;
+export default frame;</tp-code>
+<div class="scroll"><table>
+<tr><th>Thing</th><th>How</th></tr>
+<tr><td>WordPress functions</td><td>a curated list from <code>"php/wordpress"</code>: options, posts, users, capabilities, escaping and sanitizing</td></tr>
+<tr><td>WordPress actions and filters</td><td>a file in <code>tp/wp-hooks/</code>, named after the hook; a number prefix sets the order</td></tr>
+<tr><td>Abilities</td><td><code>abilities.call("vendor/name", input)</code></td></tr>
+<tr><td>A SQL table that already exists</td><td><code>table(fields, { existingTable: "wp_orders" })</code>; only this site's own tables</td></tr>
+<tr><td>An admin screen of your own</td><td>declared once, shown in both admins</td></tr>
+<tr><td>Schema changes on a running site</td><td><code>runtimeSchema: true</code>: an editor adds a field or a collection without a build; <code>typedpress pull</code> brings it back into the project</td></tr>
+</table></div>
+
+<h2 id="packages">Plugin packages</h2>
+<p><span class="b built">Works today</span> A plugin package is an npm package that adds handlers, functions and jobs to an app. This is different from a WordPress plugin (section {{sec:rules}}).</p>
+<tp-code file="node_modules/typedpress-plugin-seo/src/index.ts">import { definePlugin } from "typedpress";
+
+export default (options: { suffix: string }) =&gt;
+  definePlugin({
+    name: "seo",
+    hooks: { posts: { beforeCreate(data) { data.summary = summarize(data.title) + options.suffix; } } },
+  });
+
+// typedpress.config.ts
+import seo from "typedpress-plugin-seo";
+export default defineConfig({ use: [seo({ suffix: " | Site" })] });</tp-code>
+<ul>
+  <li>The compiler records everything a package's code can do: which kinds it reads and writes, which hosts it calls, which secrets it reads, whether it sends mail.</li>
+  <li>That list is written to a lock file you commit. The lock is the grant: a new version that wants more fails the build until you accept it.</li>
+  <li><span class="b ruled">Decided</span> A package adds its handlers with <code>kind.on()</code>, as an app does. Today it lists them under <code>hooks</code> in <code>definePlugin</code>.</li>
+</ul>
+
+<h2 id="migrate">Move an existing site in</h2>
+<p><span class="b ruled">Decided</span> Migrating creates a new project with the same configuration, then content is synchronized into it. It is one system: <code>sync</code> is the only thing that writes content.</p>
+<tp-code lang="sh">typedpress migrate --from astro ../old-site --out my-site   # a new project, kinds translated
+cd my-site &amp;&amp; typedpress dev
+typedpress sync                                             # content files to the site, and back</tp-code>
+<div class="scroll"><table>
+<tr><th>Source</th><th>Configuration</th><th>Content</th></tr>
+<tr><td>Astro</td><td><span class="b built">Works today</span> as a reader of the content config</td><td>already Markdown files; <code>sync</code> <span class="b built">Works today</span></td></tr>
+<tr><td>EmDash, Payload, Sanity</td><td><span class="b built">Works today</span></td><td>not built</td></tr>
+<tr><td>Zero 0.8</td><td><span class="b built">Works today</span></td><td><span class="b built">Works today</span></td></tr>
+</table></div>
+<p class="cap">You can also keep the Astro site and use TypedPress only as its data source (section {{sec:frontend}}), or run both side by side.</p>
+
+<h2 id="rules">Site rules, plugins and search engines</h2>
+<p>A TypedPress site is a WordPress site that TypedPress manages. That keeps what runs on it known.</p>
+<div class="scroll"><table>
+<tr><th>Rule</th><th>Works today</th><th>Decided or proposed</th></tr>
+<tr><td>Installing plugins or themes from the admin, and the file editors</td><td>refused</td><td>the same</td></tr>
+<tr><td>Extra plugins in the config</td><td>allowed, pinned by version and checksum</td><td><span class="b ruled">Decided</span> a build error unless <code>dangerouslyEnablePlugins: true</code></td></tr>
+<tr><td>Only listed code runs (<code>sealed</code>)</td><td>opt-in</td><td><span class="b ruled">Decided</span> the default</td></tr>
+<tr><td>Plugins TypedPress pins itself</td><td>Secure Custom Fields, Action Scheduler, MCP Adapter; Polylang with languages</td><td>the same</td></tr>
+<tr><td>Installing on a site that already has content</td><td>no check</td><td><span class="b prop">Proposed</span> a warning that lists what was found</td></tr>
+</table></div>
+<tp-code file="typedpress.config.ts">export default defineConfig({
+  name: "my-site",
+  dangerouslyEnablePlugins: true,          // without this, "plugins" is a build error
+  plugins: { "classic-editor": "1.6.7" },
+});</tp-code>
+<p class="cap">A plugin you add yourself is your own responsibility.</p>
+
+<h3>Search engines: with a plugin or without <span class="b ruled">Decided</span></h3>
+<p>Pages put their metadata into WordPress's own head functions. With no plugin, WordPress prints the tags. With an SEO plugin, the plugin receives the same values and prints one set.</p>
+<div class="scroll"><table>
+<tr><th>Thing</th><th>Without a plugin</th><th>With an SEO plugin</th><th>Today</th></tr>
+<tr><td>Title, description</td><td>from the page's <code>metadata</code></td><td>the plugin's templates apply; an editor's value wins for that item</td><td>the page prints its own</td></tr>
+<tr><td>Canonical URL</td><td>from <code>metadata</code> or the kind's <code>url</code></td><td>the plugin reads the same value</td><td>through WordPress for static pages</td></tr>
+<tr><td>Robots (noindex)</td><td>WordPress's robots tag</td><td>the same tag</td><td><span class="b built">Works today</span></td></tr>
+<tr><td>Social cards</td><td>from <code>metadata.openGraph</code></td><td>the plugin's tags, filled from the same values</td><td>the page prints its own</td></tr>
+<tr><td>Sitemap</td><td>WordPress's sitemap, with your pages in it</td><td>the plugin's sitemap gets the pages too</td><td><span class="b built">Works today</span> for WordPress's</td></tr>
+<tr><td>Redirect when a slug changes</td><td>automatic</td><td>the same</td><td><span class="b built">Works today</span></td></tr>
+<tr><td>Structured data (JSON-LD)</td><td><span class="b prop">Proposed</span> basic article and breadcrumb data</td><td>the plugin's</td><td>not built</td></tr>
+</table></div>
+<p class="cap">Plugins to support first: Jetpack, then Yoast.</p>
+
+<h3>What TypedPress switches off in WordPress <span class="b built">Works today</span></h3>
+<p>While an app is active, WordPress runs with these settings. Deactivate the app and WordPress behaves as it ships again.</p>
+<div class="scroll"><table>
+<tr><th>Thing</th><th>Effect</th></tr>
+<tr><td>XML-RPC, pingbacks, trackbacks</td><td>closed</td></tr>
+<tr><td>File editors, the Customizer, automatic updates</td><td>off</td></tr>
+<tr><td>Comments</td><td>closed on every kind that does not turn them on</td></tr>
+<tr><td>The list of users</td><td>not shown to the public: no author archives, no user routes</td></tr>
+<tr><td>Sign-in errors</td><td>never reveal which accounts exist</td></tr>
+<tr><td>The schema</td><td>changed in your project and nowhere on the site</td></tr>
+<tr><td>Permalinks</td><td>pretty permalinks, always</td></tr>
+<tr><td>Theme</td><td>a block theme always renders</td></tr>
+</table></div>
+
+<h2 id="host">One plugin on any WordPress</h2>
+<p><span class="b ruled">Decided</span> TypedPress ships as one WordPress plugin and nothing else. Any WordPress site that meets the requirements can take an app, and every host is treated the same way, Spacefast included. The steps below are built on a branch that is not merged yet.</p>
+<tp-code lang="sh">
+typedpress plugin                          # writes the plugin as a zip
+# in the WordPress admin: Plugins, Add Plugin, Upload Plugin, activate
+typedpress login https://example.com       # approve the command line in the browser
+typedpress push                            # compile, upload, show the plan, go live
+</tp-code>
+<div class="scroll"><table>
+<tr><th>Step</th><th>What happens</th></tr>
+<tr><td>Activate the plugin</td><td>it installs and activates the plugins it depends on, each at a pinned version and checked against a pinned SHA-256. There is no setup screen to click through</td></tr>
+<tr><td><code>typedpress login &lt;url&gt;</code></td><td>opens WordPress's own Authorize Application screen; the site gives the command line an application password, kept on your machine</td></tr>
+<tr><td><code>typedpress push</code></td><td>compiles on your machine, uploads the build, prints what installing it would change (tables, each migration, pages, URL rules), then makes it live. <code>--dry-run</code> stops before installing</td></tr>
+<tr><td>A build that would lose rows</td><td>is not installed, and the live build keeps serving</td></tr>
+<tr><td>Going back</td><td>every push is a version. <b>Make live</b> on an earlier one switches the site to that build's code. It does not undo database migrations; that comes later</td></tr>
+<tr><td><code>typedpress logout &lt;url&gt;</code></td><td>forgets the credential on this machine</td></tr>
+</table></div>
+<div class="scroll"><table>
+<tr><th>Rule</th><th>Today</th></tr>
+<tr><td>Apps per site</td><td>one. On a WordPress network (multisite), one app per site of the network, each with its own builds, history and tables</td></tr>
+<tr><td>Who may deploy</td><td>administrators; on a network, only its super admins. An agent credential cannot deploy</td></tr>
+<tr><td>What a deploy sends</td><td>a build compiled on your machine. A site compiling uploaded sources itself is not built</td></tr>
+<tr><td>Secrets and settings</td><td>set on the site in <code>wp-config.php</code>; nothing else of the server's environment reaches the app</td></tr>
+<tr><td>Mail and background work</td><td>mail leaves through WordPress's mailer, so an SMTP plugin applies; jobs need WP-Cron or a real cron to reach the site</td></tr>
+<tr><td>Users</td><td>WordPress is the user store</td></tr>
+<tr><td>Co-editing</td><td>collections are WordPress post types, so WordPress's real-time collaboration covers them</td></tr>
+<tr><td>Starters</td><td><span class="b ruled">Decided</span> TypedPress ships its own starters instead of supporting general WordPress themes. Tailwind is the standard: <code>typedpress add tailwind</code></td></tr>
+<tr><td>Previews</td><td><span class="b ruled">Decided</span> a preview never changes the live database. <span class="b prop">Proposed</span> each preview gets its own SQLite database, deleted with the preview</td></tr>
+</table></div>
+
+<h2 id="run">Requirements</h2>
+<div class="scroll"><table>
+<tr><th></th><th>Needs</th></tr>
+<tr><td>WordPress</td><td>7.2 (beta 5 or later)</td></tr>
+<tr><td>PHP</td><td>8.2 with <code>mbstring</code>, <code>gd</code>, <code>fileinfo</code>, <code>openssl</code>, <code>sodium</code>, and <code>zip</code> for pushes</td></tr>
+<tr><td>Database</td><td>MySQL 8.0, MariaDB 10.11, or SQLite through the SQLite Database Integration plugin</td></tr>
+<tr><td>Local development</td><td>Node 22 or later, and npm</td></tr>
+<tr><td>Frontends</td><td>anything that can call <code>fetch</code>; Astro 7.4 or later for the loaders</td></tr>
+<tr><td>Agents</td><td>any MCP client</td></tr>
+</table></div>
+<ul>
+  <li><span class="b built">Works today</span> Without the one plugin: <code>typedpress build</code> writes a set of plugin ZIP files that you upload or copy like any plugin. The runtime refuses to start on a site that misses a requirement and names each one.</li>
+  <li><span class="b built">Works today</span> Static hosts: <code>typedpress export</code> writes plain files (section {{sec:pages}}).</li>
+  <li><span class="b built">Works today</span> <code>typedpress doctor --site &lt;url&gt;</code> checks a build and a running site.</li>
+  <li><span class="b built">Works today</span> In a browser, with nothing installed: the <a href="play">playground</a> compiles an app and runs it in WordPress.</li>
+</ul>
+
+<h2 id="cli">Commands</h2>
+<div class="scroll"><table>
+<tr><th>Command</th><th>What it does</th><th>Status</th></tr>
+<tr><td><code>typedpress dev</code></td><td>start local WordPress and rebuild on change; <code>dev stop</code>, <code>dev status</code></td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress build</code></td><td>write the WordPress plugins</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress check</code></td><td>compile and report problems; write nothing</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress add &lt;module&gt;</code></td><td>add a module as files you own</td><td><span class="b built">Works today</span> for <code>db</code>, <code>api-reference</code></td></tr>
+<tr><td><code>typedpress export</code></td><td>write the pages as a static site</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress sync</code></td><td>content files to the site and back</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress migrate</code></td><td>create a project from another system</td><td><span class="b built">Works today</span> as <code>migrate config</code> and <code>migrate app</code></td></tr>
+<tr><td><code>typedpress doctor</code></td><td>check a build and a running site; <code>--links</code> follows every link</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress init</code>, <code>typedpress mcp</code></td><td>set a project up for coding agents; serve it to one</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress wp &lt;args&gt;</code></td><td>run any WP-CLI command on the dev site</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress pull</code></td><td>bring a site's runtime schema changes into the project</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress deploy</code></td><td>check a build before it ships; back up and restore</td><td><span class="b built">Works today</span></td></tr>
+<tr><td><code>typedpress test</code></td><td>run your app on a real WordPress with SQLite: <code>asUser(role)</code>, a clock the test sets, and a call that runs every queued job</td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>typedpress logs [--fn name]</code></td><td>read the site's function logs; agents get the same</td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>typedpress plugin</code>, <code>login &lt;url&gt;</code>, <code>push</code>, <code>logout &lt;url&gt;</code></td><td>write the one plugin; connect the command line to a site; deploy a build to it (section {{sec:host}})</td><td>built on a branch, not merged</td></tr>
+</table></div>
+<p>On the site, through WP-CLI <span class="b built">Works today</span>: apply database migrations, list, retry and cancel jobs, manage staged versions, read and write records, run a function, and manage sign-in apps and agent credentials.</p>
+
+<h2 id="config">The config file</h2>
+<tp-code file="typedpress.config.ts">import { defineConfig, env } from "typedpress";
+
+export default defineConfig({
+  name: "my-site",
+  frontend: false,                                   // or "https://…"; leave out to render on WordPress
+  output: "static",                                  // for typedpress export
+  locales: { default: "en", all: ["en", "de"] },
+  media: { sizes: { card: { width: 600, height: 400, fit: "cover" } } },
+  uploads: { backend: "s3", bucket: env("UPLOAD_BUCKET"), region: "us-east-1" },
+  webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created"] }],
+  services: { forms: { contact: { /* fields, recipient, sender */ } } },
+  use: [seo({ suffix: " | Site" })],                 // plugin packages
+  plugins: { "classic-editor": "1.6.7" },            // WordPress plugins, pinned
+  dangerouslyEnablePlugins: true,
+  sealed: true,
+  admin: false,                                      // leave TypedPress Admin out
+  runtimeSchema: true,
+});</tp-code>
+<p class="cap">Every key is optional except <code>name</code>. Kinds, functions and jobs are not listed here: they register by being exported from a file in <code>tp/</code>.</p>
+
+<h2 id="compare">How it compares</h2>
+<p>TypedPress is closest to three kinds of tool at once: an app backend such as Convex or Supabase, a content system such as Payload or EmDash, and a WordPress plugin written by hand. This section says, feature by feature, what each of them does and what TypedPress does.</p>
+<div class="note"><b>Where these facts come from.</b> Every statement about another system was read from that system's own documentation or repository on 15 November 2026, and each cell links to the page. None of the other systems was run for this page. The TypedPress column describes this page; its badges say what works today.</div>
+
+<h3>The same small app, three ways</h3>
+<p>One table of tasks, shown in a React component. The Convex and Supabase files are copied unchanged from their own React quickstarts. The TypedPress files use the decided spelling: today the client is generated into the project instead of installed from npm, and the hook is called <code>useLive</code>.</p>
+<div class="cmp3">
+<div><h4>Convex <a href="https://docs.convex.dev/quickstart/react">source</a></h4>
+<tp-code file="convex/schema.ts" src="examples/_compare/convex-schema.ts"></tp-code>
+<tp-code file="convex/tasks.ts" src="examples/_compare/convex-tasks.ts"></tp-code>
+<tp-code file="src/App.tsx" src="examples/_compare/convex-App.tsx"></tp-code></div>
+<div><h4>Supabase <a href="https://supabase.com/docs/guides/getting-started/quickstarts/reactjs">source</a></h4>
+<tp-code file="SQL Editor" lang="sql" src="examples/_compare/supabase.sql"></tp-code>
+<tp-code file="src/App.jsx" src="examples/_compare/supabase-App.jsx"></tp-code></div>
+<div><h4>TypedPress</h4>
+<tp-code file="tp/schema.ts" src="examples/_compare/tp-schema.ts"></tp-code>
+<tp-code file="web/src/App.tsx" src="examples/_compare/tp-App.tsx"></tp-code>
+<p class="cap">Or with no React app at all, as a page WordPress renders:</p>
+<tp-code file="tp/app/page.tsx" src="examples/_compare/tp-page.tsx"></tp-code></div>
+</div>
+<div class="scroll"><table>
+<tr><th>In that example</th><th>Convex</th><th>Supabase</th><th>TypedPress</th></tr>
+<tr><td>The read</td><td>a function you write, <code>tasks.get</code></td><td>generated from the table</td><td>generated from the table; you write a <code>query()</code> only when you need your own</td></tr>
+<tr><td>Who may read</td><td>whatever the function checks</td><td>the SQL policy and grant</td><td><code>access</code> on the table</td></tr>
+<tr><td>Stays current</td><td>yes, with no extra code</td><td>no; you subscribe to changes separately</td><td>yes, with no extra code; it polls unless the host adds a push transport</td></tr>
+<tr><td>Types in the component</td><td>from generated code</td><td>from a generated types file, when you run the generator</td><td>from the schema</td></tr>
+</table></div>
+
+<h3>App backends</h3>
+<div class="scroll wide"><table class="cmp">
+<tr><th></th><th>Convex</th><th>Supabase</th><th>Firebase</th><th>PocketBase</th><th>TypedPress</th></tr>
+<tr><td>Data model is declared</td><td><a href="https://docs.convex.dev/database/schemas">in TypeScript, <code>convex/schema.ts</code></a></td><td><a href="https://supabase.com/docs/guides/deployment/database-migrations">in SQL migration files</a></td><td><a href="https://firebase.google.com/docs/firestore/data-model">nowhere; documents have no schema</a></td><td><a href="https://pocketbase.io/docs/collections/">in the dashboard, or in migration files</a></td><td><span class="b built">Works today</span> in TypeScript, any file under <code>tp/</code></td></tr>
+<tr><td>Data is stored in</td><td><a href="https://github.com/get-convex/convex-backend/blob/main/self-hosted/README.md">Convex&#39;s own document database</a></td><td><a href="https://supabase.com/docs/guides/database/overview">PostgreSQL</a></td><td><a href="https://firebase.google.com/docs/firestore">Firestore, a document database</a></td><td><a href="https://pocketbase.io/docs/collections/">embedded SQLite</a></td><td><span class="b built">Works today</span> MySQL or MariaDB: WordPress content tables, plus your own SQL tables</td></tr>
+<tr><td>Server code runs on</td><td><a href="https://docs.convex.dev/functions/runtimes">a V8 JavaScript runtime in the Convex backend</a></td><td><a href="https://supabase.com/docs/guides/functions">Postgres functions, and TypeScript on a Deno runtime</a></td><td><a href="https://firebase.google.com/docs/functions">Cloud Functions on Google Cloud</a></td><td><a href="https://pocketbase.io/docs/js-overview/">an embedded JavaScript engine inside the server</a></td><td><span class="b built">Works today</span> PHP inside WordPress, compiled from your TypeScript at build time</td></tr>
+<tr><td>Who may read or write a row</td><td><a href="https://docs.convex.dev/auth/functions-auth">checked by hand in each function</a></td><td><a href="https://supabase.com/docs/guides/database/postgres/row-level-security">row-level security policies in SQL</a></td><td><a href="https://firebase.google.com/docs/firestore/security/get-started">a separate rules file</a></td><td><a href="https://pocketbase.io/docs/api-rules-and-filters/">five rule strings per collection</a></td><td><span class="b built">Works today</span> <code>access</code> on the kind, applied on every way in</td></tr>
+<tr><td>Reads update in the browser</td><td><a href="https://docs.convex.dev/client/react">yes, every query, over a WebSocket</a></td><td><a href="https://supabase.com/docs/guides/realtime/postgres-changes">only where you subscribe to table changes</a></td><td><a href="https://firebase.google.com/docs/firestore/query-data/listen">yes, through listeners</a></td><td><a href="https://pocketbase.io/docs/api-realtime/">yes, by subscription, over Server-Sent Events</a></td><td><span class="b built">Works today</span> yes, by polling; a host can add a push transport</td></tr>
+<tr><td>A server function is one transaction</td><td><a href="https://docs.convex.dev/database/advanced/occ">yes; on a conflict it is run again</a></td><td><a href="https://docs.postgrest.org/en/stable/references/transactions.html">yes, one per API request</a></td><td><a href="https://firebase.google.com/docs/firestore/manage-data/transactions">only when you ask for one</a></td><td><a href="https://pocketbase.io/docs/js-database/">only when you ask for one</a></td><td><span class="b built">Works today</span> yes, over table rows and WordPress content together</td></tr>
+<tr><td>Background work</td><td><a href="https://docs.convex.dev/scheduling/scheduled-functions">a scheduler in the database, and cron files</a></td><td><a href="https://supabase.com/docs/guides/cron">cron and queues inside Postgres</a></td><td><a href="https://firebase.google.com/docs/functions/schedule-functions">Cloud Scheduler and Cloud Tasks</a></td><td><a href="https://pocketbase.io/docs/js-jobs-scheduling/">cron jobs; no queue described</a></td><td><span class="b built">Works today</span> jobs with retries on Action Scheduler; <span class="b ruled">Decided</span> <code>cron()</code></td></tr>
+<tr><td>A schema change reaches the database</td><td><a href="https://docs.convex.dev/database/schemas">on push; fails if existing documents do not match</a></td><td><a href="https://supabase.com/docs/guides/deployment/database-migrations">by SQL files you write or generate</a></td><td><a href="https://firebase.google.com/docs/firestore/data-model">nothing to change</a></td><td><a href="https://pocketbase.io/docs/js-migrations/">by migration files, written for dashboard changes</a></td><td><span class="b built">Works today</span> the build writes the SQL; a deploy refuses a change that would lose rows</td></tr>
+<tr><td>Screens for people who are not developers</td><td><a href="https://docs.convex.dev/dashboard/deployments/data">a data browser</a></td><td><a href="https://supabase.com/docs/guides/database/overview">a table editor</a></td><td><a href="https://firebase.google.com/docs/firestore/using-console">a data browser</a></td><td><a href="https://pocketbase.io/docs/collections/">a record editor</a></td><td><span class="b built">Works today</span> the WordPress editor: drafts, revisions, scheduling, media</td></tr>
+<tr><td>Renders pages</td><td><a href="https://docs.convex.dev/production/hosting">no</a></td><td><a href="https://supabase.com/docs/guides/platform">no</a></td><td><a href="https://firebase.google.com/docs/hosting">not by the database; separate hosting products</a></td><td><a href="https://pocketbase.io/docs/how-to-use/">mainly no</a></td><td><span class="b built">Works today</span> yes, from TSX, on the server</td></tr>
+<tr><td>Where it runs</td><td><a href="https://github.com/get-convex/convex-backend/blob/main/self-hosted/README.md">Convex&#39;s cloud, or self-hosted</a></td><td><a href="https://supabase.com/docs/guides/self-hosting">Supabase&#39;s cloud, or self-hosted</a></td><td><a href="https://firebase.google.com/docs/functions">Google Cloud only</a></td><td><a href="https://pocketbase.io/docs/going-to-production/">one server you run</a></td><td><span class="b built">Works today</span> any WordPress host that meets the requirements</td></tr>
+</table></div>
+
+<h3>Content systems</h3>
+<div class="scroll wide"><table class="cmp">
+<tr><th></th><th>Payload</th><th>Sanity</th><th>Strapi</th><th>EmDash</th><th>Astro alone</th><th>TypedPress</th></tr>
+<tr><td>Content model is declared</td><td><a href="https://payloadcms.com/docs/configuration/overview">in TypeScript, <code>payload.config.ts</code></a></td><td><a href="https://www.sanity.io/docs/studio/schema-types">in TypeScript, in the Studio project</a></td><td><a href="https://docs.strapi.io/cms/backend-customization/models">in JSON files the admin writes</a></td><td><a href="https://github.com/emdash-cms/emdash/blob/main/README.md">in the database, from the admin or a seed file</a></td><td><a href="https://docs.astro.build/en/guides/content-collections/">in TypeScript, <code>src/content.config.ts</code></a></td><td><span class="b built">Works today</span> in TypeScript, any file under <code>tp/</code></td></tr>
+<tr><td>Content is stored in</td><td><a href="https://payloadcms.com/docs/database/overview">MongoDB, Postgres or SQLite</a></td><td><a href="https://www.sanity.io/docs/content-lake">Sanity&#39;s hosted Content Lake</a></td><td><a href="https://docs.strapi.io/cms/configurations/database">SQLite, MySQL, MariaDB or Postgres</a></td><td><a href="https://docs.emdashcms.com/deployment/database/">SQLite, D1, libSQL or Postgres</a></td><td><a href="https://docs.astro.build/en/guides/content-collections/">files, or whatever a loader reads</a></td><td><span class="b built">Works today</span> WordPress posts, terms and options, in MySQL or MariaDB</td></tr>
+<tr><td>Editor</td><td><a href="https://payloadcms.com/docs/versions/drafts">its admin panel: drafts, versions, scheduling, live preview</a></td><td><a href="https://www.sanity.io/docs/studio">Sanity Studio: history, releases, click-to-edit preview</a></td><td><a href="https://docs.strapi.io/cms/features/preview">its admin panel; history and releases on paid plans</a></td><td><a href="https://docs.emdashcms.com/guides/working-with-content/">its admin panel: drafts, revisions, scheduling, on-page editing</a></td><td><a href="https://docs.astro.build/en/guides/cms/">none; files, or an external CMS</a></td><td><span class="b built">Works today</span> the WordPress editor: drafts, revisions, scheduling, staged versions</td></tr>
+<tr><td>Who may read or write an item</td><td><a href="https://payloadcms.com/docs/access-control/collections">access functions that return yes, no or a filter</a></td><td><a href="https://www.sanity.io/docs/content-lake/roles">roles; custom roles on the Enterprise plan</a></td><td><a href="https://docs.strapi.io/cms/features/users-permissions">per role; ownership is custom code</a></td><td><a href="https://docs.emdashcms.com/guides/authentication/">five fixed roles</a></td><td><a href="https://docs.astro.build/en/guides/authentication/">nothing built in</a></td><td><span class="b built">Works today</span> a role, or a function that returns yes, no or a filter</td></tr>
+<tr><td>Renders pages</td><td><a href="https://payloadcms.com/docs/local-api/overview">through the Next.js app it lives in</a></td><td><a href="https://www.sanity.io/docs/next-js-quickstart/diplaying-content-in-next-js">no; a separate front end</a></td><td><a href="https://docs.strapi.io/cms/intro">no; a separate front end</a></td><td><a href="https://docs.emdashcms.com/concepts/architecture/">yes, as an Astro app</a></td><td><a href="https://docs.astro.build/en/guides/on-demand-rendering/">yes; static by default</a></td><td><span class="b built">Works today</span> yes, from TSX; or a separate front end</td></tr>
+<tr><td>Server code</td><td><a href="https://payloadcms.com/docs/local-api/overview">TypeScript in the Next.js app</a></td><td><a href="https://www.sanity.io/docs/functions/functions-introduction">functions on Sanity&#39;s infrastructure</a></td><td><a href="https://docs.strapi.io/cms/backend-customization">JavaScript in a Koa server</a></td><td><a href="https://docs.emdashcms.com/concepts/architecture/">TypeScript in the Astro app, and plugins</a></td><td><a href="https://docs.astro.build/en/guides/actions/">endpoints and actions, with an adapter</a></td><td><span class="b built">Works today</span> TypeScript compiled to PHP</td></tr>
+<tr><td>Background work</td><td><a href="https://payloadcms.com/docs/jobs-queue/overview">a job queue with retries and schedules</a></td><td><a href="https://www.sanity.io/docs/functions/functions-introduction">scheduled functions</a></td><td><a href="https://docs.strapi.io/cms/configurations/cron">cron tasks; no queue described</a></td><td><a href="https://docs.emdashcms.com/reference/hooks/">plugin cron tasks; no retries described</a></td><td>none found</td><td><span class="b built">Works today</span> jobs with retries on Action Scheduler</td></tr>
+<tr><td>A schema change reaches the database</td><td><a href="https://payloadcms.com/docs/database/migrations">migration files you create and run</a></td><td><a href="https://www.sanity.io/docs/content-lake/schema-and-content-migrations">content is untouched; migration scripts when needed</a></td><td><a href="https://docs.strapi.io/cms/database-migrations">compared and applied at start</a></td><td><a href="https://docs.emdashcms.com/deployment/schema-evolution/">applied at once, because the schema lives in the database</a></td><td><a href="https://docs.astro.build/en/guides/content-collections/">no database</a></td><td><span class="b built">Works today</span> the build writes the SQL; a deploy refuses a change that would lose rows</td></tr>
+<tr><td>Types in the front end</td><td><a href="https://payloadcms.com/docs/typescript/generating-types">a generated types file</a></td><td><a href="https://www.sanity.io/docs/apis-and-sdks/sanity-typegen">a generated types file</a></td><td><a href="https://docs.strapi.io/cms/typescript/development">server types; no official front-end types</a></td><td><a href="https://docs.emdashcms.com/concepts/content-model/">a generated types file</a></td><td><a href="https://docs.astro.build/en/guides/content-collections/">inferred from the schema</a></td><td><span class="b built">Works today</span> a typed client generated by the build</td></tr>
+<tr><td>For AI agents</td><td><a href="https://payloadcms.com/docs/plugins/mcp">an MCP plugin</a></td><td><a href="https://www.sanity.io/docs/compute-and-ai/mcp-server">a hosted MCP server</a></td><td><a href="https://docs.strapi.io/cms/features/strapi-mcp-server">a built-in MCP server</a></td><td><a href="https://docs.emdashcms.com/guides/ai-tools/">a built-in MCP server</a></td><td><a href="https://docs.astro.build/en/guides/build-with-ai/">an MCP server for its documentation only</a></td><td><span class="b built">Works today</span> an MCP tool for every operation, under the caller&#39;s access rules</td></tr>
+<tr><td>Where it runs</td><td><a href="https://payloadcms.com/docs/production/deployment">anywhere Next.js runs, with a database you provide</a></td><td><a href="https://www.sanity.io/docs/studio/deployment">content on Sanity; Studio and front end anywhere</a></td><td><a href="https://docs.strapi.io/cms/deployment">Strapi Cloud, or a Node server you run</a></td><td><a href="https://docs.emdashcms.com/deployment/cloudflare/">Cloudflare Workers, or a Node server</a></td><td><a href="https://docs.astro.build/en/guides/deploy/">any static host, or an adapter&#39;s host</a></td><td><span class="b built">Works today</span> any WordPress host that meets the requirements</td></tr>
+</table></div>
+
+<h3>WordPress, done by hand</h3>
+<p>TypedPress produces a WordPress plugin, so the closest comparison is writing that plugin yourself. In the TypedPress column, <code>query()</code> and <code>mutation()</code> are the decided spelling of what is <code>action()</code> today.</p>
+<div class="scroll"><table class="cmp">
+<tr><th></th><th>A plugin written in PHP</th><th>Headless WordPress with a JavaScript front end</th><th>TypedPress</th></tr>
+<tr><td>Content types and fields</td><td><a href="https://developer.wordpress.org/reference/functions/register_post_type/"><code>register_post_type()</code> in PHP</a></td><td><a href="https://www.wpgraphql.com/docs/custom-post-types">PHP plus field groups made in the admin, each marked for the API</a></td><td><code>collection({ … })</code></td></tr>
+<tr><td>Your own tables</td><td><a href="https://developer.wordpress.org/plugins/creating-tables-with-plugins/">a <code>CREATE TABLE</code> string passed to <code>dbDelta()</code>, which has strict formatting rules</a></td><td>the same</td><td><code>table({ … })</code>; the build writes the SQL</td></tr>
+<tr><td>Changing a table later</td><td><a href="https://developer.wordpress.org/plugins/creating-tables-with-plugins/"><code>dbDelta()</code> again, with a version number you store and compare yourself</a></td><td>the same</td><td>written by the build, checked against live rows at deploy</td></tr>
+<tr><td>An API endpoint</td><td><a href="https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-custom-endpoints/">a callback registered with <code>register_rest_route()</code></a></td><td><a href="https://www.wpgraphql.com/docs/wpgraphql-mutations">a mutation or field registered in PHP</a></td><td>an exported <code>query()</code> or <code>mutation()</code></td></tr>
+<tr><td>Who may call it</td><td><a href="https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-custom-endpoints/">a permission callback written for each route</a></td><td><a href="https://www.wpgraphql.com/docs/authentication-and-authorization">capability checks in PHP</a></td><td><code>access</code>, the same rule on every way in</td></tr>
+<tr><td>Background work</td><td><a href="https://actionscheduler.org/">Action Scheduler, called by hand</a></td><td><a href="https://developer.wordpress.org/plugins/cron/">WP-Cron</a></td><td><code>job()</code>, on Action Scheduler</td></tr>
+<tr><td>Pages</td><td><a href="https://developer.wordpress.org/themes/templates/introduction-to-templates/">theme templates</a></td><td><a href="https://developer.wordpress.org/rest-api/">a separate program you host</a></td><td>TSX pages, or the theme, or a separate front end</td></tr>
+<tr><td>Types in the browser</td><td>none found</td><td>none found</td><td>generated from the schema</td></tr>
+<tr><td>Agent tools</td><td><a href="https://developer.wordpress.org/apis/abilities-api/">each ability registered by hand, with its schemas</a></td><td><a href="https://github.com/WordPress/mcp-adapter">the MCP Adapter, for abilities someone registered</a></td><td>registered for every operation</td></tr>
+</table></div>
+
+<h3>AI app builders</h3>
+<p>These tools write an app from a prompt. What matters for a comparison is what the generated code runs on. TypedPress is not an app builder: it is something an agent can write code for, and <code>typedpress init</code> gives a coding agent the project&#39;s rules, an MCP server and a skill.</p>
+<div class="scroll"><table class="cmp">
+<tr><th>Tool</th><th>The backend it writes code for</th><th>Taking the code elsewhere</th><th>Where the app runs</th></tr>
+<tr><td>Lovable</td><td><a href="https://docs.lovable.dev/features/cloud.md">a built-in backend on Supabase&#39;s open-source parts</a></td><td><a href="https://docs.lovable.dev/tips-tricks/external-deployment-hosting.md">Git sync or a zip, without the data; the backend can be moved to Supabase by hand</a></td><td><a href="https://docs.lovable.dev/features/cloud.md">on Lovable</a></td></tr>
+<tr><td>Bolt</td><td><a href="https://support.bolt.new/bolt-cloud/database.md">a built-in database, or Supabase</a></td><td><a href="https://support.bolt.new/managing-projects/projects-files.md">the code as a zip; the database by claiming it into Supabase</a></td><td><a href="https://support.bolt.new/bolt-cloud.md">on Bolt hosting, or Netlify</a></td></tr>
+<tr><td>v0</td><td><a href="https://v0.app/docs/full-stack-apps">a Next.js app, with a database added from the Vercel Marketplace</a></td><td><a href="https://v0.app/docs/faqs">the code can be exported and synced with GitHub</a></td><td><a href="https://v0.app/docs/deployments">on Vercel</a></td></tr>
+<tr><td>Replit Agent</td><td><a href="https://docs.replit.com/cloud-services/storage-and-databases/sql-database">a managed PostgreSQL database and file storage</a></td><td><a href="https://docs.replit.com/features/workspace-tools/git-interface.md">push to a Git remote</a></td><td><a href="https://docs.replit.com/cloud-services/deployments/about-deployments">on Replit</a></td></tr>
+<tr><td>Base44</td><td><a href="https://docs.base44.com/developers/backend/resources/entities/overview.md">the Base44 backend: JSON Schema entities and Deno functions</a></td><td><a href="https://docs.base44.com/developers/references/cli/commands/eject.md">GitHub sync and an eject command, without the data</a></td><td><a href="https://docs.base44.com/developers/app-code/local-development/github.md">on Base44</a></td></tr>
+<tr><td>A coding agent with TypedPress</td><td>WordPress: its database, users, editor and job queue</td><td>the project is files in your repository</td><td>any WordPress host that meets the requirements</td></tr>
+</table></div>
+
+<h3>What is particular to TypedPress</h3>
+<ul>
+  <li><b>No JavaScript on the server.</b> Of the systems above that let you write server code in TypeScript, each runs it on a JavaScript runtime. TypedPress compiles it to PHP, so the server is a plain WordPress site.</li>
+  <li><b>An editor that already exists.</b> The editing screens are WordPress&#39;s own. Payload, Sanity, Strapi and EmDash each ship an admin of their own.</li>
+  <li><b>One rule on every way in.</b> A kind&#39;s <code>access</code> covers the API, WordPress&#39;s own REST API, the editor, pages, search and agent tools. Payload is the closest: its access functions also return yes, no or a filter, and <a href="https://payloadcms.com/docs/local-api/overview">its documentation</a> says the server-side Local API skips them unless told not to. The others write access per function, keep it in a separate rules language, or fix it to roles.</li>
+  <li><b>Content and app data in one transaction.</b> A write to a post and a write to your own table commit together.</li>
+</ul>
+<h3>What it gives up</h3>
+<ul>
+  <li><b>npm packages on the server.</b> TypedPress server code is compiled to PHP, so it cannot import arbitrary npm packages; a few small ones are tested one by one. Systems that run JavaScript on the server do not have this limit.</li>
+  <li><b>Push by default.</b> Convex keeps a WebSocket open and sends each change to the browser. TypedPress polls unless the host adds a push transport.</li>
+  <li><b>A choice of database.</b> Payload, Strapi and EmDash support several. TypedPress uses the database WordPress uses.</li>
+  <li><b>React on its own pages.</b> A TypedPress page is not a React app. For React components from npm, build a separate front end and use the client.</li>
+  <li><b>Maturity.</b> Every system above has releases you can install. TypedPress is experimental and has no npm release.</li>
+</ul>
+
+<h2 id="rename">What changes from the code today</h2>
+<p>If you read the code or the older documentation, these are the differences from this page.</p>
+<div class="scroll"><table>
+<tr><th>On this page</th><th>In the code today</th><th>Status</th></tr>
+<tr><td><code>typedpress</code>, <code>@typedpress/*</code>, <code>create-typedpress</code></td><td><code>first</code>, <code>@first/astro</code>, <code>@spacefast/create-first</code></td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>tp/</code></td><td><code>first/</code></td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>typedpress.config.ts</code>, <code>typedpress/app</code>, <code>typedpress/state</code>, <code>typedpress:db</code></td><td><code>first.config.ts</code>, <code>first/app</code>, <code>first/client</code>, <code>first:db</code></td><td><span class="b prop">Proposed</span> spellings</td></tr>
+<tr><td><code>/__tp/api/v1</code>, <code>wp_tp_&lt;name&gt;</code>, <code>TypedPress\</code>, <code>TP_URL</code></td><td><code>/__first/api/v1</code>, <code>wp_first_&lt;name&gt;</code>, <code>First\</code>, <code>FIRST_URL</code></td><td><span class="b prop">Proposed</span></td></tr>
+<tr><td><code>kind.on("event", fn)</code> from any file</td><td><code>kind.on({ event })</code> in the declaring file</td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>change</code>, <code>committed</code>, <code>afterUnpublish</code> events</td><td>not there</td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td>handlers run as the caller</td><td>handlers are trusted</td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>query()</code>, <code>mutation()</code></td><td><code>action({ input, handler })</code></td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>tp.like({ id })</code></td><td><code>first.actions.like({ id })</code></td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>posts.list()</code> everywhere</td><td><code>db.query.posts.findMany()</code> also exists, trusted</td><td><span class="b ruled">Decided</span> <code>db.*</code> goes away</td></tr>
+<tr><td><code>job(options, handler)</code>, <code>x.enqueue()</code>, <code>cron()</code></td><td><code>job({ input, handler })</code>, <code>jobs.x.enqueue()</code></td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>wp.users.extend()</code>, and the kind is always called <code>users</code></td><td><code>userProjection()</code> under a name you pick</td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>useQuery</code> in client components</td><td><code>useLive</code></td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>@typedpress/client</code> from npm, hooks at <code>/react</code></td><td>generated into <code>first/_generated/client/</code>; hooks through <code>createHooks(React)</code></td><td><span class="b ruled">Decided</span></td></tr>
+<tr><td><code>loader</code>, <code>liveLoader</code>, <code>webhook</code> from <code>@typedpress/astro</code></td><td><code>firstLoader</code>, <code>firstLiveLoader</code>, <code>firstWebhook</code></td><td><span class="b prop">Proposed</span> spellings</td></tr>
+<tr><td><code>agent()</code> from the <code>@typedpress/agents</code> add-on</td><td>not there</td><td><span class="b ruled">Decided</span> as a separate add-on; <span class="b prop">Proposed</span> spelling</td></tr>
+<tr><td><code>typedpress migrate --from astro</code></td><td><code>first migrate config</code> and <code>first migrate app</code></td><td><span class="b ruled">Decided</span></td></tr>
+</table></div>
+
+<h3>The same files, today and after</h3>
+<p>Red lines are how the example apps in the code are written today. Green lines are the spelling this page uses. Lines with no colour do not change.</p>
+<p>A server function: <code>action()</code> becomes <code>mutation()</code>, the input comes from the parameter's type, and <code>db.*</code> becomes calls on the kind.</p>
+<tp-diff old="examples/_today/full-site/first/actions.ts" new="examples/notes/tp/server.ts" old-name="first/actions.ts" new-name="tp/server.ts"></tp-diff>
+<p>A page: only the read changes.</p>
+<tp-diff old="examples/_today/full-site/first/app/notes/[slug]/page.tsx" new="examples/notes/tp/app/notes/[slug]/page.tsx" old-name="first/app/notes/[slug]/page.tsx" new-name="tp/app/notes/[slug]/page.tsx"></tp-diff>
+<p>A component that runs in the browser: two imports.</p>
+<tp-diff old="examples/_today/full-site/first/components/CheerButton.tsx" new="examples/notes/tp/components/CheerButton.tsx" old-name="first/components/CheerButton.tsx" new-name="tp/components/CheerButton.tsx"></tp-diff>
+<p>A backend with handlers, a job and two functions: one handler per <code>.on()</code> call, <code>job(options, handler)</code>, and the registries at the bottom of the file go away.</p>
+<tp-diff old="examples/_today/pantry/first.config.ts" new="examples/pantry/tp/index.ts" old-name="first.config.ts" new-name="tp/index.ts"></tp-diff>
+
+<h2 id="limits">What it does not do</h2>
+<ul>
+  <li><b>npm packages on the server.</b> Server code is compiled to PHP, so it cannot import arbitrary npm packages. A few small ones are tested one by one.</li>
+  <li><b>React components from npm inside TypedPress pages.</b> Use them in a separate React frontend with the client (section {{sec:frontend}}).</li>
+  <li><b>Any theme or plugin you like.</b> One built-in theme, and plugins only under the rules in section {{sec:rules}}.</li>
+  <li><b>Agents inside the app.</b> Designed as a separate add-on, not built (section {{sec:app-agents}}).</li>
+  <li><b>A push transport for live reads.</b> Live reads poll unless the host adds one.</li>
+  <li><b>Several apps on one site.</b> One app per site today; on a WordPress network, one per site of the network.</li>
+  <li><b>Compiling on the site.</b> A deploy sends a build compiled on your machine.</li>
+  <li><b>Undoing a migration.</b> Going back to an earlier version switches the code, not the database.</li>
+  <li><b>A stable API.</b> The framework is experimental. Names and shapes on this page will change before a first release.</li>
+</ul>
+
+<h2 id="open">Still open</h2>
+<div class="scroll"><table>
+<tr><th>Question</th><th>Options</th></tr>
+<tr><td>Do <code>tp/app/</code> pages render inside the theme by default?</td><td>inside the theme with an opt-out, or the whole document with an opt-in</td></tr>
+<tr><td>A header or footer written in TSX</td><td>a component placed in the theme's header, or kept in <code>layout.tsx</code></td></tr>
+<tr><td>Editing on the page</td><td>the marker design in section {{sec:editing}}, or always open the WordPress editor</td></tr>
+<tr><td>Structured data without a plugin</td><td>TypedPress writes basic article and breadcrumb data, or leaves it to plugins</td></tr>
+<tr><td>Installing on a site that already has content</td><td>warn, or refuse</td></tr>
+<tr><td>The preview database</td><td>a separate SQLite database per preview, or the live tables read-only</td></tr>
+<tr><td>Which library runs an agent's loop</td><td>Agents API on its own, or Data Machine on top of it</td></tr>
+<tr><td>The option that hides a kind or function from outside agents</td><td><code>abilities: false</code>, or keep <code>agents: false</code></td></tr>
+<tr><td>Names stored on the site after the rename</td><td><code>/__tp</code>, <code>wp_tp_</code>, <code>TP_</code>, or keep today's</td></tr>
+</table></div>
+
+<footer>TypedPress, formerly First. This page describes the state of the project on 15 November 2026. Code, file trees and diffs on this page are rendered with <a href="https://diffs.com">@pierre/diffs</a> and @pierre/trees (Apache-2.0, <a href="third-party-licenses.txt">licences</a>).</footer>
+
+<!--tp-trees-->
+<script type="module" src="guide.js"></script>
+</body>
+</html>

@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TypedPress app experience</title>
+<style>
+  :root {
+    --gap: 14px;
+    color-scheme: light dark;
+    --tp-fg: var(--foreground, CanvasText);
+    --tp-mut: var(--muted-foreground, color-mix(in srgb, CanvasText 62%, Canvas));
+    --tp-line: var(--border, color-mix(in srgb, CanvasText 16%, Canvas));
+    --tp-code: color-mix(in srgb, CanvasText 7%, Canvas);
+    --tp-card: var(--card, color-mix(in srgb, CanvasText 3%, Canvas));
+    --tp-ok: var(--success, light-dark(#1a7f37, #56d364));
+    --tp-info: var(--info, light-dark(#0969da, #79c0ff));
+    --tp-warn: var(--warning, light-dark(#9a6700, #e3b341));
+  }
+  body { font-family: var(--font-sans, system-ui, sans-serif); color: var(--tp-fg); line-height: 1.5; font-size: 14px; margin: 0 auto; max-width: 860px; padding: 0 16px 40px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 30px 0 6px; padding-top: 14px; border-top: 1px solid var(--tp-line); }
+  h2 .n { color: var(--tp-mut); font-weight: 500; margin-right: 6px; }
+  h3 { font-size: 13px; margin: 16px 0 4px; }
+  p { margin: 6px 0; }
+  .lede { color: var(--tp-mut); margin-bottom: 10px; }
+  code, pre { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+  code { background: var(--code-background, var(--tp-code)); padding: 1px 4px; border-radius: 4px; }
+  pre { background: var(--code-background, var(--tp-code)); padding: 12px 14px; border-radius: var(--radius, 8px); overflow-x: auto; margin: 8px 0; line-height: 1.45; }
+  pre code { background: none; padding: 0; }
+  .c { color: var(--tp-mut); }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--tp-line); }
+  th { font-weight: 600; color: var(--tp-mut); font-size: 12px; }
+  .scroll { overflow-x: auto; }
+  .b { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; }
+  .built { color: var(--tp-ok); border-color: var(--tp-ok); }
+  .ruled { color: var(--tp-info); border-color: var(--tp-info); }
+  .prop { color: var(--tp-warn); border-color: var(--tp-warn); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; margin: 10px 0 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--gap); }
+  .mock { border: 1px solid var(--tp-line); border-radius: var(--radius, 8px); padding: 16px; background: var(--tp-card); }
+  .mock .bar { display: flex; justify-content: space-between; font-size: 12px; color: var(--tp-mut); border-bottom: 1px solid var(--tp-line); padding-bottom: 8px; margin-bottom: 12px; }
+  .mock .t { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+  .mock .ln { height: 8px; border-radius: 4px; background: var(--tp-code); margin: 7px 0; }
+  .mock .foot { font-size: 12px; color: var(--tp-mut); border-top: 1px solid var(--tp-line); padding-top: 8px; margin-top: 14px; }
+  .cap { font-size: 12px; color: var(--tp-mut); margin-top: 6px; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+</style>
+</head>
+<body>
+
+<h1>Building a TypedPress app</h1>
+<p class="lede">The whole path, from an empty folder to a running site, in the new names. Code that says <code>typedpress</code> or <code>tp/</code> is spelled <code>first</code> and <code>first/</code> on <code>main</code> today.</p>
+<div class="legend">
+  <span><span class="b built">Built</span> on <code>main</code> at 9decbf162, under the old names</span>
+  <span><span class="b ruled">Ruled</span> you decided it, no code yet</span>
+  <span><span class="b prop">Proposed</span> my proposal in this page</span>
+</div>
+
+<h2><span class="n">1</span>Set it up</h2>
+<pre><code>npm create typedpress my-site    <span class="c"># a project with WordPress content only</span>
+cd my-site
+typedpress dev                   <span class="c"># local WordPress, rebuilds on save</span>
+typedpress add db                <span class="c"># later: SQL tables</span>
+typedpress add pages             <span class="c"># later: your own front end</span></code></pre>
+<div class="scroll"><table>
+<tr><th>Step</th><th>Status</th><th>Note</th></tr>
+<tr><td>Scaffold and <code>dev</code></td><td><span class="b built">Built</span></td><td>Local WordPress comes from Studio; Node 22+ needed</td></tr>
+<tr><td><code>add db</code>, <code>add api-reference</code></td><td><span class="b built">Built</span></td><td>Writes files you own; never edits yours; safe to rerun</td></tr>
+<tr><td><code>add pages</code>, <code>react</code>, <code>next</code>, <code>tanstack</code>, <code>astro</code></td><td><span class="b prop">Proposed</span></td><td>Same rules as <code>add db</code></td></tr>
+<tr><td>Install from npm</td><td><span class="b ruled">Ruled</span></td><td>Today you build the compiler from source</td></tr>
+</table></div>
+
+<h2><span class="n">2</span>What you write</h2>
+<p>Everything lives in <code>tp/</code>. A thing is declared once and named by its export. File names inside <code>tp/</code> are yours to choose, except <code>app/</code>.</p>
+<pre><code>my-site/
+  typedpress.config.ts     <span class="c">site name and switches</span>
+  tp/
+    schema.ts              <span class="c">kinds: what your data is</span>
+    server.ts              <span class="c">queries, mutations, jobs, event handlers</span>
+    app/                   <span class="c">optional pages</span>
+    content/               <span class="c">optional Markdown, kept in step by sync</span>
+    _generated/            <span class="c">types, client types, migrations (never edit)</span></code></pre>
+
+<h3>Kinds <span class="b built">Built</span></h3>
+<pre><code><span class="c">// tp/schema.ts</span>
+import { collection, table, taxonomy, text, richText, integer, ref, media } from "typedpress";
+
+export const authors = collection({
+  name: text().max(80),
+  avatar: media({ accept: "image" }).optional(),
+});
+
+export const posts = collection({
+  title: text().max(200),
+  body: richText(),
+  writer: ref(authors),
+  views: integer().default(0),
+}, { url: "/blog/:slug", access: { read: "anyone", create: "editor" } });
+
+export const topics = taxonomy({ color: text().optional() }, { url: "/topics/:slug", on: [posts] });
+
+export const likes = table({ post: ref(posts), count: integer().default(0) });</code></pre>
+
+<h3>Your own fields on WordPress users <span class="b ruled">Ruled</span></h3>
+<p>(2026-11-15) <code>userProjection()</code> goes away. It becomes <code>wp.users.extend()</code>, and the kind is always called <code>users</code>. This is ruling 40 of <code>docs/decisions/2026-11-11-authoring-surface.md</code>, which you confirmed. Not built: there is no <code>wp</code> export on <code>main</code> yet, and the old name appears 86 times in 46 files under <code>examples/</code>, <code>src/</code> and <code>tests/</code>.</p>
+<pre><code>import { wp, select, text } from "typedpress";
+
+export const users = wp.users.extend({
+  plan: select(["free", "pro"]).default("free"),
+  bio: text().max(500).optional(),
+}, { guests: true });</code></pre>
+<p><code>email</code> and <code>name</code> are built in and are not declared. Stored data does not change. The API name becomes <code>users</code> for every app, whatever the export was called before.</p>
+
+<h3>Event handlers <span class="b ruled">Ruled</span></h3>
+<p><code>main</code> has the object form <code>.on({ beforeCreate })</code>, in the declaring file only. The ruled form is one handler per call, from any file:</p>
+<pre><code><span class="c">// tp/server.ts</span>
+import { posts } from "./schema";
+
+posts
+  .on("beforeCreate", (data) =&gt; { data.title = data.title.trim(); })
+  .on("change", async (c) =&gt; { await audit.system.create({ op: c.op, row: (c.after ?? c.before)!.id }); })
+  .on("committed", async (c) =&gt; {
+    if (c.op === "publish") await notifySubscribers.enqueue({ postId: c.after!.id });
+  });</code></pre>
+<div class="scroll"><table>
+<tr><th>Event</th><th>Runs</th><th>Can change data</th><th>If it throws</th></tr>
+<tr><td><code>beforeCreate</code>, <code>beforeUpdate</code></td><td>before the write</td><td>yes</td><td>write is rejected</td></tr>
+<tr><td><code>beforeDelete</code></td><td>before the delete</td><td>no</td><td>delete is rejected</td></tr>
+<tr><td><code>afterCreate</code> … <code>afterUnpublish</code></td><td>after the write, same transaction</td><td>no</td><td>transaction rolls back</td></tr>
+<tr><td><code>change</code></td><td>once per write, with <code>{ op, before, after }</code></td><td>no</td><td>transaction rolls back</td></tr>
+<tr><td><code>committed</code></td><td>after commit, as a queued action, retried</td><td>no</td><td>retried; the write stays</td></tr>
+</table></div>
+<ul>
+  <li>Every write path runs every handler: the API, the WordPress editor, the CLI and jobs.</li>
+  <li>A handler runs as the person who made the write. <code>.system</code> is the only bypass.</li>
+  <li><span class="b prop">Proposed</span> <code>c.source</code> says where the write came from: <code>api</code>, <code>editor</code>, <code>cli</code>, <code>job</code> or <code>agent</code>. Idea from the UI SDK's change details.</li>
+</ul>
+
+<h3>Server functions <span class="b ruled">Ruled</span></h3>
+<p><code>main</code> has <code>action({ input, handler })</code>. The ruled form splits reads from writes and takes input types from the handler:</p>
+<pre><code>import { query, mutation, job, cron, HttpError } from "typedpress";
+
+export const popular = query({ access: "anyone" },
+  async ({ limit = 10 }: { limit?: number }) =&gt;
+    posts.list({ orderBy: { views: "desc" }, limit }));
+
+export const like = mutation({ access: "subscriber", rateLimit: "10/min" },
+  async ({ id }: { id: number }) =&gt; {
+    const post = await posts.get(id);
+    if (!post) throw new HttpError(404, "not_found", "No such post");
+    await posts.system.update(id, { views: post.views + 1 });
+  });
+
+export const notifySubscribers = job({}, async ({ postId }: { postId: number }) =&gt; { /* … */ });
+export const nightly = cron("0 3 * * *", async () =&gt; { /* … */ });</code></pre>
+<div class="scroll"><table>
+<tr><th></th><th><code>query</code></th><th><code>mutation</code></th></tr>
+<tr><td>May write</td><td>no</td><td>yes, in one transaction</td></tr>
+<tr><td>Cached and subscribable</td><td>yes</td><td>no</td></tr>
+<tr><td>After it runs</td><td>nothing</td><td>purges the pages its writes changed</td></tr>
+<tr><td>Agent tool</td><td>marked read-only</td><td>marked as a write</td></tr>
+<tr><td>Use as a form action</td><td>no</td><td>yes, works without JavaScript</td></tr>
+</table></div>
+
+<h3>Pages (optional) <span class="b built">Built</span></h3>
+<pre><code><span class="c">// tp/app/blog/[slug]/page.tsx</span>
+import { Content, notFound, type PageProps } from "typedpress/app";
+import { posts } from "../../../schema";
+import { LikeButton } from "./LikeButton";
+
+export default async function Post({ params }: PageProps&lt;"blog/[slug]"&gt;) {
+  const [post] = await posts.list({ where: { slug: params.slug }, limit: 1 });
+  if (!post) notFound();
+  return (
+    &lt;article&gt;
+      &lt;h1&gt;{post.title}&lt;/h1&gt;
+      &lt;Content value={post.body} /&gt;
+      &lt;LikeButton id={post.id} count={post.views} /&gt;
+    &lt;/article&gt;
+  );
+}</code></pre>
+<pre><code><span class="c">// tp/app/blog/[slug]/LikeButton.tsx</span>
+"use client";
+import { useState } from "typedpress/state";
+import { like } from "../../../server";
+
+export function LikeButton({ id, count: start }: { id: number; count: number }) {
+  const [count, setCount] = useState(start);
+  return &lt;button onClick={async () =&gt; { await like({ id }); setCount(count + 1); }}&gt;{count} likes&lt;/button&gt;;
+}</code></pre>
+<p class="cap">A client component is server HTML first, then the WordPress Interactivity API takes it over. It cannot import npm React components today.</p>
+
+<h2><span class="n">3</span>What it turns into</h2>
+<p><code>typedpress build</code> compiles the project to a WordPress plugin. No JavaScript runs on the server.</p>
+<div class="scroll"><table>
+<tr><th>You write</th><th>WordPress gets</th><th>Status</th></tr>
+<tr><td><code>collection()</code></td><td>a post type, a field group, registered post meta</td><td><span class="b built">Built</span></td></tr>
+<tr><td><code>table()</code></td><td>a SQL table and generated migrations</td><td><span class="b built">Built</span></td></tr>
+<tr><td><code>taxonomy()</code></td><td>a taxonomy and term meta</td><td><span class="b built">Built</span></td></tr>
+<tr><td><code>global()</code></td><td>a registered setting</td><td><span class="b built">Built</span></td></tr>
+<tr><td><code>url: "/blog/:slug"</code></td><td>rewrite rules, permalinks, redirects when a slug changes</td><td><span class="b built">Built</span></td></tr>
+<tr><td>handlers, queries, mutations</td><td>PHP functions, checked against Node</td><td><span class="b built">Built</span> as hooks and actions</td></tr>
+<tr><td><code>job()</code>, <code>cron()</code></td><td>Action Scheduler actions</td><td><span class="b built">Built</span> under the old spelling</td></tr>
+<tr><td><code>page.tsx</code></td><td>a PHP renderer</td><td><span class="b built">Built</span></td></tr>
+<tr><td><code>"use client"</code></td><td>an Interactivity API store and directives</td><td><span class="b built">Built</span></td></tr>
+<tr><td>every operation</td><td>a WordPress Ability, exposed over MCP</td><td><span class="b built">Built</span></td></tr>
+</table></div>
+
+<h2><span class="n">4</span>What you get without writing it</h2>
+<div class="scroll"><table>
+<tr><th>Thing</th><th>What it is</th><th>Status</th></tr>
+<tr><td>TypedPress Admin</td><td>the default admin at <code>/wp-admin/new/</code>; classic wp-admin stays beside it</td><td><span class="b built">Built</span> as First Admin; not run in this check</td></tr>
+<tr><td>Editor</td><td>the WordPress editor for every collection, with drafts and revisions</td><td><span class="b built">Built</span></td></tr>
+<tr><td>API</td><td><code>/__tp/api/v1</code>, typed from your schema</td><td><span class="b built">Built</span> at <code>/__first/api/v1</code></td></tr>
+<tr><td>Sign-in</td><td>email code, password, passkeys, MFA, Google, guests</td><td><span class="b built">Built</span></td></tr>
+<tr><td>Files</td><td>media library and private buckets</td><td><span class="b built">Built</span></td></tr>
+<tr><td>Live reads</td><td><code>subscribe()</code> on any read</td><td><span class="b built">Built</span>, by polling</td></tr>
+<tr><td>For agents</td><td>MCP tools, a Markdown version of every page, <code>llms.txt</code></td><td><span class="b built">Built</span></td></tr>
+<tr><td>Schema check at deploy</td><td>a change that would lose rows is refused with the count</td><td><span class="b built">Built</span></td></tr>
+</table></div>
+
+<h2><span class="n">5</span>What a visitor sees</h2>
+<p><span class="b ruled">Ruled</span> One theme, always active. You can edit its templates and styles in the WordPress Site Editor.</p>
+<p><span class="b prop">Proposed</span> Pages in <code>tp/app/</code> render inside the theme too. A page file still takes over its URL, the way an Astro site has one page file per route, but it becomes one block that a theme template places between the header and the footer. This would replace the earlier line "pages do not use the theme".</p>
+<pre><code>&lt;!-- wp:template-part {"slug":"header"} /--&gt;
+&lt;!-- wp:typedpress/route /--&gt;
+&lt;!-- wp:template-part {"slug":"footer"} /--&gt;</code></pre>
+<p class="cap">The template every route gets until someone edits it. <code>typedpress/route</code> prints the page inside its <code>layout.tsx</code> files. Guards, redirects, 404s, caching and the reads a page makes stay exactly as they are; only the last step, writing the HTML document, moves to WordPress.</p>
+<div class="grid">
+  <div>
+    <div class="mock">
+      <div class="bar"><span>My Site</span><span>Home</span></div>
+      <p class="t">Hello, world</p>
+      <div class="ln" style="width:96%"></div><div class="ln" style="width:88%"></div><div class="ln" style="width:92%"></div><div class="ln" style="width:55%"></div>
+      <div class="foot">My Site</div>
+    </div>
+    <p class="cap"><b>You add a post and open it.</b> The built-in theme shows the title and the body between a header and footer. Comments show only on kinds that turn them on.</p>
+  </div>
+  <div>
+    <div class="mock">
+      <div class="bar"><span>theme header</span><span>menu</span></div>
+      <p class="t">Hello, world</p>
+      <div class="ln" style="width:90%"></div><div class="ln" style="width:70%"></div>
+      <p style="margin:10px 0 0"><span class="b built">12 likes</span></p>
+      <div class="foot">theme footer</div>
+    </div>
+    <p class="cap"><b>You add <code>tp/app/blog/[slug]/page.tsx</code>.</b> That file now renders the middle of every URL matching the kind's <code>url</code>. The header and footer are still the theme's, editable in the Site Editor.</p>
+  </div>
+</div>
+<div class="scroll"><table>
+<tr><th>Rule</th><th>Today on <code>main</code></th><th>Proposed</th></tr>
+<tr><td>Which theme is active</td><td>the built-in theme only when the site has no working theme</td><td>the built-in theme, always</td></tr>
+<tr><td>Installing themes in the admin</td><td>refused</td><td>refused</td></tr>
+<tr><td>Switching to another installed theme</td><td>I found no code refusing it</td><td>refused</td></tr>
+<tr><td>Site Editor on the theme's templates and styles</td><td>nothing blocks it</td><td>stays</td></tr>
+<tr><td>A kind URL with no page</td><td>the theme renders it</td><td>the same</td></tr>
+<tr><td>Who writes the HTML document of a <code>tp/app/</code> page</td><td>TypedPress prints its own <code>&lt;html&gt;</code>, head and body, then stops</td><td>WordPress's block template; TypedPress fills the route block</td></tr>
+<tr><td>Header and footer on a <code>tp/app/</code> page</td><td>whatever <code>layout.tsx</code> writes</td><td>the theme's by default; <code>layout.tsx</code> wraps the page inside them; <code>export const shell = false</code> gives a page the whole document, as today</td></tr>
+<tr><td>A <code>tp/app/</code> page in the Site Editor</td><td>not there</td><td>one template per route: edit the header, footer and styles, and place blocks around the page; the page's own markup stays code</td></tr>
+<tr><td>A header or footer written in TSX</td><td>part of <code>layout.tsx</code></td><td>a component listed in <code>export const blocks</code>, placed in the template part</td></tr>
+<tr><td>Other modes</td><td><code>frontend: false</code> (no HTML) and <code>frontend: "https://…"</code> (another site renders)</td><td>the same</td></tr>
+</table></div>
+
+<h2><span class="n">6</span>Who edits what</h2>
+<p><span class="b ruled">Ruled</span> Editing uses the standard WordPress experience wherever it can. TypedPress adds only small things on top.</p>
+<div class="scroll"><table>
+<tr><th>Thing</th><th>Edited in</th><th>Status</th></tr>
+<tr><td>An item's fields and body</td><td>the WordPress editor</td><td><span class="b built">Built</span></td></tr>
+<tr><td>A component used inside a body</td><td>the WordPress editor, as a block with its props in the sidebar</td><td><span class="b built">Built</span></td></tr>
+<tr><td>The same content as Markdown files</td><td>your code editor; <code>sync</code> keeps both sides equal</td><td><span class="b built">Built</span></td></tr>
+<tr><td>Theme templates and styles</td><td>the WordPress Site Editor</td><td><span class="b built">Built</span>, not opened in this check</td></tr>
+<tr><td>What surrounds a <code>tp/app/</code> page: header, footer, styles</td><td>the WordPress Site Editor, on that route's template</td><td><span class="b prop">Proposed</span>, section 5</td></tr>
+<tr><td>The markup inside a <code>tp/app/</code> page</td><td>code only</td><td>by design</td></tr>
+<tr><td>Content shown on a page, while signed in as an editor</td><td>click it on the page; the WordPress editor does the editing, no second editor</td><td><span class="b ruled">Ruled</span>, design below</td></tr>
+</table></div>
+<pre><code><span class="c">// tp/components/Callout.tsx: listing a component makes it a block</span>
+export const blocks = ["Callout"];
+
+export function Callout({ type, children }: { type: "note" | "warning"; children?: JSX.Element }) {
+  return &lt;aside className={`callout callout-${type}`}&gt;{children}&lt;/aside&gt;;
+}</code></pre>
+<p class="cap">In the editor it is a block. In a Markdown file it is the tag <code>&lt;Callout type="warning"&gt;</code>. Both write the same thing.</p>
+
+<h3>Editing on the page <span class="b prop">Proposed</span></h3>
+<p>The page marks what is editable, the way EmDash does. The editing itself is WordPress's.</p>
+<pre><code>&lt;h1 {...post.edit.title}&gt;{post.title}&lt;/h1&gt;
+&lt;Content value={post.body} {...post.edit.body} /&gt;</code></pre>
+<div class="scroll"><table>
+<tr><th>You click</th><th>What happens</th></tr>
+<tr><td>a plain text field, such as a title</td><td>you type on the page; it saves as a draft change through the same API the editor uses</td></tr>
+<tr><td>an image field</td><td>the WordPress media library opens</td></tr>
+<tr><td>the body</td><td>the WordPress editor opens over the page for that item; when you save, that part of the page refreshes</td></tr>
+<tr><td>anything around the page: header, footer, template, styles</td><td>the WordPress Site Editor, on that route's template</td></tr>
+</table></div>
+<p class="cap">Visitors never get the markers or the script. Later the compiler can add the markers itself; it does not track which field an element shows today.</p>
+
+<h2><span class="n">7</span>Use it from another frontend</h2>
+<p><span class="b ruled">Ruled</span> One client for everything. The client exists on <code>main</code>, copied into each project; the npm package and the <code>/react</code> entry are the new part.</p>
+<pre><code>import { createClient } from "@typedpress/client";
+import { useQuery } from "@typedpress/client/react";
+
+const tp = createClient({ url: "https://my-site.example" });
+
+await tp.posts.list({ where: { writer: 3 }, limit: 10 });   <span class="c">// read</span>
+await tp.like({ id: 42 });                                   <span class="c">// mutation, by its export name</span>
+tp.popular({ limit: 5 }).subscribe((rows) =&gt; render(rows));  <span class="c">// stays current</span>
+await tp.auth.signIn();                                      <span class="c">// sign-in screens, then back</span>
+
+const { data } = useQuery(tp.popular, { limit: 5 });         <span class="c">// React</span></code></pre>
+<div class="scroll"><table>
+<tr><th>Your frontend</th><th>You add</th><th>What arrives</th></tr>
+<tr><td>React or static Next.js</td><td><code>typedpress add react</code></td><td>the client and a hooks example</td></tr>
+<tr><td>Next.js with server caching</td><td><code>typedpress add next</code></td><td>one webhook route that revalidates by tag</td></tr>
+<tr><td>TanStack Start</td><td><code>typedpress add tanstack</code></td><td>a query example</td></tr>
+<tr><td>Astro</td><td><code>typedpress add astro</code></td><td><code>@typedpress/astro</code> loaders in your content config</td></tr>
+</table></div>
+<p class="cap">Built-in components such as comments and search work only in TypedPress pages. Another frontend gets data and sign-in.</p>
+
+<h2><span class="n">8</span>Move an existing site in</h2>
+<p><span class="b ruled">Ruled</span> Migrate creates a new project with the same configuration, then content is synchronized into it.</p>
+<pre><code>typedpress migrate --from astro ../old-site --out my-site   <span class="c"># new project, kinds translated</span>
+cd my-site &amp;&amp; typedpress dev
+typedpress sync                                             <span class="c"># content files to the site, and back</span></code></pre>
+<div class="scroll"><table>
+<tr><th>Source</th><th>Configuration</th><th>Content</th></tr>
+<tr><td>Astro</td><td><span class="b built">Built</span> as a content-config reader</td><td>Markdown files already; <code>sync</code> is <span class="b built">Built</span></td></tr>
+<tr><td>EmDash, Payload, Sanity</td><td><span class="b built">Built</span> (<code>migrate config</code>)</td><td>no reader found</td></tr>
+<tr><td>Zero 0.8</td><td><span class="b built">Built</span> (<code>migrate app</code>)</td><td><span class="b built">Built</span></td></tr>
+</table></div>
+
+<h2><span class="n">9</span>The site is TypedPress's</h2>
+<div class="scroll"><table>
+<tr><th>Rule</th><th>Today on <code>main</code></th><th>Proposed</th></tr>
+<tr><td>Installing on a site that has content</td><td>no check found</td><td>a warning that lists what was found</td></tr>
+<tr><td>A plugin's tags on TypedPress pages</td><td>added next to TypedPress's own, so some appear twice</td><td>one set of tags, through WordPress's own head functions (see below)</td></tr>
+<tr><td>Installing plugins from the admin</td><td>refused</td><td>refused</td></tr>
+<tr><td>Extra plugins in the config</td><td>allowed, pinned by version and checksum</td><td>a build error unless <code>dangerouslyEnablePlugins: true</code></td></tr>
+<tr><td>Only listed code runs (<code>sealed</code>)</td><td>opt-in</td><td>the default</td></tr>
+<tr><td>Plugins TypedPress pins itself</td><td>Secure Custom Fields, Action Scheduler, MCP Adapter, Two Factor; Polylang with locales</td><td>the same</td></tr>
+</table></div>
+<pre><code><span class="c">// typedpress.config.ts</span>
+export default defineConfig({
+  name: "my-site",
+  dangerouslyEnablePlugins: true,          <span class="c">// without this, "plugins" is a build error</span>
+  plugins: { "classic-editor": "1.6.7" },
+});</code></pre>
+<p><span class="b ruled">Ruled</span> Plugins such as an SEO plugin must keep working. A plugin you add is your own responsibility: production runs only on Spacefast.</p>
+<h3>Search engines: with a plugin or without <span class="b ruled">Ruled</span></h3>
+<p>TypedPress pages put their metadata into WordPress's own head functions. With no plugin, WordPress prints it. With a plugin, the plugin sees the same values and prints them once.</p>
+<div class="scroll"><table>
+<tr><th>Thing</th><th>Without a plugin</th><th>With an SEO plugin</th><th>Today on <code>main</code></th></tr>
+<tr><td>Title</td><td>from the page's <code>metadata</code></td><td>the plugin's title template applies to it</td><td>TypedPress prints its own and removes WordPress's</td></tr>
+<tr><td>Description</td><td>from <code>metadata</code></td><td>an editor's value in the plugin wins for that item</td><td>TypedPress prints its own</td></tr>
+<tr><td>Canonical URL</td><td>from <code>metadata</code> or the kind's <code>url</code></td><td>the plugin reads the same value</td><td>through WordPress for static pages; printed directly on others</td></tr>
+<tr><td>Robots (noindex)</td><td>WordPress's robots tag</td><td>the same tag</td><td><span class="b built">Built</span> this way</td></tr>
+<tr><td>Social cards</td><td>from <code>metadata.openGraph</code></td><td>the plugin's tags, filled from the same values</td><td>TypedPress prints its own</td></tr>
+<tr><td>Sitemap</td><td>WordPress's <code>/wp-sitemap.xml</code>, with TypedPress pages in it</td><td>the plugin's sitemap needs the pages too</td><td><span class="b built">Built</span> for WordPress's; not for a plugin's</td></tr>
+<tr><td>Redirect when a slug changes</td><td>automatic</td><td>the same</td><td><span class="b built">Built</span> for post kinds</td></tr>
+<tr><td>Structured data (JSON-LD)</td><td>not provided</td><td>the plugin's</td><td>none found</td></tr>
+</table></div>
+<p class="cap">Plugins to support first: Jetpack, since Spacefast sites have it, then Yoast.</p>
+<p><b>What counts as "has content":</b> any published post or page other than WordPress's own samples, any active plugin TypedPress does not ship, or more than one user.</p>
+
+<h2><span class="n">10</span>What it runs on</h2>
+<div class="scroll"><table>
+<tr><th></th><th>Needs</th></tr>
+<tr><td>WordPress</td><td>7.2-beta5 or later. <span class="b ruled">Ruled</span> The floor stays as high as possible and is set in one place (<code>WORDPRESS</code> in <code>src/platform.rs</code>).</td></tr>
+<tr><td>PHP</td><td>8.2 with <code>mbstring</code>, <code>gd</code>, <code>fileinfo</code>, <code>openssl</code>, <code>sodium</code></td></tr>
+<tr><td>Database</td><td>MySQL 8.0, MariaDB 10.11, or SQLite through the SQLite Database Integration plugin</td></tr>
+<tr><td>Local development</td><td>Node 22+ and npm</td></tr>
+<tr><td>Frontends</td><td>anything that can call <code>fetch</code>; Astro 7.4+ for the loaders</td></tr>
+<tr><td>Agents</td><td>any MCP client</td></tr>
+<tr><td>Spacefast</td><td>not yet: the host still pins the old compiler. Section 11 is the plan.</td></tr>
+</table></div>
+<h3>What it is not compatible with</h3>
+<ul>
+  <li>npm packages on the server, beyond a few small ones tested one by one. <span class="b ruled">Ruled</span> Compiling npm JavaScript to PHP continues in the background, apart from this work, aiming at most of Node.js.</li>
+  <li>npm React components inside TypedPress pages.</li>
+  <li>WordPress themes and plugins of your choosing, under the rules in section 9.</li>
+</ul>
+
+<h2><span class="n">11</span>On Spacefast, and on any WordPress</h2>
+<p><span class="b ruled">Ruled</span> TypedPress replaces Zero v2 on Spacefast. Zero 0.8 is the last Zero: new Spaces refuse it, remixes may still publish it, and it carries a deprecation notice with a one-line migration (shipped in monorepo #5251).</p>
+<div class="scroll"><table>
+<tr><th>Rule</th><th>Today on <code>main</code></th><th>Ruled</th></tr>
+<tr><td>Where TypedPress lives on Spacefast</td><td>the engine vendors compiler 0.3.0 and loads <code>Zero\*</code> files by path, per Space</td><td>part of the same Rust binary as the runtime (the crate is imported as a library), with its plugins always loaded from the shared chroot. No per-Space switch.</td></tr>
+<tr><td>WordPress per Space</td><td>one site per Space; every version on that site and database</td><td>the same: one central WordPress serves every version as backend and renderer. Spacefast passes requests through and signs the visitor in.</td></tr>
+<tr><td>The <code>v2</code> kind in Spacefast</td><td><code>none | legacy_0_8 | v2</code>, about 25 string checks</td><td>replaced by TypedPress; no <code>v2</code> left</td></tr>
+<tr><td>Users</td><td>per-Space users tables under a prefix</td><td>WordPress is the user store. Sign in with Spacefast works with no setup.</td></tr>
+<tr><td>On your own WordPress</td><td>four TypedPress plugins plus five pinned ones, installed by hand</td><td>one plugin; a setup screen installs what it needs; then <code>typedpress login &lt;url&gt;</code> and push from the CLI</td></tr>
+<tr><td>What a deploy sends</td><td><code>deploy publish</code> always refuses</td><td>a compiled build or sources. With sources, the site compiles them with the binary, or the browser compiles them and uploads the result.</td></tr>
+<tr><td>Several apps on one site</td><td>a second app is refused</td><td>allowed, each at its own mount path (WordPress at <code>/</code>, an app at <code>/news</code>); collection names unique per site</td></tr>
+<tr><td>Multisite</td><td>outside the contract</td><td>works by default, with the isolation multisite gives</td></tr>
+<tr><td>What TypedPress restricts on a site</td><td>plugin and theme installs site-wide</td><td>only the paths it manages</td></tr>
+</table></div>
+
+<h3>Previews and the database <span class="b prop">Proposed</span></h3>
+<p><span class="b ruled">Ruled</span> A preview must not pollute the live database or create things that are never used. SQLite for previews, configurable.</p>
+<div class="scroll"><table>
+<tr><th>Preview mode</th><th>Reads</th><th>Writes</th><th>Leaves behind</th></tr>
+<tr><td><code>scratch</code> (proposed default)</td><td>a fresh SQLite database, seeded from the project</td><td>the SQLite file</td><td>one file, deleted with the preview</td></tr>
+<tr><td><code>live</code></td><td>the live tables</td><td>the live tables; the preview build is loaded but never initialized, so no migration, rewrite flush or page records</td><td>nothing; a destructive schema difference refuses the preview</td></tr>
+</table></div>
+<ul>
+  <li>Migrations run once, at promote, in either mode.</li>
+  <li>The default is my reading of an unfinished sentence ("by default, we give you…"). Say if you meant <code>live</code>.</li>
+</ul>
+
+<h3>Starters instead of themes <span class="b prop">Proposed</span></h3>
+<p><span class="b ruled">Ruled</span> No general WordPress theme support; TypedPress ships its own starters; Tailwind is the standard and easy to add.</p>
+<ul>
+  <li>An EmDash theme is a whole Astro project plus a seed file, picked when the site is created; there is no theme switcher. A TypedPress starter is the same shape: <code>tp/app/</code> pages, components, Tailwind styles and a seed, chosen in <code>create</code>.</li>
+  <li>The EmDash blog, portfolio, marketing and starter templates are already ported as examples and can be the first starters.</li>
+  <li><code>typedpress add tailwind</code>, and on in every starter. Not built: the scaffolder has no Tailwind today.</li>
+  <li>If pages render inside the theme (section 5), Tailwind's reset and the theme's styles load together. Untested.</li>
+</ul>
+
+<h2><span class="n">12</span>Agents: a separate add-on</h2>
+<p><span class="b ruled">Ruled</span> (2026-11-15) Agents inside an app are secondary and are built isolated, later. One scheduling mechanism for everything. WordPress's own parts are used wherever they exist. On Spacefast the models are Spacefast's; on any other WordPress the site's Connectors supply them. What is needed now is the list of seams, so the add-on can be built without changing the core, and so people can build chat, channels and memory themselves.</p>
+<div class="scroll"><table>
+<tr><th>Part of an agent</th><th>Comes from</th><th>State</th></tr>
+<tr><td>Tools</td><td>the app's queries, mutations and kind operations, each already registered as a WordPress ability with input and output schemas (<code>runtime/First/Wp/Abilities/Register.php</code>)</td><td><span class="b built">Built</span></td></tr>
+<tr><td>The call to the model</td><td>core's <code>wp_ai_client_prompt()</code>; <code>using_abilities()</code> hands abilities to the model as tools, and core's resolver runs the calls it asks for</td><td>in WordPress 7.2-beta5; no typed binding in <code>"php/wordpress"</code></td></tr>
+<tr><td>Model and key</td><td>core Connectors (Settings, Connectors). A key is read from an environment variable, then a PHP constant, then the database. Anthropic, Google and OpenAI are listed by default</td><td>in WordPress 7.2-beta5</td></tr>
+<tr><td>Schedules and background runs</td><td><code>cron()</code> and <code>job()</code> on Action Scheduler (API ruling 10). The add-on adds no schedule form</td><td><span class="b ruled">Ruled</span>, built as <code>job({...})</code></td></tr>
+<tr><td>Approving a content change</td><td>staged versions: stage and promote are separate abilities, so an account can be allowed one and not the other</td><td><span class="b built">Built</span></td></tr>
+<tr><td>Replies reaching the browser</td><td>live reads</td><td><span class="b built">Built</span> as <code>useLive</code></td></tr>
+<tr><td>The loop, agent registry and conversation history</td><td>WordPress core and Gutenberg have none (no <code>wp_register_agent</code> in either). Automattic's Agents API 0.16.1 has all three: GPL, needs WordPress 7.0, loads as a plugin or a Composer package, and names its functions <code>wp_*</code> because it is aimed at core</td><td><span class="b prop">Proposed</span></td></tr>
+</table></div>
+<h3>Seams the core needs, so the add-on stays outside it</h3>
+<div class="scroll"><table>
+<tr><th></th><th>Seam</th><th>Today</th></tr>
+<tr><td>1</td><td>A function or kind reference gives its ability name, so <code>tools: [expiringSoon]</code> needs no strings</td><td>the name is derived in PHP (<code>app/kebab-name</code>); not checked whether TypeScript can read it</td></tr>
+<tr><td>2</td><td>A package can add its own tables and routes</td><td><code>definePlugin</code> takes hooks, actions and jobs only</td></tr>
+<tr><td>3</td><td>A package can require a pinned WordPress plugin or Composer package</td><td>only the app's <code>plugins</code> map can</td></tr>
+<tr><td>4</td><td>A package can call a checked list of WordPress functions</td><td>the lock's <code>php</code> grant is reserved and always empty</td></tr>
+<tr><td>5</td><td>A job or schedule can run as a named, non-admin WordPress user</td><td>jobs run as the system</td></tr>
+<tr><td>6</td><td>A text file can be bundled at build time (the instructions)</td><td>not found</td></tr>
+<tr><td>7</td><td>The host can supply a model with no setup: it registers a provider and its Connector, with the key in an environment variable</td><td>core has the hooks (<code>wp_connectors_init</code>); nothing on the Spacefast side was checked</td></tr>
+</table></div>
+<ul>
+  <li>Seams 2 to 4 are not specific to agents. Any larger plugin package needs them.</li>
+  <li>The option <code>agents: false</code> sets the ability's <code>public</code>, <code>show_in_rest</code> and <code>mcp.public</code> flags. It hides an operation from outside clients and does not stop PHP from calling it, so it will not limit an in-app agent. The agent's own <code>tools</code> list does that.</li>
+  <li>At runtime there are two schedulers today: Action Scheduler for jobs, and WordPress cron single events for a staged version's timed promote and for scheduled publishing (<code>Staged.php</code>, <code>Plugin.php</code>). Authors see one form.</li>
+  <li>This replaces section 4.10 of <code>docs/design-pages-and-agents.md</code> (Data Machine as the runtime, <code>pipelines</code> and <code>flows</code>) only if decision 7 below goes that way.</li>
+</ul>
+
+<h2><span class="n">13</span>Still yours to decide</h2>
+<div class="scroll"><table>
+<tr><th></th><th>Decision</th><th>Options</th><th>Recommended</th></tr>
+<tr><td>1</td><td>Default for <code>tp/app/</code> pages</td><td>(a) inside the theme, with <code>export const shell = false</code> to opt out; (b) the whole document as today, opt in</td><td>(a): it is what the Site Editor and one-set-of-tags rulings need</td></tr>
+<tr><td>2</td><td>A header or footer written in TSX</td><td>(a) a component in <code>export const blocks</code>, placed in the theme's header part; (b) kept in <code>layout.tsx</code> with the opt-out</td><td>(a)</td></tr>
+<tr><td>3</td><td>Preview database default</td><td>(a) <code>scratch</code> SQLite; (b) <code>live</code></td><td>(a)</td></tr>
+<tr><td>4</td><td>Who may deploy on multisite</td><td>(a) subsite admins deploy sources, super admins also upload builds; (b) super admins only</td><td>(a)</td></tr>
+<tr><td>5</td><td>Zero 0.8 converter coverage (census gaps)</td><td>(a) stop: migrate is a new project plus content sync; (b) keep closing gaps so a 0.8 publish converts itself</td><td>(a): 0 of 767 live 0.8 Spaces converted automatically on 2026-11-07</td></tr>
+<tr><td>6</td><td>On-site names after the rename</td><td><code>/__tp</code>, <code>wp_tp_</code>, <code>TypedPress\</code>, <code>TP_</code>, or keep the current ones under the new package name</td><td>rename all in the one scripted pass</td></tr>
+<tr><td>7</td><td>Which library runs an agent's loop</td><td>(a) Agents API on its own; (b) Data Machine on top of it, as ruled on 2026-11-01</td><td>(a): Data Machine has its own pipelines, flows and schedules, which is a second scheduling form</td></tr>
+<tr><td>8</td><td>The option that hides an operation from outside clients</td><td>(a) <code>abilities: false</code>; (b) keep <code>agents: false</code></td><td>(a), in the scripted rename pass</td></tr>
+</table></div>
+
+</body>
+</html>

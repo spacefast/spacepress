@@ -1,0 +1,11 @@
+{
+ "treeNotes": {},
+ "notes": {
+  "typedpress.config.ts": "no pages: the React app is the front end",
+  "tp/index.ts": "kinds, handlers, a job, two functions",
+  "tp/schedule.ts": "a weekly schedule",
+  "tp/lib/fields.ts": "plain helpers",
+  "web/src/tp.ts": "the client",
+  "web/src/Pantry.tsx": "a React component"
+ }
+}

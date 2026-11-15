@@ -1,0 +1,13 @@
+{
+ "treeNotes": {},
+ "notes": {
+  "cms/typedpress.config.ts": "points visitors at the Astro site",
+  "cms/tp/schema.ts": "one kind, kept as files too",
+  "cms/tp/content/plants/lavender.md": "one plant",
+  "cms/tp/content/plants/rosemary.md": "one plant",
+  "site/src/content.config.ts": "loads the plants at build time",
+  "site/src/pages/index.astro": "serves /",
+  "site/src/pages/plants/[slug].astro": "serves /plants/<slug>",
+  "site/astro.config.mjs": "a static Astro build"
+ }
+}

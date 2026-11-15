@@ -266,10 +266,7 @@ pub fn isolate(program: &Program, plugins: &mut [Plugin]) -> Result<()> {
             hash.update(program.fs.read_to_string(path).unwrap_or_default().as_bytes());
             hash.update([0]);
         }
-        plugins[i].integrity = format!(
-            "sha256-{}",
-            hash.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>()
-        );
+        plugins[i].integrity = format!("sha256-{}", crate::hex(hash.finalize()));
     }
     Ok(())
 }

@@ -155,36 +155,28 @@ pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()>
 
 fn zip_plugin(directory: &Path) -> std::io::Result<()> {
     use std::io::Write;
-    fn append(writer: &mut zip::ZipWriter<std::fs::File>, root: &Path, dir: &Path) -> std::io::Result<()> {
-        let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
-        entries.sort_by_key(|entry| entry.file_name());
-        for entry in entries {
-            let path = entry.path();
-            if entry.file_type()?.is_dir() {
-                append(writer, root, &path)?;
-            } else if entry.file_type()?.is_file() {
-                writer
-                    .start_file(
-                        path.strip_prefix(root).unwrap().to_string_lossy(),
-                        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated),
-                    )
-                    .map_err(std::io::Error::other)?;
-                writer.write_all(&std::fs::read(&path)?)?;
-            } else {
-                return Err(std::io::Error::other(
-                    "plugin trees cannot contain symlinks or special files",
-                ));
-            }
-        }
-        Ok(())
-    }
+    let root = directory.parent().unwrap();
+    let name = directory.file_name().unwrap().to_string_lossy();
+    let mut files = Vec::new();
+    listing(directory, directory, &mut files)?;
+    // Each directory's entries by name, a directory's contents where its name sorts: `a/b` before
+    // `a.txt`, as the archive has always listed them.
+    files.sort_by(|a, b| a.0.split('/').cmp(b.0.split('/')));
     // A new file, never one truncated in place: the stage's old ZIP may be a link to the published one.
     let archive = directory.with_extension("zip");
     if std::fs::symlink_metadata(&archive).is_ok() {
         std::fs::remove_file(&archive)?;
     }
     let mut writer = zip::ZipWriter::new(std::fs::File::create(archive)?);
-    append(&mut writer, directory.parent().unwrap(), directory)?;
+    for (rel, _) in files {
+        writer
+            .start_file(
+                format!("{name}/{rel}"),
+                zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated),
+            )
+            .map_err(std::io::Error::other)?;
+        writer.write_all(&std::fs::read(root.join(&*name).join(&rel))?)?;
+    }
     writer.finish().map_err(std::io::Error::other)?;
     Ok(())
 }

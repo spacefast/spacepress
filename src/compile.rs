@@ -10971,7 +10971,7 @@ fn php_local_base(name: &str) -> String {
     if !reserved && valid_start && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
         return name.to_string();
     }
-    let encoded: String = name.bytes().map(|b| format!("{b:02x}")).collect();
+    let encoded = crate::hex(name);
     format!("__first_local_{encoded}")
 }
 

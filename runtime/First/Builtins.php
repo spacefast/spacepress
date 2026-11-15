@@ -24,6 +24,8 @@ final class Builtins
         'first.job' => null,
         'first.route' => null,
         'first.env' => null,
+        'first.adminScreen' => null,
+        'first.item' => null,
         'first.files' => null,
         'first.relation' => null,
         'field.text' => null,

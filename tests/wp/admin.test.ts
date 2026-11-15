@@ -219,6 +219,41 @@ test("a declared screen: its declaration is served to users who may open it, wit
   assert.ok(pages.app.includes("first-screen-table-comments"), JSON.stringify(pages));
 });
 
+test("a screen declared with adminScreen() in TypeScript is registered and served like a PHP one", async () => {
+  // tests/wp/app/first/lanes/abilities.ts: `export const refsReview = adminScreen({ access: "editor", ... })`.
+  assert.equal((await fetch(`${site}/wp-json/first-admin/v1/screens/refs-review`)).status, 401);
+  assert.equal((await fetch(`${site}/wp-json/first-admin/v1/screens/refs-review`, { headers: auth("subscriber") })).status, 403);
+  const response = await fetch(`${site}/wp-json/first-admin/v1/screens/refs-review`, { headers: auth("editor") });
+  assert.equal(response.status, 200);
+  const screen = await response.json();
+  assert.equal(screen.title, "Comment bodies");
+  assert.equal(screen.view.ability, "blog/refs-rows");
+  assert.equal(screen.view.items, "rows");
+  assert.deepEqual(screen.view.fields.map((f: { id: string }) => f.id), ["id", "body"]);
+  assert.deepEqual(screen.view.layout, { type: "table", titleField: "body", fields: ["id"] });
+  // The action is the Ability the runtime registered for `refsPurge`, destructive and idempotent: DELETE.
+  assert.deepEqual(
+    screen.actions.map((a: Record<string, unknown>) => [a.id, a.ability, a.input, a.destructive, a.method]),
+    [["purge", "blog/refs-purge", { body: "{item.body}" }, true, "DELETE"]],
+  );
+  assert.deepEqual(screen.data, ["Purging deletes every comment with the same body."]);
+  // The list ability runs through core's run route over GET, as the screen calls it.
+  const rows = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/refs-rows/run`, { headers: auth("editor") });
+  assert.equal(rows.status, 200, await rows.clone().text());
+  assert.ok(Array.isArray((await rows.json()).rows));
+  // wp-admin lists it under Tools for editors.
+  const pages = JSON.parse(wp("eval", `
+    wp_set_current_user(${harness.users.editor.id});
+    require_once ABSPATH . 'wp-admin/includes/admin.php';
+    set_current_screen('dashboard');
+    global $menu, $submenu;
+    $menu = []; $submenu = [];
+    do_action('admin_menu', '');
+    echo wp_json_encode(array_column($submenu['tools.php'] ?? [], 2));
+  `));
+  assert.ok(pages.includes("first-screen-refs-review"), JSON.stringify(pages));
+});
+
 // The schema lock (config-api.md, "Schema lock") refuses edits to what First generates. First's admin
 // is First's own: what it reads from its REST controllers and what its screens save are content and
 // settings, never the schema, so none of it is refused.

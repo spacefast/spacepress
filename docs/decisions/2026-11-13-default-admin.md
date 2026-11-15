@@ -59,6 +59,14 @@ Fields and actions map onto WordPress 7.2's server registries
 registry. Actions stay bound to Abilities, which core's action schema carries as
 extra properties, so a screen keeps working as core's action API grows in 7.3.
 
+2026-11-15: an app declares screens in TypeScript with `adminScreen()`,
+exported like an action. The compiler checks it against the actions it names
+and writes the same declaration into the generated `schema.php`, with each
+action replaced by its Ability name. The app plugin passes each one to
+`first_admin_register_screen()` on `first_admin_screens`. TypeScript and PHP
+screens share that one registry, so there is still no second one, and the
+reasons above for server-side declarations hold.
+
 ## View config and field collections against core
 
 - **View config.** WordPress 7.1 serves `GET /wp/v2/view-config` and runs

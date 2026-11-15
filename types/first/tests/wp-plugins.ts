@@ -35,3 +35,8 @@ const git: WordPressPlugin = { version: "1.0", pluginData: { resource: "git:dire
 
 // @ts-expect-error Plugins are top-level package entries.
 defineConfig({ wordpress: { plugins: [] } });
+
+// XML-RPC and pings are WordPress's own unless the config turns them off.
+defineConfig({ xmlrpc: false, pings: false });
+// @ts-expect-error A switch is true or false.
+defineConfig({ xmlrpc: "off" });

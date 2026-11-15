@@ -154,19 +154,31 @@ describes. The app plugin applies every switch below at runtime
 (`runtime/First/Wp/Hardening.php`). Nothing is written to `wp-config.php`,
 mu-plugins or the site's stored settings. Deactivate the app and WordPress
 behaves as it ships again. A site with the runtime plugin but no active app
-isn't changed either. None of these switches can be turned off in
-`first.config.ts`.
+isn't changed either.
+
+XML-RPC, pingbacks and trackbacks stay as WordPress ships them: `xmlrpc.php`
+answers, and the site's Discussion settings (`default_ping_status`,
+`default_pingback_flag`, open and on in a new WordPress) decide whether new
+posts accept pings and whether publishing sends them (WordPress 7.1 and later
+also hold them on a site whose environment type isn't `production`). The `xmlrpc` and `pings`
+switches below apply only when the config turns them off:
+
+```ts
+export default defineConfig({ xmlrpc: false, pings: false });
+```
+
+No other switch can be turned off in `first.config.ts`.
 
 | switch | effect |
 |---|---|
-| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
-| `pings` | pingbacks and trackbacks closed in and out; outgoing pings never sent |
+| `xmlrpc` | only with `xmlrpc: false`. `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
+| `pings` | only with `pings: false`. Pingbacks and trackbacks closed in and out, whatever the Discussion settings say; outgoing pings never sent; no `pingback.ping` method on XML-RPC |
 | `emoji` | no emoji detection script or styles on the front end, wp-admin or embeds; no emoji images in feeds or mail |
 | `fileEditors` | the plugin and theme file editors are refused to everyone |
 | `pluginAndThemeInstalls` | installing, uploading, updating and deleting plugins, themes and core are refused in wp-admin and REST; activation and translations stay |
 | `autoUpdates` | no automatic core, plugin or theme updates |
 | `customizer` | `customize` is refused, so `customize.php` and its links are gone |
-| `comments` | comments closed on every post type except collections with `comments: true` |
+| `comments` | comments closed on every post type except collections with `comments: true`; pingbacks and trackbacks aren't comments here, they follow `pings` |
 | `authors` | the site's users aren't listed to the public: core's user routes, author archives, `?author=N`, the users sitemap and oEmbed's author fields (see [Authors](#authors)) |
 | `schemaLock` | the app's schema is changed in `first.config.ts` and nowhere on the site (see [Schema lock](#schema-lock)) |
 | `loginErrors` | signing in doesn't tell a visitor which accounts exist: an unknown username or email answers as a wrong password (`wp-login.php` shows one message and keeps the typed username either way), lost password answers "check your email" either way, an unknown user costs the same password hash as a wrong password, and a REST application password for an unknown user or a guest gets the wrong-password error. An imported account whose password hash is older than the site's (MD5, phpass) can still be told apart by timing on `wp-login.php` until it signs in once; First Identity's own sign-in times every stored hash type alike. With `first-identity`, an account with a second factor says so only once the password is right. Adapted from VIP's `security/login-error.php` (GPL-2.0-or-later) |
@@ -181,7 +193,8 @@ from wp-admin or REST, and unlisted active plugins are reported. See
 [sealed mode](sealed.md) for what that guarantees on a plain WordPress host and
 on a host that mounts the build store.
 
-`GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
+`GET /__first/api/v1` lists the switches the app applies in `runtime.wp.hardening`
+(`xmlrpc` and `pings` only when the config turns them off). The object cache
 is whatever the host's `object-cache.php` drop-in provides. A plugin can't
 install a drop-in, so the host supplies it (on Spacefast, the box image does).
 
@@ -1274,7 +1287,7 @@ These are build errors with the same message the runtime returns.
 ## defineConfig
 
 `defineConfig({ name?, webhooks?, services?, media?, uploads?, locales?, plugins?, use?, admin?,
-publicAuthors?, sealed?, frontend?, output?, runtimeSchema? })`. None of its keys registers a named
+publicAuthors?, xmlrpc?, pings?, sealed?, frontend?, output?, runtimeSchema? })`. None of its keys registers a named
 thing: kinds, globals, file buckets, actions and jobs register by their exports
 ([Exports register by name](#exports-register-by-name)). `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.

@@ -133,6 +133,8 @@ const CONFIG_KEYS: &[&str] = &[
     "plugins",
     "admin",
     "publicAuthors",
+    "xmlrpc",
+    "pings",
     "sealed",
     "services",
     "use",
@@ -298,6 +300,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         false,
         span_of(ev, config, "publicAuthors", config_span),
     )?;
+    out.schema.xmlrpc = bool_option(&cfg_map, "xmlrpc", true, span_of(ev, config, "xmlrpc", config_span))?;
+    out.schema.pings = bool_option(&cfg_map, "pings", true, span_of(ev, config, "pings", config_span))?;
     let runtime_schema = span_of(ev, config, "runtimeSchema", config_span);
     out.schema.runtime_schema = bool_option(&cfg_map, "runtimeSchema", false, runtime_schema)?.then(Default::default);
     out.schema.frontend = match cfg_map.get("frontend") {

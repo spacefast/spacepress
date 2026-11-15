@@ -1218,6 +1218,18 @@ export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
    */
   publicAuthors?: boolean;
   /**
+   * XML-RPC (`xmlrpc.php`, its RSD link and the pingback endpoint) as WordPress ships it. Default `true`.
+   * `false` turns it off: every call answers 403 and nothing advertises it, except Jetpack's own
+   * `jetpack.*` methods while its connection is loaded.
+   */
+  xmlrpc?: boolean;
+  /**
+   * Pingbacks and trackbacks as WordPress ships them: the site's Discussion settings decide whether
+   * new posts accept them and whether publishing notifies the sites a post links to. Default `true`.
+   * `false` closes them in and out, whatever those settings say.
+   */
+  pings?: boolean;
+  /**
    * Sealed mode: the only code that runs as a plugin is First's own plugins, the platform plugins,
    * the `plugins` declared here (exact versions, checksums in the committed lock) and `use` plugin
    * packages. Activating anything else is refused; anything else already loaded is reported. A host

@@ -124,7 +124,61 @@ test("xmlrpc: a Jetpack request signed with the blog token reaches Jetpack's sig
 
 test("pings: pingbacks and trackbacks are closed, and none go out", () => {
   const id = post("post", "Pinged");
-  assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('default_ping_status'), get_option('default_pingback_flag'), has_action('do_pings', 'do_all_pings')]);`), [false, "closed", "0", false]);
+  assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('default_ping_status'), get_option('default_pingback_flag'), get_default_comment_status('post', 'pingback'), has_action('do_pings', 'do_all_pings')]);`), [false, "closed", "0", "closed", false]);
+});
+
+/** This app's schema.php without `xmlrpc: false` and `pings: false`, as a config that leaves them out builds it; restored after. */
+async function withWordPressDefaults(run: () => Promise<void>) {
+  const schema = wp("eval", "echo First\\Wp\\Runtime::plugin()->dir . '/first/app/schema.php';");
+  const original = wp("eval", `echo base64_encode(file_get_contents('${schema}'));`);
+  wp("eval", `$s = file_get_contents('${schema}'); $d = str_replace(["    'xmlrpc' => false,\\n", "    'pings' => false,\\n"], '', $s); if (substr_count($s, '=> false,') - substr_count($d, '=> false,') !== 2) { exit(1); } file_put_contents('${schema}', $d);`);
+  try {
+    await run();
+  } finally {
+    wp("eval", `file_put_contents('${schema}', base64_decode('${original}'));`);
+  }
+}
+
+test("xmlrpc and pings left out of the config: WordPress's own, the site's Discussion settings included", async () => {
+  await withWordPressDefaults(async () => {
+    const listing = (await (await fetch(`${site}/__first/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
+    assert.deepEqual(listing, ["emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
+    // XML-RPC answers, signed-in methods included (an unscoped application password, as WordPress allows).
+    const listed = await xmlrpc("system.listMethods");
+    assert.equal(listed.status, 200);
+    assert.ok((await listedMethods(listed)).includes("wp.getUsersBlogs"));
+    const blogs = await xmlrpc("wp.getUsersBlogs", "/xmlrpc.php", call("wp.getUsersBlogs", `<param><value><string>admin</string></value></param><param><value><string>${harness.users.admin.appPassword}</string></value></param>`));
+    const answer = await blogs.text();
+    assert.equal(blogs.status, 200, answer);
+    assert.match(answer, /<name>isAdmin<\/name><value><boolean>1<\/boolean>/, answer);
+    assert.match(await (await page("/")).text(), /EditURI|xmlrpc\.php\?rsd/);
+    // A scoped agent password still signs in only where its scope is enforced: never over XML-RPC.
+    const agent = JSON.parse(wp("first", "identity", "agent", "add", "admin", `--name=xmlrpc-${Date.now()}`, "--write")).data;
+    try {
+      const scoped = await (await xmlrpc("wp.getUsersBlogs", "/xmlrpc.php", call("wp.getUsersBlogs", `<param><value><string>admin</string></value></param><param><value><string>${agent.password}</string></value></param>`))).text();
+      assert.match(scoped, /<name>faultCode<\/name>/, scoped);
+      assert.doesNotMatch(scoped, /isAdmin/, scoped);
+    } finally {
+      wp("first", "identity", "agent", "revoke", "admin", agent.id);
+    }
+    // Pings: what the site's own Discussion settings say, here as a new WordPress ships them (open, notify).
+    assert.deepEqual(evalJson("echo wp_json_encode([get_option('default_ping_status'), get_option('default_pingback_flag'), has_action('do_pings', 'do_all_pings')]);"), ["open", "1", 10]);
+    const open = post("post", "Pingable");
+    assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${open}), get_default_comment_status('post', 'pingback'), get_default_comment_status('post')]);`), [true, "open", "closed"], "pings follow WordPress, comments stay First's");
+    const single = await page(`/?p=${open}`);
+    const permalink = single.headers.get("location") ?? `/?p=${open}`;
+    assert.ok((await fetch(new URL(permalink, site))).headers.get("x-pingback")?.endsWith("/xmlrpc.php"));
+    // The owner changes the setting in Settings > Discussion: new posts follow it.
+    wp("option", "update", "default_ping_status", "closed");
+    try {
+      const closed = Number(wp("post", "create", "--post_type=post", "--post_title=Unpingable", "--post_status=publish", "--porcelain"));
+      assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${closed}), get_default_comment_status('post', 'pingback')]);`), [false, "closed"]);
+    } finally {
+      wp("option", "update", "default_ping_status", "open");
+    }
+  });
+  // Back to this app's own `xmlrpc: false`.
+  assert.equal((await xmlrpc("system.listMethods")).status, 403);
 });
 
 test("the facade's built-in settings: public fields for everyone, writes for admins, as core decides", async () => {

@@ -126,8 +126,8 @@ final class Plugin
                 3,
             );
         });
-        // Failed password attempts through WordPress's own sign-in (wp-login.php, XML-RPC where a
-        // site turns it on, any caller of wp_authenticate) are limited per address and per login, with
+        // Failed password attempts through WordPress's own sign-in (wp-login.php, XML-RPC unless the
+        // app turns it off, any caller of wp_authenticate) are limited per address and per login, with
         // the limits of Identity's own password sign-in ({@see Api}, `sign-in/password`). A failure is
         // counted when WordPress reports it; once a counter is full, every attempt is refused until
         // the window ends, the right password too. Core's handlers (priority 20) and the email one

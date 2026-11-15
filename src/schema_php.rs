@@ -379,6 +379,13 @@ pub fn render(schema: &Schema) -> String {
     if schema.public_authors {
         out.push_str("    'publicAuthors' => true,\n");
     }
+    // Written only when the config turns them off: absent is WordPress's own behaviour (spec §6).
+    if !schema.xmlrpc {
+        out.push_str("    'xmlrpc' => false,\n");
+    }
+    if !schema.pings {
+        out.push_str("    'pings' => false,\n");
+    }
     match &schema.frontend {
         None => {}
         Some(crate::kind_url::Frontend::Off) => out.push_str("    'frontend' => false,\n"),

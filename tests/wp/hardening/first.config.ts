@@ -19,6 +19,10 @@ export const contacts = table({
 export const countNotes = action({ input: {}, access: "subscriber", readonly: true, handler: () => ({ ok: true }) });
 export const touchNotes = action({ input: {}, access: "editor", handler: () => ({ ok: true }) });
 
+// XML-RPC and pings are WordPress's own by default; this app turns them off so the lane proves both
+// switches (hardening.test.ts puts the defaults back for one test).
 export default defineConfig({
   name: "hardening-lane",
+  xmlrpc: false,
+  pings: false,
 });

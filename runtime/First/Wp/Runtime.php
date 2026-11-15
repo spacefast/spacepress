@@ -428,7 +428,7 @@ final class Runtime
             self::$appFile = $mainFile;
             \First\Extensions::schemaDescribe(static function (array $description): array {
                 $description['runtime']['wp'] = Platform::versions();
-                $description['runtime']['wp']['hardening'] = Hardening::SWITCHES;
+                $description['runtime']['wp']['hardening'] = Hardening::switches(self::$plugin->schema);
                 $description['runtime']['wp']['publicAuthors'] = Authors::public(self::$plugin->schema);
                 // The names of what is loaded are for the site's administrators (and `first doctor`
                 // signed in as one); anyone else learns only whether the site is sealed.

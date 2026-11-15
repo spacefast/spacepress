@@ -165,6 +165,18 @@ final class Schema
         return ($this->raw['publicAuthors'] ?? false) === true;
     }
 
+    /** `xmlrpc`: XML-RPC as WordPress ships it, unless the config turns it off (spec §6). */
+    public function xmlrpc(): bool
+    {
+        return ($this->raw['xmlrpc'] ?? true) !== false;
+    }
+
+    /** `pings`: pingbacks and trackbacks as WordPress ships them, unless the config turns them off (spec §6). */
+    public function pings(): bool
+    {
+        return ($this->raw['pings'] ?? true) !== false;
+    }
+
     public function auth(): array
     {
         return $this->raw['auth'] ?? ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];

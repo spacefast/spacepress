@@ -292,7 +292,7 @@ and a TanStack list updates live.
 Scheduler, the MCP Adapter, Two Factor and (with `locales`) Polylang. Spam
 checks use the Akismet a site has through Jetpack, when it has a key.
 It also hardens WordPress:
-- turns off XML-RPC, pings, emoji scripts, file editors, plugin and theme installs, core auto-updates and the Customizer;
+- turns off emoji scripts, file editors, plugin and theme installs, core auto-updates and the Customizer, and XML-RPC and pings when the config says so (`xmlrpc: false`, `pings: false`);
 - disables comments everywhere except kinds that turn them on;
 - refuses edits made on the site to the schema First generates (the schema lock);
 - closes the public listing of users unless the app makes authors public;

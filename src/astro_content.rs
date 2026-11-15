@@ -131,6 +131,15 @@ const RESERVED_KINDS: &[&str] = &[
 /// WordPress post types are at most 20 characters, and First's are `first_<name>`.
 const MAX_NAME: usize = 20 - "first_".len();
 
+/// The text of a string literal. One that holds half of a surrogate pair (`"\uD800"`) has none:
+/// it isn't UTF-8, so it reads as "not a plain string" wherever one is required.
+fn string_literal<'a>(e: &a::Expression<'a>) -> Option<&'a str> {
+    match e {
+        a::Expression::StringLiteral(s) => s.value.as_str(),
+        _ => None,
+    }
+}
+
 /// A name First can use as an identifier: a letter, then letters, digits and underscores.
 fn ident(name: &str) -> bool {
     let mut chars = name.chars();
@@ -224,7 +233,8 @@ fn read(source: &str, file: u32) -> Result<Vec<Collection>> {
                 "list each collection by name",
             ));
         };
-        let Some(name) = p.key.static_name().filter(|_| !p.computed) else {
+        let name = p.key.static_name().filter(|_| !p.computed);
+        let Some(name) = name.as_ref().and_then(|n| n.as_str()) else {
             return Err(unsupported(
                 file,
                 p.span,
@@ -241,12 +251,12 @@ fn read(source: &str, file: u32) -> Result<Vec<Collection>> {
             },
             other => other,
         };
-        let Some(c) = reader.define(&name, value)? else {
+        let Some(c) = reader.define(name, value)? else {
             continue;
         };
         let key = span(file, p.key.span());
-        let physical = crate::schema::physical_name(&name);
-        if !ident(&name) || name.starts_with("__") {
+        let physical = crate::schema::physical_name(name);
+        if !ident(name) || name.starts_with("__") {
             return Err(Diag::new(key, format!("collection `{name}` can't be a First kind's name"))
                 .help("name it with letters, digits and underscores, starting with a letter: it is the kind's API name")
                 .code(Code::Schema));
@@ -313,7 +323,7 @@ impl<'s> Reader<'s> {
         let (mut loader, mut schema) = (None, None);
         for prop in &options.properties {
             if let a::ObjectPropertyKind::ObjectProperty(p) = prop {
-                match p.key.static_name().as_deref() {
+                match p.key.static_name().as_ref().and_then(|n| n.as_str()) {
                     Some("loader") => loader = Some(&p.value),
                     Some("schema") => schema = Some(&p.value),
                     _ => {}
@@ -440,13 +450,15 @@ impl<'s> Reader<'s> {
                 return Err(fail(prop.span(), "write `pattern` and `base` out"));
             };
             let value = match p.value.get_inner_expression() {
-                a::Expression::StringLiteral(s) => s.value.to_string(),
                 a::Expression::TemplateLiteral(t) if t.expressions.is_empty() && t.quasis.len() == 1 => {
                     t.quasis[0].value.raw.to_string()
                 }
-                other => return Err(fail(other.span(), "write the pattern and base as plain strings")),
+                other => match string_literal(other) {
+                    Some(text) => text.to_string(),
+                    None => return Err(fail(other.span(), "write the pattern and base as plain strings")),
+                },
             };
-            match p.key.static_name().as_deref() {
+            match p.key.static_name().as_ref().and_then(|n| n.as_str()) {
                 Some("pattern") => pattern = Some((value, p.value.span())),
                 Some("base") => base = Some((value, p.value.span())),
                 Some("generateId") => {
@@ -536,14 +548,15 @@ impl<'s> Reader<'s> {
                 .help("write each field out")
                 .code(Code::Schema));
             };
-            let Some(name) = p.key.static_name().filter(|_| !p.computed) else {
+            let name = p.key.static_name().filter(|_| !p.computed);
+            let Some(name) = name.as_ref().and_then(|n| n.as_str()) else {
                 return Err(
                     Diag::new(self.at(p.span), "a computed field name can't be read as a First kind")
                         .help("name the field")
                         .code(Code::Schema),
                 );
             };
-            let mut field = self.field(&name, &p.value)?;
+            let mut field = self.field(name, &p.value)?;
             field.key = p.key.span();
             out.push(field);
         }
@@ -653,13 +666,18 @@ impl<'s> Reader<'s> {
                     Some(a::Expression::ArrayExpression(arr)) => arr
                         .elements
                         .iter()
-                        .map(|el| match el.as_expression().map(|e| e.get_inner_expression()) {
-                            Some(a::Expression::StringLiteral(s)) => Ok(s.value.to_string()),
-                            _ => Err(refuse(
-                                el.span(),
-                                "an enum value that isn't a string".into(),
-                                "list the values as strings",
-                            )),
+                        .map(|el| {
+                            match el
+                                .as_expression()
+                                .and_then(|e| string_literal(e.get_inner_expression()))
+                            {
+                                Some(text) => Ok(text.to_string()),
+                                None => Err(refuse(
+                                    el.span(),
+                                    "an enum value that isn't a string".into(),
+                                    "list the values as strings",
+                                )),
+                            }
                         })
                         .collect::<Result<Vec<_>>>()?,
                     _ => {
@@ -709,9 +727,12 @@ impl<'s> Reader<'s> {
                         };
                         let mut values = Vec::new();
                         for el in &arr.elements {
-                            match el.as_expression().map(|e| e.get_inner_expression()) {
-                                Some(a::Expression::StringLiteral(s)) => values.push(format!("{:?}", s.value.as_str())),
-                                _ => {
+                            match el
+                                .as_expression()
+                                .and_then(|e| string_literal(e.get_inner_expression()))
+                            {
+                                Some(text) => values.push(format!("{text:?}")),
+                                None => {
                                     return Err(refuse(
                                         el.span(),
                                         "an enum value that isn't a string".into(),

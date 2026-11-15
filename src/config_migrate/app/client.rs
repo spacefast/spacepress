@@ -18,7 +18,7 @@
 use super::super::{Entry, Failure, entry, fail};
 use crate::loader::Fs;
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{ImportDeclarationSpecifier, ModuleExportName, Statement, Str};
+use oxc_ast::ast::{ImportDeclarationSpecifier, ModuleExportName, Statement, StringLiteral};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use std::collections::{BTreeMap, BTreeSet};
@@ -230,7 +230,7 @@ impl Walk<'_> {
         let mut follow = vec![];
         let mut sources = vec![];
         for stmt in &program.body {
-            let (source, offset, names): (&str, u32, Vec<String>) = match stmt {
+            let (source, names): (&StringLiteral, Vec<String>) = match stmt {
                 Statement::ImportDeclaration(d) => {
                     if d.import_kind.is_type() {
                         continue;
@@ -248,18 +248,26 @@ impl Walk<'_> {
                             _ => None,
                         })
                         .collect();
-                    (d.source.value.as_str(), d.source.span.start, names)
+                    (&d.source, names)
                 }
                 Statement::ExportFromDeclaration(d) if !d.export_kind.is_type() => {
-                    let names = d.specifiers.iter().map(|x| export_name(&x.local)).collect();
-                    (d.source.value.as_str(), d.source.span.start, names)
+                    (&d.source, d.specifiers.iter().map(|x| export_name(&x.local)).collect())
                 }
-                Statement::ExportAllDeclaration(d) if !d.export_kind.is_type() => {
-                    (d.source.value.as_str(), d.source.span.start, vec!["*".into()])
-                }
+                Statement::ExportAllDeclaration(d) if !d.export_kind.is_type() => (&d.source, vec!["*".into()]),
                 _ => continue,
             };
-            sources.push((source.to_string(), offset, names));
+            // A specifier that isn't UTF-8 (half a surrogate pair) names no file.
+            let Some(specifier) = source.value.as_str() else {
+                self.refuse(
+                    relative,
+                    &text,
+                    source.span.start,
+                    TAG_IMPORT,
+                    source.value.display().to_string(),
+                );
+                continue;
+            };
+            sources.push((specifier.to_string(), source.span.start, names));
         }
         for (source, offset, names) in sources {
             if let Some(path) = platform(&source) {
@@ -308,9 +316,9 @@ impl Walk<'_> {
                 _ => None,
             };
             if let Some(source) = source
-                && let Some(to) = rewrites.get(source.value.as_str())
+                && let Some(to) = source.value.as_str().and_then(|from| rewrites.get(from))
             {
-                source.value = Str::from(arena.alloc_str(to));
+                source.value = arena.alloc_str(to).into();
                 source.raw = None;
             }
         }
@@ -401,7 +409,7 @@ fn export_name(name: &ModuleExportName) -> String {
     match name {
         ModuleExportName::IdentifierName(n) => n.name.to_string(),
         ModuleExportName::IdentifierReference(n) => n.name.to_string(),
-        ModuleExportName::StringLiteral(s) => s.value.to_string(),
+        ModuleExportName::StringLiteral(s) => s.value.display().to_string(),
     }
 }
 

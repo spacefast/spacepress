@@ -648,6 +648,58 @@ export {{ notes }}; const __encode = action({{ input: {{}}, handler: {handler_bo
     }
 }
 
+/// A JavaScript string is UTF-16 and may hold half of a surrogate pair; a PHP string is bytes and
+/// First's are UTF-8, which has no encoding for one. Every place source text becomes a string
+/// refuses it, at the text. Before oxc 0.158 the parser marked only string literals; a template,
+/// a literal type or a quoted key carried the parser's escape for the half (`U+FFFD` and four hex
+/// digits) into the schema as if it were text.
+#[test]
+fn half_a_surrogate_pair_is_refused_wherever_source_text_becomes_a_string() {
+    let config = |line: &str| {
+        format!(
+            r#"import {{ collection, text, defineConfig }} from "first";
+{line}
+const notes = collection({{ title: text() }}, {{ title: "title" }});
+export {{ notes }}; export default defineConfig({{}});
+"#
+        )
+    };
+    for (line, column) in [
+        (r#"const s = "a\uD800b";"#, 11),
+        (r"const s = `a\uD800b`;", 12),
+        (r"const s = `a${1}\uDC00`;", 17),
+        (r#"type T = "a\uD800b"; const s = "x" as T;"#, 10),
+        (r"type T = `a\uD800b`; const s = 'x' as T;", 11),
+        (r#"const o = { "a\uD800b": 1 };"#, 13),
+        (r#"type O = { "a\uD800b": number };"#, 12),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), config(line)).unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{line}: {report}");
+        let diagnostics = report["diagnostics"].as_array().unwrap();
+        assert_eq!(diagnostics.len(), 1, "{line}: {report}");
+        let d = &diagnostics[0];
+        assert_eq!(d["code"], "F1002", "{line}: {report}");
+        assert_eq!(
+            d["message"], "First code doesn't support strings with lone UTF-16 surrogates",
+            "{line}: {report}"
+        );
+        assert_eq!(d["location"]["line"], 2, "{line}: {report}");
+        assert_eq!(d["location"]["column"], column, "{line}: {report}");
+    }
+    // A whole pair is one character, written either way.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("first.config.ts"),
+        config(r#"const s = "\uD83D\uDE42" + `\uD83D\uDE42`; type T = "\uD83D\uDE42"; const o = { "\uD83D\uDE42": s as T };"#),
+    )
+    .unwrap();
+    let (out, report) = checked(tmp.path());
+    assert_eq!(out.status.code(), Some(0), "{report}");
+    assert_eq!(report["ok"], true, "{report}");
+}
+
 #[test]
 fn type_guards_validate_their_domains_and_boolean_returns() {
     for (helper, message) in [

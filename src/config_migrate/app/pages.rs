@@ -137,7 +137,8 @@ fn static_markup(text: &str, at: &str) -> Result<Vec<String>, Failure> {
     let mut imports = vec![];
     for s in &parsed.program.body {
         if let Statement::ImportDeclaration(i) = s {
-            let source = i.source.value.as_str();
+            // A specifier that isn't UTF-8 (half a surrogate pair) names no local module.
+            let source = i.source.value.as_str().unwrap_or_default();
             let type_only = i.import_kind == ImportOrExportKind::Type
                 || i.specifiers.as_ref().is_some_and(|ss| {
                     !ss.is_empty()
@@ -227,7 +228,7 @@ fn rewrite_imports(text: &str, map: impl Fn(&str) -> Option<String>) -> String {
             _ => None,
         })
         .filter_map(|source| {
-            let spec = source.value.as_str();
+            let spec = source.value.as_str()?;
             let quote = &text[source.span.start as usize..source.span.start as usize + 1];
             map(spec).map(|to| {
                 (

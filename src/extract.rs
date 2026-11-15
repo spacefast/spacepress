@@ -792,7 +792,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     }
     // Screens name actions, the app's and its plugins', so they come after both.
     if let Some(v) = cfg_map.get("screens").filter(|v| !matches!(v, Value::Undef)) {
-        crate::admin_screen::screens(v, span_of(ev, config, "screens", config_span), ev, &mut out, None)?;
+        crate::admin_screen::screens(v, span_of(ev, config, "screens", config_span), ev, &mut out)?;
     }
     validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)

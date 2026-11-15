@@ -1,8 +1,9 @@
 // First Admin as `first build` ships it to every app (docs/admin.md): the artifact carries
 // `first-admin` and the harness activates it after the app. What this proves: the plugin is active,
 // serves its page at the upstream mount /wp-admin/new/ to signed-in users only, loads the committed
-// build rather than an empty shell, lands users there after login, keeps classic wp-admin, and
-// redirects the earlier /first-admin/ address.
+// build rather than an empty shell, lands users there after login, frames classic wp-admin pages
+// unless the user turned developer mode on, and redirects the earlier /first-admin/ and /legacy/
+// addresses.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -84,6 +85,8 @@ test("/wp-admin/new/ asks anonymous visitors to sign in and serves the committed
     // Classic wp-admin is unchanged. (Polylang sends the first wp-admin load after its activation
     // to its setup wizard; this asks for a page, so take that one-time redirect out of the way.)
     wp("transient", "delete", "pll_activation_redirect");
+    // Classic wp-admin still serves its pages (to the frame, to scripts); a browser opening one as a
+    // page without developer mode is sent to it framed in First Admin (the test below).
     const classic = await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie }, redirect: "manual" });
     assert.equal(classic.status, 200, `${role} keeps classic wp-admin`);
     assert.match(await classic.text(), /id="adminmenu"/);
@@ -303,4 +306,96 @@ test("the app's own wp-admin menu entry opens its collections in First Admin; it
   const table = await fetch(`${site}/wp-admin/admin.php?page=first-screen-table-comments`, { headers: { cookie }, redirect: "manual" });
   assert.equal(table.status, 200, "a table screen under the entry still renders");
   assert.match(await table.text(), /id="first-admin-screen" data-screen-id="table-comments"/);
+});
+
+/** The JSON the page hands `init()`: the sidebar's menu items. */
+async function sidebar(cookie: string): Promise<{ id: string; to: string; label: string; parent?: string }[]> {
+  const html = await (await fetch(`${site}/wp-admin/new/`, { headers: { cookie } })).text();
+  const m = html.match(/mod\.init\( (\[.*?\]), (\[.*?\]), (\[.*?\]), (\[.*?\]), (\{.*?\}) \)/s);
+  assert.ok(m, "the page boots the app with its payload");
+  return JSON.parse(m[2]);
+}
+
+test("without developer mode, a classic page opened as a page is framed in First Admin; the frame, scripts and editing are served as before", async () => {
+  const admin = harness.users.admin.id;
+  wp("user", "meta", "delete", String(admin), "first_admin_developer_mode");
+  const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
+  wp("transient", "delete", "pll_activation_redirect");
+  const open = (path: string, dest: string | null, method = "GET") =>
+    fetch(`${site}/wp-admin/${path}`, { method, headers: { cookie, ...(dest ? { "sec-fetch-dest": dest } : {}) }, redirect: "manual" });
+  for (const [path, to] of [
+    ["", "/wp-admin/new/"],
+    ["index.php", "/wp-admin/new/"],
+    ["options-permalink.php", "/wp-admin/new/classic/options-permalink.php"],
+    ["edit-comments.php?comment_status=moderated", "/wp-admin/new/classic/edit-comments.php%3Fcomment_status%3Dmoderated"],
+    ["tools.php?page=first-screen-test-admin-only", "/wp-admin/new/classic/tools.php%3Fpage%3Dfirst-screen-test-admin-only"],
+  ]) {
+    const response = await open(path, "document");
+    assert.equal(response.status, 302, path);
+    assert.equal(response.headers.get("location"), `${site}${to}`, path);
+  }
+  // The frame's own request, a request that names no destination, and the pages that edit or upload are served.
+  for (const [path, dest] of [["options-permalink.php", "iframe"], ["options-permalink.php", null], ["post-new.php", "document"], ["media-new.php", "document"], ["admin.php?page=first-admin&p=%2F", "document"]] as const) {
+    const response = await open(path, dest);
+    assert.equal(response.status, 200, `${path} (${dest ?? "no Sec-Fetch-Dest"}): ${response.headers.get("location")}`);
+  }
+  assert.notEqual((await open("admin-ajax.php?action=heartbeat", "document", "POST")).status, 302, "admin-ajax.php is never redirected");
+  // On, classic wp-admin opens as it is.
+  wp("user", "meta", "update", String(admin), "first_admin_developer_mode", "1");
+  try {
+    const response = await open("options-permalink.php", "document");
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /id="adminmenu"/);
+  } finally {
+    wp("user", "meta", "delete", String(admin), "first_admin_developer_mode");
+  }
+});
+
+test("developer mode is a user setting on core's user route, and decides whether the sidebar has Classic admin", async () => {
+  const me = () => fetch(`${site}/wp-json/wp/v2/users/me?context=edit`, { headers: auth("editor") }).then((r) => r.json());
+  assert.equal((await me()).first_admin_developer_mode, false, "off by default");
+  const cookie = await loginCookie(site, "editor", `${site}/wp-admin/new/`);
+  assert.equal((await sidebar(cookie)).some((i) => i.id === "classic"), false, "no Classic admin without developer mode");
+  const set = (on: boolean) => fetch(`${site}/wp-json/wp/v2/users/me`, { method: "POST", headers: { ...auth("editor"), "content-type": "application/json" }, body: JSON.stringify({ first_admin_developer_mode: on }) });
+  try {
+    assert.equal((await set(true)).status, 200);
+    assert.equal((await me()).first_admin_developer_mode, true);
+    const classic = (await sidebar(cookie)).find((i) => i.id === "classic");
+    assert.equal(classic?.to, `${site}/wp-admin/`);
+  } finally {
+    assert.equal((await set(false)).status, 200);
+  }
+  assert.equal((await me()).first_admin_developer_mode, false);
+  // Another user's setting is theirs: an editor may not turn it on for the administrator.
+  const other = await fetch(`${site}/wp-json/wp/v2/users/${harness.users.admin.id}`, { method: "POST", headers: { ...auth("editor"), "content-type": "application/json" }, body: JSON.stringify({ first_admin_developer_mode: true }) });
+  assert.notEqual(other.status, 200);
+  assert.equal(wp("user", "meta", "get", String(harness.users.admin.id), "first_admin_developer_mode"), "");
+});
+
+test("the classic route's earlier address /legacy/<slug> redirects to /classic/<slug>", async () => {
+  const cookie = await loginCookie(site, "editor", `${site}/wp-admin/new/`);
+  const pretty = await fetch(`${site}/wp-admin/new/legacy/options-media.php`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(pretty.status, 301);
+  assert.equal(pretty.headers.get("location"), `${site}/wp-admin/new/classic/options-media.php`);
+  const query = await fetch(`${site}/wp-admin/admin.php?page=first-admin&p=${encodeURIComponent("/legacy/options-media.php")}`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(query.status, 301);
+  assert.equal(new URL(query.headers.get("location")!).searchParams.get("p"), "/classic/options-media.php");
+});
+
+test("the sidebar reaches classic-only screens through /classic/ and leaves out what the app turned off", async () => {
+  const items = await sidebar(await loginCookie(site, "admin", `${site}/wp-admin/new/`));
+  const to = (id: string) => items.find((i) => i.id === id)?.to;
+  // Settings pages First Admin has no screen for, and Tools, framed.
+  for (const page of ["options-writing.php", "options-discussion.php", "options-media.php", "options-permalink.php", "options-privacy.php"]) {
+    assert.equal(to(`settings-${page.replace(/[^a-z0-9_-]/g, "")}`), `/classic/${page}`, page);
+  }
+  assert.equal(items.some((i) => i.parent === "settings" && i.to === "/classic/options-general.php"), false, "General has its own screen");
+  assert.equal(to("tools-site-healthphp"), "/classic/site-health.php");
+  // The hardening switches refuse installs, file editors and the Customizer: none of them is offered.
+  for (const item of items) {
+    assert.doesNotMatch(item.to, /plugin-install\.php|theme-install\.php|theme-editor\.php|plugin-editor\.php|customize\.php|\/plugins\/install/, `${item.id} -> ${item.to}`);
+  }
+  // Comments: offered while the app takes them or the site has some, else left out.
+  const relevant = JSON.parse(wp("eval", "echo wp_json_encode(first_admin_comments_relevant());"));
+  assert.equal(items.some((i) => i.id === "comments"), relevant);
 });

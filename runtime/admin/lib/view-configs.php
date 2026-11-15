@@ -111,6 +111,11 @@ add_filter(
 							'bio',
 						),
 					),
+					array(
+						'id'       => 'admin_preferences',
+						'label'    => __( 'Admin', 'first-admin' ),
+						'children' => array( 'first_admin_developer_mode' ),
+					),
 				),
 			),
 			'actions'         => array( 'quick_edit', 'full_edit', 'delete', 'update_role' ),

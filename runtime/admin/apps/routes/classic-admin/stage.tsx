@@ -11,8 +11,8 @@ import { isUnderAdmin, resolveAdminUrl, slugOf } from './admin-url';
 
 const { useRouter } = unlock( routePrivateApis );
 
-function LegacyAdmin() {
-	const { slug } = useParams( { from: '/legacy/$slug' } );
+function ClassicAdmin() {
+	const { slug } = useParams( { from: '/classic/$slug' } );
 	const navigate = useNavigate();
 	const router = useRouter();
 
@@ -62,7 +62,7 @@ function LegacyAdmin() {
 			// Only navigate if the slug actually changed
 			if ( newSlug !== decodeURIComponent( currentSlug ) ) {
 				navigate( {
-					to: '/legacy/$slug',
+					to: '/classic/$slug',
 					params: { slug: encodeURIComponent( newSlug ) },
 				} );
 			}
@@ -135,9 +135,9 @@ function LegacyAdmin() {
 				display: 'block',
 				backgroundColor: 'white',
 			} }
-			title="Legacy Admin Page"
+			title="Classic admin page"
 		/>
 	);
 }
 
-export default LegacyAdmin;
+export default ClassicAdmin;

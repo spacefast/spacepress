@@ -60,7 +60,29 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await expect(
 		page.getByRole('button', { name: 'Add Media File', exact: true })
 	).toBeVisible();
+	// Without developer mode (the default) classic wp-admin is not offered on its own: the sidebar has
+	// no Classic admin, and the classic dashboard opened as a page lands in First Admin.
 	const classic = sidebar.getByRole('link', { name: 'Classic admin', exact: true });
+	await expect(classic).toHaveCount(0);
+	await page.goto(`${site}/wp-admin/`);
+	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
+	// A classic page opened as a page is framed in First Admin at /classic/<slug>, with no wp-admin chrome around it.
+	await page.goto(`${site}/wp-admin/profile.php`);
+	await expect(page).toHaveURL(`${site}/wp-admin/new/classic/profile.php`);
+	const framed = page.frameLocator('iframe[title="Classic admin page"]');
+	await expect(framed.locator('#your-profile')).toBeVisible();
+	await expect(framed.locator('#adminmenu')).toBeHidden();
+	// The route's earlier address still opens it.
+	await page.goto(`${site}/wp-admin/new/legacy/profile.php`);
+	await expect(page).toHaveURL(`${site}/wp-admin/new/classic/profile.php`);
+	// Developer mode is a setting on the user's own profile.
+	await page.goto(`${site}/wp-admin/new/profile`);
+	const developer = page.getByRole('checkbox', { name: 'Developer mode', exact: true });
+	const savedMode = page.waitForResponse((r) => /\/wp\/v2\/users\/\d+/.test(new URL(r.url()).pathname) && r.request().method() !== 'GET');
+	await developer.check();
+	expect((await savedMode).status()).toBe(200);
+	await page.reload();
+	await expect(developer).toBeChecked();
 	await expect(classic).toHaveAttribute('href', `${site}/wp-admin/`);
 	await classic.click();
 	await expect(page).toHaveURL(`${site}/wp-admin/`);
@@ -84,6 +106,12 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await page.getByRole('option', { name: 'Go to Classic admin Action', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/`);
 	await expect(page.locator('#adminmenu')).toBeVisible();
+	// Off again, for the journeys after this one.
+	await page.goto(`${site}/wp-admin/new/profile`);
+	await developer.uncheck();
+	await page.reload();
+	await expect(developer).not.toBeChecked();
+	await expect(classic).toHaveCount(0);
 	if (subdir) {
 		await page.goto(`${site}/wp-admin/new/types/post/list/all`);
 		await expect(page.getByRole('table')).toBeVisible();
@@ -384,7 +412,14 @@ if (!subdir) {
 		await extra.fill('plain invalid-only draft');
 		await expect(extra).toHaveAttribute('aria-invalid', 'true');
 		const leaving = page.waitForEvent('dialog');
-		const classicClick = page.getByRole('link', { name: 'Classic admin', exact: true }).click();
+		// A link that leaves First Admin: the page asks before unloading the draft.
+		await page.evaluate((href) => {
+			const a = document.createElement('a');
+			a.href = href;
+			a.textContent = 'Leave for the front end';
+			document.body.append(a);
+		}, `${site}/`);
+		const classicClick = page.getByRole('link', { name: 'Leave for the front end', exact: true }).click();
 		const warning = await leaving;
 		expect(warning.type()).toBe('beforeunload');
 		await warning.dismiss();
@@ -677,7 +712,7 @@ if (!subdir) {
 		expect((await request.get(`${site}/__first/api/v1/media/${editedImage.id}`, { headers })).status()).toBe(200);
 	});
 
-test('restored native WordPress routes persist settings and published content and keep classic admin reachable', async ({ page, request }) => {
+test('restored native WordPress routes persist settings and published content and keep classic pages reachable in First Admin', async ({ page, request }) => {
     test.setTimeout(180_000);
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -748,11 +783,17 @@ test('restored native WordPress routes persist settings and published content an
     expect(await publicPage.text()).toContain(`${title} saved`);
     await page.screenshot({ path: test.info().outputPath('native-wordpress-editor.png') });
 
+    // Classic Settings pages First Admin has no screen for are in its sidebar, framed at /classic/<slug>.
     await page.goto(`${site}/wp-admin/new/`);
-    await page.getByRole('link', { name: 'Classic admin', exact: true }).click();
-    await expect(page.locator('#adminmenu')).toBeVisible();
+    const sidebar = page.locator('.first-admin-sidebar__content');
+    await expect(sidebar.getByRole('link', { name: 'Classic admin', exact: true })).toHaveCount(0);
+    await sidebar.getByRole('link', { name: 'Settings', exact: true }).click();
+    await sidebar.getByRole('link', { name: 'Permalinks', exact: true }).click();
+    await expect(page).toHaveURL(`${site}/wp-admin/new/classic/options-permalink.php`);
+    await expect(page.frameLocator('iframe[title="Classic admin page"]').locator('#permalink_structure')).toBeVisible();
     await page.goto(`${site}/wp-admin/options-general.php`);
-    await expect(page.locator('#blogdescription')).toHaveValue(description);
+    await expect(page).toHaveURL(`${site}/wp-admin/new/classic/options-general.php`);
+    await expect(page.frameLocator('iframe[title="Classic admin page"]').locator('#blogdescription')).toHaveValue(description);
     await page.screenshot({ path: test.info().outputPath('native-classic-admin.png') });
 
     const subscriber = { Authorization: `Basic ${Buffer.from(`subscriber:${harness.users.subscriber.appPassword}`).toString('base64')}` };

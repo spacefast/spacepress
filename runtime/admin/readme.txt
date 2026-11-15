@@ -34,10 +34,12 @@ WordPress REST owns media reads and caption/title editing. Existing plugin
 ownership and storage configuration remain in place.
 
 Collections in the sidebar expands to the app's readable collections. Choose
-All collections to return to the overview. Classic admin opens the full native
-WordPress admin, including its sidebar and plugin screens. Choose First in the
-WordPress sidebar to return to First Admin. First Admin also includes the native Users, Settings, Plugins, Themes and Design
-routes. Classic admin remains available for every WordPress plugin screen.
+All collections to return to the overview. Classic WordPress screens First
+Admin has no screen of its own for (Comments, Tools, the remaining Settings
+pages, plugin screens) open inside First Admin. Developer mode, on your profile,
+adds Classic admin to the sidebar, which opens the full native WordPress admin;
+choose First in the WordPress sidebar to return. First Admin also includes the
+native Users, Settings, Plugins, Themes and Design routes.
 The upstream dashboard is the home route, /wp-admin/new/; demonstration widgets
 explicitly label their example data. See docs/admin.md for provenance, build
 commands and external-service boundaries.

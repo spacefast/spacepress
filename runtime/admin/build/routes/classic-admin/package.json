@@ -1,9 +1,9 @@
 {
-	"name": "@first-admin/route-legacy-admin",
+	"name": "@first-admin/route-classic-admin",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
-		"path": "/legacy/$slug"
+		"path": "/classic/$slug"
 	},
 	"dependencies": {
 		"@first-admin/admin-toolkit": "workspace:*",

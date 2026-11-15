@@ -659,7 +659,7 @@ impl Compiler<'_, '_> {
         utf8_only(args, span, "Buffer.byteLength()")?;
         let e = self.arg(args, 0, span, "text")?;
         let text = self.string_arg(e, "Buffer.byteLength()", "pass text")?;
-        Ok(Out::atom(format!("strlen({text})"), Ty::Num))
+        Ok(Out::atom(format!("\\strlen({text})"), Ty::Num))
     }
 
     /// `crypto.subtle.digest(algorithm, data)` in imported JavaScript: a promise of an ArrayBuffer,

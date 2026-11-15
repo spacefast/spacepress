@@ -90,6 +90,21 @@ final class AgentScope
                 throw self::refusal('personal');
             }
         });
+        // The users kind is the same accounts as core's users route, reached through First's own API
+        // and its abilities: a scoped credential creates no user and sets no sign-in field there.
+        \First\Extensions::onWrite(static function (string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void {
+            $schema = Plugin::instance()?->schema;
+            if ($viewer === null || $op === 'delete' || self::current() === null || $schema === null || !$schema->hasCollection($collection)
+                || ($schema->collection($collection)['auth'] ?? false) !== true) {
+                return;
+            }
+            if ($op === 'create') {
+                throw self::refusal('administration');
+            }
+            if (array_intersect_key($provided, ['email' => true, 'password' => true, 'role' => true]) !== []) {
+                throw self::refusal('account');
+            }
+        });
         \First\Extensions::schemaDescribe(static function (array $description): array {
             if (($scope = self::current()) !== null) {
                 $description['runtime']['credential'] = ['scope' => $scope];

@@ -101,6 +101,11 @@ final class CompositeStore implements Store, Links
         return $this->for($collection)->source($collection);
     }
 
+    public function showsUnique(string $collection, string $column, \First\Viewer $viewer): bool
+    {
+        return $this->for($collection)->showsUnique($collection, $column, $viewer);
+    }
+
     public function readGuards(string $collection, \First\Viewer $viewer): array
     {
         return $this->for($collection)->readGuards($collection, $viewer);

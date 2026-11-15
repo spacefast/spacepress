@@ -16,7 +16,10 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $schema = json_decode(file_get_contents(dirname(__DIR__) . '/fixtures/auth/schema.json'), true, 512, JSON_THROW_ON_ERROR);
-$wp = wpSite('auth', ['schema' => $schema, 'functions' => '', 'identity' => true]);
+// Two unique columns beside the email: one the viewer may read, one hidden from everyone.
+$schema['collections']['members']['columns']['handle'] = ['type' => 'text', 'unique' => true];
+$schema['collections']['members']['columns']['secret'] = ['type' => 'text', 'unique' => true, 'access' => ['read' => ['allow' => false]]];
+$wp = wpSite('auth', ['schema' => $schema, 'functions' => '', 'identity' => true, 'server' => true]);
 $app = $wp->app();
 $db = $app->db;
 
@@ -71,19 +74,56 @@ eq('"self" read: anonymous → 401', $call('GET', '/members')[0], 401);
 eq('"self" update: another member\'s row is not found', $call('PATCH', "/members/$boId", ['name' => 'Hacked'], $anaId)[0], 404);
 eq('"self" read: another member\'s row is not found', $call('GET', "/members/$boId", null, $anaId)[0], 404);
 eq('"self" is a filter, not a ladder: an administrator lists their own row only', array_column($call('GET', '/members', null, 'admin')[1]['data'], 'id'), [$wp->userId('admin')]);
-// An administrator sees every user in WordPress, so a unique write on the users kind answers plainly
-// for them; everyone else still gets the same refusal for a taken and a free value.
-$probe = static fn (string $email, string|int $as): array => $call('POST', '/members', ['email' => $email, 'name' => 'Probe', 'password' => 'another long one'], $as);
-[$takenStatus, $taken] = $probe('ana@example.test', 'admin');
+// WordPress's Users screen shows every email to whoever may list users, so for them a unique write
+// of `email` answers plainly. Everyone else, and every other unique column, is refused as before.
+$probe = static fn (array $more, string|int $as): array => $call('POST', '/members', $more + ['name' => 'Probe', 'password' => 'another long one'], $as);
+[$takenStatus, $taken] = $probe(['email' => 'ana@example.test'], 'admin');
 eq('an administrator is told an email is taken', [$takenStatus, $taken['code'] ?? null, $taken['pointer'] ?? null], [409, 'unique_violation', '/email']);
-eq('an administrator creates a member with an email', $probe('made-by-admin@example.test', 'admin')[0], 201);
+eq('an administrator creates a member with an email', $probe(['email' => 'made-by-admin@example.test'], 'admin')[0], 201);
 $madeId = (int) (get_user_by('email', 'made-by-admin@example.test')->ID ?? 0);
 check('and the member is a WordPress user', $madeId > 0);
-foreach (['bo@example.test', 'free@example.test'] as $email) {
-    [$status, $refused] = $probe($email, $anaId);
-    eq('a member still learns nothing from a unique write', [$status, $refused['pointer'] ?? null], [403, '/email']);
-}
 $db->delete('members', ['id' => $madeId]);
+foreach (['bo@example.test', 'free@example.test'] as $email) {
+    [$status, $refused] = $probe(['email' => $email], 'editor');
+    eq('an editor, who lists no users, is refused for a taken and a free email alike', [$status, $refused['pointer'] ?? null, $refused['detail'] ?? null], [403, '/email', "You can't set email"]);
+}
+// A scoped application password of the administrator: it creates no user and changes none of its
+// own sign-in fields, through First's abilities as through core's users route.
+[$scopedPassword, $scopedItem] = \WP_Application_Passwords::create_new_application_password($wp->userId('admin'), ['name' => 'scoped agent']);
+\First\Wp\AgentScope::store($wp->userId('admin'), $scopedItem['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+$ability = static function (string $name, array $input, string $credential) use ($wp): array {
+    $ch = curl_init($wp->url() . "/wp-json/wp-abilities/v1/abilities/club/$name/run");
+    curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => 'POST', CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($credential)], CURLOPT_POSTFIELDS => json_encode(['input' => $input])]);
+    $out = curl_exec($ch);
+
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), is_string($out) ? json_decode($out, true) : null];
+};
+$scoped = 'admin:' . $scopedPassword;
+$adminHash = get_userdata($wp->userId('admin'))->user_pass;
+foreach ([['email' => 'ana@example.test'], ['email' => 'by-scope@example.test'], ['email' => 'by-scope-admin@example.test', 'role' => 'admin']] as $more) {
+    [$status, $refused] = $ability('members-create', $more + ['name' => 'Scoped', 'password' => 'another long one'], $scoped);
+    // The email is refused first, for a taken and a free value alike: the exception is not for a scope.
+    eq('a scoped credential creates no user through an ability', [$status, $refused['code'] ?? null, $refused['data']['pointer'] ?? null], [403, 'first_forbidden', '/email']);
+}
+[$status, $refused] = $ability('members-update', ['id' => $wp->userId('admin'), 'patch' => ['email' => 'moved@example.test']], $scoped);
+eq('nor changes its own email', [$status, $refused['code'] ?? null, $refused['data']['pointer'] ?? null], [403, 'first_forbidden', '/email']);
+foreach ([['password' => 'a brand new password'], ['role' => 'editor']] as $field) {
+    [$status, $refused] = $ability('members-update', ['id' => $wp->userId('admin'), 'patch' => $field], $scoped);
+    eq('nor its ' . key($field), [$status, $refused['code'] ?? null], [403, 'first_scope']);
+}
+eq('it still edits the rest of its profile', $ability('members-update', ['id' => $wp->userId('admin'), 'patch' => ['name' => 'Renamed by scope']], $scoped)[0], 200);
+wp_cache_flush();
+eq('and nothing was written', [get_user_by('email', 'by-scope@example.test'), get_user_by('email', 'by-scope-admin@example.test'), get_userdata($wp->userId('admin'))->user_pass === $adminHash], [false, false, true]);
+eq('the same ability with the unscoped credential still creates the member', $ability('members-create', ['email' => 'by-unscoped@example.test', 'name' => 'Unscoped', 'password' => 'another long one'], $wp->appPassword('admin'))[0], 200);
+wp_cache_flush();
+$db->delete('members', ['id' => (int) (get_user_by('email', 'by-unscoped@example.test')->ID ?? 0)]);
+foreach (['ana-handle', 'free-handle'] as $handle) {
+    [$status, $refused] = $call('PATCH', "/members/{$wp->userId('admin')}", ['handle' => $handle], 'admin');
+    eq('a unique column the Users screen does not show stays refused to an administrator', [$status, $refused['pointer'] ?? null], [403, '/handle']);
+    [$status, $refused] = $call('PATCH', "/members/{$wp->userId('admin')}", ['secret' => $handle], 'admin');
+    eq('and so does a unique column hidden from them', [$status, $refused['pointer'] ?? null], [403, '/secret']);
+}
 eq('existing WordPress users became members with the collection\'s defaults when the app activated', $call('GET', "/members/{$wp->userId('admin')}", null, 'admin')[1]['data']['plan'] ?? null, 'free');
 
 // ================================================================ hidden columns never leave the runtime

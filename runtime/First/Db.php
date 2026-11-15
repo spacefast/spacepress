@@ -1306,28 +1306,17 @@ final class Db
             }
             if ($readable === null) {
                 try {
-                    $readable = $this->listsEveryUser($spec, $viewer) || $this->readsAllRows($collection, $viewer);
+                    $readable = $this->readsAllRows($collection, $viewer);
                 } catch (HttpError) {
                     $readable = false;
                 }
             }
-            if (!$readable || FieldAccess::mayHide($col, $viewer)) {
+            if ((!$readable && !$this->store->showsUnique($collection, (string) $name, $viewer)) || FieldAccess::mayHide($col, $viewer)) {
                 throw $viewer->user === null
                     ? new HttpError(401, 'unauthenticated', "Sign in to set $name", HttpError::seg((string) $name))
                     : new HttpError(403, 'forbidden', "You can't set $name", HttpError::seg((string) $name));
             }
         }
-    }
-
-    /**
-     * WordPress shows an administrator every user (the Users screen, `list_users`), so on the users
-     * kind a unique write tells them nothing they can't already read, whatever the read rule filters
-     * out of the API. A column hidden from them is still refused ({@see FieldAccess::mayHide()}).
-     */
-    private function listsEveryUser(array $spec, Viewer $viewer): bool
-    {
-        return ($spec['auth'] ?? false) === true && $viewer->user !== null
-            && Schema::roleRank($viewer->user['role']) >= Schema::roleRank('admin');
     }
 
     /** An echoed visible unique value needs no competitor lookup. Prove visibility before equality. */

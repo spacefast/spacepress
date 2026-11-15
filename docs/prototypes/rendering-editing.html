@@ -20,7 +20,8 @@
  <pre class="code" id="mode-code"></pre>
  <p id="mode-tradeoff"></p>
 </div>
-<div class="editbar"><div><strong>Try the editing flow</strong><span class="pill">Local prototype</span></div><button id="toggle-edit" aria-pressed="false">Enter edit mode</button></div>
+<p>WordPress already provides the Site Editor for templates and styles, and the block editor for content. The optional shortcut below edits over the public page.</p>
+<div class="editbar"><div><strong>Try the optional on-page flow</strong><span class="pill">Local prototype</span></div><button id="toggle-edit" aria-pressed="false">Enter edit mode</button></div>
 <p class="muted">Click the title, image or body after entering edit mode. Changes affect only this demonstration.</p>
 <div class="grid" id="editing-demo">
  <section class="card"><h3>TypedPress proposal</h3><small>Native WordPress editors, with draft changes.</small>
@@ -37,7 +38,7 @@
   <p class="status" id="em-status" role="status">Published version is visible.</p><button id="em-publish">Publish draft</button>
  </section>
 </div>
-<p class="muted">For TypedPress, markers identify the record and field. A rich body opens a focused WordPress editor over the page. Matching EmDash's inline rich-text editor would require a further embedded Gutenberg implementation. Visitors receive neither markers nor editing scripts.</p>
+<p class="muted">The initial workflow can open WordPress's existing editors. For the optional on-page flow, markers identify the record and field. An editor over the public page would need embedded Gutenberg integration. Visitors receive neither markers nor editing scripts.</p>
 <p><a href="https://github.com/emdash-cms/emdash/blob/8852f3faf825b9a43595f73aedf951fae4f22d1f/docs/src/content/docs/guides/preview.mdx" target="_blank" rel="noopener">EmDash editing source</a></p>
 <script>
 const modes={theme:{note:'Proposed: TSX supplies the content area; the active block theme supplies the frame.',owner:'WordPress Site Editor',code:'// Proposed default\nexport default function Page() {\n  return <article>...</article>;\n}',tradeoff:'Best for content sites and an existing WordPress site. A TSX layout wraps only the content; it does not add another site header or footer. Theme styles and wrappers affect the page.'},canvas:{note:'Current behavior: TSX layouts own the entire visible document.',owner:'Your TSX layout',code:'// Proposed opt-out spelling\nexport const shell = false;\n// layout.tsx owns Header, main and Footer',tradeoff:'Best for an app with a precise design. WordPress head and footer hooks still run, but the theme templates do not render the visible frame. Plugins that depend on a theme template need testing.'},generated:{note:'Earlier proposal: compile templates and parts into a separate block theme.',owner:'Generated part + Site Editor overrides',code:'// Earlier proposed opt-in\n// theme.config.ts\n// → theme.json, templates, parts',tradeoff:'Gives native template editing, but needs stable theme identity and rules for whether code or saved editor changes win. The app and its theme must be released together.'}};

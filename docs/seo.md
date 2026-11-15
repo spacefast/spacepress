@@ -30,15 +30,16 @@ First passes explicit TSX metadata through these filters:
 | `description` | `wpseo_metadesc` |
 | `canonical` | `wpseo_canonical`, `wpseo_opengraph_url`, and `wpseo_frontend_presentation` for schema IDs |
 | `robots.index`, `robots.follow` | `wpseo_robots_array` |
-| `openGraph.title`, `description`, `type`, `image` | `wpseo_opengraph_title`, `wpseo_opengraph_desc`, `wpseo_opengraph_type`, `wpseo_opengraph_image` |
-| `openGraph.image` without a plugin image | `wpseo_add_opengraph_images` |
+| `openGraph.title`, `description`, `type` | `wpseo_opengraph_title`, `wpseo_opengraph_desc`, `wpseo_opengraph_type` |
+| `openGraph.image` | `wpseo_frontend_presentation` sets one image without duplicating native images |
 | `twitter.card` | `wpseo_twitter_card_type` |
 
-An explicit First value overrides the matching Yoast value for this response.
-Omitted values, including `undefined`, keep Yoast's defaults and editor
-settings. Layout metadata counts as explicit metadata too. To let the Yoast
-editor control a title or description, omit that field from both the page and
-its layouts. An empty string is an explicit value, not an omission.
+An item's saved Yoast title, description, canonical and social values override
+the matching TSX metadata. Otherwise supplied TSX metadata overrides plugin
+defaults. Omitted values, including `undefined`, keep Yoast's defaults.
+Layout metadata counts as supplied metadata too. An empty string is a supplied
+value, not an omission. A page's robots settings can restrict indexing or
+following, but cannot relax a restriction set in Yoast.
 
 First also passes explicit title and description into the schema context, so
 WebPage metadata agrees with the visible head. An explicit canonical becomes
@@ -50,6 +51,10 @@ Yoast normally omits its canonical tag on a noindex page.
 First's extra `metadata.links` and scripts still appear. Without Yoast, First
 keeps its existing title, description, canonical, robots, and social output.
 Requests that First does not claim retain their normal WordPress head.
+
+Adding, changing or removing Yoast item metadata purges the affected page.
+Changing a code Page's breadcrumb label or Yoast's global settings purges the
+site, because those values can appear on dynamic descendant pages too.
 
 ## Article eligibility and breadcrumbs
 
@@ -71,9 +76,10 @@ A static TSX Page does not become an Article through this opt-in, even if a
 layout supplies the Article card type. Signed-in previews, password-protected
 posts, and error responses emit no schema graph. Missing or unreadable items
 return a 404 with no stale post context. When a collection's native body is
-masked for the visitor, the Yoast-enabled route returns a 404 because Yoast's
-native post readers do not enforce First's field masks. Other masked fields
-remain absent from the metadata function's viewer-bound item.
+masked for the visitor, the page still renders with First's safe metadata
+fallback and no Yoast output. Yoast's native post readers do not enforce
+First's field masks. Other masked fields remain absent from the metadata
+function's viewer-bound item.
 
 For collection routes, First adds virtual breadcrumb parents only for real,
 published code Pages at URL prefixes. For example, `/notes/hello` gains the

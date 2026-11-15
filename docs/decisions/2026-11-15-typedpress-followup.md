@@ -27,9 +27,13 @@ Recommendation: offer a theme frame for content sites and an explicit whole-docu
 
 The older [pages design](../design-pages-and-agents.md#46-layouts--themes) explored the whole-document default and generated themes. The current renderer lives in `runtime/First/Wp/AppRouter.php`. The inside-theme default and `shell = false` spelling are proposals, not accepted runtime APIs.
 
-## Editing uses fields and drafts
+## WordPress supplies the editing tools
 
-The proposed workflow marks the record and field that produced a region. An authorized editor can edit plain text on the page, open the WordPress media library for images, and open a focused WordPress block editor over a rich body. Saves create draft or staged changes; publishing remains a separate permission-checked action. Computed, transformed and unsupported fields open the full editor.
+WordPress's Site Editor already edits block-theme templates, header and footer parts, navigation and global styles. Its block editor edits item bodies. A TSX page can render inside a native template while its surrounding layout stays editable in the Site Editor. The TSX region remains code unless the compiler emits native editable blocks for it.
+
+Use those existing editors for the initial workflow. An embedded Gutenberg editor is needed only for the optional experience of editing over the public page without leaving it. Basic site editing does not require a new editor or an overlay.
+
+The optional on-page workflow marks the record and field that produced a region. An authorized editor can edit plain text on the page, open the WordPress media library for images, and open a focused WordPress block editor over a rich body. Saves create draft or staged changes; publishing remains a separate permission-checked action. Computed, transformed and unsupported fields open the full editor.
 
 Public visitors receive no editing markers or editor scripts. Edit and preview responses bypass shared caches. Reading a preview never authorizes a write. Cache purges must include theme changes as well as content changes.
 

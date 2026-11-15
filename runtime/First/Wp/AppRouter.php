@@ -69,6 +69,8 @@ final class AppRouter
     private bool $serving = false;
     /** Whether this document rendered an authorized collection item. */
     private bool $collectionPage = false;
+    /** Whether native SEO readers can see the same content as this visitor. */
+    private bool $yoastReadable = true;
     /** @var list<string> the stylesheets of the route being rendered, linked by document() */
     private array $styles = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
@@ -499,10 +501,10 @@ final class AppRouter
         if ($row === null) {
             return null;
         }
-        // Yoast reads the native body outside First's field masks. Refuse this SEO route when
-        // that body is hidden rather than letting its schema/description readers reveal it.
+        // Native SEO readers bypass field masks. Keep the page, using its viewer-bound head,
+        // when the provider cannot safely read the native body.
         if (Yoast::active() && isset($spec['content']) && !array_key_exists($spec['content'], $row->p)) {
-            return null;
+            $this->yoastReadable = false;
         }
         // The URL must be the item's own: other placeholders (`:year`, a field) have to agree.
         $post = get_post((int) ($row->p[$spec['primaryKey']] ?? 0));
@@ -998,7 +1000,10 @@ final class AppRouter
             });
         }
         $head['robots'] = $robots;
-        $yoast = Yoast::active();
+        $yoast = Yoast::active() && $this->yoastReadable;
+        if (Yoast::active() && !$yoast) {
+            Yoast::suppress();
+        }
         $title = $yoast ? Yoast::prepare($head, $status, $this->collectionPage, $this->app) : (string) $head['title'];
         \First\Assets::enqueue($this->styles);
         \First\Render\Live::enqueue();

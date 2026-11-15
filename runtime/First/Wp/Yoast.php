@@ -12,15 +12,38 @@ final class Yoast
         return function_exists('YoastSEO');
     }
 
+    /** Preserve the page when its readable fields cannot safely feed the native SEO provider. */
+    public static function suppress(): void
+    {
+        add_filter('wpseo_frontend_presenters', static fn (): array => []);
+        add_action('wp_head', 'wp_robots', 1);
+    }
+
     /**
-     * Install explicit metadata before Yoast resolves its presentation. Omitted fields stay owned
-     * by Yoast, including editor values. First emits the returned, fully presented title once.
+     * Install metadata before Yoast resolves its presentation. An item's editor overrides win;
+     * otherwise supplied metadata wins over plugin defaults. First emits the presented title once.
      *
      * @param array<string, mixed> $head
      * @param array<string, mixed> $app
      */
     public static function prepare(array $head, int $status, bool $collection, array $app): string
     {
+        $post = get_queried_object();
+        if ($post instanceof \WP_Post) {
+            foreach (['title' => 'title', 'description' => 'metadesc', 'canonical' => 'canonical'] as $key => $meta) {
+                if (get_post_meta($post->ID, '_yoast_wpseo_' . $meta, true) !== '') {
+                    unset($head[$key]);
+                    if ($key === 'title') {
+                        $head['titleExplicit'] = false;
+                    }
+                }
+            }
+            foreach (['title' => 'opengraph-title', 'description' => 'opengraph-description', 'image' => 'opengraph-image'] as $key => $meta) {
+                if (get_post_meta($post->ID, '_yoast_wpseo_' . $meta, true) !== '') {
+                    unset($head['openGraph'][$key]);
+                }
+            }
+        }
         add_filter('wpseo_frontend_presenters', static fn (array $presenters): array => array_values(array_filter(
             $presenters,
             static fn ($presenter): bool => !$presenter instanceof \Yoast\WP\SEO\Presenters\Title_Presenter,
@@ -46,21 +69,22 @@ final class Yoast
             if (is_string($head['description'] ?? null)) {
                 $context->description = $head['description'];
             }
+            if (is_string($head['openGraph']['image'] ?? null)) {
+                $image = $head['openGraph']['image'];
+                $presentation->open_graph_images = $image === '' ? [] : [['url' => self::absolute($image)]];
+            }
             return $presentation;
         }, 10, 2);
         add_filter('wpseo_robots_array', static function (array $robots) use ($head, $status): array {
             foreach (['index', 'follow'] as $key) {
                 if (($status !== 200 && $key === 'index') || ($head['robots'][$key] ?? true) === false) {
                     $robots[$key] = 'no' . $key;
-                } elseif (($head['robots'][$key] ?? null) === true) {
-                    $robots[$key] = $key;
                 }
             }
             return $robots;
         });
         self::social($head);
 
-        $post = get_queried_object();
         $public = $status === 200 && !is_user_logged_in() && $post instanceof \WP_Post && $post->post_status === 'publish' && $post->post_password === '';
         // An explicit Article card opts a collection route in. Static pages never inherit this
         // opt-in, even from a layout. Preserve an editor's chosen Article subtype or None.
@@ -107,20 +131,13 @@ final class Yoast
     private static function social(array $head): void
     {
         foreach ([
-            'openGraph' => ['title' => 'wpseo_opengraph_title', 'description' => 'wpseo_opengraph_desc', 'type' => 'wpseo_opengraph_type', 'image' => 'wpseo_opengraph_image'],
+            'openGraph' => ['title' => 'wpseo_opengraph_title', 'description' => 'wpseo_opengraph_desc', 'type' => 'wpseo_opengraph_type'],
             'twitter' => ['card' => 'wpseo_twitter_card_type'],
         ] as $group => $fields) {
             foreach ($fields as $key => $filter) {
                 if (is_string($head[$group][$key] ?? null)) {
-                    $value = $key === 'image' ? self::absolute($head[$group][$key]) : $head[$group][$key];
+                    $value = $head[$group][$key];
                     add_filter($filter, static fn (): string => $value);
-                    if ($group === 'openGraph' && $key === 'image' && $value !== '') {
-                        // The URL presenter filter alone cannot create an image when Yoast has
-                        // no featured/default image. Use its documented image-container hook.
-                        add_filter('wpseo_add_opengraph_images', static function ($images) use ($value): void {
-                            $images->add_image_by_url($value);
-                        });
-                    }
                 }
             }
         }

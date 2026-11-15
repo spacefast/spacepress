@@ -50,18 +50,23 @@ $site = wpSite('yoast', ['wpContent' => $argv[1], 'muPlugins' => [
 check(get_bloginfo('version') === WP_CORE_VERSION, 'Wrong WordPress fixture');
 check(defined('WPSEO_VERSION') && WPSEO_VERSION === '28.8', 'Wrong Yoast fixture');
 wp_set_current_user($site->userId('author'));
-foreach (['hello', 'defaults', 'editor', 'noindex', 'draft'] as $slug) {
+foreach (['hello', 'defaults', 'editor', 'explicit', 'robots', 'noindex', 'draft'] as $slug) {
     $row = \First\db()->insert('notes', [
         'title' => ucfirst($slug) . ' & news', 'slug' => $slug, 'body' => '<p>Public article body.</p>',
         'dek' => 'Public introduction', 'secret' => 'MASKED SEO SECRET', 'status' => $slug === 'draft' ? 'draft' : 'published',
     ], true)[0];
     $ids[$slug] = $row['id'];
 }
-\First\db()->insert('masked', ['title' => 'HIDDEN NATIVE TITLE', 'slug' => 'hidden', 'body' => '<p>Public part</p>', 'status' => 'published']);
+\First\db()->insert('masked', ['title' => 'Visible title', 'slug' => 'hidden', 'body' => '<p>HIDDEN NATIVE BODY</p>', 'status' => 'published']);
 // Exercise an explicit Yoast editor override and template replacements with no First value.
 foreach (['title' => 'Editor %%title%% & %%sitename%%', 'metadesc' => 'Editor description', 'canonical' => $site->url() . '/editor-canonical', 'opengraph-title' => 'Editor social', 'bctitle' => 'Editor crumb'] as $key => $value) {
     update_post_meta($ids['editor'], '_yoast_wpseo_' . $key, $value);
 }
+foreach (['title' => 'Editorial title', 'metadesc' => 'Editorial description', 'canonical' => $site->url() . '/editorial-canonical', 'opengraph-title' => 'Editorial social', 'opengraph-description' => 'Editorial social description'] as $key => $value) {
+    update_post_meta($ids['explicit'], '_yoast_wpseo_' . $key, $value);
+}
+update_post_meta($ids['robots'], '_yoast_wpseo_meta-robots-noindex', '1');
+update_post_meta($ids['robots'], '_yoast_wpseo_meta-robots-nofollow', '1');
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -111,8 +116,54 @@ check($editor['tags']['og:title'] === ['Editor social'], 'Editor social override
 check($editor['canonical'] === "$url/editor-canonical", 'Editor canonical lost');
 check($editor['graph']['WebPage']['url'] === $editor['canonical'], 'Editor schema canonical mismatch');
 check(end($editor['graph']['BreadcrumbList']['itemListElement'])['name'] === 'Editor crumb', 'Editor breadcrumb override lost');
+$explicit = document("$url/notes/explicit");
+check($explicit['title'] === 'Editorial title', 'TSX title overrode the editor');
+check($explicit['tags']['description'] === ['Editorial description'], 'TSX description overrode the editor');
+check($explicit['canonical'] === "$url/editorial-canonical", 'TSX canonical overrode the editor');
+check($explicit['graph']['WebPage']['url'] === $explicit['canonical'], 'Editorial canonical and schema differ');
+check($explicit['tags']['og:title'] === ['Editorial social'], 'TSX social title overrode the editor');
+check($explicit['tags']['og:description'] === ['Editorial social description'], 'TSX social description overrode the editor');
+$robots = document("$url/notes/robots");
+check(str_contains($robots['tags']['robots'][0], 'noindex') && str_contains($robots['tags']['robots'][0], 'nofollow'), 'Page defaults relaxed editor robots restrictions');
+$aboutId = \First\Wp\RoutePages::instance()->pages()['about'];
+update_post_meta($aboutId, '_yoast_wpseo_opengraph-image', "$url/editor-image.png");
+$editorImage = document("$url/about");
+check($editorImage['tags']['og:image'] === ["$url/editor-image.png"], 'Editor image replaced or duplicated by TSX');
+delete_post_meta($aboutId, '_yoast_wpseo_opengraph-image');
+
+$purges = [];
+$editorPath = wp_parse_url(get_permalink($ids['editor']), PHP_URL_PATH);
+add_action('first_purge_urls', static function (array $paths) use (&$purges): void { $purges = [...$purges, ...$paths]; });
+\First\Wp\Purges::flush();
+$purges = [];
+update_post_meta($ids['editor'], '_yoast_wpseo_title', 'SEO-only edit');
+\First\Wp\Purges::flush();
+check(in_array($editorPath, $purges, true), 'SEO-only edit did not purge its page: ' . json_encode($purges));
+check(document("$url/notes/editor")['title'] === 'SEO-only edit', 'SEO-only edit stayed stale');
+$purges = [];
+delete_post_meta($ids['editor'], '_yoast_wpseo_title');
+\First\Wp\Purges::flush();
+check(in_array($editorPath, $purges, true), 'Removing an SEO override did not purge its page');
+$purges = [];
+add_post_meta($ids['editor'], '_yoast_wpseo_title', 'New SEO override');
+\First\Wp\Purges::flush();
+check(in_array($editorPath, $purges, true), 'Adding an SEO override did not purge its page');
+$purges = [];
+update_post_meta($ids['editor'], 'unrelated_metadata', 'unrelated');
+\First\Wp\Purges::flush();
+check($purges === [], 'Unrelated metadata triggered an SEO purge');
+$purges = [];
+$notesPage = \First\Wp\RoutePages::instance()->pages()['notes'];
+update_post_meta($notesPage, '_yoast_wpseo_bctitle', 'Journal');
+\First\Wp\Purges::flush();
+check(in_array('/*', $purges, true), 'Breadcrumb label edit did not invalidate descendant pages');
+delete_post_meta($notesPage, '_yoast_wpseo_bctitle');
+\First\Wp\Purges::flush();
 
 WPSEO_Options::set('breadcrumbs-home', '');
+$purges = [];
+\First\Wp\Purges::flush();
+check(in_array('/*', $purges, true), 'SEO option changes did not invalidate page metadata');
 $withoutHome = document("$url/notes/hello");
 check(count($withoutHome['graph']['BreadcrumbList']['itemListElement']) === 2, 'Disabled Home crumb was duplicated');
 check($withoutHome['graph']['BreadcrumbList']['itemListElement'][0]['name'] === 'Notes', 'Virtual breadcrumb parent lost');
@@ -134,12 +185,16 @@ foreach (['hello', 'draft'] as $slug) {
 
 $noindex = document("$url/notes/noindex");
 check(str_contains($noindex['tags']['robots'][0], 'noindex'), 'Explicit noindex lost');
-foreach (['/notes/draft', '/notes/missing', '/absent', '/masked/hidden'] as $path) {
+foreach (['/notes/draft', '/notes/missing', '/absent'] as $path) {
     $missing = document($url . $path);
     check($missing['status'] === 404 && $missing['title'] === 'Not found', "Wrong refusal at $path");
     check(!isset($missing['graph']['Article']), "Article leaked at $path");
-    check(!str_contains($missing['html'], 'HIDDEN NATIVE TITLE') && !str_contains($missing['html'], 'Draft &amp; news'), "Private native data leaked at $path");
+    check(!str_contains($missing['html'], 'Draft &amp; news'), "Private native data leaked at $path");
 }
+$masked = document("$url/masked/hidden");
+check($masked['status'] === 200 && $masked['title'] === 'Visible title', 'SEO disabled a readable page');
+check(!str_contains($masked['html'], 'HIDDEN NATIVE BODY') && $masked['graph'] === [], 'Native SEO readers exposed a masked body');
+check(!str_contains($masked['html'], 'yoast-schema-graph'), 'Unsafe provider did not yield to the safe head fallback');
 // A normal WordPress post keeps its own Yoast head. The adapter runs only for claimed routes.
 wp_set_current_user(1);
 $native = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Native post', 'post_content' => '<p>Native body</p>']);

@@ -6,8 +6,8 @@ export const metadata = ({ item }: PageProps<"notes/[slug]">) => {
     title: item.title,
     description: item.secret ?? item.dek,
     canonical: `/notes/${item.slug}`,
-    openGraph: { type: "article" },
-    robots: item.slug === "noindex" ? { index: false } : undefined,
+    openGraph: { type: "article", title: item.slug === "explicit" ? "Code social title" : undefined, description: item.slug === "explicit" ? "Code social description" : undefined },
+    robots: item.slug === "noindex" ? { index: false } : item.slug === "robots" ? { index: true, follow: true } : undefined,
   };
 };
 export default function Note({ item }: PageProps<"notes/[slug]">) {

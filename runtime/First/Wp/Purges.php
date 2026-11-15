@@ -89,6 +89,27 @@ final class Purges
         add_action('edit_terms', $term, 10, 2);
         add_action('edited_term', static fn (int $termId, int $ttId, string $taxonomy) => $term($termId, $taxonomy), 10, 3);
         add_action('pre_delete_term', $term, 10, 2);
+        // SEO's bulk editor saves metadata without a post save. Those changes still invalidate
+        // the page, and a code Page's breadcrumb label can appear on dynamic descendant URLs.
+        $seoMeta = static function (mixed $metaId, int $id, string $key) use ($plugin): void {
+            if (!str_starts_with($key, '_yoast_wpseo_') || !Yoast::active() || !self::listening()) {
+                return;
+            }
+            $urls = self::postUrls(get_post($id));
+            self::add($plugin, $urls);
+            if ($urls !== [] && $key === '_yoast_wpseo_bctitle' && RoutePages::instance()?->routeOf($id) !== null) {
+                self::$paths['/*'] = true;
+            }
+        };
+        foreach (['added_post_meta', 'updated_post_meta', 'deleted_post_meta'] as $hook) {
+            add_action($hook, $seoMeta, 10, 3);
+        }
+        add_action('updated_option', static function (string $option) use ($plugin): void {
+            if (str_starts_with($option, 'wpseo') && Yoast::active() && self::listening()) {
+                self::add($plugin, [home_url('/')], false);
+                self::$paths['/*'] = true;
+            }
+        }, 10, 1);
     }
 
     /**
@@ -210,7 +231,7 @@ final class Purges
     /** Announce what this request's committed writes changed, once. */
     public static function flush(): void
     {
-        $paths = array_keys(self::$paths);
+        $paths = isset(self::$paths['/*']) ? ['/*'] : array_keys(self::$paths);
         self::$paths = [];
         self::$scheduled = false;
         if ($paths !== [] && self::listening()) {

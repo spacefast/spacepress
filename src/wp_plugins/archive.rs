@@ -205,7 +205,7 @@ pub(super) fn tree_digest(root: &Path) -> Result<String> {
     }
     let mut hash = Sha256::new();
     walk(root, Path::new(""), &mut hash)?;
-    Ok(super::hex(&hash.finalize()))
+    Ok(super::hex(hash.finalize()))
 }
 
 /// Copies the tree at `from` to `to`, each file as a hard link to the original where the file

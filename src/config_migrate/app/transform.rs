@@ -304,10 +304,7 @@ fn physical(space: &str, name: &str) -> String {
         let s: String = s.trim_matches('_').chars().take(48).collect();
         if s.is_empty() { "zero".into() } else { s }
     }
-    let digest = Sha256::digest(format!("{space}\0{name}"))
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
+    let digest = crate::hex(Sha256::digest(format!("{space}\0{name}")));
     let base = format!("sf_{}_{}", part(space), part(name));
     format!("{}_{:.10}", &base[..base.len().min(53)], digest)
 }

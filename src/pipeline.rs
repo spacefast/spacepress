@@ -303,11 +303,7 @@ pub fn build(
         let source = analysis.store().map_err(|d| d.phase(diag::Code::Compile))?;
         let hash: String = {
             use sha2::{Digest, Sha256};
-            Sha256::digest(source.as_bytes())
-                .iter()
-                .take(6)
-                .map(|b| format!("{b:02x}"))
-                .collect()
+            crate::hex(&Sha256::digest(source.as_bytes())[..6])
         };
         let stem = analysis
             .namespace

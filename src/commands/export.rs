@@ -210,7 +210,7 @@ fn run(flags: Flags) -> Result<(), String> {
                 hash.update(bytes);
                 hash.update([0]);
             }
-            hash.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>()
+            crate::hex(hash.finalize())
         };
         if listing["app"].as_str() != Some(hash.as_str()) {
             return Err(format!(

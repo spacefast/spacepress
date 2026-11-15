@@ -96,11 +96,7 @@ fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
                 hash.update(bytes);
             }
         }
-        hash.finalize()
-            .iter()
-            .take(8)
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>()
+        crate::hex(&hash.finalize()[..8])
     };
     let vars = [
         ("runtimeHash", runtime_hash),

@@ -139,7 +139,22 @@ asset=${asset%%$'\n'*}
 leaked=$("$harness" compose exec -T wordpress sh -c "find /var/www/html/wp-content/first-assets -type f \( -name '*.php' -o -name '*.sql' -o -name '*.json' \) | wc -l")
 [[ $leaked == 0 ]] || fail "the public copy holds no PHP, SQL or JSON"
 [[ $(status "$url/wp-content/first-store-$key/build/$first_build.json") == 403 ]] || fail "the build store is not served"
-ok "browser files are served from first-assets; the build store is private"
+# Where the store is, and whether the site's owner is warned. This lane's server is Apache, which
+# reads the store's .htaccess, so there is nothing to warn about; a server that is not known to read
+# it gets the warning on the First screen and from first push.
+[[ $(curl -s -u "$admin" "$api/site" | json warnings) == "[]" ]] || fail "on Apache the store in wp-content needs no warning"
+"$harness" compose exec -T wordpress sh -c 'cat > /var/www/html/wp-content/mu-plugins/lane-server.php' <<'PHP'
+<?php
+$_SERVER['SERVER_SOFTWARE'] = 'nginx/1.27.0';
+PHP
+warned=$(curl -s -u "$admin" "$api/site" | json warnings.0)
+[[ $warned == *"inside the folder the web server serves"*"nginx/1.27.0"*"FIRST_STORE_DIR"* ]] || fail "a server that may not read .htaccess gets the warning: $warned"
+[[ $(browser screen 'admin.php?page=first-setup' '<div class="wrap"><h1>First') == *"only the folder's random name keeps those files private"* ]] || fail "the First screen shows the warning"
+out=$(push) || fail "a push to a site with a warning: $out"
+[[ $out == *"warning: First keeps this site's builds"* && $out == *"already runs this code"* ]] || fail "first push prints the site's warning and carries on: $out"
+"$harness" compose exec -T wordpress rm /var/www/html/wp-content/mu-plugins/lane-server.php
+[[ $(curl -s -u "$admin" "$api/site" | json warnings) == "[]" ]] || fail "without it the warning is gone"
+ok "browser files are served from first-assets; the build store is private, and a server that may not block it is warned about"
 
 # ---- a second version: a migration, and the content written before it ---------------------------
 step additive
@@ -398,10 +413,28 @@ browser press 'admin.php?page=first-setup' "value=\"$first_build\"" "live=$first
 # The history is appended to, never rewritten: its last entry is the switch, to the first build.
 last=$(wp option get first_deployments --format=json | python3 -c 'import json,sys; h=json.load(sys.stdin); print(len(h), h[-1]["kind"], h[-1]["build"], h[0]["build"])')
 [[ $last == "5 rollback $first_build $first_build" ]] || fail "the history records the switch after the four deployments: $last"
+# The same list is a screen in First Admin, the admin a First app ships by default: its declaration,
+# the list it reads and the action it runs are served to people who may deploy and nobody else.
+nonce=$(browser nonce)
+screen=$(browser rest GET "$url/wp-json/first-admin/v1/screens/first-deployments" "$nonce" "")
+[[ $(sed -n 1p <<< "$screen") == 200 && $(sed 1d <<< "$screen" | json title) == Deployments && $(sed 1d <<< "$screen" | json actions.0.ability) == first/deployments-live ]] || fail "First Admin has a Deployments screen with Make live: $screen"
+[[ $(browser get 'admin.php?page=first-admin') == *'screens/first-deployments'* ]] || fail "First Admin's sidebar lists the Deployments screen"
+abilities="$url/wp-json/wp-abilities/v1/abilities"
+rows=$(curl -s -u "$admin" "$abilities/first/deployments/run")
+[[ $(json deployments.0.how <<< "$rows") == "Made live again" && $(json deployments.0.state <<< "$rows") == Live && $(json deployments.0.build <<< "$rows") == "$first_build" && $(json deployments.1.state <<< "$rows") == Stored && $(json deployments.0.by <<< "$rows") == admin ]] || fail "the list is the history, newest first, with what each build is now: $rows"
+[[ $(status -u "$editor" "$abilities/first/deployments/run") == 403 && $(status -u "$editor" "$url/wp-json/first-admin/v1/screens/first-deployments") == 403 ]] || fail "the list and its screen are for people who may deploy"
+[[ $(status -u "$editor" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$second_build\"}}" "$abilities/first/deployments-live/run") == 403 && $(wp option get first_live_build) == "$first_build" ]] || fail "an editor can't make a build live"
+# Made live from First Admin's action, then back, so the rest of the lane continues from the same state.
+[[ $(curl -s -u "$admin" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$second_build\"}}" "$abilities/first/deployments-live/run" | json live) == "$second_build" && $(wp option get first_live_build) == "$second_build" && $(status "$url/__first/api/v1/tasks") == 200 ]] || fail "Make live in First Admin switches the code"
+[[ $(curl -s -u "$admin" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$(printf 'a%.0s' {1..64})\"}}" "$abilities/first/deployments-live/run" | json code) == first_unknown_build ]] || fail "a build that was never live here can't be made live"
+[[ $(curl -s -u "$admin" -X POST -H 'Content-Type: application/json' -d "{\"input\":{\"build\":\"$first_build\"}}" "$abilities/first/deployments-live/run" | json live) == "$first_build" && $(status "$url/__first/api/v1/tasks") == 404 ]] || fail "and back to the first build"
+[[ $(wp option get first_deployments --format=json | python3 -c 'import json,sys; h=json.load(sys.stdin); print(len(h), h[-1]["kind"])') == "7 rollback" ]] || fail "each switch is in the history"
+# Neither ability is offered to agents.
+[[ $(curl -s -u "$admin" "$url/wp-json/wp-abilities/v1/abilities?per_page=100" | python3 -c 'import json,sys; print(sorted(a["name"] for a in json.load(sys.stdin) if a["name"].startswith("first/")))') == "['first/deployments', 'first/deployments-live']" ]] || fail "the two abilities are registered"
 # The next push is compared with what the database holds (the last deployment), so nothing migrates twice.
 out=$(push) || fail "a push after making an earlier build live: $out"
 [[ $out != *"run migration"* && $out == *"live:"* && $(status "$url/__first/api/v1/tasks") == 200 ]] || fail "it deploys the code without running a migration again: $out"
-ok "an earlier build is made live again from the First screen, and the next push migrates nothing twice"
+ok "an earlier build is made live again from the First screen and from First Admin, and the next push migrates nothing twice"
 
 # ---- the site keeps serving when the app can't run -----------------------------------------------
 wp plugin deactivate action-scheduler >/dev/null

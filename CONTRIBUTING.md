@@ -263,3 +263,7 @@ Changes under `runtime/First`, `runtime/identity`, `runtime/admin` and
 is MIT, and bundled third-party code keeps its own license. [`LICENSE`](LICENSE) has the map.
 Don't add a dependency to the runtime whose license is incompatible with
 GPL-2.0-or-later, and don't copy GPL code into the MIT side.
+
+Use the Node version in `.node-version` for verification. The differential sort
+tests compare the runtime with that V8 version, including comparator call order;
+updating Node requires checking that oracle explicitly.

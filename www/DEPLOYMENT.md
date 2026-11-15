@@ -51,8 +51,9 @@ use `first sync --site <url> --no-commit`; it currently needs credentials throug
 `FIRST_APP_PASSWORD` or `FIRST_TOKEN`, separately from `first login`. Supply those
 through a secure environment mechanism.
 
-The examples table still needs initial rows through First Admin or the supported
-API. The source repository does not yet reproduce the development site's rows.
+After the build and initial deployment, run `SITE_URL=<site-url> bun run seed`
+with `FIRST_APP_PASSWORD` supplied through the environment. It adds the featured
+examples through the app API and retains existing rows and star counts.
 See [website build and seeding work](https://github.com/spacefast/zero/issues/500)
 and [Pressable qualification and sync credentials](https://github.com/spacefast/zero/issues/501).
 

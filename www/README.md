@@ -32,6 +32,9 @@ PW=$(../target/release/first wp user application-password create admin first-syn
 FIRST_APP_PASSWORD="admin:$PW" ../target/release/first sync
 ```
 
+Run `SITE_URL=<site-url> bun run seed` with `FIRST_APP_PASSWORD` in the environment to add
+the build's featured examples. Repeating it retains existing rows and their star counts.
+
 Stop with `../target/release/first dev stop`. The local login is `admin` / `first-test-admin`.
 
 `first dev` rebuilds the pages when a TypeScript file is saved. Run `bun scripts/build.mjs` again

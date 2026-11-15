@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "bun scripts/build.mjs",
-    "test": "node --test tests/site.test.mjs"
+    "test": "node --test tests/site.test.mjs",
+    "seed": "node scripts/seed.mjs"
   },
   "dependencies": {
     "@pierre/diffs": "1.6.4",

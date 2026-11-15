@@ -57,7 +57,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - name: Install test tools
         run: |
           sudo apt-get update
@@ -181,7 +181,7 @@ jobs:
       - run: cargo build --locked --bin first
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - run: node --test tests/wasm/host.test.mjs
 
   php:
@@ -191,7 +191,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - name: Install PHP extensions
         run: |
           sudo apt-get update
@@ -248,7 +248,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       # Corepack reads the pinned pnpm from this directory's packageManager field.
       - run: corepack enable
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -279,7 +279,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - run: npm install --global typescript@5.9.3
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
       - run: tsc -p tests/host-types
@@ -309,7 +309,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -359,7 +359,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -396,7 +396,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -447,7 +447,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -480,7 +480,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -517,7 +517,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -546,7 +546,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - name: Install build and test tools
         run: |
           sudo apt-get update
@@ -578,7 +578,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - run: sudo apt-get update && sudo apt-get install -y rsync
       - name: Identity acceptance on PHP ${{ matrix.php }}
         env:

@@ -16,6 +16,7 @@
 		"@first-admin/dataviews": "workspace:*",
 		"react": "catalog:",
 		"@wordpress/data": "catalog:",
-		"@first-admin/attachment-importer": "workspace:*"
+		"@first-admin/attachment-importer": "workspace:*",
+		"@first-admin/views": "workspace:*"
 	}
 }

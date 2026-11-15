@@ -1088,6 +1088,9 @@ importers:
       '@first-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../views
       '@wordpress/api-fetch':
         specifier: 7.54.1-next.v.202608281122.0
         version: 7.54.1-next.v.202608281122.0
@@ -1109,6 +1112,9 @@ importers:
       '@first-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
+      '@first-admin/views':
+        specifier: workspace:*
+        version: link:../views
       '@wordpress/api-fetch':
         specifier: 7.54.1-next.v.202608281122.0
         version: 7.54.1-next.v.202608281122.0

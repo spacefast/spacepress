@@ -933,8 +933,6 @@ final class Plugin
                 esc_url(OAuth::issuer()) .
                 '" data-login="' .
                 esc_url(wp_login_url(home_url((string) ($_SERVER["REQUEST_URI"] ?? "/identity")))) .
-                '" data-logout="' .
-                esc_url(wp_logout_url(wp_login_url())) .
                 '" data-site="' .
                 esc_attr(get_bloginfo("name")) .
                 '"></div><script type="module" src="' .

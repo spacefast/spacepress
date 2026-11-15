@@ -2,11 +2,30 @@ use crate::app_plugin::{readme, substitute};
 use crate::{pipeline::Built, platform, runtime_files, schema_php};
 use std::path::Path;
 
-pub(crate) fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
+/// Writes `content` to `path` unless the file already holds exactly those bytes, so an unchanged
+/// file keeps its modification time; returns whether it wrote. A changed file is removed and
+/// written again rather than overwritten in place: `first build` stages its output with hard links
+/// to the published files, and writing through a link would change the published copy before the
+/// stage is published.
+pub(crate) fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<bool> {
+    let content = content.as_ref();
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_file() => {
+            if meta.len() == content.len() as u64 && std::fs::read(path)? == content {
+                return Ok(false);
+            }
+            std::fs::remove_file(path)?;
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+        }
+        Err(e) => return Err(e),
     }
-    std::fs::write(path, content)
+    std::fs::write(path, content)?;
+    Ok(true)
 }
 
 /// Every file under `root`, by `/`-separated path below it, sorted.
@@ -159,4 +178,42 @@ pub(crate) fn emit_generated(
         write(&plugins.join(rel), bytes)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write;
+
+    #[test]
+    fn write_leaves_a_file_with_the_same_bytes_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a/b.txt");
+        assert!(write(&path, "one").unwrap(), "a new file is written");
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        assert!(!write(&path, "one").unwrap(), "the same bytes are not written again");
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), old);
+        assert!(write(&path, "two").unwrap());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "two");
+        assert_ne!(std::fs::metadata(&path).unwrap().modified().unwrap(), old);
+    }
+
+    /// A staged build links unchanged files from the published output; a changed file gets a new
+    /// file, so the published copy keeps its bytes until the stage replaces the output.
+    #[test]
+    fn write_replaces_a_linked_file_instead_of_writing_through_the_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let published = dir.path().join("published.txt");
+        let staged = dir.path().join("staged.txt");
+        std::fs::write(&published, "old").unwrap();
+        std::fs::hard_link(&published, &staged).unwrap();
+        assert!(write(&staged, "new").unwrap());
+        assert_eq!(std::fs::read_to_string(&staged).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(&published).unwrap(), "old");
+    }
 }

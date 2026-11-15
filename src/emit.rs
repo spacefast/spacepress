@@ -2,11 +2,30 @@ use crate::app_plugin::{readme, substitute};
 use crate::{pipeline::Built, platform, runtime_files, schema_php};
 use std::path::Path;
 
-pub(crate) fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
+/// Writes `content` to `path` unless the file already holds exactly those bytes, so an unchanged
+/// file keeps its modification time; returns whether it wrote. A changed file is removed and
+/// written again rather than overwritten in place: `first build` stages its output with hard links
+/// to the published files, and writing through a link would change the published copy before the
+/// stage is published.
+pub(crate) fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<bool> {
+    let content = content.as_ref();
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_file() => {
+            if meta.len() == content.len() as u64 && std::fs::read(path)? == content {
+                return Ok(false);
+            }
+            std::fs::remove_file(path)?;
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+        }
+        Err(e) => return Err(e),
     }
-    std::fs::write(path, content)
+    std::fs::write(path, content)?;
+    Ok(true)
 }
 
 /// Every file under `root`, by `/`-separated path below it, sorted.
@@ -68,6 +87,13 @@ pub(crate) fn embedded(prefix: &'static str) -> impl Iterator<Item = (&'static s
 /// build store writes the tree once per revision.
 pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
     use std::borrow::Cow;
+    // Built once per process: hashing and substituting it is the same work on every call.
+    static TREE: std::sync::OnceLock<Vec<(String, Cow<'static, [u8]>)>> = std::sync::OnceLock::new();
+    TREE.get_or_init(build_runtime_tree).clone()
+}
+
+fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
+    use std::borrow::Cow;
     let runtime_hash = {
         use sha2::Digest;
         let mut hash = sha2::Sha256::new();
@@ -78,11 +104,7 @@ pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
                 hash.update(bytes);
             }
         }
-        hash.finalize()
-            .iter()
-            .take(8)
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>()
+        crate::hex(&hash.finalize()[..8])
     };
     let vars = [
         ("runtimeHash", runtime_hash),
@@ -146,25 +168,80 @@ pub(crate) fn emit_generated(
     built: &Built,
     runtime: bool,
 ) -> std::io::Result<()> {
-    let schema_php = schema_php::render(&built.schema);
     if runtime {
-        for (rel, bytes) in runtime_tree() {
-            // First Admin: unless the config sets `admin: false`.
-            if rel != "first-loader.php" && (built.schema.admin || !rel.starts_with("first-admin/")) {
-                write(&plugins.join(rel), bytes)?;
-            }
-        }
+        let slugs = ["first-runtime", "first-identity", "first-admin"];
+        emit_runtime(plugins, &slugs[..if built.schema.admin { 3 } else { 2 }])?;
     }
+    let (_, files) = app_files(project, migrations, built)?;
     // The migrations directory exists even when the ledger has no SQL yet, as it always has.
     std::fs::create_dir_all(plugins.join(format!("first-app-{}/first/app/migrations", built.schema.name)))?;
+    for (rel, bytes) in files {
+        write(&plugins.join(rel), bytes)?;
+    }
+    Ok(())
+}
+
+/// Writes the runtime plugins named in `slugs` (`first-runtime`, `first-identity`, `first-admin`).
+pub(crate) fn emit_runtime(plugins: &Path, slugs: &[&str]) -> std::io::Result<()> {
+    for (rel, bytes) in runtime_tree() {
+        if rel.split_once('/').is_some_and(|(slug, _)| slugs.contains(&slug)) {
+            write(&plugins.join(rel), bytes)?;
+        }
+    }
+    Ok(())
+}
+
+/// Files as (path, bytes).
+pub(crate) type Files = Vec<(String, Vec<u8>)>;
+
+/// The app plugin's files (path below the plugins directory, bytes), and the `schema.php` they
+/// were made with.
+pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std::io::Result<(String, Files)> {
+    let schema_php = schema_php::render(&built.schema);
     let public = project.join("public");
     let public = if public.is_dir() {
         read_tree(&public)?
     } else {
         Vec::new()
     };
-    for (rel, bytes) in crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public) {
-        write(&plugins.join(rel), bytes)?;
+    let files = crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public);
+    Ok((schema_php, files))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write;
+
+    #[test]
+    fn write_leaves_a_file_with_the_same_bytes_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a/b.txt");
+        assert!(write(&path, "one").unwrap(), "a new file is written");
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        assert!(!write(&path, "one").unwrap(), "the same bytes are not written again");
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), old);
+        assert!(write(&path, "two").unwrap());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "two");
+        assert_ne!(std::fs::metadata(&path).unwrap().modified().unwrap(), old);
     }
-    Ok(())
+
+    /// A staged build links unchanged files from the published output; a changed file gets a new
+    /// file, so the published copy keeps its bytes until the stage replaces the output.
+    #[test]
+    fn write_replaces_a_linked_file_instead_of_writing_through_the_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let published = dir.path().join("published.txt");
+        let staged = dir.path().join("staged.txt");
+        std::fs::write(&published, "old").unwrap();
+        std::fs::hard_link(&published, &staged).unwrap();
+        assert!(write(&staged, "new").unwrap());
+        assert_eq!(std::fs::read_to_string(&staged).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(&published).unwrap(), "old");
+    }
 }

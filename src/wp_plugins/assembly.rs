@@ -30,9 +30,20 @@ pub struct Prepared {
 }
 
 pub struct StagedPlugin {
-    pub directory: PathBuf,
+    /// The extracted tree. `None` while the locked tree can stay as it is in the output:
+    /// `install_into` keeps an output folder whose digest is the locked one, and extracts the
+    /// archive only when the folder is missing.
+    pub directory: Option<PathBuf>,
     pub archive: PathBuf,
     pub dependency: Dependency,
+    plugin: Plugin,
+}
+
+/// Extracts `zip` into `directory`, applies the build patches, and returns the tree's digest.
+fn unpack(plugin: &Plugin, zip: &Path, sha256: &str, directory: &Path) -> Result<String> {
+    archive::extract(zip, directory, plugin)?;
+    super::patches::apply(plugin, sha256, directory)?;
+    archive::tree_digest(directory)
 }
 
 impl Prepared {
@@ -94,13 +105,22 @@ impl Prepared {
             }
             let pin = plugin.sha256.as_deref().or_else(|| locked.map(|p| p.sha256.as_str()));
             let (zip, sha256) = acquire(plugin, pin, cache, &resource_url(&plugin.resource()))?;
-            let directory = stage.path().join(&plugin.slug);
-            archive::extract(&zip, &directory, plugin)?;
-            super::patches::apply(plugin, &sha256, &directory)?;
-            let tree_sha256 = archive::tree_digest(&directory)?;
+            // The locked archive, unpatched: its tree is the locked tree, so extraction waits
+            // until `install_into` finds no output folder holding it.
+            let (directory, tree_sha256) = match locked {
+                Some(locked) if locked.sha256 == sha256 && !super::patches::applies(plugin, &sha256) => {
+                    (None, locked.tree_sha256.clone())
+                }
+                _ => {
+                    let directory = stage.path().join(&plugin.slug);
+                    let digest = unpack(plugin, &zip, &sha256, &directory)?;
+                    (Some(directory), digest)
+                }
+            };
             let mut requires = plugin.requires.clone();
             requires.sort();
             trees.push(StagedPlugin {
+                plugin: plugin.clone(),
                 directory,
                 archive: zip,
                 dependency: Dependency {
@@ -139,9 +159,11 @@ impl Prepared {
 
     /// Call only on the assembler's private staging tree. Existing unmanaged/local changes fail.
     /// Unrelated plugin directories survive, including formerly declared plugins (no implicit uninstall).
-    pub fn install_into(&self, staged_plugins: &Path) -> Result<()> {
+    /// An existing folder of the locked tree, checked by one digest pass against the lock, stays
+    /// as it is when the lock entry still names this archive.
+    pub fn install_into(&mut self, staged_plugins: &Path) -> Result<()> {
         std::fs::create_dir_all(staged_plugins)?;
-        for tree in self.trees() {
+        for tree in &mut self.trees {
             if !tree.archive.is_file() {
                 return Err(invalid("staged plugin archive is missing"));
             }
@@ -171,9 +193,25 @@ impl Prepared {
                         tree.dependency.slug
                     )));
                 }
+                // The folder holds the locked tree, and the new tree is that same tree.
+                if previous
+                    .is_some_and(|p| p.sha256 == tree.dependency.sha256 && p.tree_sha256 == tree.dependency.tree_sha256)
+                {
+                    continue;
+                }
                 std::fs::remove_dir_all(&dest)?;
             }
-            archive::copy_tree(&tree.directory, &dest)?;
+            let directory = match &tree.directory {
+                Some(directory) => directory.clone(),
+                None => {
+                    let directory = self._stage.path().join(&tree.dependency.slug);
+                    tree.dependency.tree_sha256 =
+                        unpack(&tree.plugin, &tree.archive, &tree.dependency.sha256, &directory)?;
+                    tree.directory = Some(directory.clone());
+                    directory
+                }
+            };
+            archive::copy_tree(&directory, &dest)?;
         }
         Ok(())
     }
@@ -235,15 +273,32 @@ mod tests {
                 slug: "example.1.0.zip".into()
             }
         );
-        assert!(first.trees()[0].directory.join("example.php").is_file());
+        let extracted = first.trees()[0].directory.clone().unwrap();
+        assert!(extracted.join("example.php").is_file());
         let bytes = first.lock_bytes().unwrap();
         std::fs::write(&lock, &bytes).unwrap();
-        let second = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone()).unwrap();
+        // Locked: nothing is extracted until an output folder is missing.
+        let mut second = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone()).unwrap();
+        assert!(second.trees()[0].directory.is_none());
         assert_eq!(second.lock_bytes().unwrap(), bytes);
+        let output = temp.path().join("plugins");
+        second.install_into(&output).unwrap();
         assert_eq!(
-            std::fs::read(first.trees()[0].directory.join("example.php")).unwrap(),
-            std::fs::read(second.trees()[0].directory.join("example.php")).unwrap()
+            std::fs::read(extracted.join("example.php")).unwrap(),
+            std::fs::read(output.join("example/example.php")).unwrap()
         );
+        assert_eq!(second.lock_bytes().unwrap(), bytes);
+        // An output folder holding the locked tree is kept; one with a local change is refused.
+        let mut third = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone()).unwrap();
+        third.install_into(&output).unwrap();
+        assert!(
+            third.trees()[0].directory.is_none(),
+            "the kept folder is not extracted again"
+        );
+        std::fs::write(output.join("example/local.txt"), "local change").unwrap();
+        let mut fourth = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone()).unwrap();
+        let refused = fourth.install_into(&output).unwrap_err();
+        assert!(refused.to_string().contains("locally modified"), "{refused}");
         std::fs::write(cache.join(format!("{expected_sha}.zip")), b"changed bytes").unwrap();
         let failure = Prepared::acquire_using(&plan, &lock, &cache, |_| url.clone());
         assert!(failure.err().unwrap().to_string().contains("corrupt or unsafe cache"));

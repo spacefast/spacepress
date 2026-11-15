@@ -38,7 +38,7 @@ pub struct Manifest {
 
 fn hash(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    crate::hex(Sha256::digest(bytes))
 }
 
 fn failure(message: impl Into<String>) -> Diag {

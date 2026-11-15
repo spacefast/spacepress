@@ -134,7 +134,9 @@ All downloads, extraction, header checks, and generated PHP lint finish in stagi
 before publishing output. Failed downloads, bad hashes, invalid archives, and
 output collisions leave the previous output and project lock intact. Existing
 unrelated plugins remain. Existing dependency destinations are replaced only if
-the previous project lock owns their unchanged tree. Local changes and unmanaged
+the previous project lock owns their unchanged tree; a destination that holds the
+tree the lock records for the same archive stays without being extracted again
+(see [build output reuse](runtime-contract.md#build-output-reuse)). Local changes and unmanaged
 collisions fail with an error; remove or move the conflicting directory explicitly.
 Removing a declaration does not uninstall its existing output directory.
 
@@ -158,10 +160,11 @@ Prepared::acquire(&Plan, lock_path, cache_path) -> Prepared
 Prepared::trees() -> &[StagedPlugin]
 Prepared::dependencies() -> iterator of Dependency
 Prepared::lock_bytes() -> serialized project lock
-Prepared::install_into(private_staged_plugins) -> collision-checked copies
+Prepared::install_into(private_staged_plugins) -> collision-checked copies; kept locked trees
 ```
 
-Each staged result owns `directory`, `archive`, and dependency metadata:
+Each staged result owns `directory` (unset until `install_into` needs the extracted
+tree), `archive`, and dependency metadata:
 `{slug, version, pluginData, sha256, requires, treeSha256}`. Keep `Prepared` alive
 until copying finishes. The lock is `{version: 1, plugins: Dependency[]}` in stable
 dependency order. `treeSha256` hashes sorted relative paths, entry kinds, and file

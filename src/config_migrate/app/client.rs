@@ -18,7 +18,7 @@
 use super::super::{Entry, Failure, entry, fail};
 use crate::loader::Fs;
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{ImportDeclarationSpecifier, ModuleExportName, Statement, Str};
+use oxc_ast::ast::{ImportDeclarationSpecifier, ModuleExportName, Statement, StringLiteral};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use std::collections::{BTreeMap, BTreeSet};
@@ -230,7 +230,7 @@ impl Walk<'_> {
         let mut follow = vec![];
         let mut sources = vec![];
         for stmt in &program.body {
-            let (source, offset, names): (&str, u32, Vec<String>) = match stmt {
+            let (source, names): (&StringLiteral, Vec<String>) = match stmt {
                 Statement::ImportDeclaration(d) => {
                     if d.import_kind.is_type() {
                         continue;
@@ -248,16 +248,21 @@ impl Walk<'_> {
                             _ => None,
                         })
                         .collect();
-                    (d.source.value.as_str(), d.source.span.start, names)
+                    (&d.source, names)
                 }
                 Statement::ExportFromDeclaration(d) if !d.export_kind.is_type() => {
                     let names = d.specifiers.iter().map(|x| export_name(&x.local)).collect();
-                    (d.source.value.as_str(), d.source.span.start, names)
+                    (&d.source, names)
                 }
-                Statement::ExportAllDeclaration(d) if !d.export_kind.is_type() => {
-                    (d.source.value.as_str(), d.source.span.start, vec!["*".into()])
-                }
+                Statement::ExportAllDeclaration(d) if !d.export_kind.is_type() => (&d.source, vec!["*".into()]),
                 _ => continue,
+            };
+            let offset = source.span.start;
+            // UTF-8 can't hold a lone UTF-16 surrogate, so no file or package has such a name.
+            let Some(source) = source.value.as_str() else {
+                let detail = format!("an import of {:?} (a lone UTF-16 surrogate)", source.value);
+                self.refuse(relative, &text, offset, TAG_SYNTAX, detail);
+                continue;
             };
             sources.push((source.to_string(), offset, names));
         }
@@ -308,9 +313,9 @@ impl Walk<'_> {
                 _ => None,
             };
             if let Some(source) = source
-                && let Some(to) = rewrites.get(source.value.as_str())
+                && let Some(to) = source.value.as_str().and_then(|from| rewrites.get(from))
             {
-                source.value = Str::from(arena.alloc_str(to));
+                source.value = arena.alloc_str(to).into();
                 source.raw = None;
             }
         }
@@ -401,7 +406,9 @@ fn export_name(name: &ModuleExportName) -> String {
     match name {
         ModuleExportName::IdentifierName(n) => n.name.to_string(),
         ModuleExportName::IdentifierReference(n) => n.name.to_string(),
-        ModuleExportName::StringLiteral(s) => s.value.to_string(),
+        // The parser refuses an export name with a lone surrogate (IsStringWellFormedUnicode), so
+        // a parsed one is always UTF-8.
+        ModuleExportName::StringLiteral(s) => s.value.display().to_string(),
     }
 }
 

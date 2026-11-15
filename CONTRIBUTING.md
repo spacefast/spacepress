@@ -5,7 +5,7 @@ the suites, and where things live. The [README](README.md) is the front page.
 
 ## Toolchain
 
-Rust 1.96 (`rust-toolchain` pins it), PHP 8.2+ with `pdo_sqlite`, `mbstring`,
+Rust 1.97 (`rust-toolchain` pins it), PHP 8.2+ with `pdo_sqlite`, `mbstring`,
 `gd`, `fileinfo`, `curl` and `zip` (the PHP suites boot WordPress in-process on
 the SQLite Database Integration plugin; `first build` also lints with `php -l`
 when a host PHP executable is available),

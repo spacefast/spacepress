@@ -1,4 +1,4 @@
-// Builds what the TypedPress site (website/) needs beside its hand-written source:
+// Builds what the TypedPress site (www/) needs beside its hand-written source:
 //
 //   first/data/sources.ts      the text of every file in examples/, for the guide (scripts/sources.mjs)
 //   public/site.js             browser/site.js bundled: the code and tree drawing, and <tp-play>

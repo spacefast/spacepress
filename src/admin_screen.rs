@@ -48,9 +48,9 @@ const ROLES: &[(&str, &str)] = &[
 /// First\RuntimeSchema\Surfaces).
 const RESERVED: &[&str] = &["schema-versions"];
 
-/// Every exported `adminScreen()` (in `cfg.screens`) and, from a plugin, its `screens`, into
+/// Every exported `adminScreen()` (in `cfg.screens`), into
 /// `out.schema.screens` by id. Runs after the actions are extracted, since a screen names them.
-pub fn screens(v: &Value, span: Span, ev: &Evaluator<'_>, out: &mut Extracted, plugin: Option<&str>) -> Result<()> {
+pub fn screens(v: &Value, span: Span, ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
     let Value::Object(entries) = v else {
         return Err(Diag::new(
             span,
@@ -66,8 +66,7 @@ pub fn screens(v: &Value, span: Span, ev: &Evaluator<'_>, out: &mut Extracted, p
                 format!("`{name}` must be wrapped in adminScreen({{ ... }})"),
             ));
         };
-        let registered = plugin.map_or_else(|| name.clone(), |p| format!("{p}_{name}"));
-        let id = kebab(&registered);
+        let id = kebab(name);
         if RESERVED.contains(&id.as_str()) || id.starts_with("table-") {
             return Err(Diag::new(
                 screen.span,

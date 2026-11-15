@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { access, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
-import { createServer } from 'node:net';
+import { connect, createServer, isIP } from 'node:net';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -186,6 +186,98 @@ export async function publishPlugins(content, managed) {
   return { manifest, activate };
 }
 
+// `first dev --url` and `--host`: the address WordPress writes into every page (`url`), and the
+// address of this machine First listens on (`listen`). Studio 2.2.0 serves a site on localhost
+// only, and names it http://localhost:<port> or a `.local` domain behind its own proxy on ports
+// 80 and 443, so neither is Studio's to set.
+export function siteAddress(flags, port) {
+  const value = (name) => flags.find((flag) => flag.startsWith(`--${name}=`))?.slice(name.length + 3);
+  const host = value('host'), announced = value('url');
+  let url = null;
+  if (host !== undefined) {
+    // WordPress writes one address into every page, so "every interface" names none.
+    const named = isIP(host) ? !['0.0.0.0', '::'].includes(host) : /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(host);
+    if (!named) throw new Error('--host takes one address or name of this machine, such as 10.0.0.24 (ip -4 addr lists them).');
+    if (flags.includes('--no-watch')) throw new Error('--host needs first dev to keep running, because that process is what listens there. Use --detach instead of --no-watch.');
+    url = `http://${isIP(host) === 6 ? `[${host}]` : host}:${port}`;
+  }
+  if (announced !== undefined) {
+    const parsed = URL.canParse(announced) ? new URL(announced) : null;
+    if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+      throw new Error('--url takes an address such as https://box.example.ts.net:8443, with no path: WordPress serves the site at its root.');
+    }
+    url = parsed.origin;
+  }
+  return { url, listen: host ?? null };
+}
+
+// What WordPress reads before it loads. `home` and `siteurl` are answered before Studio's WP_HOME
+// and WP_SITEURL (http://localhost:<port>, defined ahead of wp-config.php) are consulted, and early
+// enough for the content and plugin URLs WordPress fixes before any plugin runs. The request's own
+// host and scheme are the address too, as WordPress documents for a site behind a proxy, but from
+// this file instead of a header any client can send.
+export const addressPhp = (url) => `<?php
+// Written by first dev --url / --host, and removed by a start without them.
+$first_dev_url = '${url}';
+$_SERVER['HTTP_HOST'] = substr( $first_dev_url, strpos( $first_dev_url, '://' ) + 3 );
+if ( 0 === strpos( $first_dev_url, 'https://' ) ) {
+	$_SERVER['HTTPS'] = 'on';
+}
+$first_dev_address = static function () use ( $first_dev_url ) {
+	return $first_dev_url;
+};
+foreach ( array( 'pre_option_home', 'pre_option_siteurl' ) as $first_dev_option ) {
+	if ( function_exists( 'add_filter' ) ) {
+		add_filter( $first_dev_option, $first_dev_address );
+	} else {
+		$GLOBALS['wp_filter'][ $first_dev_option ][10][] = array( 'function' => $first_dev_address, 'accepted_args' => 1 );
+	}
+}
+unset( $first_dev_url, $first_dev_address, $first_dev_option );
+`;
+
+const ADDRESS_FILE = 'first-dev-address.php';
+const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require ABSPATH . '${ADDRESS_FILE}'; } // first dev --url / --host`;
+
+// wp-config.php with the one line that reads the address file, placed where WordPress starts loading.
+export function withAddressLine(config) {
+  if (config.includes(ADDRESS_FILE)) return config;
+  const settings = /^[ \t]*require(?:_once)?[ (]*ABSPATH *\. *['"]wp-settings\.php['"]/m.exec(config);
+  if (!settings) throw new Error('wp-config.php does not load wp-settings.php in the usual way; --url and --host cannot set the address.');
+  return `${config.slice(0, settings.index)}${ADDRESS_LINE}\n${config.slice(settings.index)}`;
+}
+
+async function announce(site, url) {
+  const file = join(site, ADDRESS_FILE);
+  if (!url) return rm(file, { force: true });
+  const config = join(site, 'wp-config.php');
+  const source = await readFile(config, 'utf8');
+  await writeFile(file, addressPhp(url));
+  if (withAddressLine(source) !== source) await writeFile(config, withAddressLine(source));
+}
+
+// --host: connections to this machine's address, passed to Studio's listener and back unchanged.
+export async function forward(host, port, upstream) {
+  const open = new Set();
+  const server = createServer((client) => {
+    const site = connect(upstream, 'localhost');
+    for (const [socket, other] of [[client, site], [site, client]]) {
+      open.add(socket);
+      socket.on('error', () => {});
+      socket.once('close', () => { open.delete(socket); other.destroy(); });
+    }
+    client.pipe(site).pipe(client);
+  });
+  await new Promise((done, fail) => {
+    server.once('error', (error) => fail(new Error(`Cannot listen on ${host}:${port}: ${error.message}`)));
+    server.listen(port, host, done);
+  });
+  return {
+    port: server.address().port,
+    close: () => new Promise((done) => { server.close(done); for (const socket of open) socket.destroy(); }),
+  };
+}
+
 // Directory names never watched anywhere, and the project paths First writes itself.
 const IGNORED_NAMES = new Set(['.first', '.git', 'node_modules']);
 const GENERATED = new Set(['first/_generated', 'first/dist']);
@@ -356,6 +448,8 @@ async function main() {
   if (process.argv[2] === 'export') return exportSite(resolve(process.argv[3]), process.argv[4] ? resolve(process.argv[4]) : null);
   const [mode, directory, first, output, requestedPort = '8787', ...flags] = process.argv.slice(2);
   const noWatch = flags.includes('--no-watch');
+  // A --url or --host that names no address is refused before anything is built or started.
+  if (mode === 'start') siteAddress(flags, Number(requestedPort));
   const project = await realpath(directory);
   const managed = await ownedState(project, mode === 'start');
   const studio = await studioBinary();
@@ -406,7 +500,7 @@ async function main() {
   const release = await lock(managed.state);
   const statePath = join(managed.state, 'state.json');
   await rm(join(managed.state, 'stop'), { force: true });
-  let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl;
+  let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl, relay;
   let finish;
   const finished = new Promise((resolveDone) => { finish = resolveDone; });
   const stop = async () => {
@@ -496,26 +590,35 @@ async function main() {
     }
     siteStarted = true;
     const status = JSON.parse(await runStudio(['status', '--format', 'json'], { capture: true }));
-    const url = status.siteUrl.replace(/\/$/, '');
-    siteUrl = url;
+    // Where Studio listens, and where the site is opened: the same unless --url or --host says otherwise.
+    const local = status.siteUrl.replace(/\/$/, '');
+    const port = Number(new URL(local).port) || 80;
+    const address = siteAddress(flags, port);
+    const url = address.url ?? local;
+    // The development identity app stays registered for this machine's own address.
+    siteUrl = local;
+    await announce(managed.owner.site, address.url);
+    if (address.listen) relay = await forward(address.listen, port, port);
     const mu = join(managed.owner.site, 'wp-content/mu-plugins/first-dev-runtime.php');
     if (!managed.owner.devMu && await exists(mu)) throw new Error('first-dev-runtime.php already exists and is not managed by First.');
     await writeFile(mu, "<?php\n// Local development only: allow identity callbacks on the site's HTTP origin.\nif (!defined('FIRST_IDENTITY_DEV_HTTP')) define('FIRST_IDENTITY_DEV_HTTP', true);\n");
     managed.owner.devMu = true;
     await atomicJson(managed.marker, managed.owner);
     await configure(flags.includes('--allow-destructive'));
-    const response = await fetch(`${url}/__first/api/v1`, { signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`First application is not ready: HTTP ${response.status}. Run first doctor --site ${url}`);
+    const response = await fetch(`${local}/__first/api/v1`, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`First application is not ready: HTTP ${response.status}. Run first doctor --site ${local}`);
     const summary = [`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`];
     if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/index.html`);
     if (managed.owner.generated.includes('first-admin')) summary.push(`First Admin: ${url}/wp-admin/new/`);
     summary.push('Initial login: admin / first-test-admin (local development only; unchanged if you edited it)\n');
+    if (address.listen) summary.push(`Listening on ${address.listen} port ${port}: whoever can reach it is an administrator of this WordPress and can run code on this machine as you.`);
+    else if (address.url) summary.push(`Listening on this machine only: point your proxy for ${url} at ${local}`);
     summary.push(`Data persists in ${managed.owner.site}\nStop: first dev stop ${JSON.stringify(project)}`);
     console.log(summary.join('\n'));
     // What `first dev status --json` and `first mcp` read without starting Studio: where the site
     // is, and the process that rebuilds it on save (none after --no-watch).
     await atomicJson(statePath, {
-      version: 1, url, port: Number(new URL(url).port) || (url.startsWith('https:') ? 443 : 80),
+      version: 1, url, local, port,
       pid: noWatch ? null : process.pid, log: process.send ? join(managed.state, 'dev.log') : null,
       wordpress: status.wpVersion ?? null, php: status.phpVersion ?? null, startedAt: new Date().toISOString(),
     });
@@ -551,6 +654,7 @@ async function main() {
     await finished;
   } finally {
     watcher?.close(); clearTimeout(timer); clearInterval(stopTimer);
+    await relay?.close();
     process.off('SIGINT', stop); process.off('SIGTERM', stop);
     if (await exists(join(managed.state, 'stop'))) stopping = true;
     if (siteStarted && (stopping || !noWatch)) {

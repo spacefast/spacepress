@@ -49,11 +49,15 @@ only ones a site runs as plugins besides First's own; see [sealed mode](sealed.m
 
 ## Supported plugins
 
+The [Yoast SEO adapter](seo.md) supports Yoast Free 28.8 on TSX pages.
+`examples/full-site` pins it as an optional publication dependency. First does
+not add it to API-only apps.
+
 First doesn't support every WordPress plugin. The plugins and version ranges the
 First team tests are listed in
 [`src/wp_plugins/supported.json`](../src/wp_plugins/supported.json): a minimum
-version (inclusive) and an optional `below` bound (exclusive), compared with PHP
-`version_compare`. The platform pins above are always on that list.
+version (inclusive) and an optional `below` bound (exclusive), or an `exact`
+release, compared with PHP `version_compare`. The platform pins above are always on that list.
 
 Any other plugin or version still installs. `first check` and `first build` print a
 warning for it, and the wasm compiler returns the same text in

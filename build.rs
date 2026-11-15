@@ -91,6 +91,7 @@ const GUIDES: &[&str] = &[
     "pages.md",
     "realtime.md",
     "sealed.md",
+    "seo.md",
     "services.md",
     "spacefast-deploy.md",
     "staged.md",

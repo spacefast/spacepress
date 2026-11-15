@@ -284,10 +284,32 @@ struct Supported {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Range {
-    min: String,
-    below: Option<String>,
+#[serde(untagged, deny_unknown_fields)]
+enum Range {
+    Exact { exact: String },
+    Between { min: String, below: Option<String> },
+}
+
+impl Range {
+    fn contains(&self, value: &str) -> bool {
+        match self {
+            Self::Exact { exact } => version::at_least(value, exact) && version::at_least(exact, value),
+            Self::Between { min, below } => {
+                version::at_least(value, min) && !below.as_ref().is_some_and(|end| version::at_least(value, end))
+            }
+        }
+    }
+
+    fn label(&self) -> String {
+        match self {
+            Self::Exact { exact } => format!("{exact} only"),
+            Self::Between {
+                min,
+                below: Some(below),
+            } => format!(">= {min}, < {below}"),
+            Self::Between { min, below: None } => format!(">= {min}"),
+        }
+    }
 }
 
 fn supported() -> Supported {
@@ -306,14 +328,8 @@ pub fn unsupported(config: &Config) -> Vec<String> {
         .filter_map(|p| {
             let reason = match supported.plugins.get(&p.slug) {
                 None => format!("plugin {} {} is not supported by the First team", p.slug, p.version),
-                Some(r)
-                    if !version::at_least(&p.version, &r.min)
-                        || r.below.as_ref().is_some_and(|below| version::at_least(&p.version, below)) =>
-                {
-                    let range = match &r.below {
-                        Some(below) => format!(">= {}, < {below}", r.min),
-                        None => format!(">= {}", r.min),
-                    };
+                Some(r) if !r.contains(&p.version) => {
+                    let range = r.label();
                     format!(
                         "plugin {} {} is outside the version range the First team supports ({range})",
                         p.slug, p.version
@@ -403,6 +419,14 @@ mod tests {
         );
         assert!(warnings[2].starts_with("plugin secure-custom-fields 6.9.6 is outside"));
         assert!(warnings.iter().all(|w| w.ends_with(ISSUES)));
+    }
+
+    #[test]
+    fn yoast_support_is_limited_to_the_tested_release() {
+        for (release, supported) in [("28.8", true), ("28.7", false), ("28.8.1", false), ("28.9", false)] {
+            let config = parse(serde_json::json!({ "wordpress-seo": release })).unwrap();
+            assert_eq!(unsupported(&config).is_empty(), supported, "{release}");
+        }
     }
 
     /// First installs its platform pins itself, so they must sit inside the ranges it claims to support.

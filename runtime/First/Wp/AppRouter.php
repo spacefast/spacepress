@@ -67,6 +67,8 @@ final class AppRouter
     }
 
     private bool $serving = false;
+    /** Whether this document rendered an authorized collection item. */
+    private bool $collectionPage = false;
     /** @var list<string> the stylesheets of the route being rendered, linked by document() */
     private array $styles = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
@@ -337,14 +339,14 @@ final class AppRouter
         return is_string($name) ? ($this->plugin->schema->collection($name)['wp']['postType'] ?? null) : null;
     }
 
-    /** The main query as WordPress sets it for a singular Page: `is_page()`, `get_queried_object()`, `$post`. */
+    /** The main singular query, installed before metadata or SEO context is resolved. */
     private static function query(?\WP_Post $post): void
     {
-        if (!$post instanceof \WP_Post || $post->post_type !== 'page') {
+        if (!$post instanceof \WP_Post) {
             return;
         }
         $query = new \WP_Query();
-        $query->query = ['page_id' => $post->ID];
+        $query->query = $post->post_type === 'page' ? ['page_id' => $post->ID] : ['p' => $post->ID, 'post_type' => $post->post_type];
         $query->query_vars = $query->fill_query_vars($query->query);
         $query->queried_object = $post;
         $query->queried_object_id = $post->ID;
@@ -353,7 +355,8 @@ final class AppRouter
         $query->post_count = 1;
         $query->found_posts = 1;
         $query->max_num_pages = 1;
-        $query->is_page = true;
+        $query->is_page = $post->post_type === 'page';
+        $query->is_single = !$query->is_page;
         $query->is_singular = true;
         $query->is_home = false;
         $GLOBALS['wp_query'] = $query;
@@ -365,7 +368,11 @@ final class AppRouter
     private function notFound(): never
     {
         global $wp_query;
+        $this->collectionPage = false;
+        $wp_query = new \WP_Query();
         $wp_query->set_404();
+        $GLOBALS['wp_the_query'] = $wp_query;
+        $GLOBALS['post'] = null;
         $route = $this->app['notFound'] ?? null;
         $viewer = CoreAccess::viewer() ?? new Viewer(null);
         if (!is_array($route)) {
@@ -406,6 +413,9 @@ final class AppRouter
                     if ($item === null) {
                         throw Halt::notFoundSignal();
                     }
+                    $spec = $this->plugin->schema->collection($route['kind']['name']);
+                    self::query(get_post((int) $item->p[$spec['primaryKey']]));
+                    $this->collectionPage = true;
                     $props->p['item'] = $item;
                 }
                 return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
@@ -487,6 +497,11 @@ final class AppRouter
             return null;
         }
         if ($row === null) {
+            return null;
+        }
+        // Yoast reads the native body outside First's field masks. Refuse this SEO route when
+        // that body is hidden rather than letting its schema/description readers reveal it.
+        if (Yoast::active() && isset($spec['content']) && !array_key_exists($spec['content'], $row->p)) {
             return null;
         }
         // The URL must be the item's own: other placeholders (`:year`, a field) have to agree.
@@ -824,6 +839,9 @@ final class AppRouter
         $out = [];
         foreach ($metadata as $meta) {
             foreach ($meta as $key => $value) {
+                if ($value instanceof \First\JsUndefined) {
+                    continue;
+                }
                 if ($key === 'title') {
                     if (is_array($value)) {
                         $template = $value['template'] ?? null;
@@ -847,7 +865,7 @@ final class AppRouter
                 }
                 if (($key === 'openGraph' || $key === 'twitter') && is_array($value)) {
                     // A page sets only what it changes: its image, say, under the layout's type.
-                    $out[$key] = array_filter($value, static fn ($v) => $v !== null) + ($out[$key] ?? []);
+                    $out[$key] = array_filter($value, static fn ($v) => $v !== null && !$v instanceof \First\JsUndefined) + ($out[$key] ?? []);
                     continue;
                 }
                 if ($value !== null) {
@@ -859,6 +877,7 @@ final class AppRouter
             $title = str_replace('%s', $title, (string) $template);
         }
         unset($out['titleIsDefault']);
+        $out['titleExplicit'] = $title !== null;
         $out['title'] = $title ?? get_bloginfo('name');
         return $out;
     }
@@ -957,7 +976,7 @@ final class AppRouter
             header('X-First-Prerendered: 1');
         }
         header('Content-Type: text/html; charset=' . get_option('blog_charset'));
-        // First writes the only <title> and canonical for its pages.
+        // First owns the title element. An active Yoast owns the other SEO tag families.
         remove_action('wp_head', '_wp_render_title_tag', 1);
         remove_action('wp_head', '_block_template_render_title_tag', 1);
         remove_action('wp_head', 'rel_canonical');
@@ -978,6 +997,9 @@ final class AppRouter
                 return $r;
             });
         }
+        $head['robots'] = $robots;
+        $yoast = Yoast::active();
+        $title = $yoast ? Yoast::prepare($head, $status, $this->collectionPage, $this->app) : (string) $head['title'];
         \First\Assets::enqueue($this->styles);
         \First\Render\Live::enqueue();
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
@@ -989,14 +1011,14 @@ final class AppRouter
         }
         echo "<!DOCTYPE html>\n<html " . get_language_attributes() . ">\n<head>\n<meta charset=\"" . esc_attr((string) get_option('blog_charset')) . "\">\n";
         echo "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
-        echo '<title>' . esc_html((string) $head['title']) . "</title>\n";
-        if (is_string($head['description'] ?? null) && $head['description'] !== '') {
+        echo '<title>' . esc_html($title) . "</title>\n";
+        if (!$yoast && is_string($head['description'] ?? null) && $head['description'] !== '') {
             echo '<meta name="description" content="' . esc_attr($head['description']) . "\">\n";
         }
-        if (is_string($head['canonical'] ?? null) && $head['canonical'] !== '') {
+        if (!$yoast && is_string($head['canonical'] ?? null) && $head['canonical'] !== '') {
             echo '<link rel="canonical" href="' . esc_url(self::absolute($head['canonical'])) . "\">\n";
         }
-        echo self::social($head);
+        echo self::social($yoast ? array_intersect_key($head, ['links' => true]) : $head);
         wp_head();
         echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('first-app'))) . "\">\n";
         wp_body_open();

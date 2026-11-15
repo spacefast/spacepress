@@ -156,7 +156,7 @@ page(
 // second list in both the Rust and the PHP test suites.
 // ---------------------------------------------------------------------------------------------
 
-const supported = json<{ plugins: Record<string, { min: string; below?: string }> }>("src/wp_plugins/supported.json").plugins;
+const supported = json<{ plugins: Record<string, { exact: string } | { min: string; below?: string }> }>("src/wp_plugins/supported.json").plugins;
 const platform = json<{ wordpress: string; php: string; mysql: string; mariadb: string; sqlite: string; plugins: Record<string, { version: string; sha256: string }> }>("tests/fixtures/platform.json");
 const platformRs = read("src/platform.rs");
 // `plugins(localized)` pushes Polylang only when the config has `locales`.
@@ -167,7 +167,7 @@ const pluginRows = Object.entries(supported)
 	.map(([slug, range]) => {
 		const pin = platform.plugins[slug];
 		const when = pin ? (localizedOnly.has(slug) ? "Installed when the config sets `locales`" : "Always installed") : "Allowed. Add it under `plugins` in your config";
-		const versions = range.below ? `${range.min} up to, not including, ${range.below}` : `${range.min} or later`;
+		const versions = "exact" in range ? `${range.exact} only` : range.below ? `${range.min} up to, not including, ${range.below}` : `${range.min} or later`;
 		return `| [\`${slug}\`](https://wordpress.org/plugins/${slug}/) | ${when} | ${pin ? `\`${pin.version}\`` : "None"} | ${versions} |`;
 	});
 

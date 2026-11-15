@@ -4759,3 +4759,28 @@ fn refuses_route_ids_it_cannot_keep() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The pinned real Yoast plugin owns metadata and schema on First's public page routes.
+#[test]
+fn app_router_yoast_metadata_and_schema_on_wordpress() {
+    let project = fixture("yoast", "seo");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_router_yoast.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["wordpress"], "7.2-beta5");
+    assert_eq!(seen["yoast"], "28.8");
+    assert_eq!(seen["plugin absent"], "First & Yoast");
+    std::fs::remove_dir_all(project).unwrap();
+}

@@ -36,6 +36,27 @@ Every First file starts with `declare(strict_types=1);`. Namespace `First`.
   *.zip                                the same plugins, packaged
 ```
 
+### Build output reuse
+
+A `first build` over an existing output starts from that output and writes only what changed;
+the result is the same tree a build into an empty directory writes.
+
+- `first-manifest.json` records `runtimeRevision`, the digest of the runtime plugin tree this
+  compiler embeds (the revision the build store keys on). `first-runtime`, `first-identity`
+  and `first-admin` and their ZIPs stay as they are when the previous manifest has the same
+  revision and each folder holds exactly the paths, at the sizes, this compiler writes, with its
+  ZIP present. Otherwise the plugin and its ZIP are written again.
+- The app plugin is compared file by file: a file with the same bytes keeps its modification
+  time, a file no longer generated is removed, and its ZIP is rebuilt only when something in it
+  changed. Only the PHP files that changed go through `php -l`.
+- A dependency plugin whose output folder holds its locked tree (one digest pass against the
+  lock's `treeSha256`, as before) stays; its archive is extracted only when the folder is
+  missing or the lock entry changed.
+
+The runtime check is cheap on purpose: it compares paths and sizes, not bytes. A hand edit to a
+runtime plugin file that keeps the file's size, or a hand edit to a runtime ZIP, survives the next
+build. Don't edit the output; delete it (`first/dist`) and build again to get a clean tree.
+
 `first/bootstrap.php` eagerly loads `Db.php` (for the `First\db()` function),
 registers an autoloader for `First\*` from its own directory, and registers the
 ordered feature modules through `Features::register()` (once per process).

@@ -208,6 +208,9 @@ pub(super) fn tree_digest(root: &Path) -> Result<String> {
     Ok(super::hex(&hash.finalize()))
 }
 
+/// Copies the tree at `from` to `to`, each file as a hard link to the original where the file
+/// system allows one and as a copy otherwise. Whoever writes into the copy removes a file before
+/// writing it (`emit::write`), so the original's bytes never change through a link.
 pub(super) fn copy_tree(from: &Path, to: &Path) -> Result<()> {
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
@@ -217,7 +220,9 @@ pub(super) fn copy_tree(from: &Path, to: &Path) -> Result<()> {
         if kind.is_dir() {
             copy_tree(&entry.path(), &target)?;
         } else if kind.is_file() {
-            std::fs::copy(entry.path(), target)?;
+            if std::fs::hard_link(entry.path(), &target).is_err() {
+                std::fs::copy(entry.path(), target)?;
+            }
         } else {
             return Err(invalid("assembly input contains symlink or special file"));
         }

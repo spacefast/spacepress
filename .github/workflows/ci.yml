@@ -432,6 +432,8 @@ jobs:
         run: FIRST_WP_PROJECT=first-wp-store FIRST_WP_PORT=8901 tests/wp/store-run.sh
       - name: A managed build installs only from initialize, and installs what plugins install on boot
         run: FIRST_WP_PROJECT=first-wp-store-install FIRST_WP_PORT=8903 tests/wp/store-install-run.sh
+      - name: The First plugin on a stock WordPress, with first login and first push
+        run: FIRST_WP_PROJECT=first-wp-plugin FIRST_WP_PORT=8905 tests/wp/plugin/run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'

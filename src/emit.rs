@@ -55,6 +55,14 @@ pub(crate) fn runtime_file(rel: &str) -> Option<&'static [u8]> {
     runtime_files::FILES.iter().find(|(p, _)| *p == rel).map(|(_, b)| *b)
 }
 
+/// The embedded files below `prefix` (a directory of `runtime/`), as (path below it, bytes).
+#[cfg(feature = "cli")]
+pub(crate) fn embedded(prefix: &'static str) -> impl Iterator<Item = (&'static str, &'static [u8])> {
+    runtime_files::FILES
+        .iter()
+        .filter_map(move |(rel, bytes)| rel.strip_prefix(prefix).map(|rest| (rest, *bytes)))
+}
+
 /// The schema-independent plugins: `first-runtime`, `first-identity` and `first-admin`, as
 /// (path below the plugins directory, bytes). Identical for every app built by this compiler, so a
 /// build store writes the tree once per revision.

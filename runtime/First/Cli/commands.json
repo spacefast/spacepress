@@ -15,6 +15,10 @@
     { "name": "abilities pull", "args": "[dir] --site url [--only vendor/*]", "summary": "lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD)" },
     { "name": "migrate app", "args": "--from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--users] [--zero-css <zero.css>] [--dry-run] [--json]", "summary": "convert a Zero 0.8 app" },
     { "name": "migrate config", "args": "--from emdash|payload|sanity|zero <input> --out <new/first.config.ts>", "summary": "import another CMS's schema" },
+    { "name": "plugin", "args": "[--out file.zip]", "summary": "write the First WordPress plugin (first.zip) to upload and activate in wp-admin" },
+    { "name": "login", "args": "<site-url> [dir] [--no-browser]", "summary": "sign in to a WordPress site that runs the First plugin; the site's owner approves an application password in the browser" },
+    { "name": "logout", "args": "<site-url>", "summary": "forget a site's credential on this machine" },
+    { "name": "push", "args": "[dir] [--site url] [--install] [--dry-run]", "summary": "compile the project and deploy it to the site: upload the build, show what it changes, make it live (first login, or FIRST_APP_PASSWORD)" },
     { "name": "deploy", "args": "<inspect|publish|init|status|backup|restore> <options>", "summary": "artifact preflight and offline workspaces (docs/deployment.md)" }
   ],
   "site": [

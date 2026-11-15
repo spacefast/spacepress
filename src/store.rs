@@ -105,7 +105,7 @@ fn digest<'a>(files: impl IntoIterator<Item = (&'a str, &'a [u8])>) -> String {
     hex(hash.finalize())
 }
 
-fn tree_files(root: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
+pub(crate) fn tree_files(root: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
     fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) -> std::io::Result<()> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -251,8 +251,44 @@ pub fn compile_to_store(
 ) -> Result<StoredBuild, Diag> {
     let store = Store::open(root)?;
     let baseline = previous
-        .map(|id| store.manifest(id).map(|m| root.join("app").join(m.app)))
+        .map(|id| store.manifest(id).map(|m| (id, root.join("app").join(m.app))))
         .transpose()?;
+    compile_in(
+        store,
+        sources,
+        assets,
+        baseline.as_ref().map(|(id, dir)| (*id, dir.as_path())),
+    )
+}
+
+/// [`compile_to_store`] against a baseline that is not in this store: `baseline` is the previous
+/// build's ID and a directory holding its `snapshot.json` and `migrations/`. For a store that is not
+/// the one the site serves from (`first push` compiles locally against what the site sent).
+#[cfg(feature = "cli")]
+pub(crate) fn compile_to_store_against(
+    sources: &Path,
+    root: &Path,
+    assets: &Path,
+    baseline: Option<(&str, &Path)>,
+) -> Result<StoredBuild, Diag> {
+    if let Some((id, _)) = baseline
+        && !valid_id(id)
+    {
+        return Err(failure(format!("build store: invalid build id {id:?}")));
+    }
+    compile_in(Store::open(root)?, sources, assets, baseline)
+}
+
+fn compile_in(
+    store: Store,
+    sources: &Path,
+    assets: &Path,
+    baseline: Option<(&str, &Path)>,
+) -> Result<StoredBuild, Diag> {
+    let root = store.root.clone();
+    let root = root.as_path();
+    let previous = baseline.map(|(id, _)| id);
+    let baseline = baseline.map(|(_, dir)| dir.to_path_buf());
     let staged = store.staging("app");
     let compiled = match bundle::compile_tree(sources, &staged, assets, baseline.as_deref(), false) {
         Ok(compiled) => compiled,

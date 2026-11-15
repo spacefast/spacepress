@@ -9,8 +9,12 @@ pub(crate) mod export;
 pub(crate) mod init;
 mod init_github;
 pub(crate) mod links;
+pub(crate) mod login;
 pub(crate) mod mcp;
+pub(crate) mod plugin;
 pub(crate) mod pull;
+pub(crate) mod push;
+pub(crate) mod remote;
 pub(crate) mod site;
 mod sync;
 

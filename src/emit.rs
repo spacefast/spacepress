@@ -79,6 +79,13 @@ pub(crate) fn runtime_file(rel: &str) -> Option<&'static [u8]> {
 /// build store writes the tree once per revision.
 pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
     use std::borrow::Cow;
+    // Built once per process: hashing and substituting it is the same work on every call.
+    static TREE: std::sync::OnceLock<Vec<(String, Cow<'static, [u8]>)>> = std::sync::OnceLock::new();
+    TREE.get_or_init(build_runtime_tree).clone()
+}
+
+fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
+    use std::borrow::Cow;
     let runtime_hash = {
         use sha2::Digest;
         let mut hash = sha2::Sha256::new();
@@ -157,27 +164,48 @@ pub(crate) fn emit_generated(
     built: &Built,
     runtime: bool,
 ) -> std::io::Result<()> {
-    let schema_php = schema_php::render(&built.schema);
     if runtime {
-        for (rel, bytes) in runtime_tree() {
-            // First Admin: unless the config sets `admin: false`.
-            if rel != "first-loader.php" && (built.schema.admin || !rel.starts_with("first-admin/")) {
-                write(&plugins.join(rel), bytes)?;
-            }
-        }
+        let slugs = ["first-runtime", "first-identity", "first-admin"];
+        emit_runtime(plugins, &slugs[..if built.schema.admin { 3 } else { 2 }])?;
     }
+    let (_, files) = app_files(project, migrations, built)?;
     // The migrations directory exists even when the ledger has no SQL yet, as it always has.
     std::fs::create_dir_all(plugins.join(format!("first-app-{}/first/app/migrations", built.schema.name)))?;
+    for (rel, bytes) in files {
+        write(&plugins.join(rel), bytes)?;
+    }
+    Ok(())
+}
+
+/// Writes the runtime plugins named in `slugs` (`first-runtime`, `first-identity`, `first-admin`).
+pub(crate) fn emit_runtime(plugins: &Path, slugs: &[&str]) -> std::io::Result<()> {
+    for (rel, bytes) in runtime_tree() {
+        if rel.split_once('/').is_some_and(|(slug, _)| slugs.contains(&slug)) {
+            write(&plugins.join(rel), bytes)?;
+        }
+    }
+    Ok(())
+}
+
+/// Files as (path, bytes).
+pub(crate) type Files = Vec<(String, Vec<u8>)>;
+
+/// The app plugin's files (path below the plugins directory, bytes), and the `schema.php` they
+/// were made with.
+pub(crate) fn app_files(
+    project: &Path,
+    migrations: &Path,
+    built: &Built,
+) -> std::io::Result<(String, Files)> {
+    let schema_php = schema_php::render(&built.schema);
     let public = project.join("public");
     let public = if public.is_dir() {
         read_tree(&public)?
     } else {
         Vec::new()
     };
-    for (rel, bytes) in crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public) {
-        write(&plugins.join(rel), bytes)?;
-    }
-    Ok(())
+    let files = crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public);
+    Ok((schema_php, files))
 }
 
 #[cfg(test)]

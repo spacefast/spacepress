@@ -9,7 +9,8 @@ pub(crate) fn write_metadata(stage: &std::path::Path, built: &crate::pipeline::B
         "snapshot": built.snapshot,
         "destructiveChanges": built.warnings,
     });
-    std::fs::write(stage.join("first-deployment.json"), serde_json::to_vec_pretty(&value)?)
+    crate::emit::write(&stage.join("first-deployment.json"), serde_json::to_vec_pretty(&value)?)?;
+    Ok(())
 }
 
 /// `first deploy <mode> …`: the offline adapter (runtime/First/Deployment/Local.php) on its own PHP.

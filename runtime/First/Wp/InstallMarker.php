@@ -106,8 +106,11 @@ final class InstallMarker
             && !(Jobs\ActionSchedulerQueue::installed() && Guests::installed() && Uploads::installed())) {
             return false;
         }
+        // A localized app's languages are provisioned on a request where Polylang is set up (REST,
+        // cron, CLI, admin); a front-end request on a site with no language yet has no PLL(), so it
+        // can't provision, and must not record the marker that would skip provisioning after it.
         $locales = $plugin->schema->locales();
-        if ($locales !== null && function_exists('PLL') && !Polylang::installed($locales)) {
+        if ($locales !== null && !Polylang::installed($locales)) {
             return false;
         }
 

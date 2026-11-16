@@ -107,6 +107,53 @@ fn template(
     }
 }
 
+/// Whether `path` is the outermost layout of some route: `app/layout.tsx`, or a route group's
+/// (`app/(site)/layout.tsx`) when nothing above it wraps it.
+pub fn is_root_layout(path: &str, table: &app::Table) -> bool {
+    table
+        .routes
+        .iter()
+        .chain(table.not_found.iter())
+        .chain(table.login.iter())
+        .any(|r| r.layouts.first().is_some_and(|l| l == path))
+}
+
+/// Whether a layout component returns anything besides its `children` (or a fragment of only them).
+fn draws_chrome(func: &crate::ir::Func) -> bool {
+    use crate::ir::{Expr, ExprKind, FnBody, JsxKind, Stmt};
+    fn children_only(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Ident(n) => n == "children",
+            ExprKind::Member { prop, .. } => prop == "children",
+            ExprKind::Jsx(j) => matches!(j.kind, JsxKind::Fragment) && j.children.iter().all(children_only),
+            ExprKind::Str(s) => s.trim().is_empty(),
+            _ => false,
+        }
+    }
+    fn returns(stmts: &[Stmt], out: &mut Vec<Expr>) {
+        for s in stmts {
+            match s {
+                Stmt::Return(Some(e), _) => out.push(e.clone()),
+                Stmt::If(_, t, e) => {
+                    returns(t, out);
+                    if let Some(e) = e {
+                        returns(e, out);
+                    }
+                }
+                Stmt::Block(b) => returns(b, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    match &func.body {
+        FnBody::Expr(e) => out.push(e.clone()),
+        FnBody::Block(b) => returns(b, &mut out),
+    }
+    out.iter()
+        .any(|e| matches!(e.kind, ExprKind::Jsx(_)) && !children_only(e))
+}
+
 /// Whether a module imports `TemplatePart` from `"typedpress/app"`.
 fn places_template_parts(program: &loader::Program, module: usize) -> bool {
     use crate::ir::{ImportName, Stmt};
@@ -247,6 +294,20 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
             }
         }
         file.template = template(path, exports.get("template"), program, *module, span)?;
+        // A root layout that draws chrome of its own doesn't render under the theme's header and
+        // footer (docs/pages.md "Block templates"): say so, once, at build time.
+        if file.template.is_none()
+            && is_root_layout(path, &program.app)
+            && let Some(Value::Closure(c)) = exports.get("default")
+            && draws_chrome(&c.func)
+        {
+            let hint = format!(
+                "{path} renders markup around {{children}}, which the theme's header and footer replace on a block theme; add `export const template = \"blank\"` to keep it (docs/pages.md \"Block templates\")"
+            );
+            if !ext.hints.contains(&hint) {
+                ext.hints.push(hint);
+            }
+        }
         match exports.get("staticParams") {
             None | Some(Value::Undef) => {}
             Some(Value::Closure(c)) => {

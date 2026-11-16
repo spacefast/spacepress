@@ -64,6 +64,24 @@ The owner replaced it with one mode.
   First prints the document as before. Hardening's `blockTheme` keeps a block theme active
   unless the owner chose otherwise.
 
+## Review fixes
+
+- WordPress prints the `<title>` from `pre_get_document_title` without escaping it, so TypedPress
+  escapes the metadata title itself.
+- A saved `tp-login` counts as a sign-in page only if it has the Login form block, or the Page
+  content block while the app has `login.tsx`. Otherwise the default content renders.
+- A trashed or draft saved template doesn't render. A Page content block inside a template part
+  counts as placed. A template whose render loses the page falls back to `tp-page`, then to
+  TypedPress's own document, and logs it.
+- `<TemplatePart>` renders a parsed block, so its attributes never become block markup.
+- A route group's outermost layout is a root layout.
+- `<body data-tp-template>` and `<Link data-tp-template>` make a link to a page in another template
+  load the whole page.
+- Site Editor writes (templates, parts, Global Styles, navigation) forget prebuilt pages and
+  purge the whole host.
+- A Login form block with per-request plugin fields makes the page private after the template
+  renders, and refuses the prerender.
+
 ## What stays identical
 
 Data reads, access rules, guards, the cache policy, purge recording and Markdown twins run in the

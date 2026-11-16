@@ -197,11 +197,34 @@ final class AppRouter
     private function layouts(array $route): array
     {
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts'] ?? []);
-        if ($layouts !== [] && $layouts[0]['path'] === 'app/layout.tsx' && ($layouts[0]['template'] ?? null) === null
+        if ($layouts !== [] && self::rootLayout($layouts[0]['path']) && ($layouts[0]['template'] ?? null) === null
             && BlockTemplates::choice($route, $this->app['files'] ?? []) === 'theme' && self::themed()) {
             $layouts[0]['chrome'] = false;
         }
         return $layouts;
+    }
+
+    /** Whether a layout is a root layout: `app/layout.tsx`, or one below route groups only (`app/(site)/layout.tsx`). */
+    public static function rootLayout(string $path): bool
+    {
+        return preg_match('#\Aapp/(?:\([^/]+\)/)*layout\.tsx\z#', $path) === 1;
+    }
+
+    /**
+     * The block template a path renders in (a template slug), or `document` when pages print their
+     * own document (a classic theme), or null when no app page serves it. `<Link>` carries it, so a
+     * click to a page in another template loads the whole page instead of swapping the region.
+     */
+    public function templateFor(string $path): ?string
+    {
+        if (!self::themed()) {
+            return 'document';
+        }
+        $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        if ($match === null || ($match['route']['page'] ?? null) === null) {
+            return null;
+        }
+        return BlockTemplates::slug(BlockTemplates::choice($match['route'], $this->app['files'] ?? []));
     }
 
     /** Whether pages render in block templates: the active theme is a block theme. */
@@ -1083,7 +1106,8 @@ final class AppRouter
      */
     private function templated(\WP_Block_Template $template, array $head, string $body): never
     {
-        add_filter('pre_get_document_title', static fn (): string => (string) $head['title'], PHP_INT_MAX);
+        // A non-empty pre_get_document_title is printed as it is, without core's escaping.
+        add_filter('pre_get_document_title', static fn (): string => esc_html((string) $head['title']), PHP_INT_MAX);
         add_action('wp_head', '_block_template_viewport_meta_tag', 0);
         add_action('wp_head', '_block_template_render_title_tag', 1);
         add_action('wp_head', static function () use ($head): void {
@@ -1096,9 +1120,22 @@ final class AppRouter
             echo self::social($head);
         }, 2);
         $html = BlockTemplates::html($template, Navigation::region('tp-page') . $body . Navigation::END);
+        if ($html === null) {
+            // The template didn't place the page: the default template, else First's own document.
+            $fallback = $template->slug === BlockTemplates::PAGE ? null : BlockTemplates::resolve(BlockTemplates::PAGE);
+            $html = $fallback === null ? null : BlockTemplates::html($fallback, Navigation::region('tp-page') . $body . Navigation::END);
+            if ($html === null) {
+                $this->template = null;
+                $this->plain($head, $body);
+            }
+            $template = $fallback;
+        }
+        // The template's blocks ran after the cache policy was set: a sign-in form in a part or
+        // template (the Login form block) carries per-request fields, so the page is never shared.
+        $this->privateIfLoginFields();
         echo "<!DOCTYPE html>\n<html " . get_language_attributes() . ">\n<head>\n<meta charset=\"" . esc_attr((string) get_option('blog_charset')) . "\">\n";
         wp_head();
-        echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('typedpress-app'))) . "\">\n";
+        echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('typedpress-app'))) . '" data-tp-template="' . esc_attr($template->slug) . "\">\n";
         wp_body_open();
         echo $html, "\n";
         wp_footer();
@@ -1156,6 +1193,38 @@ final class AppRouter
         if ($template !== null) {
             $this->templated($template, $head, $body);
         }
+        $this->plain($head, $body);
+    }
+
+    /**
+     * A page with a block template rendered, or one the router found private after the template's
+     * blocks ran: the Cache-Control header is still unsent, so it can change.
+     */
+    private function privateIfLoginFields(): void
+    {
+        if (!\TypedPress\Render\LoginView::private() || str_starts_with($this->cacheControl, 'private')) {
+            return;
+        }
+        $this->cacheControl = 'private, no-store, max-age=0';
+        nocache_headers();
+        header('Cache-Control: ' . $this->cacheControl);
+        if (function_exists('batcache_cancel')) {
+            batcache_cancel();
+        }
+        // A prebuilt file would serve one visitor's form fields to everyone.
+        \TypedPress\Render\Prebuilt::viewerCall('login_form');
+    }
+
+    /**
+     * TypedPress's own document: under a classic theme, or when a block template can't place the page.
+     *
+     * @param array<string, mixed> $head
+     */
+    private function plain(array $head, string $body): never
+    {
+        // A block template that couldn't place the page may have hooked its title already.
+        remove_action('wp_head', '_block_template_render_title_tag', 1);
+        remove_action('wp_head', '_block_template_viewport_meta_tag', 0);
         echo "<!DOCTYPE html>\n<html " . get_language_attributes() . ">\n<head>\n<meta charset=\"" . esc_attr((string) get_option('blog_charset')) . "\">\n";
         echo "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
         echo '<title>' . esc_html((string) $head['title']) . "</title>\n";
@@ -1167,7 +1236,7 @@ final class AppRouter
         }
         echo self::social($head);
         wp_head();
-        echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('typedpress-app'))) . "\">\n";
+        echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('typedpress-app'))) . "\" data-tp-template=\"document\">\n";
         wp_body_open();
         echo Navigation::region() . $body . Navigation::END . "\n";
         wp_footer();

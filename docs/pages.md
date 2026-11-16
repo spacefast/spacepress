@@ -249,7 +249,9 @@ apply. The root layout renders in three cases:
 - the route renders in another template (`"blank"`, or a slug);
 - the active theme is a classic theme, where TypedPress prints the whole document as before.
 
-Nested layouts always render.
+Nested layouts always render. A route group's outermost layout (`app/(site)/layout.tsx`) is a
+root layout too. `typedpress check` and `typedpress build` print a hint for a root layout that
+renders markup around `{children}` and exports no `template`.
 
 **`<TemplatePart>`.** A layout that wants the theme's parts in its own arrangement places them
 itself:
@@ -280,7 +282,13 @@ edits to the part. A layout that imports it renders in `tp-blank` unless it expo
 - WordPress writes the `<title>` from the page's `metadata` (through `pre_get_document_title`).
   TypedPress adds the description, canonical and social tags to `wp_head`.
 - `<Link>` navigation swaps the page's router region, which sits inside the template. The theme's
-  header and footer stay on the screen.
+  header and footer stay on the screen. A link to a page that renders in another template loads
+  the whole page, so the chrome changes with it (`data-tp-template` on the body and the link).
+- Saving, trashing or deleting a template, a template part, Global Styles or a navigation menu
+  removes the prebuilt pages and announces a whole-host purge (`/*`) to the page cache. A saved
+  template that is trashed or a draft doesn't render; the theme's or TypedPress's answers.
+- A page whose template renders a Login form block is never shared: it is `private, no-store`
+  when a plugin adds per-request fields to the form.
 - Forms, `<Live>` regions and client components render inside the page, as before.
 
 **The 404 and sign-in pages.** Both are templates an owner edits in the Site Editor. The owner can
@@ -288,7 +296,9 @@ add text around the Page content block, or replace it. For the sign-in page, the
 the **Login form** block (`tp/login-form`): it renders the same form as `<LoginForm />`, posts
 to wp-login.php and shows its errors. That lets an owner rebuild the sign-in page without code.
 Once the owner has saved a `tp-login` template, wp-login.php renders it even when the app has
-no `login.tsx`.
+no `login.tsx`. Without `login.tsx`, the Page content block shows nothing on the sign-in page, so
+a saved template that has no Login form block renders TypedPress's default content instead and
+the log says so. Nobody is left without a form.
 
 See [the decision](decisions/2026-11-16-pages-in-block-templates.md).
 

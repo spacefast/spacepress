@@ -5388,6 +5388,11 @@ fn json<T: serde::Serialize>(v: T) -> serde_json::Value {
 fn pages_render_in_block_templates() {
     let project = fixture("block-templates", "serve");
     build(&project);
+    // The same app without login.tsx, installed over the first after the owner saved a sign-in
+    // template that only holds the Page content block.
+    let without_login = fixture("block-templates", "no-login");
+    std::fs::remove_file(without_login.join("tp/app/login.tsx")).unwrap();
+    build(&without_login);
     let schema = std::fs::read_to_string(
         project.join("tp/dist/wp-content/plugins/typedpress-app-blocktemplates/tp/app/schema.php"),
     )
@@ -5413,10 +5418,12 @@ fn pages_render_in_block_templates() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/block_templates.php"))
         .arg(project.join("tp/dist/wp-content"))
+        .arg(without_login.join("tp/dist/wp-content"))
         .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
+    let _ = std::fs::remove_dir_all(&without_login);
     assert!(
         out.status.success(),
         "{}{}",
@@ -5596,4 +5603,110 @@ fn pages_render_in_block_templates() {
         serde_json::json!({ "status": 404, "owner text": true, "page": "No such page" }),
         "{seen}"
     );
+    // The title WordPress prints is the page's metadata as text, never markup.
+    let xss = &seen["xss"];
+    assert_eq!(
+        (&xss["status"], &xss["script"], &xss["titles"]),
+        (&json(200), &json(false), &json(1)),
+        "{seen}"
+    );
+    assert_eq!(
+        xss["title"], "Notes </title><script>window.pwned=1</script> · Field Notes",
+        "{seen}"
+    );
+    // Each page says its template, and each <Link> its target's: the router swaps the region only
+    // within one template, and loads a page in another.
+    assert_eq!(
+        seen["links"],
+        serde_json::json!({ "page": "tp-page", "links": [["/notes", "tp-page"], ["/bare", "tp-blank"]] }),
+        "{seen}"
+    );
+    assert_eq!(
+        (&seen["studio"]["template"], &seen["bare"]["template"]),
+        (&json("tp-blank"), &json("tp-blank")),
+        "{seen}"
+    );
+    // A route group's layout below the root renders, under the theme's parts.
+    let group = &seen["group"];
+    assert_eq!(
+        (&group["page"], &group["group layout"], &group["theme header"]),
+        (&json("Cart"), &json(true), &json(1)),
+        "{seen}"
+    );
+    // <TemplatePart> attributes can't open another block.
+    assert_eq!(
+        seen["template part attrs"],
+        serde_json::json!({ "tagline": false, "header": true }),
+        "{seen}"
+    );
+    // A Login form block the owner placed in a public template, with a plugin's per-request field:
+    // the page is never shared.
+    assert_eq!(
+        seen["public login form"],
+        serde_json::json!({ "status": 200, "form": true, "cache": "private, no-store, max-age=0" }),
+        "{seen}"
+    );
+    // A trashed saved template doesn't render: the registered one answers again.
+    assert_eq!(
+        seen["trashed template"],
+        serde_json::json!({ "login form": false, "theme header": 1, "page": "All notes" }),
+        "{seen}"
+    );
+    // A template that doesn't place the page falls back to tp-page; the page never goes missing.
+    assert_eq!(
+        seen["template without page"],
+        serde_json::json!({ "status": 200, "page": "Bare", "owner text": false, "theme header": 1 }),
+        "{seen}"
+    );
+    // A Site Editor save announces one whole-host purge.
+    assert_eq!(seen["design purge"], serde_json::json!(["[\"\\/*\"]"]), "{seen}");
+    // The owner's sign-in template held only the Page content block, and login.tsx went away:
+    // wp-login.php still shows a sign-in form.
+    assert_eq!(
+        seen["login without login.tsx"],
+        serde_json::json!({ "status": 200, "form": true, "app": false, "wordpress page": false }),
+        "{seen}"
+    );
+}
+
+/// A root layout that draws its own chrome and says nothing about its template gets a hint: on a
+/// block theme the theme's header and footer replace it. A route group's outermost layout is a
+/// root too; a layout that only places `{children}`, or one that picks a template, gets none.
+#[test]
+fn root_layout_chrome_without_a_template_is_hinted() {
+    let dir = std::env::temp_dir().join(format!("tp-root-layout-hint-{}", std::process::id()));
+    let check = |files: &[(&str, &str)]| -> String {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("typedpress.config.ts"),
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
+        )
+        .unwrap();
+        for (path, source) in files {
+            let path = dir.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, source).unwrap();
+        }
+        let out = first().arg("check").arg(&dir).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stderr).to_string()
+    };
+    let page = ("tp/app/page.tsx", "export default function Home() { return <h1>Home</h1>; }\n");
+    let chrome = "import type { LayoutProps } from \"typedpress/app\";\nexport default function Root({ children }: LayoutProps) { return <div><header>Site</header>{children}</div>; }\n";
+    let hint = "renders markup around {children}, which the theme's header and footer replace";
+    let out = check(&[("tp/app/layout.tsx", chrome), page]);
+    assert!(out.contains(&format!("hint: app/layout.tsx {hint}")), "{out}");
+    // The outermost layout of a route group.
+    let out = check(&[
+        ("tp/app/(site)/layout.tsx", chrome),
+        ("tp/app/(site)/about/page.tsx", "export default function About() { return <h1>About</h1>; }\n"),
+    ]);
+    assert!(out.contains(&format!("hint: app/(site)/layout.tsx {hint}")), "{out}");
+    // Saying which template it renders in, or placing only its children, is no hint.
+    let blank = format!("export const template = \"blank\";\n{chrome}");
+    assert!(!check(&[("tp/app/layout.tsx", &blank), page]).contains(hint));
+    let bare = "import type { LayoutProps } from \"typedpress/app\";\nexport default function Root({ children }: LayoutProps) { return <>{children}</>; }\n";
+    assert!(!check(&[("tp/app/layout.tsx", bare), page]).contains(hint));
+    let _ = std::fs::remove_dir_all(&dir);
 }

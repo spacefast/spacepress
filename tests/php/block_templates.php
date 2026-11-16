@@ -68,7 +68,15 @@ function shape(array $r): array
         'router module' => str_contains($r['body'], 'tp/Render/client/router.js'),
         'cache' => $r['headers']['cache-control'][0] ?? null,
         'location' => $r['headers']['location'][0] ?? null,
+        'template' => $x->query('//body')->item(0)?->getAttribute('data-tp-template'),
     ];
+}
+
+/** Each same-site <Link>'s path and the template its target renders in. */
+function links(array $r): array
+{
+    preg_match_all('#<a href="[^"]*?(/[a-z]*)" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-tp-template="([^"]+)"#', $r['body'], $m, PREG_SET_ORDER);
+    return array_map(static fn (array $a): array => [$a[1], $a[2]], $m);
 }
 
 $admin = ['Authorization: Basic ' . base64_encode($site->appPassword('admin')), 'Content-Type: application/json'];
@@ -130,6 +138,55 @@ fetch("$url/wp-json/wp/v2/templates/$stylesheet//404", 'POST', $admin, json_enco
     "<!-- wp:paragraph --><p>Owner 404 text</p><!-- /wp:paragraph -->\n<!-- wp:tp/page /-->"]));
 $missing = fetch("$url/no/such/page");
 $out['404 edited'] = ['status' => $missing['status'], 'owner text' => str_contains($missing['body'], 'Owner 404 text'), 'page' => shape($missing)['page']];
+
+// 1. A title with markup prints as text in WordPress's <title>.
+$xss = fetch("$url/xss");
+$out['xss'] = ['status' => $xss['status'], 'script' => str_contains($xss['body'], '<script>window.pwned'), 'titles' => shape($xss)['titles'], 'title' => shape($xss)['title']];
+// 4. <Link> carries its target's template; the page says its own.
+$home = fetch("$url/");
+$out['links'] = ['page' => shape($home)['template'], 'links' => links($home)];
+// 10. A route group's layout under the chrome-less root renders; one at the top is the root.
+$out['group'] = shape(fetch("$url/cart")) + ['group layout' => str_contains(fetch("$url/cart")['body'], 'Shop banner')];
+// 9. <TemplatePart> attributes are block attributes, never markup: a value can't open a block.
+$out['template part attrs'] = (string) \TypedPress\Wp\BlockTemplates::part('header', 'header', 'x --><!-- wp:site-tagline /--><!-- wp:x')->html();
+$out['template part attrs'] = ['tagline' => str_contains($out['template part attrs'], 'wp-block-site-tagline'), 'header' => str_contains($out['template part attrs'], 'wp-block-site-title')];
+// 3. A Login form block in a public template with a plugin's per-request field: never shared.
+file_put_contents($site->dir . '/content/mu-plugins/login-field.php', "<?php add_action('login_form', static function (): void { echo '<input type=\"hidden\" name=\"challenge\" value=\"' . bin2hex(random_bytes(4)) . '\">'; });");
+fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-page", 'POST', $admin, json_encode(['content' =>
+    "<!-- wp:template-part {\"slug\":\"header\",\"tagName\":\"header\"} /-->\n<!-- wp:tp/page /-->\n<!-- wp:tp/login-form /-->"]));
+$withForm = fetch("$url/notes");
+$out['public login form'] = ['status' => $withForm['status'], 'form' => str_contains($withForm['body'], 'name="challenge"'), 'cache' => $withForm['headers']['cache-control'][0] ?? null];
+unlink($site->dir . '/content/mu-plugins/login-field.php');
+// 7. A trashed custom template doesn't render: the registered one answers again.
+$saved = json_decode(fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-page?context=edit", headers: $admin)['body'], true);
+wp_trash_post((int) ($saved['wp_id'] ?? 0));
+$trashed = fetch("$url/notes");
+$out['trashed template'] = ['login form' => str_contains($trashed['body'], 'id="loginform"'), 'theme header' => shape($trashed)['theme header'], 'page' => shape($trashed)['page']];
+// 8. A template whose page block lives in a template part still places the page; one with none
+// falls back to tp-page, never a blank 200.
+fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-blank", 'POST', $admin, json_encode(['content' => "<!-- wp:paragraph --><p>No page here</p><!-- /wp:paragraph -->"]));
+$bare = fetch("$url/bare");
+$out['template without page'] = ['status' => $bare['status'], 'page' => shape($bare)['page'], 'owner text' => str_contains($bare['body'], 'No page here'), 'theme header' => shape($bare)['theme header']];
+// 6. A Site Editor save announces a whole-site purge and forgets the prebuilt pages.
+file_put_contents($site->dir . '/content/mu-plugins/purge-log.php', "<?php add_action('tp_purge_urls', static function (array \$paths): void { file_put_contents(WP_CONTENT_DIR . '/purges.log', json_encode(\$paths) . \"\\n\", FILE_APPEND); });");
+fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-blank", 'POST', $admin, json_encode(['content' => "<!-- wp:tp/page /-->"]));
+$out['design purge'] = array_values(array_filter(explode("\n", (string) @file_get_contents($site->dir . '/content/purges.log'))));
+unlink($site->dir . '/content/mu-plugins/purge-log.php');
+
+// 2. The sign-in template the owner saved with the Page content block, after login.tsx is gone:
+// wp-login.php still shows a form (the default content, the Login form block).
+fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-login", 'POST', $admin, json_encode(['content' =>
+    "<!-- wp:paragraph --><p>Owner sign-in text</p><!-- /wp:paragraph -->\n<!-- wp:tp/page /-->"]));
+if (isset($argv[2])) {
+    $site->stopServer();
+    $app = glob($site->dir . '/content/plugins/typedpress-app-*')[0];
+    exec('rm -rf ' . escapeshellarg($app));
+    wpCopy($argv[2] . '/plugins/' . basename($app), $app);
+    $site->startServer();
+    $url = $site->url();
+    $r = fetch("$url/wp-login.php");
+    $out['login without login.tsx'] = ['status' => $r['status'], 'form' => str_contains($r['body'], 'id="loginform"'), 'app' => str_contains($r['body'], 'Sign in to Field Notes'), 'wordpress page' => str_contains($r['body'], 'login.min.css')];
+}
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

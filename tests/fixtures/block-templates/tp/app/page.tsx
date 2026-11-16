@@ -9,7 +9,7 @@ export default async function Home() {
     <main className="home">
       <h1>Home</h1>
       <ul>{notes.map((n) => <li>{n.title}</li>)}</ul>
-      <Link href="/notes">Notes</Link>
+      <Link href="/notes">Notes</Link> <Link href="/bare">Bare</Link>
     </main>
   );
 }

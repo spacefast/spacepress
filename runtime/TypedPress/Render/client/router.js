@@ -12,18 +12,26 @@ const sameSite = (event, ref) =>
   !ref.hasAttribute("download") &&
   ref.origin === window.location.origin;
 
+// The block template a page renders in (`<body data-tp-template>`) and the one a link's target
+// renders in (`data-tp-template` on the link): the router region swaps only between pages of one
+// template, so a link to a page with other chrome (the theme's header, or none) loads the page.
+const sameTemplate = (ref) => {
+  const target = ref.dataset.tpTemplate;
+  return target === undefined || target === document.body.dataset.tpTemplate;
+};
+
 store("tp/router", {
   actions: {
     navigate: withSyncEvent(function* (event) {
       const { ref } = getElement();
-      if (!sameSite(event, ref)) return;
+      if (!sameSite(event, ref) || !sameTemplate(ref)) return;
       event.preventDefault();
       const { actions } = yield import("@wordpress/interactivity-router");
       yield actions.navigate(ref.href);
     }),
     *prefetch() {
       const { ref } = getElement();
-      if (!(ref instanceof HTMLAnchorElement) || ref.origin !== window.location.origin) return;
+      if (!(ref instanceof HTMLAnchorElement) || ref.origin !== window.location.origin || !sameTemplate(ref)) return;
       const { actions } = yield import("@wordpress/interactivity-router");
       yield actions.prefetch(ref.href);
     },

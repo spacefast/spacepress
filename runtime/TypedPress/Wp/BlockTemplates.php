@@ -204,17 +204,22 @@ final class BlockTemplates
      */
     public static function resolve(string $slug): ?\WP_Block_Template
     {
-        $template = get_block_template(get_stylesheet() . '//' . $slug);
-        $content = $template instanceof \WP_Block_Template ? (string) $template->content : '';
+        $template = self::published($slug);
+        $content = $template instanceof \WP_Block_Template ? self::expanded((string) $template->content) : '';
+        // The sign-in template shows the page only while the app has login.tsx: without it the
+        // page block prints nothing, and the template needs the Login form block instead.
+        $login = is_array(self::$plugin?->schema->app()['login'] ?? null);
         $ok = match ($slug) {
             self::NOT_FOUND => $template instanceof \WP_Block_Template,
-            self::LOGIN => has_block(self::PAGE_BLOCK, $content) || has_block(self::LOGIN_BLOCK, $content),
+            self::LOGIN => ($login && has_block(self::PAGE_BLOCK, $content)) || has_block(self::LOGIN_BLOCK, $content),
             default => has_block(self::PAGE_BLOCK, $content),
         };
         if ($ok) {
             return $template;
         }
-        if ($slug !== self::PAGE && $slug !== self::NOT_FOUND && $slug !== self::LOGIN) {
+        if ($slug === self::LOGIN && $template instanceof \WP_Block_Template) {
+            error_log('TypedPress: the "' . self::LOGIN . '" block template has no sign-in form' . ($login ? '' : ' (the app has no login.tsx, so it needs the Login form block)') . '; its default content renders instead');
+        } elseif ($slug !== self::PAGE && $slug !== self::NOT_FOUND && $slug !== self::LOGIN) {
             error_log("TypedPress: the block template \"$slug\" has no Page content block; the page renders in \"" . self::PAGE . '" instead');
         }
         if ($slug === self::LOGIN) {
@@ -228,14 +233,59 @@ final class BlockTemplates
         return $slug === self::PAGE ? null : self::resolve(self::PAGE);
     }
 
-    /** Whether the owner saved a sign-in template in the Site Editor. */
+    /** Whether the owner saved (and published) a sign-in template in the Site Editor. */
     public static function loginCustomized(): bool
     {
         if (!function_exists('wp_is_block_theme') || !wp_is_block_theme()) {
             return false;
         }
-        $template = get_block_template(get_stylesheet() . '//' . self::LOGIN);
+        $template = self::published(self::LOGIN);
         return $template instanceof \WP_Block_Template && $template->source === 'custom';
+    }
+
+    /**
+     * The active theme's template for `$slug`, or null. `get_block_template()` also returns a saved
+     * template that is trashed or a draft; only a published one renders, so the theme's file or
+     * the registered template answers in its place.
+     */
+    private static function published(string $slug): ?\WP_Block_Template
+    {
+        $template = get_block_template(get_stylesheet() . '//' . $slug);
+        if ($template instanceof \WP_Block_Template && $template->source === 'custom' && $template->status !== 'publish') {
+            $template = get_block_file_template(get_stylesheet() . '//' . $slug);
+        }
+        return $template instanceof \WP_Block_Template ? $template : null;
+    }
+
+    /**
+     * Template markup with each template part it places expanded to the part's own blocks, so a
+     * page block the owner put in a part counts as placed.
+     */
+    private static function expanded(string $content, int $depth = 0): string
+    {
+        if ($depth > 3 || !str_contains($content, 'wp:template-part')) {
+            return $content;
+        }
+        $out = $content;
+        foreach (parse_blocks($content) as $block) {
+            foreach (self::parts($block) as $slug) {
+                $part = get_block_template(get_stylesheet() . '//' . $slug, 'wp_template_part');
+                if ($part instanceof \WP_Block_Template) {
+                    $out .= "\n" . self::expanded((string) $part->content, $depth + 1);
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** @return list<string> the slugs of the template parts a parsed block places, nested ones too */
+    private static function parts(array $block): array
+    {
+        $out = ($block['blockName'] ?? null) === 'core/template-part' && is_string($block['attrs']['slug'] ?? null) ? [$block['attrs']['slug']] : [];
+        foreach ($block['innerBlocks'] ?? [] as $inner) {
+            $out = [...$out, ...self::parts($inner)];
+        }
+        return $out;
     }
 
     /**
@@ -243,7 +293,7 @@ final class BlockTemplates
      * `tp/page` block. The page is put in after WordPress's template filters ran (shortcodes,
      * texturize, smilies, content tags), so they never rewrite what the app rendered.
      */
-    public static function html(\WP_Block_Template $template, string $page): string
+    public static function html(\WP_Block_Template $template, string $page): ?string
     {
         global $_wp_current_template_id, $_wp_current_template_content;
         $_wp_current_template_id = $template->id;
@@ -257,7 +307,18 @@ final class BlockTemplates
             self::$token = null;
         }
         $at = strpos($html, $token);
-        return $at === false ? $html : substr_replace($html, $page, $at, strlen($token));
+        // The 404 and sign-in templates are the owner's to fill: one without the page (the Login
+        // form block alone, a 404 of their own words) renders as they made it.
+        if ($at === false && ($template->slug === self::LOGIN || $template->slug === self::NOT_FOUND)) {
+            return $html;
+        }
+        if ($at === false) {
+            // The page block didn't render where the template placed it (a filter removed it, a
+            // pattern hid it): the caller renders elsewhere rather than drop the page.
+            error_log('TypedPress: the block template "' . $template->slug . '" rendered no Page content block; the page renders without it');
+            return null;
+        }
+        return substr_replace($html, $page, $at, strlen($token));
     }
 
     /** `tp/page`: the page while one renders; in the editor, a placeholder. */
@@ -283,9 +344,10 @@ final class BlockTemplates
         if (is_string($class) && $class !== '') {
             $attrs['className'] = $class;
         }
-        if (!function_exists('do_blocks')) {
+        if (!function_exists('render_block')) {
             return Html::raw('');
         }
-        return Html::raw(do_blocks('<!-- wp:template-part ' . wp_json_encode($attrs, JSON_UNESCAPED_SLASHES) . ' /-->'));
+        // As a parsed block, never as markup: an attribute value can't close the block comment.
+        return Html::raw(render_block(['blockName' => 'core/template-part', 'attrs' => $attrs, 'innerBlocks' => [], 'innerHTML' => '', 'innerContent' => []]));
     }
 }

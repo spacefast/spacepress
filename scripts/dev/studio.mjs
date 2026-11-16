@@ -9,7 +9,9 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'no
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const STUDIO_VERSION = '2.2.0';
-const WORDPRESS_VERSION = '7.1.4';
+// The WordPress Studio installs (wordpress.org's ZIP of it) and setup.php's first check; First's floor,
+// src/platform.rs WORDPRESS, is 7.2-beta5, and setup.php also runs the runtime's own Platform::problems().
+const WORDPRESS_VERSION = '7.2-beta5';
 const here = dirname(fileURLToPath(import.meta.url));
 const exists = async (path) => access(path).then(() => true, () => false);
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'));
@@ -176,7 +178,7 @@ export async function publishPlugins(content, managed) {
   }
   const spec = {
     site: managed.owner.site,
-    wordpress: '7.1', sqlite: '3.1.2', localized: manifest.locales !== null,
+    wordpress: WORDPRESS_VERSION, sqlite: '3.1.2', localized: manifest.locales !== null,
   };
   await atomicJson(join(managed.state, 'setup.json'), spec);
   managed.owner.app = manifest.app;
@@ -326,7 +328,7 @@ async function exportSite(content, seed) {
     for (const slug of ['first-identity', `first-app-${manifest.app}`]) if (plugins.includes(slug)) activate.push(slug);
     for (const slug of activate) await run(['wp', 'plugin', 'activate', slug], { capture: true });
     const spec = join(work, 'setup.json');
-    await atomicJson(spec, { site, wordpress: '7.1', sqlite: '3.1.2', localized: manifest.locales !== null });
+    await atomicJson(spec, { site, wordpress: WORDPRESS_VERSION, sqlite: '3.1.2', localized: manifest.locales !== null });
     await run(['wp', 'eval-file', join(here, 'setup.php'), spec, '--use-include'], { capture: true });
     // WordPress's sample post, page and comment are not the project's content: gone before First
     // stores anything of its own.

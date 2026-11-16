@@ -3,7 +3,7 @@
  * Plugin Name: First Identity
  * Description: Accounts, verified emails, passkeys, MFA and an OpenID Connect issuer for WordPress.
  * Version: 0.3.0
- * Requires at least: 7.1
+ * Requires at least: 7.2-beta5
  * Requires PHP: 8.2
  * License: GPL-2.0-or-later
  * Text Domain: first-identity

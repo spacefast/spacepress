@@ -121,5 +121,5 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   }
   assert.equal(await action("count"), 3);
   assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), schemaBefore);
-  assert.equal(harness.wp.startsWith("7.1"), true);
+  assert.equal(harness.wp.startsWith("7.2"), true);
 });

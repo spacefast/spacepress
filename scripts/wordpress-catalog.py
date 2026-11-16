@@ -29,7 +29,8 @@ TYPES = ROOT / "types/first/wordpress.d.ts"
 BEGIN, END = "// BEGIN GENERATED: scripts/wordpress-catalog.py", "// END GENERATED"
 CACHE = ROOT / "tests/wp/cache/catalog"
 
-# WordPress 7.1.x, as tests/wp/harness.sh and tests/php/wp.php boot it.
+# WordPress 7.1.x: the newest stubs php-stubs/wordpress-stubs has released. First's floor is 7.2-beta5
+# (src/platform.rs); every name the catalog takes from 7.1 is still in 7.2.
 PINS = {
     "hooks": {
         "url": "https://registry.npmjs.org/@wp-hooks/wordpress-core/-/wordpress-core-1.13.0.tgz",

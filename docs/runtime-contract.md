@@ -6,7 +6,7 @@ copied verbatim into every build) plus generated files. This document is the
 seam between them. The compiler only emits calls listed here.
 
 Requirements (`Platform::problems()` is the one statement of them; activation
-and `first doctor` both apply it): WordPress 7.1+ on PHP 8.2+ with the
+and `first doctor` both apply it): WordPress 7.2-beta5+ on PHP 8.2+ with the
 `mbstring`, `json` and `gd` extensions (`sodium` for the identity bundle);
 MySQL 8.0+ or MariaDB 10.11+ with every First table InnoDB, or SQLite through
 SQLite Database Integration 3.1.2+; the pinned platform plugins Secure Custom

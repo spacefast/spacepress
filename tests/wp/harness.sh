@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Disposable WordPress 7.1 + MariaDB 11.4 + pinned platform plugins for First's WP target (design §9.2).
+# Disposable WordPress 7.2-beta5 + MariaDB 11.4 + pinned platform plugins for First's WP target (design §9.2).
 #
 #   harness.sh up --wp-content <dir> boot and activate the declared split plugins,
 #                                    create admin/editor/author/subscriber with application passwords;

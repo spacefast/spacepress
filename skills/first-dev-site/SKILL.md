@@ -1,7 +1,7 @@
 ---
 name: first-dev-site
 description: "Use when running a First project locally or inspecting its local WordPress site: starting and stopping `first dev`, finding the site's URL and login, reading records with `first find`, running an action or a job by hand, or running WP-CLI on the site."
-compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
+compatibility: "Targets First 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
 ---
 
 # Run and inspect the dev site

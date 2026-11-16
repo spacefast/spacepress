@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The first-identity acceptance suite (design §3.2, §9.5): the plugin from runtime/identity on a
-# disposable WordPress 7.1 + MariaDB 11.4 + Mailpit, PHP suites inside the container and the
+# disposable WordPress 7.2-beta5 + MariaDB 11.4 + Mailpit, PHP suites inside the container and the
 # browser-less OAuth flow over HTTP from the host.
 #
 #   IDENTITY_PORT (default 8814)        WordPress on the host; Mailpit's API is IDENTITY_PORT+1

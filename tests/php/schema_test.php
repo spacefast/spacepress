@@ -16,6 +16,10 @@ use First\Schema;
 $fixture = __DIR__ . '/../fixtures/blog/schema.php';
 $schema = Schema::load($fixture);
 eq('PHP platform policy matches the shared golden', \First\Wp\Platform::requirements(), json_decode(file_get_contents(__DIR__ . '/../fixtures/platform.json'), true, 512, JSON_THROW_ON_ERROR));
+// The WordPress floor is 7.2-beta5: what $wp_version reads on each build, whole (core's suffix-dropping check would pass every 7.2 pre-release).
+$floor = ['7.2-beta5' => true, '7.2-beta5-65525' => true, '7.2-beta6' => true, '7.2-RC1' => true, '7.2-RC2-65600' => true, '7.2' => true, '7.2.1' => true, '7.3-alpha-61000' => true, '8.0' => true,
+    '7.1' => false, '7.1.4' => false, '7.1.9' => false, '7.2-beta4' => false, '7.2-beta4-65000' => false, '7.2-alpha-64000' => false];
+eq('WordPress floor accepts 7.2-beta5 and later, rejects 7.1.x and 7.2-beta4', array_map(\First\Wp\Platform::wordpressSupported(...), array_map('strval', array_keys($floor))), array_values($floor));
 $posts = $schema->collection('posts')['columns'];
 $comments = $schema->collection('comments')['columns'];
 $settings = $schema->global('settings')['fields'];

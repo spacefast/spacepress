@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": [],
+    "paths": { "zero": ["./node_modules/@spacefast/zero-cli/types/index.d.ts"] }
+  },
+  "include": ["zero.config.ts", "zero.gen.ts", "client.ts", "zero/client/**/*.ts"]
+}

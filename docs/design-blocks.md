@@ -1,6 +1,16 @@
 # First Blocks — Gutenberg JSX and TSX block themes
 
-Status: approved by the project owner as **an optional add-on**. That ruling
+> **Status update, 2026-11-16.** The owner withdrew the earlier ruling below ("Ignore my earlier
+> rulings. Let's do what's best for most WordPress compatibility while keeping everything."). Blocks
+> are no longer kept out of First core. First core now renders every `first/app/` page inside a
+> WordPress block template, registers its own templates and blocks (`first/page`,
+> `first/login-form`), and gives layouts `<TemplatePart>`
+> ([decision](decisions/2026-11-16-pages-in-block-templates.md), [#497](https://github.com/spacefast/zero/issues/497)).
+> The package and authoring API described here are still a separate, paused piece of work (see
+> #497's "Paused block-theme compiler implementation"). The four-part ruling that follows is
+> history, not policy.
+
+Status (historical): approved by the project owner as **an optional add-on**. That ruling
 has four parts, and every section below is read under them:
 
 1. **Separate package.** `@spacefast/first-blocks` in `packages/blocks/`,

@@ -2,6 +2,10 @@
 // layout keeps the header, main and footer; `title` and `description` became `metadata`.
 import { Link, type LayoutProps } from "first/app";
 
+// Draws its own header and footer: the blank block template, so the theme's parts don't double them
+// (docs/pages.md "Block templates").
+export const template = "blank";
+
 export const metadata = { title: { default: "Journal", template: "%s · Journal" } };
 
 export default function Base({ children }: LayoutProps) {

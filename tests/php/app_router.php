@@ -55,7 +55,7 @@ function fetch(string $url, string $method = 'GET', array $headers = [], ?string
 function page(array $r): array
 {
     preg_match('#<title>(.*?)</title>#s', $r['body'], $t);
-    preg_match('#data-wp-router-region="first/main">(.*)</div>\n#s', $r['body'], $m);
+    preg_match('#data-wp-router-region="first/main">(.*)</div><!-- /first/main -->#s', $r['body'], $m);
     return ['status' => $r['status'], 'title' => html_entity_decode($t[1] ?? '', ENT_QUOTES), 'body' => $m[1] ?? null];
 }
 

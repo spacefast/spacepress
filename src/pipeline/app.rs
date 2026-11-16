@@ -68,6 +68,50 @@ fn route_id(v: &Value, span: Span) -> Result<String, Diag> {
     }
 }
 
+/// `export const template` on a page or layout: the block template the page renders in
+/// (docs/pages.md "Block templates"). `"theme"` is First's template with the theme's header and
+/// footer parts, `"blank"` the one with none; any other slug names a template the theme, a plugin
+/// or the Site Editor provides. A layout that says nothing and places `<TemplatePart>` itself is
+/// `"blank"`: it lays out the theme's parts where it wants them.
+fn template(
+    path: &str,
+    value: Option<&Value>,
+    program: &loader::Program,
+    module: usize,
+    span: Span,
+) -> Result<Option<String>, Diag> {
+    let help = "write `export const template = \"blank\"` for a page with no theme header and footer, `\"theme\"` for the theme's, or a template's slug";
+    match value {
+        None | Some(Value::Undef) => Ok((path.ends_with("layout.tsx") && places_template_parts(program, module))
+            .then(|| "blank".to_string())),
+        Some(Value::Str(s))
+            if !s.is_empty()
+                && s.len() <= 100
+                && s.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+                && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') =>
+        {
+            Ok(Some(s.to_string()))
+        }
+        Some(Value::Str(s)) => Err(Diag::new(
+            export_at(program, module, "template"),
+            format!("`template` is \"{s}\", which isn't a block template's slug"),
+        )
+        .help(help)),
+        Some(other) => Err(Diag::new(span, format!("`template` is {}, not a template's slug", other.describe())).help(help)),
+    }
+}
+
+/// Whether a module imports `TemplatePart` from `"first/app"`.
+fn places_template_parts(program: &loader::Program, module: usize) -> bool {
+    use crate::ir::{ImportName, Stmt};
+    program.modules[module].body.iter().any(|stmt| match stmt {
+        Stmt::Import { source, specs, .. } if source == loader::APP_MODULE => specs
+            .iter()
+            .any(|s| matches!(&s.imported, ImportName::Named(n) if n == "TemplatePart")),
+        _ => false,
+    })
+}
+
 /// The compiled-function name stem for a route file: `app/blog/[slug]/page.tsx` → `app__blog__slug__page`.
 fn stem(file: &str) -> String {
     let mut out = String::new();
@@ -196,6 +240,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
                     .help("write `export const prerender = true` to prebuild the page, or `false` to render it per request"));
             }
         }
+        file.template = template(path, exports.get("template"), program, *module, span)?;
         match exports.get("staticParams") {
             None | Some(Value::Undef) => {}
             Some(Value::Closure(c)) => {

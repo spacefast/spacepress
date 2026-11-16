@@ -5,6 +5,10 @@ import { Link, type LayoutProps } from "first/app";
 import { is_user_logged_in } from "php/wordpress";
 import "./site.css";
 
+// Draws its own header and footer: the blank block template, so the theme's parts don't double them
+// (docs/pages.md "Block templates").
+export const template = "blank";
+
 export const metadata = {
   title: { default: "Drive Store", template: "%s · Drive Store" },
   description: "Used hard drives and SSDs, tested and graded. A First example shop: nothing here is for sale.",

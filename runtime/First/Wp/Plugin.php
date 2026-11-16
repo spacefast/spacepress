@@ -112,6 +112,7 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        BlockTemplates::register($this);
         ThemeStyles::register($this);
         \First\Render\Prebuilt::boot($this);
         PublicFiles::register($this);

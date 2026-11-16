@@ -12,7 +12,7 @@ first/app/
 ├── layout.tsx                 # wraps every page: export const metadata, default component
 ├── page.tsx                   # /
 ├── not-found.tsx              # the 404 for URLs no route serves, and for notFound()
-├── login.tsx                  # wp-login.php's sign-in page, in the root layout
+├── login.tsx                  # wp-login.php's sign-in page, in the sign-in block template
 ├── error.tsx                  # a render error (logged; the page shows only this)
 ├── about/page.tsx             # /about
 ├── colophon/page.md           # /colophon: a WordPress Page an editor can change
@@ -30,7 +30,7 @@ first/app/
 | `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL. |
 | `page.md` | A route whose content is a WordPress Page (see [Markdown pages](#markdown-pages)). |
 | `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page. |
-| `layout.tsx` | Wraps every page below it, outermost first. May export `guard`. |
+| `layout.tsx` | Wraps every page below it, outermost first. May export `guard` and `template` ([Block templates](#block-templates)). |
 | `not-found.tsx` | At the root only. |
 | `login.tsx` | At the root only: renders wp-login.php's sign-in page (see [The sign-in page](#the-sign-in-page)). |
 | `error.tsx` | The nearest one above a page renders when the page throws. |
@@ -152,7 +152,9 @@ export default function Page() {
 
 WordPress's wp-login.php is the site's one sign-in page: wp-admin, a layout's `guard` and First
 Identity all send people there. `first/app/login.tsx` renders it with the app's own markup,
-inside the root layout and its stylesheets. Without the file, WordPress's own page shows.
+inside the sign-in block template (`first-login`) and its stylesheets. Without the file,
+WordPress's own page shows until the owner edits that template (see [Block
+templates](#block-templates)).
 
 ```tsx
 // first/app/login.tsx
@@ -202,6 +204,90 @@ export default function Login({ messages, errors, registerUrl }: LoginProps) {
   own page shows and the error is logged, so nobody is locked out.
 
 See [the decision](decisions/2026-11-15-one-sign-in-page.md).
+
+## Block templates
+
+Every `first/app/` page renders inside the active block theme's templates. The page is the
+content, and WordPress renders the rest: the theme's header and footer template parts, its global
+styles, and whatever the owner changed in the Site Editor. The page's HTML is the `first/page`
+block ("Page content"), which a template places where the page goes.
+
+First registers these templates with `register_block_template()`. They are listed in the Site
+Editor, and an owner can edit them and reset them there:
+
+| Template | What it holds | Used by |
+|---|---|---|
+| `first-page` ("App page") | The theme's `header` part, the page, the theme's `footer` part. | Every page, unless a file picks another. |
+| `first-blank` ("App page without header and footer") | The page alone. | `export const template = "blank"`, and layouts that place `<TemplatePart>`. |
+| `first-login` ("Sign in") | The header part, `login.tsx`, the footer part. With no `login.tsx`, the `first/login-form` block. | wp-login.php's sign-in view. |
+| `404` | The theme's own 404 template. With `not-found.tsx`, First's default content is the header part, the page and the footer part. | A URL nothing serves, and `notFound()`. |
+
+**Choosing a template.** A page or a layout may export `template`. The page's own export wins,
+then the nearest layout's:
+
+```tsx
+// first/app/(marketing)/layout.tsx
+export const template = "blank";      // no theme header or footer: this layout draws its own
+// first/app/landing/page.tsx
+export const template = "landing";    // a template the theme or the Site Editor provides
+```
+
+- `"theme"` (the default) is `first-page`, and `"blank"` is `first-blank`.
+- Any other slug names a template the theme, a plugin or the owner made. A template without
+  the Page content block can't show a page: the page renders in `first-page` instead and the log
+  says so.
+
+**Layouts.** Layouts nest by folder and run only for the routes under them, as in Astro. Under
+`first-page`, the theme's header and footer are the site's chrome, so the root `app/layout.tsx`
+does not render. Its `metadata` (the title template, the description) and its `guard` still
+apply. The root layout renders in three cases:
+
+- it exports `template` itself (`"theme"` keeps the theme's parts and renders it inside them);
+- the route renders in another template (`"blank"`, or a slug);
+- the active theme is a classic theme, where First prints the whole document as before.
+
+Nested layouts always render.
+
+**`<TemplatePart>`.** A layout that wants the theme's parts in its own arrangement places them
+itself:
+
+```tsx
+// first/app/studio/layout.tsx
+import { TemplatePart, type LayoutProps } from "first/app";
+
+export default function Studio({ children }: LayoutProps) {
+  return (
+    <div className="studio">
+      <TemplatePart slug="header" tagName="header" />
+      {children}
+      <footer>Studio footer</footer>
+    </div>
+  );
+}
+```
+
+`<TemplatePart slug tagName? className? />` renders `core/template-part`, so it shows the owner's
+edits to the part. A layout that imports it renders in `first-blank` unless it exports a
+`template`.
+
+**What stays the same.**
+
+- Data reads, access rules, guards, caching and purges are the router's, whatever the template.
+  The template adds the theme's markup and nothing else.
+- WordPress writes the `<title>` from the page's `metadata` (through `pre_get_document_title`).
+  First adds the description, canonical and social tags to `wp_head`.
+- `<Link>` navigation swaps the page's router region, which sits inside the template. The theme's
+  header and footer stay on the screen.
+- Forms, `<Live>` regions and client components render inside the page, as before.
+
+**The 404 and sign-in pages.** Both are templates an owner edits in the Site Editor. The owner can
+add text around the Page content block, or replace it. For the sign-in page, the replacement is
+the **Login form** block (`first/login-form`): it renders the same form as `<LoginForm />`, posts
+to wp-login.php and shows its errors. That lets an owner rebuild the sign-in page without code.
+Once the owner has saved a `first-login` template, wp-login.php renders it even when the app has
+no `login.tsx`.
+
+See [the decision](decisions/2026-11-16-pages-in-block-templates.md).
 
 ## Comments
 
@@ -482,7 +568,8 @@ in [styles from WordPress](decisions/2026-11-15-styles-from-wordpress.md).
 
 ## On WordPress
 
-The router answers on `template_redirect`, before the theme. wp-admin, login,
+The router answers on `template_redirect` and renders the page in a block template (see [Block
+templates](#block-templates)). wp-admin, login,
 `/wp-json`, feeds, robots and First's own paths never reach it. When
 `first/app/` exists, a URL no route serves renders `not-found.tsx`. URLs
 WordPress itself resolves (a post, a category archive) keep the theme until a

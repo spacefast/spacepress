@@ -41,7 +41,7 @@ async function request(path, { method = 'GET', body, credential = auth, key } = 
 async function success(path, options = {}) {
   const result = await request(path, options);
   assert.ok(result.status >= 200 && result.status < 300, `${options.method ?? 'GET'} ${path}: HTTP ${result.status}`);
-  assert.ok(Object.hasOwn(result.body, 'data'), `${path}: missing First response data`);
+  assert.ok(Object.hasOwn(result.body, 'data'), `${path}: missing TypedPress response data`);
   return result.body.data;
 }
 

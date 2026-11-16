@@ -5,6 +5,11 @@ These are the diagnostic texts emitted while building and exercising this
 example. The final source is rechecked on `ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1`; the runtime and CLI
 failures remain open.
 
+This record was captured before the rename from First to TypedPress. Commands and
+output below are verbatim from that run: `first` is today's `typedpress`,
+`first/` and `.first/` are `tp/` and `.tp/`, and `/wp-json/first/v1` is
+`/__tp/api/v1`.
+
 ## Resolved authoring and compiler diagnostics
 
 | Diagnostic, verbatim | Triggering source expression during implementation | Final source |
@@ -57,36 +62,3 @@ Triggered by deleting an empty place while `drives.placeId` references places.
 Expected validation failures, including attempts to supply `ownerId`, decrease
 counters, backdate a reading or exceed capacity, appear verbatim in
 [`local-http.txt`](local-http.txt).
-
-## Publication diagnostics
-
-Installed CLI: `spacefast/0.8.0 darwin-arm64 node-v26.13.0`.
-
-```text
-$ sf first check --help
-Command zero:check not found.
-Run with --help to see the supported usage.
-```
-
-An initial dry run on the app directory showed local build state among its
-inputs. Publication was not attempted with that input. A later dry run on the
-same root, before using the allowlisted staging directory, refused:
-
-```json
-{"error":{"code":"validation_error","message":"Static deploys cannot upload execution-control files.","type":"https://spacefast.com/docs/errors/validation_error","retryable":false,"recovery":"Adjust the request, then retry","details":{"path":".first/dev/wordpress/wp-content/database/.htaccess"}}}
-```
-
-`prepare-publish.mjs` now copies only config, library source, migrations and built
-public assets. Its dry run contained those files and reported `runtime: null`.
-The actual publish used that allowlisted input with the verified target team
-and `--access team`, and failed before creating a Space:
-
-```json
-{"error":{"code":"validation_error","message":"Could not find team \"team_3f222eb89f634980a2552a38fbdc70ba\".","type":"https://spacefast.com/docs/errors/validation_error","retryable":false,"recovery":"Adjust the request, then retry"}}
-```
-
-A direct authenticated `GET /v1/teams/team_3f222eb89f634980a2552a38fbdc70ba`
-confirmed `slug: spacefast-examples` and admin access. The installed publish
-implementation requests `/v1/teams?limit=100` once and resolves the explicit
-team only within that response. It does not fetch the next page. No alternate
-team, raw infrastructure deployment or static-only fallback was used.

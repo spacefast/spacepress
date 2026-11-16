@@ -6,7 +6,7 @@ order: 2
 status: published
 publishedAt: 2026-11-15T21:51:51.000Z
 ---
-TypedPress's npm installer and unsigned release workflow are ready for maintainers to publish. The package names and download commands below become usable after the matching npm packages and GitHub release assets exist. They have not been published by this change. Node.js 22+ and npm are required; end users do not need Rust or Docker.
+The commands below work once the npm packages and the matching GitHub release are published (see [Maintainer release steps](#maintainer-release-steps)). Node.js 22+ and npm are required; end users do not need Rust or Docker.
 
 ## Create an app
 
@@ -48,29 +48,51 @@ typedpress --help
 
 Prebuilt targets are macOS arm64/x64 and glibc 2.39+ Linux arm64/x64 (Ubuntu 24.04 or newer). Windows, older glibc and musl Linux need a compiler you provide. There is no automatic Cargo build or search for another `typedpress` executable.
 
-| Setting                                               | Effect                                                                                                                           |
-|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
-| `TP_BIN=/absolute/path/to/typedpress`                 | Use your explicitly provided executable, without downloading. Relative paths and missing/non-executable files fail.              |
-| `TP_CACHE_DIR=/absolute/cache`                        | Store version/target-specific compiler downloads here. The default is `$XDG_CACHE_HOME/tp/npm`, or `~/.cache/tp/npm`.            |
-| `TP_OFFLINE=1`                                        | Use only the verified cache or `TP_BIN`. A missing cached version fails with a next step.                                        |
+| Setting | Effect |
+| --- | --- |
+| `TP_BIN=/absolute/path/to/typedpress` | Use your explicitly provided executable, without downloading. Relative paths and missing/non-executable files fail. |
+| `TP_CACHE_DIR=/absolute/cache` | Store version/target-specific compiler downloads here. The default is `$XDG_CACHE_HOME/tp/npm`, or `~/.cache/tp/npm`. |
+| `TP_OFFLINE=1` | Use only the verified cache or `TP_BIN`. A missing cached version fails with a next step. |
 | `TP_RELEASE_BASE_URL=https://mirror/releases/v0.3.0/` | Read the exact archive and checksum from a release mirror. `file://` and loopback HTTP are supported for local maintainer tests. |
 
 Every release needs `typedpress-vVERSION-RUST_TARGET.tar.gz` and its `.sha256` file. The checksum file contains the lowercase SHA-256, two spaces and the exact archive basename. Downloads fail clearly if either asset is missing, malformed or corrupt. Cached executables are checked against their installation receipt before reuse. SHA-256 establishes integrity of the downloaded archive; it is not a publisher signature.
 
 ## Homebrew
 
-The workflow generates `homebrew/Formula/typedpress.rb` from all four real archives after verifying each checksum. It never substitutes placeholder hashes. Maintainers must publish those exact archives and create or select a public tap before advertising a `brew install` command. A tap called `spacefast/tap` would conventionally expose `brew install spacefast/tap/tp`; that tap's existence and permissions are not assumed here.
+The workflow generates `homebrew/Formula/typedpress.rb` from all four real archives after verifying each checksum. It never substitutes placeholder hashes. Maintainers must publish those exact archives and create or select a public tap before advertising a `brew install` command.
 
 The formula installs the executable and original license notices, depends on Homebrew Node, and checks a real TypedPress config in `brew test`. Node supplies npm for `typedpress dev`. macOS signing and notarization are deferred to the signing team; the current archives explicitly declare themselves unsigned. No signing bypass is installed.
 
 ## Maintainer release steps
 
-1. Confirm npm scope ownership and package access for `typedpress` and `create-typedpress`. Registry checks found no published package at either name; the unscoped `create-typedpress` belongs to another publisher, and `@spacefast/zero` is an existing older package. Do not overwrite those packages.
-1. Set one new version in root `Cargo.toml` and both package manifests. `node scripts/release/version.mjs VERSION` rejects mismatches. Check the npm version is unused and create an immutable `vVERSION` Git tag after review.
-1. Run the unsigned release workflow for that version, or let the tag trigger it. It builds natively on four runners, smoke-checks each binary, packages runtime/upstream notices and source provenance, packs npm tarballs, verifies archives, and generates the formula. Its only upload is a workflow artifact; it does not publish a GitHub release, npm package or tap, and has no publication secrets.
-1. Review `typedpress-release-unsigned`. Run the packed-install acceptance below using a compiler built from the reviewed source. Have the signing team sign/notarize release payloads when ready, then regenerate archive checksums and the formula from the final bytes. Never reuse pre-signing hashes.
-1. Publish an immutable public GitHub release at `spacefast/zero` tagged `vVERSION`, including each archive and matching `.sha256`, plus the exact source archive and notices. Then publish the reviewed npm tarballs using the authorized npm account (`npm publish PATH_TO_TARBALL --access public`). The CLI package must be available before the creator is advertised. Do not rerun `npm pack` from installed tarballs: maintainer preparation scripts run from the source repository.
-1. Copy the generated formula to the chosen public tap's `Formula/typedpress.rb`, run `brew install` and `brew test typedpress` on supported machines, then publish the tap commit. Verify the public npm create command and unsigned/signed macOS install experience before announcing support.
+The repository publishes four npm packages: `typedpress` and `create-typedpress` (the Cargo
+version, 0.3.0 today) and the independently versioned `@typedpress/astro` and
+`@typedpress/blocks` (0.1.0). `CONTRIBUTING.md` describes the release workflow.
+
+1. Make sure the npm account that publishes owns the unscoped names `typedpress` and
+   `create-typedpress` (both unpublished) and the `@typedpress` scope. Do not overwrite the
+   older `@spacefast/zero` package.
+2. For a compiler release, set one new version in root `Cargo.toml` and both CLI package
+   manifests; `node scripts/release/version.mjs VERSION` rejects mismatches. Merge it, then push
+   an immutable `vVERSION` tag on that commit.
+3. The tag runs the release workflow. It builds seven native archives and `typedpress.wasm`,
+   smoke-checks each binary, packs and content-checks all four npm packages, installs the packed
+   CLI from the archives, runs the packed starter end to end, generates the Homebrew formula and
+   attaches the archives, `.sha256` files, wasm, `compiler-assets.json`, the exact source archive
+   and the four npm tarballs to the GitHub release. The release assets must be publicly
+   downloadable (the repository public) before the npm launcher can install anonymously.
+4. Check the published release from a machine without GitHub credentials:
+   `TP_CACHE_DIR=$(mktemp -d) npx --yes ./typedpress-VERSION.tgz --version` and `check` on an
+   example. Have the signing team sign/notarize payloads when ready, then regenerate archive
+   checksums and the formula from the final bytes. Never reuse pre-signing hashes.
+5. Publish the tarballs attached to the release, in this order:
+   `npm publish typedpress-VERSION.tgz`, then `create-typedpress-VERSION.tgz`, then
+   `typedpress-astro-0.1.0.tgz` and `typedpress-blocks-0.1.0.tgz` (scoped packages publish public
+   through their `publishConfig`). Do not rerun `npm pack` from installed tarballs: the prepack
+   scripts run from the source repository.
+6. Copy the generated formula to the chosen public tap's `Formula/typedpress.rb`, run
+   `brew install` and `brew test typedpress` on supported machines, then publish the tap commit.
+   Verify the public npm create command before announcing it.
 
 ### Test an unpublished release locally
 

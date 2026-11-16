@@ -119,11 +119,18 @@ install (`scripts/bundle-wp.mjs`) so one copy of each package exists.
 ```sh
 pnpm install          # also prebundles the pinned @wordpress packages into vendor/
 pnpm check            # typecheck + unit tests
-pnpm build            # dist/ for the published package and the first-blocks bin
+pnpm build            # dist/ for the published package and the typedpress-blocks bin
 ```
 
 ## License
 
-The package's own source is MIT. The prebundled `vendor/wp.cjs` is built from
-the pinned `@wordpress/*` packages (GPL-2.0-or-later) and React (MIT); their
-license headers are kept in `vendor/wp.cjs.LEGAL.txt` beside it.
+`MIT AND GPL-2.0-or-later`. The package's own code (`bin/`, `dist/`) is MIT
+([`LICENSE`](LICENSE)). `vendor/wp.cjs` is a build of the pinned `@wordpress/*`
+block packages and everything they import; the `@wordpress/*` packages are
+GPL-2.0-or-later, so the bundle is distributed under GPL-2.0-or-later
+([`LICENSE-GPL`](LICENSE-GPL)). `vendor/NOTICE.md` lists every bundled package
+with its version, license and source, `vendor/licenses/` holds each one's own
+license file, and `vendor/wp.cjs.LEGAL.txt` keeps the license comments from the
+bundled sources. `scripts/bundle-wp.mjs` in the
+[source repository](https://github.com/spacefast/zero/tree/main/packages/blocks)
+rebuilds the bundle from those exact versions.

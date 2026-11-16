@@ -2,7 +2,16 @@
   "name": "@typedpress/blocks",
   "version": "0.1.0",
   "description": "Write Gutenberg content and whole WordPress block themes in TSX.",
-  "license": "MIT",
+  "license": "MIT AND GPL-2.0-or-later",
+  "homepage": "https://github.com/spacefast/zero/tree/main/packages/blocks#readme",
+  "keywords": [
+    "typedpress",
+    "wordpress",
+    "gutenberg",
+    "blocks",
+    "block-theme",
+    "tsx"
+  ],
   "type": "module",
   "packageManager": "pnpm@12.9.1",
   "engines": {
@@ -14,7 +23,12 @@
   "files": [
     "bin",
     "dist",
-    "vendor",
+    "vendor/wp.cjs",
+    "vendor/wp.cjs.LEGAL.txt",
+    "vendor/NOTICE.md",
+    "vendor/licenses",
+    "LICENSE",
+    "LICENSE-GPL",
     "README.md",
     "CHANGELOG.md"
   ],
@@ -57,5 +71,14 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "typescript": "5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spacefast/zero.git",
+    "directory": "packages/blocks"
+  },
+  "bugs": "https://github.com/spacefast/zero/issues",
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -11,6 +11,8 @@
 //                      parent_team_id, personal_owner_user_id, space_slug (header row optional)
 //   traffic-30d.tsv    space_id, served_requests over the last 30 days (optional)
 //   parent-teams.tsv   team_id, team_slug, team_name of each parent team (optional)
+//   internal-teams.tsv team_slug, label: further teams to count as internal, such as staff's
+//                      personal teams (optional; it names people, so it stays with the data)
 //
 // Formulas (one Space = one live version):
 //   spaces(f)         Spaces whose detector returns true
@@ -37,8 +39,6 @@ export const SUPPORT_THRESHOLD = 3;
  */
 export const INTERNAL = [
   ["system team (system_key set)", (t) => Boolean(t.systemKey)],
-  ["Suat's Team (contractor)", (t) => /^suat\b|suat's team/i.test(t.name)],
-  ["batuhan team", (t) => /^batuhan$/i.test(t.slug) || /^batuhan(\b|'s)/i.test(t.name)],
   ["Spacefast or Automattic staff team", (t) => /\b(spacefast|automattic|a8c|stattic)\b/i.test(`${t.slug} ${t.name}`)],
   ["test or QA team", (t) => /(^|[-_ ])(test|testing|qa|e2e|staging|demo|sandbox)([-_ ]|$)/i.test(`${t.slug} ${t.name}`)],
   ["Checkly monitoring", (t, space) => /checkly/i.test(`${t.slug} ${t.name} ${space?.slug ?? ""}`)],
@@ -64,6 +64,8 @@ function tsv(file, columns) {
 export function teams(dir) {
   const meta = tsv(path.join(dir, "meta.tsv"), ["version_id", "space_id", "team_id", "team_slug", "team_name", "system_key", "parent_team_id", "personal_owner_user_id", "space_slug"]);
   const parents = new Map(tsv(path.join(dir, "parent-teams.tsv"), ["team_id", "team_slug", "team_name", "system_key"]).map((p) => [p.team_id, p]));
+  const listed = new Map(tsv(path.join(dir, "internal-teams.tsv"), ["team_slug", "label"]).map((r) => [r.team_slug.toLowerCase(), r.label || "listed internal team"]));
+  const rules = [...INTERNAL, ...[...new Set(listed.values())].map((label) => [label, (t) => listed.get(String(t.slug).toLowerCase()) === label])];
   const out = new Map();
   for (const m of meta) {
     const own = { id: m.team_id, slug: m.team_slug, name: m.team_name, systemKey: m.system_key };
@@ -71,7 +73,7 @@ export function teams(dir) {
     const parent = p ? { id: p.team_id, slug: p.team_slug, name: p.team_name, systemKey: p.system_key } : null;
     const billing = m.parent_team_id || m.team_id;
     const space = { slug: m.space_slug };
-    const rule = INTERNAL.find(([, test]) => test(own, space) || (parent && test(parent, space)));
+    const rule = rules.find(([, test]) => test(own, space) || (parent && test(parent, space)));
     out.set(m.version_id, { space: m.space_id, team: billing || null, internal: rule ? rule[0] : null });
   }
   return out;

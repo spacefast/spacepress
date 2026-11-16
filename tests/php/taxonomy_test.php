@@ -195,6 +195,12 @@ eq('core term meta fields: constructed with ($taxonomy); get_value($object_id, $
     $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
     problem('a term on an item the viewer can\'t read refuses the delete', fn () => $probe->delete('tags', ['id' => $term['id']], false, $editor), 409, 'reference_violation');
     eq('… and the item keeps the term', wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']), [$term['id']]);
+    // An item in WordPress's trash still carries its terms, and core's term delete removes them.
+    $trashedTerm = $db->insert('tags', ['name' => 'On a trashed item'], true)[0];
+    $trashed = $db->insert('posts', ['title' => 'Trashed', 'labels' => [$trashedTerm['id']], 'status' => 'draft'], true)[0];
+    \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_trash_post($trashed['id']));
+    problem('a term on a trashed item the viewer can\'t read refuses the delete', fn () => $probe->delete('tags', ['id' => $trashedTerm['id']], false, $editor), 409, 'reference_violation');
+    eq('… and the trashed item keeps it', wp_get_object_terms($trashed['id'], 'tp_tags', ['fields' => 'ids']), [$trashedTerm['id']]);
     $free = $db->insert('tags', ['name' => 'Free'], true)[0];
     eq('a term no item carries deletes', count($probe->delete('tags', ['id' => $free['id']], true, $editor)), 1);
 })();

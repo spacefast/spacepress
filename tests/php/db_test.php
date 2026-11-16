@@ -1611,6 +1611,53 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     }
 })();
 
+// A referential write is the viewer's own: cascade needs their delete rule on every child, set null
+// their update rule; a branch with no rows runs no generator.
+(static function () use ($db): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $owned = ['fn' => static fn (array $ctx) => $ctx['user'] === null ? false : ['ownerId' => $ctx['user']['id']]];
+    $table = static fn (string $name, array $cols, array $access): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "tp_rw_$name", 'columns' => ['id' => $id] + $cols, 'access' => $access];
+    $ref = static fn (string $to, string $on, array $extra = []): array => ['type' => 'integer', 'references' => ['collection' => $to, 'column' => 'id', 'onDelete' => $on]] + $extra;
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'rw_parents' => $table('parents', ['ownerId' => ['type' => 'integer']], ['read' => $owned, 'delete' => $owned] + $open),
+        'rw_kids' => $table('kids', ['ownerId' => ['type' => 'integer'], 'parentId' => $ref('rw_parents', 'cascade')], ['read' => $owned, 'delete' => ['role' => 'admin']] + $open),
+        'rw_refs' => $table('refs', ['ownerId' => ['type' => 'integer'], 'parentId' => $ref('rw_parents', 'set null')], ['read' => $owned, 'update' => ['role' => 'admin']] + $open),
+        'rw_secret' => $table('secret', ['blocked' => ['type' => 'boolean']], ['read' => ['role' => 'admin']] + $open),
+        'rw_defaults' => $table('defaults', ['parentId' => $ref('rw_parents', 'set default', ['default' => ['fn' => static function () {
+            $GLOBALS['rw_generated'] = ($GLOBALS['rw_generated'] ?? 0) + 1;
+            return null;
+        }]])], $open),
+    ]]);
+    foreach (['parents' => 'ownerId BIGINT', 'kids' => 'ownerId BIGINT, parentId BIGINT', 'refs' => 'ownerId BIGINT, parentId BIGINT', 'secret' => 'blocked TINYINT', 'defaults' => 'parentId BIGINT'] as $name => $cols) {
+        $wp->exec("CREATE TABLE {prefix}tp_rw_$name (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, $cols, PRIMARY KEY(id)) ENGINE=InnoDB");
+    }
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($probe);
+    $me = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    try {
+        $parent = $probe->insert('rw_parents', ['ownerId' => 7], true)[0];
+        $kid = $probe->insert('rw_kids', ['ownerId' => 7, 'parentId' => $parent['id']], true)[0];
+        problem('a child the viewer may read but not delete', fn () => $probe->delete('rw_kids', ['id' => $kid['id']], false, $me), 403, 'forbidden');
+        problem('… refuses its parent\'s cascade the same way', fn () => $probe->delete('rw_parents', ['id' => $parent['id']], false, $me), 403, 'forbidden');
+        eq('… and both rows stay', [$probe->findFirst('rw_parents', ['where' => ['id' => $parent['id']]]) !== null, $probe->findFirst('rw_kids', ['where' => ['id' => $kid['id']]]) !== null], [true, true]);
+        $probe->delete('rw_kids', ['id' => $kid['id']]);
+        $ref = $probe->insert('rw_refs', ['ownerId' => 7, 'parentId' => $parent['id']], true)[0];
+        problem('set null on a child the viewer may not update refuses', fn () => $probe->delete('rw_parents', ['id' => $parent['id']], false, $me), 403, 'forbidden');
+        eq('… and keeps its reference', $probe->findFirst('rw_refs', ['where' => ['id' => $ref['id']]])['parentId'], $parent['id']);
+        $probe->delete('rw_refs', ['id' => $ref['id']]);
+        $GLOBALS['rw_generated'] = 0;
+        $probe->delete('rw_parents', ['id' => $parent['id']], false, $me);
+        eq('a set default branch with no rows runs no generator', $GLOBALS['rw_generated'], 0);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+        unset($GLOBALS['rw_generated']);
+    }
+})();
+
 // PR #516 review: a referential update on visible rows can't answer with hidden values, a many-ref
 // link from a hidden row refuses, hidden volume can't change the answer, and a read extension that may
 // hide rows makes every relationship refuse.
@@ -1632,7 +1679,8 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             'parentId' => ['type' => 'integer', 'default' => ['fn' => static fn () => $GLOBALS['r_default'] ?? null], 'references' => ['collection' => 'r_parents', 'column' => 'id', 'onDelete' => 'set default']]]],
         'r_tags' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_tags', 'access' => $open, 'columns' => ['id' => $id, 'name' => ['type' => 'text']]],
         'r_cards' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_cards', 'access' => ['read' => $mine] + $open, 'columns' => ['id' => $id, 'ownerId' => ['type' => 'integer'],
-            'tags' => ['type' => 'refList', 'notNull' => true, 'references' => ['collection' => 'r_tags', 'column' => 'id', 'onDelete' => 'cascade', 'join' => 'r_cards_tags']]]],
+            'tags' => ['type' => 'refList', 'notNull' => true, 'references' => ['collection' => 'r_tags', 'column' => 'id', 'onDelete' => 'cascade', 'join' => 'r_cards_tags']]],
+            'relations' => ['tags' => ['kind' => 'many', 'collection' => 'r_tags', 'from' => 'id', 'to' => 'id', 'optional' => false, 'through' => ['table' => 'r_cards_tags', 'from' => 'owner_id', 'to' => 'target_id']]]],
         'r_bulky' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_bulky', 'access' => ['read' => ['role' => 'admin']] + $open, 'columns' => ['id' => $id, 'body' => ['type' => 'text'],
             'tagId' => ['type' => 'integer', 'references' => ['collection' => 'r_tags', 'column' => 'id', 'onDelete' => 'cascade']]]],
     ]]);
@@ -1697,6 +1745,21 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         ini_set('memory_limit', '128M');
         try {
             eq('ninety 2 MiB hidden rows answer like one, without loading them', $answer(fn () => $probe->delete('r_tags', ['id' => $bulk['id']], false, $me)), $answer(fn () => $probe->delete('r_tags', ['id' => $one['id']], false, $me)));
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
+
+        // Many-ref volume: the owners of links are counted in SQL, never listed in PHP.
+        $many = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $wp->connection()->run('INSERT INTO wp_tp_r_cards (ownerId) SELECT 8 FROM wp_tp_r_bulky');
+        for ($i = 0; $i < 6; $i++) {
+            $wp->connection()->run('INSERT INTO wp_tp_r_cards (ownerId) SELECT ownerId FROM wp_tp_r_cards WHERE ownerId = 8');
+        }
+        $wp->connection()->run('INSERT INTO wp_tp_r_cards_tags (owner_id, target_id, position) SELECT id, ?, 0 FROM wp_tp_r_cards WHERE ownerId = 8', [$many['id']]);
+        $limit = ini_get('memory_limit');
+        ini_set('memory_limit', '128M');
+        try {
+            eq('thousands of hidden many-ref owners answer like one', $answer(fn () => $probe->delete('r_tags', ['id' => $many['id']], false, $me)), $answer(fn () => $probe->delete('r_tags', ['id' => $one['id']], false, $me)));
         } finally {
             ini_set('memory_limit', $limit);
         }

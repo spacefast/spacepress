@@ -959,19 +959,12 @@ final class Db
                 if ($value === null) {
                     continue;
                 }
-                $pk = $spec['primaryKey'];
                 $many = $def['type'] === 'refList';
-                if ($many) {
-                    // The links are the relationship: their owners are the rows that reference this one.
-                    $owners = array_values(array_unique(array_column($this->links()->links($ref['join'], 'target_id', [$value]), 'owner_id')));
-                    if ($owners === []) {
-                        continue;
-                    }
-                    $where = [$pk => ['in' => $owners]];
-                } else {
-                    $where = [(string) $col => $value];
-                }
-                $trusted = $this->countRows($child, $where, null);
+                // A many-ref's referencing rows are the owners of links to this row, filtered in SQL.
+                $where = [(string) $col => $many ? ['has' => $value] : $value];
+                // The trusted count includes rows in WordPress's trash: they keep their links and
+                // references, and core's term delete removes those links too.
+                $trusted = $this->countRows($child, $where, null, [], true);
                 if ($trusted === 0) {
                     continue;
                 }
@@ -988,27 +981,57 @@ final class Db
                     continue; // a deleted target only loses its links
                 }
                 $action = strtolower($ref['onDelete'] ?? 'no action');
+                if ($action === 'cascade' || $action === 'set null' || $action === 'set default') {
+                    // The referential write is the viewer's too: their own delete or update rule on
+                    // the child must cover every referencing row (all of them are readable by now).
+                    try {
+                        $covered = $this->countRows($child, $where, $viewer, $extra, false, $action === 'cascade' ? 'delete' : 'update');
+                    } catch (HttpError) {
+                        $covered = -1;
+                    }
+                    if ($covered !== $trusted) {
+                        throw Access::deny($viewer->user, ($action === 'cascade' ? 'delete' : 'update') . " $child rows");
+                    }
+                }
                 if ($action === 'cascade') {
                     foreach ($this->findMany($child, ['where' => $where] + $extra, $viewer) as $dependent) {
                         $this->refuseHiddenReferences($child, $dependent, $viewer, $seen);
                     }
-                } elseif (in_array($action, ['set null', 'set default'], true)) {
+                } elseif ($action === 'set null' || $action === 'set default') {
                     $this->requireReferentialUpdateVisibility($child, $spec, (string) $col, $def, $action, $viewer);
                 }
             }
         }
     }
 
-    /** {@see count()} for a write's own check, on the store's connection, without marking a render's reads. */
-    private function countRows(string $collection, array $where, ?Viewer $viewer, array $extra = []): int
+    /**
+     * {@see count()} for a write's own check, on the store's connection, without marking a render's
+     * reads. $withTrash counts posts in WordPress's trash too (trusted counts only). $op 'update' or
+     * 'delete' adds the viewer's own rule for that operation to their read guards.
+     */
+    private function countRows(string $collection, array $where, ?Viewer $viewer, array $extra = [], bool $withTrash = false, ?string $op = null): int
     {
-        $q = $this->countQuery($collection, $where, $viewer, $extra);
         $store = $this->store;
         if (!$store instanceof Wp\CompositeStore) {
             throw new \LogicException('Counting referencing rows needs the WordPress store');
         }
+        $count = function () use ($collection, $where, $viewer, $extra, $op, $store): int {
+            if ($op !== null && $viewer !== null) {
+                $q = $this->current(function () use ($collection, $where, $viewer, $extra, $op): array {
+                    $opts = Seam::query($collection, ['where' => $where] + $extra, $this->schema);
+                    $q = $this->compileRead($collection, $opts, '', $viewer, null, $this->writeGuards($collection, $op, $viewer, null));
+                    $q['sql'] = 'SELECT COUNT(*) AS n FROM (' . $q['sql'] . ') first_count';
 
-        return (int) ($store->db->run($q['sql'], $q['params'])[0]['n'] ?? 0);
+                    return $q;
+                });
+            } else {
+                $q = $this->countQuery($collection, $where, $viewer, $extra);
+            }
+
+            return (int) ($store->db->run($q['sql'], $q['params'])[0]['n'] ?? 0);
+        };
+
+        return $withTrash && $store->isPostBacked($collection) ? $store->posts->withTrash($count) : $count();
     }
 
     /** The one refusal for a delete that rows the viewer can't read may depend on: it names no table, row or count. */
@@ -1122,6 +1145,10 @@ final class Db
                         }
                     });
                 } elseif ($action === 'set null' || $action === 'set default') {
+                    // No rows, no write: a generator must not run (or fail) for a branch it won't change.
+                    if ($this->selectDecoded((string) $child, $opts, '', null) === []) {
+                        continue;
+                    }
                     $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c) : null;
                     $this->update((string) $child, [$col => $value], $where, errorViewer: $viewer);
                 } elseif ($this->selectDecoded((string) $child, $opts, '', null) !== []) {

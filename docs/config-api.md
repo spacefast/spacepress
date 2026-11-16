@@ -1301,6 +1301,11 @@ public site: leave it out for the theme (or `tp/app` when it exists), `false`
 for backend only, or an external site's `https://` address (`http://` only on
 localhost) so links, previews and feeds point there.
 
+There is no option for how `tp/app/` pages render. Each page renders inside the active block
+theme's templates, with the theme's header and footer parts. A page or layout picks another
+template with `export const template` (`"blank"` for none). See [Block
+templates](pages.md#block-templates).
+
 ### Runtime schema changes
 
 `runtimeSchema: true` lets the running site change its content schema without a build (spec §2.10,

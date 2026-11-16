@@ -12,6 +12,7 @@ tp/app/
 ├── layout.tsx                 # wraps every page: export const metadata, default component
 ├── page.tsx                   # /
 ├── not-found.tsx              # the 404 for URLs no route serves, and for notFound()
+├── login.tsx                  # wp-login.php's sign-in page, in the sign-in block template
 ├── error.tsx                  # a render error (logged; the page shows only this)
 ├── about/page.tsx             # /about
 ├── colophon/page.md           # /colophon: a WordPress Page an editor can change
@@ -29,8 +30,9 @@ tp/app/
 | `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL. |
 | `page.md` | A route whose content is a WordPress Page (see [Markdown pages](#markdown-pages)). |
 | `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page. |
-| `layout.tsx` | Wraps every page below it, outermost first. May export `guard`. |
+| `layout.tsx` | Wraps every page below it, outermost first. May export `guard` and `template` ([Block templates](#block-templates)). |
 | `not-found.tsx` | At the root only. |
+| `login.tsx` | At the root only: renders wp-login.php's sign-in page (see [The sign-in page](#the-sign-in-page)). |
 | `error.tsx` | The nearest one above a page renders when the page throws. |
 | `[x]` / `[...x]` / `[[...x]]` | One segment / one or more / zero or more (last folder only). |
 | `(group)` / `_private` | No URL segment / never routed. |
@@ -80,7 +82,7 @@ export async function POST(req: RouteRequest) {
   types the query string. A value a field refuses (`?page=abc`) reads as absent.
 - `guard` on a layout: a role (`"subscriber"`, `"editor"`, …),
   `"authenticated"`, or `({ user }) => boolean`. A signed-out visitor goes to
-  the login page; a signed-in one gets a 403.
+  the sign-in page (wp-login.php, or your `login.tsx`); a signed-in one gets a 403.
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router
   region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
 - `<Pagination page={search.page} pages={n} />` renders numbered links to the
@@ -166,6 +168,160 @@ export default function Page() {
   refused.
 - A `"use client"` component calls its action from `onSubmit` instead;
   `method` and `encType` on a form with an action are build errors.
+
+## The sign-in page
+
+WordPress's wp-login.php is the site's one sign-in page: wp-admin, a layout's `guard` and TypedPress
+Identity all send people there. `tp/app/login.tsx` renders it with the app's own markup,
+inside the sign-in block template (`tp-login`) and its stylesheets. Without the file,
+WordPress's own page shows until the owner edits that template (see [Block
+templates](#block-templates)).
+
+```tsx
+// tp/app/login.tsx
+import { LoginForm, type LoginProps } from "typedpress/app";
+
+export const metadata = { title: "Sign in" };
+
+export default function Login({ messages, errors, registerUrl }: LoginProps) {
+  return (
+    <section className="signin">
+      <h1>Sign in to Field Notes</h1>
+      {messages.map((m) => <p className="notice">{m}</p>)}
+      {errors.length > 0 ? <p role="alert">{errors.join(" ")}</p> : null}
+      <LoginForm submitLabel="Sign in" notices={false} />
+      {registerUrl ? <a href={registerUrl}>Create an account</a> : null}
+    </section>
+  );
+}
+```
+
+- **WordPress still runs the sign-in.** The form posts to wp-login.php, so these all apply as
+  they do to WordPress's own form:
+  - the password check and every `authenticate` filter;
+  - the hardening that answers an unknown user and a wrong password alike;
+  - TypedPress Identity's attempt limits;
+  - the second factor (Two Factor, including an Identity authenticator).
+- **What renders it.** wp-login.php's sign-in view: the first visit, a failed attempt,
+  `?loggedout=true`, "check your email" and `reauth`.
+- **What keeps WordPress's screens.** Lost password, password reset, registration, the second
+  factor step, logging out and the sign-in inside wp-admin.
+- **What the page receives (`LoginProps`).**
+  - `errors` and `messages`: plain text, WordPress's wording after its filters.
+  - `login`: the login to fill in again after a wrong password.
+  - `remember` and `redirectTo`.
+  - `action`: wp-login.php.
+  - `lostPasswordUrl`, and `registerUrl` (null unless anyone may register).
+- **`<LoginForm />`.** It renders the fields wp-login.php reads (`log`, `pwd`, `rememberme`,
+  `redirect_to`), plus what plugins add to the form, all with WordPress's ids, so CSS can target
+  them. Its props:
+  - `className` and `submitLabel`;
+  - `notices={false}`: leaves the errors and messages to your page;
+  - `links={false}`: drops "Lost your password?" and "Register".
+  Anywhere other than `login.tsx` it is a sign-in form that comes back to its page. When
+  plugins add fields to the form (a captcha, a nonce), that page is `private, no-store`.
+- **Plugins on the page.** `login_head`, `login_footer`, `login_form` and the `login_message`
+  notice work on `login.tsx`'s page as on WordPress's own, so captcha and anti-bot plugins apply.
+- **Exports.** `login.tsx` exports `default` and `metadata` only. It has no URL of its own and no
+  `guard`.
+- **Caching and errors.** The page is `private, no-store` and `noindex`. If it throws, WordPress's
+  own page shows and the error is logged, so nobody is locked out.
+
+See [the decision](decisions/2026-11-15-one-sign-in-page.md).
+
+## Block templates
+
+Every `tp/app/` page renders inside the active block theme's templates. The page is the
+content, and WordPress renders the rest: the theme's header and footer template parts, its global
+styles, and whatever the owner changed in the Site Editor. The page's HTML is the `tp/page`
+block ("Page content"), which a template places where the page goes.
+
+TypedPress registers these templates with `register_block_template()`. They are listed in the Site
+Editor, and an owner can edit them and reset them there:
+
+| Template | What it holds | Used by |
+|---|---|---|
+| `tp-page` ("App page") | The theme's `header` part, the page, the theme's `footer` part. | Every page, unless a file picks another. |
+| `tp-blank` ("App page without header and footer") | The page alone. | `export const template = "blank"`, and layouts that place `<TemplatePart>`. |
+| `tp-login` ("Sign in") | The header part, `login.tsx`, the footer part. With no `login.tsx`, the `tp/login-form` block. | wp-login.php's sign-in view. |
+| `404` | The theme's own 404 template. With `not-found.tsx`, TypedPress's default content is the header part, the page and the footer part. | A URL nothing serves, and `notFound()`. |
+
+**Choosing a template.** A page or a layout may export `template`. The page's own export wins,
+then the nearest layout's:
+
+```tsx
+// tp/app/(marketing)/layout.tsx
+export const template = "blank";      // no theme header or footer: this layout draws its own
+// tp/app/landing/page.tsx
+export const template = "landing";    // a template the theme or the Site Editor provides
+```
+
+- `"theme"` (the default) is `tp-page`, and `"blank"` is `tp-blank`.
+- Any other slug names a template the theme, a plugin or the owner made. A template without
+  the Page content block can't show a page: the page renders in `tp-page` instead and the log
+  says so.
+
+**Layouts.** Layouts nest by folder and run only for the routes under them, as in Astro. Under
+`tp-page`, the theme's header and footer are the site's chrome, so the root `app/layout.tsx`
+does not render. Its `metadata` (the title template, the description) and its `guard` still
+apply. The root layout renders in three cases:
+
+- it exports `template` itself (`"theme"` keeps the theme's parts and renders it inside them);
+- the route renders in another template (`"blank"`, or a slug);
+- the active theme is a classic theme, where TypedPress prints the whole document as before.
+
+Nested layouts always render. A route group's outermost layout (`app/(site)/layout.tsx`) is a
+root layout too. `typedpress check` and `typedpress build` print a hint for a root layout that
+renders markup around `{children}` and exports no `template`.
+
+**`<TemplatePart>`.** A layout that wants the theme's parts in its own arrangement places them
+itself:
+
+```tsx
+// tp/app/studio/layout.tsx
+import { TemplatePart, type LayoutProps } from "typedpress/app";
+
+export default function Studio({ children }: LayoutProps) {
+  return (
+    <div className="studio">
+      <TemplatePart slug="header" tagName="header" />
+      {children}
+      <footer>Studio footer</footer>
+    </div>
+  );
+}
+```
+
+`<TemplatePart slug tagName? className? />` renders `core/template-part`, so it shows the owner's
+edits to the part. A layout that imports it renders in `tp-blank` unless it exports a
+`template`.
+
+**What stays the same.**
+
+- Data reads, access rules, guards, caching and purges are the router's, whatever the template.
+  The template adds the theme's markup and nothing else.
+- WordPress writes the `<title>` from the page's `metadata` (through `pre_get_document_title`).
+  TypedPress adds the description, canonical and social tags to `wp_head`.
+- `<Link>` navigation swaps the page's router region, which sits inside the template. The theme's
+  header and footer stay on the screen. A link to a page that renders in another template loads
+  the whole page, so the chrome changes with it (`data-tp-template` on the body and the link).
+- Saving, trashing or deleting a template, a template part, Global Styles or a navigation menu
+  removes the prebuilt pages and announces a whole-host purge (`/*`) to the page cache. A saved
+  template that is trashed or a draft doesn't render; the theme's or TypedPress's answers.
+- A page whose template renders a Login form block is never shared: it is `private, no-store`
+  when a plugin adds per-request fields to the form.
+- Forms, `<Live>` regions and client components render inside the page, as before.
+
+**The 404 and sign-in pages.** Both are templates an owner edits in the Site Editor. The owner can
+add text around the Page content block, or replace it. For the sign-in page, the replacement is
+the **Login form** block (`tp/login-form`): it renders the same form as `<LoginForm />`, posts
+to wp-login.php and shows its errors. That lets an owner rebuild the sign-in page without code.
+Once the owner has saved a `tp-login` template, wp-login.php renders it even when the app has
+no `login.tsx`. Without `login.tsx`, the Page content block shows nothing on the sign-in page, so
+a saved template that has no Login form block renders TypedPress's default content instead and
+the log says so. Nobody is left without a form.
+
+See [the decision](decisions/2026-11-16-pages-in-block-templates.md).
 
 ## Comments
 
@@ -446,7 +602,8 @@ in [styles from WordPress](decisions/2026-11-15-styles-from-wordpress.md).
 
 ## On WordPress
 
-The router answers on `template_redirect`, before the theme. wp-admin, login,
+The router answers on `template_redirect` and renders the page in a block template (see [Block
+templates](#block-templates)). wp-admin, login,
 `/wp-json`, feeds, robots and TypedPress's own paths never reach it. When
 `tp/app/` exists, a URL no route serves renders `not-found.tsx`. URLs
 WordPress itself resolves (a post, a category archive) keep the theme until a
@@ -658,7 +815,7 @@ WordPress.
 
 ## From the old `pages/` renderer
 
-The separate `pages/` renderer (`@typedpress/pages`, `typedpress-pages build`
+The separate `pages/` renderer (`@typedpress/pages`, `tp-pages build`
 and `tp/pages.json`) is gone. A project that still has `pages/` beside
 `typedpress.config.ts` fails to build with the move as the fix, and a host refuses a
 capture that carries old-renderer pages. To port:

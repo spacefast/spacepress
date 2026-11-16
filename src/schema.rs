@@ -760,6 +760,8 @@ pub struct App {
     /// Most specific first: the router takes the first match.
     pub routes: Vec<AppRoute>,
     pub not_found: Option<AppRoute>,
+    /// `login.tsx`: wp-login.php's sign-in view, rendered in the root layout.
+    pub login: Option<AppRoute>,
     /// Route file (relative to `tp/`) → its compiled exports.
     pub files: IndexMap<String, AppFile>,
     /// Content-owned pages (`page.md`), by URL path: what the site stores as a WordPress Page.
@@ -809,6 +811,10 @@ pub struct AppFile {
     pub prerender: Option<bool>,
     /// `export async function staticParams()`: the compiled function listing a dynamic page's params.
     pub static_params: Option<String>,
+    /// The block template the page renders in (`export const template = "blank"`, or a template
+    /// slug), on a page or layout. A layout that imports `<TemplatePart>` places the theme's parts
+    /// itself, so it is `"blank"` unless it says otherwise (docs/pages.md "Block templates").
+    pub template: Option<String>,
 }
 
 #[derive(Debug, Clone)]

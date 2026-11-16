@@ -46,6 +46,16 @@ const sameSite = (event, ref) =>
   !ref.hasAttribute("download") &&
   ref.origin === window.location.origin;
 
+// The block template a page renders in (`<body data-tp-template>`) and the one a link's target
+// renders in (`data-tp-template` on the link): the router region swaps only between pages of one
+// template, so a link to a page with other chrome (the theme's header, or none) loads the page.
+// A link with no template (an address no app page serves) loads the page: what answers there has
+// no router region to swap.
+const sameTemplate = (ref) => {
+  const target = ref.dataset.tpTemplate;
+  return target !== undefined && target === document.body.dataset.tpTemplate;
+};
+
 // Attributes are read with getAttribute: a field named `action`, `method` or `target` shadows the
 // form's own properties.
 const attr = (el, name) => (el && el.hasAttribute(name) ? el.getAttribute(name) : null);
@@ -143,7 +153,7 @@ store("tp/router", {
   actions: {
     navigate: withSyncEvent(function* (event) {
       const { ref } = getElement();
-      if (!sameSite(event, ref)) return;
+      if (!sameSite(event, ref) || !sameTemplate(ref)) return;
       event.preventDefault();
       // Counted before anything waits: a submit whose answer comes in after this click drops it.
       forms.navigations++;
@@ -152,7 +162,7 @@ store("tp/router", {
     }),
     *prefetch() {
       const { ref } = getElement();
-      if (!(ref instanceof HTMLAnchorElement) || ref.origin !== window.location.origin) return;
+      if (!(ref instanceof HTMLAnchorElement) || ref.origin !== window.location.origin || !sameTemplate(ref)) return;
       const { actions } = yield import("@wordpress/interactivity-router");
       yield actions.prefetch(ref.href);
     },
@@ -226,7 +236,7 @@ store("tp/router", {
         let html = null;
         let response = null;
         try {
-          response = yield fetch(url.href, { method: "POST", body, credentials: "same-origin", redirect: "follow", headers: { Accept: "text/html" } });
+          response = yield fetch(url.href, { method: "POST", body, credentials: "same-origin", redirect: "follow", headers: { Accept: "text/html", "X-TP-Template": document.body.dataset.tpTemplate ?? "", "X-TP-From": from } });
           const type = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
           // A page from this site: a 2xx, or any page the action's 303 came back to. The action ran
           // and the page it returns to may now answer 404 (a deleted post's own page) or 500; that
@@ -240,6 +250,19 @@ store("tp/router", {
         }
         if (html === null) {
           showError(form);
+          return;
+        }
+        // The block template the answer renders in (`<body data-tp-template>`): one other than this
+        // page's has other chrome around its region, so it loads in full, as a <Link> to it would.
+        // An answer at another address, in another block template, has other chrome around its
+        // region: it loads in full, as a <Link> to it would. The server kept its flash for that load
+        // (the fetch said which template and page this is, `X-TP-Template`, `X-TP-From`), so the page
+        // reads it once more, with the marker. The page the form is on, come back as its 404, swaps.
+        const answerTemplate = /<body\b[^>]*\sdata-tp-template="([^"]*)"/.exec(html)?.[1];
+        if (answerTemplate !== undefined && answerTemplate !== document.body.dataset.tpTemplate && response.redirected && pagePath(response.url) !== from) {
+          keepPending = true;
+          forms.navigations++;
+          window.location.assign(response.url);
           return;
         }
         if (!html.includes("data-wp-router-region")) {

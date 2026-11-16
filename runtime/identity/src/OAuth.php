@@ -295,11 +295,14 @@ final class OAuth
             return null;
         }
         $row = $this->db->row(
-            "SELECT t.* FROM {$this->db->prefix}tokens t JOIN {$this->db->prefix}sessions s ON s.id=t.session_id JOIN {$this->db->prefix}accounts a ON a.wp_user_id=t.wp_user_id JOIN {$this->db->prefix}applications c ON c.id=t.client_id WHERE t.id=%s AND t.kind='access' AND t.revoked=0 AND t.expires_at>%d AND s.revoked_at IS NULL AND a.status='active' AND c.enabled=1",
+            "SELECT t.*" . (Schema::linksWordPressSessions() ? ", s.wp_token AS session_wp_token" : "") . " FROM {$this->db->prefix}tokens t JOIN {$this->db->prefix}sessions s ON s.id=t.session_id JOIN {$this->db->prefix}accounts a ON a.wp_user_id=t.wp_user_id JOIN {$this->db->prefix}applications c ON c.id=t.client_id WHERE t.id=%s AND t.kind='access' AND t.revoked=0 AND t.expires_at>%d AND s.revoked_at IS NULL AND a.status='active' AND c.enabled=1",
             $claims["jti"],
             time(),
         );
         if (!$row || $row["client_id"] !== ($claims["aud"] ?? null) || (string) $row["wp_user_id"] !== $claims["sub"]) {
+            return null;
+        }
+        if (!Sessions::linked(["wp_user_id" => $row["wp_user_id"], "wp_token" => $row["session_wp_token"] ?? null])) {
             return null;
         }
         return [
@@ -400,11 +403,14 @@ final class OAuth
     }
 
     /**
-     * RP-initiated logout: a valid `id_token_hint` (expired is fine) names the client and the
-     * identity session to revoke; `post_logout_redirect_uri` must share an origin with one of
-     * that client's registered callbacks. Returns the URL to redirect to.
+     * RP-initiated logout, checked: a valid `id_token_hint` (expired is fine) names the client;
+     * `post_logout_redirect_uri` must share an origin with one of that client's registered
+     * callbacks. Revokes nothing. Returns the URL to redirect to and the hint's claims, which
+     * {@see endLogout()} takes once the caller has decided the sign-out may happen.
+     *
+     * @return array{target: string, claims: ?array}
      */
-    public function logout(array $query): string
+    public function logoutRequest(array $query): array
     {
         $hint = (string) ($query["id_token_hint"] ?? "");
         $target = (string) ($query["post_logout_redirect_uri"] ?? "");
@@ -419,19 +425,30 @@ final class OAuth
                 throw new Failure("invalid_request", "post_logout_redirect_uri is not registered for this application.");
             }
         }
-        if ($claims !== null && is_string($claims["sid"] ?? null)) {
-            $session = $this->db->row(
-                "SELECT wp_user_id FROM {$this->db->prefix}sessions WHERE id=%s",
-                $claims["sid"],
-            );
-            if ($session && (string) $session["wp_user_id"] === ($claims["sub"] ?? null)) {
-                Plugin::$sessions->revoke((int) $session["wp_user_id"], $claims["sid"]);
-            }
-        }
         if ($target === "") {
-            return home_url("/identity");
+            $target = home_url("/identity");
+        } elseif (isset($query["state"]) && is_string($query["state"])) {
+            $target = self::withQuery($target, ["state" => $query["state"]]);
         }
-        return isset($query["state"]) && is_string($query["state"]) ? self::withQuery($target, ["state" => $query["state"]]) : $target;
+        return ["target" => $target, "claims" => $claims];
+    }
+
+    /**
+     * Revokes the identity session a checked logout's hint names (its `sid`, for its `sub`). With
+     * `$withWordPress` false, a WordPress session that identity session came from stays signed in.
+     */
+    public function endLogout(?array $claims, bool $withWordPress = true): void
+    {
+        if ($claims === null || !is_string($claims["sid"] ?? null)) {
+            return;
+        }
+        $session = $this->db->row(
+            "SELECT wp_user_id FROM {$this->db->prefix}sessions WHERE id=%s",
+            $claims["sid"],
+        );
+        if ($session && (string) $session["wp_user_id"] === ($claims["sub"] ?? null)) {
+            Plugin::$sessions->revoke((int) $session["wp_user_id"], $claims["sid"], $withWordPress);
+        }
     }
 
     public static function claims(array $profile, array $scopes): array
@@ -488,10 +505,17 @@ final class OAuth
             $uid,
         );
         $session = $this->db->row(
-            "SELECT id FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d AND revoked_at IS NULL FOR UPDATE",
+            "SELECT id, wp_user_id" . (Schema::linksWordPressSessions() ? ", wp_token" : "") . " FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d AND revoked_at IS NULL FOR UPDATE",
             $sessionId,
             $uid,
         );
+        // A session opened from a WordPress sign-in lives only as long as that WordPress session:
+        // signing out of WordPress, or ending its sessions, ends the apps' too.
+        if ($session && !Sessions::linked($session)) {
+            $this->db->run("UPDATE {$this->db->prefix}sessions SET revoked_at=%d WHERE id=%s", time(), $sessionId);
+            $this->db->run("UPDATE {$this->db->prefix}tokens SET revoked=1 WHERE session_id=%s", $sessionId);
+            $session = null;
+        }
         $ok = $account && $account["status"] === "active" && $session;
         if (!$ok && $throw) {
             throw new Failure("login_required", "Session no longer active.", 401);

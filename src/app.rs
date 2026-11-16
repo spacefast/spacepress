@@ -2,7 +2,8 @@
 //!
 //! Discovery turns the folder tree into a route table. Each route is a URL pattern plus the files
 //! that render it: `page.tsx` with the `layout.tsx` files above it, or `route.ts` for an HTTP
-//! handler with no page. `not-found.tsx` and `error.tsx` render the 404 and the render-error page.
+//! handler with no page. `not-found.tsx` and `error.tsx` render the 404 and the render-error page;
+//! `login.tsx` renders wp-login.php's sign-in view (docs/decisions/2026-11-15-one-sign-in-page.md).
 //! `page.md` is a page too, with the same layouts; [`crate::content_page`] reads it.
 //! The pipeline compiles the exports these files name (`default`, `metadata`, `guard`, `search`,
 //! HTTP method handlers) through the same compiler as every other root; the runtime router
@@ -106,6 +107,8 @@ pub struct Table {
     pub routes: Vec<Route>,
     /// `app/not-found.tsx`, with the root layout(s) that wrap it.
     pub not_found: Option<Route>,
+    /// `app/login.tsx`, with the root layout(s) that wrap it: wp-login.php's sign-in view.
+    pub login: Option<Route>,
     /// Every `.tsx`/`.ts` route file the pipeline compiles (pages, layouts, not-found, error,
     /// handlers), relative to `tp/`, sorted.
     pub files: Vec<String>,
@@ -182,6 +185,7 @@ pub fn discover(fs: &dyn Fs, first: &Path) -> std::result::Result<Table, Vec<Dia
             .routes
             .iter()
             .chain(table.not_found.iter())
+            .chain(table.login.iter())
             .any(|r| r.layouts.contains(file) || r.error.as_ref() == Some(file) || &r.file == file);
         if !used {
             diags.push(located(
@@ -321,6 +325,26 @@ fn walk(
         } else {
             table.files.push(file.clone());
             table.not_found = Some(Route {
+                segments: vec![],
+                kind: RouteKind::Page,
+                file,
+                layouts: layouts.clone(),
+                error: error.clone(),
+            });
+        }
+    }
+    if has("login.tsx") {
+        let file = rel(&dir.join("login.tsx"));
+        if !root {
+            diags.push(located(
+                fs,
+                &dir.join("login.tsx"),
+                "login.tsx works only at the root of tp/app/",
+                "move it to tp/app/login.tsx: it renders wp-login.php's sign-in page, which has one URL",
+            ));
+        } else {
+            table.files.push(file.clone());
+            table.login = Some(Route {
                 segments: vec![],
                 kind: RouteKind::Page,
                 file,
@@ -530,6 +554,7 @@ pub fn allowed_exports(file: &str) -> &'static [&'static str] {
             "default",
             "route",
             "metadata",
+            "template",
             "search",
             "prerender",
             "staticParams",
@@ -541,8 +566,8 @@ pub fn allowed_exports(file: &str) -> &'static [&'static str] {
             "PATCH",
             "DELETE",
         ],
-        "layout.tsx" => &["default", "metadata", "guard"],
-        "not-found.tsx" | "error.tsx" => &["default", "metadata"],
+        "layout.tsx" => &["default", "metadata", "guard", "template"],
+        "not-found.tsx" | "error.tsx" | "login.tsx" => &["default", "metadata"],
         "route.ts" => &["access", "signature", "GET", "POST", "PUT", "PATCH", "DELETE"],
         _ => &[],
     }
@@ -560,9 +585,11 @@ pub const EXPORTS: &[&str] = &[
     "Html",
     "Link",
     "Live",
+    "LoginForm",
     "Pagination",
     "Search",
     "SearchResults",
+    "TemplatePart",
 ];
 /// Type-only exports of `"typedpress/app"`: importable, erased.
 pub const TYPES: &[&str] = &[
@@ -572,9 +599,11 @@ pub const TYPES: &[&str] = &[
     "RouteRequest",
     "RouteResponse",
     "Guard",
+    "Template",
     "SearchParams",
     "FormState",
     "StaticParams",
+    "LoginProps",
 ];
 
 pub fn export(name: &str) -> Option<&'static str> {

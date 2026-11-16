@@ -727,7 +727,9 @@ integral floats without `.0` — implemented by `TypedPress\Sync\Canon::json()` 
 with `current: { digest, record }`. After applying, the runtime re-reads and
 re-digests; a different digest (normalisation: slug derivation, trimming hooks)
 returns `normalized` with the stored record. Trash: WP post-backed →
-`wp_trash_post`; everything else → pipeline delete (revisions keep the row).
+`wp_trash_post`, an unpublish with no delete lifecycle
+(docs/decisions/2026-11-14-trash-is-unpublish.md); everything else → pipeline delete
+(revisions keep the row).
 Restore from WP trash is just another `POST /sync/{c}` with `expect: "absent"`.
 
 ### 5.4 CLI (`src/sync/`)

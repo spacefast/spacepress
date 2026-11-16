@@ -112,7 +112,7 @@ final class Setup
         if ($broken !== null) {
             printf('<div class="notice notice-error"><p><strong>The app is not running.</strong> %s</p></div>', esc_html($broken));
         }
-        foreach (array_filter([$closed, Site::conflict(), Site::exposure()]) as $warning) {
+        foreach (array_filter([$closed, Site::conflict(), Site::exposure(), Site::existing()]) as $warning) {
             printf('<div class="notice notice-warning"><p>%s</p></div>', esc_html($warning));
         }
         if ($manifest !== null) {

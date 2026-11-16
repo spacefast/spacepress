@@ -22,8 +22,11 @@ final class Sessions
         add_filter('rest_authentication_errors', function ($result) {
             if (is_wp_error($result) || is_user_logged_in() || ($result !== null && $result !== true)
                 || !self::restCookieAuth()) { return $result; }
-            $route = (string) ($GLOBALS['wp']->query_vars['rest_route'] ?? '');
-            if (!str_starts_with($route, '/zero/v1/')) { return $result; }
+            // Zero's API: /__zero/api/v1, outside /wp-json (identity loads without Zero, so the prefix is literal).
+            $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
+            $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
+            $path = $base !== '' && str_starts_with($path, $base . '/') ? substr($path, strlen($base)) : $path;
+            if ($path !== '/__zero/api/v1' && !str_starts_with($path, '/__zero/api/v1/')) { return $result; }
             // The cookie is ambient: it lends no identity to another origin's request (a sibling
             // host under the same site), a cross-site fetch, or a JSONP script include.
             $origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');

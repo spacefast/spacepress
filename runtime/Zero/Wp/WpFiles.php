@@ -290,7 +290,7 @@ final class WpFiles implements FileStorage
 
     public function apiUrl(string $route): string
     {
-        return rest_url(Rest::NAMESPACE . $route);
+        return Facade::url($route);
     }
 
     public function describe(): array

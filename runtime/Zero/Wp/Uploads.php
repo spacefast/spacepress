@@ -332,7 +332,7 @@ final class Uploads
 
     public static function url(int $id, string $rel): string
     {
-        return rest_url(Rest::NAMESPACE . '/media/' . $id . '/file/' . hash('sha256', $rel) . '/' . implode('/', array_map('rawurlencode', explode('/', $rel))));
+        return Facade::url('/media/' . $id . '/file/' . hash('sha256', $rel) . '/' . implode('/', array_map('rawurlencode', explode('/', $rel))));
     }
 
     public static function dispatch(string $method, array $segments): Response

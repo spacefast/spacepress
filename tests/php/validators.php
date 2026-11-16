@@ -55,7 +55,7 @@ $validated = static function (string $page, array $first) use ($url): array {
 
 $out = [];
 // ---- prebuilt pages -----------------------------------------------------------------------------
-for ($i = 0; $i < 10 && as_has_scheduled_action(\TypedPress\Render\Prebuilt::ACTION, null, 'first'); $i++) {
+for ($i = 0; $i < 10 && as_has_scheduled_action(\TypedPress\Render\Prebuilt::ACTION, null, 'typedpress'); $i++) {
     ActionScheduler_QueueRunner::instance()->run('TypedPress tests');
 }
 $about = fetch("$url/about");

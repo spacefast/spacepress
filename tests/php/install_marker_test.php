@@ -119,8 +119,8 @@ $recheck('the app deactivated', static function (): void {
     activate_plugin('typedpress-app-blog/typedpress-app-blog.php');
 });
 $recheck('the search shape cleared', static fn () => delete_option('tp_search_shape'));
-$recheck('a recurring action cancelled', static fn () => as_unschedule_all_actions('tp_jobs_maintain', [], 'first'));
-check('which the checking request scheduled again', as_has_scheduled_action('tp_jobs_maintain', [], 'first'));
+$recheck('a recurring action cancelled', static fn () => as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress'));
+check('which the checking request scheduled again', as_has_scheduled_action('tp_jobs_maintain', [], 'typedpress'));
 
 // ---- a failed install is never hidden ------------------------------------------------------------------
 // A migration the database refuses: the request that runs it fails, records nothing, and every request

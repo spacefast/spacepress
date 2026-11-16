@@ -28,7 +28,7 @@ if (preg_match('#<script[^>]*type="importmap"[^>]*>(.*?)</script>#s', $body, $ma
 }
 $out = [];
 foreach ($urls as $u) {
-    if (!preg_match('#/plugins/(first-[a-z0-9-]+)/(.*?)(?:\?(.*))?$#', $u, $m)) {
+    if (!preg_match('#/plugins/(typedpress-[a-z0-9-]+)/(.*?)(?:\?(.*))?$#', $u, $m)) {
         continue;
     }
     parse_str($m[3] ?? '', $query);

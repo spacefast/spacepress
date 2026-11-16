@@ -5090,7 +5090,7 @@ fn one_sign_in_page_on_wordpress() {
     assert!(get["action"].as_str().unwrap().ends_with("/wp-login.php"), "{seen}");
     assert_eq!(
         get["inputs"].as_object().unwrap().keys().collect::<Vec<_>>(),
-        ["log", "pwd", "rememberme", "redirect_to", "testcookie"],
+        ["log", "pwd", "probe", "rememberme", "redirect_to", "testcookie"],
         "{seen}"
     );
     assert_eq!(
@@ -5124,11 +5124,11 @@ fn one_sign_in_page_on_wordpress() {
     assert_eq!(seen["loggedout"]["app"], "Sign in to Field Notes", "{seen}");
     assert_eq!(
         seen["loggedout"]["notices"],
-        json(["You are now logged out."]),
+        json(["Members only", "You are now logged out."]),
         "{seen}"
     );
     assert!(
-        seen["checkemail"]["notices"][0]
+        seen["checkemail"]["notices"][1]
             .as_str()
             .unwrap()
             .starts_with("If there is an account"),
@@ -5144,9 +5144,27 @@ fn one_sign_in_page_on_wordpress() {
         elsewhere["redirect_to"].as_str().unwrap().ends_with("/?from=home"),
         "{seen}"
     );
+    // What plugins add to the form (here a nonce) is per request: that page is never shared. Its
+    // form carries no `testcookie`, which only wp-login.php's own page may ask for, so a first-time
+    // visitor signs in from it on the first try.
+    assert_eq!(elsewhere["cache"], "private, no-store, max-age=0", "{seen}");
+    assert_eq!(elsewhere["probe field"], true, "{seen}");
+    assert_eq!(elsewhere["testcookie field"], false, "{seen}");
+    assert_eq!(seen["get"]["testcookie field"], true, "{seen}");
+    assert_eq!(seen["form elsewhere sign in"]["signed in"], true, "{seen}");
+    assert!(
+        seen["form elsewhere sign in"]["location"]
+            .as_str()
+            .unwrap()
+            .ends_with("/?from=home"),
+        "{seen}"
+    );
+    // Captcha-style plugins work on the app's sign-in page: their field, head and foot scripts, and
+    // their `login_message` notice, which the page receives with WordPress's own messages.
     assert_eq!(
-        elsewhere["cache"], "public, max-age=0, s-maxage=300, must-revalidate",
-        "a page with the form stays cacheable: {seen}"
+        seen["get"]["probes"],
+        serde_json::json!({ "field": true, "head": true, "foot": true, "notice": true }),
+        "{seen}"
     );
     assert_eq!(
         seen["guard"],
@@ -5161,7 +5179,7 @@ fn one_sign_in_page_on_wordpress() {
         (&json(true), &json(false)),
         "{seen}"
     );
-    assert_eq!(step["provider"], "TypedPress\\Identity\\TwoFactorProvider", "{seen}");
+    assert_eq!(step["provider"], "TypedPress_Identity_TwoFactorProvider", "{seen}");
     assert_eq!(
         seen["mfa wrong code"],
         serde_json::json!({ "status": 200, "signed in": false, "asks again": true }),
@@ -5177,6 +5195,10 @@ fn one_sign_in_page_on_wordpress() {
     );
     assert_eq!(seen["mfa recovery code"]["signed in"], true, "{seen}");
     assert_eq!(seen["mfa recovery code reused"]["signed in"], false, "{seen}");
+    assert_eq!(
+        seen["mfa identity"], 200,
+        "a sign-in that passed Identity's factor opens /identity: {seen}"
+    );
     assert_eq!(seen["mfa elsewhere"], "identity_mfa_required", "{seen}");
     assert_eq!(seen["mfa wrong password"]["second step"], false, "{seen}");
     assert_eq!(seen["mfa wrong password"]["errors"], json([generic]), "{seen}");
@@ -5264,6 +5286,94 @@ fn one_sign_in_page_on_wordpress() {
         serde_json::json!({ "status": 302, "to login": true }),
         "{seen}"
     );
+
+    // H1: an account with Identity MFA is asked for Identity's factor only, and a WordPress session
+    // that didn't pass it (another Two Factor method, wp_set_auth_cookie alone) is no identity session.
+    assert_eq!(
+        seen["mfa methods"],
+        serde_json::json!({ "provider": "TypedPress_Identity_TwoFactorProvider", "emailed": false }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["bridge"],
+        serde_json::json!({
+            "other method": 401, "other method page": true, "cookie only": 401,
+            "identity factor": 200, "no factor, no password": true
+        }),
+        "{seen}"
+    );
+    // H2 and L3: one identity session per WordPress session, linked to it; ending the WordPress session
+    // ends the identity session and the application's tokens, and revoking the identity session ends
+    // the WordPress session.
+    assert_eq!(
+        seen["reuse"],
+        serde_json::json!({ "rows": 1, "same": true, "linked": true }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["h2 tokens"],
+        serde_json::json!({ "access": true, "refresh": true }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["destroy others"],
+        serde_json::json!({ "identity rest": 401, "userinfo": 401, "refresh": 400, "session revoked": true }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["revoke identity"],
+        serde_json::json!({ "wordpress session": false, "page": true }),
+        "{seen}"
+    );
+    // M5: an identity cookie for another user (a planted guest session) gives way to the WordPress sign-in.
+    assert_eq!(seen["mismatch"]["page"], 200, "{seen}");
+    assert_eq!(seen["mismatch"]["account"], seen["mismatch"]["wu"], "{seen}");
+    // M3: a bare logout link asks; a forged confirmation is refused; a confirmed one ends both sessions.
+    assert_eq!(
+        seen["logout link"],
+        serde_json::json!({ "status": 200, "asks": true, "still signed in": true }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["logout forged"],
+        serde_json::json!({ "status": 403, "still signed in": true }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["logout confirmed"],
+        serde_json::json!({ "status": 303, "wordpress session": false, "identity revoked": true }),
+        "{seen}"
+    );
+}
+
+/// L1: on a site below `/blog`, `/identity` sends a signed-out browser to wp-login.php and back to
+/// the page it was on, with the subdirectory in its URL once.
+#[test]
+fn one_sign_in_page_under_a_subdirectory() {
+    let project = fixture("login-page", "subdir");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/login_page.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .env("LOGIN_PAGE_BASE", "/blog")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let sub = &seen["subdirectory"];
+    let url = sub["url"].as_str().unwrap();
+    assert_eq!(sub["status"], 302, "{seen}");
+    assert_eq!(sub["login"], format!("{url}/wp-login.php"), "{seen}");
+    assert_eq!(sub["back"], format!("{url}/identity/account?tab=1"), "{seen}");
 }
 
 fn json<T: serde::Serialize>(v: T) -> serde_json::Value {

@@ -28,6 +28,18 @@ final class LoginView
      */
     private static ?array $state = null;
 
+    /** Whether this render printed what plugins add to the form (`login_form`): see {@see private()}. */
+    private static bool $extra = false;
+
+    /**
+     * Whether this render carries per-request markup from `login_form` callbacks (a captcha
+     * challenge, a nonce), which a shared cache must never serve to someone else.
+     */
+    public static function private(): bool
+    {
+        return self::$extra;
+    }
+
     /**
      * Reads wp-login.php's answer into the view: its errors and messages as wp-login.php itself
      * prints them (each through `login_errors` / `login_messages`, the filters the loginErrors
@@ -51,6 +63,11 @@ final class LoginView
                     $errorList[] = (string) $message;
                 }
             }
+        }
+        // `login_message`: the notice plugins and themes put above the form, as login_header() shows it.
+        $notice = (string) apply_filters('login_message', '');
+        if (trim(wp_strip_all_tags($notice)) !== '') {
+            array_unshift($messageList, $notice);
         }
         // As login_header() builds them.
         $errorsHtml = '';
@@ -125,6 +142,9 @@ final class LoginView
         // Fields plugins add to the sign-in form (a captcha, a nonce), as wp-login.php prints them.
         do_action('login_form');
         $extra = (string) ob_get_clean();
+        if (has_action('login_form')) {
+            self::$extra = true;
+        }
         $class = trim('typedpress-login ' . (is_string($class) ? $class : ''));
         $label = is_string($submit) && $submit !== '' ? $submit : __('Log In');
         $out .= '<form name="loginform" id="loginform" class="' . esc_attr($class) . '" method="post" action="' . esc_url(self::action()) . '">'
@@ -137,7 +157,9 @@ final class LoginView
             . '<label for="rememberme">' . esc_html__('Remember Me') . '</label></p>'
             . '<p class="submit"><button type="submit" name="wp-submit" id="wp-submit">' . esc_html($label) . '</button>'
             . '<input type="hidden" name="redirect_to" value="' . esc_attr($state['redirectTo']) . '">'
-            . '<input type="hidden" name="testcookie" value="1"></p>'
+            // wp-login.php refuses a post with `testcookie` and no test cookie, which only wp-login.php
+            // sets: the field belongs on its own page, not on a form elsewhere on the site.
+            . (self::$state !== null ? '<input type="hidden" name="testcookie" value="1">' : '') . '</p>'
             . '</form>';
         if ($links !== false) {
             $nav = [];

@@ -70,12 +70,13 @@ final class Sessions
     }
     /**
      * A new identity session for $uid. A session opened from a WordPress sign-in
-     * ({@see Plugin::browserSession}) passes when that sign-in happened as `$verifiedAt` and when the
-     * WordPress session ends as `$until`: it is never fresher, nor longer-lived, than what it came from.
+     * ({@see Plugin::browserSession}) passes that WordPress session's verifier as `$wpToken`, when
+     * its sign-in happened as `$verifiedAt` and when it ends as `$until`: it is never fresher, nor
+     * longer-lived, than what it came from, and it ends when that WordPress session ends.
      */
-    public function create(int $uid, ?int $verifiedAt = null, ?int $until = null): array
+    public function create(int $uid, ?int $verifiedAt = null, ?int $until = null, ?string $wpToken = null): array
     {
-        return $this->db->transaction(function () use ($uid, $verifiedAt, $until) {
+        return $this->db->transaction(function () use ($uid, $verifiedAt, $until, $wpToken) {
             $this->db->lock($uid);
             $secret = Security::token();
             $session = [
@@ -86,6 +87,7 @@ final class Sessions
                 "created_at" => time(),
                 "expires_at" => min(time() + 86400, $until ?? PHP_INT_MAX),
                 "verified_at" => min(time(), $verifiedAt ?? PHP_INT_MAX),
+                "wp_token" => $wpToken,
                 "label" => substr(
                     sanitize_text_field(
                         $_SERVER["HTTP_USER_AGENT"] ?? "Server session",
@@ -129,6 +131,12 @@ final class Sessions
         if ($session && !hash_equals((string) $session['secret_hash'], self::digest($secret))) {
             $session = null;
         }
+        // Opened from a WordPress sign-in: it ends with that WordPress session.
+        if ($session && !self::linked($session)) {
+            $this->db->run("UPDATE {$this->db->prefix}sessions SET revoked_at=%d WHERE id=%s AND revoked_at IS NULL", time(), $session["id"]);
+            $this->db->run("UPDATE {$this->db->prefix}tokens SET revoked=1 WHERE session_id=%s", $session["id"]);
+            return null;
+        }
         $session ??= Legacy\SessionUpgrade::find($this->db, $secret);
         $session ??= Legacy\ZeroSession::find($this->db, $secret);
         if ($alias && $session) {
@@ -136,6 +144,41 @@ final class Sessions
             $_COOKIE[self::cookieName()] = $secret;
         }
         return $session;
+    }
+    /**
+     * Whether a session opened from a WordPress sign-in still has it: the WordPress session exists
+     * and the identity session hasn't expired. Every other session is its own.
+     */
+    public static function linked(array $session): bool
+    {
+        $verifier = $session["wp_token"] ?? null;
+        if (!is_string($verifier) || $verifier === "") {
+            return true;
+        }
+        return (int) $session["expires_at"] > time()
+            && WordPressSessions::find((int) $session["wp_user_id"], $verifier) !== null;
+    }
+    /**
+     * The open session this browser already has for a WordPress session, given a new secret so a
+     * browser that lost its identity cookie gets the same row back instead of a new one.
+     */
+    public function reopen(int $uid, string $verifier): ?array
+    {
+        return $this->db->transaction(function () use ($uid, $verifier) {
+            $this->db->lock($uid);
+            $row = $this->db->row(
+                "SELECT * FROM {$this->db->prefix}sessions WHERE wp_user_id=%d AND wp_token=%s AND revoked_at IS NULL AND expires_at>%d ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+                $uid,
+                $verifier,
+                time(),
+            );
+            if (!$row) {
+                return null;
+            }
+            $secret = Security::token();
+            $this->db->run("UPDATE {$this->db->prefix}sessions SET secret_hash=%s WHERE id=%s", self::digest($secret), $row["id"]);
+            return ["secret" => $secret, "session" => ["secret_hash" => self::digest($secret)] + $row];
+        });
     }
     public function require(?string $csrf = null): array
     {
@@ -191,7 +234,7 @@ final class Sessions
     }
     public function revoke(int $uid, ?string $id = null): void
     {
-        $this->db->transaction(function () use ($uid, $id) {
+        $linked = $this->db->transaction(function () use ($uid, $id) {
             $this->db->run(
                 "SELECT wp_user_id FROM {$this->db->prefix}accounts WHERE wp_user_id=%d FOR UPDATE",
                 $uid,
@@ -208,10 +251,15 @@ final class Sessions
                     "UPDATE {$this->db->prefix}challenges SET expires_at=0 WHERE wp_user_id=%d AND purpose='mfa' AND expires_at>0",
                     $uid,
                 );
+                return null;
             }
+            return $this->db->row("SELECT wp_token FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d", $id, $uid)["wp_token"] ?? null;
         });
         if ($id === null) {
             \WP_Session_Tokens::get_instance($uid)->destroy_all();
+        } elseif (is_string($linked) && $linked !== "") {
+            // One sign-in: the WordPress session this one was opened from ends with it.
+            WordPressSessions::end($uid, $linked);
         }
         $this->security->event(
             $uid,

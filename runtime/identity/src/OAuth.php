@@ -295,11 +295,14 @@ final class OAuth
             return null;
         }
         $row = $this->db->row(
-            "SELECT t.* FROM {$this->db->prefix}tokens t JOIN {$this->db->prefix}sessions s ON s.id=t.session_id JOIN {$this->db->prefix}accounts a ON a.wp_user_id=t.wp_user_id JOIN {$this->db->prefix}applications c ON c.id=t.client_id WHERE t.id=%s AND t.kind='access' AND t.revoked=0 AND t.expires_at>%d AND s.revoked_at IS NULL AND a.status='active' AND c.enabled=1",
+            "SELECT t.*, s.expires_at AS session_expires_at, s.wp_token AS session_wp_token FROM {$this->db->prefix}tokens t JOIN {$this->db->prefix}sessions s ON s.id=t.session_id JOIN {$this->db->prefix}accounts a ON a.wp_user_id=t.wp_user_id JOIN {$this->db->prefix}applications c ON c.id=t.client_id WHERE t.id=%s AND t.kind='access' AND t.revoked=0 AND t.expires_at>%d AND s.revoked_at IS NULL AND a.status='active' AND c.enabled=1",
             $claims["jti"],
             time(),
         );
         if (!$row || $row["client_id"] !== ($claims["aud"] ?? null) || (string) $row["wp_user_id"] !== $claims["sub"]) {
+            return null;
+        }
+        if (!Sessions::linked(["wp_user_id" => $row["wp_user_id"], "expires_at" => $row["session_expires_at"], "wp_token" => $row["session_wp_token"]])) {
             return null;
         }
         return [
@@ -488,10 +491,17 @@ final class OAuth
             $uid,
         );
         $session = $this->db->row(
-            "SELECT id FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d AND revoked_at IS NULL FOR UPDATE",
+            "SELECT id, wp_user_id, expires_at, wp_token FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d AND revoked_at IS NULL FOR UPDATE",
             $sessionId,
             $uid,
         );
+        // A session opened from a WordPress sign-in lives only as long as that WordPress session
+        // and its own expiry: signing out of WordPress, or ending its sessions, ends the apps' too.
+        if ($session && !Sessions::linked($session)) {
+            $this->db->run("UPDATE {$this->db->prefix}sessions SET revoked_at=%d WHERE id=%s", time(), $sessionId);
+            $this->db->run("UPDATE {$this->db->prefix}tokens SET revoked=1 WHERE session_id=%s", $sessionId);
+            $session = null;
+        }
         $ok = $account && $account["status"] === "active" && $session;
         if (!$ok && $throw) {
             throw new Failure("login_required", "Session no longer active.", 401);

@@ -17,6 +17,11 @@ namespace TypedPress\Identity;
  */
 final class TwoFactorProvider extends \Two_Factor_Provider
 {
+    public function get_key()
+    {
+        return Plugin::TWO_FACTOR_KEY;
+    }
+
     public function get_label()
     {
         return __('Authenticator app or recovery code', 'typedpress-identity');

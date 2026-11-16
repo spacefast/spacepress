@@ -51,7 +51,9 @@ try {
     echo "PASS every identity table is InnoDB\n";
     $columns = array_column($connection->get_results("SHOW COLUMNS FROM {$db->prefix}tokens", ARRAY_A), 'Type', 'Field');
     check(($columns['kind'] ?? null) === "enum('access','refresh')" && isset($columns['family'], $columns['replaced_by'], $columns['used_at']), 'v3 tokens carry kind, family, replaced_by and used_at');
-    check($connection->get_var("SELECT option_value FROM {$connection->options} WHERE option_name='tp_identity_schema_version'") === '3', 'schema version 3 recorded on the migrated prefix');
+    $sessionColumns = array_column($connection->get_results("SHOW COLUMNS FROM {$db->prefix}sessions", ARRAY_A), 'Type', 'Field');
+    check(($sessionColumns['wp_token'] ?? null) === 'char(64)', 'v4 sessions carry the WordPress session they came from (wp_token)');
+    check($connection->get_var("SELECT option_value FROM {$connection->options} WHERE option_name='tp_identity_schema_version'") === '4', 'schema version 4 recorded on the migrated prefix');
     check(($sessions->find($token)['id'] ?? null) === $session['id'], 'a rerun keeps existing sessions live');
     $db->run("UPDATE {$db->prefix}sessions SET expires_at=%d WHERE id=%s", time(), $session['id']);
     check($sessions->find($token) === null, 'session lookup honours expiry');

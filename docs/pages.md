@@ -152,7 +152,7 @@ export default function Page() {
 
 WordPress's wp-login.php is the site's one sign-in page: wp-admin, a layout's `guard` and TypedPress
 Identity all send people there. `tp/app/login.tsx` renders it with the app's own markup,
-inside the sign-in block template (`typedpress-login`) and its stylesheets. Without the file,
+inside the sign-in block template (`tp-login`) and its stylesheets. Without the file,
 WordPress's own page shows until the owner edits that template (see [Block
 templates](#block-templates)).
 
@@ -217,9 +217,9 @@ Editor, and an owner can edit them and reset them there:
 
 | Template | What it holds | Used by |
 |---|---|---|
-| `typedpress-page` ("App page") | The theme's `header` part, the page, the theme's `footer` part. | Every page, unless a file picks another. |
-| `typedpress-blank` ("App page without header and footer") | The page alone. | `export const template = "blank"`, and layouts that place `<TemplatePart>`. |
-| `typedpress-login` ("Sign in") | The header part, `login.tsx`, the footer part. With no `login.tsx`, the `tp/login-form` block. | wp-login.php's sign-in view. |
+| `tp-page` ("App page") | The theme's `header` part, the page, the theme's `footer` part. | Every page, unless a file picks another. |
+| `tp-blank` ("App page without header and footer") | The page alone. | `export const template = "blank"`, and layouts that place `<TemplatePart>`. |
+| `tp-login` ("Sign in") | The header part, `login.tsx`, the footer part. With no `login.tsx`, the `tp/login-form` block. | wp-login.php's sign-in view. |
 | `404` | The theme's own 404 template. With `not-found.tsx`, TypedPress's default content is the header part, the page and the footer part. | A URL nothing serves, and `notFound()`. |
 
 **Choosing a template.** A page or a layout may export `template`. The page's own export wins,
@@ -232,13 +232,13 @@ export const template = "blank";      // no theme header or footer: this layout 
 export const template = "landing";    // a template the theme or the Site Editor provides
 ```
 
-- `"theme"` (the default) is `typedpress-page`, and `"blank"` is `typedpress-blank`.
+- `"theme"` (the default) is `tp-page`, and `"blank"` is `tp-blank`.
 - Any other slug names a template the theme, a plugin or the owner made. A template without
-  the Page content block can't show a page: the page renders in `typedpress-page` instead and the log
+  the Page content block can't show a page: the page renders in `tp-page` instead and the log
   says so.
 
 **Layouts.** Layouts nest by folder and run only for the routes under them, as in Astro. Under
-`typedpress-page`, the theme's header and footer are the site's chrome, so the root `app/layout.tsx`
+`tp-page`, the theme's header and footer are the site's chrome, so the root `app/layout.tsx`
 does not render. Its `metadata` (the title template, the description) and its `guard` still
 apply. The root layout renders in three cases:
 
@@ -267,7 +267,7 @@ export default function Studio({ children }: LayoutProps) {
 ```
 
 `<TemplatePart slug tagName? className? />` renders `core/template-part`, so it shows the owner's
-edits to the part. A layout that imports it renders in `typedpress-blank` unless it exports a
+edits to the part. A layout that imports it renders in `tp-blank` unless it exports a
 `template`.
 
 **What stays the same.**
@@ -284,7 +284,7 @@ edits to the part. A layout that imports it renders in `typedpress-blank` unless
 add text around the Page content block, or replace it. For the sign-in page, the replacement is
 the **Login form** block (`tp/login-form`): it renders the same form as `<LoginForm />`, posts
 to wp-login.php and shows its errors. That lets an owner rebuild the sign-in page without code.
-Once the owner has saved a `typedpress-login` template, wp-login.php renders it even when the app has
+Once the owner has saved a `tp-login` template, wp-login.php renders it even when the app has
 no `login.tsx`.
 
 See [the decision](decisions/2026-11-16-pages-in-block-templates.md).
@@ -781,7 +781,7 @@ WordPress.
 
 ## From the old `pages/` renderer
 
-The separate `pages/` renderer (`@typedpress/pages`, `typedpress-pages build`
+The separate `pages/` renderer (`@typedpress/pages`, `tp-pages build`
 and `tp/pages.json`) is gone. A project that still has `pages/` beside
 `typedpress.config.ts` fails to build with the move as the fix, and a host refuses a
 capture that carries old-renderer pages. To port:

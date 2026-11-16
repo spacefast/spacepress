@@ -95,7 +95,7 @@ $slugs = [];
 foreach (is_array($list) ? $list : [] as $t) {
     $slugs[$t['slug']] = ['source' => $t['source'], 'page block' => str_contains((string) ($t['content']['raw'] ?? ''), 'wp:tp/page')];
 }
-$out['templates'] = array_intersect_key($slugs, array_flip(['typedpress-page', 'typedpress-blank', 'typedpress-login', '404']));
+$out['templates'] = array_intersect_key($slugs, array_flip(['tp-page', 'tp-blank', 'tp-login', '404']));
 
 // The sign-in template: login.tsx inside it, posting to wp-login.php.
 $login = static function () use ($url): array {
@@ -110,14 +110,14 @@ $wrong = fetch("$url/wp-login.php", 'POST', ['Content-Type: application/x-www-fo
 $out['login wrong password'] = ['status' => $wrong['status'], 'error' => str_contains($wrong['body'], 'class="problem"'), 'theme header' => shape($wrong)['theme header']];
 
 // The owner edits the sign-in template in the Site Editor (a wp_template post saved through REST).
-$saved = fetch("$url/wp-json/wp/v2/templates/$stylesheet//typedpress-login", 'POST', $admin, json_encode(['content' =>
+$saved = fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-login", 'POST', $admin, json_encode(['content' =>
     "<!-- wp:paragraph --><p>Owner sign-in text</p><!-- /wp:paragraph -->\n<!-- wp:tp/page /-->"]));
 $out['login saved'] = $saved['status'];
 $out['login edited'] = $login();
 $wrong = fetch("$url/wp-login.php", 'POST', ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['log' => 'ana', 'pwd' => 'nope', 'testcookie' => '1']));
 $out['login edited wrong password'] = ['status' => $wrong['status'], 'error' => str_contains($wrong['body'], 'class="problem"'), 'owner text' => str_contains($wrong['body'], 'Owner sign-in text')];
 // Rebuilt without code: the Login form block alone, its own notices shown.
-fetch("$url/wp-json/wp/v2/templates/$stylesheet//typedpress-login", 'POST', $admin, json_encode(['content' =>
+fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-login", 'POST', $admin, json_encode(['content' =>
     "<!-- wp:paragraph --><p>Owner sign-in text</p><!-- /wp:paragraph -->\n<!-- wp:tp/login-form {\"submitLabel\":\"Go\"} /-->"]));
 $out['login block'] = $login() + ['button' => (bool) preg_match('#<button type="submit" name="wp-submit" id="wp-submit">Go</button>#', fetch("$url/wp-login.php")['body'])];
 $wrong = fetch("$url/wp-login.php", 'POST', ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['log' => 'ana', 'pwd' => 'nope', 'testcookie' => '1']));

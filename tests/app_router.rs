@@ -5019,7 +5019,7 @@ fn login_tsx_is_the_sign_in_page() {
     assert!(!schema.contains("'pattern' => '/login'"), "{schema}");
     let _ = std::fs::remove_dir_all(&project);
 
-    let dir = std::env::temp_dir().join(format!("typedpress-login-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tp-login-reject-{}", std::process::id()));
     let page = "export default function P() { return <p/>; }\n";
     rejects(
         &dir,
@@ -5355,9 +5355,9 @@ fn pages_render_in_block_templates() {
         seen["templates"],
         serde_json::json!({
             "404": { "source": "theme", "page block": true },
-            "typedpress-page": { "source": "plugin", "page block": true },
-            "typedpress-blank": { "source": "plugin", "page block": true },
-            "typedpress-login": { "source": "plugin", "page block": true },
+            "tp-page": { "source": "plugin", "page block": true },
+            "tp-blank": { "source": "plugin", "page block": true },
+            "tp-login": { "source": "plugin", "page block": true },
         }),
         "{seen}"
     );

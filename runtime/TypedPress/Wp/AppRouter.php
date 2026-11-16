@@ -1083,7 +1083,7 @@ final class AppRouter
             }
             echo self::social($head);
         }, 2);
-        $html = BlockTemplates::html($template, Navigation::region('typedpress-page') . $body . Navigation::END);
+        $html = BlockTemplates::html($template, Navigation::region('tp-page') . $body . Navigation::END);
         echo "<!DOCTYPE html>\n<html " . get_language_attributes() . ">\n<head>\n<meta charset=\"" . esc_attr((string) get_option('blog_charset')) . "\">\n";
         wp_head();
         echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('typedpress-app'))) . "\">\n";

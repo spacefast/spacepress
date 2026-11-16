@@ -17,10 +17,10 @@ use TypedPress\Html;
  *
  * TypedPress registers three templates (`register_block_template()`), each editable in the Site Editor:
  *
- * - `typedpress-page`: the theme's header part, the page, the theme's footer part. The default.
- * - `typedpress-blank`: the page alone, for a layout that draws its own chrome (`template = "blank"`,
+ * - `tp-page`: the theme's header part, the page, the theme's footer part. The default.
+ * - `tp-blank`: the page alone, for a layout that draws its own chrome (`template = "blank"`,
  *   or a layout that places `<TemplatePart>` itself).
- * - `typedpress-login`: wp-login.php's sign-in view. `login.tsx` is its default content, or the
+ * - `tp-login`: wp-login.php's sign-in view. `login.tsx` is its default content, or the
  *   `tp/login-form` block when the app has none.
  *
  * The 404 is the theme's own `404` template. When the app has `not-found.tsx`, the theme file's
@@ -29,10 +29,10 @@ use TypedPress\Html;
  */
 final class BlockTemplates
 {
-    public const NAMESPACE = 'first';
-    public const PAGE = 'typedpress-page';
-    public const BLANK = 'typedpress-blank';
-    public const LOGIN = 'typedpress-login';
+    public const NAMESPACE = 'tp';
+    public const PAGE = 'tp-page';
+    public const BLANK = 'tp-blank';
+    public const LOGIN = 'tp-login';
     public const NOT_FOUND = '404';
     public const PAGE_BLOCK = 'tp/page';
     public const LOGIN_BLOCK = 'tp/login-form';
@@ -199,7 +199,7 @@ final class BlockTemplates
 
     /**
      * The template to render: the active theme's (or the owner's saved) template for `$slug`. A
-     * template that has no place for the page falls back to `typedpress-page`, except the 404 and the
+     * template that has no place for the page falls back to `tp-page`, except the 404 and the
      * sign-in templates, which the owner may make whatever they like as long as sign-in still works.
      */
     public static function resolve(string $slug): ?\WP_Block_Template

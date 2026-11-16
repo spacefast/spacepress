@@ -27,6 +27,8 @@ npm run wp -- core version
 npm run stop
 ```
 
+The site answers on `http://localhost:<port>` only. To open it from another machine, either put a proxy in front and name its address with `npm run dev -- --url https://box.example.ts.net:8443` (WordPress writes that address into its pages; the proxy points at the localhost one), or listen on one of this machine's addresses with `npm run dev -- --host 10.0.0.24`. Anyone who can reach that address can sign in as the local administrator, so use it on a network you trust.
+
 Stopping preserves your local SQLite content. Commit generated migrations and client files; keep `.tp/`, dependencies and secrets out of Git. The emitted deployment artifact is `tp/dist/wp-content`, not the local Studio database. Production provisioning and data migration require the deployment lifecycle for your target WordPress site.
 
 Use `npm create typedpress@0.3.0 my-app -- --no-install` to scaffold without installing dependencies. Choose a new directory: existing empty directories, populated directories and symbolic links are all refused. An installation failure preserves the newly created app for a retry.

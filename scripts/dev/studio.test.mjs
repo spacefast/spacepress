@@ -3,9 +3,10 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownedState, publishPlugins, sourceDigest, watchSources, lock } from './studio.mjs';
+import { ownedState, publishPlugins, sourceDigest, watchSources, lock, siteAddress, addressPhp, withAddressLine, forward } from './studio.mjs';
 import { spawn } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
+import { createServer } from 'node:http';
 
 test('local site ownership refuses foreign directories, copied receipts and redirected state', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'typedpress-dev-ownership-'));
@@ -177,4 +178,60 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
   await writeFile(join(project, 'README.md'), 'notes');
   await writeFile(join(project, 'tp/app/about/notes.md'), 'notes');
   assert.equal(await sourceDigest(project), styles);
+});
+
+test('--url and --host name one address for WordPress and one for TypedPress to listen on, and refuse what names none', () => {
+  // Neither: Studio's own http://localhost:<port>, and nothing but its loopback listener.
+  assert.deepEqual(siteAddress(['--no-watch'], 8791), { url: null, listen: null });
+  // --host: TypedPress listens there on the site's port, and that is the address WordPress writes.
+  assert.deepEqual(siteAddress(['--host=10.0.0.24'], 8791), { url: 'http://10.0.0.24:8791', listen: '10.0.0.24' });
+  assert.deepEqual(siteAddress(['--host=dev-box.lan'], 8791), { url: 'http://dev-box.lan:8791', listen: 'dev-box.lan' });
+  assert.deepEqual(siteAddress(['--host=fd7a:115c::57'], 8791), { url: 'http://[fd7a:115c::57]:8791', listen: 'fd7a:115c::57' });
+  // --url: a proxy in front serves another scheme, host or port; TypedPress listens nowhere new.
+  assert.deepEqual(siteAddress(['--no-watch', '--url=https://box.example.ts.net:8443/'], 8791), { url: 'https://box.example.ts.net:8443', listen: null });
+  assert.deepEqual(siteAddress(['--url=https://box.example.ts.net'], 8791), { url: 'https://box.example.ts.net', listen: null });
+  // Both: listen on one address, announce another.
+  assert.deepEqual(siteAddress(['--host=10.0.0.24', '--url=http://dev-box.lan:8791'], 8791), { url: 'http://dev-box.lan:8791', listen: '10.0.0.24' });
+  for (const url of ['box.example.ts.net', 'ftp://box.example', 'https://box.example/blog', 'https://box.example/?a=1', 'https://user:secret@box.example', '']) {
+    assert.throws(() => siteAddress([`--url=${url}`], 8791), /--url takes an address such as https:\/\/box\.example\.ts\.net:8443/, url);
+  }
+  // WordPress writes one address into every page: "all interfaces" names none.
+  for (const host of ['0.0.0.0', '::', '*', '', 'a/b', 'http://10.0.0.24', '10.0.0.24:8791', 'a b']) {
+    assert.throws(() => siteAddress([`--host=${host}`], 8791), /--host takes one address or name of this machine/, host);
+  }
+  // The listener lives in the typedpress dev process, and --no-watch leaves none.
+  assert.throws(() => siteAddress(['--no-watch', '--host=10.0.0.24'], 8791), /--host needs typedpress dev to keep running/);
+});
+
+test('the address reaches WordPress before it loads, from one line in wp-config.php', () => {
+  const php = addressPhp('https://box.example.ts.net:8443');
+  assert.equal(php.split("'https://box.example.ts.net:8443'").length, 2);
+  for (const option of ['pre_option_home', 'pre_option_siteurl']) assert.ok(php.includes(`'${option}'`), option);
+  // Hooks set before wp-settings.php loads plugin.php, and through add_filter where WP-CLI loaded it first.
+  assert.match(php, /function_exists\( 'add_filter' \)/);
+  assert.match(php, /\$GLOBALS\['wp_filter'\]/);
+  const config = "<?php\ndefine( 'WP_DEBUG', false );\n/* That's all, stop editing! Happy publishing. */\n\nif ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n\n/** Sets up WordPress vars and included files. */\nrequire_once ABSPATH . 'wp-settings.php';\n";
+  const patched = withAddressLine(config);
+  const lines = patched.split('\n');
+  const at = lines.findIndex((line) => line.includes('tp-dev-address.php'));
+  assert.match(lines[at], /^if \( is_file\( ABSPATH \. 'tp-dev-address\.php' \) \) \{ require ABSPATH \. 'tp-dev-address\.php'; \}/);
+  assert.equal(lines[at + 1], "require_once ABSPATH . 'wp-settings.php';");
+  assert.equal(patched.replace(`${lines[at]}\n`, ''), config);
+  assert.equal(withAddressLine(patched), patched);
+  assert.throws(() => withAddressLine("<?php\ndefine( 'WP_DEBUG', false );\n"), /wp-config\.php does not load wp-settings\.php/);
+});
+
+test('--host passes connections to the loopback listener untouched and lets go of them when it closes', { timeout: 20000 }, async (t) => {
+  const body = '<a href="http://localhost:8791/">kept as WordPress wrote it</a>';
+  const upstream = createServer((request, response) => response.end(`${request.headers.host} ${body}`));
+  await new Promise((done) => upstream.listen(0, 'localhost', done));
+  t.after(() => { upstream.closeAllConnections(); upstream.close(); });
+  const relay = await forward('127.0.0.1', 0, upstream.address().port);
+  const response = await fetch(`http://127.0.0.1:${relay.port}/`);
+  assert.equal(await response.text(), `127.0.0.1:${relay.port} ${body}`);
+  // A browser's idle connection (this one is kept alive) does not keep typedpress dev from stopping.
+  await relay.close();
+  await assert.rejects(fetch(`http://127.0.0.1:${relay.port}/`));
+  // An address that is not this machine's is refused with the address in the message.
+  await assert.rejects(forward('192.0.2.1', 0, upstream.address().port), /Cannot listen on 192\.0\.2\.1:0/);
 });

@@ -16,7 +16,15 @@ export const posts = collection({
   slug: slug({ source: "title" }),
   content: richText().optional(),
   excerpt: text({ multiline: true }).max(300).optional(),
-}, { label: "Posts", url: "/blog/:slug", sync: "content/posts/*.md", access: { read: "anyone", create: "author", update: "author", delete: "editor" } });
+}, {
+  label: "Posts", url: "/blog/:slug", sync: "content/posts/*.md",
+  // WordPress's own comments: stored in wp_comments and moderated in the admin like any WordPress
+  // comment. Signed-in people may write one; a commenter's first comment waits for approval, and
+  // replies nest two deep. (`guests: true` would also accept comments from visitors who are not
+  // signed in, but <Comments> shows its form only to signed-in people today.)
+  comments: { moderation: "first-time", threaded: 2 },
+  access: { read: "anyone", create: "author", update: "author", delete: "editor" },
+});
 
 // A playground edit someone saved to share: the example it started from and the files they changed.
 // Anyone may save one (through `share` in tp/server.ts, which checks its size) and nobody lists

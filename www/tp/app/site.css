@@ -178,3 +178,15 @@ li { margin: 4px 0; }
 /* On the playground page the apps are larger, so the file tree gets more room. */
 .playpage .tp-split { grid-template-columns: 250px minmax(0, 1fr); }
 @media (max-width: 620px) { .playpage .tp-split { grid-template-columns: minmax(0, 1fr); } }
+/* Comments under a post (First's <Comments>, WordPress's own comments), and the posts listed on the home page. */
+.comments { margin-top: 40px; padding-top: 6px; border-top: 1px solid var(--line); }
+.comments :where(ol, ul) { list-style: none; padding: 0; margin: 12px 0; }
+.comments :where(ol ol, ul ul, ol ul, ul ol) { margin-left: 22px; padding-left: 14px; border-left: 1px solid var(--line); }
+.comments :where(li) { margin: 12px 0; }
+.comments :where(form) { display: grid; gap: 10px; margin-top: 16px; max-width: 560px; }
+.comments :where(label) { display: grid; gap: 4px; font-size: 13.5px; color: var(--mut); }
+.comments :where(input:not([type="submit"], [type="checkbox"], [type="hidden"]), textarea) { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; width: 100%; }
+.comments :where(textarea) { min-height: 110px; }
+.comments :where(button, input[type="submit"]) { font: inherit; font-weight: 600; color: Canvas; background: var(--ok); border: 1px solid var(--ok); border-radius: 7px; padding: 6px 14px; cursor: pointer; justify-self: start; }
+.comments :where(time, .comment-meta, small) { color: var(--mut); font-size: 13px; }
+.latest { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--line); }

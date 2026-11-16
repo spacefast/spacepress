@@ -1,6 +1,6 @@
 {
   "build": [
-    { "name": "dev", "args": "[dir] [--port n] [--no-watch | --detach | --foreground] [--allow-destructive]", "summary": "start the local WordPress site and rebuild on change" },
+    { "name": "dev", "args": "[dir] [--port n] [--url address | --host address] [--no-watch | --detach | --foreground] [--allow-destructive]", "summary": "start the local WordPress site and rebuild on change; --url is the address a proxy serves it at, --host an address of this machine to listen on" },
     { "name": "dev stop", "args": "[dir]", "summary": "stop the local site, keeping its data" },
     { "name": "dev status", "args": "[dir] [--json]", "summary": "report the local site" },
     { "name": "build", "args": "[dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]", "summary": "write the WordPress plugins to tp/dist/wp-content" },

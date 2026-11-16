@@ -48,7 +48,7 @@ function fetch(string $url, array $headers = []): array
 function page(array $r): array
 {
     preg_match('#<title>(.*?)</title>#s', $r['body'], $t);
-    preg_match('#data-wp-router-region="tp/main">(.*)</div>\n#s', $r['body'], $m);
+    preg_match('#data-wp-router-region="tp/main">(.*)</div><!-- /tp/main -->#s', $r['body'], $m);
     preg_match('#<meta name="description" content="(.*?)">#', $r['body'], $d);
     preg_match('#<link rel="canonical" href="(.*?)">#', $r['body'], $c);
     return [

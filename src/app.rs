@@ -554,6 +554,7 @@ pub fn allowed_exports(file: &str) -> &'static [&'static str] {
             "default",
             "route",
             "metadata",
+            "template",
             "search",
             "prerender",
             "staticParams",
@@ -565,7 +566,7 @@ pub fn allowed_exports(file: &str) -> &'static [&'static str] {
             "PATCH",
             "DELETE",
         ],
-        "layout.tsx" => &["default", "metadata", "guard"],
+        "layout.tsx" => &["default", "metadata", "guard", "template"],
         "not-found.tsx" | "error.tsx" | "login.tsx" => &["default", "metadata"],
         "route.ts" => &["access", "signature", "GET", "POST", "PUT", "PATCH", "DELETE"],
         _ => &[],
@@ -588,6 +589,7 @@ pub const EXPORTS: &[&str] = &[
     "Pagination",
     "Search",
     "SearchResults",
+    "TemplatePart",
 ];
 /// Type-only exports of `"typedpress/app"`: importable, erased.
 pub const TYPES: &[&str] = &[
@@ -597,6 +599,7 @@ pub const TYPES: &[&str] = &[
     "RouteRequest",
     "RouteResponse",
     "Guard",
+    "Template",
     "SearchParams",
     "FormState",
     "StaticParams",

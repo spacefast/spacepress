@@ -8,4 +8,4 @@ foreach (['Write the schema', 'Add a page', 'Press Run in WordPress'] as $title)
 		throw new RuntimeException("POST /tasks answered $status");
 	}
 }
-\TypedPress\Wp\Facade::route(\TypedPress\Wp\Runtime::plugin(), 'POST', '/actions/finish', [], (string) wp_json_encode(['id' => 1]));
+\TypedPress\Wp\Facade::route(\TypedPress\Wp\Runtime::plugin(), 'POST', '/actions/setDone', [], (string) wp_json_encode(['id' => 1, 'done' => true]));

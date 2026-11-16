@@ -1736,6 +1736,115 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     );
 }
 
+/// The added pages in a static site (`output: "static"`): the operation page lists one page per
+/// operation in `staticParams`, and `typedpress export --site` writes exactly those pages, one per
+/// operation of the app's OpenAPI document.
+#[test]
+fn add_api_reference_exports_every_operation_in_a_static_site() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let config = project.join("typedpress.config.ts");
+    let source = std::fs::read_to_string(&config).unwrap();
+    let static_source = source.replacen("defineConfig({", "defineConfig({ output: \"static\",", 1);
+    assert_ne!(source, static_source, "the scaffold's config calls defineConfig({{");
+    std::fs::write(&config, static_source).unwrap();
+    let added = add(&project, &["api-reference"]);
+    assert_eq!(
+        added.status.code(),
+        Some(0),
+        "{}{}",
+        text(&added.stdout),
+        text(&added.stderr)
+    );
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
+    // The operations, from the document the pages read.
+    let openapi: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(project.join("tp/_generated/openapi.json")).unwrap()).unwrap();
+    let operations = openapi["paths"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|item| item.as_object().unwrap().keys())
+        .filter(|method| ["get", "post", "put", "patch", "delete"].contains(&method.as_str()))
+        .count();
+    assert!(operations > 10, "{operations}");
+    // A hosted site for the export to render from: the static samples call its API.
+    let mut child = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("serve")
+        .arg(project.join("tp/dist/wp-content"))
+        .arg("chief=editor")
+        .env("TP_WP_THEMES", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("php");
+    let mut line = String::new();
+    std::io::BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    let _served = Served(child);
+    let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
+    let exported = first()
+        .arg("export")
+        .arg(&project)
+        .args(["--site", served["url"].as_str().unwrap()])
+        .env(
+            "TP_APP_PASSWORD",
+            served["users"]["chief"]["appPassword"].as_str().unwrap(),
+        )
+        .output()
+        .unwrap();
+    assert!(
+        exported.status.success(),
+        "{}{}",
+        text(&exported.stdout),
+        text(&exported.stderr)
+    );
+    let api = project.join("tp/dist/static/api");
+    let pages = std::fs::read_dir(&api)
+        .unwrap()
+        .map(|tag| tag.unwrap().path())
+        .filter(|tag| tag.is_dir())
+        .flat_map(|tag| std::fs::read_dir(tag).unwrap().map(|f| f.unwrap().path()))
+        .filter(|f| f.extension().is_some_and(|e| e == "html"))
+        .count();
+    assert_eq!(pages, operations, "one page per operation under {}", api.display());
+}
+
+/// In a project that renders per request, the added pages render per request too: no
+/// `staticParams`, so a guarded layout above /api (signed-in readers only) still takes them.
+#[test]
+fn add_api_reference_renders_per_request_under_a_guarded_layout() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    std::fs::create_dir_all(project.join("tp/app/api/help")).unwrap();
+    std::fs::write(
+        project.join("tp/app/api/help/page.tsx"),
+        "export default function Help() { return <p>Ask in the forum.</p>; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/api/layout.tsx"),
+        "import type { LayoutProps } from \"typedpress/app\";\nexport const guard = \"subscriber\";\nexport default function ApiLayout({ children }: LayoutProps) { return <div>{children}</div>; }\n",
+    )
+    .unwrap();
+    let added = add(&project, &["api-reference"]);
+    assert_eq!(
+        added.status.code(),
+        Some(0),
+        "{}{}",
+        text(&added.stdout),
+        text(&added.stderr)
+    );
+    let page = std::fs::read_to_string(project.join("tp/app/api/[tag]/[operation]/page.tsx")).unwrap();
+    assert!(!page.contains("staticParams"), "{page}");
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
+}
+
 /// A project from the scaffolder, as `npm create typedpress` writes it, without the npm
 /// install. Its directory name has a space, as a real one may.
 fn scaffold(parent: &Path) -> PathBuf {

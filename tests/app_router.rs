@@ -78,8 +78,9 @@ fn app_router_serves_pages_on_wordpress() {
         seen["home cache"][0],
         "public, max-age=0, s-maxage=300, must-revalidate"
     );
-    // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
-    assert!(body.contains(r#"/notes" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
+    // `<Link>` to a path on the site is the router region's navigation, loaded on the page, and
+    // names the template its target renders in (this layout's `template = "blank"`).
+    assert!(body.contains(r#"/notes" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-tp-template="tp-blank" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
     assert_eq!(seen["router module"], true);
     // Reads run as the visitor: the draft is missing for anonymous visitors, masked fields absent.
     assert_eq!(page("note").0, 200);
@@ -1458,11 +1459,25 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(theme["home"], 200);
 
     // With tp/app/, its page renders the note through the router; a kind URL without a page and
-    // a core post keep the theme.
+    // a core post keep the theme. An address nothing serves is the theme's own 404 template, as
+    // WordPress renders it: the app has no not-found.tsx to put in it.
     assert_eq!(app["note rendered"]["router"], true, "{app}");
+    assert_eq!(app["missing rendered"], by_theme(404), "{app}");
+    // A page with parameters and no metadata anywhere is a 200 page titled with the site's name,
+    // never WordPress's 404 title or body class.
     assert_eq!(
-        app["missing rendered"],
-        serde_json::json!({ "status": 404, "theme": false, "router": true })
+        app["dynamic"],
+        serde_json::json!({ "status": 200, "title": app["site name"], "error404": false, "page": true }),
+        "{app}"
+    );
+    // Its title is WordPress's, as with no app.
+    assert_eq!(app["missing title"], theme["missing title"], "{app}");
+    assert!(
+        app["missing title"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("Page not found"),
+        "{app}"
     );
     assert_eq!(app["post rendered"], by_theme(200), "{app}");
     assert_eq!(
@@ -2248,6 +2263,13 @@ fn forms_submit_in_place_in_the_browser() {
     assert_eq!(
         seen["fallback"],
         serde_json::json!({ "done": "Subscribed lin@example.test for 2 (weekly: false)", "marker": null, "url": "/?ref=nav" }),
+        "{seen}"
+    );
+    // An answer in another block template becomes the whole document (its flash read once, the
+    // marker out of the address), never a region swapped into other chrome.
+    assert_eq!(
+        seen["otherTemplate"],
+        serde_json::json!({ "from": "tp-blank", "to": "tp-page", "voted": "Voted bare", "header": 1, "regions": 1, "url": "/" }),
         "{seen}"
     );
 }
@@ -3559,6 +3581,11 @@ fn docs_at_the_site_root() {
     assert_eq!(seen["post to a page"], 200);
     // Another case of the path redirects to the item's own.
     assert_eq!(seen["case"], serde_json::json!([301, "/reference/config/"]));
+    // A link under the root kind's catch-all carries no template, so a click loads the page.
+    assert_eq!(
+        seen["link templates"],
+        serde_json::json!({ "/about/": null, "/reference/config": null, "/playground": "tp-page" })
+    );
 }
 
 /// The project's `public/` folder at the site root (spec §1: "static files, served as-is"), on
@@ -4354,6 +4381,21 @@ fn docs_example_exports_to_a_static_site() {
         let html = read(page);
         assert!(!html.contains("/feed") && !html.contains("wp-json"), "{page}");
     }
+    // Every script and module the 404 (the theme's own 404 template) loads is a file of the export:
+    // its src attributes and the import map's paths, core's block view modules among them.
+    let not_found = read("404.html");
+    let urls: Vec<String> = regex::Regex::new(r#"(?:src="|":")(/[^"?]+\.js)"#)
+        .unwrap()
+        .captures_iter(&not_found)
+        .map(|c| c[1].replace("\\/", "/"))
+        .collect();
+    assert!(urls.iter().any(|u| u.contains("/block-library/")), "{urls:?}");
+    for url in &urls {
+        assert!(
+            files.iter().any(|f| format!("/{f}") == *url),
+            "404.html loads {url}, missing from {files:?}"
+        );
+    }
     // JSON in a script element can never close it: `<` stays escaped as WordPress wrote it.
     for page in ["index.html", "docs/introduction.html"] {
         let html = read(page);
@@ -4944,11 +4986,17 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) 
         seen["light"], seen["dark"],
         "the keyword colour follows the colour scheme"
     );
-    // The only scripts are the router's (the layout's links); code and components need none.
+    // The only scripts are the router's (the layout's links); code and components need none. The
+    // draft's 404 is the theme's own 404 template (the app has no not-found.tsx; docs/pages.md
+    // "Block templates"), whose blocks load core's own view scripts there, as on any theme page.
     for script in seen["scripts"].as_array().unwrap() {
         let script = script.as_str().unwrap();
         assert!(
-            script.contains("interactivity") || script.contains("router.js") || script.contains("a11y"),
+            script.contains("interactivity")
+                || script.contains("router.js")
+                || script.contains("a11y")
+                || script.ends_with("/block-editor/utils/fit-text-frontend.min.js")
+                || script.starts_with("/wp-includes/js/dist/script-modules/block-library/"),
             "{script}"
         );
     }
@@ -5248,7 +5296,7 @@ fn login_tsx_is_the_sign_in_page() {
     assert!(!schema.contains("'pattern' => '/login'"), "{schema}");
     let _ = std::fs::remove_dir_all(&project);
 
-    let dir = std::env::temp_dir().join(format!("typedpress-login-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tp-login-reject-{}", std::process::id()));
     let page = "export default function P() { return <p/>; }\n";
     rejects(
         &dir,
@@ -5671,6 +5719,359 @@ fn one_sign_in_page_under_a_subdirectory() {
 
 fn json<T: serde::Serialize>(v: T) -> serde_json::Value {
     serde_json::to_value(v).unwrap()
+}
+
+/// `tp/app/` pages inside the active block theme's templates (docs/pages.md "Block templates",
+/// tests/php/block_templates.php): the theme's header and footer wrap each page, a layout that
+/// places `<TemplatePart>` or a page that picks `"blank"` draws its own, the templates are listed
+/// in the Site Editor, and the 404 and sign-in pages are templates the owner edits.
+#[test]
+fn pages_render_in_block_templates() {
+    let project = fixture("block-templates", "serve");
+    build(&project);
+    // The same app without login.tsx, installed over the first after the owner saved a sign-in
+    // template that only holds the Page content block.
+    let without_login = fixture("block-templates", "no-login");
+    std::fs::remove_file(without_login.join("tp/app/login.tsx")).unwrap();
+    build(&without_login);
+    let schema = std::fs::read_to_string(
+        project.join("tp/dist/wp-content/plugins/typedpress-app-blocktemplates/tp/app/schema.php"),
+    )
+    .unwrap();
+    // `export const template` reaches the route table; a layout placing <TemplatePart> is blank.
+    assert!(
+        schema.contains("'app/bare/page.tsx' => [") && schema.contains("'template' => 'blank'"),
+        "{schema}"
+    );
+    assert!(
+        schema
+            .lines()
+            .any(|l| l.contains("'app/studio/layout.tsx'") && l.contains("'template' => 'blank'")),
+        "{schema}"
+    );
+    assert!(
+        schema
+            .lines()
+            .any(|l| l.contains("'app/layout.tsx'") && !l.contains("'template'")),
+        "{schema}"
+    );
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/block_templates.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .arg(without_login.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    let _ = std::fs::remove_dir_all(&without_login);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    assert_eq!(seen["block theme"], true, "{seen}");
+    // The default: the theme's header and footer parts around the page, one wp-site-blocks, the
+    // router region inside it, the root layout's chrome not doubled, WordPress's title and styles.
+    let home = &seen["home"];
+    for (key, want) in [
+        ("status", json(200)),
+        ("title", json("Home · Field Notes")),
+        ("titles", json(1)),
+        ("description", json("Notes.")),
+        ("canonicals", json(1)),
+        ("theme header", json(1)),
+        ("theme footer", json(1)),
+        ("site blocks", json(1)),
+        ("region in template", json(1)),
+        ("page", json("Home")),
+        ("root layout", json(0)),
+        ("global styles", json(true)),
+        ("router module", json(true)),
+        ("cache", json("public, max-age=0, s-maxage=300, must-revalidate")),
+    ] {
+        assert_eq!(home[key], want, "home {key}: {seen}");
+    }
+    assert_eq!(seen["home list"], true, "{seen}");
+    assert_eq!(
+        (&seen["notes"]["title"], &seen["notes"]["theme header"]),
+        (&json("Notes · Field Notes"), &json(1)),
+        "{seen}"
+    );
+    // A layout that places the theme's header itself: blank template, its own footer, the root layout's chrome.
+    let studio = &seen["studio"];
+    assert_eq!(
+        (
+            &studio["theme header"],
+            &studio["theme footer"],
+            &studio["own footer"],
+            &studio["root layout"],
+            &studio["region in template"]
+        ),
+        (&json(1), &json(0), &json(true), &json(1), &json(1)),
+        "{seen}"
+    );
+    // `template = "blank"`: no theme parts; the root layout draws the page.
+    let bare = &seen["bare"];
+    assert_eq!(
+        (
+            &bare["theme header"],
+            &bare["theme footer"],
+            &bare["root layout"],
+            &bare["page"]
+        ),
+        (&json(0), &json(0), &json(1), &json("Bare")),
+        "{seen}"
+    );
+    // A guard still sends a signed-out visitor to sign in.
+    assert_eq!(seen["guard"]["status"], 302, "{seen}");
+    assert!(
+        seen["guard"]["location"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("/wp-login.php?redirect_to="),
+        "{seen}"
+    );
+    // not-found.tsx in the theme's 404 template.
+    let missing = &seen["404"];
+    assert_eq!(
+        (
+            &missing["status"],
+            &missing["title"],
+            &missing["page"],
+            &missing["theme header"],
+            &missing["theme footer"]
+        ),
+        (
+            &json(404),
+            &json("Not found · Field Notes"),
+            &json("No such page"),
+            &json(1),
+            &json(1)
+        ),
+        "{seen}"
+    );
+    // The Site Editor lists TypedPress's templates and the theme's 404, each holding the page block.
+    assert_eq!(
+        seen["templates"],
+        serde_json::json!({
+            "404": { "source": "theme", "page block": true },
+            "tp-page": { "source": "plugin", "page block": true },
+            "tp-blank": { "source": "plugin", "page block": true },
+            "tp-login": { "source": "plugin", "page block": true },
+        }),
+        "{seen}"
+    );
+    // wp-login.php renders login.tsx inside the sign-in template, posting to wp-login.php.
+    let login = &seen["login"];
+    assert_eq!(
+        (
+            &login["status"],
+            &login["app"],
+            &login["wordpress page"],
+            &login["theme header"],
+            &login["title"]
+        ),
+        (
+            &json(200),
+            &json(true),
+            &json(false),
+            &json(1),
+            &json("Sign in · Field Notes")
+        ),
+        "{seen}"
+    );
+    assert!(
+        login["posts to"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with("/wp-login.php"),
+        "{seen}"
+    );
+    assert_eq!(
+        (
+            &seen["login wrong password"]["error"],
+            &seen["login wrong password"]["theme header"]
+        ),
+        (&json(true), &json(1)),
+        "{seen}"
+    );
+    // Saving the template through REST (as the Site Editor does) changes what wp-login.php shows.
+    assert_eq!(seen["login saved"], 200, "{seen}");
+    let edited = &seen["login edited"];
+    assert_eq!(
+        (&edited["owner text"], &edited["app"], &edited["theme header"]),
+        (&json(true), &json(true), &json(0)),
+        "{seen}"
+    );
+    assert_eq!(
+        (
+            &seen["login edited wrong password"]["error"],
+            &seen["login edited wrong password"]["owner text"]
+        ),
+        (&json(true), &json(true)),
+        "{seen}"
+    );
+    // The Login form block alone: same form, still posting to wp-login.php, wrong password shown, sign-in works.
+    let block = &seen["login block"];
+    assert_eq!(
+        (&block["owner text"], &block["app"], &block["button"]),
+        (&json(true), &json(false), &json(true)),
+        "{seen}"
+    );
+    assert!(
+        block["posts to"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with("/wp-login.php"),
+        "{seen}"
+    );
+    assert_eq!(seen["login block wrong password"]["error"], true, "{seen}");
+    assert_eq!(seen["login block sign in"]["status"], 302, "{seen}");
+    assert!(
+        seen["login block sign in"]["location"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with("/account"),
+        "{seen}"
+    );
+    // The owner's 404 template around the app's not-found page.
+    assert_eq!(
+        seen["404 edited"],
+        serde_json::json!({ "status": 404, "owner text": true, "page": "No such page" }),
+        "{seen}"
+    );
+    // The title WordPress prints is the page's metadata as text, never markup.
+    let xss = &seen["xss"];
+    assert_eq!(
+        (&xss["status"], &xss["script"], &xss["titles"]),
+        (&json(200), &json(false), &json(1)),
+        "{seen}"
+    );
+    assert_eq!(
+        xss["title"], "Notes </title><script>window.pwned=1</script> · Field Notes",
+        "{seen}"
+    );
+    // Each page says its template, and each <Link> its target's: the router swaps the region only
+    // within one template, and loads a page in another.
+    assert_eq!(
+        seen["links"],
+        serde_json::json!({ "page": "tp-page", "links": [["/notes", "tp-page"], ["/bare", "tp-blank"]] }),
+        "{seen}"
+    );
+    assert_eq!(
+        (&seen["studio"]["template"], &seen["bare"]["template"]),
+        (&json("tp-blank"), &json("tp-blank")),
+        "{seen}"
+    );
+    // A route group's layout below the root renders, under the theme's parts.
+    let group = &seen["group"];
+    assert_eq!(
+        (&group["page"], &group["group layout"], &group["theme header"]),
+        (&json("Cart"), &json(true), &json(1)),
+        "{seen}"
+    );
+    // <TemplatePart> attributes can't open another block.
+    assert_eq!(
+        seen["template part attrs"],
+        serde_json::json!({ "tagline": false, "header": true }),
+        "{seen}"
+    );
+    // A Login form block the owner placed in a public template, with a plugin's per-request field:
+    // the page is never shared.
+    assert_eq!(
+        seen["public login form"],
+        serde_json::json!({ "status": 200, "form": true, "cache": "private, no-store, max-age=0" }),
+        "{seen}"
+    );
+    // A trashed saved template doesn't render: the registered one answers again.
+    assert_eq!(
+        seen["trashed template"],
+        serde_json::json!({ "login form": false, "theme header": 1, "page": "All notes" }),
+        "{seen}"
+    );
+    // A template that doesn't place the page falls back to tp-page; the page never goes missing.
+    assert_eq!(
+        seen["template without page"],
+        serde_json::json!({ "status": 200, "page": "Bare", "owner text": false, "theme header": 1 }),
+        "{seen}"
+    );
+    // A template's page render that a plugin drops: tp-page renders it instead, without the
+    // dropped render's scripts, each head tag once.
+    assert_eq!(
+        seen["page render dropped"],
+        serde_json::json!({ "status": 200, "page": "Bare", "template": "tp-page", "dropped text": false, "descriptions": 1, "scripts": false }),
+        "{seen}"
+    );
+    // When neither the chosen template nor tp-page places it, the page is TypedPress's own document:
+    // one title, one description, none of the failed renders' scripts.
+    assert_eq!(
+        seen["no template places the page"],
+        serde_json::json!({ "status": 200, "page": "Bare", "template": "document", "titles": 1, "descriptions": 1, "scripts": false }),
+        "{seen}"
+    );
+    // Core's lazy default navigation menu, made while a page renders, is no Site Editor edit.
+    assert_eq!(seen["render purge"], serde_json::json!([]), "{seen}");
+    // A Site Editor save announces one whole-host purge.
+    assert_eq!(seen["design purge"], serde_json::json!(["[\"\\/*\"]"]), "{seen}");
+    // The owner's sign-in template held only the Page content block, and login.tsx went away:
+    // wp-login.php still shows a sign-in form.
+    assert_eq!(
+        seen["login without login.tsx"],
+        serde_json::json!({ "status": 200, "form": true, "app": false, "wordpress page": false }),
+        "{seen}"
+    );
+}
+
+/// A root layout that draws its own chrome and says nothing about its template gets a hint: on a
+/// block theme the theme's header and footer replace it. A route group's outermost layout is a
+/// root too; a layout that only places `{children}`, or one that picks a template, gets none.
+#[test]
+fn root_layout_chrome_without_a_template_is_hinted() {
+    let dir = std::env::temp_dir().join(format!("tp-root-layout-hint-{}", std::process::id()));
+    let check = |files: &[(&str, &str)]| -> String {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("typedpress.config.ts"),
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
+        )
+        .unwrap();
+        for (path, source) in files {
+            let path = dir.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, source).unwrap();
+        }
+        let out = first().arg("check").arg(&dir).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stderr).to_string()
+    };
+    let page = (
+        "tp/app/page.tsx",
+        "export default function Home() { return <h1>Home</h1>; }\n",
+    );
+    let chrome = "import type { LayoutProps } from \"typedpress/app\";\nexport default function Root({ children }: LayoutProps) { return <div><header>Site</header>{children}</div>; }\n";
+    let hint = "renders markup around {children}, which the theme's header and footer replace";
+    let out = check(&[("tp/app/layout.tsx", chrome), page]);
+    assert!(out.contains(&format!("hint: app/layout.tsx {hint}")), "{out}");
+    // The outermost layout of a route group.
+    let out = check(&[
+        ("tp/app/(site)/layout.tsx", chrome),
+        (
+            "tp/app/(site)/about/page.tsx",
+            "export default function About() { return <h1>About</h1>; }\n",
+        ),
+    ]);
+    assert!(out.contains(&format!("hint: app/(site)/layout.tsx {hint}")), "{out}");
+    // Saying which template it renders in, or placing only its children, is no hint.
+    let blank = format!("export const template = \"blank\";\n{chrome}");
+    assert!(!check(&[("tp/app/layout.tsx", &blank), page]).contains(hint));
+    let bare = "import type { LayoutProps } from \"typedpress/app\";\nexport default function Root({ children }: LayoutProps) { return <>{children}</>; }\n";
+    assert!(!check(&[("tp/app/layout.tsx", bare), page]).contains(hint));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The script modules with fixed names (`typedpress-client.js`, the runtime's `live.js` and

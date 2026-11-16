@@ -36,9 +36,9 @@ Stock quantities, sales counters and orders are operational state, not synced
 content. Configure inventory through Woo administration initially; source files contain neither
 current nor initial stock quantities.
 
-### Proposed v1 product field list
+### V1 product field list
 
-Keep the initial writable and synced catalog surface small. This is the complete proposed list,
+**Decision:** keep the initial writable and synced catalog surface small. This is the complete agreed list,
 not just the fields shown in a minimal example:
 
 | Field | Purpose |
@@ -110,6 +110,10 @@ as the product writer. This support is new work, not an existing Woo integration
 references use those UIDs, never numeric WordPress IDs. Renaming a file, SKU or slug preserves
 its UID. Use the existing per-field merge, baseline and conflict workflow; do not introduce a
 second baseline store or a commerce-specific sync command.
+
+The product field list and sync behavior are settled. Implementing Woo value normalization,
+change detection and writes through this existing contract is implementation work, not a new
+merge-policy decision.
 
 For images, the proposed reference is a path relative to the project root, such as
 `assets/products/ceramic-mug.jpg`, not relative to the product file and not an attachment ID.
@@ -356,8 +360,6 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **Product sync details:** confirm the proposed v1 field list above; implement Woo conflict
-  detection through the existing baseline and merge contract.
 - **Source authoring details:** how new files receive their required persistent UIDs; confirm
   project-relative image paths and define pulled-image naming and replacement behavior.
 - **Checkout presentation:** choose after the in-app block versus custom-form spike.

@@ -478,6 +478,15 @@ final class Runtime
         return self::$plugin;
     }
 
+    /**
+     * Whether this request mounted its build to inspect it (`inspect` in the loader): the app's own
+     * code doesn't run, and nothing that boots it schedules work or writes to the site.
+     */
+    public static function inspecting(): bool
+    {
+        return class_exists(\TypedPress\Loader\Loader::class, false) && \TypedPress\Loader\Loader::inspecting();
+    }
+
     public static function identity(): bool
     {
         return class_exists(\TypedPress\Identity\Plugin::class) && defined(\TypedPress\Identity\Plugin::class . '::VERSION')

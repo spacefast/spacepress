@@ -531,8 +531,7 @@ pub fn render(schema: &Schema) -> String {
                     .as_ref()
                     .map(|n| format!(", 'staticParams' => {}", php_str(n)))
                     .unwrap_or_default()
-                    + &f
-                        .template
+                    + &f.template
                         .as_ref()
                         .map(|t| format!(", 'template' => {}", php_str(t)))
                         .unwrap_or_default(),

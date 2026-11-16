@@ -82,13 +82,15 @@ fn template(
 ) -> Result<Option<String>, Diag> {
     let help = "write `export const template = \"blank\"` for a page with no theme header and footer, `\"theme\"` for the theme's, or a template's slug";
     match value {
-        None | Some(Value::Undef) => Ok((path.ends_with("layout.tsx") && places_template_parts(program, module))
-            .then(|| "blank".to_string())),
+        None | Some(Value::Undef) => {
+            Ok((path.ends_with("layout.tsx") && places_template_parts(program, module)).then(|| "blank".to_string()))
+        }
         Some(Value::Str(s))
             if !s.is_empty()
                 && s.len() <= 100
                 && s.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
-                && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') =>
+                && s.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') =>
         {
             Ok(Some(s.to_string()))
         }
@@ -97,7 +99,11 @@ fn template(
             format!("`template` is \"{s}\", which isn't a block template's slug"),
         )
         .help(help)),
-        Some(other) => Err(Diag::new(span, format!("`template` is {}, not a template's slug", other.describe())).help(help)),
+        Some(other) => Err(Diag::new(
+            span,
+            format!("`template` is {}, not a template's slug", other.describe()),
+        )
+        .help(help)),
     }
 }
 

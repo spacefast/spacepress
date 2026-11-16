@@ -491,7 +491,11 @@ impl Compiler<'_, '_> {
                             if !assignable(&out.ty, &want) {
                                 return err(
                                     v.span,
-                                    format!("`<TemplatePart {k}>` takes {}, not {}", want.describe(), out.ty.describe()),
+                                    format!(
+                                        "`<TemplatePart {k}>` takes {}, not {}",
+                                        want.describe(),
+                                        out.ty.describe()
+                                    ),
                                 );
                             }
                             Ok(Some(out.php))

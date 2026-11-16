@@ -1347,7 +1347,7 @@ Misc:
 
 ## TypeScript type normalization
 
-TypedPress uses OXC 0.152.0 to parse TypeScript and keeps its annotations and source
+TypedPress uses OXC 0.158.0 to parse TypeScript and keeps its annotations and source
 locations in the typed IR. The native and browser/WASM compilers run the same
 normalizer before PHP emission. These are type operations, not a JavaScript
 engine or a replacement for TypeScript's complete checker. Check authoring
@@ -1441,7 +1441,7 @@ for JavaScript output. This change adds no scope walker or parser and keeps the
 annotations needed for PHP and client emission, so it does not add those
 crates. Existing OXC parsing/lowering is reused. No upstream implementation was
 copied, no new license notice is needed, and the OXC family remains pinned
-together at 0.152.0.
+together at 0.158.0.
 
 This type-algebra work adds no JS built-in API. Arbitrary browser/Node APIs,
 symbols, generators and dynamic runtime type introspection remain outside the

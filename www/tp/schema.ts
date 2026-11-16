@@ -14,8 +14,10 @@ export const docs = collection({
 // title, slug, content and excerpt already; WordPress's capabilities decide who writes them.
 export const posts = wp.posts.extend({}, {
   label: "Posts", url: "/blog/:slug", sync: "content/posts/*.md",
-  // WordPress's own comments: signed-in people may write one; a commenter's first comment waits
-  // for approval, and replies nest two deep.
+  // WordPress's own comments: stored in wp_comments and moderated in the admin like any WordPress
+  // comment. Signed-in people may write one; a commenter's first comment waits for approval, and
+  // replies nest two deep. (`guests: true` would also accept comments from visitors who are not
+  // signed in, but <Comments> shows its form only to signed-in people today.)
   comments: { moderation: "first-time", threaded: 2 },
 });
 

@@ -1431,7 +1431,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         f: &Func,
         _name: &str,
         param_tys: &[Ty],
-        _slot: Option<&Slot>,
+        slot: Option<&Slot>,
     ) -> Result<(String, String)> {
         let arguments = self.javascript_arguments(f, 1)?;
         let mut params_php = Vec::new();
@@ -1458,7 +1458,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     // A hidden receiver is whatever the call supplies, undefined for a detached
                     // call, so it takes no PHP type: reading through it throws as in JavaScript.
-                    let hint = if i == 0 && receives_this(f) { "" } else { php_hint(&t) };
+                    // Nor does a validator's value: it is the input it is there to check, and a
+                    // `json<T>()` value can be any JSON, whatever T says.
+                    let unchecked = i == 0 && (receives_this(f) || matches!(slot, Some(Slot::Validate { .. })));
+                    let hint = if unchecked { "" } else { php_hint(&t) };
                     if hint == "\\TypedPress\\JsObject "
                         && matches!(t, Ty::Obj(_) | Ty::Map(_))
                         && p.default.is_none()
@@ -3351,7 +3354,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Delete(target) => self.delete(target, span)?,
             // A tagged template's strings: one frozen-in-spirit array per call site with a `raw`
             // property. Cached per site, as JavaScript reuses the same array for every call.
-            ExprKind::TemplateStrings { cooked, raw } => {
+            ExprKind::TemplateStrings {
+                cooked,
+                raw,
+                lone_surrogate,
+            } => {
+                if let Some(at) = lone_surrogate {
+                    return Err(Diag::new(
+                        *at,
+                        "TypedPress code doesn't support strings with lone UTF-16 surrogates",
+                    )
+                    .help("use complete characters; a lone surrogate can't be stored as UTF-8")
+                    .code(crate::diag::Code::Unsupported));
+                }
                 let items = cooked
                     .iter()
                     .map(|c| {
@@ -9186,7 +9201,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
             crate::builtins::check_parse_int_literals(args, span)?;
         }
         if (g, m) == ("String", "raw") {
-            let argv = self.javascript_args(args)?;
+            // String.raw reads only `raw`, so a cooked string with a lone surrogate is never read.
+            let mut args = args.to_vec();
+            if let Some(ArrEl::Item(Expr {
+                kind: ExprKind::TemplateStrings { lone_surrogate, .. },
+                ..
+            })) = args.first_mut()
+            {
+                *lone_surrogate = None;
+            }
+            let argv = self.javascript_args(&args)?;
             return Ok(Out::atom(
                 format!("\\TypedPress\\Js::stringRaw(...({argv})->a)"),
                 Ty::Str,

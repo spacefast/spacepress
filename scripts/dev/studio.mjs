@@ -4,7 +4,8 @@ import { once } from 'node:events';
 import { access, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
-import { createServer } from 'node:net';
+import { BlockList, connect, createServer, isIP } from 'node:net';
+import { lookup } from 'node:dns/promises';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -186,6 +187,194 @@ export async function publishPlugins(content, managed) {
   return { manifest, activate };
 }
 
+// `typedpress dev --url` and `--host`: the address WordPress writes into every page (`url`), and the
+// address of this machine TypedPress listens on (`listen`). Studio 2.2.0 serves a site on localhost
+// only, and names it http://localhost:<port> or a `.local` domain behind its own proxy on ports
+// 80 and 443, so neither is Studio's to set.
+// A host name as DNS spells it: letters, digits and hyphens between dots. Nothing else reaches the
+// PHP file addressPhp writes, or the address WordPress prints into pages.
+const HOSTNAME = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+
+// An IP address that stands for every interface: 0.0.0.0 or ::, however it is spelled (Node's own
+// address matching, which also reads IPv4-mapped IPv6 such as ::ffff:0:0).
+const EVERY = new BlockList();
+EVERY.addAddress('0.0.0.0', 'ipv4');
+EVERY.addAddress('::', 'ipv6');
+const unspecified = (ip) => isIP(ip) !== 0 && EVERY.check(ip, isIP(ip) === 6 ? 'ipv6' : 'ipv4');
+
+export function siteAddress(flags, port) {
+  const value = (name) => flags.find((flag) => flag.startsWith(`--${name}=`))?.slice(name.length + 3);
+  const host = value('host'), announced = value('url');
+  let url = null;
+  if (host !== undefined) {
+    // WordPress writes one address into every page, so "every interface" names none. A bare number
+    // (`0`, `2130706433`) is an IPv4 address to the resolver, so it is refused too.
+    // A scoped IPv6 address (fe80::1%eth0) has no form in a URL WordPress can write.
+    const named = isIP(host) ? !unspecified(host) && !host.includes('%') : HOSTNAME.test(host) && !/^[0-9.]+$/.test(host);
+    if (!named) throw new Error('--host takes one address or name of this machine, such as 10.0.0.24 (ip -4 addr lists them).');
+    if (flags.includes('--no-watch')) throw new Error('--host needs typedpress dev to keep running, because that process is what listens there. Use --detach instead of --no-watch.');
+    url = `http://${isIP(host) === 6 ? `[${host}]` : host}:${port}`;
+  }
+  if (announced !== undefined) {
+    const parsed = URL.canParse(announced) ? new URL(announced) : null;
+    if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+      throw new Error('--url takes an address such as https://box.example.ts.net:8443, with no path: WordPress serves the site at its root.');
+    }
+    const name = parsed.hostname.replace(/^\[(.*)\]$/, '$1');
+    if (!(isIP(name) ? !unspecified(name) : HOSTNAME.test(name))) {
+      throw new Error('--url takes an address such as https://box.example.ts.net:8443: a host name of letters, digits, hyphens and dots, or an IP address.');
+    }
+    url = parsed.origin;
+  }
+  return { url, listen: host ?? null };
+}
+
+// --host as the address the relay binds: a name resolved once, here, so what is checked is what is
+// bound, and an address standing for every interface is refused whatever spelled it.
+export async function listenAddress(host) {
+  const { address } = await lookup(host);
+  if (unspecified(address)) throw new Error(`--host ${host} is ${address}, which is every interface of this machine; name one address of it.`);
+  return address;
+}
+
+// A PHP single-quoted string holding `text`.
+const phpString = (text) => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
+
+// What WordPress reads before it loads. `home` and `siteurl` are answered before Studio's WP_HOME
+// and WP_SITEURL (http://localhost:<port>, defined ahead of wp-config.php) are consulted, and early
+// enough for the content and plugin URLs WordPress fixes before any plugin runs. The request's own
+// host and scheme are the address too, as WordPress documents for a site behind a proxy, but from
+// this file instead of a header any client can send.
+export const addressPhp = (url) => `<?php
+// Written by typedpress dev --url / --host, and removed by a start without them.
+$tp_dev_url = ${phpString(url)};
+$_SERVER['HTTP_HOST'] = substr( $tp_dev_url, strpos( $tp_dev_url, '://' ) + 3 );
+if ( 0 === strpos( $tp_dev_url, 'https://' ) ) {
+	$_SERVER['HTTPS'] = 'on';
+}
+$tp_dev_address = static function () use ( $tp_dev_url ) {
+	return $tp_dev_url;
+};
+foreach ( array( 'pre_option_home', 'pre_option_siteurl' ) as $tp_dev_option ) {
+	if ( function_exists( 'add_filter' ) ) {
+		add_filter( $tp_dev_option, $tp_dev_address );
+	} else {
+		$GLOBALS['wp_filter'][ $tp_dev_option ][10][] = array( 'function' => $tp_dev_address, 'accepted_args' => 1 );
+	}
+}
+unset( $tp_dev_url, $tp_dev_address, $tp_dev_option );
+`;
+
+const ADDRESS_FILE = 'tp-dev-address.php';
+const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require ABSPATH . '${ADDRESS_FILE}'; } // typedpress dev --url / --host`;
+
+// Where in wp-config.php the address line goes, found by PHP's own tokenizer: PHP code that reads
+// the file at the path in $tp_config and prints the byte offset of the `require_once ABSPATH .
+// 'wp-settings.php';` that loads WordPress, or -1 when the file is not shaped so that it surely is
+// that one. The require must be the file's last code (only whitespace, comments, a `?>` and blank
+// text after it), as in wp-config-sample.php and the configs WordPress and Studio write, and the
+// code just before it must be a bare `;` or `}` (one that ends a statement or block, not a brace
+// inside a string, which is no token of its own) or the open tag. A require in a string, a
+// heredoc, a comment, an attribute or text outside PHP is not code; one in a function, class or
+// braced block is followed by that block's `}`; one that is an unbraced if/else/while body
+// follows `)` or `else`. Files
+// with alternative control syntax (`if (…): … endif;`), which can leave a block open at the end of
+// a file, are refused, and so are files that name wp-settings.php more than once or use return,
+// exit, die, goto or __halt_compiler anywhere: the last require might then never run.
+export const SETTINGS_OFFSET = String.raw`
+$code = array();
+$offset = 0;
+foreach (token_get_all(file_get_contents($tp_config)) as $token) {
+  $id = is_array($token) ? $token[0] : null;
+  $text = is_array($token) ? $token[1] : $token;
+  $skip = in_array($id, array(T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_CLOSE_TAG), true) || ($id === T_INLINE_HTML && trim($text) === '');
+  if (!$skip) $code[] = array($id, $text, $offset);
+  $offset += strlen($text);
+}
+$found = -1;
+$ends = array(T_ENDIF, T_ENDWHILE, T_ENDFOR, T_ENDFOREACH, T_ENDSWITCH, T_ENDDECLARE);
+$alternative = false;
+$settings = 0;
+foreach ($code as $t) {
+  $alternative = $alternative || in_array($t[0], $ends, true);
+  // A config that loads wp-settings.php twice, or stops early: the last require might never run.
+  if ($t[0] === T_CONSTANT_ENCAPSED_STRING && ($t[1] === "'wp-settings.php'" || $t[1] === '"wp-settings.php"')) $settings++;
+  if ($t[0] === T_RETURN || $t[0] === T_EXIT || $t[0] === T_HALT_COMPILER || $t[0] === T_GOTO) $alternative = true;
+}
+if ($settings !== 1) $alternative = true;
+$is = function ($t, $want) {
+  if ($want === 'require') return $t[0] === T_REQUIRE_ONCE || $t[0] === T_REQUIRE;
+  if ($want === 'ABSPATH') return $t[0] === T_STRING && $t[1] === 'ABSPATH';
+  if ($want === 'file') return $t[0] === T_CONSTANT_ENCAPSED_STRING && ($t[1] === "'wp-settings.php'" || $t[1] === '"wp-settings.php"');
+  return $t[0] === null && $t[1] === $want;
+};
+foreach (array(array('require', 'ABSPATH', '.', 'file', ';'), array('require', '(', 'ABSPATH', '.', 'file', ')', ';')) as $shape) {
+  $i = count($code) - count($shape);
+  if ($alternative || $i < 1) continue;
+  $match = true;
+  foreach ($shape as $k => $want) $match = $match && $is($code[$i + $k], $want);
+  $before = $code[$i - 1];
+  if ($match && ($before[0] === T_OPEN_TAG || ($before[0] === null && ($before[1] === ';' || $before[1] === '}')))) $found = $code[$i][2];
+}
+echo $found;
+`;
+
+// wp-config.php with the one line that reads the address file, put on its own line before the
+// require_once of wp-settings.php that PHP runs. `offset` is SETTINGS_OFFSET's answer for `config`.
+// Only where that require starts its line (indentation aside), so the line put before it can't
+// split a statement; anything else is refused before a file is written.
+export function withAddressLine(config, offset) {
+  if (config.includes(ADDRESS_FILE)) return config;
+  const bytes = Buffer.from(config, 'utf8');
+  const at = offset >= 0 ? bytes.subarray(0, offset).toString('utf8').length : -1;
+  const start = at >= 0 ? config.lastIndexOf('\n', at - 1) + 1 : -1;
+  if (at < 0 || config.slice(start, at).trim() !== '') {
+    throw new Error("wp-config.php does not load wp-settings.php in a statement of its own (require_once ABSPATH . 'wp-settings.php';); --url and --host cannot set the address.");
+  }
+  return `${config.slice(0, start)}${ADDRESS_LINE}\n${config.slice(start)}`;
+}
+
+// `php(code)` runs PHP code and answers what it printed.
+export const settingsOffset = async (php, config) => {
+  const out = (await php(`$tp_config = ${phpString(config)};${SETTINGS_OFFSET}`)).trim();
+  if (!/^-?\d+$/.test(out)) throw new Error(`Could not read wp-config.php with PHP's tokenizer: ${out.slice(0, 200)}`);
+  return Number(out);
+};
+
+async function announce(site, url, php) {
+  const file = join(site, ADDRESS_FILE);
+  if (!url) return rm(file, { force: true });
+  const config = join(site, 'wp-config.php');
+  const source = await readFile(config, 'utf8');
+  const patched = source.includes(ADDRESS_FILE) ? source : withAddressLine(source, await settingsOffset(php, config));
+  await writeFile(file, addressPhp(url));
+  if (patched !== source) await writeFile(config, patched);
+}
+
+// --host: connections to this machine's address, passed to Studio's listener and back unchanged.
+// The address bound is the one `host` resolves to, refused when that is every interface.
+export async function forward(host, port, upstream) {
+  const bind = await listenAddress(host);
+  const open = new Set();
+  const server = createServer((client) => {
+    const site = connect(upstream, 'localhost');
+    for (const [socket, other] of [[client, site], [site, client]]) {
+      open.add(socket);
+      socket.on('error', () => {});
+      socket.once('close', () => { open.delete(socket); other.destroy(); });
+    }
+    client.pipe(site).pipe(client);
+  });
+  await new Promise((done, fail) => {
+    server.once('error', (error) => fail(new Error(`Cannot listen on ${host}:${port}: ${error.message}`)));
+    server.listen(port, bind, done);
+  });
+  return {
+    port: server.address().port,
+    close: () => new Promise((done) => { server.close(done); for (const socket of open) socket.destroy(); }),
+  };
+}
+
 // Directory names never watched anywhere, and the project paths TypedPress writes itself.
 const IGNORED_NAMES = new Set(['.tp', '.git', 'node_modules']);
 const GENERATED = new Set(['tp/_generated', 'tp/dist']);
@@ -356,6 +545,8 @@ async function main() {
   if (process.argv[2] === 'export') return exportSite(resolve(process.argv[3]), process.argv[4] ? resolve(process.argv[4]) : null);
   const [mode, directory, first, output, requestedPort = '8787', ...flags] = process.argv.slice(2);
   const noWatch = flags.includes('--no-watch');
+  // A --url or --host that names no address is refused before anything is built or started.
+  if (mode === 'start') siteAddress(flags, Number(requestedPort));
   const project = await realpath(directory);
   const managed = await ownedState(project, mode === 'start');
   const studio = await studioBinary();
@@ -406,7 +597,7 @@ async function main() {
   const release = await lock(managed.state);
   const statePath = join(managed.state, 'state.json');
   await rm(join(managed.state, 'stop'), { force: true });
-  let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl;
+  let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl, relay;
   let finish;
   const finished = new Promise((resolveDone) => { finish = resolveDone; });
   const stop = async () => {
@@ -496,26 +687,36 @@ async function main() {
     }
     siteStarted = true;
     const status = JSON.parse(await runStudio(['status', '--format', 'json'], { capture: true }));
-    const url = status.siteUrl.replace(/\/$/, '');
-    siteUrl = url;
+    // Where Studio listens, and where the site is opened: the same unless --url or --host says otherwise.
+    const local = status.siteUrl.replace(/\/$/, '');
+    const port = Number(new URL(local).port) || 80;
+    const address = siteAddress(flags, port);
+    const url = address.url ?? local;
+    // The development identity app stays registered for this machine's own address.
+    siteUrl = local;
+    // Studio's own PHP, through WP-CLI without loading WordPress.
+    await announce(managed.owner.site, address.url, (code) => runStudio(['wp', 'eval', '--skip-wordpress', code], { capture: true }));
+    if (address.listen) relay = await forward(address.listen, port, port);
     const mu = join(managed.owner.site, 'wp-content/mu-plugins/typedpress-dev-runtime.php');
     if (!managed.owner.devMu && await exists(mu)) throw new Error('typedpress-dev-runtime.php already exists and is not managed by TypedPress.');
     await writeFile(mu, "<?php\n// Local development only: allow identity callbacks on the site's HTTP origin.\nif (!defined('TP_IDENTITY_DEV_HTTP')) define('TP_IDENTITY_DEV_HTTP', true);\n");
     managed.owner.devMu = true;
     await atomicJson(managed.marker, managed.owner);
     await configure(flags.includes('--allow-destructive'));
-    const response = await fetch(`${url}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${url}`);
+    const response = await fetch(`${local}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${local}`);
     const summary = [`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`];
     if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/index.html`);
     if (managed.owner.generated.includes('typedpress-admin')) summary.push(`TypedPress Admin: ${url}/wp-admin/new/`);
     summary.push('Initial login: admin / typedpress-test-admin (local development only; unchanged if you edited it)\n');
+    if (address.listen) summary.push(`Listening on ${address.listen} port ${port}: whoever can reach it is an administrator of this WordPress and can run code on this machine as you.`);
+    else if (address.url) summary.push(`Listening on this machine only: point your proxy for ${url} at ${local}`);
     summary.push(`Data persists in ${managed.owner.site}\nStop: typedpress dev stop ${JSON.stringify(project)}`);
     console.log(summary.join('\n'));
     // What `typedpress dev status --json` and `typedpress mcp` read without starting Studio: where the site
     // is, and the process that rebuilds it on save (none after --no-watch).
     await atomicJson(statePath, {
-      version: 1, url, port: Number(new URL(url).port) || (url.startsWith('https:') ? 443 : 80),
+      version: 1, url, local, port,
       pid: noWatch ? null : process.pid, log: process.send ? join(managed.state, 'dev.log') : null,
       wordpress: status.wpVersion ?? null, php: status.phpVersion ?? null, startedAt: new Date().toISOString(),
     });
@@ -551,6 +752,7 @@ async function main() {
     await finished;
   } finally {
     watcher?.close(); clearTimeout(timer); clearInterval(stopTimer);
+    await relay?.close();
     process.off('SIGINT', stop); process.off('SIGTERM', stop);
     if (await exists(join(managed.state, 'stop'))) stopping = true;
     if (siteStarted && (stopping || !noWatch)) {

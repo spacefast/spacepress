@@ -135,7 +135,7 @@ Once the npm packages are published, `npm create typedpress@latest my-app` creat
 an app and installs a prebuilt compiler; the [installation guide](docs/installation.md)
 covers it, the standalone `typedpress` package and the release tooling. Until then,
 or to work on TypedPress itself, build the compiler from source
-with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
+with Rust 1.97 (the checkout pins it). Local development needs Node 22+ and
 npm; it needs neither Docker nor a host PHP installation. TypedPress automatically
 runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)
 2.2.0 to provide WordPress 7.2-beta5, PHP 8.4 and SQLite Database Integration 3.1.3.
@@ -262,7 +262,7 @@ live collections with cache tags, and a webhook endpoint that purges or rebuilds
 
 | | Minimum |
 |---|---|
-| To build | Rust 1.96 (today; see [Status](#status)) |
+| To build | Rust 1.97 (today; see [Status](#status)) |
 | Local `typedpress dev` | Node 22+ and npm; Studio supplies WordPress, PHP and SQLite |
 | To run | WordPress 7.2-beta5 or later, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, and MySQL 8.0, MariaDB 10.11 or SQLite through the [SQLite Database Integration](https://wordpress.org/plugins/sqlite-database-integration/) plugin 3.1.2 |
 | Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |

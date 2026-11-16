@@ -141,7 +141,6 @@ export interface Drive {
 	label: string;
 	model: string;
 	serial: string;
-	serialKey?: string;
 	kind: "ssd" | "hdd" | "nvme" | "sd" | "usb";
 	capacityGb: number;
 	interface: string;
@@ -158,7 +157,6 @@ export interface DriveInsert {
 	label: string;
 	model: string;
 	serial: string;
-	serialKey?: string;
 	kind: "ssd" | "hdd" | "nvme" | "sd" | "usb";
 	capacityGb: number;
 	interface: string;
@@ -175,7 +173,6 @@ export interface DrivePatch {
 	label?: string;
 	model?: string;
 	serial?: string;
-	serialKey?: string;
 	kind?: "ssd" | "hdd" | "nvme" | "sd" | "usb";
 	capacityGb?: number;
 	interface?: string;
@@ -268,22 +265,6 @@ export interface DriveFilter {
 		isNotNull?: true;
 	};
 	serial?: string | null | {
-		eq?: string | null;
-		ne?: string | null;
-		gt?: string;
-		gte?: string;
-		lt?: string;
-		lte?: string;
-		in?: string[];
-		notIn?: string[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	serialKey?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
 		gt?: string;
@@ -435,7 +416,7 @@ export interface DriveFilter {
 	OR?: DriveFilter[];
 	NOT?: DriveFilter;
 }
-export type DriveOrder = Partial<Record<"id" | "ownerId" | "label" | "model" | "serial" | "serialKey" | "kind" | "capacityGb" | "interface" | "purchasedOn" | "warrantyUntil" | "placeId" | "status" | "notes" | "replacementNeededAt", "asc" | "desc">> | string;
+export type DriveOrder = Partial<Record<"id" | "ownerId" | "label" | "model" | "serial" | "kind" | "capacityGb" | "interface" | "purchasedOn" | "warrantyUntil" | "placeId" | "status" | "notes" | "replacementNeededAt", "asc" | "desc">> | string;
 export interface HealthReading {
 	id: number;
 	ownerId: number;
@@ -795,7 +776,6 @@ export type WhereIsOutput = ({
 		label: string;
 		model: string;
 		serial: string;
-		serialKey: string;
 		kind: "ssd" | "hdd" | "nvme" | "sd" | "usb";
 		capacityGb: number;
 		interface: string;
@@ -844,7 +824,6 @@ export type WarrantyExpiringOutput = ({
 	label: string;
 	model: string;
 	serial: string;
-	serialKey: string;
 	kind: "ssd" | "hdd" | "nvme" | "sd" | "usb";
 	capacityGb: number;
 	interface: string;
@@ -859,23 +838,7 @@ export type WarrantyExpiringOutput = ({
 export interface RetireInput {
 	driveId: number;
 }
-export type RetireOutput = {
-	id: number;
-	ownerId: number;
-	label: string;
-	model: string;
-	serial: string;
-	kind: "ssd" | "hdd" | "nvme" | "sd" | "usb";
-	capacityGb: number;
-	interface: string;
-	purchasedOn: string | null;
-	warrantyUntil: string | null;
-	placeId: number | null;
-	status: "in-use" | "spare" | "failed" | "retired";
-	notes: string | null;
-	tags: string[];
-	replacementNeededAt: string | null;
-};
+export type RetireOutput = Drive;
 export interface Collections {
 	places: {
 		row: Place;

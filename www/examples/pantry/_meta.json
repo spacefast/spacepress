@@ -1,4 +1,5 @@
 {
+ "proposal": "Written in spellings that are decided and not built yet (www/tp/components/guide/examples.tsx). The same backend as it runs today is examples/pantry; www/examples/_today/pantry holds the excerpt the guide compares it with.",
  "treeNotes": {},
  "notes": {
   "typedpress.config.ts": "no pages: the React app is the front end",

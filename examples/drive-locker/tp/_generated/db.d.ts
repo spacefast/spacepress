@@ -13,7 +13,6 @@ type Entities = {
     'label': ColumnBuilder<'text', string, true, false, false, false>;
     'model': ColumnBuilder<'text', string, true, false, false, false>;
     'serial': ColumnBuilder<'text', string, true, false, false, false>;
-    'serialKey': ColumnBuilder<'text', string, true, true, false, false>;
     'kind': ColumnBuilder<'text', "ssd" | "hdd" | "nvme" | "sd" | "usb", true, false, false, false>;
     'capacityGb': ColumnBuilder<'number', number, true, false, false, false>;
     'interface': ColumnBuilder<'text', string, true, false, false, false>;

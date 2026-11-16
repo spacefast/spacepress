@@ -3,9 +3,11 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownedState, publishPlugins, sourceDigest, watchSources, lock } from './studio.mjs';
-import { spawn } from 'node:child_process';
+import { ownedState, publishPlugins, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward } from './studio.mjs';
+import { execFileSync, spawn } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { EventEmitter, once } from 'node:events';
+import { createServer } from 'node:http';
 
 test('local site ownership refuses foreign directories, copied receipts and redirected state', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'typedpress-dev-ownership-'));
@@ -177,4 +179,172 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
   await writeFile(join(project, 'README.md'), 'notes');
   await writeFile(join(project, 'tp/app/about/notes.md'), 'notes');
   assert.equal(await sourceDigest(project), styles);
+});
+
+test('--url and --host name one address for WordPress and one for TypedPress to listen on, and refuse what names none', () => {
+  // Neither: Studio's own http://localhost:<port>, and nothing but its loopback listener.
+  assert.deepEqual(siteAddress(['--no-watch'], 8791), { url: null, listen: null });
+  // --host: TypedPress listens there on the site's port, and that is the address WordPress writes.
+  assert.deepEqual(siteAddress(['--host=10.0.0.24'], 8791), { url: 'http://10.0.0.24:8791', listen: '10.0.0.24' });
+  assert.deepEqual(siteAddress(['--host=dev-box.lan'], 8791), { url: 'http://dev-box.lan:8791', listen: 'dev-box.lan' });
+  assert.deepEqual(siteAddress(['--host=fd7a:115c::57'], 8791), { url: 'http://[fd7a:115c::57]:8791', listen: 'fd7a:115c::57' });
+  // --url: a proxy in front serves another scheme, host or port; TypedPress listens nowhere new.
+  assert.deepEqual(siteAddress(['--no-watch', '--url=https://box.example.ts.net:8443/'], 8791), { url: 'https://box.example.ts.net:8443', listen: null });
+  assert.deepEqual(siteAddress(['--url=https://box.example.ts.net'], 8791), { url: 'https://box.example.ts.net', listen: null });
+  // Both: listen on one address, announce another.
+  assert.deepEqual(siteAddress(['--host=10.0.0.24', '--url=http://dev-box.lan:8791'], 8791), { url: 'http://dev-box.lan:8791', listen: '10.0.0.24' });
+  assert.deepEqual(siteAddress(['--url=http://[fd7a:115c::57]:8443'], 8791), { url: 'http://[fd7a:115c::57]:8443', listen: null });
+  for (const url of ['box.example.ts.net', 'ftp://box.example', 'https://box.example/blog', 'https://box.example/?a=1', 'https://user:secret@box.example', '']) {
+    assert.throws(() => siteAddress([`--url=${url}`], 8791), /--url takes an address such as https:\/\/box\.example\.ts\.net:8443/, url);
+  }
+  // A host that is no DNS name: the URL parser keeps quotes and decodes %27, so these are refused here.
+  for (const url of ["http://a'.print(1).'.test", 'http://a%27b.test', 'http://a\\b.test', 'http://a$b.test', 'http://0.0.0.0:8443', 'http://[::]:8443']) {
+    assert.throws(() => siteAddress([`--url=${url}`], 8791), /--url takes an address/, url);
+  }
+  // WordPress writes one address into every page: "all interfaces" names none, however it is spelled.
+  for (const host of ['fe80::1%eth0', '0.0.0.0', '::', '0:0:0:0:0:0:0:0', '::ffff:0.0.0.0', '::ffff:0:0', '0::0', '0', '2130706433', '*', '', 'a/b', 'http://10.0.0.24', '10.0.0.24:8791', 'a b', "a'b"]) {
+    assert.throws(() => siteAddress([`--host=${host}`], 8791), /--host takes one address or name of this machine/, host);
+  }
+  // The listener lives in the typedpress dev process, and --no-watch leaves none.
+  assert.throws(() => siteAddress(['--no-watch', '--host=10.0.0.24'], 8791), /--host needs typedpress dev to keep running/);
+});
+
+test('--host is bound as the address it resolves to, never every interface', { timeout: 10000 }, async () => {
+  assert.equal(await listenAddress('127.0.0.1'), '127.0.0.1');
+  assert.match(await listenAddress('localhost'), /^(127\.0\.0\.1|::1)$/);
+  // Checked again after resolving, for whatever spelling siteAddress let through, by the relay itself.
+  await assert.rejects(listenAddress('0.0.0.0'), /every interface/);
+  for (const host of ['0.0.0.0', '::']) {
+    const bound = await forward(host, 0, 1).then((relay) => relay.close().then(() => true), () => false);
+    assert.equal(bound, false, `the relay listened on ${host}`);
+  }
+});
+
+test('the address file is PHP that only holds the address', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tp-address-'));
+  try {
+    for (const url of ['https://box.example.ts.net:8443', "http://it's.example", 'http://a\\\\b']) {
+      const file = join(dir, 'address.php');
+      writeFileSync(file, `${addressPhp(url)}\necho $GLOBALS['wp_filter']['pre_option_home'][10][0]['function']();\n`);
+      const out = execFileSync('php', [file], { encoding: 'utf8' });
+      assert.equal(out, url, 'the PHP prints the address itself, so nothing in it ran');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// wp-config.php patched as typedpress dev patches it, with this machine's `php` in place of Studio's.
+function patch(source) {
+  const dir = mkdtempSync(join(tmpdir(), 'tp-config-'));
+  try {
+    const file = join(dir, 'wp-config.php');
+    writeFileSync(file, source);
+    const php = (code) => execFileSync('php', ['-d', 'short_open_tag=0', '-r', code], { encoding: 'utf8' });
+    return settingsOffset(async (code) => php(code), file).then((offset) => withAddressLine(source, offset));
+  } finally {
+    setTimeout(() => rmSync(dir, { recursive: true, force: true }), 2000);
+  }
+}
+
+const ADDRESS = "if ( is_file( ABSPATH . 'tp-dev-address.php' ) ) { require ABSPATH . 'tp-dev-address.php'; } // typedpress dev --url / --host";
+
+test('PHP prints an offset, or the start is refused', async () => {
+  // Anything but a number from PHP (a notice, a warning) is refused, never read as an offset.
+  await assert.rejects(settingsOffset(async () => 'Notice: something 12\n3', '/x'), /Could not read wp-config\.php/);
+  assert.equal(await settingsOffset(async () => '42\n', '/x'), 42);
+  // The path reaches PHP as one escaped string: a quote in it doesn't end the string.
+  let seen = '';
+  await settingsOffset(async (code) => { seen = code; return '-1'; }, "/tmp/it's/wp-config.php");
+  assert.ok(seen.startsWith("$tp_config = '/tmp/it\\'s/wp-config.php';"), seen);
+});
+
+test('the address reaches WordPress before it loads, from one line in wp-config.php', async () => {
+  const php = addressPhp('https://box.example.ts.net:8443');
+  assert.equal(php.split("'https://box.example.ts.net:8443'").length, 2);
+  for (const option of ['pre_option_home', 'pre_option_siteurl']) assert.ok(php.includes(`'${option}'`), option);
+  // Hooks set before wp-settings.php loads plugin.php, and through add_filter where WP-CLI loaded it first.
+  assert.match(php, /function_exists\( 'add_filter' \)/);
+  assert.match(php, /\$GLOBALS\['wp_filter'\]/);
+  const config = "<?php\ndefine( 'WP_DEBUG', false );\n/* That's all, stop editing! Happy publishing. */\n\nif ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n\n/** Sets up WordPress vars and included files. */\nrequire_once ABSPATH . 'wp-settings.php';\n";
+  const patched = await patch(config);
+  const lines = patched.split('\n');
+  const at = lines.findIndex((line) => line.includes('tp-dev-address.php'));
+  assert.match(lines[at], /^if \( is_file\( ABSPATH \. 'tp-dev-address\.php' \) \) \{ require ABSPATH \. 'tp-dev-address\.php'; \}/);
+  assert.equal(lines[at + 1], "require_once ABSPATH . 'wp-settings.php';");
+  assert.equal(patched.replace(`${lines[at]}\n`, ''), config);
+  assert.equal(withAddressLine(patched, -1), patched);
+  await assert.rejects(patch("<?php\ndefine( 'WP_DEBUG', false );\n"), /wp-config\.php does not load wp-settings\.php/);
+  // A require that is the body of an if or else, or part of an expression: a line put before it
+  // would change what runs, so nothing is written.
+  for (const body of ["if ( $a )\n\trequire_once ABSPATH . 'wp-settings.php';\nelse\n\texit;\n", "if ( $a ) { exit; } else\nrequire_once ABSPATH . 'wp-settings.php';\n", "$x = 1 +\nrequire_once ABSPATH . 'wp-settings.php';\n", "function f() {\nrequire_once ABSPATH . 'wp-settings.php';\n}\n"]) {
+    await assert.rejects(patch(`<?php\n${body}`), /in a statement of its own/, body);
+  }
+  // The require PHP runs, not a copy of it in a comment, a string, a heredoc, an attribute or text
+  // outside PHP, as PHP's tokenizer reads them (short_open_tag off, as on Studio).
+  const settings = "require_once ABSPATH . 'wp-settings.php';";
+  const decoys = [
+    `/* old:\n${settings}\n*/`,
+    `$help = <<<TXT\nx;\n${settings}\nTXT;`,
+    `$help = <<<'TXT'\nx;\n${settings}\nTXT;`,
+    `$help = <<<TXT\nTXTé;\nx;\n${settings}\nTXT;`,
+    `?>\n<p>x;\n${settings}</p>\n<?php`,
+    `?>\n<? x;\n${settings} ?>\n<?php`,
+    `?>\n<?php_example x;\n${settings}\n<?php`,
+    `$help = 'x;\n${settings.replaceAll("'", "\\'")}\n';`,
+    `$help = "x;\n${settings}\n";`,
+    `#[Example("x;\n${settings}\n")]\nfunction example() {}`,
+    `// ${settings}`,
+    `# ${settings}`,
+  ];
+  for (const decoy of decoys) {
+    const source = `<?php\ndefine( 'A', 1 );\n${decoy}\nif ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n${settings}\n`;
+    const lines = (await patch(source)).split('\n');
+    const at = lines.findIndex((line) => line.startsWith('if ( is_file( ABSPATH'));
+    assert.equal(lines[at + 1], settings, decoy);
+    assert.equal(lines[at - 1], '}', decoy);
+    assert.equal(lines.filter((line) => line.startsWith('if ( is_file( ABSPATH')).length, 1, decoy);
+  }
+  // Braces in strings are no tokens of their own, so they open and close nothing. The bootstrap at
+  // the end is the one patched.
+  for (const lead of ['$help = "$x}";\nfunction f() {\n$a = 1;\n}', '$help = "$x{";', '$help = "${x}";\n$y = "{$z}";']) {
+    const source = `<?php\n${lead}\n${settings}\n`;
+    const lines = (await patch(source)).split('\n');
+    assert.equal(lines.at(-3), ADDRESS, lead);
+    assert.equal(lines.at(-2), settings, lead);
+  }
+  // Alternative control syntax can leave a block open at the end of a file: refused, not guessed.
+  await assert.rejects(patch(`<?php\nif (false):\n$a = 1;\n${settings}\nendif;\n${settings}\n`), /in a statement of its own/);
+  // A second require of wp-settings.php, here dormant in a function, and a last require that may
+  // never run, after an earlier bootstrap and an early stop: refused.
+  await assert.rejects(patch(`<?php\n$help = "$x}";\nfunction f() {\n${settings}\n}\n${settings}\n`), /in a statement of its own/);
+  for (const stop of ['return;', 'exit;', 'die();', 'goto done;\ndone:']) {
+    await assert.rejects(patch(`<?php\n${settings}\n${stop}\n${settings}\n`), /in a statement of its own/, stop);
+  }
+  await assert.rejects(patch(`<?php\nif ( $a ) { return; }\n${settings}\n`), /in a statement of its own/);
+  // Code after the require: it isn't the last statement, so refused.
+  await assert.rejects(patch(`<?php\n${settings}\ndefine( 'LATE', 1 );\n`), /in a statement of its own/);
+  // The require must start its line: another statement before it on the line is refused.
+  await assert.rejects(patch(`<?php\n$a = 1; ${settings}\n`), /in a statement of its own/);
+  // A closing tag and blank text after it are fine.
+  assert.match(await patch(`<?php\n${settings}\n?>\n\n`), /tp-dev-address\.php/);
+  // Only in a decoy: nothing runs it, so nothing is changed.
+  await assert.rejects(patch(`<?php\n/*\n${settings}\n*/\n`), /in a statement of its own/);
+  const commented = await patch("<?php\ndefine( 'A', 1 ); // one\n/** Sets up WordPress vars and included files. */\nrequire_once( ABSPATH . 'wp-settings.php' );\n");
+  assert.match(commented, /tp-dev-address\.php/);
+});
+
+test('--host passes connections to the loopback listener untouched and lets go of them when it closes', { timeout: 20000 }, async (t) => {
+  const body = '<a href="http://localhost:8791/">kept as WordPress wrote it</a>';
+  const upstream = createServer((request, response) => response.end(`${request.headers.host} ${body}`));
+  await new Promise((done) => upstream.listen(0, 'localhost', done));
+  t.after(() => { upstream.closeAllConnections(); upstream.close(); });
+  const relay = await forward('127.0.0.1', 0, upstream.address().port);
+  const response = await fetch(`http://127.0.0.1:${relay.port}/`);
+  assert.equal(await response.text(), `127.0.0.1:${relay.port} ${body}`);
+  // A browser's idle connection (this one is kept alive) does not keep typedpress dev from stopping.
+  await relay.close();
+  await assert.rejects(fetch(`http://127.0.0.1:${relay.port}/`));
+  // An address that is not this machine's is refused with the address in the message.
+  await assert.rejects(forward('192.0.2.1', 0, upstream.address().port), /Cannot listen on 192\.0\.2\.1:0/);
 });

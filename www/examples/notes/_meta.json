@@ -1,4 +1,5 @@
 {
+ "proposal": "Written in spellings that are decided and not built yet (www/tp/components/guide/examples.tsx). The same app as it runs today is examples/full-site; www/examples/_today/ holds the excerpts the guide compares it with.",
  "treeNotes": {
   "tp/app/page.tsx": "/",
   "tp/app/notes/page.tsx": "/notes",

@@ -241,6 +241,12 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
             if args.allow_destructive {
                 command.arg("--allow-destructive");
             }
+            if let Some(url) = &args.dev_url {
+                command.arg(format!("--url={url}"));
+            }
+            if let Some(host) = &args.dev_host {
+                command.arg(format!("--host={host}"));
+            }
         }
         let status = command
             .status()

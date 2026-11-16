@@ -17,6 +17,8 @@ const repo = resolve(example, '../../..');
 const first = resolve(process.env.TP_BIN ?? join(repo, 'target/debug/typedpress'));
 
 async function port() {
+  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
   const server = createServer();
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   const value = server.address().port;
@@ -152,10 +154,11 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
   await step('post-to-post and SQL-to-post relations; a real hook enqueues an Action Scheduler job', async () => {
     task = await api('/tasks', { method: 'POST', body: { label: '  Review the journal  ', storyId: story.id } });
     await wp('action-scheduler', 'run', '--hooks=tp_job');
-    const related = await api(`/stories/${story.id}?with=writer,tasks`);
-    assert.equal(related.writer.name, 'Robin');
+    // The ref field's name is the relation name (docs/config-api.md, Relations).
+    const related = await api(`/stories/${story.id}?with=writerId,tasks`);
+    assert.equal(related.writerId.name, 'Robin');
     assert.deepEqual(related.tasks.map((row) => [row.id, row.label, row.processed]), [[task.id, 'Review the journal', true]]);
-    assert.equal((await api(`/tasks/${task.id}?with=story`)).story.title, story.title);
+    assert.equal((await api(`/tasks/${task.id}?with=storyId`)).storyId.title, story.title);
     const native = JSON.parse(await wp('eval', `global $wpdb; echo wp_json_encode($wpdb->get_row('SELECT label, processed, storyId FROM ' . $wpdb->prefix . 'tp_tasks WHERE id=${task.id}', ARRAY_A));`));
     assert.equal(native.label, 'Review the journal'); assert.equal(Number(native.processed), 1); assert.equal(Number(native.storyId), story.id);
   });
@@ -223,7 +226,7 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
     const plugin = join(project, '.tp/dev/wordpress/wp-content/plugins/platform-neighbor'); await mkdir(plugin);
     await writeFile(join(plugin, 'platform-neighbor.php'), '<?php /* Plugin Name: Platform neighbor */'); await wp('plugin', 'activate', 'platform-neighbor');
     const restart = async (...args) => { await command(['dev', 'stop', project]); await command(['dev', project, '--no-watch', ...args]); };
-    const additive = initialConfig.replace('export const tasks = table({', 'export const tasks = table({ shelf: text(),');
+    const additive = initialConfig.replace('export const tasks = table({', 'export const tasks = table({ shelf: text().default(""),');
     await writeFile(join(project, 'typedpress.config.ts'), additive); await restart();
     await api(`/tasks/${task.id}`, { method: 'PATCH', body: { shelf: 'A2' } });
     await command(['dev', 'stop', project]);
@@ -267,13 +270,22 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
       const admin = await adminContext.newPage();
       await admin.goto(`${base}/wp-login.php`);
       await submitSignIn(admin, 'admin', 'typedpress-test-admin');
-      await admin.goto(`${base}/wp-admin/plugins.php`);
-      await expect(admin.getByRole('heading', { name: 'Plugins', exact: true })).toBeVisible();
-      await expect(admin.getByText('Platform neighbor', { exact: true })).toBeVisible();
-      await admin.screenshot({ path: join(evidence, 'native-plugins.png'), fullPage: true });
-      await admin.goto(`${base}/wp-admin/options-general.php`);
-      await expect(admin.locator('#blogdescription')).toHaveValue('Preserve this native setting');
-      await admin.goto(`${base}/wp-admin/new/`);
+      // Classic pages open framed in TypedPress Admin by default, and on their own in developer mode.
+      const route = () => { const at = new URL(admin.url()); return at.pathname.startsWith('/wp-admin/new/') ? at.pathname.slice('/wp-admin/new'.length) : at.searchParams.get('p'); };
+      for (const developer of [false, true]) {
+        if (developer) await wp('user', 'meta', 'update', 'admin', 'tp_admin_developer_mode', '1');
+        const screen = developer ? admin : admin.frameLocator('iframe');
+        await admin.goto(`${base}/wp-admin/plugins.php`);
+        if (!developer) await admin.waitForURL(() => route() === '/classic/plugins.php');
+        await expect(screen.getByRole('heading', { name: 'Plugins', exact: true })).toBeVisible();
+        await expect(screen.getByText('Platform neighbor', { exact: true })).toBeVisible();
+        await admin.screenshot({ path: join(evidence, `native-plugins${developer ? '-developer' : ''}.png`), fullPage: true });
+        await admin.goto(`${base}/wp-admin/options-general.php`);
+        await expect(screen.locator('#blogdescription')).toHaveValue('Preserve this native setting');
+      }
+      await wp('user', 'meta', 'delete', 'admin', 'tp_admin_developer_mode');
+      // TypedPress Admin's collections overview (its own route; the home route is the dashboard).
+      await admin.goto(`${base}/wp-admin/admin.php?page=typedpress-admin&p=${encodeURIComponent('/collections')}`);
       await expect(admin.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
       await expect(admin.getByRole('link', { name: 'Stories', exact: true }).last()).toBeVisible();
       await admin.screenshot({ path: join(evidence, 'typedpress-admin.png'), fullPage: true });

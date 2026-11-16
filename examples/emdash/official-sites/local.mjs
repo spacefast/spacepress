@@ -11,6 +11,8 @@ const execute = promisify(execFile);
 export const root = dirname(fileURLToPath(import.meta.url));
 export const repository = resolve(root, '../../..');
 export async function freePort() {
+  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
   const server = createServer();
   await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
   const address = server.address();
@@ -33,9 +35,11 @@ export async function start(project, mode, { onProcess = () => {} } = {}) {
   // links and preview links point at the Astro site.
   // Held by a listener of ours until Astro starts, so nothing else takes it while WordPress seeds.
   const holder = createServer();
-  await new Promise((done, fail) => { holder.once('error', fail); holder.listen(0, '127.0.0.1', done); });
+  // TP_EXAMPLE_FRONTEND_PORT pins it, beside TP_EXAMPLE_PORT for WordPress.
+  await new Promise((done, fail) => { holder.once('error', fail); holder.listen(Number(process.env.TP_EXAMPLE_FRONTEND_PORT ?? 0), '127.0.0.1', done); });
   const port = holder.address().port;
   const frontend = `http://127.0.0.1:${port}`;
+  const site = join(project, '.tp/dev/wordpress');
   let backend, entries = [], media = [];
   try {
     const config = join(project, 'typedpress.config.ts');
@@ -43,7 +47,6 @@ export async function start(project, mode, { onProcess = () => {} } = {}) {
     await writeFile(config, source.replace('defineConfig({', `defineConfig({\n  frontend: "${frontend}",`));
     await command(['dev', project, '--port', String(await freePort()), '--no-watch']);
     const owner = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8'));
-    const site = join(project, '.tp/dev/wordpress');
     if (owner.project !== project || owner.site !== site) throw new Error('Native Studio ownership mismatch.');
     const status = JSON.parse(await command(['dev','status',project]));
     if (!status.isOnline || typeof status.siteUrl !== 'string') throw new Error('Native Studio did not report online.');

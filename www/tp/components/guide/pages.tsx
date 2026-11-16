@@ -34,6 +34,7 @@ export default async function Post({ params }: PageProps<"blog/[slug]">) {
   );
 }`}</Code>
       <p>The page is rendered by WordPress, in PHP, as the person viewing it. Drafts and fields they may not see never reach the HTML.</p>
+      <p>This site does both of these itself. Each <a href="/blog">blog post</a> ends with WordPress's own comments, from <code>{"<Comments for={item} />"}</code> and one line on the kind, and the bottom of this page lists the newest posts with a component that reads them while the page renders.</p>
       <div className="scroll"><table>
       <tr><th>You want</th><th>You write</th></tr>
       <tr><td>Title, description, canonical URL, robots, social cards</td><td><code>export const metadata</code>, an object or a function of the page's props</td></tr>

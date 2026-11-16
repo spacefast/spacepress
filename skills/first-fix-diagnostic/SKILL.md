@@ -1,7 +1,7 @@
 ---
 name: first-fix-diagnostic
 description: "Use when `first check`, `first build` or `first dev` reports a compiler diagnostic in a First project (an `F` code such as F1002 or F4001, or a message with `file:line:col`), or after any edit to `first.config.ts` or `first/`, to read the diagnostic and fix its cause."
-compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
+compatibility: "Targets First 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
 ---
 
 # Fix a First compiler diagnostic

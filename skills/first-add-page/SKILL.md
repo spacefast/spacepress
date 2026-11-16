@@ -1,7 +1,7 @@
 ---
 name: first-add-page
 description: "Use when adding a page or an HTTP route to a First project under `first/app/`: a `page.tsx` rendered by WordPress on each request, a `layout.tsx`, a dynamic segment such as `[slug]`, a guarded section, or a `route.ts` that answers its own HTTP methods."
-compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
+compatibility: "Targets First 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
 ---
 
 # Add a page under first/app/

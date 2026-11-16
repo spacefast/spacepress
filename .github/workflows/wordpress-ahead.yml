@@ -1,6 +1,6 @@
 name: WordPress ahead
 
-# First against the WordPress that is coming, not only the floor it supports (7.1): the nightly build,
+# First against the WordPress that is coming, not only the floor it supports (7.2-beta5): the nightly build,
 # and the newest beta or release candidate when there is one. Weekly and by hand only, never on a PR:
 # a change in core must not turn every PR red. A failure names the build and each failing test in
 # the job summary; docs/wordpress-internals.md says what to look at in core.

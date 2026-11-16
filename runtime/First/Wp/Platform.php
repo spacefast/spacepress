@@ -5,7 +5,14 @@ namespace First\Wp;
 /** Platform policy shared with the compiler and doctor; fixture-guarded. */
 final class Platform
 {
-    public const WORDPRESS = '7.1';
+    /**
+     * The oldest WordPress First boots on: 7.2's fifth beta, for the script modules, Entity fields and
+     * actions, and connectors core 7.2 ships. Compared with PHP's version_compare against the whole
+     * version string, so later betas, RCs, nightlies of 7.2 (`7.2-beta5-65525`), 7.2 and above pass, and
+     * 7.1.x, 7.2-beta4 and 7.2's alphas don't. Core's is_wp_version_compatible() drops the suffix
+     * first and would let every 7.2 pre-release through.
+     */
+    public const WORDPRESS = '7.2-beta5';
     public const PHP = '8.2';
     public const MYSQL = '8.0';
     public const MARIADB = '10.11';
@@ -57,6 +64,12 @@ final class Platform
             'polylang' => defined('POLYLANG_VERSION') ? POLYLANG_VERSION : null,
             'identity' => Runtime::identity(), 'imageCdn' => function_exists('jetpack_photon_url'),
         ];
+    }
+
+    /** True when $version (a `$wp_version`) is at or above the floor. */
+    public static function wordpressSupported(string $version): bool
+    {
+        return version_compare($version, self::WORDPRESS, '>=');
     }
 
     /** True when comment creates are spam-checked: Akismet is loaded and has an API key. */

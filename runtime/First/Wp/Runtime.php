@@ -23,7 +23,7 @@ final class Runtime
         if (self::$booted) {
             return;
         }
-        if (version_compare((string) get_bloginfo('version'), Platform::WORDPRESS, '<') || version_compare(PHP_VERSION, Platform::PHP, '<')) {
+        if (!Platform::wordpressSupported((string) get_bloginfo('version')) || version_compare(PHP_VERSION, Platform::PHP, '<')) {
             self::notice('WordPress ' . Platform::WORDPRESS . '+ and PHP ' . Platform::PHP . '+ are required');
             return;
         }

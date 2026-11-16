@@ -90,7 +90,9 @@ export function blueprint({ platform, firstPlugins, wordpressPlugins, landingPag
 	return {
 		$schema: "https://playground.wordpress.net/blueprint-schema.json",
 		meta: { title: "First example", author: "First" },
-		preferredVersions: { php: platform.php, wp: "latest" },
+		// "beta" is Playground's build of WordPress's current beta or RC (7.2-beta5 today). "latest" is still
+		// 7.1, below First's floor (tests/fixtures/platform.json); it goes back to "latest" once 7.2 ships.
+		preferredVersions: { php: platform.php, wp: "beta" },
 		features: { networking: true },
 		login: true,
 		landingPage,

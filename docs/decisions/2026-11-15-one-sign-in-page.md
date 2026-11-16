@@ -200,3 +200,23 @@ A re-review found these, now fixed:
   nothing reads or writes the new session columns and no WordPress sign-in opens an identity
   session (`Schema::linksWordPressSessions`). A session the bridge couldn't tie to its WordPress
   session would otherwise outlive it.
+
+## Third revision (2026-11-16)
+
+- **A logout nobody here asked for ends no WordPress sign-in.** `/identity/logout` without a
+  WordPress session in the request (an application's own client, a cookieless HTTP call, a
+  cross-site image that drops this site's Lax cookies) is neither named nor confirmed:
+  - an expired hint ends nothing;
+  - a current hint ends only the identity session it names (`Sessions::revoke(..., false)`),
+    never the WordPress session that identity session came from.
+- **Identity's REST API opens an identity session from the WordPress cookie only for the site's
+  own pages:** an `Origin` that is the site's, or `Sec-Fetch-Site: same-origin`. A registered
+  application origin (CORS with credentials, a same-site subdomain), or a request that says
+  neither, needs the identity cookie itself. Otherwise a WordPress sign-in alone would give that
+  origin the account's CSRF token, and with it account writes.
+- **Before schema 4, no redirect loop.** On a site whose identity storage isn't yet at schema 4 (a
+  managed build before its initialize), a browser signed in to WordPress gets a 503 with
+  `Retry-After: 30` from `/identity` and `/identity/authorize`, instead of going round through
+  wp-login.php and minting a WordPress session each time. A signed-out browser is still sent to
+  sign in.
+

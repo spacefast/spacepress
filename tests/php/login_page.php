@@ -20,6 +20,15 @@ $site = wpSite('login-page', ['wpContent' => $argv[1], 'identity' => true, 'base
     <?php
     // php -S speaks HTTP only; Identity allows that on a local site with this switch.
     define('TP_IDENTITY_DEV_HTTP', true);
+    PHP, 'early-schema' => <<<'PHP'
+    <?php
+    // Test only: a request carrying this header sees the identity schema a managed build has before
+    // its initialize (version 3). The storage itself is already 4, so whatever Identity's boot reruns
+    // on seeing 3 changes nothing.
+    if (($_SERVER['HTTP_X_TEST_IDENTITY_SCHEMA'] ?? '') === '3') {
+        add_filter('option_tp_identity_schema_version', static fn () => '3', PHP_INT_MAX);
+        add_filter('pre_option_tp_identity_schema_version', static fn () => '3', PHP_INT_MAX);
+    }
     PHP, 'captcha' => <<<'PHP'
     <?php
     // A captcha-style plugin: it adds a field to the form, a script in the head and the foot, and a
@@ -68,7 +77,9 @@ final class Browser
         $jar = implode('; ', array_map(static fn (string $k, string $v): string => "$k=$v", array_keys($this->cookies), $this->cookies));
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_HTTPHEADER => [...$headers, "Cookie: $jar"],
+            // What a browser sends for a request its own page makes (a fetch, a link); a test that
+            // stands for another site's request passes its own `Sec-Fetch-Site`.
+            CURLOPT_HTTPHEADER => [...$headers, ...(array_filter($headers, static fn (string $h): bool => stripos($h, 'Sec-Fetch-Site:') === 0) === [] ? ['Sec-Fetch-Site: same-origin'] : []), "Cookie: $jar"],
             CURLOPT_HEADERFUNCTION => function ($ch, string $line) use (&$out): int {
                 if (str_contains($line, ':')) {
                     [$name, $value] = explode(':', $line, 2);
@@ -466,6 +477,51 @@ $out['mfa enable'] = [
     'this browser' => wpSession($n4User, $n4->token),
     'other session' => wpSession($n4User, $elsewhere),
     'still signed in' => $n4->go('/wp-json/typedpress-identity/v1/account')['status'],
+];
+
+// ---------------------------------------------------------------- a cookieless logout ends no WordPress session (N1)
+// A client holding no cookie of this site (an HTTP client, a cross-site image without Lax cookies) with a
+// hint for the user's bridged session: an expired hint ends nothing, and even a current one ends only the
+// identity session, never the WordPress sign-in it came from.
+$c1 = planted($url, $wpUser);
+$c1->go('/identity/account');
+$c1Row = array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $c1->token)))[0];
+$c1Hint = static fn (int $exp): string => \TypedPress\Identity\Keys::sign(['iss' => \TypedPress\Identity\OAuth::issuer(), 'aud' => $app['id'], 'sub' => (string) $wpUser, 'sid' => $c1Row['id'], 'iat' => $exp - 300, 'exp' => $exp]);
+$bare = new Browser($url);
+$bare->cookies = [];
+$cookieless = $bare->go('/identity/logout?id_token_hint=' . rawurlencode($c1Hint(time() - 3600)), null, ['Sec-Fetch-Site: cross-site']);
+$c1Revoked = static fn (): bool => (array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['id'] === $c1Row['id']))[0]['revoked_at'] ?? null) !== null;
+$out['cookieless expired hint'] = ['status' => $cookieless['status'], 'wordpress session' => wpSession($wpUser, $c1->token), 'identity revoked' => $c1Revoked()];
+$current = $bare->go('/identity/logout?id_token_hint=' . rawurlencode($c1Hint(time() + 300)), null, ['Sec-Fetch-Site: cross-site']);
+$out['cookieless current hint'] = ['status' => $current['status'], 'wordpress session' => wpSession($wpUser, $c1->token), 'identity revoked' => $c1Revoked()];
+
+// ---------------------------------------------------------------- REST opens no identity session for another origin (item 2)
+// An application origin (here a sibling subdomain registered for CORS with credentials) calling with the
+// browser's WordPress cookie alone: no identity session, so no CSRF token to make account writes with.
+$x = planted($url, $wpUser);
+$cross = $x->go('/wp-json/typedpress-identity/v1/account', null, ['Origin: http://127.0.0.1:18999', 'Sec-Fetch-Site: same-site']);
+$out['rest from an app origin'] = ['status' => $cross['status'], 'csrf' => str_contains($cross['body'], '"csrf"'), 'identity cookie' => isset($x->cookies['zi_session'])];
+$noHeaders = $x->go('/wp-json/typedpress-identity/v1/account', null, ['Sec-Fetch-Site: none-given']);
+$out['rest without fetch metadata'] = $noHeaders['status'];
+$own = $x->go('/wp-json/typedpress-identity/v1/account', null, ["Origin: $url"]);
+$out['rest from the site'] = ['status' => $own['status'], 'identity cookie' => isset($x->cookies['zi_session'])];
+
+// ---------------------------------------------------------------- before schema 4, no redirect loop (item 3)
+// A managed build can serve before its initialize: the stored identity schema is still below 4. The
+// `early-schema` mu-plugin answers the stored version as 3 for requests that ask for it (a header),
+// as such a site would, without installing anything.
+$early = planted($url, $wpUser);
+$preSchema = ['X-Test-Identity-Schema: 3'];
+$wait = $early->go('/identity/account', null, $preSchema);
+$authorizeWait = $early->go('/identity/authorize?' . http_build_query(['response_type' => 'code', 'client_id' => $app['id'], 'redirect_uri' => 'http://127.0.0.1:18999/callback', 'scope' => 'openid', 'state' => 'st-' . bin2hex(random_bytes(12)), 'nonce' => 'n-' . bin2hex(random_bytes(12)), 'code_challenge_method' => 'S256', 'code_challenge' => rtrim(strtr(base64_encode(hash('sha256', 'v', true)), '+/', '-_'), '=')]), null, $preSchema);
+$signedOut = (new Browser($url))->go('/identity/account', null, $preSchema);
+$out['before schema 4'] = [
+    'status' => $wait['status'],
+    'retry after' => $wait['headers']['retry-after'][0] ?? null,
+    'to login' => $wait['location'] !== null,
+    'authorize' => $authorizeWait['status'],
+    'identity cookie' => isset($early->cookies['zi_session']),
+    'signed out still to login' => str_starts_with((string) $signedOut['location'], $login),
 ];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";

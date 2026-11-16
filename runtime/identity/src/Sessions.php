@@ -65,6 +65,19 @@ final class Sessions
         return (bool) apply_filters('tp_identity_rest_cookie_auth', false)
             || apply_filters('tp_identity_session_cookie_aliases', []) !== [];
     }
+    /**
+     * Whether this request comes from the site's own pages: an `Origin` that is the site's, or
+     * (where the browser sends no `Origin`, a GET) `Sec-Fetch-Site: same-origin`. A request that
+     * says neither (a server-side client, an old browser) isn't treated as the site's.
+     */
+    public static function fromSite(): bool
+    {
+        $origin = (string) ($_SERVER["HTTP_ORIGIN"] ?? "");
+        if ($origin !== "") {
+            return $origin === self::siteOrigin();
+        }
+        return (string) ($_SERVER["HTTP_SEC_FETCH_SITE"] ?? "") === "same-origin";
+    }
     private static function siteOrigin(): string
     {
         $home = wp_parse_url(home_url());
@@ -214,8 +227,11 @@ final class Sessions
     public function require(?string $csrf = null): array
     {
         // This browser's session as the hosted screens see it ({@see Plugin::browserSession}): one
-        // whose user isn't the browser's WordPress user gives way to the WordPress sign-in.
-        $session = Plugin::browserSession();
+        // whose user isn't the browser's WordPress user gives way to the WordPress sign-in. Only a
+        // request from this site's own pages opens one from the WordPress cookie: an application
+        // origin (CORS with credentials, a same-site subdomain) needs the identity cookie itself,
+        // or a WordPress sign-in alone would hand it the account's CSRF token.
+        $session = Plugin::browserSession(self::fromSite());
         if (!$session) {
             throw new Failure("unauthenticated", "Sign in to continue.", 401);
         }
@@ -265,7 +281,13 @@ final class Sessions
             );
         });
     }
-    public function revoke(int $uid, ?string $id = null): void
+    /**
+     * Revokes one session ($id) or all of a user's. One session opened from a WordPress sign-in also
+     * ends that WordPress session, unless `$withWordPress` is false: a request that may end the
+     * identity session but has no say over the browser's WordPress sign-in (an RP logout from a
+     * client holding no cookie of this site).
+     */
+    public function revoke(int $uid, ?string $id = null, bool $withWordPress = true): void
     {
         $linked = $this->db->transaction(function () use ($uid, $id) {
             $this->db->run(
@@ -292,7 +314,7 @@ final class Sessions
         });
         if ($id === null) {
             \WP_Session_Tokens::get_instance($uid)->destroy_all();
-        } elseif (is_string($linked) && $linked !== "") {
+        } elseif ($withWordPress && is_string($linked) && $linked !== "") {
             // One sign-in: the WordPress session this one was opened from ends with it.
             WordPressSessions::end($uid, $linked);
         }

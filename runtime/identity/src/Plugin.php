@@ -593,7 +593,7 @@ final class Plugin
      * longer-lived than the WordPress session it came from, and is written as this browser's
      * cookie. Null when the browser is signed in to neither.
      */
-    public static function browserSession(): ?array
+    public static function browserSession(bool $bridge = true): ?array
     {
         $session = self::$sessions->find((string) ($_COOKIE[Sessions::cookieName()] ?? ""));
         $uid = (int) wp_validate_auth_cookie("", "logged_in");
@@ -609,7 +609,7 @@ final class Plugin
         // Until this site's storage has `sessions.wp_token` (a managed build serves requests before
         // its initialize), a WordPress sign-in opens no identity session: one it couldn't tie to the
         // WordPress session would outlive it.
-        if (!Schema::linksWordPressSessions()) {
+        if (!$bridge || !Schema::linksWordPressSessions()) {
             return null;
         }
         $token = wp_get_session_token();
@@ -691,8 +691,16 @@ final class Plugin
             exit();
         }
         // Here the sign-out may happen: the hint names this browser's user, the user confirmed, or
-        // the browser holds no WordPress session to end (an application's own identity session).
-        $oauth->endLogout($request["claims"]);
+        // the request carries no WordPress session (an application's own client, a cookieless HTTP
+        // call, a cross-site image that drops this site's Lax cookies).
+        if ($named || $confirmed) {
+            $oauth->endLogout($request["claims"]);
+        } elseif (is_array($hint)) {
+            // Nobody here showed who is signing out: a current hint may still end the identity
+            // session it names, an expired one ends nothing, and neither reaches the WordPress
+            // session that identity session came from, which only that browser may end.
+            $oauth->endLogout($hint, false);
+        }
         if ($session) {
             self::$sessions->revoke((int) $session["wp_user_id"], (string) $session["id"]);
         }
@@ -702,6 +710,27 @@ final class Plugin
             wp_clear_auth_cookie();
         }
         wp_redirect($target, 303);
+        exit();
+    }
+    /**
+     * Sends a browser with no identity session to the site's one sign-in page, coming back to
+     * `$back`. A browser already signed in to WordPress before this site's storage links WordPress
+     * sessions (a managed build serving before its initialize) would come straight back without one,
+     * and round again: it gets a short "try again" page instead.
+     */
+    private static function toLogin(string $back): never
+    {
+        if (!Schema::linksWordPressSessions() && (int) wp_validate_auth_cookie("", "logged_in") > 0) {
+            status_header(503);
+            header("Retry-After: 30");
+            header("Content-Type: text/html; charset=utf-8");
+            echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'
+                . esc_html__("Try again shortly", "typedpress-identity") . '</title></head><body><main class="consent"><h1>'
+                . esc_html__("Your account is being updated", "typedpress-identity") . "</h1><p>"
+                . esc_html__("This takes a moment. Try again shortly.", "typedpress-identity") . "</p></main></body></html>";
+            exit();
+        }
+        wp_redirect(wp_login_url($back));
         exit();
     }
     /** The issuer's URL path (`/identity`, or `/blog/identity` under a subdirectory install). */
@@ -947,8 +976,7 @@ final class Plugin
                     exit();
                 }
                 if (!$session) {
-                    wp_redirect(wp_login_url(self::url("/authorize?" . http_build_query($query))));
-                    exit();
+                    self::toLogin(self::url("/authorize?" . http_build_query($query)));
                 }
                 if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     Api::checkOrigin(
@@ -1009,9 +1037,7 @@ final class Plugin
             // form links to, and a second factor still owed after an external provider (`factor`).
             if (!isset($_GET["factor"]) && !isset($_GET["methods"]) && self::browserSession() === null) {
                 $continue = Providers::continuation($_GET["return_to"] ?? "");
-                $back = $continue !== "" ? self::url($continue) : self::here();
-                wp_redirect(wp_login_url($back));
-                exit();
+                self::toLogin($continue !== "" ? self::url($continue) : self::here());
             }
             status_header(200);
             echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>' .

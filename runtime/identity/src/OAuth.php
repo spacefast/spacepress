@@ -433,8 +433,11 @@ final class OAuth
         return ["target" => $target, "claims" => $claims];
     }
 
-    /** Revokes the identity session a checked logout's hint names (its `sid`, for its `sub`). */
-    public function endLogout(?array $claims): void
+    /**
+     * Revokes the identity session a checked logout's hint names (its `sid`, for its `sub`). With
+     * `$withWordPress` false, a WordPress session that identity session came from stays signed in.
+     */
+    public function endLogout(?array $claims, bool $withWordPress = true): void
     {
         if ($claims === null || !is_string($claims["sid"] ?? null)) {
             return;
@@ -444,7 +447,7 @@ final class OAuth
             $claims["sid"],
         );
         if ($session && (string) $session["wp_user_id"] === ($claims["sub"] ?? null)) {
-            Plugin::$sessions->revoke((int) $session["wp_user_id"], $claims["sid"]);
+            Plugin::$sessions->revoke((int) $session["wp_user_id"], $claims["sid"], $withWordPress);
         }
     }
 

@@ -5874,6 +5874,23 @@ fn one_sign_in_page_on_wordpress() {
 #[test]
 fn one_sign_in_page_under_a_subdirectory() {
     let project = fixture("login-page", "subdir");
+    // login.tsx redirects when asked (`redirect_to` naming `/go-account`), to check where its own
+    // `redirect()` goes.
+    let login = project.join("tp/app/login.tsx");
+    let source = std::fs::read_to_string(&login).unwrap();
+    std::fs::write(
+        &login,
+        source
+            .replace(
+                "import { LoginForm, type LoginProps } from \"typedpress/app\";",
+                "import { LoginForm, redirect, type LoginProps } from \"typedpress/app\";",
+            )
+            .replace(
+                "export default function Login({ errors, messages, registerUrl }: LoginProps) {",
+                "export default function Login({ errors, messages, registerUrl, redirectTo }: LoginProps) {\n  if (redirectTo.includes(\"go-account\")) redirect(\"/account\");",
+            ),
+    )
+    .unwrap();
     build(&project);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
@@ -5897,6 +5914,15 @@ fn one_sign_in_page_under_a_subdirectory() {
     assert_eq!(sub["status"], 302, "{seen}");
     assert_eq!(sub["login"], format!("{url}/wp-login.php"), "{seen}");
     assert_eq!(sub["back"], format!("{url}/identity/account?tab=1"), "{seen}");
+    // An app page's guard: back to the page's one address, the subdirectory once, at either spelling.
+    for key in ["guard", "guard slash"] {
+        assert_eq!(
+            seen[key],
+            serde_json::json!({ "status": 302, "back": format!("{url}/account/?tab=1") }),
+            "{key}: {seen}"
+        );
+    }
+    assert_eq!(seen["login redirect"], format!("{url}/account/"), "{seen}");
 }
 
 fn json<T: serde::Serialize>(v: T) -> serde_json::Value {

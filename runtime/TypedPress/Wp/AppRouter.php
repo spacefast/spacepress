@@ -557,7 +557,7 @@ final class AppRouter
             if ($halt->location === null) {
                 return $errors;
             }
-            wp_redirect(str_starts_with($halt->location, '/') ? home_url($halt->location) : $halt->location, $halt->status);
+            wp_redirect(str_starts_with($halt->location, '/') && !str_starts_with($halt->location, '//') ? home_url(self::href($halt->location)) : $halt->location, $halt->status);
             exit;
         } catch (\Throwable $error) {
             error_log('TypedPress login.tsx failed, WordPress\'s sign-in page shown instead: ' . $error::class . ': ' . $error->getMessage());
@@ -611,8 +611,13 @@ final class AppRouter
             foreach ($layouts as $layout) {
                 if (($layout['guard'] ?? null) !== null && !$this->allowed($layout['guard'], $viewer)) {
                     if ($viewer->user === null) {
+                        // Back to this page after signing in, at its one address. REQUEST_URI holds a
+                        // subdirectory install's home path, which home_url() adds again: the path
+                        // below the home URL is used instead.
+                        $query = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '');
+                        $back = home_url($this->canonical((string) ($this->path() ?? '/'))) . ($query !== '' ? '?' . $query : '');
                         nocache_headers();
-                        wp_safe_redirect(wp_login_url(home_url((string) ($_SERVER['REQUEST_URI'] ?? '/'))));
+                        wp_safe_redirect(wp_login_url($back));
                         exit;
                     }
                     $this->document(403, ['title' => __('Forbidden')], '<h1>' . esc_html__('You do not have access to this page.') . '</h1>');

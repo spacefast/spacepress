@@ -186,6 +186,15 @@ if ($base !== '') {
     $r = (new Browser($url))->go('/identity/account?tab=1');
     parse_str((string) parse_url((string) $r['location'], PHP_URL_QUERY), $q);
     $out['subdirectory'] = ['status' => $r['status'], 'login' => strtok((string) $r['location'], '?'), 'back' => $q['redirect_to'] ?? null, 'url' => $url];
+    // An app page under a layout guard, at either spelling: back to its one address, base once.
+    foreach (['guard' => '/account?tab=1', 'guard slash' => '/account/?tab=1'] as $key => $path) {
+        $g = (new Browser($url))->go($path);
+        parse_str((string) parse_url((string) $g['location'], PHP_URL_QUERY), $gq);
+        $out[$key] = ['status' => $g['status'], 'back' => $gq['redirect_to'] ?? null];
+    }
+    // login.tsx's own redirect() (the copy built for this run calls `redirect("/account")` when
+    // `redirect_to` names `/go-account`): to the page's one address, below the subdirectory once.
+    $out['login redirect'] = (new Browser($url))->go('/wp-login.php?redirect_to=' . rawurlencode("$url/go-account"))['location'];
     echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
     $site->destroy();
     exit;

@@ -27,8 +27,9 @@ Woo edits, reporting conflicting changes. Products remain editable through autho
 and Woo administration. A deployment-only ownership mode is not required for this integration.
 
 Products follow collection seed/sync behavior without becoming ordinary TypedPress collections.
-Collection writes use WordPress post APIs; product writes must use Woo CRUD. Public syntax and
-the exact product-file format remain open.
+Collection writes use WordPress post APIs; product writes must use Woo CRUD. Markdown is the
+default product authoring format, with structured front matter and the description in the body.
+Exact configuration syntax and field names remain to be finalized.
 
 Sync covers authored fields such as names, descriptions, prices and taxonomy assignments.
 Stock quantities, sales counters and orders are operational state, not synced
@@ -42,6 +43,88 @@ explicit sync changes and report conflicts. Missing files do not imply deletion.
 [seed compilation](../src/bundle.rs), [seed execution](../runtime/TypedPress/Sync/Seed.php)
 and the [record policy](../runtime/TypedPress/Sync/Routes.php) where compatible, with Woo CRUD
 as the product writer. This support is new work, not an existing Woo integration.
+
+### Source files and an example
+
+**Decisions:** each product and term file carries a persistent explicit UID. Category and tag
+references use those UIDs, never numeric WordPress IDs. Renaming a file, SKU or slug preserves
+its UID. Use the existing per-field merge, baseline and conflict workflow; do not introduce a
+second baseline store or a commerce-specific sync command.
+
+For images, the proposed reference is a path relative to the project root, such as
+`assets/products/ceramic-mug.jpg`, not relative to the product file and not an attachment ID.
+Moving the product file therefore does not change its image reference. The asset pipeline resolves
+the path to a media record on each target store. Pulling an image added in Woo needs to materialize
+a local asset and write its portable path; exact naming and replacement behavior remain open.
+
+Example project layout:
+
+```text
+content/
+  products/ceramic-mug.md
+  product-categories/home.md
+  product-tags/handmade.md
+assets/products/ceramic-mug.jpg
+```
+
+Proposed `content/products/ceramic-mug.md` (field names are illustrative; this is not implemented):
+
+```md
+---
+uid: zr_8b3e7c9d2a104f65b012
+name: Ceramic mug
+slug: ceramic-mug
+sku: MUG-BLUE
+status: published
+regularPrice: "24.00"
+categories:
+  - zr_15a702bc4d8e6390fa12
+tags:
+  - zr_6c9d201e4a7b8350fd12
+images:
+  - path: assets/products/ceramic-mug.jpg
+    alt: Blue ceramic mug
+---
+A handmade ceramic mug for your morning coffee.
+```
+
+Price uses the store's configured currency. The UID is opaque, persisted in the file and
+independent of the file's name. For example, renaming this file to `blue-mug.md` must still
+update the same product. No current stock quantity belongs in this synced document.
+
+Proposed `content/product-categories/home.md`:
+
+```md
+---
+uid: zr_15a702bc4d8e6390fa12
+name: Home
+slug: home
+---
+Everyday objects for the home.
+```
+
+Proposed `content/product-tags/handmade.md`:
+
+```md
+---
+uid: zr_6c9d201e4a7b8350fd12
+name: Handmade
+slug: handmade
+---
+Made by hand.
+```
+
+Taxonomy Markdown bodies map to term descriptions; parent references, when present, also use
+UIDs. One `typedpress sync` processes the declared taxonomies and product references in dependency
+order. First deployment seeds missing terms and products. After that:
+
+- Changing `regularPrice` in the file and syncing updates that Woo product.
+- Editing its description in Woo and syncing brings the description into the Markdown body.
+- Changing the same field differently in both places reports a conflict through existing sync.
+- Removing a file does not delete its Woo record.
+
+Different stores may assign different internal product, term and media IDs. These source files
+and references remain the same on both stores.
 
 ## Proposed minimum commerce API
 
@@ -211,14 +294,14 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **Product sync contract:** file format, field allowlist, stable identity, baseline storage and
-  Woo conflict detection. Reuse the current sync behavior rather than introduce a second command.
-- **Source identity:** how newly authored files receive persistent UIDs and how portable image
-  references are represented; product and term references must not contain local numeric IDs.
+- **Product sync details:** finalize front-matter field names and the sync field allowlist;
+  implement Woo conflict detection through the existing baseline and merge contract.
+- **Source authoring details:** how new files receive their required persistent UIDs; confirm
+  project-relative image paths and define pulled-image naming and replacement behavior.
 - **Checkout presentation:** choose after the in-app block versus custom-form spike.
 - **V1 product scope:** confirm the proposed physical-only proof and downloadable-product deferral.
-- **Identity and removal:** stable product keys, file renames, missing definitions and
-  reintroduction. Prefer retirement over destructive deletion, but settle this separately from
+- **Removal:** explicit retirement and reintroduction. Prefer retirement over destructive
+  deletion, but settle this separately from
   current sync's no-delete behavior. Preserve order history.
 - **Activation and rollback:** source changes apply through explicit sync; code rollback must
   not silently roll back the catalog. Define partial-sync retry and first-seed failure handling.

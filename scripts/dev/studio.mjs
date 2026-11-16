@@ -4,7 +4,8 @@ import { once } from 'node:events';
 import { access, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
-import { connect, createServer, isIP } from 'node:net';
+import { BlockList, connect, createServer, isIP } from 'node:net';
+import { lookup } from 'node:dns/promises';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -190,13 +191,25 @@ export async function publishPlugins(content, managed) {
 // address of this machine TypedPress listens on (`listen`). Studio 2.2.0 serves a site on localhost
 // only, and names it http://localhost:<port> or a `.local` domain behind its own proxy on ports
 // 80 and 443, so neither is Studio's to set.
+// A host name as DNS spells it: letters, digits and hyphens between dots. Nothing else reaches the
+// PHP file addressPhp writes, or the address WordPress prints into pages.
+const HOSTNAME = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+
+// An IP address that stands for every interface: 0.0.0.0 or ::, however it is spelled (Node's own
+// address matching, which also reads IPv4-mapped IPv6 such as ::ffff:0:0).
+const EVERY = new BlockList();
+EVERY.addAddress('0.0.0.0', 'ipv4');
+EVERY.addAddress('::', 'ipv6');
+const unspecified = (ip) => isIP(ip) !== 0 && EVERY.check(ip, isIP(ip) === 6 ? 'ipv6' : 'ipv4');
+
 export function siteAddress(flags, port) {
   const value = (name) => flags.find((flag) => flag.startsWith(`--${name}=`))?.slice(name.length + 3);
   const host = value('host'), announced = value('url');
   let url = null;
   if (host !== undefined) {
-    // WordPress writes one address into every page, so "every interface" names none.
-    const named = isIP(host) ? !['0.0.0.0', '::'].includes(host) : /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(host);
+    // WordPress writes one address into every page, so "every interface" names none. A bare number
+    // (`0`, `2130706433`) is an IPv4 address to the resolver, so it is refused too.
+    const named = isIP(host) ? !unspecified(host) : HOSTNAME.test(host) && !/^[0-9.]+$/.test(host);
     if (!named) throw new Error('--host takes one address or name of this machine, such as 10.0.0.24 (ip -4 addr lists them).');
     if (flags.includes('--no-watch')) throw new Error('--host needs typedpress dev to keep running, because that process is what listens there. Use --detach instead of --no-watch.');
     url = `http://${isIP(host) === 6 ? `[${host}]` : host}:${port}`;
@@ -206,10 +219,25 @@ export function siteAddress(flags, port) {
     if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
       throw new Error('--url takes an address such as https://box.example.ts.net:8443, with no path: WordPress serves the site at its root.');
     }
+    const name = parsed.hostname.replace(/^\[(.*)\]$/, '$1');
+    if (!(isIP(name) ? !unspecified(name) : HOSTNAME.test(name))) {
+      throw new Error('--url takes an address such as https://box.example.ts.net:8443: a host name of letters, digits, hyphens and dots, or an IP address.');
+    }
     url = parsed.origin;
   }
   return { url, listen: host ?? null };
 }
+
+// --host as the address the relay binds: a name resolved once, here, so what is checked is what is
+// bound, and an address standing for every interface is refused whatever spelled it.
+export async function listenAddress(host) {
+  const { address } = await lookup(host);
+  if (unspecified(address)) throw new Error(`--host ${host} is ${address}, which is every interface of this machine; name one address of it.`);
+  return address;
+}
+
+// A PHP single-quoted string holding `text`.
+const phpString = (text) => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 
 // What WordPress reads before it loads. `home` and `siteurl` are answered before Studio's WP_HOME
 // and WP_SITEURL (http://localhost:<port>, defined ahead of wp-config.php) are consulted, and early
@@ -218,7 +246,7 @@ export function siteAddress(flags, port) {
 // this file instead of a header any client can send.
 export const addressPhp = (url) => `<?php
 // Written by typedpress dev --url / --host, and removed by a start without them.
-$tp_dev_url = '${url}';
+$tp_dev_url = ${phpString(url)};
 $_SERVER['HTTP_HOST'] = substr( $tp_dev_url, strpos( $tp_dev_url, '://' ) + 3 );
 if ( 0 === strpos( $tp_dev_url, 'https://' ) ) {
 	$_SERVER['HTTPS'] = 'on';
@@ -240,10 +268,16 @@ const ADDRESS_FILE = 'tp-dev-address.php';
 const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require ABSPATH . '${ADDRESS_FILE}'; } // typedpress dev --url / --host`;
 
 // wp-config.php with the one line that reads the address file, placed where WordPress starts loading.
+// Only a statement of its own: the previous line ends one (`;`, `}` or a comment) and the line is
+// `require_once ABSPATH . 'wp-settings.php';`, so the line put before it can't become the body of an
+// `if` or `else` above it, or split a statement.
 export function withAddressLine(config) {
   if (config.includes(ADDRESS_FILE)) return config;
-  const settings = /^[ \t]*require(?:_once)?[ (]*ABSPATH *\. *['"]wp-settings\.php['"]/m.exec(config);
-  if (!settings) throw new Error('wp-config.php does not load wp-settings.php in the usual way; --url and --host cannot set the address.');
+  const settings = /^[ \t]*require(?:_once)?[ (]*ABSPATH *\. *['"]wp-settings\.php['"] *\)? *;[ \t]*(\/\/.*|\/\*.*\*\/[ \t]*)?$/m.exec(config);
+  const before = settings ? config.slice(0, settings.index).replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*|\s)+$/, '') : '';
+  if (!settings || !/(;|\}|<\?php)$/.test(before) || /\belse\s*$/.test(before)) {
+    throw new Error("wp-config.php does not load wp-settings.php in a statement of its own (require_once ABSPATH . 'wp-settings.php';); --url and --host cannot set the address.");
+  }
   return `${config.slice(0, settings.index)}${ADDRESS_LINE}\n${config.slice(settings.index)}`;
 }
 
@@ -598,7 +632,7 @@ async function main() {
     // The development identity app stays registered for this machine's own address.
     siteUrl = local;
     await announce(managed.owner.site, address.url);
-    if (address.listen) relay = await forward(address.listen, port, port);
+    if (address.listen) relay = await forward(await listenAddress(address.listen), port, port);
     const mu = join(managed.owner.site, 'wp-content/mu-plugins/typedpress-dev-runtime.php');
     if (!managed.owner.devMu && await exists(mu)) throw new Error('typedpress-dev-runtime.php already exists and is not managed by TypedPress.');
     await writeFile(mu, "<?php\n// Local development only: allow identity callbacks on the site's HTTP origin.\nif (!defined('TP_IDENTITY_DEV_HTTP')) define('TP_IDENTITY_DEV_HTTP', true);\n");

@@ -3,8 +3,9 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownedState, publishPlugins, sourceDigest, watchSources, lock, siteAddress, addressPhp, withAddressLine, forward } from './studio.mjs';
-import { spawn } from 'node:child_process';
+import { ownedState, publishPlugins, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, forward } from './studio.mjs';
+import { execFileSync, spawn } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { EventEmitter, once } from 'node:events';
 import { createServer } from 'node:http';
 
@@ -192,15 +193,41 @@ test('--url and --host name one address for WordPress and one for TypedPress to 
   assert.deepEqual(siteAddress(['--url=https://box.example.ts.net'], 8791), { url: 'https://box.example.ts.net', listen: null });
   // Both: listen on one address, announce another.
   assert.deepEqual(siteAddress(['--host=10.0.0.24', '--url=http://dev-box.lan:8791'], 8791), { url: 'http://dev-box.lan:8791', listen: '10.0.0.24' });
+  assert.deepEqual(siteAddress(['--url=http://[fd7a:115c::57]:8443'], 8791), { url: 'http://[fd7a:115c::57]:8443', listen: null });
   for (const url of ['box.example.ts.net', 'ftp://box.example', 'https://box.example/blog', 'https://box.example/?a=1', 'https://user:secret@box.example', '']) {
     assert.throws(() => siteAddress([`--url=${url}`], 8791), /--url takes an address such as https:\/\/box\.example\.ts\.net:8443/, url);
   }
-  // WordPress writes one address into every page: "all interfaces" names none.
-  for (const host of ['0.0.0.0', '::', '*', '', 'a/b', 'http://10.0.0.24', '10.0.0.24:8791', 'a b']) {
+  // A host that is no DNS name: the URL parser keeps quotes and decodes %27, so these are refused here.
+  for (const url of ["http://a'.print(1).'.test", 'http://a%27b.test', 'http://a\\b.test', 'http://a$b.test', 'http://0.0.0.0:8443', 'http://[::]:8443']) {
+    assert.throws(() => siteAddress([`--url=${url}`], 8791), /--url takes an address/, url);
+  }
+  // WordPress writes one address into every page: "all interfaces" names none, however it is spelled.
+  for (const host of ['0.0.0.0', '::', '0:0:0:0:0:0:0:0', '::ffff:0.0.0.0', '::ffff:0:0', '0::0', '0', '2130706433', '*', '', 'a/b', 'http://10.0.0.24', '10.0.0.24:8791', 'a b', "a'b"]) {
     assert.throws(() => siteAddress([`--host=${host}`], 8791), /--host takes one address or name of this machine/, host);
   }
   // The listener lives in the typedpress dev process, and --no-watch leaves none.
   assert.throws(() => siteAddress(['--no-watch', '--host=10.0.0.24'], 8791), /--host needs typedpress dev to keep running/);
+});
+
+test('--host is bound as the address it resolves to, never every interface', async () => {
+  assert.equal(await listenAddress('127.0.0.1'), '127.0.0.1');
+  assert.match(await listenAddress('localhost'), /^(127\.0\.0\.1|::1)$/);
+  // Checked again after resolving, for whatever spelling siteAddress let through.
+  await assert.rejects(listenAddress('0.0.0.0'), /every interface/);
+});
+
+test('the address file is PHP that only holds the address', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tp-address-'));
+  try {
+    for (const url of ['https://box.example.ts.net:8443', "http://it's.example", 'http://a\\\\b']) {
+      const file = join(dir, 'address.php');
+      writeFileSync(file, `${addressPhp(url)}\necho $GLOBALS['wp_filter']['pre_option_home'][10][0]['function']();\n`);
+      const out = execFileSync('php', [file], { encoding: 'utf8' });
+      assert.equal(out, url, 'the PHP prints the address itself, so nothing in it ran');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('the address reaches WordPress before it loads, from one line in wp-config.php', () => {
@@ -219,6 +246,13 @@ test('the address reaches WordPress before it loads, from one line in wp-config.
   assert.equal(patched.replace(`${lines[at]}\n`, ''), config);
   assert.equal(withAddressLine(patched), patched);
   assert.throws(() => withAddressLine("<?php\ndefine( 'WP_DEBUG', false );\n"), /wp-config\.php does not load wp-settings\.php/);
+  // A require that is the body of an if or else: a line put before it would change what runs, so
+  // nothing is written. A comment between the statements is fine.
+  for (const body of ["if ( $a )\n\trequire_once ABSPATH . 'wp-settings.php';\nelse\n\texit;\n", "if ( $a ) { exit; } else\nrequire_once ABSPATH . 'wp-settings.php';\n", "$x = 1 +\nrequire_once ABSPATH . 'wp-settings.php';\n"]) {
+    assert.throws(() => withAddressLine(`<?php\n${body}`), /in a statement of its own/, body);
+  }
+  const commented = withAddressLine("<?php\ndefine( 'A', 1 ); // one\n/** Sets up WordPress vars and included files. */\nrequire_once( ABSPATH . 'wp-settings.php' );\n");
+  assert.match(commented, /tp-dev-address\.php/);
 });
 
 test('--host passes connections to the loopback listener untouched and lets go of them when it closes', { timeout: 20000 }, async (t) => {

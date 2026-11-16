@@ -18,15 +18,18 @@ const forms = (globalThis[Symbol.for("tp/forms")] ??= { pending: 0, idle: Promis
 async function apply(id, region) {
   // One swap at a time, and none while a form's post is in flight: both hand the router a whole
   // page for this URL, and the later one would undo the other. If a submit's answer rendered while
-  // this one waited, that page is newer than this answer: it is dropped, and the next answer for
-  // the region is applied whatever it is.
+  // this one waited, that page replaced the region, so this answer is dropped and the region is
+  // asked again (returns true): the page may have been rendered before the change this answer
+  // carried, and the subscription has already taken this answer's token.
   for (;;) {
     if (forms.pending > 0) {
       const seen = forms.renders;
       await forms.idle;
       if (forms.renders !== seen) {
-        html.delete(id);
-        return;
+        const now = document.querySelector(`[data-tp-live="${CSS.escape(id)}"]`);
+        if (now) html.set(id, now.innerHTML);
+        else html.delete(id);
+        return true;
       }
       continue;
     }
@@ -58,6 +61,7 @@ async function apply(id, region) {
   })();
   forms.live = run.catch(() => {});
   await run;
+  return false;
 }
 
 function watch(element) {
@@ -88,7 +92,11 @@ function watch(element) {
       parsed.innerHTML = answer.html;
       if (parsed.innerHTML === html.get(id)) return;
       html.set(id, parsed.innerHTML);
-      apply(id, answer.html);
+      apply(id, answer.html).then((dropped) => {
+        // Asked again without a token: the first answer is the region as it is now, swapped in only
+        // if it differs from what the submit's page showed.
+        if (dropped) subscribe(kinds, undefined);
+      }, () => {});
     }, undefined, initial);
   };
   // The server-rendered region is the first answer: delivered now, and its token sent with the first

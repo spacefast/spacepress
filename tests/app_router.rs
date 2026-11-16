@@ -2188,11 +2188,35 @@ fn forms_submit_in_place_in_the_browser() {
         "{seen}"
     );
     assert_eq!(seen["ranOnce"], serde_json::json!({ "posts": 1, "rows": 1 }), "{seen}");
+    // A `<Live>` answer dropped for a submit's page made before its change: the region asks again.
+    assert_eq!(
+        seen["reask"],
+        serde_json::json!({ "write": 201, "shown": true }),
+        "{seen}"
+    );
+    // An answer to a page the router can't swap loads it in full, but not after a navigation.
+    assert_eq!(
+        seen["away"],
+        serde_json::json!({ "full": true, "url": "/other" }),
+        "{seen}"
+    );
+    // A post to anything but TypedPress's form endpoints is the browser's.
+    assert_eq!(
+        seen["elsewhere"],
+        serde_json::json!({ "marker": null, "posts": [], "document": true }),
+        "{seen}"
+    );
     // The router module can't load: the browser posts the form itself, nothing sent before; the
     // address bar loses `?_flash` when the page's module runs.
     assert_eq!(
         seen["fallback"],
         serde_json::json!({ "done": "Subscribed lin@example.test for 2 (weekly: false)", "marker": null, "url": "/?ref=nav" }),
+        "{seen}"
+    );
+    // The fallback stopped by the form's validation leaves the form usable, on the same page.
+    assert_eq!(
+        seen["invalidFallback"],
+        serde_json::json!({ "busy": null, "disabled": [false], "marker": "same document" }),
         "{seen}"
     );
 }

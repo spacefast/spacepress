@@ -61,7 +61,13 @@ const submitUrl = (form, submitter) => {
   } catch {
     return null;
   }
-  return url.origin === window.location.origin ? url : null;
+  if (url.origin !== window.location.origin) return null;
+  // Only TypedPress's own form endpoints: an action (`<form action={name}>`) or `<Comments>`. Their
+  // answer is a 303 to a page of this site. A `formaction` to anywhere else posts as the browser does.
+  const base = new URL(getConfig("tp/router")?.forms || "/__tp/api/v1/", document.baseURI);
+  if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) return null;
+  const rest = url.pathname.slice(base.pathname.length);
+  return /^actions\/[^/]+$/.test(rest) || rest === "comments" ? url : null;
 };
 
 // A URL without the flash marker: the history entry and the router's page cache use it, so the
@@ -84,20 +90,31 @@ if (new URL(window.location.href).searchParams.has(MARKER)) {
 
 // The browser's own submit, when the router can't load: nothing has been sent. The pressed button
 // is enabled for the moment the browser reads it; the submit event this fires is let through.
+// Returns whether the browser is now posting it: false when the form's own validation, or a
+// handler of the submit event, stopped it, so the caller lets go of the pending state.
 const native = new WeakSet();
 const nativeSubmit = (form, submitter) => {
   native.add(form);
   const pressed = submitter?.isConnected && submitter.form === form ? submitter : null;
   const wasDisabled = pressed?.disabled;
   if (pressed) pressed.disabled = false;
+  let sent = false;
+  const sending = (event) => { sent = event.target === form && !event.defaultPrevented; };
   try {
+    // Registered last on window, so it runs after every other handler of this submit event.
+    window.addEventListener("submit", sending);
     form.requestSubmit(pressed);
   } catch {
     native.delete(form);
     HTMLFormElement.prototype.submit.call(form);
+    sent = true;
   } finally {
+    window.removeEventListener("submit", sending);
     if (pressed) pressed.disabled = wasDisabled;
   }
+  // An invalid form fires no submit event, so the marker is still there.
+  native.delete(form);
+  return sent;
 };
 
 // A failure after the post may have reached the server: said in the form, in a live region, and
@@ -176,14 +193,19 @@ store("tp/router", {
         try {
           ({ actions } = yield import("@wordpress/interactivity-router"));
         } catch {
-          // Nothing was sent: the browser posts the form, which stays pending while the page loads.
-          keepPending = true;
-          nativeSubmit(form, submitter);
+          // Nothing was sent: the browser posts the form, which stays pending while the page loads,
+          // unless the form's validation stopped the post.
+          keepPending = nativeSubmit(form, submitter);
           return;
         }
+        // The answer is still this page's to show: the visitor is where they submitted from, the
+        // form is on the page, and no later submit's answer is on the page already.
+        const current = () => pagePath(window.location.href) === from && form.isConnected && ticket >= forms.last;
         let html = null;
         let response = null;
         try {
+          // Only TypedPress's form endpoints get here (submitUrl), and they answer with a 303 to a
+          // page of this site (Forms::redirect), so following it never leaves the site.
           response = yield fetch(url.href, { method: "POST", body, credentials: "same-origin", redirect: "follow", headers: { Accept: "text/html" } });
           const type = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
           if (response.ok && type === "text/html" && new URL(response.url).origin === window.location.origin) html = yield response.text();
@@ -192,24 +214,23 @@ store("tp/router", {
           html = null;
         }
         if (html === null) {
-          showError(form);
+          if (form.isConnected) showError(form);
           return;
         }
         if (!html.includes("data-wp-router-region")) {
-          // It came back to a page the router can't swap into: that page loads in full.
-          if (response.redirected) {
+          // It came back to a page the router can't swap into: that page loads in full, unless the
+          // visitor has gone somewhere else meanwhile.
+          if (response.redirected && current()) {
             keepPending = true;
             window.location.assign(withoutMarker(response.url));
-          } else {
+          } else if (form.isConnected) {
             showError(form);
           }
           return;
         }
-        // A `<Live>` swap in progress finishes first; then this answer renders only if the visitor
-        // is still where they submitted from, the form is still on the page, and no later submit's
-        // answer is on the page already.
+        // A `<Live>` swap in progress finishes first; then this answer renders only if it is still current.
         yield forms.live;
-        if (pagePath(window.location.href) !== from || !form.isConnected || ticket < forms.last) return;
+        if (!current()) return;
         forms.last = ticket;
         forms.renders++;
         const href = withoutMarker(response.url);

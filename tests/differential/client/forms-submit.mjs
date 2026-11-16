@@ -173,6 +173,44 @@ try {
   };
   await page.close();
 
+  // An answer that comes back to a page the router can't swap into (here wp-login.php, named as the
+  // form's return address) loads that page in full; but not after the visitor went elsewhere.
+  {
+    const { page } = await open(`${url}/?ref=nav`);
+    await page.$eval("form.vote [name=_tp_return]", (i) => { i.value = "/wp-login.php"; });
+    await Promise.all([page.waitForURL(/wp-login\.php/, { timeout: 15000 }), page.click(".vote .maybe")]);
+    const full = path(page.url());
+    await page.goto(`${url}/?ref=nav`, { waitUntil: "networkidle" });
+    await page.$eval("form.vote [name=_tp_return]", (i) => { i.value = "/wp-login.php"; });
+    const release = await hold(page, "**/__tp/api/v1/actions/vote");
+    await page.click(".vote .maybe");
+    await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
+    await page.click("a.other");
+    await page.waitForSelector(".other-page", { timeout: 15000 });
+    await release();
+    await page.waitForTimeout(1500);
+    out.away = { full: full.startsWith("/wp-login.php"), url: path(page.url()) };
+    await page.close();
+  }
+
+  // A post to anything but TypedPress's form endpoints (here a `formaction` to the home page) is the
+  // browser's: it navigates, and the script sends nothing itself.
+  {
+    const { page, posts, pages } = await open(`${url}/?ref=nav`);
+    await page.evaluate(() => {
+      window.tpMarker = "same document";
+      const b = document.createElement("button");
+      b.className = "elsewhere";
+      b.setAttribute("formaction", "/?posted=1");
+      b.textContent = "Elsewhere";
+      document.querySelector("form.vote").append(b);
+    });
+    pages.length = 0;
+    await Promise.all([page.waitForNavigation({ timeout: 15000 }), page.click("form.vote .elsewhere")]);
+    out.elsewhere = { marker: await page.evaluate(() => window.tpMarker ?? null), posts: [...posts], document: pages.includes("POST /?posted=1") };
+    await page.close();
+  }
+
   // `<Live>` and a form on one page: the region's update arrives while the post is in flight, and
   // waits for it; the page the post comes back to has both.
   {
@@ -221,6 +259,32 @@ try {
     await page.close();
   }
 
+  // A `<Live>` answer dropped because a submit's page rendered meanwhile, where that page was made
+  // before the change the answer carried: the region asks again and shows the change. The submit is
+  // the shared state client/router.js keeps (one in flight, then one answer rendered that leaves the
+  // region as it was), so the order is exact: page, then write, then the region's answer.
+  {
+    const { page } = await open(`${url}/live`);
+    await page.evaluate(() => {
+      const f = globalThis[Symbol.for("tp/forms")];
+      f.pending = 1;
+      f.idle = new Promise((resolve) => { window.tpIdle = resolve; });
+    });
+    const changed = page.waitForResponse(async (r) => r.url().endsWith("/__tp/api/v1/_live") && (await r.json().catch(() => ({}))).data?.results?.some((x) => x.changed), { timeout: 20000 });
+    const write = await fetch(`${url}/__tp/api/v1/entries`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Later" }) });
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await changed;
+    await page.evaluate(() => {
+      const f = globalThis[Symbol.for("tp/forms")];
+      f.renders++;
+      f.pending = 0;
+      window.tpIdle();
+    });
+    const shown = await page.waitForFunction(() => [...document.querySelectorAll(".entry")].some((li) => li.textContent === "Later"), null, { timeout: 10000 }).then(() => true, () => false);
+    out.reask = { write: write.status, shown };
+    await page.close();
+  }
+
   // The router module can't load: nothing was sent, so the browser posts the form itself, and the
   // page it comes back to shows the result with `?_flash` taken out of the address bar.
   {
@@ -237,6 +301,26 @@ try {
       marker: await page.evaluate(() => window.tpMarker ?? null),
       url: path(page.url()),
     };
+    await page.close();
+  }
+
+  // The same, but the form became invalid while the router module was loading: the browser's post
+  // is stopped by its validation, so the form is not left busy.
+  {
+    const page = await browser.newPage();
+    let release;
+    const held = new Promise((r) => { release = r; });
+    await page.route("**/interactivity-router/**", async (route) => { await held; await route.abort("failed"); });
+    await page.goto(`${url}/?ref=nav`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.querySelector("form.subscribe")?.hasAttribute("data-wp-on--submit"));
+    await page.evaluate(() => { window.tpMarker = "same document"; });
+    await page.fill("form.subscribe [name=email]", "kim@example.test");
+    await page.click("form.subscribe button");
+    await page.waitForFunction(() => document.querySelector("form.subscribe")?.getAttribute("aria-busy") === "true");
+    await page.fill("form.subscribe [name=email]", "not an address");
+    release();
+    await page.waitForTimeout(1500);
+    out.invalidFallback = { ...(await busy(page, "form.subscribe")), marker: await page.evaluate(() => window.tpMarker ?? null) };
     await page.close();
   }
 } catch (e) {

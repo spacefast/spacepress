@@ -111,7 +111,10 @@ render `data-wp-interactive="tp/router" data-wp-on--submit="actions.submit"`,
 and the router module is enqueued on any page with one, not only on pages with a
 `<Link>`. `actions.submit` sits next to `navigate` and `prefetch` in
 runtime/TypedPress/Render/client/router.js. It takes a plain submit: a form-encoded
-post, in this tab, to this site, from inside the router region. It sends the
+post, in this tab, to one of TypedPress's form endpoints (`/__tp/api/v1/actions/<name>` or
+`/__tp/api/v1/comments`, from `wp_interactivity_config('tp/router').forms`), from inside the
+router region. Those answer with a 303 to a page of this site, so the redirect `fetch` follows
+never leaves the site; a `formaction` to any other address posts as the browser does. It sends the
 same body with `fetch` (`credentials: "same-origin"`; `_tp_return`,
 `_wpnonce` and the pressed button's name and value exactly as the browser sends
 them) and lets `fetch` follow the 303. The HTML of the page it comes back to
@@ -162,7 +165,8 @@ and a body that can't be read. The form is enabled again and a message
 appears in an `aria-live` alert inside it (`.tp-form-error`, translatable,
 passed through `wp_interactivity_config('tp/router')`). The browser posts
 the form itself only when the router module fails to load, because nothing has
-been sent at that point; the form stays busy while that page loads. The script
+been sent at that point; the form stays busy while that page loads, unless the
+form's own validation stops that post, which leaves it usable. The script
 also leaves the submit to the browser for:
 
 - another encoding (`enctype` or `formenctype`), another target or method;
@@ -170,8 +174,14 @@ also leaves the submit to the browser for:
 - a page core marks as not client-navigable.
 
 An answer that came back to a page without a router region is loaded with a
-full navigation to its URL, without the marker. That is a second request for the
-page, so its flash is gone by then.
+full navigation to its URL, without the marker, unless the visitor has gone to
+another page meanwhile. That is a second request for the page, so its flash is
+gone by then.
+
+A `<Live>` answer that waited for a submit is dropped when the submit's page
+rendered meanwhile, and the region then subscribes again without a token: that
+page may have been rendered before the change the dropped answer carried, and the
+subscription had already taken the answer's token.
 
 Errors (422, a refused origin, an expired nonce) already come back as a 303 to
 the page with the error in the flash, so they take the same path as success.

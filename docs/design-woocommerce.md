@@ -19,22 +19,18 @@ a second commerce database or write directly to Woo tables.
 Static definitions and database storage are compatible: source files can describe products,
 and Woo stores the resulting records. The decision is which surface owns subsequent edits.
 
-Two behaviors are under consideration:
+**Decision:** products use the existing seed and explicit `typedpress sync` model. Deployment
+creates missing products and preserves existing products; sync reconciles subsequent file and
+Woo edits, reporting conflicting changes. Products remain editable through authorized APIs
+and Woo administration. A deployment-only ownership mode is not required for this integration.
 
-- **Runtime-managed:** source files seed products; authorized application or admin operations
-  can edit them. An explicit sync reconciles file and database changes.
-- **Deployment-managed:** source files own the authored catalog fields. Activating a new
-  deployment applies those fields; ordinary application and admin operations can only read them.
+Products follow collection seed/sync behavior without becoming ordinary TypedPress collections.
+Collection writes use WordPress post APIs; product writes must use Woo CRUD. Public syntax and
+the exact product-file format remain open.
 
-The current proposal is to make deployment ownership a shared concept for collections and
-products. Products would follow the same ownership rules without becoming ordinary
-TypedPress collections. Collection writes use WordPress post APIs; product writes must use
-Woo CRUD. Public syntax, defaults and whether both modes ship initially remain open.
-
-Deployment ownership must distinguish authored fields from operational state. Product names,
-descriptions, prices and download declarations can be source-owned. Woo still needs to change
-stock, sales counters and order-related state during normal operation. An initial stock value
-must not reset stock on every deployment.
+Sync covers authored fields such as names, descriptions, prices and download declarations.
+Stock quantities, sales counters, orders and download grants are operational state, not synced
+content. An optional initial stock value is create-only and must never reset stock on sync.
 
 ## Existing seed and sync behavior
 
@@ -78,29 +74,90 @@ Implementation references:
 - [Per-record seed policy](../runtime/TypedPress/Sync/Routes.php): `seedRecord`.
 - [Current sync contract](config-api.md#seeding-and-typedpress-sync).
 
-## Proposed deployment ownership contract
+## Proposed minimum commerce API
 
-Reuse the existing seed/sync identity and serialization mechanisms where they fit. Add an
-explicit ownership policy rather than interpreting all seeded content as read-only.
+Product CRUD is the catalog foundation, but does not by itself provide a buying flow. The
+initial API also needs shopper cart operations and hosted checkout, plus authorized order reads
+for application dashboards. These are proposed boundaries; names below are illustrative.
 
-For a deployment-managed resource:
+| Resource | Initial operations | Data contract |
+| --- | --- | --- |
+| Products | List, get, create, update, trash; seed and sync | Stable source identity and Woo ID, SKU, slug, name, descriptions, status, visibility, simple product type, virtual/downloadable flags, prices, images, stock configuration and availability, shipping dimensions, protected download declarations |
+| Categories and tags | List/get and resolve or create terms used by product sync | Native term ID, stable source identity, name, slug; categories also have a parent. Full taxonomy management UI/API can follow |
+| Cart | Read current cart, add item, change quantity, remove item, update destination, choose shipping rate | Session-scoped lines, current prices, availability, discounts, shipping choices, taxes, fees and Woo-calculated totals |
+| Checkout | Obtain a native checkout handoff for the current cart | Hosted URL and session continuity; Woo collects payment and creates the order |
+| Orders | Authorized list/get, including line and refund details | Status, currency, timestamps, historical line items, totals, billing/shipping snapshots, optional customer reference, payment method label and refund summaries |
+| Store information | Read safe configuration and supported capabilities | Currency precision, display conventions, measurement units, supported product types and whether checkout is available; no gateway secrets |
 
-1. The generated TypeScript surface exposes reads and refuses ordinary catalog/content writes.
-2. Runtime enforcement also rejects those writes through APIs and admin editing. Type checking
-   alone is insufficient; ordinary application handlers must not bypass the policy.
-3. The trusted deployment path applies authored fields through the resource's own writer.
-4. Admin screens identify the source as the editing surface.
-5. Stock and other operational fields remain writable by their owning runtime.
+Use simple products initially. Virtual and downloadable are independent Woo flags, not mutually
+exclusive product types. Reject unsupported variable, grouped, external or extension-defined
+product writes explicitly. Read projections should identify unsupported types without pretending
+they are simple products. Variation authoring and sync are deferred.
 
-Sharing this behavior does not require one generic storage adapter framework. First identify
-which parts of the existing sync implementation can serve both writers without assuming that
-Woo products are normal posts or TypedPress tables.
+### Nested data rather than extra CRUD resources
+
+Order lines, addresses, shipping lines, tax lines, fee lines, applied coupon lines and refund
+summaries belong in order reads. They are purchase-time snapshots: a later catalog edit must
+not rewrite an old order's title, price or totals. Refund detail can be a nested read for large
+orders. Do not expose unrestricted order updates, payment completion or refund creation in the
+initial API. Native Woo administration remains the operational surface for those actions.
+
+A customer directory is not needed for an order dashboard. Include a nullable customer reference
+and authorized billing/shipping information on orders; guest orders need no registered customer.
+Account management, customer search and buyer order history can follow with an explicit identity
+mapping. Do not infer ownership from an email address supplied by the caller.
+
+Images use the existing media pipeline. Private downloadable files need a protected upload and
+reference boundary with Woo-owned grants; they must not become ordinary public media URLs.
+The initial buyer receipt and download experience can remain in native Woo checkout and email.
+Coupon application may remain in hosted checkout; coupon CRUD and custom promotion engines are
+deferred. Shipping and tax settings remain in Woo administration; carts expose calculated results.
+
+### Shared value types and query contracts
+
+- **Money:** exact decimal strings with currency and precision at the containing resource;
+  never floating-point arithmetic. Normalize Store API minor-unit strings at the adapter boundary.
+  Preserve Woo's tax-inclusive/exclusive display semantics and calculated totals.
+- **Identity:** stable source keys for sync, native Woo IDs for runtime relations. Renames must
+  not create duplicates; source identity is distinct from an editable SKU or slug.
+- **Lists:** bounded pagination and explicit supported filters. Product filters include status,
+  search, category, tag and availability; order filters include date range, status and customer.
+  Use deterministic ordering. Do not imply arbitrary SQL joins or the complete `db` query language.
+- **States:** preserve Woo order statuses, including extension-defined values. An order status
+  is not a generic payment or shipment status; expose native facts without inventing equivalences.
+- **Metadata:** no wholesale Woo metadata dump. Add explicitly typed extension fields when needed.
+
+### Access boundaries
+
+Public product projections contain only storefront-visible data. Merchant product reads may also
+contain drafts, private assets and inventory details. Order lists and customer addresses require
+merchant authorization; a public page cannot obtain them by calling a server-side helper.
+Shopper carts belong to their session, and receipts require Woo's ownership/order authorization.
+Keep credentials and handoff-signing secrets on the server.
+
+Expose these operations through TypedPress's existing action, permission and client mechanisms
+where possible. Native Woo CRUD should run in-process on the server; a loopback REST request
+and a second set of merchant API credentials are unnecessary for local operations.
+
+### Dashboard scope
+
+Order lists/details, refund reads and product inventory reads are enough for an initial operational
+dashboard. Sales charts require a later bounded reporting API with defined timezone, currency,
+status and refund treatment; clients must not sum one page of orders and present it as store revenue.
+Expose native order notes as a subsequent authorized read if the first support interface needs
+them. Refund, cancellation and fulfillment writes should be explicit actions with lifecycle
+semantics when added, rather than generic order CRUD.
+
+References: [Woo Store API](https://developer.woocommerce.com/docs/apis/store-api/),
+[merchant REST resource contracts](https://woocommerce.github.io/woocommerce-rest-api-docs/),
+and [Woo CRUD](https://developer.woocommerce.com/docs/best-practices/data-management/crud-objects).
+The resource shapes are reference material, not a commitment to wrap every upstream endpoint.
 
 ## TypedPress and Spacefast integration
 
 ### Configuration and compiler
 
-Represent commerce enablement, supported operations and ownership in TypedPress. Exact API
+Represent commerce enablement, supported operations and product sync sources in TypedPress. Exact API
 names and the product-file format are not decided. Emit the required Woo capabilities through
 the existing hosted manifest rather than introduce a separate application deployment system.
 
@@ -110,7 +167,7 @@ Spacefast provisioning together; keep the tested plugin set controlled by the ho
 
 ### PHP runtime and typed APIs
 
-Provide typed product reads and, for runtime-managed catalogs, authorized mutations backed by
+Provide typed product reads and authorized mutations backed by
 Woo CRUD. Keep merchant operations separate from public shopper reads, carts and checkout.
 Do not adopt Woo tables through `existingTable` or mirror products and orders into `table()`.
 
@@ -141,20 +198,19 @@ explicit policy before implementation.
 
 ## Decisions still needed
 
-- **Ownership API and default:** how collections and products select runtime or deployment
-  ownership; whether the first release supports both.
-- **Sync semantics:** whether deployment-managed content uses a one-way portion of sync;
-  how explicit `typedpress sync` behaves for it without writing runtime drift into source.
+- **Product sync contract:** file format, field allowlist, stable identity, baseline storage and
+  Woo conflict detection. Reuse the current sync behavior rather than introduce a second command.
 - **Identity and removal:** stable product keys, file renames, missing definitions and
   reintroduction. Prefer retirement over destructive deletion, but settle this separately from
   current sync's no-delete behavior. Preserve order history and purchased-file access.
-- **Activation and rollback:** when source changes reach the shared database, what a partial
-  apply leaves behind, and whether promoting an older build reapplies older content. Existing
-  ready-build initialization does not re-seed, so rollback cannot rely on it implicitly.
+- **Activation and rollback:** source changes apply through explicit sync; code rollback must
+  not silently roll back the catalog. Define partial-sync retry and first-seed failure handling.
 - **Previews:** previews must not alter the live catalog or enable test purchases against live
   operational data. Choose read-only previews or an isolated staging store.
-- **Permissions and administration:** who can manage runtime-owned products, how source-owned
-  fields appear, and which Woo admin surfaces the initial integration supports.
+- **Permissions and administration:** who can manage products and read orders, how TypedPress
+  identities map to Woo capabilities, and which native admin surfaces the integration supports.
+- **API scope:** confirm the proposed resource table, especially taxonomy support, inventory
+  mutations, order detail depth and the first dashboard's reporting needs.
 - **Private assets and emails:** authoring format, upload ownership, retention, replacements
   and supported native email overrides.
 
@@ -165,9 +221,9 @@ creation and repeat deployment, live product reads, quantity changes, shipping, 
 native checkout, a real dummy-gateway Woo order and an authorized download. Anonymous direct
 access to the purchased file must fail.
 
-After choosing ownership semantics, prove source updates, rejected runtime edits where
-applicable, preserved stock and orders, partial-apply retry, removal behavior and preview
-isolation. Then qualify the stock gateway with a payment and refund. Compatibility claims
+Prove file-to-Woo updates, Woo-to-file updates, conflicting edits, preserved stock and orders,
+partial-sync retry, removal behavior and preview isolation. Verify authorized order reads and
+refusal of unauthorized reads. Then qualify the stock gateway with a payment and refund. Compatibility claims
 must come from those flows, not merely successful plugin installation.
 
 Variations, subscriptions, bookings, customer-account flows, a new commerce dashboard and custom

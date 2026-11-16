@@ -389,7 +389,7 @@ source at all:
   (`zero-compile/src/capsule.ts`) excludes every `.ts`/`.tsx` file and
   `server/`, `shared/` and `pages/` sources from the upload.
 - `GET /v1/spaces/{id}/source/archive` serves a hosted or connected
-  repository. Of the account's three runtime Spaces only `batuhan-tasks` has
+  repository. Of the account's three runtime Spaces only one has
   one, and it is a Functions app (`functions/api/v1/*.js`), not a capsule.
   Versions published from a local checkout record only the commit
   (`source.kind: "git"`, `commit`, `repository`), which needs access to that

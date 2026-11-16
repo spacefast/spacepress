@@ -15,6 +15,9 @@ export const targets = Object.freeze({
   'linux-arm64': 'aarch64-unknown-linux-gnu',
   'linux-x64': 'x86_64-unknown-linux-gnu',
 });
+/** Every archive the release workflow builds: the downloadable targets plus musl and Windows, for TP_BIN. */
+export const releaseTargets = Object.freeze([...Object.values(targets), 'aarch64-unknown-linux-musl', 'x86_64-unknown-linux-musl', 'x86_64-pc-windows-msvc']);
+export const releasePage = (version) => `https://github.com/spacefast/zero/releases/tag/v${version}`;
 
 export function releaseTarget({ platform = process.platform, arch = process.arch } = {}) {
   const target = targets[`${platform}-${arch}`];
@@ -29,7 +32,7 @@ export function releaseTarget({ platform = process.platform, arch = process.arch
 
 export function assetName({ version = metadata.version, target }) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid TypedPress release version: ${version}`);
-  if (![...Object.values(targets), "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"].includes(target)) throw new Error(`Unsupported TypedPress release target: ${target}`);
+  if (!releaseTargets.includes(target)) throw new Error(`Unsupported TypedPress release target: ${target}`);
   return `typedpress-v${version}-${target}.tar.gz`;
 }
 
@@ -66,7 +69,10 @@ async function download(url, destination, maxBytes) {
         if (!next || redirects === 5) throw new Error('Invalid or excessive release redirects.');
         location = new URL(next, location);
       }
-      if (!response.ok) throw new Error(`Release asset unavailable (HTTP ${response.status}): ${url}`);
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new Error(`Release asset unavailable (HTTP ${response.status}): ${url}`);
+      }
       for await (const chunk of response.body) {
         length += chunk.byteLength;
         if (length > maxBytes) throw new Error('Release asset exceeds the download size limit.');
@@ -148,7 +154,11 @@ export async function compiler({ env = process.env } = {}) {
     if (!verified) throw new Error('Compiler cache disappeared during installation; retry the install.');
     return verified;
   } catch (error) {
-    throw new Error(`Cannot install TypedPress ${version} for ${target}: ${error.message}\nNo Rust build or alternate executable was attempted. Check that this release has been published, or supply TP_BIN.`);
+    const unpublished = /HTTP (?:401|403|404)\b|ENOENT/.test(error.message);
+    const next = unpublished
+      ? `The compiler for TypedPress ${version} is not downloadable from ${env.TP_RELEASE_BASE_URL ? 'TP_RELEASE_BASE_URL' : releasePage(version)}. Either the release is not published yet or its assets are not public. Retry once it is, or set TP_BIN=/absolute/path/to/typedpress (build one with \`cargo build --release\` in a checkout of https://github.com/spacefast/zero).`
+      : 'No Rust build or alternate executable was attempted. Retry, or set TP_BIN=/absolute/path/to/typedpress to use a compiler you provide.';
+    throw new Error(`Cannot install TypedPress ${version} for ${target}: ${error.message}\n${next}`);
   } finally {
     await rm(temporary, { recursive: true, force: true });
     if (stage) await rm(stage, { recursive: true, force: true });

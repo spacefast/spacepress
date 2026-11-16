@@ -25,7 +25,7 @@ TP_BIN=target/debug/typedpress node --test scripts/census-08/census.test.mjs scr
 ```
 
 `<scratch-dir>` holds customer data: one `<version_id>.json` per Space (or under `out/`), the
-usage files `meta.tsv`, `traffic-30d.tsv` and `parent-teams.tsv` (columns are listed at the top of
+usage files `meta.tsv`, `traffic-30d.tsv`, `parent-teams.tsv` and `internal-teams.tsv` (columns are listed at the top of
 `usage.mjs`), and optionally
 `sources/<version_id>/`, the original source, which is used only when every recorded SHA-256
 matches. Keep it outside any repository and delete it when you are done. `--per-space` writes version

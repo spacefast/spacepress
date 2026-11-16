@@ -200,13 +200,14 @@ test("cascades and generated editor values cannot answer questions about hidden 
       const r = await http("DELETE", `${core}/tp_oracle_parents/${parent.id}?force=true`, { as: "editor" });
       assert.deepEqual([r.status, r.json.code], [409, "reference_violation"], "a hidden grandchild under a visible cascade refuses");
     }
-    // A visible child's referential update still runs the viewer's generated-value checks, taken or free.
-    await problem("DELETE", `/hook_parents/${hookParent.id}`, { as: "editor" }, { status: 403, code: "forbidden", pointer: "/code" });
+    // A visible child's referential update is the viewer's own update, with its generated-value checks:
+    // refused alike whether the generated value is taken or free, with the one delete refusal.
+    await problem("DELETE", `/hook_parents/${hookParent.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
     const hooked = await http("DELETE", `${core}/tp_hook_parents/${hookParent.id}?force=true`, { as: "editor" });
-    assert.deepEqual([hooked.status, hooked.json.code], [403, "forbidden"]);
-    await problem("DELETE", `/null_parents/${nullParent.id}`, { as: "editor" }, { status: 403, code: "forbidden", pointer: "/code" });
+    assert.deepEqual([hooked.status, hooked.json.code], [409, "reference_violation"]);
+    await problem("DELETE", `/null_parents/${nullParent.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
     const nulled = await http("DELETE", `${core}/tp_null_parents/${nullParent.id}?force=true`, { as: "editor" });
-    assert.deepEqual([nulled.status, nulled.json.code], [403, "forbidden"]);
+    assert.deepEqual([nulled.status, nulled.json.code], [409, "reference_violation"]);
     await problem("POST", "/oracle_default", { as: "editor", body: { title: "Probe" } }, { status: 403, code: "forbidden", pointer: "/code" });
     const create = await http("POST", `${core}/tp_oracle_default`, { as: "editor", body: { title: "Probe" } });
     assert.deepEqual([create.status, create.json.code], [403, "forbidden"]);

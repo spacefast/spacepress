@@ -2,7 +2,7 @@
 /**
  * Post type registration overrides and default view configuration.
  *
- * @package FirstAdmin
+ * @package TypedPressAdmin
  */
 
 /**
@@ -12,7 +12,7 @@
  * @param string $post_type Post type name.
  * @return array Modified post type arguments.
  */
-function first_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
+function tp_admin_register_default_view_arg_for_post_type( $args, $post_type ) {
 	$default_view = array(
 		'type'       => 'table',
 		'perPage'    => 20,
@@ -66,7 +66,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 					),
 					array(
 						'id'       => 'status',
-						'label'    => __( 'Status & Visibility', 'first-admin' ),
+						'label'    => __( 'Status & Visibility', 'typedpress-admin' ),
 						'children' => array( 'status', 'password' ),
 					),
 					'author',
@@ -76,7 +76,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 					'comment_status',
 					array(
 						'id'     => 'template',
-						'label'  => __( 'Template', 'first-admin' ),
+						'label'  => __( 'Template', 'typedpress-admin' ),
 						'layout' => array(
 							'type'          => 'regular',
 							'labelPosition' => 'side',
@@ -117,7 +117,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 					),
 					array(
 						'id'       => 'status',
-						'label'    => __( 'Status & Visibility', 'first-admin' ),
+						'label'    => __( 'Status & Visibility', 'typedpress-admin' ),
 						'children' => array( 'status', 'password' ),
 					),
 					'author',
@@ -127,7 +127,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 					'comment_status',
 					array(
 						'id'     => 'template',
-						'label'  => __( 'Template', 'first-admin' ),
+						'label'  => __( 'Template', 'typedpress-admin' ),
 						'layout' => array(
 							'type'          => 'regular',
 							'labelPosition' => 'side',
@@ -223,19 +223,19 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 			$tabs = array(
 				array(
 					'media_type' => 'image',
-					'label'      => __( 'Images', 'first-admin' ),
+					'label'      => __( 'Images', 'typedpress-admin' ),
 				),
 				array(
 					'media_type' => 'video',
-					'label'      => __( 'Videos', 'first-admin' ),
+					'label'      => __( 'Videos', 'typedpress-admin' ),
 				),
 				array(
 					'media_type' => 'audio',
-					'label'      => __( 'Audio', 'first-admin' ),
+					'label'      => __( 'Audio', 'typedpress-admin' ),
 				),
 				array(
 					'media_type' => 'application',
-					'label'      => __( 'Files', 'first-admin' ),
+					'label'      => __( 'Files', 'typedpress-admin' ),
 				),
 			);
 
@@ -244,7 +244,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 					array(
 						'slug'  => 'all',
 						/* translators: Label for showing all posts regardless of status */
-						'label' => __( 'All', 'first-admin' ),
+						'label' => __( 'All', 'typedpress-admin' ),
 						'view'  => $default_view,
 					),
 				),
@@ -292,7 +292,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 				array(
 					'slug'  => 'all',
 					/* translators: Label for showing all posts regardless of status */
-					'label' => __( 'All', 'first-admin' ),
+					'label' => __( 'All', 'typedpress-admin' ),
 					'view'  => $default_view,
 				),
 			);
@@ -301,7 +301,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 			// packages/fields/src/fields/status/status-elements.tsx
 			//
 			// DataForm doesn't support custom statuses yet. This is something to solve
-			// across First Admin and Gutenberg, so let's draw the same limits here.
+			// across TypedPress Admin and Gutenberg, so let's draw the same limits here.
 			$allowed_status_slugs = array(
 				'draft',
 				'future',
@@ -376,7 +376,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 				),
 				array(
 					'id'       => 'status',
-					'label'    => __( 'Status & Visibility', 'first-admin' ),
+					'label'    => __( 'Status & Visibility', 'typedpress-admin' ),
 					'children' => array( 'status', 'password' ),
 				),
 				'author',
@@ -386,7 +386,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 				'comment_status',
 				array(
 					'id'     => 'template',
-					'label'  => __( 'Template', 'first-admin' ),
+					'label'  => __( 'Template', 'typedpress-admin' ),
 					'layout' => array(
 						'type'          => 'regular',
 						'labelPosition' => 'side',
@@ -406,7 +406,7 @@ function first_admin_register_default_view_arg_for_post_type( $args, $post_type 
 
 	return $args;
 }
-add_filter( 'register_post_type_args', 'first_admin_register_default_view_arg_for_post_type', 10, 2 );
+add_filter( 'register_post_type_args', 'tp_admin_register_default_view_arg_for_post_type', 10, 2 );
 
 /**
  * Enable show_ui for wp_template so that the templates route is available..
@@ -414,22 +414,22 @@ add_filter( 'register_post_type_args', 'first_admin_register_default_view_arg_fo
  * @param array $args Post type arguments.
  * @return array Modified post type arguments.
  */
-function first_admin_enable_template_show_ui( $args ) {
+function tp_admin_enable_template_show_ui( $args ) {
 	$args['show_ui'] = true;
 	return $args;
 }
-add_filter( 'register_wp_template_post_type_args', 'first_admin_enable_template_show_ui', 10, 1 );
+add_filter( 'register_wp_template_post_type_args', 'tp_admin_enable_template_show_ui', 10, 1 );
 
 
 /**
  * Add explicit support for the duplicate-post DataViews action for post types.
  * The action is not guaranteed to work with all post types, so it should be opt-in.
  */
-function first_admin_add_duplicate_post_support() {
+function tp_admin_add_duplicate_post_support() {
 	add_post_type_support( 'post', 'duplicate-post' );
 	add_post_type_support( 'page', 'duplicate-post' );
 }
-add_action( 'init', 'first_admin_add_duplicate_post_support' );
+add_action( 'init', 'tp_admin_add_duplicate_post_support' );
 
 // WordPress 7.2 registers the editor's entity actions on the server. The attachment editor offers
 // neither duplicating nor trashing an attachment; on 7.1 its route unregisters them in the browser.

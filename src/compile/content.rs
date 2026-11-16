@@ -1,4 +1,4 @@
-//! `"first/content"`: navigation for a hierarchical kind's pages (docs/decisions/2026-11-13-docs-kind.md).
+//! `"typedpress/content"`: navigation for a hierarchical kind's pages (docs/decisions/2026-11-13-docs-kind.md).
 //!
 //! - `nav(kind, current?)`: the kind's published items as a tree, siblings by `order` then title,
 //!   each with its URL and whether it is, or holds, the current item;
@@ -6,15 +6,15 @@
 //! - `headings(item)`: the `##`–`###` headings of an item's content, with the anchor ids the page
 //!   renders them with.
 //!
-//! The three run in PHP (`First\Content\Nav`), and read as the visitor like every query: a draft
+//! The three run in PHP (`TypedPress\Content\Nav`), and read as the visitor like every query: a draft
 //! or an item the visitor may not read is in no tree, pager or link.
 //!
 //! - `apiReference(source?)`: an OpenAPI document (the app's own, or a JSON file in `public/`) as
-//!   tags, operations and flat field lists a page maps over (`First\Content\ApiReference`).
+//!   tags, operations and flat field lists a page maps over (`TypedPress\Content\ApiReference`).
 use super::*;
 
 pub const CONTENT_EXPORTS: &[&str] = &["nav", "pager", "headings", "apiReference"];
-/// Type-only exports of `"first/content"`: importable, erased.
+/// Type-only exports of `"typedpress/content"`: importable, erased.
 pub const CONTENT_TYPES: &[&str] = &[
     "NavItem",
     "PagerLink",
@@ -31,7 +31,7 @@ pub const CONTENT_TYPES: &[&str] = &[
 pub const NAV_DEPTH: usize = 4;
 
 impl Compiler<'_, '_> {
-    /// The `"first/content"` export an identifier names, if it does.
+    /// The `"typedpress/content"` export an identifier names, if it does.
     pub(super) fn content_builtin(&mut self, e: &Expr) -> Result<Option<&'static str>> {
         let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
         Ok(match self.resolve(n, e.span)? {
@@ -48,7 +48,7 @@ impl Compiler<'_, '_> {
             return err_help(
                 k.span,
                 format!("`{name}()` needs a kind, not {}", v.ty.describe()),
-                "import the kind from \"first:db\" and pass it: `nav(docs)`",
+                "import the kind from \"typedpress:db\" and pass it: `nav(docs)`",
             );
         };
         let c = &self.schema.collections[&table];
@@ -74,7 +74,7 @@ impl Compiler<'_, '_> {
             return Ok(v.php);
         }
         if assignable(&v.ty, &row) || assignable(&v.ty, &row.clone().nullable()) {
-            return Ok(format!("\\First\\Content\\Nav::id({})", v.php));
+            return Ok(format!("\\TypedPress\\Content\\Nav::id({})", v.php));
         }
         err_help(
             e.span,
@@ -105,7 +105,7 @@ impl Compiler<'_, '_> {
                 };
                 Ok(Out::atom(
                     format!(
-                        "\\First\\Content\\Nav::tree({}, {current}, {NAV_DEPTH})",
+                        "\\TypedPress\\Content\\Nav::tree({}, {current}, {NAV_DEPTH})",
                         php_str(&table)
                     ),
                     Ty::Promise(Box::new(Ty::Array(Box::new(nav_item(NAV_DEPTH))))),
@@ -128,7 +128,7 @@ impl Compiler<'_, '_> {
                 out.insert("prev".to_string(), (pager_link().nullable(), false));
                 out.insert("next".to_string(), (pager_link().nullable(), false));
                 Ok(Out::atom(
-                    format!("\\First\\Content\\Nav::pager({}, {current})", php_str(&table)),
+                    format!("\\TypedPress\\Content\\Nav::pager({}, {current})", php_str(&table)),
                     Ty::Promise(Box::new(Ty::Obj(out))),
                 ))
             }
@@ -159,7 +159,7 @@ impl Compiler<'_, '_> {
                     );
                 };
                 Ok(Out::atom(
-                    format!("\\First\\Content\\Nav::headings({}, {})", v.php, php_str(&column)),
+                    format!("\\TypedPress\\Content\\Nav::headings({}, {})", v.php, php_str(&column)),
                     Ty::Array(Box::new(heading())),
                 ))
             }
@@ -185,11 +185,11 @@ impl Compiler<'_, '_> {
                     }
                 };
                 Ok(Out::atom(
-                    format!("\\First\\Content\\ApiReference::build({source})"),
+                    format!("\\TypedPress\\Content\\ApiReference::build({source})"),
                     api_reference(),
                 ))
             }
-            other => unreachable!("first/content has no export {other}"),
+            other => unreachable!("typedpress/content has no export {other}"),
         }
     }
 }
@@ -198,7 +198,7 @@ fn field(fields: &mut IndexMap<String, (Ty, bool)>, name: &str, ty: Ty) {
     fields.insert(name.to_string(), (ty, false));
 }
 
-/// A type `"first/content"` exports, by name: `NavItem` is the tree's top level.
+/// A type `"typedpress/content"` exports, by name: `NavItem` is the tree's top level.
 pub(super) fn content_type(name: &str) -> Option<Ty> {
     match name {
         "NavItem" => Some(nav_item(NAV_DEPTH)),

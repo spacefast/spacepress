@@ -9,7 +9,7 @@ export default function FrontEndPreview( { url }: { url: string } ) {
 	return (
 		<iframe
 			src={ previewUrl.toString() }
-			title={ __( 'Site Preview', 'first-admin' ) }
+			title={ __( 'Site Preview', 'typedpress-admin' ) }
 			style={ {
 				display: 'block',
 				border: 'none',

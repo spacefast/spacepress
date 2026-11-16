@@ -1,8 +1,8 @@
-// The `emdash` module for EmDash's official Astro templates, over a First site's API
-// (`/__first/api/v1`). firstEmdash() points `emdash` here, so a template's
-// `import { getEmDashCollection } from "emdash"` reads First kinds with no code in the template.
+// The `emdash` module for EmDash's official Astro templates, over a TypedPress site's API
+// (`/__tp/api/v1`). tpEmdash() points `emdash` here, so a template's
+// `import { getEmDashCollection } from "emdash"` reads TypedPress kinds with no code in the template.
 //
-// The First app is expected to declare what the templates read: `posts` and `pages` collections
+// The TypedPress app is expected to declare what the templates read: `posts` and `pages` collections
 // (title, body, excerpt, cover, seoTitle, seoDescription), `category`, `tag` and `credits`
 // taxonomies on posts, and a `widgets` global. Missing pieces read as empty.
 import { parseHTML } from "linkedom";
@@ -10,23 +10,23 @@ import { parseHTML } from "linkedom";
 import { connect } from "../index.js";
 import { requestContext } from "./context.js";
 
-const API = "/__first/api/v1";
+const API = "/__tp/api/v1";
 const env = (name) => {
   const value = globalThis.process?.env?.[name];
   return typeof value === "string" && value !== "" ? value : undefined;
 };
 const noCache = false;
 
-/** The First site's URL: FIRST_URL (FIRST_BACKEND_URL is read too, as the earlier bridge named it). */
+/** The TypedPress site's URL: TP_URL (TP_BACKEND_URL is read too, as the earlier bridge named it). */
 export function backendUrl() {
-  const url = env("FIRST_URL") ?? env("FIRST_BACKEND_URL");
-  if (!url) throw new Error("@first/astro/emdash: set FIRST_URL to the First site's URL");
+  const url = env("TP_URL") ?? env("TP_BACKEND_URL");
+  if (!url) throw new Error("@typedpress/astro/emdash: set TP_URL to the TypedPress site's URL");
   return url.replace(/\/+$/, "");
 }
 
 let connection;
 // Always as an anonymous visitor: the pages this renders are public, whatever credentials the
-// server's environment holds for builds (FIRST_APP_PASSWORD would show drafts to everyone).
+// server's environment holds for builds (TP_APP_PASSWORD would show drafts to everyone).
 const site = () => (connection ??= connect({ site: backendUrl(), anonymous: true }));
 const get = (path) => site().request("GET", `${API}${path}`).then((r) => r.data);
 const kinds = async () => (await site().describe()).kinds ?? {};
@@ -172,7 +172,7 @@ export async function getEmDashEntry(collection, slug) {
   return { entry: entry(collection, row, html.get(row.id), field), cacheHint: noCache };
 }
 
-/** A draft through a signed preview link: First's staged-version preview, for the item the token names. */
+/** A draft through a signed preview link: TypedPress's staged-version preview, for the item the token names. */
 async function previewed(collection, slug, token) {
   const [, payload] = /^([^.]+)\./.exec(token) ?? [];
   let claim;
@@ -300,7 +300,7 @@ export function decodeSlug(slug) {
     return undefined;
   }
 }
-export const getI18nConfig = () => ({ defaultLocale: env("FIRST_LOCALE") ?? "en" });
+export const getI18nConfig = () => ({ defaultLocale: env("TP_LOCALE") ?? "en" });
 export function getSeoMeta(e, options) {
   const title = e.data.seoTitle || e.data.title;
   const description = e.data.seoDescription || e.data.excerpt;
@@ -312,5 +312,5 @@ export function createPublicPageContext(page) {
   return page;
 }
 
-/** `emdash/runtime`'s loader, for an unchanged `src/live.config.ts`: a live collection over every First kind. */
-export { firstLiveLoader as emdashLoader } from "../index.js";
+/** `emdash/runtime`'s loader, for an unchanged `src/live.config.ts`: a live collection over every TypedPress kind. */
+export { tpLiveLoader as emdashLoader } from "../index.js";

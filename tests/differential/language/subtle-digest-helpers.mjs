@@ -1,5 +1,5 @@
 // Untyped JavaScript for tests/differential/language/subtle-digest.ts: crypto.subtle.digest through
-// First's checked JavaScript dispatch, as files-sdk 3.1.2 hashes upload bodies (sha256Hex).
+// TypedPress's checked JavaScript dispatch, as files-sdk 3.1.2 hashes upload bodies (sha256Hex).
 
 const hex = (buffer) => [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
 export async function digests() {

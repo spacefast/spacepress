@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection;
 
 /**
  * The location where an element occurs within a file.

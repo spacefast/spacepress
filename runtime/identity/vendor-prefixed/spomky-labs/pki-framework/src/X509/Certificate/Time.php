@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
 
 use DateTimeImmutable;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\GeneralizedTime;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTCTime;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TimeType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Feature\DateTimeHelper;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\GeneralizedTime;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTCTime;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TimeType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Feature\DateTimeHelper;
 use UnexpectedValueException;
 
 /**

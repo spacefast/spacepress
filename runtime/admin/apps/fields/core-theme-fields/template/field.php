@@ -2,12 +2,12 @@
 /**
  * Template field definition for core theme fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Template', 'first-admin' ),
+	'label'              => __( 'Template', 'typedpress-admin' ),
 	'enableGlobalSearch' => true,
 	'enableSorting'      => false,
 	'filterBy'           => false,

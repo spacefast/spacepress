@@ -1,7 +1,7 @@
 import { Button } from '@wordpress/ui';
-// eslint-disable-next-line @first-admin/design-system/use-new-components
-import { Dialog } from '@first-admin/design-system';
-import type { ActionModal } from '@first-admin/dataviews';
+// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
+import { Dialog } from '@typedpress-admin/design-system';
+import type { ActionModal } from '@typedpress-admin/dataviews';
 import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import styles from './style.module.css';
@@ -50,15 +50,15 @@ type ConfirmRenderModalProps< Item > = ConfirmRenderModalConfigProps< Item > &
 const getDefaultConfirmLabel = ( intent?: ConfirmModalIntent ) => {
 	switch ( intent ) {
 		case 'move-to-trash':
-			return __( 'Move to Trash', 'first-admin' );
+			return __( 'Move to Trash', 'typedpress-admin' );
 		case 'delete-permanently':
-			return __( 'Delete permanently', 'first-admin' );
+			return __( 'Delete permanently', 'typedpress-admin' );
 		case 'duplicate':
-			return __( 'Duplicate', 'first-admin' );
+			return __( 'Duplicate', 'typedpress-admin' );
 		case 'restore':
-			return __( 'Restore', 'first-admin' );
+			return __( 'Restore', 'typedpress-admin' );
 		default:
-			return __( 'Confirm', 'first-admin' );
+			return __( 'Confirm', 'typedpress-admin' );
 	}
 };
 
@@ -78,7 +78,7 @@ export function ConfirmRenderModal< Item >( {
 		getDefaultConfirmLabel( intent );
 	const cancelLabel =
 		( 'cancelLabel' in props && props.cancelLabel ) ||
-		__( 'Cancel', 'first-admin' );
+		__( 'Cancel', 'typedpress-admin' );
 	const isDestructive =
 		( 'isSubmitDestructive' in props && props.isSubmitDestructive ) ||
 		intent === 'delete-permanently';
@@ -107,7 +107,7 @@ export function ConfirmRenderModal< Item >( {
 					}
 					variant="solid"
 					loading={ isLoading }
-					loadingAnnouncement={ __( 'Processing', 'first-admin' ) }
+					loadingAnnouncement={ __( 'Processing', 'typedpress-admin' ) }
 					onClick={ async () => {
 						await onSubmit( items, setIsLoading );
 						if ( onActionPerformed ) {

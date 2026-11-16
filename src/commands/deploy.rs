@@ -9,31 +9,37 @@ pub(crate) fn write_metadata(stage: &std::path::Path, built: &crate::pipeline::B
         "snapshot": built.snapshot,
         "destructiveChanges": built.warnings,
     });
-    crate::emit::write(&stage.join("first-deployment.json"), serde_json::to_vec_pretty(&value)?)?;
+    crate::emit::write(
+        &stage.join("typedpress-deployment.json"),
+        serde_json::to_vec_pretty(&value)?,
+    )?;
     Ok(())
 }
 
-/// `first deploy <mode> …`: the offline adapter (runtime/First/Deployment/Local.php) on its own PHP.
+/// `typedpress deploy <mode> …`: the offline adapter (runtime/TypedPress/Deployment/Local.php) on its own PHP.
 pub(crate) fn adapter(args: &[String]) -> ExitCode {
     let result = (|| -> std::io::Result<ExitCode> {
         let directory = tempfile::tempdir()?;
         for (name, bytes) in [
             ("local.php", include_bytes!("../../scripts/deploy/local.php").as_slice()),
-            ("Json.php", include_bytes!("../../runtime/First/Json.php").as_slice()),
-            ("Env.php", include_bytes!("../../runtime/First/Env.php").as_slice()),
+            (
+                "Json.php",
+                include_bytes!("../../runtime/TypedPress/Json.php").as_slice(),
+            ),
+            ("Env.php", include_bytes!("../../runtime/TypedPress/Env.php").as_slice()),
             (
                 "Artifact.php",
-                include_bytes!("../../runtime/First/Deployment/Artifact.php").as_slice(),
+                include_bytes!("../../runtime/TypedPress/Deployment/Artifact.php").as_slice(),
             ),
             (
                 "Local.php",
-                include_bytes!("../../runtime/First/Deployment/Local.php").as_slice(),
+                include_bytes!("../../runtime/TypedPress/Deployment/Local.php").as_slice(),
             ),
         ] {
             let mut file = std::fs::File::create(directory.path().join(name))?;
             file.write_all(bytes)?;
         }
-        let status = Command::new(std::env::var_os("FIRST_DEPLOY_PHP").unwrap_or_else(|| "php".into()))
+        let status = Command::new(std::env::var_os("TP_DEPLOY_PHP").unwrap_or_else(|| "php".into()))
             .arg(directory.path().join("local.php"))
             .args(args)
             .status()?;

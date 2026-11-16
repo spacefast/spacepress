@@ -1,9 +1,9 @@
 // WordPress lane of the blog scenario (design §9.1): the shared function in tests/e2e/blog-scenario.ts
-// runs, driven by the generated typed client over /__first/api/v1 with application passwords.
+// runs, driven by the generated typed client over /__tp/api/v1 with application passwords.
 // Promotion is WordPress's own: `future` post + its cron event, run through WP-CLI.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { createClient } from "./app/first/_generated/client/index.ts";
+import { createClient } from "./app/tp/_generated/client/index.ts";
 import { blogScenario, type ScenarioRole } from "../e2e/blog-scenario.ts";
 import { api, auth, harness, ok, run, sql, wp, first } from "./env.ts";
 
@@ -15,7 +15,7 @@ before(() => {
   }
 });
 
-test("blog scenario over /__first/api/v1", async (t) => {
+test("blog scenario over /__tp/api/v1", async (t) => {
   await blogScenario(
     {
       client: (role: ScenarioRole) =>
@@ -24,7 +24,7 @@ test("blog scenario over /__first/api/v1", async (t) => {
         // The clock can't move, so pull each due post's date into the past, let WP cron publish it
         // (`publish_future_post` only publishes once post_date_gmt has passed), then put the date back.
         const due = at.slice(0, 19).replace("T", " ");
-        const ids = sql(`SELECT ID FROM wp_posts WHERE post_type = 'first_posts' AND post_status = 'future' AND post_date_gmt <= '${due}'`).map((r) => Number(r.ID));
+        const ids = sql(`SELECT ID FROM wp_posts WHERE post_type = 'tp_posts' AND post_status = 'future' AND post_date_gmt <= '${due}'`).map((r) => Number(r.ID));
         for (const id of ids) {
           sql(`UPDATE wp_posts SET post_date_gmt = '2000-01-01 00:00:00', post_date = '2000-01-01 00:00:00' WHERE ID = ${id}`);
           wp("cron", "event", "schedule", "publish_future_post", "now", `--0=${id}`);
@@ -42,11 +42,11 @@ test("blog scenario over /__first/api/v1", async (t) => {
 
 // §6.3: WP cron's publish_future_post is promotion, not an edit: no hooks (the test app's posts hooks
 // comment on "Audit" posts), no generated values, no revision. Native posts keep core's behaviour.
-test("WP cron promotion runs no First hooks, fills nothing and writes no revision", async () => {
+test("WP cron promotion runs no TypedPress hooks, fills nothing and writes no revision", async () => {
   const at = new Date(Date.now() + 86_400_000).toISOString().replace(/\.\d{3}Z$/, ".000Z");
   const post = await ok("POST", "/posts", { as: "editor", body: { title: `Audit promoted ${run}`, status: "scheduled", publishedAt: at } });
   const native = Number(wp("post", "create", "--post_type=post", "--post_title=Native promoted", "--post_status=future", `--post_date_gmt=${at.slice(0, 19).replace("T", " ")}`, "--porcelain"));
-  sql(`UPDATE wp_postmeta SET meta_value = '2001-01-01 00:00:00' WHERE post_id = ${post.id} AND meta_key = 'first_updatedAt'`);
+  sql(`UPDATE wp_postmeta SET meta_value = '2001-01-01 00:00:00' WHERE post_id = ${post.id} AND meta_key = 'tp_updatedAt'`);
   wp("cache", "flush");
   const trace = async () => ({
     row: await ok("GET", `/posts/${post.id}?with=comments`, { as: "editor" }).then((r) => ({ updatedAt: r.updatedAt, comments: r.comments.map((c: any) => c.name) })),
@@ -59,7 +59,7 @@ test("WP cron promotion runs no First hooks, fills nothing and writes no revisio
     sql(`UPDATE wp_posts SET post_date_gmt = '2000-01-01 00:00:00', post_date = '2000-01-01 00:00:00' WHERE ID = ${id}`);
     wp("cron", "event", "schedule", "publish_future_post", "now", `--0=${id}`);
   }
-  const noticeLog = () => wp("eval", "$f = WP_CONTENT_DIR . '/first-test-realtime.jsonl'; echo is_file($f) ? file_get_contents($f) : '';");
+  const noticeLog = () => wp("eval", "$f = WP_CONTENT_DIR . '/typedpress-test-realtime.jsonl'; echo is_file($f) ? file_get_contents($f) : '';");
   const noticesBefore = noticeLog().split("\n").filter(Boolean).length;
   wp("cron", "event", "run", "--due-now");
   wp("cache", "flush");
@@ -73,9 +73,9 @@ test("WP cron promotion runs no First hooks, fills nothing and writes no revisio
   wp("post", "delete", String(native), "--force");
 });
 
-// §6.1 on WordPress: First keeps its explicit "published" (core would make a future date `future`), and
+// §6.1 on WordPress: TypedPress keeps its explicit "published" (core would make a future date `future`), and
 // only for its own write: a post a save hook writes meanwhile is scheduled by core as usual.
-test("First's explicit status applies to its own write, not to posts written from its save hooks", () => {
+test("TypedPress's explicit status applies to its own write, not to posts written from its save hooks", () => {
   const [firstStatus, nested] = JSON.parse(wp("eval", `
     $at = gmdate('Y-m-d H:i:s', time() + 7200);
     $nested = null;
@@ -85,10 +85,10 @@ test("First's explicit status applies to its own write, not to posts written fro
         $nested = wp_insert_post(['post_type' => 'post', 'post_title' => 'Native nested', 'post_status' => 'publish', 'post_date_gmt' => $at, 'post_date' => get_date_from_gmt($at)]);
       }
     };
-    add_action('save_post_first_posts', $hook);
+    add_action('save_post_tp_posts', $hook);
     wp_set_current_user(get_user_by('login', 'editor')->ID);
-    [, , $out] = \\First\\Wp\\Plugin::instance()->app()->handle('POST', '/posts', [], wp_json_encode(['title' => 'Explicit status', 'status' => 'published', 'publishedAt' => str_replace(' ', 'T', $at) . '.000Z']));
-    remove_action('save_post_first_posts', $hook);
+    [, , $out] = \\TypedPress\\Wp\\Plugin::instance()->app()->handle('POST', '/posts', [], wp_json_encode(['title' => 'Explicit status', 'status' => 'published', 'publishedAt' => str_replace(' ', 'T', $at) . '.000Z']));
+    remove_action('save_post_tp_posts', $hook);
     $status = json_decode($out, true)['data']['status'];
     $native = get_post_status($nested);
     wp_delete_post($nested, true);
@@ -98,7 +98,7 @@ test("First's explicit status applies to its own write, not to posts written fro
 });
 
 // WordPress sends its CORS headers from `rest_pre_serve_request` (`rest_send_cors_headers`, priority 10).
-// First serves its own body from the same filter and must run after it: a body echoed first leaves a
+// TypedPress serves its own body from the same filter and must run after it: a body echoed first leaves a
 // cross-origin caller without `Access-Control-Allow-Origin`, `Allow-Credentials` and `Vary: Origin`,
 // so the browser discards the response.
 test("a cross-origin First response carries WordPress's CORS headers", async () => {
@@ -111,7 +111,7 @@ test("a cross-origin First response carries WordPress's CORS headers", async () 
     const res = await fetch(`${api}${path}`, { ...init, method, headers: { ...(init as RequestInit).headers, origin } });
     const body = await res.json();
     assert.ok(res.status < 300, `${method} ${path} → ${res.status} ${JSON.stringify(body)}`);
-    assert.ok("data" in body, `${method} ${path}: First's own body is served`);
+    assert.ok("data" in body, `${method} ${path}: TypedPress's own body is served`);
     assert.equal(res.headers.get("access-control-allow-origin"), origin, `${method} ${path}`);
     assert.equal(res.headers.get("access-control-allow-credentials"), "true", `${method} ${path}`);
     assert.match(res.headers.get("vary") ?? "", /Origin/, `${method} ${path}`);

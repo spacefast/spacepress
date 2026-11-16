@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/user-profile",
+	"name": "@typedpress-admin/user-profile",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -11,13 +11,13 @@
 		}
 	},
 	"dependencies": {
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/boot": "workspace:*",
-		"@first-admin/core-data-next": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/views": "workspace:*",
-		"@first-admin/telemetry": "workspace:*",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/admin-toolkit": "workspace:*",
+		"@typedpress-admin/boot": "workspace:*",
+		"@typedpress-admin/core-data-next": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
+		"@typedpress-admin/views": "workspace:*",
+		"@typedpress-admin/telemetry": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

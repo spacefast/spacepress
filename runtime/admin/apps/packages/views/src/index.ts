@@ -1,11 +1,11 @@
-// View state for First Admin's lists: @wordpress/views, with First's own view-config hook (First
+// View state for TypedPress Admin's lists: @wordpress/views, with TypedPress's own view-config hook (TypedPress
 // Admin's fields: tabs, quick and add forms, labels, actions) and its DataViews layout wrapper.
 import { useMemo } from '@wordpress/element';
 import {
 	useView as useUpstreamView,
 	loadView as loadUpstreamView,
 } from '@wordpress/views';
-import type { View } from '@first-admin/dataviews';
+import type { View } from '@typedpress-admin/dataviews';
 
 type Config = Parameters< typeof useUpstreamView >[ 0 ];
 type Overrides = Config[ 'activeViewOverrides' ];

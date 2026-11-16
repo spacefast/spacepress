@@ -9,19 +9,19 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo;
+namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo;
 
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\ArrayShapeType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\BackedEnumType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\EnumType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\GenericType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\IntersectionType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\NullableType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\TemplateType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\ArrayShapeType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\BackedEnumType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\EnumType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\GenericType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\IntersectionType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\NullableType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\TemplateType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
 
 /**
  * Helper trait to create any type easily.
@@ -173,7 +173,7 @@ trait TypeFactoryTrait
     public static function iterable(?Type $value = null, ?Type $key = null, bool $asList = false): CollectionType
     {
         if ($asList) {
-            first_identity_vendor_trigger_deprecation('symfony/type-info', '7.3', 'The third argument of "%s()" is deprecated. Use the "%s::list()" method to create a list instead.', __METHOD__, self::class);
+            typedpress_identity_vendor_trigger_deprecation('symfony/type-info', '7.3', 'The third argument of "%s()" is deprecated. Use the "%s::list()" method to create a list instead.', __METHOD__, self::class);
         }
 
         return self::collection(self::builtin(TypeIdentifier::ITERABLE), $value, $key, $asList);

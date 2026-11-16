@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "plugins": {
+    "ping": {
+      "package": "typedpress-plugin-ping",
+      "version": "2.0.0",
+      "integrity": "sha256-e18f022ecf3b1129d0e61f9ddab3aff9466290137a981ffbd442f43b9185921e",
+      "grant": {
+        "read": [],
+        "write": [],
+        "delete": [],
+        "hooks": [],
+        "actions": [
+          "ping_ping"
+        ],
+        "http": [
+          "api.example.com"
+        ],
+        "env": [],
+        "mail": [],
+        "jobs": [],
+        "timers": [],
+        "abilities": [],
+        "wpHooks": [],
+        "php": []
+      }
+    }
+  }
+}

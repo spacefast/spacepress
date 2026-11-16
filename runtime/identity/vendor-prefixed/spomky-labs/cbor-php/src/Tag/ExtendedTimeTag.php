@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag;
+namespace TypedPress\Identity\Vendor\CBOR\Tag;
 
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\CBOR\Tag;
+use TypedPress\Identity\Vendor\CBOR\CBORObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
+use TypedPress\Identity\Vendor\CBOR\MapObject;
+use TypedPress\Identity\Vendor\CBOR\Normalizable;
+use TypedPress\Identity\Vendor\CBOR\Tag;
 use InvalidArgumentException;
 
 /**

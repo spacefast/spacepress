@@ -1,7 +1,7 @@
 import { decodeEntities } from '@wordpress/html-entities';
 import type { Term } from '@wordpress/core-data';
-import { TextareaControl } from '@first-admin/design-system';
-import type { Field } from '@first-admin/dataviews';
+import { TextareaControl } from '@typedpress-admin/design-system';
+import type { Field } from '@typedpress-admin/dataviews';
 
 const decodeDescription = ( description?: string | null ) =>
 	description ? decodeEntities( description ) : '';

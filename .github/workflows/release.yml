@@ -55,12 +55,12 @@ jobs:
         shell: bash
         run: |
           exe=""; if [ "${{ runner.os }}" = Windows ]; then exe=.exe; fi
-          node scripts/release/archive.mjs "target/${{ matrix.target }}/release/first$exe" "${{ matrix.target }}" release "$GITHUB_SHA"
+          node scripts/release/archive.mjs "target/${{ matrix.target }}/release/typedpress$exe" "${{ matrix.target }}" release "$GITHUB_SHA"
       - name: Smoke compiled executable
         shell: bash
         run: |
           exe=""; if [ "${{ runner.os }}" = Windows ]; then exe=.exe; fi
-          "target/${{ matrix.target }}/release/first$exe" check examples/pantry
+          "target/${{ matrix.target }}/release/typedpress$exe" check examples/pantry
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unsigned-${{ matrix.target }}
@@ -77,7 +77,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: compiler-wasm
-          path: target/wasm32-unknown-unknown/wasm/first.wasm
+          path: target/wasm32-unknown-unknown/wasm/typedpress.wasm
           if-no-files-found: error
 
   npm:
@@ -92,8 +92,8 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
         run: node scripts/release/version.mjs "$REQUESTED_VERSION"
-      - run: node --test packages/cli/test/*.test.mjs packages/create-first/test/*.test.mjs scripts/release/archive.test.mjs
-      - run: mkdir -p release && npm pack ./packages/cli --pack-destination release && npm pack ./packages/create-first --pack-destination release
+      - run: node --test packages/cli/test/*.test.mjs packages/create-typedpress/test/*.test.mjs scripts/release/archive.test.mjs
+      - run: mkdir -p release && npm pack ./packages/cli --pack-destination release && npm pack ./packages/create-typedpress --pack-destination release
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: npm-tarballs
@@ -117,9 +117,9 @@ jobs:
         run: |
           version=$(node scripts/release/version.mjs)
           mkdir compiler
-          tar -xzf "release/first-v${version}-x86_64-unknown-linux-gnu.tar.gz" -C compiler first
-          FIRST_SETUP_BINARY="$PWD/compiler/first" \
-            FIRST_SETUP_EVIDENCE="/tmp/first-framework-setup-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+          tar -xzf "release/typedpress-v${version}-x86_64-unknown-linux-gnu.tar.gz" -C compiler typedpress
+          TP_SETUP_BINARY="$PWD/compiler/typedpress" \
+            TP_SETUP_EVIDENCE="/tmp/typedpress-framework-setup-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
             node scripts/release/acceptance.mjs
       - name: Retain setup evidence
         if: always()
@@ -127,10 +127,10 @@ jobs:
         with:
           name: setup-acceptance
           path: |
-            /tmp/first-framework-setup-ci-*/result.json
-            /tmp/first-framework-setup-ci-*/cleanup.txt
-            /tmp/first-framework-setup-ci-*/dev-output.txt
-            /tmp/first-framework-setup-ci-*/commands.log
+            /tmp/typedpress-framework-setup-ci-*/result.json
+            /tmp/typedpress-framework-setup-ci-*/cleanup.txt
+            /tmp/typedpress-framework-setup-ci-*/dev-output.txt
+            /tmp/typedpress-framework-setup-ci-*/commands.log
           if-no-files-found: warn
 
   assemble:
@@ -158,12 +158,12 @@ jobs:
           name: compiler-wasm
           path: release
       - run: node scripts/release/compiler-assets.mjs release "$GITHUB_SHA"
-      - run: node scripts/release/homebrew.mjs release release/homebrew/Formula/first.rb
+      - run: node scripts/release/homebrew.mjs release release/homebrew/Formula/typedpress.rb
       - name: Include exact compiler/runtime source and dependency provenance
-        run: git archive --format=tar.gz --output=release/first-source.tar.gz "$GITHUB_SHA"
+        run: git archive --format=tar.gz --output=release/typedpress-source.tar.gz "$GITHUB_SHA"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: first-release-unsigned
+          name: typedpress-release-unsigned
           path: release/
           if-no-files-found: error
           retention-days: 14
@@ -175,4 +175,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes "Unsigned compiler assets. See compiler-assets.json for source and checksums."
-          gh release upload "$GITHUB_REF_NAME" release/first-v*.tar.gz release/first-v*.tar.gz.sha256 release/first.wasm release/compiler-assets.json
+          gh release upload "$GITHUB_REF_NAME" release/typedpress-v*.tar.gz release/typedpress-v*.tar.gz.sha256 release/typedpress.wasm release/compiler-assets.json

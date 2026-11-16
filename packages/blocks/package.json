@@ -1,5 +1,5 @@
 {
-  "name": "@spacefast/first-blocks",
+  "name": "@typedpress/blocks",
   "version": "0.1.0",
   "description": "Write Gutenberg content and whole WordPress block themes in TSX.",
   "license": "MIT",
@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "bin": {
-    "first-blocks": "./bin/first-blocks.mjs"
+    "typedpress-blocks": "./bin/typedpress-blocks.mjs"
   },
   "files": [
     "bin",

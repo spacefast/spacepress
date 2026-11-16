@@ -32,7 +32,7 @@ function SingleDashboardWidgetAdminActions( {
 			direction="row"
 			gap="sm"
 			justify="flex-end"
-			className="first-admin-dashboard-widget-actions"
+			className="typedpress-admin-dashboard-widget-actions"
 		>
 			<IconButton
 				icon={ trash }
@@ -40,7 +40,7 @@ function SingleDashboardWidgetAdminActions( {
 				variant="minimal"
 				tone="neutral"
 				onClick={ removeHandler }
-				label={ __( 'Remove', 'first-admin' ) }
+				label={ __( 'Remove', 'typedpress-admin' ) }
 			/>
 		</Stack>
 	);
@@ -131,15 +131,15 @@ export default function SingleDashboardWidget( {
 	const hasSettings = ! isDisabled && !! widgetType.attributes?.length;
 
 	const widgetClasses = clsx(
-		'first-admin-dashboard-widget',
-		hasScrollableContent && 'first-admin-dashboard-widget--fade-overlay',
-		rowHeight !== 'auto' && 'first-admin-dashboard-widget--fixed-height'
+		'typedpress-admin-dashboard-widget',
+		hasScrollableContent && 'typedpress-admin-dashboard-widget--fade-overlay',
+		rowHeight !== 'auto' && 'typedpress-admin-dashboard-widget--fixed-height'
 	);
 
 	const contentClasses = clsx(
-		'first-admin-dashboard-widget__content',
+		'typedpress-admin-dashboard-widget__content',
 		! shouldApplyPadding &&
-			'first-admin-dashboard-widget__content--no-padding'
+			'typedpress-admin-dashboard-widget__content--no-padding'
 	);
 
 	return (

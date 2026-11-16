@@ -1,6 +1,6 @@
-// Lets another machine open the site `first dev` is serving.
+// Lets another machine open the site `typedpress dev` is serving.
 //
-// `first dev` listens on this machine's loopback only, and WordPress writes its own address
+// `typedpress dev` listens on this machine's loopback only, and WordPress writes its own address
 // (http://localhost:8960) into every page. This forwards requests to it and rewrites that address
 // in text answers to the one the reader used.
 //

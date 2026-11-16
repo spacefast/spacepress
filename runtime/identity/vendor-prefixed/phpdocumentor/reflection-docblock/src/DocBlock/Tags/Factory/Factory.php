@@ -20,11 +20,11 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
 
 use InvalidArgumentException;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
 
 interface Factory
 {

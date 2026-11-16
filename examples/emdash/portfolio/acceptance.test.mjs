@@ -12,7 +12,7 @@ test('official portfolio runs on native Studio: uploads, native editing, public 
   const { api, request, wp, base, evidence, site } = studio;
   console.log(`Portfolio Studio evidence: ${evidence}`);
   t.after(async () => {
-    if (process.env.FIRST_PORTFOLIO_KEEP === '1') console.log(`Retained exact disposable project: ${studio.project}\nSite: ${base}\nCleanup: ${evidence}/studio.json`);
+    if (process.env.TP_PORTFOLIO_KEEP === '1') console.log(`Retained exact disposable project: ${studio.project}\nSite: ${base}\nCleanup: ${evidence}/studio.json`);
     else await studio.cleanup();
   });
   const schema = await api('');
@@ -88,13 +88,13 @@ test('official portfolio runs on native Studio: uploads, native editing, public 
   assert.notEqual(hotel, undefined);
   const replacementBytes = Buffer.from(await wp('eval', '$i=imagecreatetruecolor(12,8); imagefill($i,0,0,imagecolorallocate($i,200,120,40)); ob_start(); imagepng($i); echo base64_encode(ob_get_clean());'), 'base64');
   const replacement = await studio.uploadBytes({ bytes: replacementBytes, filename: 'portfolio-native-replacement.png', alt: 'Replacement selected through native SCF' });
-  // Native core REST + SCF update, not a First API write: stored values and public effects must agree.
-  await request(`/wp-json/wp/v2/first_projects/${hotel.id}`, { method: 'POST', body: {
+  // Native core REST + SCF update, not a TypedPress API write: stored values and public effects must agree.
+  await request(`/wp-json/wp/v2/tp_projects/${hotel.id}`, { method: 'POST', body: {
     title: 'Hotel Wilde & Friends',
     content: '<!-- wp:paragraph --><p>Saved through the native WordPress editor.</p><!-- /wp:paragraph -->',
-    acf: { first_cover: replacement.id, first_client: 'Native studio client', first_summary: 'A native edit & a public result.', first_tags: ['digital'], first_featured: false,
-      first_gallery: [{ image: replacement.id, caption: 'Native gallery caption' }],
-      first_seo: { title: 'Native case study', description: 'Search description from SCF', noindex: true },
+    acf: { tp_cover: replacement.id, tp_client: 'Native studio client', tp_summary: 'A native edit & a public result.', tp_tags: ['digital'], tp_featured: false,
+      tp_gallery: [{ image: replacement.id, caption: 'Native gallery caption' }],
+      tp_seo: { title: 'Native case study', description: 'Search description from SCF', noindex: true },
     },
   } });
   const stored = await api(`/projects/${hotel.id}`);
@@ -119,11 +119,11 @@ test('official portfolio runs on native Studio: uploads, native editing, public 
   assert.doesNotMatch((await get('/work?tag=spatial')).text, /data-project="hotel-wilde"/);
   assert.match((await get('/work?tag=spatial')).text, /No Spatial projects yet/);
   assert.match((await get('/rss.xml')).text, /<title>Hotel Wilde &amp; Friends<\/title>/);
-  const revisions = await request(`/wp-json/wp/v2/first_projects/${hotel.id}/revisions`);
+  const revisions = await request(`/wp-json/wp/v2/tp_projects/${hotel.id}/revisions`);
   assert.ok(revisions.length >= 1, 'Native project edits must retain WordPress revisions');
-  // Native SCF flexible-content save changes the home heading, keeps a single h1, and persists in First.
+  // Native SCF flexible-content save changes the home heading, keeps a single h1, and persists in TypedPress.
   const homepage = seeded.pages.find((p) => p.slug === 'home');
-  await request(`/wp-json/wp/v2/first_pages/${homepage.id}`, { method: 'POST', body: { acf: { first_layout: [
+  await request(`/wp-json/wp/v2/tp_pages/${homepage.id}`, { method: 'POST', body: { acf: { tp_layout: [
     { acf_fc_layout: 'statement', text: 'Edited in the native layout editor.', label: 'Studio acceptance' },
     { acf_fc_layout: 'selectedWork', heading: 'Native selected work' },
     { acf_fc_layout: 'clients', heading: 'Native clients', clients: [{ name: 'Native studio client' }] },
@@ -134,8 +134,8 @@ test('official portfolio runs on native Studio: uploads, native editing, public 
   assert.match(changedHome.text, /Native selected work/);
   assert.match(changedHome.text, /Native clients/);
   assert.equal((changedHome.text.match(/<h1\b/g) ?? []).length, 1);
-  // The native SCF options API updates the same globals read by First and the public shell.
-  const settingsWP = JSON.parse(await wp('eval', 'echo wp_json_encode(\\First\\Wp\\Plugin::instance()->schema->globals()["settings"]["wp"]);'));
+  // The native SCF options API updates the same globals read by TypedPress and the public shell.
+  const settingsWP = JSON.parse(await wp('eval', 'echo wp_json_encode(\\TypedPress\\Wp\\Plugin::instance()->schema->globals()["settings"]["wp"]);'));
   assert.notEqual(settingsWP, undefined);
   await wp('eval', `wp_set_current_user(1); update_field(${JSON.stringify(settingsWP.fieldKeyPrefix + 'title')}, 'Native Norma', ${JSON.stringify(settingsWP.postId)});`);
   assert.equal((await api('/settings')).title, 'Native Norma');
@@ -146,7 +146,7 @@ test('official portfolio runs on native Studio: uploads, native editing, public 
   await get('/work/private-acceptance-draft', 404);
   assert.doesNotMatch((await get('/work')).text, /Private acceptance draft/);
   assert.doesNotMatch((await get('/rss.xml')).text, /Private acceptance draft/);
-  const anonymousDraft = await fetch(`${base}/__first/api/v1/projects/${draft.id}`);
+  const anonymousDraft = await fetch(`${base}/__tp/api/v1/projects/${draft.id}`);
   assert.equal(anonymousDraft.status, 404);
   const session = JSON.parse(await wp('eval', 'echo wp_json_encode(["name" => LOGGED_IN_COOKIE, "value" => wp_generate_auth_cookie(1, time()+3600, "logged_in"), "authName" => AUTH_COOKIE, "authValue" => wp_generate_auth_cookie(1, time()+3600, "auth")]);'));
   const cookie = `${session.name}=${session.value}; ${session.authName}=${session.authValue}`;
@@ -170,7 +170,7 @@ test('official portfolio runs on native Studio: uploads, native editing, public 
   assert.match((await get('/work/hotel-wilde')).text, /Ability studio client/);
   await writeFile(join(evidence, 'ability.json'), JSON.stringify(ability, null, 2));
   // Seven additional real records cross the 12-row boundary and exercise the six-newest fallback.
-  for (const p of seeded.projects) await request(`/wp-json/wp/v2/first_projects/${p.id}`, { method: 'POST', body: { acf: { first_featured: false } } });
+  for (const p of seeded.projects) await request(`/wp-json/wp/v2/tp_projects/${p.id}`, { method: 'POST', body: { acf: { tp_featured: false } } });
   for (let i = 0; i < 7; i++) await api('/projects', { method: 'POST', body: { title: `Archive project ${i + 1}`, slug: `archive-${i + 1}`, status: 'published', publishedAt: `2026-07-${String(i + 1).padStart(2, '0')}T12:00:00Z`, cover: uploaded.id, tags: ['digital'] } });
   const fallback = await page('/', 'home-fallback.html');
   assert.equal((fallback.text.match(/data-project=/g) ?? []).length, 6);

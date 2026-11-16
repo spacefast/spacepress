@@ -1,5 +1,5 @@
 // A Zero v2 0.3.0 app with one of each kind of stored data, built by the 0.3.0 compiler for
-// tests/wp/zero-upgrade/run.sh: the site it runs on is then upgraded to First.
+// tests/wp/zero-upgrade/run.sh: the site it runs on is then upgraded to TypedPress.
 import { collection, table, text, integer, boolean, select, email, file, files, global, userProjection, defineConfig, action, job, jobs, db } from "zero";
 
 export const notes = table({

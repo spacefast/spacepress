@@ -1,13 +1,13 @@
-# @spacefast/first-blocks
+# @typedpress/blocks
 
 Write Gutenberg content in TSX and compile it to block markup that opens valid
 in the WordPress editor. An optional add-on for WordPress sites, including
-sites built with First; nothing in First depends on it.
+sites built with TypedPress; nothing in TypedPress depends on it.
 
 **Status: phase 1.** This release compiles single TSX files to block markup.
 Typed `Block.Core.*` components, block themes (`theme.json`, templates, parts,
 patterns) and the WordPress proof suite follow in later releases; the design
-is in the First repository under `docs/design-blocks.md`.
+is in the TypedPress repository under `docs/design-blocks.md`.
 
 Requires Node 22. Output targets WordPress 7.1: the serializer runs the block
 library WordPress 7.1 bundles, so the markup is what that editor's own `save()`
@@ -16,12 +16,12 @@ produces.
 ## Use
 
 ```sh
-pnpm add -D @spacefast/first-blocks
+pnpm add -D @typedpress/blocks
 ```
 
 ```tsx
 // pricing.tsx
-import { Block } from "@spacefast/first-blocks";
+import { Block } from "@typedpress/blocks";
 import { plans } from "./plans";
 
 export default function Pricing() {
@@ -42,13 +42,13 @@ export default function Pricing() {
 ```
 
 ```sh
-first-blocks content pricing.tsx --out pricing.html
+typedpress-blocks content pricing.tsx --out pricing.html
 ```
 
 `tsconfig.json` for the authored files:
 
 ```json
-{ "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "@spacefast/first-blocks" } }
+{ "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "@typedpress/blocks" } }
 ```
 
 The file's default export runs once, at build time. Imports, loops and

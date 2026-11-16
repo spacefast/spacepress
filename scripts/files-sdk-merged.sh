@@ -12,7 +12,7 @@
 # branches land after their base.
 set -euo pipefail
 repo=$(git rev-parse --show-toplevel)
-scratch=${1:-${TMPDIR:-/tmp}/first-files-sdk-merged}
+scratch=${1:-${TMPDIR:-/tmp}/typedpress-files-sdk-merged}
 pattern=${FILES_SDK_BRANCHES:-'^(feat/(files-sdk-|commonjs-|ts-language-gaps|lang-|syntax-|[a-z0-9_-]+-global$|binary-data|async-streams|library-types|stdlib-|class-|host-globals|plugin-capabilities|static-namespace-members|ts-this-type|php-8\.3)|fix/(effects-|fence-))'}
 
 git -C "$repo" fetch origin --quiet --prune
@@ -109,7 +109,7 @@ for archive in "$repo"/examples/files-sdk/.work/files-sdk-*.tar.gz; do
 done
 
 label="merged state: origin/main $(git -C "$repo" rev-parse --short origin/main) + ${#merged[@]} branches, $(date -u +%Y-%m-%dT%H:%MZ)"
-FIRST_BIN="$scratch/target/release/first" node "$harness/table.mjs" --probes --label "$label" --json "$scratch/files-sdk-table.json"
+TP_BIN="$scratch/target/release/typedpress" node "$harness/table.mjs" --probes --label "$label" --json "$scratch/files-sdk-table.json"
 echo
 list() {
   local title=$1; shift

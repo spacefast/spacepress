@@ -37,10 +37,10 @@ export default function SiteIconBackButton( { to }: { to: string } ) {
 				<SiteIconLink
 					to={ to }
 					isBackButton
-					aria-label={ __( 'Go back', 'first-admin' ) }
+					aria-label={ __( 'Go back', 'typedpress-admin' ) }
 				/>
 				<motion.div
-					className="first-admin-site-icon-back-button__icon"
+					className="typedpress-admin-site-icon-back-button__icon"
 					variants={ toggleHomeIconVariants }
 				>
 					<Icon icon={ arrowUpLeft } />

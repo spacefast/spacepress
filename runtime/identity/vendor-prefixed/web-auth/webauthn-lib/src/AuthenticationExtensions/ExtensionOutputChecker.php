@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AuthenticationExtensions;
+namespace TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions;
 
 interface ExtensionOutputChecker
 {

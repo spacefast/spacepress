@@ -39,7 +39,7 @@ test("every playground example compiles with the First names the editor shows", 
 	for (const { name } of siteExamples) {
 		// What the browser does: show First names, then hand the compiler the names it reads.
 		const shown = firstFiles(sources(path.join(repo, "examples", name)));
-		assert.ok("first.config.ts" in shown, name);
+		assert.ok("typedpress.config.ts" in shown, name);
 		const { check } = compiler.compile({ name, files: compilerFiles(shown), previous: null });
 		assert.equal(check.ok, true, `${name}: ${check.diagnostics.map((d) => d.message).join("; ")}`);
 	}

@@ -1,8 +1,8 @@
-// Print the `first check --json` diagnostics of both probe variants as one
+// Print the `typedpress check --json` diagnostics of both probe variants as one
 // stable Markdown table: count per (code, message), largest first. Locations
 // are left out so two runs diff cleanly.
 //
-//   FIRST_BIN=/abs/first node table.mjs [--probes] [--json out.json] [--label "main 15bea535"]
+//   TP_BIN=/abs/tp node table.mjs [--probes] [--json out.json] [--label "main 15bea535"]
 //
 // --probes adds a second section: one small app per host API (probes.mjs), in
 // typed TS and in imported JS, because the syntax pass hides that layer.
@@ -24,7 +24,7 @@ export function check(first, app) {
   try {
     report = JSON.parse(result.stdout);
   } catch {
-    throw new Error(`first check printed no JSON (exit ${result.status}):\n${result.stderr}`);
+    throw new Error(`typedpress check printed no JSON (exit ${result.status}):\n${result.stderr}`);
   }
   return { ok: report.ok === true, compilerVersion: report.compilerVersion, diagnostics: report.diagnostics };
 }
@@ -69,10 +69,10 @@ if (realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({
     options: { json: { type: "string" }, label: { type: "string" }, probes: { type: "boolean", default: false } },
   });
-  const first = path.resolve(process.env.FIRST_BIN ?? path.join(root, "../../target/debug/first"));
+  const first = path.resolve(process.env.TP_BIN ?? path.join(root, "../../target/debug/typedpress"));
   const results = await measure(first);
   if (values.probes) results.probes = await runProbes(first, path.join(root, ".work/probes"));
   if (values.json) await writeFile(values.json, JSON.stringify(results, null, 2) + "\n");
   console.log(table(results, values.label ?? `first ${results.dist.compilerVersion}`));
-  if (results.probes) console.log(`\n**Host APIs** (one probe app each, \`first check\`)\n\n${probeTable(results.probes)}`);
+  if (results.probes) console.log(`\n**Host APIs** (one probe app each, \`typedpress check\`)\n\n${probeTable(results.probes)}`);
 }

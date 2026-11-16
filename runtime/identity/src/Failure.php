@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity;
+namespace TypedPress\Identity;
 
 final class Failure extends \RuntimeException
 {

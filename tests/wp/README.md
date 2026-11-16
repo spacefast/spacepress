@@ -10,16 +10,16 @@ production data and may be rotated with the stack.
 
 ```sh
 cargo build
-mkdir -p tests/wp/app/first/blog && cat tests/fixtures/blog/first.config.ts tests/wp/blog-test-hooks.ts > tests/wp/app/first/blog/first.config.ts
-target/debug/first build tests/wp/app
-tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/first/dist/wp-content"
+mkdir -p tests/wp/app/tp/blog && cat tests/fixtures/blog/typedpress.config.ts tests/wp/blog-test-hooks.ts > tests/wp/app/tp/blog/typedpress.config.ts
+target/debug/typedpress build tests/wp/app
+tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/tp/dist/wp-content"
 tests/wp/harness.sh wp plugin list
 tests/wp/harness.sh down
 tests/wp/run.sh
 ```
 
 `up` prints one JSON receipt with the URL, versions, app slug and application
-passwords for the four test users. `FIRST_WP_PORT` defaults to 8790 and `FIRST_WP_PROJECT` (the compose project) to `first-wp-test`; give each worktree its own pair to run stacks side by side. The canonical
+passwords for the four test users. `TP_WP_PORT` defaults to 8790 and `TP_WP_PROJECT` (the compose project) to `typedpress-wp-test`; give each worktree its own pair to run stacks side by side. The canonical
 `plugins/` directory is bind-mounted; `run.sh` stages a stable copy so later
 build publication cannot orphan the mount. Apache and WP-CLI use the invoking
 user's UID/GID so installation preserves writable host ownership across runs.
@@ -34,26 +34,26 @@ The same media owner has an S3 lane, using pinned Garage 2.1.0 with a real
 S3-compatible endpoint and a fresh second WordPress replica:
 
 ```sh
-FIRST_WP_PROJECT=first-uploads-test FIRST_WP_PORT=8792 FIRST_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
+TP_WP_PROJECT=typedpress-uploads-test TP_WP_PORT=8792 TP_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
 ```
 
 `compose.s3.yml` and `garage.toml` deliberately track credentials scoped only to
 this disposable provider. They protect no customer data and are removed with
 `down`. No provider ports are exposed to the host. `up` provisions the Garage
 layout, bucket and dedicated key/grant before activating WordPress plugins.
-`FIRST_WP_S3=1 tests/wp/harness.sh s3-setup` repeats this provider-only setup
+`TP_WP_S3=1 tests/wp/harness.sh s3-setup` repeats this provider-only setup
 idempotently; the acceptance lane repeats it after uploads and retains their bytes.
 Installing the build, activating plugins and proving provider readiness are
 separate steps; the real upload/read/process/delete assertions prove readiness.
 The test removes A's uploads,
 stops A, then reads and processes media on B with an independent WP volume.
 It also runs core image scale/restore, owner denial, rollback, provider outage,
-and durable deletion recovery. Cleanup uses `FIRST_WP_S3=1` to include both replicas
-and the provider volume. `FIRST_WP_KEEP=1` retains the stack for investigation.
+and durable deletion recovery. Cleanup uses `TP_WP_S3=1` to include both replicas
+and the provider volume. `TP_WP_KEEP=1` retains the stack for investigation.
 
-`run.sh` ends with `tests/wp/migrate-run.sh`: the 0.8 site, app-user and app migration lanes, each on a fresh stack. `FIRST_WP_SKIP_MIGRATE=1` skips them; CI runs them with the Spacefast lane in the `wp-migrate` job; the schema-check, seed, fetch and WordPress lanes run in `wp-schema`, and the S3 lane in its own job, so no job nears its time limit. The app migration proof also runs on its own with `tests/wp/app-migrate/run.sh`. It
-uses the dedicated `first-wp-app-migrate` project and port 8798, configurable with
-`FIRST_WP_APP_MIGRATE_PROJECT` and `FIRST_WP_APP_MIGRATE_PORT`. It seeds original
+`run.sh` ends with `tests/wp/migrate-run.sh`: the 0.8 site, app-user and app migration lanes, each on a fresh stack. `TP_WP_SKIP_MIGRATE=1` skips them; CI runs them with the Spacefast lane in the `wp-migrate` job; the schema-check, seed, fetch and WordPress lanes run in `wp-schema`, and the S3 lane in its own job, so no job nears its time limit. The app migration proof also runs on its own with `tests/wp/app-migrate/run.sh`. It
+uses the dedicated `typedpress-wp-app-migrate` project and port 8798, configurable with
+`TP_WP_APP_MIGRATE_PROJECT` and `TP_WP_APP_MIGRATE_PORT`. It seeds original
 BIGINT/TEXT/DOUBLE tables before activation and checks retained rows, DDL, action
 results and rollback. As with the full lane, use Bash 4+ and GNU-compatible
 `sha256sum` flags.

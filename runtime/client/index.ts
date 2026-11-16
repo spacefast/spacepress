@@ -1,5 +1,5 @@
-// First typed client runtime. `first build` copies this file next to the generated `types.ts`
-// (interfaces) and `schema.ts` (the SCHEMA descriptor) in `first/_generated/client/`. Do not edit the copy.
+// TypedPress typed client runtime. `typedpress build` copies this file next to the generated `types.ts`
+// (interfaces) and `schema.ts` (the SCHEMA descriptor) in `tp/_generated/client/`. Do not edit the copy.
 //
 // No dependencies; `fetch`-based; erasable TypeScript only, so Node (type stripping), Bun, Deno and
 // bundlers run it as-is. Wire format: design §4.8 / §7.
@@ -92,10 +92,10 @@ export interface Query<T> extends Promise<T> {
    * Calls `onData` with the result, and again each time it changes. `onError` gets the problem of a
    * read the server refuses (a `get` whose row is missing or unreadable is a 404) and network
    * failures; the subscription continues. `seed` is an answer rendered on the server
-   * (`First\Live\Module::evaluate`): its data is delivered at once and its token sent with the
+   * (`TypedPress\Live\Module::evaluate`): its data is delivered at once and its token sent with the
    * first request. Returns a function that ends the subscription.
    */
-  subscribe(onData: (data: T) => void, onError?: (error: FirstError) => void, seed?: { token: string; data: T }): () => void;
+  subscribe(onData: (data: T) => void, onError?: (error: TypedPressError) => void, seed?: { token: string; data: T }): () => void;
   /**
    * Shows subscribers `update(current)` at once, before the server has answered a write. Call
    * `settle()` when the write succeeded (the change stays until the server's next answer replaces
@@ -129,7 +129,7 @@ export interface CollectionClient<K extends CollectionKey> {
   watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
     q: ListQuery<K, ExactWith<K, W>> | undefined,
     onRows: (rows: RowWith<K, W>[]) => void,
-    onError?: (error: FirstError) => void,
+    onError?: (error: TypedPressError) => void,
   ): () => void;
   revisions: {
     /** Newest first. Needs `update` access on the row. */
@@ -271,11 +271,11 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
   readonly actions: ActionsClient;
   readonly globals: GlobalsClient;
   readonly auth: AuthClient;
-  /** `GET /__first/api/v1`: the app's schema (kinds, fields, globals, actions), as `first pull` reads it. */
+  /** `GET /__tp/api/v1`: the app's schema (kinds, fields, globals, actions), as `typedpress pull` reads it. */
   schema(): Promise<unknown>;
 };
 
-/** One committed transaction's changes, as the runtime's `first_realtime_changes` hook sends them. */
+/** One committed transaction's changes, as the runtime's `tp_realtime_changes` hook sends them. */
 export interface ChangeNotice {
   id: string;
   at: string;
@@ -284,7 +284,7 @@ export interface ChangeNotice {
 }
 
 /**
- * Delivers change notices from the host (Cast, a WebSocket relay, Pusher, ...). First ships none.
+ * Delivers change notices from the host (Cast, a WebSocket relay, Pusher, ...). TypedPress ships none.
  * `connect` starts delivery and returns a stop function; call `status("live")` once notices flow
  * and `status("down")` when they stop, so the client polls meanwhile.
  */
@@ -318,8 +318,8 @@ interface Registry {
   waiters: Set<() => void>;
 }
 function registry(): Registry {
-  const g = globalThis as { __firstRealtime?: Registry };
-  return (g.__firstRealtime ??= { waiters: new Set() });
+  const g = globalThis as { __tpRealtime?: Registry };
+  return (g.__tpRealtime ??= { waiters: new Set() });
 }
 
 /** For host scripts: every client on this page, created before or after, uses this transport by default. */
@@ -330,7 +330,7 @@ export function registerRealtimeTransport(transport: RealtimeTransport): void {
 }
 
 export interface ClientOptions {
-  /** Base URL including the API prefix: "https://x.test/__first/api/v1". Default: `/__first/api/v1` on the page's origin. */
+  /** Base URL including the API prefix: "https://x.test/__tp/api/v1". Default: `/__tp/api/v1` on the page's origin. */
   url?: string;
   /** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
   nonce?: string;
@@ -344,13 +344,13 @@ export interface ClientOptions {
 }
 
 export interface AuthOptions {
-  /** The first-identity OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
+  /** The typedpress-identity OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
   issuer?: string;
   /** The registered application's client id. */
   clientId?: string;
   /** Where the issuer sends the browser back (the page that calls `handleCallback()`). */
   redirectUri?: string;
-  /** Where tokens live: in memory (default) or `sessionStorage` under `first.auth:<base url>`. */
+  /** Where tokens live: in memory (default) or `sessionStorage` under `typedpress.auth:<base url>`. */
   storage?: "memory" | "session";
   /** A write rejected as unauthenticated while signed out starts a guest session and is retried once. */
   guests?: boolean;
@@ -371,7 +371,7 @@ export interface Problem {
 }
 
 /** Thrown for every non-2xx response; the fields are the problem document. Network failures: status 0, code "network". */
-export class FirstError extends Error {
+export class TypedPressError extends Error {
   readonly status: number;
   readonly code: string;
   readonly detail: string;
@@ -381,7 +381,7 @@ export class FirstError extends Error {
 
   constructor(problem: Problem) {
     super(problem.detail);
-    this.name = "FirstError";
+    this.name = "TypedPressError";
     this.status = problem.status;
     this.code = problem.code;
     this.detail = problem.detail;
@@ -391,8 +391,8 @@ export class FirstError extends Error {
   }
 }
 
-function networkError(detail: string): FirstError {
-  return new FirstError({ type: "about:blank", title: "Network error", status: 0, code: "network", detail });
+function networkError(detail: string): TypedPressError {
+  return new TypedPressError({ type: "about:blank", title: "Network error", status: 0, code: "network", detail });
 }
 
 // ---------------------------------------------------------------------------
@@ -467,7 +467,7 @@ function listParams(q: Json | undefined): URLSearchParams {
 /** One subscribed read, as `POST /_live` takes it: the kind query API's call on a kind. */
 type ReadCall =
   | { kind: string; op: "list" | "paginate" | "get" | "count"; args?: Json; id?: string | number }
-  /** One `<Live>` region of a page (First's own pages only): `{ html, kinds }`. */
+  /** One `<Live>` region of a page (TypedPress's own pages only): `{ html, kinds }`. */
   | { kind?: undefined; op: "page"; args: { url: string; region: string }; id?: undefined };
 
 /** The client's query as that call's arguments: `status` folded into `where`, `orderBy` as an object. */
@@ -502,7 +502,7 @@ interface Send {
   envelope?: boolean;
 }
 
-/** What `auth.session()` exposes, plus what refresh and sign-out need. Stored as JSON under `first.auth:<base>`. */
+/** What `auth.session()` exposes, plus what refresh and sign-out need. Stored as JSON under `typedpress.auth:<base>`. */
 interface Held extends Session {
   clientId?: string;
   idToken?: string;
@@ -510,7 +510,7 @@ interface Held extends Session {
   sid?: string;
 }
 
-/** First's guest token response (`/auth/guest`). */
+/** TypedPress's guest token response (`/auth/guest`). */
 interface Issued {
   accessToken: string;
   refreshToken: string;
@@ -535,7 +535,7 @@ interface BrowserGlobals {
 
 const browser = () => globalThis as unknown as BrowserGlobals;
 
-const PKCE_KEY = "first.auth.pkce";
+const PKCE_KEY = "typedpress.auth.pkce";
 
 function base64url(bytes: Uint8Array): string {
   let bin = "";
@@ -551,22 +551,22 @@ async function s256(verifier: string): Promise<string> {
   return base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
 }
 
-function authError(status: number, code: string, detail: string): FirstError {
-  return new FirstError({ type: "about:blank", title: code, status, code, detail });
+function authError(status: number, code: string, detail: string): TypedPressError {
+  return new TypedPressError({ type: "about:blank", title: code, status, code, detail });
 }
 
 /** In-flight refreshes of sessionStorage-backed sessions, by storage key (shared by clients in this tab). */
 const refreshes = new Map<string, Promise<boolean>>();
 
 export function createClient(options: ClientOptions = {}): Client {
-  const base = (options.url ?? "/__first/api/v1").replace(/\/+$/, "");
+  const base = (options.url ?? "/__tp/api/v1").replace(/\/+$/, "");
   const authOpts = options.auth ?? {};
   const doFetch = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
 
   // Token storage: memory by default, sessionStorage on request. The record always exists once
   // written: signed out, it keeps only a `sid`, so every sign-in and sign-out (including from the
   // anonymous state) is a distinct generation that late results can be checked against.
-  const storageKey = `first.auth:${base}`;
+  const storageKey = `typedpress.auth:${base}`;
   let memory: Stored = {};
   type Stored = Partial<Held> & { sid?: string };
   function stored(): Stored {
@@ -710,7 +710,7 @@ export function createClient(options: ClientOptions = {}): Client {
       });
     } catch (e) {
       // A refused refresh signs this session out: a new generation, like any sign-out.
-      if (!(e instanceof FirstError) || e.status !== 0) switchTo(null, started);
+      if (!(e instanceof TypedPressError) || e.status !== 0) switchTo(null, started);
       return false;
     }
   }
@@ -873,7 +873,7 @@ export function createClient(options: ClientOptions = {}): Client {
         await issuerPost("/revoke", { token: current.refreshToken, client_id: current.clientId ?? authOpts.clientId ?? "" });
       } catch (e) {
         // A session the server already ended is signed out; anything else is the caller's to see.
-        if (!(e instanceof FirstError && e.status === 401)) throw e;
+        if (!(e instanceof TypedPressError && e.status === 401)) throw e;
       } finally {
         switchTo(null, from); // only the session this sign-out began with
       }
@@ -973,14 +973,14 @@ export function createClient(options: ClientOptions = {}): Client {
   // `POST /_live`, each with the token of its last answer; the server answers "not modified" or the
   // fresh result. Without a live transport the requests repeat on an adaptive interval; with one, a
   // notice asks at once for the reads it names and the interval becomes the slow safety poll.
-  interface Subscriber { onData: (data: unknown) => void; onError?: (error: FirstError) => void }
+  interface Subscriber { onData: (data: unknown) => void; onError?: (error: TypedPressError) => void }
   interface Subscription {
     descriptor: ReadCall;
     deps: ReadonlySet<string>;
     token?: string;
     has: boolean;
     data: unknown;
-    error?: FirstError;
+    error?: TypedPressError;
     due: boolean;
     subscribers: Set<Subscriber>;
     /** Optimistic updates, oldest first. `after`: the last request for this read sent before the write was known to be committed (null: not settled). */
@@ -1029,14 +1029,14 @@ export function createClient(options: ClientOptions = {}): Client {
     }
   };
   /** Tells every subscriber of `s` about `error`, each in its own guarded call. */
-  const fail = (s: Subscription, error: FirstError) => {
+  const fail = (s: Subscription, error: TypedPressError) => {
     for (const to of [...s.subscribers]) guarded(() => to.onError?.(error));
   };
   const deliver = (s: Subscription, to: Subscriber) => {
     if (s.error) return guarded(() => to.onError?.(s.error!));
     if (!s.has) return;
     // A `get` of a row that is missing, or that this visitor may not read, is the API's 404.
-    if (s.descriptor.op === "get" && s.data === null) return guarded(() => to.onError?.(new FirstError({ type: "about:blank", title: "Not found", status: 404, code: "not_found", detail: `No ${s.descriptor.kind} row` })));
+    if (s.descriptor.op === "get" && s.data === null) return guarded(() => to.onError?.(new TypedPressError({ type: "about:blank", title: "Not found", status: 404, code: "not_found", detail: `No ${s.descriptor.kind} row` })));
     const data = s.overlays.reduce((current, overlay) => overlay.apply(current), s.data);
     guarded(() => to.onData(data));
   };
@@ -1145,7 +1145,7 @@ export function createClient(options: ClientOptions = {}): Client {
           } catch (e) {
             if (currentSid() !== visitor) continue;
             failed = true;
-            const error = e instanceof FirstError ? e : networkError(String(e));
+            const error = e instanceof TypedPressError ? e : networkError(String(e));
             for (const [key, s] of batch) if (subscriptions.get(key) === s) fail(s, error);
           }
         }
@@ -1365,7 +1365,7 @@ export function createClient(options: ClientOptions = {}): Client {
     return {
       list,
       paginate,
-      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: FirstError) => void) => list(q).subscribe(onRows, onError),
+      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: TypedPressError) => void) => list(q).subscribe(onRows, onError),
       get: (id: string | number, q?: Json) =>
         query({ kind: key, op: "get", id, args: liveArgs(q ? { with: q.with, locale: q.locale } : undefined) }, reads(q), () =>
           request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
@@ -1458,7 +1458,7 @@ const hubs = new WeakMap<object, Hub>();
 const pageReads = new WeakMap<object, (url: string, region: string, deps: readonly string[]) => Query<{ html: string; kinds: string[] }>>();
 
 /**
- * @internal First's own `<Live>` regions only; not part of the client's API. One region of one of
+ * @internal TypedPress's own `<Live>` regions only; not part of the client's API. One region of one of
  * this site's pages as a read: `{ html, kinds }`, kept current like any other subscription (the
  * same batch, polling and notices). `deps` are the kinds the server said the region read: a notice
  * or a write through `client` for one of them asks again at once.
@@ -1480,7 +1480,7 @@ export function watch<T>(
   collections: readonly CollectionKey[],
   read: () => Promise<T>,
   onResult: (value: T) => void,
-  onError?: (error: FirstError) => void,
+  onError?: (error: TypedPressError) => void,
 ): () => void {
   const hub = hubs.get(client) ?? (() => {
     throw new TypeError("watch() needs a client from createClient()");
@@ -1488,7 +1488,7 @@ export function watch<T>(
   return watchWith(hub, collections, read, onResult, onError);
 }
 
-function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: FirstError) => void): () => void {
+function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: TypedPressError) => void): () => void {
   // Coalesced: one read in flight; changes during it schedule exactly one more.
   let stopped = false;
   let running = false;
@@ -1506,7 +1506,7 @@ function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Prom
           const value = await read();
           if (!stopped) onResult(value);
         } catch (e) {
-          if (!stopped) onError?.(e instanceof FirstError ? e : networkError(String(e)));
+          if (!stopped) onError?.(e instanceof TypedPressError ? e : networkError(String(e)));
         }
       } while (again && !stopped);
     } finally {
@@ -1547,10 +1547,10 @@ function dependencies(key: string, w: unknown, where?: unknown, seen = new Set<s
 }
 
 /** Problem documents map field by field; WordPress core errors (`{ code, message, data: { status } }`) are mapped onto the same shape. */
-function toError(res: Response, body: unknown): FirstError {
+function toError(res: Response, body: unknown): TypedPressError {
   if (isObject(body) && typeof body.code === "string") {
     const detail = typeof body.detail === "string" ? body.detail : typeof body.message === "string" ? body.message : res.statusText;
-    return new FirstError({
+    return new TypedPressError({
       type: typeof body.type === "string" ? body.type : "about:blank",
       title: typeof body.title === "string" ? body.title : res.statusText || `HTTP ${res.status}`,
       status: typeof body.status === "number" ? body.status : res.status,
@@ -1559,7 +1559,7 @@ function toError(res: Response, body: unknown): FirstError {
       ...(typeof body.pointer === "string" ? { pointer: body.pointer } : {}),
     });
   }
-  return new FirstError({
+  return new TypedPressError({
     type: "about:blank",
     title: res.statusText || `HTTP ${res.status}`,
     status: res.status,

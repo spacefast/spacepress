@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature;
+namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature;
 
 use function openssl_error_string;
 

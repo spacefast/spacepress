@@ -2,7 +2,7 @@
 // The tour: one page per walk through an example (lib/stops.ts).
 import PageLayout from "blume/components/layout/PageLayout.astro";
 import data from "blume:data";
-import { toFirst } from "../../lib/names.ts";
+import { toTypedPress } from "../../lib/names.ts";
 import { tours } from "../../lib/stops.ts";
 
 const { config } = data;
@@ -18,21 +18,21 @@ const { config } = data;
 	searchEnabled={config.search.enabled}
 	siteUrl={config.site}
 	ogEnabled={config.og.enabled}
-	page={{ title: "Tour · First", description: "Each piece of an example's first.config.ts next to what first build turns it into.", route: "/tour" }}
+	page={{ title: "Tour · TypedPress", description: "Each piece of an example's typedpress.config.ts next to what typedpress build turns it into.", route: "/tour" }}
 >
 	<main class="tour">
 		<h1>Tour</h1>
 		<p class="lede">
 			Each tour walks through one example in the repository. It shows a piece of the example's
-			<code>first.config.ts</code> next to what <code>first build</code> made of it. The output was compiled
+			<code>typedpress.config.ts</code> next to what <code>typedpress build</code> made of it. The output was compiled
 			when this site was built, by the compiler that runs in the <a href="/playground">playground</a>.
 		</p>
 		{tours.map((tour) => (
 			<section>
-				<h2><a href={`/tour/${tour.example}`}>{toFirst(tour.title)}</a></h2>
-				{tour.intro.slice(0, 1).map((p) => <p>{toFirst(p)}</p>)}
+				<h2><a href={`/tour/${tour.example}`}>{toTypedPress(tour.title)}</a></h2>
+				{tour.intro.slice(0, 1).map((p) => <p>{toTypedPress(p)}</p>)}
 				<ol>
-					{tour.stops.map((stop) => <li><a href={`/tour/${tour.example}#${stop.slug}`}>{toFirst(stop.title)}</a></li>)}
+					{tour.stops.map((stop) => <li><a href={`/tour/${tour.example}#${stop.slug}`}>{toTypedPress(stop.title)}</a></li>)}
 				</ol>
 			</section>
 		))}

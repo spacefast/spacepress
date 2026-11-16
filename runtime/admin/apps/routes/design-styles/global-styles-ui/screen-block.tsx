@@ -10,8 +10,8 @@ import {
 	__experimentalHasSplitBorders as hasSplitBorders,
 } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
-import { unlock } from '@first-admin/admin-toolkit';
-import type { GlobalStylesConfig } from '@first-admin/global-styles-engine';
+import { unlock } from '@typedpress-admin/admin-toolkit';
+import type { GlobalStylesConfig } from '@typedpress-admin/global-styles-engine';
 import { ScreenHeader } from './screen-header';
 import BlockPreviewPanel from './block-preview-panel';
 import { Subtitle } from './subtitle';
@@ -271,10 +271,10 @@ function ScreenBlock( { name, variation }: ScreenBlockProps ) {
 			/>
 			<BlockPreviewPanel name={ name } variation={ variation } />
 			{ hasVariationsPanel && (
-				<div className="first-admin-global-styles-screen-variations">
+				<div className="typedpress-admin-global-styles-screen-variations">
 					<VStack spacing={ 3 }>
 						<Subtitle>
-							{ __( 'Style Variations', 'first-admin' ) }
+							{ __( 'Style Variations', 'typedpress-admin' ) }
 						</Subtitle>
 						<VariationsPanel name={ name } />
 					</VStack>
@@ -341,7 +341,7 @@ function ScreenBlock( { name, variation }: ScreenBlockProps ) {
 
 			{ canEditCSS && (
 				<PanelBody
-					title={ __( 'Advanced', 'first-admin' ) }
+					title={ __( 'Advanced', 'typedpress-admin' ) }
 					initialOpen={ false }
 				>
 					<p>
@@ -349,7 +349,7 @@ function ScreenBlock( { name, variation }: ScreenBlockProps ) {
 							// translators: %s: is the name of a block e.g., 'Image' or 'Table'.
 							__(
 								'Add your own CSS to customize the appearance of the %s block. You do not need to include a CSS selector, just add the property and value.',
-								'first-admin'
+								'typedpress-admin'
 							),
 							blockType?.title ?? name
 						) }

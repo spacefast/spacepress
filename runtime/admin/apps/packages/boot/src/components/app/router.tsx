@@ -4,10 +4,10 @@ import {
 	privateApis as routePrivateApis,
 } from '@wordpress/route';
 import { useContext } from 'react';
-// eslint-disable-next-line @first-admin/design-system/use-new-components
-import { Stack } from '@first-admin/design-system';
+// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
+import { Stack } from '@typedpress-admin/design-system';
 import { ThemeProvider } from '@wordpress/theme';
-import { Page, useColorPreference, unlock } from '@first-admin/admin-toolkit';
+import { Page, useColorPreference, unlock } from '@typedpress-admin/admin-toolkit';
 import clsx from 'clsx';
 import { __ } from '@wordpress/i18n';
 const {
@@ -44,7 +44,7 @@ function ThemedSurface( {
 		<ThemeProvider color={ themeColorSettings.app }>
 			<div
 				className={ clsx(
-					'first-admin-layout__surface',
+					'typedpress-admin-layout__surface',
 					wrapperClassname
 				) }
 			>
@@ -75,7 +75,7 @@ function NotFoundComponent() {
 					style={ { height: '100%', width: '100%' } }
 					gap={ 2 }
 				>
-					<h1>{ __( 'Route not found', 'first-admin' ) }</h1>
+					<h1>{ __( 'Route not found', 'typedpress-admin' ) }</h1>
 				</Stack>
 			</Page>
 		</ThemedSurface>

@@ -1,13 +1,13 @@
 // Builds what the TypedPress site (www/) needs beside its hand-written source:
 //
-//   first/data/sources.ts      the text of every file in examples/, for the guide (scripts/sources.mjs)
+//   tp/data/sources.ts      the text of every file in examples/, for the guide (scripts/sources.mjs)
 //   public/site.js             browser/site.js bundled: the code and tree drawing, and <tp-play>
 //   public/compiler.wasm       the compiler built for the browser
 //   public/play-data.json      the apps the playground can load (scripts/run-data.ts)
-//   public/files/plugins/      First's shared plugins as zips, for "Run in WordPress"
+//   public/files/plugins/      TypedPress's shared plugins as zips, for "Run in WordPress"
 //
 // All of it is git-ignored. Run `bun scripts/build.mjs` after changing browser/ or examples/;
-// `first dev` rebuilds the pages itself. The compiler and the zips come from docs-site/: run
+// `typedpress dev` rebuilds the pages itself. The compiler and the zips come from docs-site/: run
 // `pnpm wasm && pnpm showcase` there first (docs-site/README.md).
 import { readFileSync, writeFileSync, statSync, mkdirSync, copyFileSync, existsSync, rmSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
@@ -30,10 +30,10 @@ const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: docs }
 if (runData.exitCode !== 0) throw new Error(`run-data.ts failed:\n${runData.stderr.toString()}`);
 writeFileSync(join(out, "play-data.json"), runData.stdout);
 copyFileSync(wasm, join(out, "compiler.wasm"));
-for (const slug of ["first-runtime", "first-identity", "first-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "files", "plugins", `${slug}.zip`));
+for (const slug of ["typedpress-runtime", "typedpress-identity", "typedpress-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "files", "plugins", `${slug}.zip`));
 
 // One script file. The highlighter ships 240 grammars and 70 themes, each behind its own
-// `import()`; under `first dev` every file costs a WordPress request, and 28 of them delayed the
+// `import()`; under `typedpress dev` every file costs a WordPress request, and 28 of them delayed the
 // code panes. So only the grammars these apps and their build output use, and the two themes, are
 // kept, and without `splitting` Bun puts them in the same file. Any other language is shown as
 // plain text by the library.
@@ -70,4 +70,4 @@ const notice = ["@pierre/diffs", "@pierre/trees"].map((pkg) => {
 writeFileSync(join(out, "third-party-licenses.txt"), `This site renders code, file trees and diffs with these libraries.\nsite.js contains parts of them.\n\n${notice}\n`);
 
 const kb = (f) => `${String(Math.round(statSync(f).size / 1024)).padStart(7)} KB  ${relative(site, f)}`;
-for (const f of [join(site, "first", "data", "sources.ts"), join(out, "site.js"), join(out, "play-data.json"), join(out, "compiler.wasm")]) console.log(kb(f));
+for (const f of [join(site, "tp", "data", "sources.ts"), join(out, "site.js"), join(out, "play-data.json"), join(out, "compiler.wasm")]) console.log(kb(f));

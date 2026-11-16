@@ -1,7 +1,7 @@
 {
-  "name": "@first/astro",
+  "name": "@typedpress/astro",
   "version": "0.1.0",
-  "description": "A First site as the content source of an Astro site: build-time and live content collections, cache tags, signed webhooks, and EmDash's official templates unchanged.",
+  "description": "A TypedPress site as the content source of an Astro site: build-time and live content collections, cache tags, signed webhooks, and EmDash's official templates unchanged.",
   "license": "MIT",
   "type": "module",
   "engines": {

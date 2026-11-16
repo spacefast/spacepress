@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-const php = process.env.FIRST_DEPLOY_PHP || 'php';
+const php = process.env.TP_DEPLOY_PHP || 'php';
 const tool = fileURLToPath(new URL('./local.php', import.meta.url));
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -16,7 +16,7 @@ async function sources(root) {
   const located = spawnSync(php, ['-r', 'require $argv[1]; echo json_encode([wpCore(), wpPlugin("sqlite-database-integration", WP_SQLITE_VERSION, WP_SQLITE_SHA256)]);', join(repo, 'tests/php/wp.php')], { encoding: 'utf8', timeout: 180000 });
   assert.equal(located.status, 0, located.stderr);
   const [core, integration] = JSON.parse(located.stdout);
-  let wpCli = process.env.FIRST_DEPLOY_TEST_WP_CLI;
+  let wpCli = process.env.TP_DEPLOY_TEST_WP_CLI;
   if (!wpCli) {
     wpCli = join(root, 'wp-cli.phar');
     const response = await fetch('https://github.com/wp-cli/wp-cli/releases/download/v2.12.0/wp-cli-2.12.0.phar', { signal: AbortSignal.timeout(120000) });
@@ -25,22 +25,22 @@ async function sources(root) {
     assert.equal(createHash('sha256').update(bytes).digest('hex'), 'ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c');
     await writeFile(wpCli, bytes);
   }
-  let artifact = process.env.FIRST_DEPLOY_TEST_ARTIFACT;
+  let artifact = process.env.TP_DEPLOY_TEST_ARTIFACT;
   if (!artifact) {
     const project = join(root, 'project');
     await mkdir(project);
-    await cp(join(repo, 'examples/blog/first.config.ts'), join(project, 'first.config.ts'), { recursive: true });
-    const built = spawnSync(process.env.FIRST_BIN || resolve(repo, 'target/debug/first'), ['build', project], { encoding: 'utf8', timeout: 180000 });
+    await cp(join(repo, 'examples/blog/typedpress.config.ts'), join(project, 'typedpress.config.ts'), { recursive: true });
+    const built = spawnSync(process.env.TP_BIN || resolve(repo, 'target/debug/typedpress'), ['build', project], { encoding: 'utf8', timeout: 180000 });
     assert.equal(built.status, 0, built.stdout + built.stderr);
-    artifact = join(project, 'first/dist/wp-content');
+    artifact = join(project, 'tp/dist/wp-content');
   }
-  return { wordpress: process.env.FIRST_DEPLOY_TEST_WORDPRESS || core, sqlite: process.env.FIRST_DEPLOY_TEST_SQLITE || integration, wpCli, artifact };
+  return { wordpress: process.env.TP_DEPLOY_TEST_WORDPRESS || core, sqlite: process.env.TP_DEPLOY_TEST_SQLITE || integration, wpCli, artifact };
 }
 
 function invoke(args, success = true, environment = {}) {
   const [mode, ...rest] = args;
-  const binary = process.env.FIRST_DEPLOY_BIN;
-  // Through the binary, WP-CLI on a workspace is `first wp --site <workspace> <args>`.
+  const binary = process.env.TP_DEPLOY_BIN;
+  // Through the binary, WP-CLI on a workspace is `typedpress wp --site <workspace> <args>`.
   const entry = mode === 'wp' ? ['wp', '--site', rest[1], ...rest.slice(3)] : ['deploy', mode, ...rest];
   const command = binary ? entry : [tool, ...args];
   const child = spawnSync(binary || php, command, { encoding: 'utf8', timeout: 180000, env: { ...process.env, ...environment } });
@@ -58,7 +58,7 @@ async function wp(workspace, ...args) {
 }
 
 test('real offline WordPress backup restores code, native content, schema, media, private files and working identity into a fresh isolated site', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'first-framework-lifecycle-wordpress-'));
+  const root = await mkdtemp(join(tmpdir(), 'typedpress-framework-lifecycle-wordpress-'));
   await chmod(root, 0o700);
   const original = join(root, 'original');
   const restored = join(root, 'restored');
@@ -84,17 +84,17 @@ test('real offline WordPress backup restores code, native content, schema, media
     await writeFile(seed, `<?php
       $uid = wp_create_user('lifecycle-user', 'disposable-local-password', 'lifecycle@example.invalid');
       if (is_wp_error($uid)) throw new RuntimeException('user creation failed');
-      \\First\\Identity\\Plugin::$accounts->ensure($uid);
-      $session = \\First\\Identity\\Plugin::$sessions->create($uid);
-      $jwt = \\First\\Identity\\Keys::sign(['iss'=>\\First\\Identity\\OAuth::issuer(), 'sub'=>(string)$uid, 'iat'=>time(), 'exp'=>time()+3600]);
+      \\TypedPress\\Identity\\Plugin::$accounts->ensure($uid);
+      $session = \\TypedPress\\Identity\\Plugin::$sessions->create($uid);
+      $jwt = \\TypedPress\\Identity\\Keys::sign(['iss'=>\\TypedPress\\Identity\\OAuth::issuer(), 'sub'=>(string)$uid, 'iat'=>time(), 'exp'=>time()+3600]);
       $post = wp_insert_post(['post_title'=>'Lifecycle native content','post_content'=>'<!-- wp:paragraph --><p>Backup body</p><!-- /wp:paragraph -->','post_status'=>'publish','post_author'=>$uid], true);
       if (is_wp_error($post)) throw new RuntimeException('post creation failed');
-      $author = \\First\\Wp\\Runtime::plugin()->db()->insert('authors', ['name'=>'Lifecycle author','email'=>'author@example.invalid'], true)[0];
+      $author = \\TypedPress\\Wp\\Runtime::plugin()->db()->insert('authors', ['name'=>'Lifecycle author','email'=>'author@example.invalid'], true)[0];
       $upload = wp_upload_bits('lifecycle.txt', null, 'media bytes owned by WordPress');
       if ($upload['error']) throw new RuntimeException('upload failed');
       $attachment = wp_insert_attachment(['post_title'=>'Lifecycle upload','post_mime_type'=>'text/plain','post_status'=>'inherit'], $upload['file'], $post, true);
       if (is_wp_error($attachment)) throw new RuntimeException('attachment failed');
-      $private = WP_CONTENT_DIR . '/uploads/first-private/blog/assets';
+      $private = WP_CONTENT_DIR . '/uploads/typedpress-private/blog/assets';
       wp_mkdir_p($private); file_put_contents($private . '/lifecycle', 'private local file bytes');
       update_option('lifecycle_identity_fixture', ['uid'=>$uid,'session'=>$session['secret'],'jwt'=>$jwt,'post'=>$post,'attachment'=>$attachment,'author'=>$author['id']]);
       update_option('lifecycle_secret_fixture', 'never-print-this-local-secret');
@@ -127,9 +127,9 @@ test('real offline WordPress backup restores code, native content, schema, media
     await writeFile(verify, `<?php
       $f = get_option('lifecycle_identity_fixture');
       $user = wp_authenticate('lifecycle-user', 'disposable-local-password');
-      $session = \\First\\Identity\\Plugin::$sessions->find($f['session']);
-      $claims = \\First\\Identity\\Keys::verify($f['jwt']);
-      $author = \\First\\Wp\\Runtime::plugin()->db()->findFirst('authors', ['where'=>['id'=>$f['author']]]);
+      $session = \\TypedPress\\Identity\\Plugin::$sessions->find($f['session']);
+      $claims = \\TypedPress\\Identity\\Keys::verify($f['jwt']);
+      $author = \\TypedPress\\Wp\\Runtime::plugin()->db()->findFirst('authors', ['where'=>['id'=>$f['author']]]);
       $post = get_post($f['post']);
       echo json_encode([
         'content'=>$post->post_title === 'Lifecycle native content' && str_contains($post->post_content, 'Backup body'),
@@ -138,9 +138,9 @@ test('real offline WordPress backup restores code, native content, schema, media
         'identitySession'=>$session !== null && (int)$session['wp_user_id'] === $f['uid'],
         'identitySigningKey'=>$claims !== null && $claims['sub'] === (string)$f['uid'],
         'media'=>file_get_contents(get_attached_file($f['attachment'])) === 'media bytes owned by WordPress',
-        'privateFile'=>file_get_contents(WP_CONTENT_DIR . '/uploads/first-private/blog/assets/lifecycle') === 'private local file bytes',
+        'privateFile'=>file_get_contents(WP_CONTENT_DIR . '/uploads/typedpress-private/blog/assets/lifecycle') === 'private local file bytes',
         'privateConfig'=>get_option('lifecycle_secret_fixture') === 'never-print-this-local-secret',
-        'plugins'=>is_plugin_active('first-runtime/first-runtime.php') && is_plugin_active('first-identity/first-identity.php') && is_plugin_active('first-app-blog/first-app-blog.php'),
+        'plugins'=>is_plugin_active('typedpress-runtime/typedpress-runtime.php') && is_plugin_active('typedpress-identity/typedpress-identity.php') && is_plugin_active('typedpress-app-blog/typedpress-app-blog.php'),
       ]);
     `);
     const continuity = JSON.parse(await wp(restored, 'eval-file', verify, '--use-include'));
@@ -150,9 +150,9 @@ test('real offline WordPress backup restores code, native content, schema, media
     assert.equal(invoke(['backup', '--workspace', original, '--output', archive], false).error.code, 'destination_exists');
     await wp(restored, 'option', 'update', 'blogname', 'Clone changed independently');
     assert.notEqual((await wp(original, 'option', 'get', 'blogname')).trim(), 'Clone changed independently');
-    await wp(original, 'option', 'update', 'first_upload_namespace', '0123456789abcdef0123456789abcdef');
+    await wp(original, 'option', 'update', 'tp_upload_namespace', '0123456789abcdef0123456789abcdef');
     assert.equal(invoke(['backup', '--workspace', original, '--output', join(root, 'provider.zip')], false).error.code, 'provider_backup_unavailable');
-    await wp(original, 'option', 'delete', 'first_upload_namespace');
+    await wp(original, 'option', 'delete', 'tp_upload_namespace');
     const failed = invoke(['wp', '--workspace', original, '--', 'lifecycle-command-that-does-not-exist'], false);
     assert.equal(failed.error.code, 'wp_cli_failed');
     assert.equal(invoke(['backup', '--workspace', original, '--output', join(root, 'uncertain.zip')], false).error.code, 'operation_uncertain');
@@ -160,10 +160,10 @@ test('real offline WordPress backup restores code, native content, schema, media
     await chmod(archive, 0o644);
     assert.equal(invoke(['restore', '--archive', archive, '--workspace', join(root, 'insecure'), '--wp-cli', wpCli], false).error.code, 'insecure_archive');
     await chmod(archive, 0o600);
-    assert.deepEqual((await readdir(root)).filter((name) => name.startsWith('.first-')), []);
+    assert.deepEqual((await readdir(root)).filter((name) => name.startsWith('.tp-')), []);
   } catch (error) {
-    if (process.env.FIRST_DEPLOY_TEST_EVIDENCE) {
-      const evidence = await mkdtemp(join(process.env.FIRST_DEPLOY_TEST_EVIDENCE, 'failure-'));
+    if (process.env.TP_DEPLOY_TEST_EVIDENCE) {
+      const evidence = await mkdtemp(join(process.env.TP_DEPLOY_TEST_EVIDENCE, 'failure-'));
       await chmod(evidence, 0o700);
       for (const workspace of [original, restored]) {
         for (const name of await readdir(workspace).catch(() => [])) {

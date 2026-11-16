@@ -290,7 +290,7 @@ function JsonField({
 		(accepted.value === serialized ? accepted.source : JSON.stringify(value ?? null, null, 2));
 	const invalid = validation?.drafts.has(path) ?? false;
 	return (
-		<label className="first-schema-json">
+		<label className="typedpress-schema-json">
 			{column.label}
 			<textarea
 				value={source}
@@ -398,7 +398,7 @@ function Field({
 						onChange(rows.map((r, i) => (i === index ? v : r)));
 					};
 					return (
-						<div className="first-schema-repeat" key={
+						<div className="typedpress-schema-repeat" key={
 							item !== null && typeof item === 'object'
 								? `${objects.key(item)}:${c.type === 'blocks' ? layout : ''}`
 								: index
@@ -607,7 +607,7 @@ export function Fields({
 	};
 	return (
 		<EditingState.Provider value={state}>
-			<div className="first-schema-fields">
+			<div className="typedpress-schema-fields">
 				{shownFields(fields, values, editing, state.operation, omit)
 					.map(([key, c]) => (
 						<Field

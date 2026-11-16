@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Every app under examples/ must compile: `first check` on each directory that holds a
-# first.config.ts. An example that reads npm packages as sources has a package-lock.json in its
+# Every app under examples/ must compile: `typedpress check` on each directory that holds a
+# typedpress.config.ts. An example that reads npm packages as sources has a package-lock.json in its
 # own directory or the one above it; its locked packages are installed first, as its README says.
 #
 # examples/files-sdk is left out: it is a probe that compiles a whole published npm package and
@@ -8,7 +8,7 @@
 #
 #   scripts/check-examples.sh [path/to/first]
 set -euo pipefail
-first=${1:-target/debug/first}
+first=${1:-target/debug/typedpress}
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 
@@ -27,7 +27,7 @@ while IFS= read -r config; do
 		echo "$out" | sed 's/^/      /'
 		failed+=("$dir")
 	fi
-done < <(find examples -name first.config.ts -not -path '*/node_modules/*' -not -path 'examples/files-sdk/*' | sort)
+done < <(find examples -name typedpress.config.ts -not -path '*/node_modules/*' -not -path 'examples/files-sdk/*' | sort)
 
 if ((${#failed[@]})); then
 	echo "${#failed[@]} example(s) do not compile: ${failed[*]}"

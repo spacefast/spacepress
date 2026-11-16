@@ -164,7 +164,7 @@ describe( 'Nudges Store', () => {
 						id: 'first',
 						type: 'trial_countdown',
 						severity: 'warning',
-						title: 'First nudge',
+						title: 'TypedPress nudge',
 					},
 					{
 						id: 'second',
@@ -281,7 +281,7 @@ describe( 'Nudges Store', () => {
 						id: 'billing-1',
 						type: 'billing',
 						severity: 'warning',
-						title: 'First billing nudge',
+						title: 'TypedPress billing nudge',
 					},
 					{
 						id: 'billing-2',

@@ -1,7 +1,7 @@
-//! `first push [project-dir] [--site <url>] [--dry-run]`: deploy this project to a
-//! WordPress site that runs the First plugin.
+//! `typedpress push [project-dir] [--site <url>] [--dry-run]`: deploy this project to a
+//! WordPress site that runs the TypedPress plugin.
 //!
-//! The project is compiled here into a build store under `.first/store`, against the schema
+//! The project is compiled here into a build store under `.tp/store`, against the schema
 //! snapshot and migrations of the build the site runs now, so the migration it carries is the
 //! difference from what is live. The site then gets the build's manifest and whichever of its two
 //! trees (the runtime, the app) it does not already hold, says what installing it would change, and
@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: first push [project-dir] [--site <url>] [--dry-run]\n       sign in first with: first login <site-url>   (or FIRST_APP_PASSWORD=user:application-password)";
+const USAGE: &str = "usage: typedpress push [project-dir] [--site <url>] [--dry-run]\n       sign in first with: typedpress login <site-url>   (or TP_APP_PASSWORD=user:application-password)";
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
     match run(args) {
@@ -46,14 +46,14 @@ fn run(args: &[String]) -> Result<(), String> {
     let project = project
         .canonicalize()
         .map_err(|e| format!("{}: {e}", project.display()))?;
-    if !project.join("first.config.ts").is_file() {
-        return Err(format!("no first.config.ts in {}\n{USAGE}", project.display()));
+    if !project.join("typedpress.config.ts").is_file() {
+        return Err(format!("no typedpress.config.ts in {}\n{USAGE}", project.display()));
     }
     let site = match site.or_else(|| remote::linked(&project)) {
         Some(site) => remote::normalize(&site)?,
         None => {
             return Err(format!(
-                "this project has no site to deploy to. Run first login <site-url> here, or pass --site <url>\n{USAGE}"
+                "this project has no site to deploy to. Run typedpress login <site-url> here, or pass --site <url>\n{USAGE}"
             ));
         }
     };
@@ -66,25 +66,25 @@ fn run(args: &[String]) -> Result<(), String> {
         let theirs = info["plugin"].as_str().unwrap_or("0");
         if !crate::wp_plugins::version::at_least(env!("CARGO_PKG_VERSION"), theirs) {
             return Err(format!(
-                "{site} runs First plugin {theirs}, newer than this first ({}). Update first, then push again.",
+                "{site} runs TypedPress plugin {theirs}, newer than this typedpress ({}). Update typedpress, then push again.",
                 env!("CARGO_PKG_VERSION")
             ));
         }
         let zip = super::plugin::archive().map_err(|e| e.to_string())?;
         let sha = hex(Sha256::digest(&zip));
         api.upload("/plugin", &[("sha256", &sha)], &zip)
-            .map_err(|e| format!("updating the First plugin on {site}: {e}"))?;
+            .map_err(|e| format!("updating the TypedPress plugin on {site}: {e}"))?;
         info = api.get("/site", &[]).map_err(|e| e.to_string())?;
         if info["pluginHash"].as_str() != Some(ours.as_str()) {
             return Err(format!(
-                "{site} still runs another First plugin after the update. Upload the one `first plugin` writes in wp-admin."
+                "{site} still runs another TypedPress plugin after the update. Upload the one `typedpress plugin` writes in wp-admin."
             ));
         }
-        println!("updated the First plugin on the site");
+        println!("updated the TypedPress plugin on the site");
     }
     if info["protocol"].as_u64() != Some(remote::PROTOCOL) {
         return Err(format!(
-            "{site}'s First plugin speaks deploy protocol {}, and this first speaks {}",
+            "{site}'s TypedPress plugin speaks deploy protocol {}, and this typedpress speaks {}",
             info["protocol"],
             remote::PROTOCOL
         ));
@@ -129,7 +129,7 @@ fn run(args: &[String]) -> Result<(), String> {
     let sources = work.path().join("sources");
     let render = |d: crate::diag::Diag| crate::diag::render(&d, &project).trim_end().to_string();
     crate::bundle::sources(&project, &sources).map_err(render)?;
-    let store = project.join(".first/store");
+    let store = project.join(".tp/store");
     let built = crate::store::compile_to_store_against(
         &sources,
         &store,
@@ -156,7 +156,7 @@ fn run(args: &[String]) -> Result<(), String> {
             })
             .collect();
         return Err(format!(
-            "{site} can't run First: it needs {}. That is changed on the server, not by a deployment.",
+            "{site} can't run TypedPress: it needs {}. That is changed on the server, not by a deployment.",
             lines.join(", ")
         ));
     }
@@ -245,7 +245,10 @@ fn run(args: &[String]) -> Result<(), String> {
 
     let header = format!("{id}:{token}");
     let plan = api
-        .get(&format!("/deployments/{id}/plan"), &[("X-First-Deployment", &header)])
+        .get(
+            &format!("/deployments/{id}/plan"),
+            &[("X-TypedPress-Deployment", &header)],
+        )
         .map_err(|e| e.to_string())?;
     let steps = plan["steps"].as_array().cloned().unwrap_or_default();
     if steps.is_empty() {
@@ -265,10 +268,10 @@ fn run(args: &[String]) -> Result<(), String> {
                 format!("  {}{fix}", r["message"].as_str().unwrap_or("refused"))
             })
             .collect();
-        // The site's fix text is written for `first build`, which keeps migrations in the project.
+        // The site's fix text is written for `typedpress build`, which keeps migrations in the project.
         // A push keeps none there, so the last line says what to do here.
         return Err(format!(
-            "{site} refuses this build; nothing changed there:\n{}\nChange first.config.ts and push again: first push plans the migration on the site and writes none into the project.",
+            "{site} refuses this build; nothing changed there:\n{}\nChange typedpress.config.ts and push again: typedpress push plans the migration on the site and writes none into the project.",
             lines.join("\n")
         ));
     }
@@ -284,11 +287,11 @@ fn run(args: &[String]) -> Result<(), String> {
         .post(
             &format!("/deployments/{id}/activate"),
             &json!({}),
-            &[("X-First-Deployment", &header)],
+            &[("X-TypedPress-Deployment", &header)],
         )
         .map_err(|e: Refused| match e.data["live"].as_str() {
             Some(build) => format!("{e}\n{site} still runs build {}", short(build)),
-            None if e.code == "first_not_installed" => format!("{e}\n{site} runs no app"),
+            None if e.code == "tp_not_installed" => format!("{e}\n{site} runs no app"),
             None => e.to_string(),
         })?;
     for migration in done["migrations"].as_array().into_iter().flatten() {
@@ -311,9 +314,9 @@ fn step_line(step: &Value) -> String {
     let id = step["id"].as_str().unwrap_or("");
     let detail = id.split_once(':').map_or(id, |(_, rest)| rest);
     let text = match step["kind"].as_str().unwrap_or("") {
-        "system-tables" => "create or upgrade First's own tables".to_string(),
+        "system-tables" => "create or upgrade TypedPress's own tables".to_string(),
         "identity-schema" => "create or upgrade the sign-in tables".to_string(),
-        "names" => "rename data stored by a build from before First's rename".to_string(),
+        "names" => "rename data stored by a build from before TypedPress's rename".to_string(),
         "migration" => format!("run migration {detail}"),
         "front-page" => "set the site's front page".to_string(),
         "search-shape" => "rebuild the search index for the new searchable fields".to_string(),

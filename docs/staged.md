@@ -21,7 +21,7 @@ export const logs = collection({ title: text() }, { staged: false });
 - **Only the staged fields.** The staged version holds the fields that were staged. Promoting it
   changes those fields and no others, so a live edit to another field made in the meantime stays.
 - **A WordPress revision.** It is stored as one revision of the post, named
-  `<id>-autosave-staged-v1`, with its own internal status `first-staged` where core's revisions
+  `<id>-autosave-staged-v1`, with its own internal status `typedpress-staged` where core's revisions
   have `inherit`. Core reads revisions by that status, so its revision lists and count, the
   `/autosaves` route the block editor takes the user's autosave from, wp-admin's revision screen
   and its Restore, revision pruning, change detection and wp-admin's revision upgrade all pass
@@ -29,14 +29,14 @@ export const logs = collection({ title: text() }, { staged: false });
   delete. A promote or discard gives it core's status and an ordinary revision's name. Staged
   revisions saved before the status existed get it when the runtime updates. Its fields are stored on the revision
   under the same meta keys the post uses, as on every other revision of a First post.
-  `_first_staged` on the revision records the staged fields and a scheduled promote.
+  `_tp_staged` on the revision records the staged fields and a scheduled promote.
 
 ## Operations
 
 All of these need the item's `update` rule. A caller it doesn't cover gets the `404` a missing item
 gets, whether or not anything is staged.
 
-| Operation | API (`/__first/api/v1`) | Client | Ability `<app>/<kind>-…` | `wp first staged …` |
+| Operation | API (`/__tp/api/v1`) | Client | Ability `<app>/<kind>-…` | `wp typedpress staged …` |
 |---|---|---|---|---|
 | Stage | `PATCH /<kind>/<id>/staged` with the fields | `first.posts.stage(id, patch)` | `stage` | `stage <kind> <id> <json>` |
 | Read | `GET /<kind>/<id>/staged` | `first.posts.staged(id)` | `staged-get` | `show <kind> <id>` |
@@ -47,7 +47,7 @@ gets, whether or not anything is staged.
 | Preview link | `POST /<kind>/<id>/staged/preview` with optional `{ "ttl": seconds }` | `first.posts.previewLink(id)` | `staged-preview` | |
 | List every staged version | | | | `list [<kind>]` |
 
-`wp first staged` is the trusted CLI: it applies no access rule and no field mask.
+`wp typedpress staged` is the trusted CLI: it applies no access rule and no field mask.
 
 A staged version reads as:
 
@@ -119,11 +119,11 @@ revisions and is recorded as discarded and by whom; nothing is deleted.
 ### Preview links
 
 ```json
-{ "token": "…", "expiresAt": "…", "api": "https://example.com/__first/api/v1/posts/7/staged?preview=…", "url": "https://example.com/blog/hello/?first_preview=…" }
+{ "token": "…", "expiresAt": "…", "api": "https://example.com/__tp/api/v1/posts/7/staged?preview=…", "url": "https://example.com/blog/hello/?tp_preview=…" }
 ```
 
 - `api` returns the staged version without signing in, through an anonymous visitor's field masks
-  and without `by`, `promoteAt` or `error`. Use it from an external frontend or a `first/app` page.
+  and without `by`, `promoteAt` or `error`. Use it from an external frontend or a `tp/app` page.
 - `url` is the item's own page rendering the staged title, content and fields an anonymous visitor
   may read; a field hidden from them is blank there, staged or live. It is set for a
   kind with a `url` that the theme renders, and `null` otherwise.
@@ -143,7 +143,7 @@ of the row as it was read. Send it back with a write to refuse the write if the 
 |---|---|---|
 | `PATCH /<kind>/<id>`, `<kind>-update` | in the body / input, beside the fields | the row's |
 | `DELETE /<kind>/<id>`, `<kind>-delete` | `?_rev=` / input | the row's |
-| stage, promote, discard (API, abilities, `wp first staged … --rev=`) | body, query or input | the staged version's (`_rev` of a stage, read or compare) |
+| stage, promote, discard (API, abilities, `wp typedpress staged … --rev=`) | body, query or input | the staged version's (`_rev` of a stage, read or compare) |
 | `POST /<kind>/<id>/revisions/<rid>/restore` | body | the row's |
 
 A stale token is refused with `409 stale_revision`. The problem carries the row's current `_rev`
@@ -159,7 +159,7 @@ Leaving `_rev` out is an unconditional write, as on WordPress's own routes.
 
 ## Edit locks
 
-First uses WordPress's own edit lock, `_edit_lock`, which the block editor and the classic editor
+TypedPress uses WordPress's own edit lock, `_edit_lock`, which the block editor and the classic editor
 set while someone has the item open and refresh with their heartbeat (it lapses 150 seconds after
 the last one). While another user holds it, these are refused with `409 locked` and the holder
 (`holder: { id, name }`):
@@ -192,7 +192,7 @@ moves them as one update does.
 
 Each step is its own Ability, so a credential can be allowed to stage and not to promote:
 `<app>/<kind>-stage`, `-staged-get`, `-staged-compare`, `-staged-promote`, `-staged-discard` and
-`-staged-preview`. First declares them separately and does not scope credentials itself.
+`-staged-preview`. TypedPress declares them separately and does not scope credentials itself.
 
 They are offered only to a caller whose update rule on the kind covers at least one row (or needs
 the write's data to answer): core's abilities list, one ability's description and the MCP tools

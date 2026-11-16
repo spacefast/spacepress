@@ -1,8 +1,8 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
+namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
 use function trim;
 
 class PureUnlessCallableIsImpureTagValueNode implements PhpDocTagValueNode

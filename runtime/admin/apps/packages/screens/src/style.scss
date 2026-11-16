@@ -1,25 +1,25 @@
-.first-admin-screen {
+.typedpress-admin-screen {
 	display: grid;
 	gap: var(--wpds-dimension-gap-lg, 16px);
 }
-.first-admin-screen__value {
+.typedpress-admin-screen__value {
 	white-space: pre-line;
 }
-.first-admin-screen__summary {
+.typedpress-admin-screen__summary {
 	margin: 0;
 }
-.first-admin-screen__form {
+.typedpress-admin-screen__form {
 	display: grid;
 	gap: 16px;
 	max-width: 760px;
 }
-.first-admin-screen__confirm {
+.typedpress-admin-screen__confirm {
 	display: flex;
 	gap: 8px;
 	justify-content: flex-end;
 }
 // Classic wp-admin: the component sits in wp-admin's `.wrap`, below its own title.
-.first-admin-screen--classic {
+.typedpress-admin-screen--classic {
 	margin-top: 16px;
 	background: var(--wpds-color-background-surface-neutral-strong, #fff);
 	border: 1px solid var(--wpds-color-stroke-surface-neutral, #c3c4c7);

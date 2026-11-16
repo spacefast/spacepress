@@ -1,4 +1,4 @@
-# The First Admin workspace. Every @wordpress/* version is set once here;
+# The TypedPress Admin workspace. Every @wordpress/* version is set once here;
 # manifests say `catalog:`. See docs/admin.md for the build and provenance contract.
 
 packages:

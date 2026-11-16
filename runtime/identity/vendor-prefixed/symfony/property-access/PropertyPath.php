@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess;
 
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\OutOfBoundsException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\OutOfBoundsException;
 
 /**
  * Default implementation of {@link PropertyPathInterface}.

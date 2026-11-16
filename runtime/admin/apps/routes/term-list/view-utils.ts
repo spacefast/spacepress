@@ -1,6 +1,6 @@
-import type { ViewConfig } from '@first-admin/core-data-next';
+import type { ViewConfig } from '@typedpress-admin/core-data-next';
 import type { Taxonomy } from '@wordpress/core-data';
-import type { View } from '@first-admin/dataviews';
+import type { View } from '@typedpress-admin/dataviews';
 
 const DEFAULT_VIEW: View = {
 	type: 'table',

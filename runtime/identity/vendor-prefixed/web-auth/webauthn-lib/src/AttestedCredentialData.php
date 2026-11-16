@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace TypedPress\Identity\Vendor\Webauthn;
 
-use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\Uuid;
 
 /**
  * @see https://www.w3.org/TR/webauthn/#sec-attested-credential-data

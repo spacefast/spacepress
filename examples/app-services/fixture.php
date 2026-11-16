@@ -17,7 +17,7 @@ function servicesArtifact(): array
 
 function servicesRemoveArtifact(string $directory): void
 {
-    if (!preg_match('#^/tmp/first-wp-services-artifact-[a-f0-9]{8}$#D', $directory)) {
+    if (!preg_match('#^/tmp/typedpress-wp-services-artifact-[a-f0-9]{8}$#D', $directory)) {
         throw new RuntimeException('Refusing to remove an unowned artifact path');
     }
     exec('rm -rf -- ' . escapeshellarg($directory), $output, $status);
@@ -36,6 +36,6 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '')
     $functions .= "\nfunction services__read(\$ctx) { return ['title' => ['ne' => 'Internal workshop']]; }\n";
     $site = WpSite::create('services-artifact', ['schema' => $schema, 'functions' => $functions]);
     $plugins = json_decode((string) file_get_contents($site->dir . '/site.json'), true)['activate'];
-    file_put_contents($site->content . '/first-manifest.json', json_encode(['app' => $schema['name'], 'plugins' => array_fill_keys($plugins, [])], JSON_THROW_ON_ERROR));
+    file_put_contents($site->content . '/typedpress-manifest.json', json_encode(['app' => $schema['name'], 'plugins' => array_fill_keys($plugins, [])], JSON_THROW_ON_ERROR));
     echo json_encode(['directory' => $site->dir, 'content' => $site->content], JSON_THROW_ON_ERROR), "\n";
 }

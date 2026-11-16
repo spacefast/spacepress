@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyMappings;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\PolicyMappings;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
 
 /**
  * Implements ASN.1 type containing policy mapping values to be used in 'Policy Mappings' certificate extension.

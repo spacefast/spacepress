@@ -11,18 +11,18 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\InvalidTag;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\ParserException;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\InvalidTag;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\ParserException;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
 use RuntimeException;
 
 use function property_exists;

@@ -1,7 +1,7 @@
 import type { Plugin } from '@wordpress/core-data';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { cancelCircleFilled } from '@wordpress/icons';
-import type { Action } from '@first-admin/dataviews';
+import type { Action } from '@typedpress-admin/dataviews';
 import usePluginService from '../hooks/use-plugin-service';
 import { bulkAction } from './helpers/bulk-runner';
 
@@ -15,7 +15,7 @@ export const useDeactivatePluginAction = (): Action< Plugin > => {
 
 	return {
 		id: 'deactivate-plugin',
-		label: __( 'Deactivate', 'first-admin' ),
+		label: __( 'Deactivate', 'typedpress-admin' ),
 		isPrimary: true,
 		icon: cancelCircleFilled,
 		callback: async ( plugins: Plugin[] ) => {
@@ -37,7 +37,7 @@ export const useDeactivatePluginAction = (): Action< Plugin > => {
 									'%d plugin deactivated.',
 									'%d plugins deactivated.',
 									fulfilled,
-									'first-admin'
+									'typedpress-admin'
 								),
 								fulfilled
 							);
@@ -53,7 +53,7 @@ export const useDeactivatePluginAction = (): Action< Plugin > => {
 									'%d plugin failed to deactivate.',
 									'%d plugins failed to deactivate.',
 									rejected,
-									'first-admin'
+									'typedpress-admin'
 								),
 								rejected
 							);

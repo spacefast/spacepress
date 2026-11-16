@@ -3,7 +3,7 @@
 Generated from `tests/compatibility/registry.json`; run `python3 scripts/compiler-contracts.py` to update.
 
 This is a growing evidence inventory, not an exhaustive language specification. Refusals are verified by running
-`first check --json` on each registered fixture in `tests/compiler_contracts.rs`. Supported behavior and intentional
+`typedpress check --json` on each registered fixture in `tests/compiler_contracts.rs`. Supported behavior and intentional
 differences link to their executable evidence. A silent, undocumented mismatch is a bug, not an exclusion.
 
 String semantics here describe the current implementation; changes require updating the evidence and this registry.
@@ -20,7 +20,7 @@ Named module-level classes compile inside callbacks: constructors, public fields
 
 Status: **supported**.
 
-Error, TypeError, RangeError and SyntaxError are globals in typed code, imported JavaScript and configuration evaluation, from one list (ERROR_CONSTRUCTORS in src/builtins.rs, generated into First\Builtins for the runtime). Calling or constructing one gives name, message, String() and a frameless stack as in JavaScript. instanceof matches the constructor and Error, also for errors the runtime throws, such as the SyntaxError from JSON.parse. Classes can extend any of them. Configuration evaluation can reference them and read typeof but refuses construction, because errors are runtime values. ReferenceError, EvalError, URIError and AggregateError are not globals.
+Error, TypeError, RangeError and SyntaxError are globals in typed code, imported JavaScript and configuration evaluation, from one list (ERROR_CONSTRUCTORS in src/builtins.rs, generated into TypedPress\Builtins for the runtime). Calling or constructing one gives name, message, String() and a frameless stack as in JavaScript. instanceof matches the constructor and Error, also for errors the runtime throws, such as the SyntaxError from JSON.parse. Classes can extend any of them. Configuration evaluation can reference them and read typeof but refuses construction, because errors are runtime values. ReferenceError, EvalError, URIError and AggregateError are not globals.
 
 [Evidence](../tests/compiler_contracts.rs) (`private_names_accessors_and_imported_javascript_classes_match_node`)
 
@@ -44,7 +44,7 @@ Imported JavaScript generators and async generators compile to PHP Generators be
 
 Status: **supported**.
 
-ReadableStream (start/pull/cancel, default reader, tee, async iteration), WritableStream and TransformStream, with pipeTo and pipeThrough, are pull-driven chunk queues over the job queue. Byte streams, BYOB readers, size() strategies and pipeTo signals are refused at runtime. First\JsReadableStream::fromResource wraps a PHP stream resource.
+ReadableStream (start/pull/cancel, default reader, tee, async iteration), WritableStream and TransformStream, with pipeTo and pipeThrough, are pull-driven chunk queues over the job queue. Byte streams, BYOB readers, size() strategies and pipeTo signals are refused at runtime. TypedPress\JsReadableStream::fromResource wraps a PHP stream resource.
 
 [Evidence](../tests/compiler_contracts.rs) (`promise_jobs_generators_and_async_iteration_match_node_in_generated_php`)
 
@@ -60,7 +60,7 @@ Use concrete named classes with public fields and methods. See config-api.md for
 
 Status: **refused**. Diagnostic: `F1102`.
 
-Install the package with your package manager. First reads supported local TypeScript/ESM sources; it does not install packages or execute JavaScript.
+Install the package with your package manager. TypedPress reads supported local TypeScript/ESM sources; it does not install packages or execute JavaScript.
 
 [Evidence](../tests/fixtures/reject-uninstalled-package)
 
@@ -84,7 +84,7 @@ Raw .js/.mjs/.cjs functions compile supported property access, calls, mutations 
 
 Status: **supported**.
 
-Imported JavaScript can create symbols with Symbol(description), Symbol.for and Symbol.keyFor, and read Symbol.iterator, Symbol.asyncIterator, Symbol.toStringTag and Symbol.hasInstance. typeof is "symbol", identity is per symbol and Symbol.for registers one symbol per key for the request. description, toString() and String(symbol) work; implicit string or number conversion throws TypeError. Plain objects hold symbol-keyed properties apart from string keys, so Object.keys, Object.entries, for...in and JSON.stringify skip them; object spread copies enumerable ones, and Object.hasOwn sees them. Object.defineProperty accepts data descriptors: symbol keys keep writable/enumerable/configurable, string keys accept only the ordinary all-true descriptor. `key in object` and `delete object[key]` accept symbol keys. Class instances, classes and class prototypes resolve symbol keys exactly through their class chain (see class-symbol-members). Other built-in values may inherit well-known symbol methods First doesn't model, so reading, testing or writing a well-known symbol on them throws TypeError instead of guessing; other symbols on built-in values are absent.
+Imported JavaScript can create symbols with Symbol(description), Symbol.for and Symbol.keyFor, and read Symbol.iterator, Symbol.asyncIterator, Symbol.toStringTag and Symbol.hasInstance. typeof is "symbol", identity is per symbol and Symbol.for registers one symbol per key for the request. description, toString() and String(symbol) work; implicit string or number conversion throws TypeError. Plain objects hold symbol-keyed properties apart from string keys, so Object.keys, Object.entries, for...in and JSON.stringify skip them; object spread copies enumerable ones, and Object.hasOwn sees them. Object.defineProperty accepts data descriptors: symbol keys keep writable/enumerable/configurable, string keys accept only the ordinary all-true descriptor. `key in object` and `delete object[key]` accept symbol keys. Class instances, classes and class prototypes resolve symbol keys exactly through their class chain (see class-symbol-members). Other built-in values may inherit well-known symbol methods TypedPress doesn't model, so reading, testing or writing a well-known symbol on them throws TypeError instead of guessing; other symbols on built-in values are absent.
 
 [Evidence](../tests/compiler_contracts.rs) (`symbols_and_weak_collections_match_node_in_imported_javascript`)
 
@@ -108,7 +108,7 @@ A computed class method key must evaluate to a symbol. Name the method instead o
 
 Status: **refused**. Diagnostic: `F4001`.
 
-`Symbol.iterator`, `Symbol.asyncIterator` and `Symbol.toStringTag` class methods would change iteration and tagging protocols First's runtime doesn't route through classes. Name the method and call it explicitly. Only `static [Symbol.hasInstance]` is supported.
+`Symbol.iterator`, `Symbol.asyncIterator` and `Symbol.toStringTag` class methods would change iteration and tagging protocols TypedPress's runtime doesn't route through classes. Name the method and call it explicitly. Only `static [Symbol.hasInstance]` is supported.
 
 [Evidence](../tests/fixtures/reject-class-well-known-symbol-method)
 
@@ -140,7 +140,7 @@ Imported JavaScript can use WeakMap (get, set, has, delete) and WeakSet (add, ha
 
 Status: **refused**. Diagnostic: `F4001`.
 
-typeof globalThis, typeof globalThis.X and globalThis.X compared with undefined are resolved at compile time when X is one of First's globals (its JavaScript typeof) or a runtime First never provides (window, document, self, location, Bun, Deno, EdgeRuntime, DOMParser, WebSocketPair, XMLHttpRequest, importScripts, WorkerGlobalScope: undefined). typeof globalThis.navigator and typeof globalThis.process are "object" (host-platform). Host globals such as fetch, process, navigator, crypto, Buffer, atob and timers, and any other name, are refused at the read; call supported capabilities directly instead of detecting them. Calling an absent global is refused because it always throws.
+typeof globalThis, typeof globalThis.X and globalThis.X compared with undefined are resolved at compile time when X is one of TypedPress's globals (its JavaScript typeof) or a runtime TypedPress never provides (window, document, self, location, Bun, Deno, EdgeRuntime, DOMParser, WebSocketPair, XMLHttpRequest, importScripts, WorkerGlobalScope: undefined). typeof globalThis.navigator and typeof globalThis.process are "object" (host-platform). Host globals such as fetch, process, navigator, crypto, Buffer, atob and timers, and any other name, are refused at the read; call supported capabilities directly instead of detecting them. Calling an absent global is refused because it always throws.
 
 [Evidence](../tests/fixtures/reject-globalthis-host)
 
@@ -212,7 +212,7 @@ The global `Boolean` compiles as a call and as a function value in typed code, i
 
 Status: **refused**. Diagnostic: `F4001`.
 
-`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; First has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (F2001).
+`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; TypedPress has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (F2001).
 
 [Evidence](../tests/fixtures/reject-new-boolean)
 
@@ -220,7 +220,7 @@ Status: **refused**. Diagnostic: `F4001`.
 
 Status: **refused**. Diagnostic: `F1002`.
 
-Only `__proto__: null` is supported. A `__proto__:` key with any other value would install a custom prototype, which First doesn't model; copy the shared properties with a spread instead, or use a computed ['__proto__'] key for an own data property.
+Only `__proto__: null` is supported. A `__proto__:` key with any other value would install a custom prototype, which TypedPress doesn't model; copy the shared properties with a spread instead, or use a computed ['__proto__'] key for an own data property.
 
 [Evidence](../tests/fixtures/reject-proto-object)
 
@@ -252,7 +252,7 @@ TypeScript allows `delete` only on optional properties. Declare the property opt
 
 Status: **refused**. Diagnostic: `F4001`.
 
-First arrays are dense, and deleting an element leaves a hole that keeps the length. Use `splice(index, 1)` to remove it, or assign `undefined` to keep the length. Imported JavaScript throws RangeError at runtime instead.
+TypedPress arrays are dense, and deleting an element leaves a hole that keeps the length. Use `splice(index, 1)` to remove it, or assign `undefined` to keep the length. Imported JavaScript throws RangeError at runtime instead.
 
 [Evidence](../tests/fixtures/reject-delete-array-element)
 
@@ -276,7 +276,7 @@ Array and object patterns on the left of `=` assign existing variables, object f
 
 Status: **supported**.
 
-In authored TypeScript, `for await` runs over arrays, tuples and strings whose elements are plain values or First's own promises, which the blocking model settles exactly. Async iterables, generators and values from imported JavaScript need the job queue and are refused there; imported JavaScript runs every `for await` through it.
+In authored TypeScript, `for await` runs over arrays, tuples and strings whose elements are plain values or TypedPress's own promises, which the blocking model settles exactly. Async iterables, generators and values from imported JavaScript need the job queue and are refused there; imported JavaScript runs every `for await` through it.
 
 [Evidence](../tests/compiler_contracts.rs) (`typed_for_await_accepts_only_settled_sync_iterables`)
 
@@ -284,7 +284,7 @@ In authored TypeScript, `for await` runs over arrays, tuples and strings whose e
 
 Status: **refused**. Diagnostic: `F4001`.
 
-`for await` awaits each element as the loop reaches it, but First's blocking calls would all run before the loop starts. Await each call where it is written: `for (const v of [await a(), await b()])`.
+`for await` awaits each element as the loop reaches it, but TypedPress's blocking calls would all run before the loop starts. Await each call where it is written: `for (const v of [await a(), await b()])`.
 
 [Evidence](../tests/fixtures/reject-for-await-promise-literal)
 
@@ -308,7 +308,7 @@ tag`…${x}…` calls the tag with the call site's strings array, then the subst
 
 Status: **supported**.
 
-BigInt literals, the `bigint` type, BigInt(), BigInt.asIntN/asUintN, Number(b), String(b) and b.toString(radix) compile in typed code and imported JavaScript with ECMAScript semantics, in pure PHP (First\JsBigInt, no GMP or bcmath). Arithmetic is exact, division truncates, bitwise operators and shifts act on infinite two's complement, comparisons and loose equality compare mathematically across BigInt, number and numeric strings. Mixing BigInt and number in arithmetic, `>>>`, unary `+`, JSON serialization and Math functions throw JavaScript's TypeError; typed code refuses a static mix at the source. Configuration evaluation refuses BigInt. tests/php/bigint_test.php checks 8,800 Node-computed results.
+BigInt literals, the `bigint` type, BigInt(), BigInt.asIntN/asUintN, Number(b), String(b) and b.toString(radix) compile in typed code and imported JavaScript with ECMAScript semantics, in pure PHP (TypedPress\JsBigInt, no GMP or bcmath). Arithmetic is exact, division truncates, bitwise operators and shifts act on infinite two's complement, comparisons and loose equality compare mathematically across BigInt, number and numeric strings. Mixing BigInt and number in arithmetic, `>>>`, unary `+`, JSON serialization and Math functions throw JavaScript's TypeError; typed code refuses a static mix at the source. Configuration evaluation refuses BigInt. tests/php/bigint_test.php checks 8,800 Node-computed results.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
@@ -516,7 +516,7 @@ Global isFinite accepts zero or one argument and applies numeric coercion; Numbe
 
 Status: **supported**.
 
-Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `First\JsMap`/`First\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused.
+Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `TypedPress\JsMap`/`TypedPress\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused.
 
 [Evidence](../tests/compiler.rs) (`compiled_php_matches_node_on_every_differential_case`)
 
@@ -524,7 +524,7 @@ Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `First\J
 
 Status: **supported**.
 
-`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named First classes.
+`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named TypedPress classes.
 
 [Evidence](../tests/compiler_contracts.rs) (`url_vectors_agree_in_node_and_generated_php`)
 
@@ -532,7 +532,7 @@ Status: **supported**.
 
 Status: **supported**.
 
-`AbortController`, `AbortSignal` (aborted, reason, throwIfAborted, onabort, add/removeEventListener for "abort" with { once }), `AbortSignal.abort`, `AbortSignal.any` and `AbortSignal.timeout` follow the DOM standard. PHP has no event loop, so `abort()` dispatches synchronously in registration order, as Node does. `setTimeout`/`clearTimeout` create `First\Timers` entries that run only while the request waits: the promise job loop calls `Timers::runNext()` once microtasks are empty. That makes a timeout an observation at the next await, never an interruption mid-statement. Waiting is capped by the request budget (`FIRST_TIMER_BUDGET_MS`, default 30000, and the remaining max_execution_time), and with FIRST_NOW pinned it advances a virtual clock. A user setTimeout still pending when the handler returns is a runtime Error naming its creation site, because in Node it would fire after the response. A non-Error abort reason, dispatchEvent and listener options other than once are refused. Nested AbortSignal.any folds to its root sources, and a throwing listener doesn't stop dispatch: the error is rethrown once every listener has run, where Node would report it as uncaught. Plugins record timers in the capability lock (`timers`). The differential cases in tests/differential/cases.ts (jsAbort, typedAbort, jsTimers) compare abort ordering, backoff sleeps and timer/microtask interleaving with Node.
+`AbortController`, `AbortSignal` (aborted, reason, throwIfAborted, onabort, add/removeEventListener for "abort" with { once }), `AbortSignal.abort`, `AbortSignal.any` and `AbortSignal.timeout` follow the DOM standard. PHP has no event loop, so `abort()` dispatches synchronously in registration order, as Node does. `setTimeout`/`clearTimeout` create `TypedPress\Timers` entries that run only while the request waits: the promise job loop calls `Timers::runNext()` once microtasks are empty. That makes a timeout an observation at the next await, never an interruption mid-statement. Waiting is capped by the request budget (`TP_TIMER_BUDGET_MS`, default 30000, and the remaining max_execution_time), and with TP_NOW pinned it advances a virtual clock. A user setTimeout still pending when the handler returns is a runtime Error naming its creation site, because in Node it would fire after the response. A non-Error abort reason, dispatchEvent and listener options other than once are refused. Nested AbortSignal.any folds to its root sources, and a throwing listener doesn't stop dispatch: the error is rethrown once every listener has run, where Node would report it as uncaught. Plugins record timers in the capability lock (`timers`). The differential cases in tests/differential/cases.ts (jsAbort, typedAbort, jsTimers) compare abort ordering, backoff sleeps and timer/microtask interleaving with Node.
 
 [Evidence](../tests/compiler_contracts.rs) (`timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler`)
 
@@ -596,7 +596,7 @@ Imported JavaScript compiles crypto.subtle.digest(algorithm, data): SHA-1, SHA-2
 
 Status: **supported**.
 
-typeof navigator and typeof process, also through globalThis., are the constant "object" in compiled code and in the build-time evaluator. navigator.platform and process.platform (and navigator?.platform, process?.platform) are strings read when PHP runs, from First\Host, with Node's names: process.platform is win32, darwin, sunos or the lower-cased PHP_OS (linux, freebsd, aix), and navigator.platform follows Node's rule over platform and CPU architecture (Win32, MacIntel, Linux x86_64, Linux arm64, FreeBSD amd64, AIX). They are never decided on the build machine. picomatch 4.0.7's isWindows compiles unchanged. Evidence: tests/differential/language/host-platform.ts; the mapping for every OS is tests/php/host_test.php. See docs/decisions/2026-11-14-host-platform-detection.md.
+typeof navigator and typeof process, also through globalThis., are the constant "object" in compiled code and in the build-time evaluator. navigator.platform and process.platform (and navigator?.platform, process?.platform) are strings read when PHP runs, from TypedPress\Host, with Node's names: process.platform is win32, darwin, sunos or the lower-cased PHP_OS (linux, freebsd, aix), and navigator.platform follows Node's rule over platform and CPU architecture (Win32, MacIntel, Linux x86_64, Linux arm64, FreeBSD amd64, AIX). They are never decided on the build machine. picomatch 4.0.7's isWindows compiles unchanged. Evidence: tests/differential/language/host-platform.ts; the mapping for every OS is tests/php/host_test.php. See docs/decisions/2026-11-14-host-platform-detection.md.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
@@ -660,7 +660,7 @@ undefined denotes the built-in missing value. Runtime bindings named undefined a
 
 Status: **refused**. Diagnostic: `F4001`.
 
-abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in first/_generated/abilities.json by `first abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
+abilities.call from "php/wordpress" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in tp/_generated/abilities.json by `typedpress abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability.
 
 [Evidence](../tests/fixtures/reject-ability-unknown)
 
@@ -684,7 +684,7 @@ The ability name must be written in place so the build can type the input and re
 
 Status: **supported**.
 
-abilities.call("vendor/name", input) compiles to First\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from first/_generated/abilities.json, which build and check read without touching the network. first/_generated/db.d.ts carries the same types for the editor.
+abilities.call("vendor/name", input) compiles to TypedPress\Wp\Abilities\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from tp/_generated/abilities.json, which build and check read without touching the network. tp/_generated/db.d.ts carries the same types for the editor.
 
 [Evidence](../tests/compiler_contracts.rs) (`wordpress_abilities_are_typed_from_the_lock_and_the_schema`)
 
@@ -692,7 +692,7 @@ abilities.call("vendor/name", input) compiles to First\Wp\Abilities\Call::run, w
 
 Status: **refused**. Diagnostic: `F3001`.
 
-A first/wp-hooks/ file or directory is named after a hook in the pinned catalog (src/wordpress/catalog.json, generated by scripts/wordpress-catalog.py from core's docblocks). Any other name is refused with the closest catalog hook, because an untyped hook would pass PHP values the compiler cannot check.
+A tp/wp-hooks/ file or directory is named after a hook in the pinned catalog (src/wordpress/catalog.json, generated by scripts/wordpress-catalog.py from core's docblocks). Any other name is refused with the closest catalog hook, because an untyped hook would pass PHP values the compiler cannot check.
 
 [Evidence](../tests/fixtures/reject-wp-hook-unknown)
 
@@ -708,7 +708,7 @@ A filter handler returns the filtered value: its first argument's type, from the
 
 Status: **refused**. Diagnostic: `F3001`.
 
-Each first/wp-hooks/ file default-exports one handler and may export an integer `priority`. Other exports are refused; share code through an ordinary imported module.
+Each tp/wp-hooks/ file default-exports one handler and may export an integer `priority`. Other exports are refused; share code through an ordinary imported module.
 
 [Evidence](../tests/fixtures/reject-wp-hook-no-default)
 
@@ -716,7 +716,7 @@ Each first/wp-hooks/ file default-exports one handler and may export an integer 
 
 Status: **refused**. Diagnostic: `F1003`.
 
-first/wp-hooks/ holds only .ts handler files (directly, or one directory deep named after the hook). Anything else is refused at its path instead of being skipped, so a handler never silently fails to register.
+tp/wp-hooks/ holds only .ts handler files (directly, or one directory deep named after the hook). Anything else is refused at its path instead of being skipped, so a handler never silently fails to register.
 
 [Evidence](../tests/fixtures/reject-wp-hook-file)
 
@@ -724,7 +724,7 @@ first/wp-hooks/ holds only .ts handler files (directly, or one directory deep na
 
 Status: **supported**.
 
-first/wp-hooks/<hook>.ts and first/wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
+tp/wp-hooks/<hook>.ts and tp/wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`.
 
 [Evidence](../tests/compiler_contracts.rs) (`wp_hooks_register_in_file_order_with_their_priorities`)
 
@@ -748,7 +748,7 @@ WordPress function arguments are checked against the catalog's types, from the p
 
 Status: **supported**.
 
-Allowlisted WordPress functions compile to First\Wp\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none).
+Allowlisted WordPress functions compile to TypedPress\Wp\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none).
 
 [Evidence](../tests/compiler_contracts.rs) (`wordpress_functions_run_as_the_signed_in_user`)
 
@@ -756,7 +756,7 @@ Allowlisted WordPress functions compile to First\Wp\Functions::call(name, [args]
 
 Status: **refused**. Diagnostic: `F4301`.
 
-get_option, update_option and delete_option refuse WordPress's site settings that load code, move sign-in or change roles (active_plugins, template, stylesheet, siteurl, home, admin_email, users_can_register, default_role, {prefix}user_roles, cron, upload paths, jetpack_* and the others in runtime/First/Wp/guard.json), First's own first_* options and transients; options whose names hold secrets (salts, tokens, passwords, jetpack_private_options) can't be read either. A literal name is refused here; a name built at runtime is refused by First\Wp\Guard with 403 protected_option. Names compare case-insensitively, and a name outside printable ASCII is refused. wp_insert_post takes post, page or another plugin's public post type only. Keep app settings in a global, a table or an option name of the app's own.
+get_option, update_option and delete_option refuse WordPress's site settings that load code, move sign-in or change roles (active_plugins, template, stylesheet, siteurl, home, admin_email, users_can_register, default_role, {prefix}user_roles, cron, upload paths, jetpack_* and the others in runtime/TypedPress/Wp/guard.json), TypedPress's own tp_* options and transients; options whose names hold secrets (salts, tokens, passwords, jetpack_private_options) can't be read either. A literal name is refused here; a name built at runtime is refused by TypedPress\Wp\Guard with 403 protected_option. Names compare case-insensitively, and a name outside printable ASCII is refused. wp_insert_post takes post, page or another plugin's public post type only. Keep app settings in a global, a table or an option name of the app's own.
 
 [Evidence](../tests/fixtures/reject-wp-protected-option)
 
@@ -764,7 +764,7 @@ get_option, update_option and delete_option refuse WordPress's site settings tha
 
 Status: **refused**. Diagnostic: `F4201`.
 
-A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed first/_generated/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
+A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed tp/_generated/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry.
 
 [Evidence](../tests/fixtures/reject-plugin-write)
 
@@ -780,7 +780,7 @@ A fetch URL with a written https://host/ prefix (string, template or concatenati
 
 Status: **refused**. Diagnostic: `F1201`.
 
-A plugin package imports its own modules, "first" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
+A plugin package imports its own modules, "typedpress" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
 
 [Evidence](../tests/fixtures/reject-plugin-isolation)
 
@@ -788,7 +788,7 @@ A plugin package imports its own modules, "first" and ordinary npm packages, com
 
 Status: **refused**. Diagnostic: `F1201`.
 
-A plugin can't import "first:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
+A plugin can't import "typedpress:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
 
 [Evidence](../tests/fixtures/reject-plugin-db)
 
@@ -796,7 +796,7 @@ A plugin can't import "first:db": the app's kinds are app values, which a plugin
 
 Status: **supported**.
 
-Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env["NAME"] (string | undefined); crypto.randomUUID(); and from "node:crypto" (import or a top-level const require) createHash and createHmac chains ending in digest("hex" | "base64" | "base64url"), randomBytes(n).toString(encoding), randomUUID and timingSafeEqual(Buffer.from(a), Buffer.from(b)). They lower in src/compile/host.rs onto First\Fetch (HTTPS-only egress policy), First\Env and First\Crypto. See config-api.md.
+Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env["NAME"] (string | undefined); crypto.randomUUID(); and from "node:crypto" (import or a top-level const require) createHash and createHmac chains ending in digest("hex" | "base64" | "base64url"), randomBytes(n).toString(encoding), randomUUID and timingSafeEqual(Buffer.from(a), Buffer.from(b)). They lower in src/compile/host.rs onto TypedPress\Fetch (HTTPS-only egress policy), TypedPress\Env and TypedPress\Crypto. See config-api.md.
 
 [Evidence](../tests/compiler_contracts.rs) (`host_globals_match_node_through_generated_php`)
 
@@ -852,7 +852,7 @@ Handlers run in PHP. Only process.env.NAME and process.platform are supported.
 
 Status: **refused**. Diagnostic: `F4001`.
 
-process.arch, process.version, process.versions, process.release, process.argv, process.title, process.browser and every other process member except env.NAME and platform are refused at the read: Node defines them and First has no true value for them. Detecting Node itself (process.versions.node, process.release.name) is not decided yet.
+process.arch, process.version, process.versions, process.release, process.argv, process.title, process.browser and every other process member except env.NAME and platform are refused at the read: Node defines them and TypedPress has no true value for them. Detecting Node itself (process.versions.node, process.release.name) is not decided yet.
 
 [Evidence](../tests/fixtures/reject-process-member-read)
 
@@ -944,13 +944,13 @@ Static CommonJS may require("node:crypto") (or "crypto"); it resolves through th
 
 [Evidence](../tests/fixtures/reject-require-module)
 
-## first-fetch-import
+## typedpress-fetch-import
 
 Status: **refused**. Diagnostic: `F2001`.
 
-fetch and crypto are the standard globals, not "first" exports. Remove them from the import.
+fetch and crypto are the standard globals, not "typedpress" exports. Remove them from the import.
 
-[Evidence](../tests/fixtures/reject-first-fetch-import)
+[Evidence](../tests/fixtures/reject-typedpress-fetch-import)
 
 ## build-time-namespaces
 
@@ -1036,7 +1036,7 @@ An ordinary function or object-literal method that reads `this` gets its call re
 
 Status: **supported**.
 
-Functions exported under a capitalized name from `first/components/*.tsx` compile to PHP functions that return escaped HTML (`\First\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md.
+Functions exported under a capitalized name from `tp/components/*.tsx` compile to PHP functions that return escaped HTML (`\TypedPress\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md.
 
 [Evidence](../tests/compiler.rs) (`compiled_tsx_renders_the_html_react_renders`)
 
@@ -1092,7 +1092,7 @@ React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` i
 
 Status: **refused**. Diagnostic: `F1003`.
 
-JSX compiles in `first/components/`, pages and "use client" files; modules the config imports stay plain TypeScript.
+JSX compiles in `tp/components/`, pages and "use client" files; modules the config imports stay plain TypeScript.
 
 [Evidence](../tests/fixtures/reject-jsx-config)
 
@@ -1188,7 +1188,7 @@ SVG `animate`/`set` can rewrite their target's attributes: they never target URL
 
 Status: **supported**.
 
-A .tsx file under first/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, useLive (a list read the server seeds and the page keeps current), server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s.
+A .tsx file under tp/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, useLive (a list read the server seeds and the page keeps current), server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s.
 
 [Evidence](../tests/app_router.rs) (`client_components_compile_to_interactivity_stores`)
 
@@ -1196,7 +1196,7 @@ A .tsx file under first/components/ that starts with "use client" (after comment
 
 Status: **supported**.
 
-`<Comments for={item} />` from "first/app" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props.
+`<Comments for={item} />` from "typedpress/app" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props.
 
 [Evidence](../tests/app_router.rs) (`comments_follow_the_kind_policy_on_every_path`)
 
@@ -1204,7 +1204,7 @@ Status: **supported**.
 
 Status: **supported**.
 
-`<Pagination page={search.page} pages={n} />` from "first/app" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page.
+`<Pagination page={search.page} pages={n} />` from "typedpress/app" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page.
 
 [Evidence](../tests/app_router.rs) (`app_router_serves_pages_on_wordpress`)
 
@@ -1212,7 +1212,7 @@ Status: **supported**.
 
 Status: **supported**.
 
-`<Search />` and `<SearchResults q={search.q} />` from "first/app" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges.
+`<Search />` and `<SearchResults q={search.q} />` from "typedpress/app" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges.
 
 [Evidence](../tests/app_router.rs) (`search_pages_answer_as_the_visitor`)
 
@@ -1220,7 +1220,7 @@ Status: **supported**.
 
 Status: **supported**.
 
-`<Live id="notes">…</Live>` from "first/app" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`).
+`<Live id="notes">…</Live>` from "typedpress/app" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`).
 
 [Evidence](../tests/app_router.rs) (`live_regions_update_in_the_browser`)
 
@@ -1228,7 +1228,7 @@ Status: **supported**.
 
 Status: **supported**.
 
-`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "first/app" reads the result or the error once. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
+`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "typedpress/app" reads the result or the error once. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
 
 [Evidence](../tests/app_router.rs) (`forms_work_without_javascript`)
 
@@ -1236,7 +1236,7 @@ Status: **supported**.
 
 Status: **refused**. Diagnostic: `F1003`.
 
-Client components run in the browser without a bundler: import "first/client" and relative modules only.
+Client components run in the browser without a bundler: import "typedpress/client" and relative modules only.
 
 [Evidence](../tests/fixtures/reject-client-npm)
 
@@ -1260,7 +1260,7 @@ Status: **refused**. Diagnostic: `F4001`.
 
 Status: **refused**. Diagnostic: `F1003`.
 
-A `.tsx` module the config imports is refused even when its JSX never runs; components live in `first/components/`.
+A `.tsx` module the config imports is refused even when its JSX never runs; components live in `tp/components/`.
 
 [Evidence](../tests/fixtures/reject-jsx-config-unused)
 
@@ -1276,6 +1276,6 @@ Every component's `children`, exported or local, is checked where JSX calls it.
 
 Status: **refused**. Diagnostic: `F4001`.
 
-Browsers read `STYLE` and `Style` as `style`, which First narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key.
+Browsers read `STYLE` and `Style` as `style`, which TypedPress narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key.
 
 [Evidence](../tests/fixtures/reject-jsx-style-case)

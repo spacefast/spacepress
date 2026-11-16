@@ -1,13 +1,13 @@
-//! `first pull [dir] [--site <url>] [--check]`: write a site's runtime schema versions into the
+//! `typedpress pull [dir] [--site <url>] [--check]`: write a site's runtime schema versions into the
 //! project (docs/spec/spec.md §2.10).
 //!
 //! A site whose app set `runtimeSchema: true` can change its content schema while it runs. Those
 //! changes live in the site's database until this command writes them to the committed lock
-//! `first/_generated/runtime-schema.json`, which `first build` reads. After a pull, the project is
+//! `tp/_generated/runtime-schema.json`, which `typedpress build` reads. After a pull, the project is
 //! compiled once here with the new lock, so a lock the compiler would refuse is reported before
 //! anything is written, and the generated types and typed client are refreshed to match.
 //!
-//! Credentials come only from `FIRST_APP_PASSWORD` or `FIRST_TOKEN`; the site answers an
+//! Credentials come only from `TP_APP_PASSWORD` or `TP_TOKEN`; the site answers an
 //! administrator only.
 
 use crate::runtime_schema::LOCK;
@@ -16,7 +16,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: first pull [project-dir] [--site <url>] [--check]\n       credential: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token> (an administrator's)";
+const USAGE: &str = "usage: typedpress pull [project-dir] [--site <url>] [--check]\n       credential: TP_APP_PASSWORD=<user:application-password> or TP_TOKEN=<bearer token> (an administrator's)";
 
 pub fn cli(args: &[String]) -> ExitCode {
     match run(args) {
@@ -45,13 +45,13 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         }
     }
     let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
-    let credential = match (env("FIRST_APP_PASSWORD"), env("FIRST_TOKEN")) {
-        (Some(_), Some(_)) => return Err("set FIRST_APP_PASSWORD or FIRST_TOKEN, not both".into()),
+    let credential = match (env("TP_APP_PASSWORD"), env("TP_TOKEN")) {
+        (Some(_), Some(_)) => return Err("set TP_APP_PASSWORD or TP_TOKEN, not both".into()),
         (Some(password), None) => Credential::AppPassword(password),
         (None, Some(token)) => Credential::Bearer(token),
         (None, None) => {
             return Err(format!(
-                "first pull needs a credential in FIRST_APP_PASSWORD or FIRST_TOKEN\n{USAGE}"
+                "typedpress pull needs a credential in TP_APP_PASSWORD or TP_TOKEN\n{USAGE}"
             ));
         }
     };
@@ -76,7 +76,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
     };
     if format != crate::runtime_schema::FORMAT {
         return Err(format!(
-            "{site}: the site's runtime schema is in format {format}; this `first` reads format {}. Use the First version the site runs",
+            "{site}: the site's runtime schema is in format {format}; this `typedpress` reads format {}. Use the TypedPress version the site runs",
             crate::runtime_schema::FORMAT
         ));
     }
@@ -93,7 +93,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         .and_then(|lock| lock["version"].as_u64());
     let was = before.map_or("no lock".to_string(), |v| format!("version {v}"));
     if check {
-        eprintln!("{LOCK} holds {was}; the site is at version {version}. Run `first pull` to update it");
+        eprintln!("{LOCK} holds {was}; the site is at version {version}. Run `typedpress pull` to update it");
         return Ok(ExitCode::from(1));
     }
     // Compile with the new lock before it replaces the old one: a lock the compiler refuses (the
@@ -114,6 +114,6 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             println!("  {name}: on the site, now also in the project");
         }
     }
-    println!("commit {LOCK} and first/_generated/, then build and deploy");
+    println!("commit {LOCK} and tp/_generated/, then build and deploy");
     Ok(ExitCode::SUCCESS)
 }

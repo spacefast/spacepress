@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/route-collection-new",
+	"name": "@typedpress-admin/route-collection-new",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -7,7 +7,7 @@
 	},
 	"license": "GPL-2.0-or-later",
 	"dependencies": {
-		"@first-admin/schema": "workspace:*",
+		"@typedpress-admin/schema": "workspace:*",
 		"@wordpress/route": "catalog:"
 	}
 }

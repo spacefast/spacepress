@@ -4,7 +4,7 @@
 // password sign-in. Sign-ins that succeed count nothing.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use First\Identity\{Plugin, Security};
+use TypedPress\Identity\{Plugin, Security};
 
 $tag = bin2hex(random_bytes(5));
 $password = 'correct horse ' . $tag;
@@ -176,7 +176,7 @@ $limit = static function () use ($tag): string {
     try {
         Plugin::$security->limit("probe-$tag", 3);
         return 'ok';
-    } catch (\First\Identity\Failure $e) {
+    } catch (\TypedPress\Identity\Failure $e) {
         return $e->kind;
     }
 };

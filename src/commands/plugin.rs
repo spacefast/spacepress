@@ -1,7 +1,7 @@
-//! `first plugin [--out <file>]`: write the First WordPress plugin as a ZIP to upload in wp-admin.
+//! `typedpress plugin [--out <file>]`: write the TypedPress WordPress plugin as a ZIP to upload in wp-admin.
 //!
-//! The plugin (runtime/first-plugin/) is the same for every app: it checks and installs what First
-//! needs, receives deployments from `first push`, and mounts the live build through First's loader.
+//! The plugin (runtime/typedpress-plugin/) is the same for every app: it checks and installs what TypedPress
+//! needs, receives deployments from `typedpress push`, and mounts the live build through TypedPress's loader.
 //! Its version and platform pins are this compiler's.
 use crate::app_plugin::substitute;
 use crate::platform;
@@ -9,16 +9,16 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: first plugin [--out <file.zip>]";
+const USAGE: &str = "usage: typedpress plugin [--out <file.zip>]";
 /// The plugin's directory in wp-content/plugins.
-pub(crate) const SLUG: &str = "first";
+pub(crate) const SLUG: &str = "typedpress";
 
 /// The embedded plugin files by content, with this compiler's version and pins: the same plugin
 /// has the same hash wherever it is written.
 pub(crate) fn hash() -> String {
     use sha2::Digest as _;
     let mut hash = sha2::Sha256::new();
-    let mut files: Vec<_> = crate::emit::embedded("first-plugin/").collect();
+    let mut files: Vec<_> = crate::emit::embedded("typedpress-plugin/").collect();
     files.sort();
     for (path, bytes) in files {
         hash.update(path.as_bytes());
@@ -34,14 +34,14 @@ pub(crate) fn hash() -> String {
 /// The plugin's files, as (path below the plugins directory, bytes).
 pub(crate) fn files() -> Vec<(String, Vec<u8>)> {
     let vars = [
-        ("firstVersion", env!("CARGO_PKG_VERSION").to_string()),
+        ("tpVersion", env!("CARGO_PKG_VERSION").to_string()),
         ("wpVersion", platform::WORDPRESS.to_string()),
         ("phpVersion", platform::PHP.to_string()),
         ("pluginHash", hash()),
     ];
-    let mut files: Vec<(String, Vec<u8>)> = crate::emit::embedded("first-plugin/")
+    let mut files: Vec<(String, Vec<u8>)> = crate::emit::embedded("typedpress-plugin/")
         .map(|(rest, bytes)| {
-            let bytes = if matches!(rest, "first.php" | "readme.txt") {
+            let bytes = if matches!(rest, "typedpress.php" | "readme.txt") {
                 substitute(&String::from_utf8_lossy(bytes), &vars).into_bytes()
             } else {
                 bytes.to_vec()
@@ -55,7 +55,7 @@ pub(crate) fn files() -> Vec<(String, Vec<u8>)> {
     ));
     files.push((
         format!("{SLUG}/LICENSE"),
-        crate::emit::runtime_file("First/LICENSE")
+        crate::emit::runtime_file("TypedPress/LICENSE")
             .expect("embedded license")
             .to_vec(),
     ));
@@ -123,7 +123,7 @@ pub(crate) fn zip<'a>(files: impl IntoIterator<Item = (&'a str, &'a [u8])>, stam
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
     let out = match args {
-        [] => PathBuf::from("first.zip"),
+        [] => PathBuf::from("typedpress.zip"),
         [flag, path] if flag == "--out" => PathBuf::from(path),
         _ => {
             eprintln!("{USAGE}");
@@ -133,7 +133,7 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
     match write(&out) {
         Ok(()) => {
             println!(
-                "wrote {} (First {})\nIn wp-admin: Plugins, Add Plugin, Upload Plugin, choose this file, then activate First.\nThen, in your project: first login <site-url> and first push",
+                "wrote {} (TypedPress {})\nIn wp-admin: Plugins, Add Plugin, Upload Plugin, choose this file, then activate TypedPress.\nThen, in your project: typedpress login <site-url> and typedpress push",
                 out.display(),
                 env!("CARGO_PKG_VERSION")
             );
@@ -171,9 +171,12 @@ mod tests {
     #[test]
     fn the_plugin_archive_is_one_directory_with_every_placeholder_filled() {
         let entries = entries(archive().unwrap());
-        assert!(entries.iter().any(|(name, _)| name == "first/first.php"));
+        assert!(entries.iter().any(|(name, _)| name == "typedpress/typedpress.php"));
         for (name, bytes) in &entries {
-            assert!(name.starts_with("first/"), "{name} is outside the plugin's directory");
+            assert!(
+                name.starts_with("typedpress/"),
+                "{name} is outside the plugin's directory"
+            );
             assert!(
                 !String::from_utf8_lossy(bytes).contains("{{"),
                 "{name} still has a placeholder"
@@ -186,7 +189,7 @@ mod tests {
         let entries = entries(archive().unwrap());
         let (_, bytes) = entries
             .iter()
-            .find(|(name, _)| name == "first/requirements.json")
+            .find(|(name, _)| name == "typedpress/requirements.json")
             .unwrap();
         let shipped: serde_json::Value = serde_json::from_slice(bytes).unwrap();
         let fixture: serde_json::Value =

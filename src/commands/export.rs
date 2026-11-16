@@ -1,14 +1,14 @@
-//! `first export [dir] [--out dir] [--site url] [--base /path] [--site-url https://…]`: the app's
-//! `first/app/` pages as a static site that needs no WordPress to serve it
+//! `typedpress export [dir] [--out dir] [--site url] [--base /path] [--site-url https://…]`: the app's
+//! `tp/app/` pages as a static site that needs no WordPress to serve it
 //! (docs/decisions/2026-11-13-static-output.md).
 //!
 //! The project must say `output: "static"`. Pages are rendered by a WordPress running the build:
-//! - without `--site`, a throwaway WordPress on SQLite (the Studio runner `first dev` uses), with the
-//!   build's plugins and `first/content/` seeded as a publish seeds a Space; it is removed after;
+//! - without `--site`, a throwaway WordPress on SQLite (the Studio runner `typedpress dev` uses), with the
+//!   build's plugins and `tp/content/` seeded as a publish seeds a Space; it is removed after;
 //! - with `--site`, the hosted site, which must run this checkout's build, with an editor's
-//!   `FIRST_APP_PASSWORD` or `FIRST_TOKEN`.
+//!   `TP_APP_PASSWORD` or `TP_TOKEN`.
 //!
-//! Each URL the site lists (`GET /__first/api/v1/prerender`) is fetched as a signed-out visitor with
+//! Each URL the site lists (`GET /__tp/api/v1/prerender`) is fetched as a signed-out visitor with
 //! its prerender token, with its Markdown twin. The export writes `<path>.html` and `<path>.md`,
 //! `404.html`, `sitemap.xml`, `llms.txt`, `robots.txt`, `_redirects` with a refresh page at each old
 //! URL, and every same-site file the pages reference (stylesheets, images, script modules including
@@ -58,13 +58,13 @@ static JS_IMPORT: LazyLock<regex::Regex> =
 static NOINDEX: LazyLock<regex::Regex> =
     LazyLock::new(|| pattern(r#"(?i)<meta name=['"]robots['"] content=['"][^'"]*noindex"#));
 
-const USAGE: &str = "usage: first export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]\n       with --site: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token> (an editor's)";
+const USAGE: &str = "usage: typedpress export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]\n       with --site: TP_APP_PASSWORD=<user:application-password> or TP_TOKEN=<bearer token> (an editor's)";
 
 /// WordPress endpoints a page may link or post to that stay on the hosted site with `--site`.
 const HOSTED: &[&str] = &["/wp-login.php", "/wp-comments-post.php", "/wp-admin", "/identity"];
 
 /// The default output, below the project.
-pub const OUT: &str = "first/dist/static";
+pub const OUT: &str = "tp/dist/static";
 
 struct Flags {
     project: PathBuf,
@@ -146,29 +146,32 @@ fn run(flags: Flags) -> Result<(), String> {
         .map_err(|d| crate::diag::render(&d, &project).trim_end().to_string())?;
     if built.schema.output != crate::schema::Output::Static {
         return Err(
-            "first export writes a site with no WordPress, and this app renders pages on WordPress: set `output: \"static\"` in first.config.ts. To prebuild some pages on a WordPress site, export `prerender = true` from them instead"
+            "typedpress export writes a site with no WordPress, and this app renders pages on WordPress: set `output: \"static\"` in typedpress.config.ts. To prebuild some pages on a WordPress site, export `prerender = true` from them instead"
                 .into(),
         );
     }
     if built.schema.app.as_ref().is_none_or(|a| a.routes.is_empty()) {
-        return Err("first export renders first/app/, and this project has no pages: add first/app/page.tsx".into());
+        return Err("typedpress export renders tp/app/, and this project has no pages: add tp/app/page.tsx".into());
     }
     let out = output_dir(&project, flags.out.as_deref())?;
-    // The build the pages render from. Local: this checkout's, written as `first build` writes it.
+    // The build the pages render from. Local: this checkout's, written as `typedpress build` writes it.
     let (site, credential, _local) = match &flags.site {
         Some(site) => {
             let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
-            let credential = match (env("FIRST_APP_PASSWORD"), env("FIRST_TOKEN")) {
-                (Some(_), Some(_)) => return Err("set FIRST_APP_PASSWORD or FIRST_TOKEN, not both".into()),
+            let credential = match (env("TP_APP_PASSWORD"), env("TP_TOKEN")) {
+                (Some(_), Some(_)) => return Err("set TP_APP_PASSWORD or TP_TOKEN, not both".into()),
                 (Some(p), None) => Credential::AppPassword(p),
                 (None, Some(t)) => Credential::Bearer(t),
-                (None, None) => return Err(format!("first export --site needs an editor's credential\n{USAGE}")),
+                (None, None) => {
+                    return Err(format!(
+                        "typedpress export --site needs an editor's credential\n{USAGE}"
+                    ));
+                }
             };
             (site.trim_end_matches('/').to_string(), credential, None)
         }
         None => {
-            super::build::emit_project(&project, &built)
-                .map_err(|e| format!("couldn't write first/_generated: {e}"))?;
+            super::build::emit_project(&project, &built).map_err(|e| format!("couldn't write tp/_generated: {e}"))?;
             let content = super::build::emit_wp_content(&project, &project.join(crate::layout::WP_CONTENT), &built)
                 .map_err(|e| format!("couldn't write wp-content: {e}"))?;
             let seeds = crate::bundle::seed_records(&crate::loader::Disk, &project, &built.schema)
@@ -181,7 +184,7 @@ fn run(flags: Flags) -> Result<(), String> {
     };
     let client = Client::new(&site, credential)?;
     let listing = client.get("/prerender").map_err(|p| match p.status {
-        404 => format!("{site}: no first/app/ pages to export ({})", p.message()),
+        404 => format!("{site}: no tp/app/ pages to export ({})", p.message()),
         401 | 403 => format!(
             "{site}: {}; the credential must be an editor's or an administrator's",
             p.message()
@@ -190,12 +193,12 @@ fn run(flags: Flags) -> Result<(), String> {
     })?;
     if flags.site.is_some() {
         // The checkout's compiled app plugin, hashed as the site hashes its own (Prebuilt::appHash):
-        // every file below first/app/, so a change to any page, component or action counts.
+        // every file below tp/app/, so a change to any page, component or action counts.
         let schema_php = crate::schema_php::render(&built.schema);
         let mut files: Vec<(String, Vec<u8>)> = crate::app_plugin::files(&built, &schema_php, Vec::new(), Vec::new())
             .into_iter()
             .filter_map(|(path, bytes)| {
-                let rest = path.split_once('/')?.1.strip_prefix("first/app/")?;
+                let rest = path.split_once('/')?.1.strip_prefix("tp/app/")?;
                 // Migrations are the site's ledger, not code a page renders with.
                 (!rest.starts_with("migrations/")).then(|| (rest.to_string(), bytes))
             })
@@ -255,15 +258,15 @@ impl Local {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        // Its own process group: a Ctrl-C in the terminal stops `first` only. The runner then reads
-        // the end of its standard input, which closes whenever `first` exits for any reason, and
+        // Its own process group: a Ctrl-C in the terminal stops `typedpress` only. The runner then reads
+        // the end of its standard input, which closes whenever `typedpress` exits for any reason, and
         // removes the site, as on a normal exit.
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut command, 0);
         eprintln!("starting a local WordPress for the export…");
         let mut child = command
             .spawn()
-            .map_err(|e| format!("first export needs Node.js 22+ and npm (npx): {e}"))?;
+            .map_err(|e| format!("typedpress export needs Node.js 22+ and npm (npx): {e}"))?;
         let stdout = child.stdout.take().expect("piped");
         let mut line = String::new();
         std::io::BufReader::new(stdout)
@@ -362,9 +365,9 @@ impl<'a> Export<'a> {
     /// GET a path below the site's origin, with a prerender token when given: (status, headers, body).
     fn get(&self, path: &str, token: Option<&str>) -> Result<Fetched, String> {
         let url = format!("{}{path}", self.origin);
-        let mut request = self.agent.get(&url).header("X-First-Export", "1");
+        let mut request = self.agent.get(&url).header("X-TypedPress-Export", "1");
         if let Some(token) = token {
-            request = request.header("X-First-Prerender", token);
+            request = request.header("X-TypedPress-Prerender", token);
         }
         let mut response = request.call().map_err(|e| format!("GET {url}: {e}"))?;
         let status = response.status().as_u16();
@@ -394,13 +397,13 @@ impl<'a> Export<'a> {
             let route = url["route"].as_str().unwrap_or_default();
             let full = format!("{}{}", self.home, if path == "/" { "/" } else { &path });
             let (status, headers, body) = self.get(&full, url["token"].as_str())?;
-            if status == 200 && headers.get("x-first-prerendered").map(String::as_str) != Some("1") {
+            if status == 200 && headers.get("x-typedpress-prerendered").map(String::as_str) != Some("1") {
                 return Err(format!(
                     "{path}: the answer wasn't rendered for the export (a cache in front of {}?). Export from an address that reaches WordPress directly",
                     self.origin
                 ));
             }
-            if let Some(function) = headers.get("x-first-prerender-refused") {
+            if let Some(function) = headers.get("x-typedpress-prerender-refused") {
                 return Err(format!(
                     "{path} (app/{route}): the page calls `{function}`, which asks who the visitor is, and a static page is one file for everyone. Move that into a client component, or leave it out"
                 ));
@@ -428,7 +431,7 @@ impl<'a> Export<'a> {
             let markdown = match twin["path"].as_str() {
                 Some(twin_path) => {
                     let (status, headers, body) = self.get(twin_path, twin["token"].as_str())?;
-                    (status == 200 && headers.get("x-first-prerendered").map(String::as_str) == Some("1"))
+                    (status == 200 && headers.get("x-typedpress-prerendered").map(String::as_str) == Some("1"))
                         .then(|| String::from_utf8_lossy(&body).into_owned())
                 }
                 None => None,
@@ -446,10 +449,8 @@ impl<'a> Export<'a> {
         let pages = self.pages()?;
         let exported: BTreeSet<String> = pages.iter().map(|p| p.path.clone()).collect();
         let nf = &self.listing["notFound"];
-        let (status, _, not_found) = self.get(
-            nf["path"].as_str().unwrap_or("/__first-not-found"),
-            nf["token"].as_str(),
-        )?;
+        let (status, _, not_found) =
+            self.get(nf["path"].as_str().unwrap_or("/__tp-not-found"), nf["token"].as_str())?;
         if status != 404 {
             return Err(format!(
                 "the not-found page answered {status}, not 404; not-found.tsx (or the error it hit) needs fixing before 404.html can be written"
@@ -469,7 +470,7 @@ impl<'a> Export<'a> {
         let parent = out.parent().ok_or("--out needs a parent directory")?;
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         let stage = tempfile::Builder::new()
-            .prefix(".first-export-")
+            .prefix(".typedpress-export-")
             .tempdir_in(parent)
             .map_err(|e| e.to_string())?;
         let mut assets: BTreeSet<String> = BTreeSet::new();
@@ -572,7 +573,7 @@ impl<'a> Export<'a> {
         }
         write(
             &stage.path().join(MARKER),
-            b"written by first export; first export replaces this folder\n",
+            b"written by typedpress export; typedpress export replaces this folder\n",
         )?;
         let stage = stage.keep();
         if out.exists() {
@@ -716,7 +717,7 @@ impl<'a> Export<'a> {
                         continue;
                     }
                     refusals.push(format!(
-                        "{page}: {what} {target}, which isn't in the export. Prebuild that page (output: \"static\" prebuilds every first/app/ page; a dynamic one needs staticParams), or link to another site's URL"
+                        "{page}: {what} {target}, which isn't in the export. Prebuild that page (output: \"static\" prebuilds every tp/app/ page; a dynamic one needs staticParams), or link to another site's URL"
                     ));
                 }
                 format!("{}{target}{suffix}", self.flags.base)
@@ -1085,10 +1086,10 @@ fn leftover(root: &Path, dir: &Path, origin: &str, out: &mut Vec<String>) {
 }
 
 /// The marker an export folder carries: only a folder that has it is ever replaced.
-const MARKER: &str = ".first-export";
+const MARKER: &str = ".typedpress-export";
 
 /// Where the export goes, refused when replacing it could lose anything else: it may not be the
-/// project or hold it, sit inside the project outside `first/dist/`, or be a folder that isn't an
+/// project or hold it, sit inside the project outside `tp/dist/`, or be a folder that isn't an
 /// earlier export.
 fn output_dir(project: &Path, out: Option<&Path>) -> Result<PathBuf, String> {
     let out = match out {
@@ -1125,7 +1126,7 @@ fn output_dir(project: &Path, out: Option<&Path>) -> Result<PathBuf, String> {
     }
     if out == dist || out == project.join(crate::layout::WP_CONTENT) {
         return Err(format!(
-            "--out {} is where `first build` writes; choose a folder of its own, like {OUT}",
+            "--out {} is where `typedpress build` writes; choose a folder of its own, like {OUT}",
             out.display()
         ));
     }
@@ -1133,7 +1134,7 @@ fn output_dir(project: &Path, out: Option<&Path>) -> Result<PathBuf, String> {
         let empty = std::fs::read_dir(&out).map(|mut d| d.next().is_none()).unwrap_or(false);
         if !out.is_dir() || (!empty && !out.join(MARKER).is_file()) {
             return Err(format!(
-                "--out {} already holds files that aren't an export; first export replaces only its own output, so choose an empty or new folder",
+                "--out {} already holds files that aren't an export; typedpress export replaces only its own output, so choose an empty or new folder",
                 out.display()
             ));
         }

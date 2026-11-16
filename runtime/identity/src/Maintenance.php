@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity;
+namespace TypedPress\Identity;
 
 final class Maintenance
 {
@@ -16,7 +16,7 @@ final class Maintenance
             );
         }
         $endpoints = [];
-        foreach (get_option("first_identity_webhooks", []) as $endpoint) {
+        foreach (get_option("tp_identity_webhooks", []) as $endpoint) {
             $endpoints[$endpoint["id"]] = $endpoint;
         }
         $pending = $this->db->rows(
@@ -56,9 +56,9 @@ final class Maintenance
                 "redirection" => 0,
                 "headers" => [
                     "Content-Type" => "application/json",
-                    "First-Signature" =>
+                    "TypedPress-Signature" =>
                         "t=" . $timestamp . ",v1=" . $signature,
-                    "First-Event-Id" => (string) $delivery["event_id"],
+                    "TypedPress-Event-Id" => (string) $delivery["event_id"],
                 ],
                 "body" => $body,
             ]);

@@ -2,8 +2,8 @@
 # One shipped-module owner on the active disposable WordPress stack.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/../../.." && pwd)"
-if [[ ${FIRST_WP_SKIP_BROWSER:-0} == 1 ]]; then
-  echo 'browser journey skipped: FIRST_WP_SKIP_BROWSER=1'
+if [[ ${TP_WP_SKIP_BROWSER:-0} == 1 ]]; then
+  echo 'browser journey skipped: TP_WP_SKIP_BROWSER=1'
   exit 0
 fi
 browser="$repo/runtime/admin/apps/node_modules/.bin/playwright"

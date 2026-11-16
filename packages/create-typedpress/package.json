@@ -1,0 +1,13 @@
+{
+  "name": "create-typedpress",
+  "version": "0.3.0",
+  "description": "Create a TypedPress app with a typed backend, public frontend and local WordPress",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "bin": { "create-typedpress": "bin/create-typedpress.mjs" },
+  "files": ["bin", "template", "LICENSE", "README.md"],
+  "scripts": { "prepack": "node ../cli/scripts/prepare-scaffolder.mjs", "test": "node --test test/*.test.mjs" },
+  "repository": { "type": "git", "url": "https://github.com/spacefast/zero.git", "directory": "packages/create-typedpress" },
+  "publishConfig": { "access": "public" }
+}

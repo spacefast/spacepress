@@ -2,7 +2,7 @@
 /**
  * Core post fields collection - applies to several post types
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(

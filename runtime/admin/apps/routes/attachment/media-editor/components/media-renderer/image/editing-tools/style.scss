@@ -1,7 +1,7 @@
 @use "@wordpress/base-styles/variables";
 @use "@wordpress/base-styles/colors";
 
-.first-admin-media-editor-content__cropper {
+.typedpress-admin-media-editor-content__cropper {
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -10,21 +10,21 @@
 	box-sizing: border-box;
 }
 
-.first-admin-media-editor__tools-panel {
-	.first-admin-media-editor__tools-panel-button.first-admin-media-editor__tools-panel-button {
+.typedpress-admin-media-editor__tools-panel {
+	.typedpress-admin-media-editor__tools-panel-button.typedpress-admin-media-editor__tools-panel-button {
 		flex-grow: 1;
 		flex-basis: 0;
 		justify-content: center;
 	}
 
-	.first-admin-media-editor__tools-panel-row {
-		.first-admin-media-editor__tools-panel-heading {
+	.typedpress-admin-media-editor__tools-panel-row {
+		.typedpress-admin-media-editor__tools-panel-heading {
 			margin-bottom: 0;
 		}
 	}
 }
 
-.first-admin-media-editor__tools-panel-row {
+.typedpress-admin-media-editor__tools-panel-row {
 	padding: variables.$grid-unit-20;
 
 	&:not( :last-child ) {
@@ -32,14 +32,14 @@
 	}
 }
 
-.first-admin-media-editor__zoom-dropdown-popover .components-popover__content {
+.typedpress-admin-media-editor__zoom-dropdown-popover .components-popover__content {
 	min-width: 200px;
 	overflow: visible !important; // Range control tooltip overflows the popover.
 }
 
-.first-admin-media-editor__toolbar {
-	.first-admin-media-editor__aspect-ratio-dropdown-button,
-	.first-admin-media-editor__zoom-dropdown-button {
+.typedpress-admin-media-editor__toolbar {
+	.typedpress-admin-media-editor__aspect-ratio-dropdown-button,
+	.typedpress-admin-media-editor__zoom-dropdown-button {
 		// This matches the IconButton height.
 		height: 40px;
 	}

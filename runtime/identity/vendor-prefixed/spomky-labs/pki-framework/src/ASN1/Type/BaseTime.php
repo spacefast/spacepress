@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
 
 use DateTimeImmutable;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
 use Stringable;
 
 /**

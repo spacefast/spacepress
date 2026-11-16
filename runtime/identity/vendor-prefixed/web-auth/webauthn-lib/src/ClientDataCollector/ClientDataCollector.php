@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\ClientDataCollector;
+namespace TypedPress\Identity\Vendor\Webauthn\ClientDataCollector;
 
-use First\Identity\Vendor\Webauthn\AuthenticatorResponse;
-use First\Identity\Vendor\Webauthn\CollectedClientData;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialOptions;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorResponse;
+use TypedPress\Identity\Vendor\Webauthn\CollectedClientData;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialOptions;
 
 interface ClientDataCollector
 {

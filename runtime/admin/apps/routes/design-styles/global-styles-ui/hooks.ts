@@ -6,8 +6,8 @@ import {
 	getSetting,
 	setSetting,
 	mergeGlobalStyles,
-} from '@first-admin/global-styles-engine';
-import type { StyleVariation, Color } from '@first-admin/global-styles-engine';
+} from '@typedpress-admin/global-styles-engine';
+import type { StyleVariation, Color } from '@typedpress-admin/global-styles-engine';
 import { useCallback, useContext, useMemo } from '@wordpress/element';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
@@ -128,7 +128,7 @@ function hasThemeVariation( {
 	styles,
 }: StyleVariation ): boolean {
 	return (
-		title === __( 'Default', 'first-admin' ) ||
+		title === __( 'Default', 'typedpress-admin' ) ||
 		Object.keys( settings || {} ).length > 0 ||
 		Object.keys( styles || {} ).length > 0
 	);
@@ -163,7 +163,7 @@ export function useCurrentMergeThemeStyleVariationsWithUserConfig(
 			clonedUserVariation,
 			properties
 		);
-		userVariationWithoutProperties.title = __( 'Default', 'first-admin' );
+		userVariationWithoutProperties.title = __( 'Default', 'typedpress-admin' );
 
 		const variationsWithPropertiesAndBase = (
 			variationsFromTheme as StyleVariation[]

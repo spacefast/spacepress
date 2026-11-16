@@ -1,6 +1,6 @@
 // Draws the guide's code, diffs, file trees and whole projects with @pierre/diffs and
 // @pierre/trees (https://diffs.com). The page holds each one as a custom element with its text
-// (first/components/Guide.tsx); this replaces the text with the drawn version and marks the
+// (tp/components/Guide.tsx); this replaces the text with the drawn version and marks the
 // element tp-drawn. Without this script the text stays, as plain monospace.
 import { File, FileDiff } from "@pierre/diffs";
 import { FileTree } from "@pierre/trees";

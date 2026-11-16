@@ -3,14 +3,14 @@
 declare(strict_types=1);
 
 /*
- * abilities.call from "php/wordpress" (First\Wp\Abilities\Call) on an in-process WordPress: another
+ * abilities.call from "php/wordpress" (TypedPress\Wp\Abilities\Call) on an in-process WordPress: another
  * plugin's ability runs through core's execute() for the current user, with core's input and
  * permission checks, and its WP_Errors become HttpErrors; the app's own abilities are callable too.
  */
 
-use First\HttpError;
-use First\JsObject;
-use First\Wp\Abilities\Call;
+use TypedPress\HttpError;
+use TypedPress\JsObject;
+use TypedPress\Wp\Abilities\Call;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -65,23 +65,23 @@ eq('and for a visitor: 401 unauthenticated', $problem(static fn () => Call::run(
 
 $wp->actAs('editor');
 $created = Call::run('blog/posts-create', new JsObject(['title' => 'Through an ability', 'body' => 'b', 'status' => 'draft']));
-eq('the app\'s own ability runs First\'s pipeline', [$created->p['title'] ?? null, is_int($created->p['id'] ?? null)], ['Through an ability', true]);
+eq('the app\'s own ability runs TypedPress\'s pipeline', [$created->p['title'] ?? null, is_int($created->p['id'] ?? null)], ['Through an ability', true]);
 $wp->actAs(null);
-eq('and its own errors come back as First problems', $problem(static fn () => Call::run('blog/posts-create', new JsObject(['title' => 'x']))), '401 unauthenticated');
+eq('and its own errors come back as TypedPress problems', $problem(static fn () => Call::run('blog/posts-create', new JsObject(['title' => 'x']))), '401 unauthenticated');
 
 // Core's content abilities read posts without a kind's access rules or field permissions, so a kind
 // is never exposed to them, whatever another plugin's register_post_type_args filter asks.
 eq('a kind\'s post type is not shown in abilities, a filter\'s show_in_abilities notwithstanding',
-    [get_post_type_object('first_posts')->show_in_abilities ?? null, get_post_type_object('first_authors')->show_in_abilities ?? null],
+    [get_post_type_object('tp_posts')->show_in_abilities ?? null, get_post_type_object('tp_authors')->show_in_abilities ?? null],
     [false, false]);
 eq('the filter did run: a core post type it exposes keeps that', get_post_type_object('post')->show_in_abilities ?? null, true);
 if (wp_has_ability('core/content-query')) {
     // WordPress 7.2+: the ability exists, lists only exposed types and refuses a kind.
     $enum = wp_get_ability('core/content-query')->get_input_schema()['properties']['where']['properties']['type']['enum'] ?? [];
-    eq('core/content-query offers posts but no kind', [in_array('post', $enum, true), in_array('first_posts', $enum, true), in_array('first_authors', $enum, true)], [true, false, false]);
+    eq('core/content-query offers posts but no kind', [in_array('post', $enum, true), in_array('tp_posts', $enum, true), in_array('tp_authors', $enum, true)], [true, false, false]);
     $wp->actAs('admin');
     $posts = wp_get_ability('core/content-query')->execute(['where' => ['type' => 'post']]);
-    $refused = wp_get_ability('core/content-query')->execute(['where' => ['type' => 'first_posts']]);
+    $refused = wp_get_ability('core/content-query')->execute(['where' => ['type' => 'tp_posts']]);
     check('even for an administrator, core/content-query reads posts but refuses a kind',
         is_array($posts) && $refused instanceof WP_Error, [$posts, $refused]);
     $wp->actAs(null);

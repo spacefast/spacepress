@@ -9,16 +9,16 @@ const target = process.env.CARGO_TARGET_DIR ?? path.join(repo, "target");
 
 /** `pnpm wasm` must have run. */
 export function wasmPath(): string {
-  const served = process.env.FIRST_WASM_PATH ?? path.join(site, "public/compiler.wasm");
+  const served = process.env.TP_WASM_PATH ?? path.join(site, "public/compiler.wasm");
   if (!existsSync(served)) throw new Error(`${served} is missing; run pnpm wasm`);
   return served;
 }
 
 /** The native compiler, for parity: a release build if there is one, else debug. */
-export function firstBinary(): string {
+export function tpBinary(): string {
   for (const profile of ["release", "debug"]) {
-    const candidate = path.join(target, profile, "first");
+    const candidate = path.join(target, profile, "typedpress");
     if (existsSync(candidate)) return candidate;
   }
-  throw new Error(`no first binary under ${target}; run cargo build`);
+  throw new Error(`no typedpress binary under ${target}; run cargo build`);
 }

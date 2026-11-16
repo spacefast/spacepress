@@ -1,14 +1,14 @@
 // Change notices on real WordPress + MariaDB: a REST write commits and fires one
-// first_realtime_changes notice with ids only; a rolled-back write fires none; a wp-admin save
+// tp_realtime_changes notice with ids only; a rolled-back write fires none; a wp-admin save
 // reports too; and the generated client's subscriptions re-read through the API when a notice
 // arrives, by polling when there is no transport, and after the client's own writes.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createClient } from "./app/first/_generated/client/index.ts";
+import { createClient } from "./app/tp/_generated/client/index.ts";
 import { api, auth, core, ok, problem, run, wp } from "./env.ts";
 
 type Notice = { id: string; at: string; changes: { collection: string; ops: string[]; ids: (number | string)[] | null }[] };
-const LOG = "first-test-realtime.jsonl";
+const LOG = "typedpress-test-realtime.jsonl";
 const notices = (): Notice[] => {
   const raw = wp("eval", `$f = WP_CONTENT_DIR . '/${LOG}'; echo is_file($f) ? file_get_contents($f) : '';`);
   return raw === "" ? [] : raw.split("\n").filter(Boolean).map((l) => JSON.parse(l));
@@ -33,7 +33,7 @@ test("a write the hook rolls back fires nothing", async () => {
 test("a wp-admin save (core REST on the post type) reports through the same hook", async () => {
   const event = await ok("POST", "/events", { as: "editor", body: { title: `Editor ${run}` } });
   const before = notices().length;
-  const res = await fetch(`${core}/first_events/${event.id}`, {
+  const res = await fetch(`${core}/tp_events/${event.id}`, {
     method: "POST",
     headers: { ...auth("editor"), "content-type": "application/json" },
     body: JSON.stringify({ title: `Edited ${run}` }),

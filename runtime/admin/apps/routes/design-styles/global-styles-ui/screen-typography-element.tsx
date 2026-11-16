@@ -11,36 +11,36 @@ import TypographyPreview from './typography-preview';
 
 const elements = {
 	text: {
-		description: __( 'Manage the fonts used on the site.', 'first-admin' ),
-		title: __( 'Text', 'first-admin' ),
+		description: __( 'Manage the fonts used on the site.', 'typedpress-admin' ),
+		title: __( 'Text', 'typedpress-admin' ),
 	},
 	link: {
 		description: __(
 			'Manage the fonts and typography used on the links.',
-			'first-admin'
+			'typedpress-admin'
 		),
-		title: __( 'Links', 'first-admin' ),
+		title: __( 'Links', 'typedpress-admin' ),
 	},
 	heading: {
 		description: __(
 			'Manage the fonts and typography used on headings.',
-			'first-admin'
+			'typedpress-admin'
 		),
-		title: __( 'Headings', 'first-admin' ),
+		title: __( 'Headings', 'typedpress-admin' ),
 	},
 	caption: {
 		description: __(
 			'Manage the fonts and typography used on captions.',
-			'first-admin'
+			'typedpress-admin'
 		),
-		title: __( 'Captions', 'first-admin' ),
+		title: __( 'Captions', 'typedpress-admin' ),
 	},
 	button: {
 		description: __(
 			'Manage the fonts and typography used on buttons.',
-			'first-admin'
+			'typedpress-admin'
 		),
-		title: __( 'Buttons', 'first-admin' ),
+		title: __( 'Buttons', 'typedpress-admin' ),
 	},
 };
 
@@ -66,7 +66,7 @@ function ScreenTypographyElement( { element }: ScreenTypographyElementProps ) {
 			{ element === 'heading' && (
 				<Spacer marginX={ 4 } marginBottom="1em">
 					<ToggleGroupControl
-						label={ __( 'Select heading level', 'first-admin' ) }
+						label={ __( 'Select heading level', 'typedpress-admin' ) }
 						hideLabelFromVision
 						value={ headingLevel }
 						onChange={ ( value ) =>
@@ -79,48 +79,48 @@ function ScreenTypographyElement( { element }: ScreenTypographyElementProps ) {
 						<ToggleGroupControlOption
 							value="heading"
 							showTooltip
-							aria-label={ __( 'All headings', 'first-admin' ) }
+							aria-label={ __( 'All headings', 'typedpress-admin' ) }
 							label={ _x(
 								'All',
 								'heading levels',
-								'first-admin'
+								'typedpress-admin'
 							) }
 						/>
 						<ToggleGroupControlOption
 							value="h1"
 							showTooltip
-							aria-label={ __( 'Heading 1', 'first-admin' ) }
-							label={ __( 'H1', 'first-admin' ) }
+							aria-label={ __( 'Heading 1', 'typedpress-admin' ) }
+							label={ __( 'H1', 'typedpress-admin' ) }
 						/>
 						<ToggleGroupControlOption
 							value="h2"
 							showTooltip
-							aria-label={ __( 'Heading 2', 'first-admin' ) }
-							label={ __( 'H2', 'first-admin' ) }
+							aria-label={ __( 'Heading 2', 'typedpress-admin' ) }
+							label={ __( 'H2', 'typedpress-admin' ) }
 						/>
 						<ToggleGroupControlOption
 							value="h3"
 							showTooltip
-							aria-label={ __( 'Heading 3', 'first-admin' ) }
-							label={ __( 'H3', 'first-admin' ) }
+							aria-label={ __( 'Heading 3', 'typedpress-admin' ) }
+							label={ __( 'H3', 'typedpress-admin' ) }
 						/>
 						<ToggleGroupControlOption
 							value="h4"
 							showTooltip
-							aria-label={ __( 'Heading 4', 'first-admin' ) }
-							label={ __( 'H4', 'first-admin' ) }
+							aria-label={ __( 'Heading 4', 'typedpress-admin' ) }
+							label={ __( 'H4', 'typedpress-admin' ) }
 						/>
 						<ToggleGroupControlOption
 							value="h5"
 							showTooltip
-							aria-label={ __( 'Heading 5', 'first-admin' ) }
-							label={ __( 'H5', 'first-admin' ) }
+							aria-label={ __( 'Heading 5', 'typedpress-admin' ) }
+							label={ __( 'H5', 'typedpress-admin' ) }
 						/>
 						<ToggleGroupControlOption
 							value="h6"
 							showTooltip
-							aria-label={ __( 'Heading 6', 'first-admin' ) }
-							label={ __( 'H6', 'first-admin' ) }
+							aria-label={ __( 'Heading 6', 'typedpress-admin' ) }
+							label={ __( 'H6', 'typedpress-admin' ) }
 						/>
 					</ToggleGroupControl>
 				</Spacer>

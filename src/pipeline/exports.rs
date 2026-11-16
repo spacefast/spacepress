@@ -1,5 +1,5 @@
 //! Registers what the app exports (docs/spec/spec.md §1.1). Every exported kind, global, file
-//! bucket, action, job and admin screen in `first.config.ts` or a module under `first/` registers under its export
+//! bucket, action, job and admin screen in `typedpress.config.ts` or a module under `tp/` registers under its export
 //! name, whatever the file is called and whether or not anything imports it. Other exports are
 //! ignored, so helper modules need no special place.
 //!
@@ -22,7 +22,7 @@ struct Taken {
     span: Span,
 }
 
-/// The registry an exported value belongs in, or `None` for an export First ignores.
+/// The registry an exported value belongs in, or `None` for an export TypedPress ignores.
 fn registry(value: &Value) -> Option<&'static str> {
     Some(match value {
         Value::Collection(c) => match c.kind {
@@ -154,11 +154,11 @@ fn removed_key(ev: &Evaluator<'_>, program: &Program, config: &Value, key: &str)
         _ => String::new(),
     };
     Some(d.help(format!(
-        "write `{example}` in first.config.ts or any file under first/; the export name is its API name{tail}"
+        "write `{example}` in typedpress.config.ts or any file under tp/; the export name is its API name{tail}"
     )))
 }
 
-/// Whether `module` is app source: `first.config.ts` or a module under `first/`, not an installed
+/// Whether `module` is app source: `typedpress.config.ts` or a module under `tp/`, not an installed
 /// package (a plugin builds its own values, ruling 38).
 fn app_source(program: &Program, file: u32) -> bool {
     let Some(module) = program.modules.iter().position(|m| m.file == file) else {
@@ -201,8 +201,8 @@ fn builder(value: &Value) -> &'static str {
     }
 }
 
-/// Evaluates every app module, then adds the exports of `first.config.ts` and of every module under
-/// `first/` to `config`'s registries in place, so the spans the evaluator recorded still locate errors.
+/// Evaluates every app module, then adds the exports of `typedpress.config.ts` and of every module under
+/// `tp/` to `config`'s registries in place, so the spans the evaluator recorded still locate errors.
 pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value) -> Result<()> {
     let Value::Object(cfg) = config else {
         return ev.bind_db(&IndexMap::new());
@@ -223,7 +223,7 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
                     |value| crate::diag::key_of(value, key),
                 );
                 return Err(Diag::new(span, "defineConfig() has no option `screens`: a screen registers by its export")
-                    .help("write `export const pendingOrders = adminScreen({ ... })` in first.config.ts or any file under first/; the export name is its id"));
+                    .help("write `export const pendingOrders = adminScreen({ ... })` in typedpress.config.ts or any file under tp/; the export name is its id"));
             }
         }
     }
@@ -356,7 +356,7 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             }
         }
     }
-    // `"first:db"` resolves to every registered kind, by its registry key.
+    // `"typedpress:db"` resolves to every registered kind, by its registry key.
     let mut kinds = IndexMap::new();
     for registry in ["collections", "tables", "users", "taxonomies"] {
         if let Some(Value::Object(entries)) = cfg.borrow().get(registry) {
@@ -366,8 +366,8 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
         }
     }
     ev.bind_db(&kinds)?;
-    // `first/wp-hooks/` modules declare no kinds, so they run once every kind is registered: their
-    // `"first:db"` imports bind as each module evaluates.
+    // `tp/wp-hooks/` modules declare no kinds, so they run once every kind is registered: their
+    // `"typedpress:db"` imports bind as each module evaluates.
     for file in &program.wp_hooks {
         ev.run_module(file.module).map_err(|d| d.phase(Code::Evaluation))?;
     }

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Command;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Command;
 
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -19,8 +19,8 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
 
 /**
  * A console command to debug Serializer information.

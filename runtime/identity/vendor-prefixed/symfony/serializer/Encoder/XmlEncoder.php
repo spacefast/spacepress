@@ -9,13 +9,13 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>

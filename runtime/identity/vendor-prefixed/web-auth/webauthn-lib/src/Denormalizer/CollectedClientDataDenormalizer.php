@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
 
 use const JSON_THROW_ON_ERROR;
 use JsonException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Webauthn\CollectedClientData;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use TypedPress\Identity\Vendor\Webauthn\CollectedClientData;
 
 final class CollectedClientDataDenormalizer implements DenormalizerInterface, DenormalizerAwareInterface
 {

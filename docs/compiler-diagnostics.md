@@ -1,19 +1,19 @@
 # Compiler diagnostics
 
-`first check [project-dir] --json` compiles in memory and writes one JSON object
+`typedpress check [project-dir] --json` compiles in memory and writes one JSON object
 to stdout. It writes no generated files, migrations or plugin downloads. Exit
 status is 0 for a successful check, 1 for a compiler diagnostic, and 2 for invalid
 CLI arguments. Argument errors remain human-readable on stderr.
 
 ```sh
-first check examples/recipes --json
+typedpress check examples/recipes --json
 python3 scripts/compiler-contracts.py --check
 ```
 
 The website's browser build of the compiler (`src/wasm.rs`) answers with the same
 envelope under `check`, so an editor, the command line and the site report one shape.
 
-The envelope has `schema: "first-diagnostics"`, `version: 1`, `compilerVersion`,
+The envelope has `schema: "typedpress-diagnostics"`, `version: 1`, `compilerVersion`,
 `ok`, `diagnostics` and `groups`. Both arrays are empty on success. Each
 diagnostic has a code, category, severity, message, optional help, location and
 group ID. Categories currently are `invalid-source`, `unsupported` and
@@ -41,7 +41,7 @@ prevents lowering that module, while other imports already discovered in valid
 modules can still be checked. Evaluation, extraction and PHP type checking still
 stop at their first error. This is not a complete tolerant TypeScript checker.
 
-The ordinary `first check` keeps its terminal output and first-error behavior.
+The ordinary `typedpress check` keeps its terminal output and typedpress-error behavior.
 The JSON form also fails on unsupported constructs; a report containing blockers
 never exits successfully. It checks the WordPress compilation contract without requiring target flags. Nonfatal build hints are not currently included in the JSON
 format.
@@ -56,11 +56,11 @@ format.
 - `F3001`: schema extraction failure.
 - `F4001`: handler type checking or PHP compilation failure.
 - `F1201`: a plugin package imports the app's modules or another plugin's package.
-- `F1210`: app source imports a file outside `first/` (`first.config.ts` and modules under `first/` load app code only from `first/`).
+- `F1210`: app source imports a file outside `tp/` (`typedpress.config.ts` and modules under `tp/` load app code only from `tp/`).
 - `F1221`: an export name is taken twice (two exports, or an action named like a kind), one definition is exported under two names, or a kind, action or job is a default export.
-- `F1222`: a kind, global, file bucket, action or job is built in `first.config.ts` or a module under `first/` but not exported, so it has no name.
-- `F4201`: a plugin's compiled code needs a capability its `first/_generated/plugins.lock.json` entry doesn't grant.
-- `F4301`: app or plugin code names, as a literal, a WordPress option the runtime guard protects (`runtime/First/Wp/guard.json`): writing or deleting a site setting that loads code, moves sign-in or decides roles, or reading one that holds a secret.
+- `F1222`: a kind, global, file bucket, action or job is built in `typedpress.config.ts` or a module under `tp/` but not exported, so it has no name.
+- `F4201`: a plugin's compiled code needs a capability its `tp/_generated/plugins.lock.json` entry doesn't grant.
+- `F4301`: app or plugin code names, as a literal, a WordPress option the runtime guard protects (`runtime/TypedPress/Wp/guard.json`): writing or deleting a site setting that loads code, moves sign-in or decides roles, or reading one that holds a secret.
 
 Specific, fixture-backed codes take precedence over phase codes. The growing
 [tested compatibility inventory](language-support.md) lists those codes and

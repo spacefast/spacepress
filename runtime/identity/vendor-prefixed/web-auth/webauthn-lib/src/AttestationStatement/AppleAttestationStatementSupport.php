@@ -2,32 +2,32 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AttestationStatement;
+namespace TypedPress\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\Cose\Key\Ec2Key;
-use First\Identity\Vendor\Cose\Key\Key;
-use First\Identity\Vendor\Cose\Key\RsaKey;
+use TypedPress\Identity\Vendor\CBOR\Decoder;
+use TypedPress\Identity\Vendor\CBOR\Normalizable;
+use TypedPress\Identity\Vendor\Cose\Key\Ec2Key;
+use TypedPress\Identity\Vendor\Cose\Key\Key;
+use TypedPress\Identity\Vendor\Cose\Key\RsaKey;
 use function count;
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitTagging;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\UnknownExtension;
-use First\Identity\Vendor\Webauthn\AuthenticatorData;
-use First\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
-use First\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
-use First\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
-use First\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
-use First\Identity\Vendor\Webauthn\StringStream;
-use First\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
+use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitTagging;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\UnknownExtension;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorData;
+use TypedPress\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
+use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use TypedPress\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
+use TypedPress\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
+use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
+use TypedPress\Identity\Vendor\Webauthn\StringStream;
+use TypedPress\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
 
 final class AppleAttestationStatementSupport implements AttestationStatementSupport, CanDispatchEvents
 {

@@ -1,19 +1,19 @@
 import { Link, useParams, useSearch } from '@wordpress/route';
-import { Page, unlock } from '@first-admin/admin-toolkit';
+import { Page, unlock } from '@typedpress-admin/admin-toolkit';
 import { Button, IconButton } from '@wordpress/ui';
-import { usePostFields } from '@first-admin/fields-next';
+import { usePostFields } from '@typedpress-admin/fields-next';
 import { __ } from '@wordpress/i18n';
 import { useDispatch, useRegistry, useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
 import { useEffect, useState, useMemo } from '@wordpress/element';
-import { DataForm } from '@first-admin/dataviews';
+import { DataForm } from '@typedpress-admin/dataviews';
 import { Notice } from '@wordpress/components';
 import type {
 	Field,
 	Form as FormType,
 	DataFormControlProps,
 	DataViewRenderFieldProps,
-} from '@first-admin/dataviews';
+} from '@typedpress-admin/dataviews';
 import type { Post, Updatable } from '@wordpress/core-data';
 import { close } from '@wordpress/icons';
 import { store as editorStore } from '@wordpress/editor';
@@ -31,11 +31,11 @@ function SaveButton( {
 	isSuccess: boolean | undefined;
 	isDirty: boolean;
 } ) {
-	let saveButtonLabel: string = __( 'Save', 'first-admin' );
+	let saveButtonLabel: string = __( 'Save', 'typedpress-admin' );
 	if ( isSaving ) {
-		saveButtonLabel = __( 'Saving…', 'first-admin' );
+		saveButtonLabel = __( 'Saving…', 'typedpress-admin' );
 	} else if ( isSuccess && ! isDirty ) {
-		saveButtonLabel = __( 'Saved!', 'first-admin' );
+		saveButtonLabel = __( 'Saved!', 'typedpress-admin' );
 	}
 	return (
 		<Button type="submit" disabled={ ! isDirty }>
@@ -158,7 +158,7 @@ function SingleEdit( {
 
 	return (
 		<form
-			className="first-admin-post-list-inspector__form"
+			className="typedpress-admin-post-list-inspector__form"
 			onSubmit={ onSubmit }
 		>
 			<DataForm
@@ -280,7 +280,7 @@ function BulkEdit( {
 						const value =
 							props.item[ field.id as keyof Updatable< Post > ];
 						if ( value === undefined ) {
-							return __( '(Mixed)', 'first-admin' );
+							return __( '(Mixed)', 'typedpress-admin' );
 						}
 						return field.render ? (
 							<field.render { ...props } />
@@ -381,7 +381,7 @@ function BulkEdit( {
 					}
 				} }
 			>
-				{ __( 'Clear Edits', 'first-admin' ) }
+				{ __( 'Clear Edits', 'typedpress-admin' ) }
 			</Button>
 		</form>
 	);
@@ -417,14 +417,14 @@ export default function Inspector() {
 		<Page
 			title={
 				isBulk
-					? __( 'Bulk Edit', 'first-admin' )
-					: __( 'Quick Edit', 'first-admin' )
+					? __( 'Bulk Edit', 'typedpress-admin' )
+					: __( 'Quick Edit', 'typedpress-admin' )
 			}
 			actions={
 				<IconButton
 					variant="minimal"
 					tone="neutral"
-					label={ __( 'Close inspector', 'first-admin' ) }
+					label={ __( 'Close inspector', 'typedpress-admin' ) }
 					icon={ close }
 					size="compact"
 					render={

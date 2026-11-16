@@ -1,7 +1,7 @@
 //! The build store: immutable, content-addressed compiled builds on disk.
 //!
 //! ```text
-//! <root>/runtime/<revision>/   first-loader.php, first-runtime/, first-identity/, first-admin/
+//! <root>/runtime/<revision>/   typedpress-loader.php, typedpress-runtime/, typedpress-identity/, typedpress-admin/
 //! <root>/app/<hash>/           the app tree compile_sources writes, minus the runtime plugins
 //! <root>/build/<id>.json       BuildManifest; <id> is the SHA-256 of these bytes
 //! <root>/baseline/<id>/        what the next compile needs from build <id> apart from its code:
@@ -12,7 +12,7 @@
 //!
 //! Everything is written below `<root>/.tmp/` and renamed into place, then never edited, so file
 //! paths stay valid for the opcode cache. Writers and the collector hold `flock(<root>/.lock)`,
-//! the same lock `First\Loader\Store` takes in PHP.
+//! the same lock `TypedPress\Loader\Store` takes in PHP.
 use crate::{
     bundle,
     diag::{Diag, Span},
@@ -25,14 +25,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const FORMAT: &str = "first.build.v1";
+pub const FORMAT: &str = "typedpress.build.v1";
 
 /// One build: which runtime tree and which app tree a request mounts.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildManifest {
     pub format: String,
-    /// The app name (`first-app-<name>`).
+    /// The app name (`typedpress-app-<name>`).
     pub name: String,
     /// The compiler's Cargo version.
     pub compiler: String,
@@ -40,9 +40,9 @@ pub struct BuildManifest {
     pub runtime: String,
     /// `app/<hash>/`
     pub app: String,
-    /// Mount `first-identity` (the app has an auth collection).
+    /// Mount `typedpress-identity` (the app has an auth collection).
     pub identity: bool,
-    /// Mount `first-admin`.
+    /// Mount `typedpress-admin`.
     pub admin: bool,
     /// The app's schema snapshot, relative to the store root.
     pub snapshot: String,
@@ -263,7 +263,7 @@ pub fn compile_to_store(
 
 /// [`compile_to_store`] against a baseline that is not in this store: `baseline` is the previous
 /// build's ID and a directory holding its `snapshot.json` and `migrations/`. For a store that is not
-/// the one the site serves from (`first push` compiles locally against what the site sent).
+/// the one the site serves from (`typedpress push` compiles locally against what the site sent).
 #[cfg(feature = "cli")]
 pub(crate) fn compile_to_store_against(
     sources: &Path,

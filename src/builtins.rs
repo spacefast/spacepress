@@ -8,12 +8,12 @@ use crate::diag::Span;
 /// lower in compile/host.rs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinModule {
-    /// `"node:crypto"` / `"crypto"`, lowered onto `First\Crypto`.
+    /// `"node:crypto"` / `"crypto"`, lowered onto `TypedPress\Crypto`.
     NodeCrypto,
 }
 
 impl BuiltinModule {
-    /// The functions the module exports in First code.
+    /// The functions the module exports in TypedPress code.
     pub const fn exports(self) -> &'static [&'static str] {
         match self {
             BuiltinModule::NodeCrypto => &[
@@ -77,7 +77,7 @@ const fn overload(
     }
 }
 
-/// The built-in Error constructors First models: callable, constructible, extendable, and
+/// The built-in Error constructors TypedPress models: callable, constructible, extendable, and
 /// `instanceof` targets. The one list for the evaluator, the compiler and (through the generated
 /// `Builtins::ERROR_CONSTRUCTORS`) the PHP runtime.
 pub const ERROR_CONSTRUCTORS: &[&str] = &["Error", "TypeError", "RangeError", "SyntaxError"];
@@ -85,15 +85,15 @@ pub const ERROR_CONSTRUCTORS: &[&str] = &["Error", "TypeError", "RangeError", "S
 // Columns: surface, names, overload, evaluator arity, emitter arity, runtime arity.
 #[rustfmt::skip]
 pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
-    ("first", &["collection", "table", "userProjection"], overload("fields: object, options?: object", arity(1, 2), None, None)),
-    ("first", &["global"], overload("fields: object, options?: object", arity(1, 3), None, None)),
-    ("first", &["defineRelations"], overload("schema: object, relations: function", arity(2, 2), None, None)),
-    ("first", &["ref"], overload("kind: Collection | () => Collection", arity(1, 1), None, None)),
-    ("first", &["taxonomy"], overload("fields?: object, options?: object", arity(0, 2), None, None)),
-    ("first", &["terms"], overload("taxonomy: Taxonomy | () => Taxonomy", arity(1, 1), None, None)),
-    ("first", &["defineConfig", "action", "job", "route", "env", "adminScreen", "item"], overload("one configuration or environment name", arity(1, 1), None, None)),
-    ("first", &["files"], overload("options: object", arity(1, 2), None, None)),
-    ("first", &["relation"], overload("options?: object", arity(0, 1), None, None)),
+    ("typedpress", &["collection", "table", "userProjection"], overload("fields: object, options?: object", arity(1, 2), None, None)),
+    ("typedpress", &["global"], overload("fields: object, options?: object", arity(1, 3), None, None)),
+    ("typedpress", &["defineRelations"], overload("schema: object, relations: function", arity(2, 2), None, None)),
+    ("typedpress", &["ref"], overload("kind: Collection | () => Collection", arity(1, 1), None, None)),
+    ("typedpress", &["taxonomy"], overload("fields?: object, options?: object", arity(0, 2), None, None)),
+    ("typedpress", &["terms"], overload("taxonomy: Taxonomy | () => Taxonomy", arity(1, 1), None, None)),
+    ("typedpress", &["defineConfig", "action", "job", "route", "env", "adminScreen", "item"], overload("one configuration or environment name", arity(1, 1), None, None)),
+    ("typedpress", &["files"], overload("options: object", arity(1, 2), None, None)),
+    ("typedpress", &["relation"], overload("options?: object", arity(0, 1), None, None)),
     ("field", &["text", "slug", "media"], overload("options?: object", arity(0, 1), None, None)),
     ("field", &["integer", "number", "boolean", "date", "timestamp", "json", "email", "url", "richText"], overload("no arguments", arity(0, 0), None, None)),
     ("field", &["file"], overload("bucket: FileBucket", arity(1, 1), None, None)),
@@ -433,8 +433,9 @@ pub fn check_parse_int_literals(args: &[crate::ir::ArrEl], span: Span) -> Result
 }
 
 pub fn power_diagnostic(span: Span) -> Diag {
-    Diag::new(span, crate::num::UNSUPPORTED_POWER)
-        .help("use a safe integer power, an integral power of a binary base, a square root, or compute outside First")
+    Diag::new(span, crate::num::UNSUPPORTED_POWER).help(
+        "use a safe integer power, an integral power of a binary base, a square root, or compute outside TypedPress",
+    )
 }
 
 pub fn check_power(a: f64, b: f64, span: Span) -> Result<(), Diag> {
@@ -462,7 +463,7 @@ pub fn check_transcendental_literals(method: &str, args: &[crate::ir::ArrEl], sp
         && crate::num::transcendental(method, x).is_none()
     {
         return Err(Diag::new(span, format!("Math.{method} requires an IEEE special value or an exact identity; engine-dependent rounding isn't supported"))
-            .help("compute this value outside First"));
+            .help("compute this value outside TypedPress"));
     }
     Ok(())
 }
@@ -778,7 +779,7 @@ pub fn array_mutation(name: &str) -> Option<ArrayMutation> {
 }
 
 /// `new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects (a
-/// `new Boolean(false)` is truthy); First has primitives only, so they're refused.
+/// `new Boolean(false)` is truthy); TypedPress has primitives only, so they're refused.
 pub fn wrapper_object_refusal(g: &str, span: Span) -> Diag {
     Diag::new(
         span,
@@ -802,7 +803,7 @@ mod tests {
     #[test]
     fn runtime_contract_is_current() {
         let mut php = String::from(
-            "<?php\n\ndeclare(strict_types=1);\n\nnamespace First;\n\n// Generated from src/builtins.rs; UPDATE_BUILTINS=1 cargo test --lib builtins::tests\nfinal class Builtins\n{\n",
+            "<?php\n\ndeclare(strict_types=1);\n\nnamespace TypedPress;\n\n// Generated from src/builtins.rs; UPDATE_BUILTINS=1 cargo test --lib builtins::tests\nfinal class Builtins\n{\n",
         );
         let quoted: Vec<String> = ERROR_CONSTRUCTORS.iter().map(|name| format!("'{name}'")).collect();
         writeln!(
@@ -833,7 +834,7 @@ mod tests {
             }
         }
         php.push_str("    ];\n\n    public static function has(string $surface, string $name): bool\n    {\n        $key = $surface . '.' . $name;\n        if (!array_key_exists($key, self::ARITIES)) { return false; }\n        if (self::ARITIES[$key] === null) { throw new JsError('Unsupported built-in ' . $key, 'TypeError'); }\n        return true;\n    }\n\n    public static function check(string $surface, string $name, int $count): void\n    {\n        $key = $surface . '.' . $name;\n        if (!array_key_exists($key, self::ARITIES)) { return; }\n        $arity = self::ARITIES[$key];\n        if ($arity === null || $count < $arity[0] || $count > $arity[1]) {\n            throw new JsError('Unsupported overload of ' . $key . ' (' . $count . ' arguments)', 'TypeError');\n        }\n    }\n}\n");
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("runtime/First/Builtins.php");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("runtime/TypedPress/Builtins.php");
         if std::env::var_os("UPDATE_BUILTINS").is_some() {
             std::fs::write(&path, &php).unwrap();
         }

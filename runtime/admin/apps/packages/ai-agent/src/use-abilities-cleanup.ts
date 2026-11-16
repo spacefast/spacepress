@@ -1,6 +1,6 @@
 import { useEffect, useRef } from '@wordpress/element';
 import { privateApis as routePrivateApis } from '@wordpress/route';
-import { unlock } from '@first-admin/admin-toolkit';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import type { Ability } from '@wordpress/abilities';
 import { getAbilities, unregisterAbility } from '@wordpress/abilities';
 

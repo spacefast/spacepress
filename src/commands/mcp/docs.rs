@@ -1,12 +1,12 @@
-//! First's own documentation, embedded at build time (`build.rs`): the guides in `docs/*.md` and the
+//! TypedPress's own documentation, embedded at build time (`build.rs`): the guides in `docs/*.md` and the
 //! docs site's pages in `docs-site/docs/`. Searching and reading it here answers from the same
 //! revision as the binary, which a web search cannot promise.
 
 use crate::docs_files::DOCS;
 use serde_json::{Value, json};
 
-/// The scheme of a page's resource URI: `first-docs:///docs/agents.md`.
-const SCHEME: &str = "first-docs:///";
+/// The scheme of a page's resource URI: `typedpress-docs:///docs/agents.md`.
+const SCHEME: &str = "typedpress-docs:///";
 /// A page longer than this is answered as its outline; a section is read by name.
 const WHOLE_PAGE: usize = 24_000;
 const SNIPPET: usize = 320;
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn a_hash_line_inside_a_code_fence_is_not_a_heading() {
-        let page = "# Title\n\nIntro.\n\n```sh\n# a shell comment\nfirst check\n```\n\n## Next\n\nMore.\n";
+        let page = "# Title\n\nIntro.\n\n```sh\n# a shell comment\ntypedpress check\n```\n\n## Next\n\nMore.\n";
         let found: Vec<&str> = sections(page).iter().map(|s| s.heading).collect();
         assert_eq!(found, ["Title", "Next"]);
         assert!(sections(page)[0].body.contains("# a shell comment"));

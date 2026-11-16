@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher;
 
 use function mb_strlen;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\SpecificAlgorithmIdentifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\SpecificAlgorithmIdentifier;
 use UnexpectedValueException;
 
 /**

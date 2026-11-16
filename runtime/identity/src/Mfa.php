@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity;
+namespace TypedPress\Identity;
 
 final class Mfa
 {
@@ -16,7 +16,7 @@ final class Mfa
     }
     public function setup(int $uid, string $label): array
     {
-        $otp = \First\Identity\Vendor\OTPHP\TOTP::generate();
+        $otp = \TypedPress\Identity\Vendor\OTPHP\TOTP::generate();
         $otp->setLabel($label);
         $otp->setIssuer(get_bloginfo("name") ?: "Identity");
         $this->db->transaction(function () use ($uid, $otp) {
@@ -69,7 +69,7 @@ final class Mfa
                 $this->security->event($uid, "mfa.recovery_used");
                 return true;
             }
-            $otp = \First\Identity\Vendor\OTPHP\TOTP::createFromSecret(
+            $otp = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret(
                 Security::open($row["secret"]),
             );
             $step = intdiv(time(), 30);

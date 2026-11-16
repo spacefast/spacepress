@@ -3,7 +3,7 @@ import { File } from "@pierre/diffs";
 import { editedBlueprint, playgroundUrl, runRequest, type ExampleRun } from "./blueprint.ts";
 import { Compiler } from "./compiler.ts";
 import { highlightHtml, languageOf } from "./highlight.ts";
-import { toFirst } from "./names.ts";
+import { toTypedPress } from "./names.ts";
 
 const dark = () => document.documentElement.dataset.theme === "dark";
 import { compilerFiles, wordpressFiles } from "./playground-catalog.ts";
@@ -44,9 +44,9 @@ if (!root || !example || !sourceFile || !source || !generatedFile || !generated 
 }
 
 const examples = readExamples(JSON.parse(data.textContent ?? "null"));
-// The editor shows First names (`first.config.ts`, `first/`, `import ... from "first"`); the compiler
+// The editor shows First names (`typedpress.config.ts`, `tp/`, `import ... from "typedpress"`); the compiler
 // is handed the names it reads (lib/playground-catalog.ts).
-const entry = "first.config.ts";
+const entry = "typedpress.config.ts";
 const runtime = readFiles(JSON.parse(runtimeData.textContent ?? "null"));
 const drafts = new Map<string, Record<string, string>>();
 let files: Record<string, string> = {};
@@ -136,7 +136,7 @@ const compile = () => {
       status.textContent = "Fix the config to generate files.";
       diagnostics.textContent = check.diagnostics.map((d) => {
         const location = d.location ? `${d.location.file}:${d.location.line}:${d.location.column}: ` : "";
-        return toFirst(`${location}${d.message}${d.help ? `\n${d.help}` : ""}`);
+        return toTypedPress(`${location}${d.message}${d.help ? `\n${d.help}` : ""}`);
       }).join("\n\n");
       diagnostics.hidden = false;
       return;
@@ -144,12 +144,12 @@ const compile = () => {
     const selected = generatedFile.value;
     // Generated files read with First names, like every other file on the site.
     outputs = {
-      "first/app/functions.php": toFirst(output.functionsPhp),
-      "first/app/schema.php": toFirst(output.schemaPhp),
-      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`first/_generated/migrations/${name}`, toFirst(sql)])),
-      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`first/_generated/client/${name}`, toFirst(text)])),
-      "first/_generated/db.d.ts": toFirst(output.genTs),
-      "first/_generated/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
+      "tp/app/functions.php": toTypedPress(output.functionsPhp),
+      "tp/app/schema.php": toTypedPress(output.schemaPhp),
+      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`tp/_generated/migrations/${name}`, toTypedPress(sql)])),
+      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`tp/_generated/client/${name}`, toTypedPress(text)])),
+      "tp/_generated/db.d.ts": toTypedPress(output.genTs),
+      "tp/_generated/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
     };
     updateFileMenu(selected);
     status.dataset.state = "ok";
@@ -192,7 +192,7 @@ const loadExample = () => {
 // WordPress Playground, embedded on request: it downloads WordPress and PHP (about 30 MB), so it
 // starts only when asked. The config in the editor is compiled again with the example's migration
 // ledger, and lib/blueprint.ts turns the result into a blueprint: the app plugin the compiler
-// returned, First's shared plugins from this site, and the WordPress.org plugins in the example's
+// returned, TypedPress's shared plugins from this site, and the WordPress.org plugins in the example's
 // lock. Each press starts a fresh WordPress.
 const runWordPress = document.querySelector<HTMLButtonElement>("#run-wordpress")!;
 const wordpress = document.querySelector<HTMLElement>("#wordpress")!;

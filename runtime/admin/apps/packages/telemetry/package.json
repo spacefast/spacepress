@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/telemetry",
+	"name": "@typedpress-admin/telemetry",
 	"version": "1.0.0",
 	"description": "Inert telemetry shim: same API as the upstream tracking package, records nothing.",
 	"type": "module",

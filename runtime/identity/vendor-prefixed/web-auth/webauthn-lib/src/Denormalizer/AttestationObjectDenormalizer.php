@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
 
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
-use First\Identity\Vendor\Webauthn\AuthenticatorData;
-use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use First\Identity\Vendor\Webauthn\StringStream;
+use TypedPress\Identity\Vendor\CBOR\Decoder;
+use TypedPress\Identity\Vendor\CBOR\Normalizable;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
+use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorData;
+use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use TypedPress\Identity\Vendor\Webauthn\StringStream;
 
 final class AttestationObjectDenormalizer implements DenormalizerInterface, DenormalizerAwareInterface
 {

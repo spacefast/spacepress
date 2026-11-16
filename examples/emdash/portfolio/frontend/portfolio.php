@@ -1,28 +1,28 @@
 <?php
 /**
- * Plugin Name: First Portfolio frontend
- * Description: Public editorial portfolio for the First portfolio example. WordPress and First own all content.
+ * Plugin Name: TypedPress Portfolio frontend
+ * Description: Public editorial portfolio for the TypedPress portfolio example. WordPress and TypedPress own all content.
  * License: MIT
  */
 
 declare(strict_types=1);
 
-namespace FirstPortfolio;
+namespace TypedPressPortfolio;
 
 const TAGS = ['identity' => 'Identity', 'editorial' => 'Editorial', 'packaging' => 'Packaging', 'digital' => 'Digital', 'spatial' => 'Spatial', 'art-direction' => 'Art direction'];
 
-function database(): \First\Db
+function database(): \TypedPress\Db
 {
-    $plugin = \First\Wp\Plugin::instance();
+    $plugin = \TypedPress\Wp\Plugin::instance();
     if ($plugin === null || $plugin->schema->name() !== 'portfolio') {
-        throw new \RuntimeException('Activate the generated First portfolio plugin first.');
+        throw new \RuntimeException('Activate the generated TypedPress portfolio plugin first.');
     }
     return $plugin->db();
 }
 
 function rows(string $collection, array $options = []): array
 {
-    return database()->findMany($collection, $options, new \First\Viewer(null));
+    return database()->findMany($collection, $options, new \TypedPress\Viewer(null));
 }
 
 function projects(array $where = [], int $limit = 12, int $offset = 0): array
@@ -188,8 +188,8 @@ function rss(array $settings): void
 }
 
 add_filter('post_type_link', static function (string $url, \WP_Post $post): string {
-    if ($post->post_type === 'first_projects') return href('/work/' . $post->post_name);
-    if ($post->post_type === 'first_pages') return href($post->post_name === 'home' ? '/' : '/' . $post->post_name);
+    if ($post->post_type === 'tp_projects') return href('/work/' . $post->post_name);
+    if ($post->post_type === 'tp_pages') return href($post->post_name === 'home' ? '/' : '/' . $post->post_name);
     return $url;
 }, 10, 2);
 
@@ -199,25 +199,25 @@ add_action('template_redirect', function (): void {
     $prefix = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
     $path = '/' . trim(substr($path, strlen($prefix)), '/');
     if ($path === '/home') { wp_safe_redirect(href('/') . (!empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : ''), 301); exit; }
-    if (!class_exists(\First\Wp\Plugin::class)) return;
+    if (!class_exists(\TypedPress\Wp\Plugin::class)) return;
     $buffer = false;
     try {
-        $settings = database()->globalGet('settings', new \First\Viewer(null));
+        $settings = database()->globalGet('settings', new \TypedPress\Viewer(null));
         if ($path === '/rss.xml') { status_header(200); rss($settings); exit; }
         $p = null;
         $preview = null;
         $previewId = ($_GET['preview'] ?? '') === 'true' && isset($_GET['p']) ? absint($_GET['p']) : 0;
         if ($previewId > 0 && current_user_can('edit_post', $previewId)) {
             $type = get_post_type($previewId);
-            if (in_array($type, ['first_projects', 'first_pages'], true)) {
-                $preview = database()->findFirst($type === 'first_projects' ? 'projects' : 'pages', ['where' => ['id' => $previewId]], new \First\Viewer(\First\Wp\WpAuth::current()));
-                if ($preview !== null) $path = $type === 'first_projects' ? '/work/' . $preview['slug'] : ($preview['slug'] === 'home' ? '/' : '/' . $preview['slug']);
+            if (in_array($type, ['tp_projects', 'tp_pages'], true)) {
+                $preview = database()->findFirst($type === 'tp_projects' ? 'projects' : 'pages', ['where' => ['id' => $previewId]], new \TypedPress\Viewer(\TypedPress\Wp\WpAuth::current()));
+                if ($preview !== null) $path = $type === 'tp_projects' ? '/work/' . $preview['slug'] : ($preview['slug'] === 'home' ? '/' : '/' . $preview['slug']);
             }
         }
         if (preg_match('~^/work/([^/]+)$~', $path, $m)) $p = projects(['slug' => $m[1]], 1)[0] ?? null;
         $page = !str_starts_with($path, '/work') ? (rows('pages', ['where' => ['slug' => $path === '/' ? 'home' : ltrim($path, '/')], 'limit' => 1])[0] ?? null) : null;
         if ($preview !== null) {
-            if (get_post_type($previewId) === 'first_projects') $p = $preview;
+            if (get_post_type($previewId) === 'tp_projects') $p = $preview;
             else $page = $preview;
         }
         if ($path !== '/' && $path !== '/work' && $p === null && $page === null && !str_starts_with($path, '/work/')) return;
@@ -290,7 +290,7 @@ add_action('template_redirect', function (): void {
         exit;
     } catch (\Throwable $error) {
         if ($buffer) ob_end_clean();
-        error_log('First Portfolio: ' . $error->getMessage());
+        error_log('TypedPress Portfolio: ' . $error->getMessage());
         status_header(503);
         header('Retry-After: 5');
         echo 'The portfolio could not be loaded. Please try again.';

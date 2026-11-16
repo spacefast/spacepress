@@ -4,7 +4,7 @@
 //! - find the class selectors of a CSS module (`x.module.css`), so they can be renamed;
 //! - refuse what a copied stylesheet can't keep: `@import` (the imported file would not travel) and
 //!   a relative `url(...)` (the stylesheet is served from another folder than its source);
-//! - refuse the CSS-module features First doesn't implement (`:global`, `:local`, `composes`).
+//! - refuse the CSS-module features TypedPress doesn't implement (`:global`, `:local`, `composes`).
 //!
 //! Strings, comments and `url(...)` bodies are skipped as tokens, so a `.x` inside them is never
 //! taken for a class.

@@ -5,7 +5,7 @@
 //   <tp-play example="tasks"></tp-play>                 an app, closed until someone presses Edit and build
 //   <tp-play example="tasks" open></tp-play>            started at once (the hero)
 //   <tp-play example="full-site" picker file="…">       with an example menu (the playground page)
-//   <tp-play … share shared='{"first.config.ts":"…"}'>  with a Share button, opened on a saved edit
+//   <tp-play … share shared='{"typedpress.config.ts":"…"}'>  with a Share button, opened on a saved edit
 //
 // Files, trees and diffs are @pierre/diffs and @pierre/trees. The compiler wrapper and the
 // blueprint are docs-site/lib, the same modules the docs site's playground uses.
@@ -68,7 +68,7 @@ class Play extends HTMLElement {
     // On the playground page the address picks the example and the file (see remember()).
     const asked = this.hasAttribute("picker") ? new URLSearchParams(location.search) : new URLSearchParams();
     const wanted = asked.get("example") ?? this.getAttribute("example");
-    // A saved edit (the `shares` table, first/server.ts): the page puts its files in `shared`.
+    // A saved edit (the `shares` table, tp/server.ts): the page puts its files in `shared`.
     let shared = null;
     try { shared = JSON.parse(this.getAttribute("shared") ?? "null"); } catch { shared = null; }
     this.keepAddress = shared !== null;
@@ -126,25 +126,25 @@ class Play extends HTMLElement {
     this.append(bar, this.status, this.sharedNote, this.problems, this.wordpress, el("div", { className: "tp-panes" }, left.section, right.section));
   }
 
-  // Every file a successful build writes, by the path `first build` writes it to.
+  // Every file a successful build writes, by the path `typedpress build` writes it to.
   compile(sources) {
     const { check, output: out } = this.compiler.compile(runRequest(this.name, sources, this.example.run.ledger));
     if (!check.ok || !out) return { check, out: null, files: {} };
-    const committed = Object.fromEntries(Object.entries(this.example.run.ledger.files).map(([file, sql]) => [`first/_generated/migrations/${file}`, sql]));
-    const openapi = Object.entries(out.appPlugin).find(([file]) => file.endsWith("/first/app/openapi.json"))?.[1];
+    const committed = Object.fromEntries(Object.entries(this.example.run.ledger.files).map(([file, sql]) => [`tp/_generated/migrations/${file}`, sql]));
+    const openapi = Object.entries(out.appPlugin).find(([file]) => file.endsWith("/tp/app/openapi.json"))?.[1];
     return { check, out, files: {
-      "first/app/schema.php": out.schemaPhp,
-      "first/app/functions.php": out.functionsPhp,
+      "tp/app/schema.php": out.schemaPhp,
+      "tp/app/functions.php": out.functionsPhp,
       ...committed,
-      ...Object.fromEntries(out.migrations.map(([file, sql]) => [`first/_generated/migrations/${file}`, sql])),
-      "first/_generated/db.d.ts": out.genTs,
-      ...Object.fromEntries(Object.entries(out.client).map(([file, text]) => [`first/_generated/client/${file}`, text])),
-      ...(openapi ? { "first/app/openapi.json": openapi } : {}),
+      ...Object.fromEntries(out.migrations.map(([file, sql]) => [`tp/_generated/migrations/${file}`, sql])),
+      "tp/_generated/db.d.ts": out.genTs,
+      ...Object.fromEntries(Object.entries(out.client).map(([file, text]) => [`tp/_generated/client/${file}`, text])),
+      ...(openapi ? { "tp/app/openapi.json": openapi } : {}),
     } };
   }
 
   // The file a reader should see first: the schema when the app keeps it in its own file.
-  defaultFile() { return ["first/schema.ts", "first.config.ts"].find((file) => this.example.shown.includes(file)) ?? this.example.shown[0]; }
+  defaultFile() { return ["tp/schema.ts", "typedpress.config.ts"].find((file) => this.example.shown.includes(file)) ?? this.example.shown[0]; }
 
   // On the playground page the address names the example and the open file, so either can be linked.
   remember() {
@@ -158,7 +158,7 @@ class Play extends HTMLElement {
     this.files = { ...this.example.files };
     this.summary.textContent = this.example.summary;
     this.source = file && this.example.shown.includes(file) ? file : this.defaultFile();
-    this.output = "first/app/schema.php";
+    this.output = "tp/app/schema.php";
     this.showSourceDiff = false; this.showOutputDiff = false; this.picked = false;
     this.wordpress.hidden = true; this.frame.removeAttribute("src");
     // Two builds are kept: the last one, and the one before it. The diff compares them.
@@ -284,14 +284,14 @@ class Play extends HTMLElement {
   }
 
   // Saves the files that differ from the example on this site (the `share` function in
-  // first/server.ts) and shows the link that opens them.
+  // tp/server.ts) and shows the link that opens them.
   async share() {
     const changed = Object.fromEntries(Object.entries(this.files).filter(([file, text]) => text !== this.example.files[file]));
     this.sharedNote.hidden = false;
     if (Object.keys(changed).length === 0) { this.sharedNote.textContent = "Nothing to share yet: change a file first."; return; }
     this.sharedNote.textContent = "Saving…";
     try {
-      const response = await fetch("/__first/api/v1/actions/share", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ example: this.name, files: changed }) });
+      const response = await fetch("/__tp/api/v1/actions/share", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ example: this.name, files: changed }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message ?? body?.message ?? `the site answered ${response.status}`);
       const url = new URL(`/play?s=${body.data.key}`, location.href).href;
@@ -308,8 +308,8 @@ class Play extends HTMLElement {
     this.wordpress.hidden = false;
     const refuse = (text) => { this.note.textContent = text; this.frame.hidden = true; this.tab.hidden = true; };
     if (!out) { refuse("It does not build, so there is nothing to run. Fix the problems first."); return; }
-    // WordPress Playground runs on another origin and fetches First's shared plugin zips from
-    // `site`, which must answer with Access-Control-Allow-Origin. `first dev` does not send that
+    // WordPress Playground runs on another origin and fetches TypedPress's shared plugin zips from
+    // `site`, which must answer with Access-Control-Allow-Origin. `typedpress dev` does not send that
     // header on public/ files, so the zips come from the published site unless told otherwise.
     const site = (this.getAttribute("plugins") ?? this.data.plugins).replace(/\/$/, "");
     const built = editedBlueprint({ output: out, example: this.example.run, site, platform: this.data.platform });

@@ -9,7 +9,7 @@ export async function seed({ base, wp }) {
       if (!response.ok) throw new Error(`Seed ${path}: ${JSON.stringify(result)}`);
       return result.data ?? result;
     };
-    await post('/__first/api/v1/entries', {
+    await post('/__tp/api/v1/entries', {
       title: 'Small tools, real effects', status: 'published',
       body: '<!-- wp:paragraph --><p>A good plugin does one useful thing. This workshop brings structured fields, embeds, an inbox, audit history and signed webhooks into a real WordPress site.</p><!-- /wp:paragraph --><!-- wp:paragraph --><p>Open the native editor, change the story, then check the workshop audit history. Your work stays in WordPress.</p><!-- /wp:paragraph -->',
       profile: { name: 'Workshop editor', featured: true },
@@ -17,7 +17,7 @@ export async function seed({ base, wp }) {
       grid: [{ monday: 'Draft', tuesday: 'Publish' }], tags: ['wordpress', 'field notes', 'plugins'],
       palette: '#375c48', embeds: [{ _type: 'youtube', id: 'dQw4w9WgXcQ' }],
     });
-    await post('/wp-json/first-plugins/v1/forms', {
+    await post('/wp-json/typedpress-plugins/v1/forms', {
       name: 'A note for the workshop',
       pages: [
         { title: 'Introduce yourself', fields: [

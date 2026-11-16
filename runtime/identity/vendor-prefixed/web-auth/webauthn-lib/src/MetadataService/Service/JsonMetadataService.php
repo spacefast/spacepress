@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\MetadataService\Service;
+namespace TypedPress\Identity\Vendor\Webauthn\MetadataService\Service;
 
 use function array_key_exists;
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
-use First\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\MetadataStatementFound;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use TypedPress\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory;
+use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use TypedPress\Identity\Vendor\Webauthn\Event\MetadataStatementFound;
+use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use TypedPress\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
 
 final class JsonMetadataService implements MetadataService, CanDispatchEvents
 {

@@ -3,7 +3,7 @@
 .spacefast/.spacefast-*
 .spacefast/.space-link-*.tmp
 
-.first/
+.tp/
 .spacefast/
 public/
-first/.wp-plugins.build.lock
+tp/.wp-plugins.build.lock

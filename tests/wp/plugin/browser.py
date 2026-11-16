@@ -74,7 +74,7 @@ elif command == "upload-plugin":
     fields = form(page, 'name="pluginzip"')
     boundary = uuid.uuid4().hex
     body = b"".join(f'--{boundary}\r\nContent-Disposition: form-data; name="{n}"\r\n\r\n{v}\r\n'.encode() for n, v in fields)
-    body += f'--{boundary}\r\nContent-Disposition: form-data; name="pluginzip"; filename="first.zip"\r\nContent-Type: application/zip\r\n\r\n'.encode()
+    body += f'--{boundary}\r\nContent-Disposition: form-data; name="pluginzip"; filename="typedpress.zip"\r\nContent-Type: application/zip\r\n\r\n'.encode()
     body += open(args[0], "rb").read() + f"\r\n--{boundary}--\r\n".encode()
     status, _, page, _ = request(f"{base}/wp-admin/update.php?action=upload-plugin", body, {"Content-Type": f"multipart/form-data; boundary={boundary}"})
     link = re.search(r'href="([^"]*plugins\.php\?action=activate[^"]*)"', page)

@@ -1,1 +1,1 @@
-<?php return array('name' => 'core-theme-fields', 'dependencies' => array('react', 'wp-components', 'wp-html-entities', 'wp-i18n'), 'moduleDependencies' => array('@first-admin/admin-toolkit'), 'version' => '20889e17741456e1c7c0');
+<?php return array('name' => 'core-theme-fields', 'dependencies' => array('react', 'wp-components', 'wp-html-entities', 'wp-i18n'), 'moduleDependencies' => array('@typedpress-admin/admin-toolkit'), 'version' => '23ccec7d20e7ae3192a0');

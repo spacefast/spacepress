@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveString;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
 
 /**
  * Implements *VisibleString* type.

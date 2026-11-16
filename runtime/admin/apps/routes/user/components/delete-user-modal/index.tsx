@@ -8,12 +8,12 @@ import {
 	__experimentalText as Text,
 	Button,
 } from '@wordpress/components';
-import { useTrackedModal } from '@first-admin/telemetry';
+import { useTrackedModal } from '@typedpress-admin/telemetry';
 import type { ExtendedUser } from '../../types';
 import { useDeleteUser } from '../../hooks';
 import { getUserDisplayName } from '../../utils';
 
-// TODO: Import TrackedModal from @first-admin/telemetry once the type is exported.
+// TODO: Import TrackedModal from @typedpress-admin/telemetry once the type is exported.
 // Currently not possible because the WP Module loses type resolution in strict mode.
 // Source: ciab-next/packages/telemetry/src/hooks/use-tracked-modal.ts
 interface ModalTracking {
@@ -68,7 +68,7 @@ function DeleteUserModalContent( {
 	);
 	const storeOwnerName = storeOwner
 		? getUserDisplayName( storeOwner )
-		: __( 'the store owner', 'first-admin' );
+		: __( 'the store owner', 'typedpress-admin' );
 
 	const handleConfirm = () => {
 		modal.trackButtonClick( 'delete_permanently' );
@@ -83,7 +83,7 @@ function DeleteUserModalContent( {
 							/* translators: %s: user name or email */
 							__(
 								"%s will be permanently deleted and can't be restored.",
-								'first-admin'
+								'typedpress-admin'
 							),
 							getUserDisplayName( users[ 0 ] )
 					  )
@@ -91,7 +91,7 @@ function DeleteUserModalContent( {
 							/* translators: %d: number of users */
 							__(
 								"%d users will be permanently deleted and can't be restored.",
-								'first-admin'
+								'typedpress-admin'
 							),
 							users.length
 					  ) }
@@ -103,7 +103,7 @@ function DeleteUserModalContent( {
 								/* translators: 1: user name or email, 2: store owner name or email */
 								__(
 									'The content owned by %1$s will be attributed to the store owner, %2$s.',
-									'first-admin'
+									'typedpress-admin'
 								),
 								getUserDisplayName( users[ 0 ] ),
 								storeOwnerName
@@ -112,7 +112,7 @@ function DeleteUserModalContent( {
 								/* translators: %s: store owner name or email */
 								__(
 									'The content owned by these users will be attributed to the store owner, %s.',
-									'first-admin'
+									'typedpress-admin'
 								),
 								storeOwnerName
 						  ) }
@@ -131,7 +131,7 @@ function DeleteUserModalContent( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Cancel', 'first-admin' ) }
+					{ __( 'Cancel', 'typedpress-admin' ) }
 				</Button>
 				<Button
 					__next40pxDefaultSize
@@ -142,7 +142,7 @@ function DeleteUserModalContent( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Delete permanently', 'first-admin' ) }
+					{ __( 'Delete permanently', 'typedpress-admin' ) }
 				</Button>
 			</HStack>
 		</VStack>
@@ -175,8 +175,8 @@ export function DeleteUserModal( {
 			className="delete-user-modal"
 			title={
 				users.length === 1
-					? __( 'Delete user?', 'first-admin' )
-					: __( 'Delete users?', 'first-admin' )
+					? __( 'Delete user?', 'typedpress-admin' )
+					: __( 'Delete users?', 'typedpress-admin' )
 			}
 		>
 			<DeleteUserModalContent

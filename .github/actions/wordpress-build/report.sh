@@ -6,13 +6,13 @@
 #   report.sh <directory of <lane>-<build>.md summaries>
 set -euo pipefail
 dir=$1
-title='WordPress ahead: First fails on an upcoming WordPress'
+title='WordPress ahead: TypedPress fails on an upcoming WordPress'
 label='wordpress-ahead'
 
 failed=$(jq -r 'to_entries[] | select(.key != "builds" and .value.result != "success" and .value.result != "skipped") | .key' <<<"$RESULTS")
 builds_failed=$(jq -r '.builds.result' <<<"$RESULTS")
 
-gh label create "$label" --color BFD4F2 --description 'First on WordPress nightly or the next beta' >/dev/null 2>&1 || true
+gh label create "$label" --color BFD4F2 --description 'TypedPress on WordPress nightly or the next beta' >/dev/null 2>&1 || true
 open=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty')
 
 if [ -z "$failed" ] && [ "$builds_failed" = success ]; then
@@ -27,7 +27,7 @@ fi
 
 body=$(mktemp)
 {
-  echo "First's lanes failed on an upcoming WordPress in $RUN_URL."
+  echo "TypedPress's lanes failed on an upcoming WordPress in $RUN_URL."
   echo
   if [ "$builds_failed" != success ]; then
     echo "Picking the builds failed (\`builds\`: $builds_failed): wordpress.org's version API or the nightly download."
@@ -49,7 +49,7 @@ body=$(mktemp)
     fi
     echo
   done
-  echo "This issue closes itself on the next run where every lane passes. What First relies on in WordPress, and what to check first: docs/wordpress-internals.md."
+  echo "This issue closes itself on the next run where every lane passes. What TypedPress relies on in WordPress, and what to check first: docs/wordpress-internals.md."
 } > "$body"
 
 if [ -n "$open" ]; then

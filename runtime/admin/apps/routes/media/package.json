@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/route-media",
+	"name": "@typedpress-admin/route-media",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -22,16 +22,16 @@
 		"@wordpress/notices": "catalog:",
 		"@wordpress/route": "catalog:",
 		"@wordpress/ui": "catalog:",
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/attachment-importer": "workspace:*",
-		"@first-admin/core-data-next": "workspace:*",
-		"@first-admin/dataviews": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/fields-next": "workspace:*",
-		"@first-admin/views": "workspace:*",
+		"@typedpress-admin/admin-toolkit": "workspace:*",
+		"@typedpress-admin/attachment-importer": "workspace:*",
+		"@typedpress-admin/core-data-next": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
+		"@typedpress-admin/fields-next": "workspace:*",
+		"@typedpress-admin/views": "workspace:*",
 		"clsx": "catalog:",
 		"dequal": "catalog:",
-		"@first-admin/schema": "workspace:*"
+		"@typedpress-admin/schema": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

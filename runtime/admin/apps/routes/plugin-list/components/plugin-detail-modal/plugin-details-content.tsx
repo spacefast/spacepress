@@ -12,13 +12,13 @@ import { sanitizeHtml } from './plugin-detail-utils';
 import type { WpOrgPlugin } from './plugin-detail-types';
 
 const pluginsSectionTitles: Record< string, string > = {
-	description: __( 'Description', 'first-admin' ),
-	installation: __( 'Installation', 'first-admin' ),
-	faq: __( 'FAQ', 'first-admin' ),
-	screenshots: __( 'Screenshots', 'first-admin' ),
-	changelog: __( 'Changelog', 'first-admin' ),
-	reviews: __( 'Reviews', 'first-admin' ),
-	other_notes: __( 'Other Notes', 'first-admin' ),
+	description: __( 'Description', 'typedpress-admin' ),
+	installation: __( 'Installation', 'typedpress-admin' ),
+	faq: __( 'FAQ', 'typedpress-admin' ),
+	screenshots: __( 'Screenshots', 'typedpress-admin' ),
+	changelog: __( 'Changelog', 'typedpress-admin' ),
+	reviews: __( 'Reviews', 'typedpress-admin' ),
+	other_notes: __( 'Other Notes', 'typedpress-admin' ),
 };
 
 interface PluginDetailsContentProps {
@@ -74,7 +74,7 @@ export default function PluginDetailsContent( {
 				{ banner ? (
 					<img
 						src={ banner }
-						alt={ __( 'Plugin banner', 'first-admin' ) }
+						alt={ __( 'Plugin banner', 'typedpress-admin' ) }
 					/>
 				) : null }
 			</div>

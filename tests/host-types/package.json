@@ -1,7 +1,7 @@
 {
-  "name": "first-host-types",
+  "name": "typedpress-host-types",
   "private": true,
-  "description": "The standard Node declarations that type-check fetch, crypto, process and node:crypto in First handlers",
+  "description": "The standard Node declarations that type-check fetch, crypto, process and node:crypto in TypedPress handlers",
   "devDependencies": {
     "@types/node": "22.19.17"
   }

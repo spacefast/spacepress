@@ -1,4 +1,4 @@
-//! Build-time values. `first.config.ts` evaluates to these; the compiler then
+//! Build-time values. `typedpress.config.ts` evaluates to these; the compiler then
 //! reads the schema out of them and compiles the functions they hold.
 
 use crate::diag::Span;
@@ -139,7 +139,7 @@ pub enum Value {
     Route(Rc<ActionVal>),
     /// `definePlugin({ name, hooks, actions, jobs })`, registered in `defineConfig({ use })`.
     Plugin(Rc<ActionVal>),
-    /// `adminScreen({ ... })`: a First Admin screen, registered by its export (docs/admin-screens.md).
+    /// `adminScreen({ ... })`: a TypedPress Admin screen, registered by its export (docs/admin-screens.md).
     Screen(Rc<ActionVal>),
     FileBucket(Rc<FileBucketVal>),
     Env(Rc<str>),
@@ -247,11 +247,11 @@ impl Closure {
     }
 }
 
-/// The `Object.prototype` methods First models: read as `Object.prototype.<name>` (a function
+/// The `Object.prototype` methods TypedPress models: read as `Object.prototype.<name>` (a function
 /// value, `Builtin::ObjectPrototypeMethod`) and called through `.call`/`.apply`.
 pub const OBJECT_PROTOTYPE_METHODS: &[&str] = &["hasOwnProperty", "propertyIsEnumerable", "toString"];
 
-/// Function properties First doesn't model: built-in own properties and `Function.prototype`.
+/// Function properties TypedPress doesn't model: built-in own properties and `Function.prototype`.
 pub const FUNCTION_BUILTIN_PROPERTIES: &[&str] = &[
     "name",
     "length",
@@ -268,20 +268,20 @@ pub const FUNCTION_BUILTIN_PROPERTIES: &[&str] = &[
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Builtin {
-    // "first" exports
+    // "typedpress" exports
     Collection(StorageKind),
     Column(ColType),
     Id,
     /// email, url, slug, richText, media, select, group, repeater, blocks
     Field(&'static str),
-    /// `global(name, fields, options)` from "first".
+    /// `global(name, fields, options)` from "typedpress".
     DefineGlobal,
     DefineRelations,
     DefineConfig,
     DefinePlugin,
-    /// `adminScreen({ ... })` from "first".
+    /// `adminScreen({ ... })` from "typedpress".
     AdminScreen,
-    /// `item(path)` from "first": the `{item.<path>}` placeholder of a screen action's input.
+    /// `item(path)` from "typedpress": the `{item.<path>}` placeholder of a screen action's input.
     Item,
     Action,
     Job,
@@ -293,18 +293,18 @@ pub enum Builtin {
     Jobs,
     /// `"node:crypto"`: the module namespace (`None`) or one of its supported functions.
     NodeCrypto(Option<&'static str>),
-    /// `mail.send(message)` from "first", compiled to `First\Mail::send`.
+    /// `mail.send(message)` from "typedpress", compiled to `TypedPress\Mail::send`.
     Mail,
-    /// `abilities.call(name, input)` from "php/wordpress", compiled to `First\Wp\Abilities\Call::run`.
+    /// `abilities.call(name, input)` from "php/wordpress", compiled to `TypedPress\Wp\Abilities\Call::run`.
     Abilities,
-    /// A catalog WordPress function from "php/wordpress", compiled to `First\Wp\Functions::call`.
+    /// A catalog WordPress function from "php/wordpress", compiled to `TypedPress\Wp\Functions::call`.
     WpFunction(Rc<str>),
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,
-    /// `ref(kind)` from "first".
+    /// `ref(kind)` from "typedpress".
     Ref,
-    /// `terms(taxonomy)` from "first": an item's terms of one taxonomy.
+    /// `terms(taxonomy)` from "typedpress": an item's terms of one taxonomy.
     Terms,
     /// `r.one.<key>` / `r.many.<key>` inside defineRelations.
     RelFn(RelKind, Rc<str>),
@@ -320,12 +320,12 @@ pub enum Builtin {
     /// `Object.prototype.<name>` for a name in `OBJECT_PROTOTYPE_METHODS`: a function value
     /// called through `.call`/`.apply` with its receiver.
     ObjectPrototypeMethod(&'static str),
-    // "first/app": page helpers, compiled by the app router; never run while the config builds.
+    // "typedpress/app": page helpers, compiled by the app router; never run while the config builds.
     /// `notFound()`, `redirect(url, status?)`, `<Content>`, `<Html>`, `<Link>`: by export name.
     App(&'static str),
-    // "first/client": hooks for "use client" components, compiled to the Interactivity API.
+    // "typedpress/client": hooks for "use client" components, compiled to the Interactivity API.
     Client(&'static str),
-    // "first/content": `nav`, `pager`, `headings` for a hierarchical kind's pages.
+    // "typedpress/content": `nav`, `pager`, `headings` for a hierarchical kind's pages.
     Content(&'static str),
 }
 

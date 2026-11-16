@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/../../runtime/First/bootstrap.php';
+require __DIR__ . '/../../runtime/TypedPress/bootstrap.php';
 require __DIR__ . '/harness.php';
 
-use First\Crypto;
-use First\Env;
-use First\HttpError;
-use First\JsError;
-use First\JsObject;
+use TypedPress\Crypto;
+use TypedPress\Env;
+use TypedPress\HttpError;
+use TypedPress\JsError;
+use TypedPress\JsObject;
 
 // The vectors the original runtime's crypto broker pins (crypto.rs tests), plus the other digests.
 eq('SHA-256 of "abc" is the FIPS 180-2 B.1 digest', Crypto::hash('sha256', ['abc'], 'hex'),
@@ -65,6 +65,6 @@ eq('randomUUID is RFC 4122 version 4; randomBytes has the asked length in each e
     [preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/', $uuid), strlen(Crypto::randomBytes(16, 'hex')),
         Crypto::randomBytes(8, 'hex') === Crypto::randomBytes(8, 'hex'), Crypto::randomBytes(0, 'base64'), strlen(Crypto::randomBytes(9, 'base64')),
         $code(fn () => Crypto::randomBytes(1025, 'hex')), $code(fn () => Crypto::randomBytes(1.5, 'hex'))],
-    [1, 32, false, '', 12, 'RangeError: randomBytes takes 0 to 1024 bytes in First code', 'RangeError: The "size" argument must be a whole number']);
+    [1, 32, false, '', 12, 'RangeError: randomBytes takes 0 to 1024 bytes in TypedPress code', 'RangeError: The "size" argument must be a whole number']);
 
 finish('crypto');

@@ -1,8 +1,8 @@
 import type React from 'react';
-import { DataViews as CoreDataViews } from '@first-admin/dataviews';
+import { DataViews as CoreDataViews } from '@typedpress-admin/dataviews';
 import './style.scss';
-// eslint-disable-next-line @first-admin/design-system/use-new-components
-import { Stack } from '@first-admin/design-system';
+// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
+import { Stack } from '@typedpress-admin/design-system';
 
 type DataViewsProps< T > = Parameters< typeof CoreDataViews< T > >[ 0 ] & {
 	viewActions?: React.ReactNode;
@@ -26,7 +26,7 @@ export function DataViews< Item >( {
 		<CoreDataViews { ...props }>
 			<Stack
 				// Not great but reusing the same class as Core to avoid recreating CSS
-				className="first-admin-dataviews__view-actions"
+				className="typedpress-admin-dataviews__view-actions"
 				direction="row"
 				justify="space-between"
 				align="center"
@@ -45,7 +45,7 @@ export function DataViews< Item >( {
 					{ <CoreDataViews.ViewConfig /> }
 				</Stack>
 			</Stack>
-			<div className="first-admin-dataviews-filters__container">
+			<div className="typedpress-admin-dataviews-filters__container">
 				<CoreDataViews.Filters />
 			</div>
 			<CoreDataViews.Layout />

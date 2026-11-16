@@ -1,7 +1,7 @@
 ---
 uid: zr_95de60f8f35ceef22490
 title: Install
-description: Add First to a project.
+description: Add TypedPress to a project.
 order: 1
 status: published
 publishedAt: 2026-11-14T04:35:37.000Z
@@ -20,7 +20,7 @@ pnpm add first
 
 ## Configure
 
-```ts title="first.config.ts" {2}
-import { defineConfig } from "first";
+```ts title="typedpress.config.ts" {2}
+import { defineConfig } from "typedpress";
 export default defineConfig({ name: "docs" });
 ```

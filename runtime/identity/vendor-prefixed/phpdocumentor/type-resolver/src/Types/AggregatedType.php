@@ -10,11 +10,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\Types;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types;
 
 use ArrayIterator;
 use IteratorAggregate;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 use function array_key_exists;
 use function implode;

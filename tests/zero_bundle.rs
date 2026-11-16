@@ -1,5 +1,5 @@
 #![cfg(feature = "cli")]
-//! A `zero.source-bundle.v1` upload (what the 0.3.0 compiler captured, before the rename to First)
+//! A `zero.source-bundle.v1` upload (what the 0.3.0 compiler captured, before the rename to TypedPress)
 //! compiles to the same tree as the same app captured by this compiler. The 0.3.0 files are frozen
 //! fixtures (tests/fixtures/zero-0.3/README.md says how they were made).
 
@@ -42,23 +42,23 @@ fn tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
     out
 }
 
-/// The fixture app ported to First by hand, as its owner would: First names, `first/`, and the
+/// The fixture app ported to TypedPress by hand, as its owner would: First names, `tp/`, and the
 /// current field forms (tests/fixtures/zero-0.3/ported/), with the 0.3.0 ledger. Its config is the
-/// export form (tests/fixtures/zero-0.3-ported/first.config.ts), since `defineConfig` no longer
+/// export form (tests/fixtures/zero-0.3-ported/typedpress.config.ts), since `defineConfig` no longer
 /// lists kinds and actions; the files under zero-0.3/ stay as they were captured.
 fn ported(work: &Path) -> PathBuf {
     let app = work.join("ported");
     copy_dir(&Path::new(FIXTURE).join("ported"), &app);
     fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/zero-0.3-ported/first.config.ts"),
-        app.join("first.config.ts"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/zero-0.3-ported/typedpress.config.ts"),
+        app.join("typedpress.config.ts"),
     )
     .unwrap();
-    fs::create_dir_all(app.join("first/_generated/migrations")).unwrap();
+    fs::create_dir_all(app.join("tp/_generated/migrations")).unwrap();
     for name in ["0001_init.sql", "snapshot.json"] {
         fs::copy(
             Path::new(FIXTURE).join("app/zero/migrations").join(name),
-            app.join("first/_generated/migrations").join(name),
+            app.join("tp/_generated/migrations").join(name),
         )
         .unwrap();
     }
@@ -74,15 +74,15 @@ fn a_zero_source_bundle_compiles_like_the_same_app_captured_as_first() {
     let work = tempfile::tempdir().unwrap();
     let legacy = Path::new(FIXTURE).join("sources");
     let compiled_legacy = work.path().join("compiled-legacy");
-    first::bundle::compile(&legacy, &compiled_legacy, &legacy, None).unwrap();
+    typedpress::bundle::compile(&legacy, &compiled_legacy, &legacy, None).unwrap();
 
     let captured = work.path().join("captured");
-    first::bundle::sources(&ported(work.path()), &captured).unwrap();
+    typedpress::bundle::sources(&ported(work.path()), &captured).unwrap();
     let compiled_first = work.path().join("compiled-first");
-    first::bundle::compile(&captured, &compiled_first, &captured, None).unwrap();
+    typedpress::bundle::compile(&captured, &compiled_first, &captured, None).unwrap();
 
     let (a, b) = (manifest(&compiled_legacy), manifest(&compiled_first));
-    assert_eq!(a["format"], "first.hosted.v1");
+    assert_eq!(a["format"], "typedpress.hosted.v1");
     assert_eq!(a["app"], "notes");
     for key in ["format", "compiler", "app", "requires", "pages", "routes", "pagePaths"] {
         assert_eq!(a[key], b[key], "manifest {key}");
@@ -103,7 +103,7 @@ fn a_zero_source_bundle_compiles_like_the_same_app_captured_as_first() {
     let migrations = tree(&compiled_legacy.join("migrations"));
     assert_eq!(migrations.keys().collect::<Vec<_>>(), ["0001_init.sql"]);
     let sql = String::from_utf8(migrations["0001_init.sql"].clone()).unwrap();
-    assert!(sql.contains("CREATE TABLE `{prefix}first_notes`"), "{sql}");
+    assert!(sql.contains("CREATE TABLE `{prefix}tp_notes`"), "{sql}");
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn recompiling_a_zero_bundle_on_its_0_3_output_adds_no_migration() {
     let legacy = Path::new(FIXTURE).join("sources");
     let previous = Path::new(FIXTURE).join("compiled");
     let output = work.path().join("compiled");
-    first::bundle::compile(&legacy, &output, &legacy, Some(&previous)).unwrap();
+    typedpress::bundle::compile(&legacy, &output, &legacy, Some(&previous)).unwrap();
     let migrations = tree(&output.join("migrations"));
     // The previous tree's ledger is carried as it is, and nothing new is planned against its snapshot.
     assert_eq!(migrations.keys().collect::<Vec<_>>(), ["0001_init.sql"]);
@@ -126,7 +126,7 @@ fn recompiling_a_zero_bundle_on_its_0_3_output_adds_no_migration() {
     );
 }
 
-/// The 0.3.0 field reading belongs to the 0.3.0 capture format: the same source in a live First
+/// The 0.3.0 field reading belongs to the 0.3.0 capture format: the same source in a live TypedPress
 /// project is refused at the first old form, naming its replacement.
 #[test]
 fn the_0_3_field_forms_are_read_only_from_a_zero_bundle() {
@@ -135,17 +135,17 @@ fn the_0_3_field_forms_are_read_only_from_a_zero_bundle() {
     copy_dir(&Path::new(FIXTURE).join("app"), &app);
     let config = fs::read_to_string(app.join("zero.config.ts")).unwrap();
     fs::write(
-        app.join("first.config.ts"),
+        app.join("typedpress.config.ts"),
         config
-            .replace("from \"zero\"", "from \"first\"")
-            .replace("\"./lib/fields\"", "\"./first/lib/fields\""),
+            .replace("from \"zero\"", "from \"typedpress\"")
+            .replace("\"./lib/fields\"", "\"./tp/lib/fields\""),
     )
     .unwrap();
     fs::remove_file(app.join("zero.config.ts")).unwrap();
-    fs::create_dir_all(app.join("first/lib")).unwrap();
-    fs::rename(app.join("lib/fields.ts"), app.join("first/lib/fields.ts")).unwrap();
-    let Err(error) = first::bundle::sources(&app, &work.path().join("captured")) else {
-        panic!("0.3.0 field forms in a First project compiled")
+    fs::create_dir_all(app.join("tp/lib")).unwrap();
+    fs::rename(app.join("lib/fields.ts"), app.join("tp/lib/fields.ts")).unwrap();
+    let Err(error) = typedpress::bundle::sources(&app, &work.path().join("captured")) else {
+        panic!("0.3.0 field forms in a TypedPress project compiled")
     };
     assert!(
         error
@@ -166,15 +166,19 @@ fn a_zero_source_bundle_is_refused_when_tampered_or_mixed() {
     let mut app = fs::read(tampered.join("app.zero.json")).unwrap();
     app.push(b' ');
     fs::write(tampered.join("app.zero.json"), app).unwrap();
-    let error = first::bundle::compile(&tampered, &output, &tampered, None).unwrap_err();
+    let error = typedpress::bundle::compile(&tampered, &output, &tampered, None).unwrap_err();
     assert_eq!(error.message, "source bundle hash mismatch: app.zero.json");
     assert!(!output.exists());
 
     let mixed = work.path().join("mixed");
     copy_dir(&Path::new(FIXTURE).join("sources"), &mixed);
-    fs::copy(mixed.join("app.zero.json"), mixed.join("app.first.json")).unwrap();
-    let error = first::bundle::compile(&mixed, &output, &mixed, None).unwrap_err();
-    assert!(error.message.contains("also has app.first.json"), "{}", error.message);
+    fs::copy(mixed.join("app.zero.json"), mixed.join("app.typedpress.json")).unwrap();
+    let error = typedpress::bundle::compile(&mixed, &output, &mixed, None).unwrap_err();
+    assert!(
+        error.message.contains("also has app.typedpress.json"),
+        "{}",
+        error.message
+    );
     assert!(!output.exists());
 }
 
@@ -185,20 +189,20 @@ fn a_zero_source_bundle_with_rendered_pages_is_refused_with_how_to_publish_again
     let work = tempfile::tempdir().unwrap();
     let bundle = Path::new(FIXTURE).join("pages/sources");
     let output = work.path().join("out");
-    let error = first::bundle::compile(&bundle, &output, &bundle, None).unwrap_err();
+    let error = typedpress::bundle::compile(&bundle, &output, &bundle, None).unwrap_err();
     assert_eq!(
         error.message,
-        "this bundle has TSX pages (pages/) rendered by the 0.3.0 compiler, which First can't serve"
+        "this bundle has TSX pages (pages/) rendered by the 0.3.0 compiler, which TypedPress can't serve"
     );
     let help = error.help.unwrap_or_default();
     assert!(
-        help.contains("first/app/<path>/page.tsx") && help.contains("`first sources`"),
+        help.contains("tp/app/<path>/page.tsx") && help.contains("`typedpress sources`"),
         "{help}"
     );
     assert!(!output.exists());
     // `pages/` sources alone, without their artifact, are refused the same way.
     let sources_only = edited_capture(work.path(), "pages/page.tsx", |_| "export default () => null;".into());
-    let error = first::bundle::compile(&sources_only, &output, &sources_only, None).unwrap_err();
+    let error = typedpress::bundle::compile(&sources_only, &output, &sources_only, None).unwrap_err();
     assert!(error.message.contains("TSX pages (pages/)"), "{}", error.message);
     assert!(!output.exists());
 }
@@ -245,10 +249,10 @@ fn a_zero_capture_keeps_its_references_and_relations() {
             .replace("  tables: { notes },", "  tables: { notes, links },\n  relations,")
     });
     let out = work.path().join("out");
-    first::bundle::compile(&bundle, &out, &bundle, None).unwrap();
+    typedpress::bundle::compile(&bundle, &out, &bundle, None).unwrap();
     let schema = std::process::Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(out.join("plugins/first-app-notes/first/app/schema.php"))
+        .arg(out.join("plugins/typedpress-app-notes/tp/app/schema.php"))
         .output()
         .unwrap();
     assert!(schema.status.success(), "{}", String::from_utf8_lossy(&schema.stderr));
@@ -269,14 +273,14 @@ fn a_zero_capture_keeps_its_references_and_relations() {
 }
 
 /// What a deployed 0.3.0 Space's next version serves its pages: recompiled from its stored
-/// `zero.source-bundle.v1`, its generated client, run under Node, calls First's API at
-/// `/__first/api/v1` (tests/wp/zero-upgrade proves what the site answers there and on the old paths).
+/// `zero.source-bundle.v1`, its generated client, run under Node, calls TypedPress's API at
+/// `/__tp/api/v1` (tests/wp/zero-upgrade proves what the site answers there and on the old paths).
 #[test]
 fn a_recompiled_zero_bundle_client_calls_the_first_api() {
     let work = tempfile::tempdir().unwrap();
     let legacy = Path::new(FIXTURE).join("sources");
     let output = work.path().join("compiled");
-    first::bundle::compile(&legacy, &output, &legacy, Some(&Path::new(FIXTURE).join("compiled"))).unwrap();
+    typedpress::bundle::compile(&legacy, &output, &legacy, Some(&Path::new(FIXTURE).join("compiled"))).unwrap();
     let client = tree(&output)
         .into_keys()
         .find(|k| k.ends_with("client/client.js"))
@@ -295,10 +299,10 @@ fn a_recompiled_zero_bundle_client_calls_the_first_api() {
     let calls: Vec<(String, String)> = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(calls.len(), 2, "{calls:?}");
     for (_, url) in &calls {
-        assert!(url.starts_with("/__first/api/v1/"), "{calls:?}");
+        assert!(url.starts_with("/__tp/api/v1/"), "{calls:?}");
     }
-    assert_eq!(calls[0], ("GET".into(), "/__first/api/v1/notes".into()));
-    assert_eq!(calls[1].1, "/__first/api/v1/actions/count");
+    assert_eq!(calls[0], ("GET".into(), "/__tp/api/v1/notes".into()));
+    assert_eq!(calls[1].1, "/__tp/api/v1/actions/count");
 }
 
 /// The 0.3.0 fixtures beside the first one: `forms` (every form 0.3.0 accepted) and `routes`.
@@ -318,18 +322,18 @@ fn schema_php(path: &Path) -> serde_json::Value {
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
-/// The 0.3.0 schema with its names as First stores them (`zero_` → `first_`, the stored-name
+/// The 0.3.0 schema with its names as TypedPress stores them (`zero_` → `tp_`, the stored-name
 /// upgrade; docs/spacefast-host-checklist.md item 9).
 fn renamed(value: &serde_json::Value) -> serde_json::Value {
     match value {
-        serde_json::Value::String(s) => s.replace("zero_", "first_").replace("zero-", "first-").into(),
+        serde_json::Value::String(s) => s.replace("zero_", "tp_").replace("zero-", "typedpress-").into(),
         serde_json::Value::Array(a) => a.iter().map(renamed).collect(),
         serde_json::Value::Object(o) => o.iter().map(|(k, v)| (k.clone(), renamed(v))).collect(),
         other => other.clone(),
     }
 }
 
-/// Every place `old` differs from `new`, except keys `new` adds: what 0.3.0 said and First says otherwise.
+/// Every place `old` differs from `new`, except keys `new` adds: what 0.3.0 said and TypedPress says otherwise.
 fn changed(old: &serde_json::Value, new: &serde_json::Value, at: &str, out: &mut Vec<String>) {
     match (old, new) {
         (serde_json::Value::Object(a), serde_json::Value::Object(b)) => {
@@ -347,14 +351,14 @@ fn changed(old: &serde_json::Value, new: &serde_json::Value, at: &str, out: &mut
 
 /// Every authoring form the 0.3.0 compiler accepted, in one stored bundle, recompiled on the tree its
 /// 0.3.0 build left: no new migration, the same snapshot, and the same served schema apart from what
-/// First reads differently on purpose (each listed below, with why it serves the same).
+/// TypedPress reads differently on purpose (each listed below, with why it serves the same).
 #[test]
 fn every_0_3_authoring_form_recompiles_to_the_schema_0_3_served() {
     let work = tempfile::tempdir().unwrap();
     let sources = app("forms").join("sources");
     let previous = app("forms").join("compiled");
     let output = work.path().join("compiled");
-    first::bundle::compile(&sources, &output, &sources, Some(&previous)).unwrap();
+    typedpress::bundle::compile(&sources, &output, &sources, Some(&previous)).unwrap();
     let migrations = tree(&output.join("migrations"));
     assert_eq!(migrations.keys().collect::<Vec<_>>(), ["0001_init.sql"]);
     assert_eq!(
@@ -367,11 +371,11 @@ fn every_0_3_authoring_form_recompiles_to_the_schema_0_3_served() {
     assert_eq!(snapshot(&output), snapshot(&previous));
     // Planned from nothing (the first version a host compiles), the same first migration.
     let fresh = work.path().join("fresh");
-    first::bundle::compile(&sources, &fresh, &sources, None).unwrap();
+    typedpress::bundle::compile(&sources, &fresh, &sources, None).unwrap();
     assert_eq!(snapshot(&fresh), snapshot(&previous));
 
     let old = renamed(&schema_php(&previous.join("schema.php")));
-    let new = schema_php(&output.join("plugins/first-app-forms/first/app/schema.php"));
+    let new = schema_php(&output.join("plugins/typedpress-app-forms/tp/app/schema.php"));
     let mut differences = Vec::new();
     changed(&old, &new, "", &mut differences);
     assert_eq!(
@@ -381,7 +385,7 @@ fn every_0_3_authoring_form_recompiles_to_the_schema_0_3_served() {
             // a_recompiled_zero_bundle_serves_its_routes_as_0_3_did).
             "/routes is gone",
             // The timestamped scheme was renamed with the product; it verifies the same header.
-            "/actions/hook/signature/scheme: \"zero\" became \"first\"",
+            "/actions/hook/signature/scheme: \"zero\" became \"typedpress\"",
         ],
         "{new:#}"
     );
@@ -441,12 +445,12 @@ fn a_recompiled_zero_bundle_serves_its_routes_as_0_3_did() {
     let work = tempfile::tempdir().unwrap();
     let sources = app("routes").join("sources");
     let output = work.path().join("compiled");
-    first::bundle::compile(&sources, &output, &sources, None).unwrap();
+    typedpress::bundle::compile(&sources, &output, &sources, None).unwrap();
     let out = std::process::Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/zero_routes.php"))
         .arg(&output)
-        .env("FIRST_WP_THEMES", "1")
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -468,82 +472,82 @@ fn a_recompiled_zero_bundle_serves_its_routes_as_0_3_did() {
     assert_eq!(served, recorded);
 }
 
-/// A First project that writes one of the 0.3.0 forms an old bundle still reads: refused at the
+/// A TypedPress project that writes one of the 0.3.0 forms an old bundle still reads: refused at the
 /// form, with its replacement. (`.notNull()` in a whole 0.3.0 app:
 /// the_0_3_field_forms_are_read_only_from_a_zero_bundle.)
 #[test]
 fn the_0_3_forms_other_lanes_removed_are_refused_in_a_first_project() {
     let cases: &[(&str, &str, &str)] = &[
         (
-            r#"import { defineConfig, route } from "first";
+            r#"import { defineConfig, route } from "typedpress";
 export default defineConfig({});"#,
-            "\"first\" has no export named `route`",
-            "first/app/<path>/route.ts",
+            "\"typedpress\" has no export named `route`",
+            "tp/app/<path>/route.ts",
         ),
         (
-            r#"import { defineConfig } from "first";
+            r#"import { defineConfig } from "typedpress";
 export default defineConfig({ routes: {} });"#,
             "defineConfig() has no option `routes`",
-            "first/app/<path>/route.ts",
+            "tp/app/<path>/route.ts",
         ),
         (
-            r#"import { defineConfig, action, env } from "first";
+            r#"import { defineConfig, action, env } from "typedpress";
 export const hook = action({ input: {}, signature: { secret: env("S"), header: "x-sig", scheme: "zero" }, handler() { return 1; } });
 export default defineConfig({});"#,
             "signature.scheme must be first or hmac-sha256",
             "",
         ),
         (
-            r#"import { defineConfig, table, text } from "first";
+            r#"import { defineConfig, table, text } from "typedpress";
 export const codes = table({ code: text().primaryKey().max(40) });
 export default defineConfig({});"#,
             "`.primaryKey()` is gone",
             "`get({ code })`",
         ),
         (
-            r#"import { defineConfig, table, id, text } from "first";
+            r#"import { defineConfig, table, id, text } from "typedpress";
 export const notes = table({ id: id(), title: text() });
 export default defineConfig({});"#,
             "`id()` is gone",
             "delete `id: id()`",
         ),
         (
-            r#"import { defineConfig, table, real } from "first";
+            r#"import { defineConfig, table, real } from "typedpress";
 export const notes = table({ score: real() });
 export default defineConfig({});"#,
             "`real()` is now `number()`",
             "number()",
         ),
         (
-            r#"import { defineConfig, table, text } from "first";
+            r#"import { defineConfig, table, text } from "typedpress";
 export const notes = table({ kind: text({ enum: ["a", "b"] }) });
 export default defineConfig({});"#,
             "`text({ enum })` is now `select([...])`",
             "select(",
         ),
         (
-            r#"import { defineConfig, table, select } from "first";
+            r#"import { defineConfig, table, select } from "typedpress";
 export const notes = table({ kind: select({ options: ["a", "b"] }) });
 export default defineConfig({});"#,
             "select() takes its options as an array",
             "select([",
         ),
         (
-            r#"import { defineConfig, table, group, text } from "first";
+            r#"import { defineConfig, table, group, text } from "typedpress";
 export const notes = table({ seo: group({ fields: { title: text() } }) });
 export default defineConfig({});"#,
             "group() takes its fields directly",
             "group({",
         ),
         (
-            r#"import { defineConfig, table, json } from "first";
+            r#"import { defineConfig, table, json } from "typedpress";
 export const notes = table({ tags: json().$type<string[]>() });
 export default defineConfig({});"#,
             "`json().$type<T>()` is now `json<T>()`",
             "json<string[]>()",
         ),
         (
-            r#"import { defineConfig, table, text, integer } from "first";
+            r#"import { defineConfig, table, text, integer } from "typedpress";
 export const notes = table({ title: text() });
 export const links = table({ noteId: integer().references(() => notes.id) });
 export default defineConfig({});"#,
@@ -551,7 +555,7 @@ export default defineConfig({});"#,
             "ref(locations)",
         ),
         (
-            r#"import { defineConfig, defineRelations, table, text } from "first";
+            r#"import { defineConfig, defineRelations, table, text } from "typedpress";
 export const notes = table({ title: text() });
 const relations = defineRelations({ notes }, () => ({}));
 export default defineConfig({ relations });"#,
@@ -559,65 +563,65 @@ export default defineConfig({ relations });"#,
             "ref(locations)",
         ),
         (
-            r#"import { defineConfig, table, text } from "first";
+            r#"import { defineConfig, table, text } from "typedpress";
 export const notes = table({ title: text() });
 export default defineConfig({ relations: {} });"#,
             "`relations` is gone",
             "ref(locations)",
         ),
-        // The registry keys (ruling 36): read in a 0.3.0 capture, refused at the key in a First
+        // The registry keys (ruling 36): read in a 0.3.0 capture, refused at the key in a TypedPress
         // project, each with the export that replaces it under the same name.
         (
-            r#"import { defineConfig, collection, text } from "first";
+            r#"import { defineConfig, collection, text } from "typedpress";
 const notes = collection({ title: text() });
 export default defineConfig({ collections: { notes } });"#,
             "`collections` is gone: a kind registers by its export",
             "export const notes = collection({ ... })",
         ),
         (
-            r#"import { defineConfig, table, text } from "first";
+            r#"import { defineConfig, table, text } from "typedpress";
 const variants = table({ name: text() });
 export default defineConfig({ tables: { productVariants: variants } });"#,
             "`tables` is gone: a table registers by its export",
             "export { variants as productVariants }",
         ),
         (
-            r#"import { defineConfig, userProjection, email } from "first";
+            r#"import { defineConfig, userProjection, email } from "typedpress";
 const members = userProjection({ email: email().unique().max(191) });
 export default defineConfig({ users: { members } });"#,
             "`users` is gone: the users kind registers by its export",
             "export const members = userProjection({ ... })",
         ),
         (
-            r#"import { defineConfig, global, text } from "first";
+            r#"import { defineConfig, global, text } from "typedpress";
 const settings = global({ title: text().default("x") });
 export default defineConfig({ globals: { settings } });"#,
             "`globals` is gone: a global registers by its export",
             "export const settings = global({ ... })",
         ),
         (
-            r#"import { defineConfig, files } from "first";
+            r#"import { defineConfig, files } from "typedpress";
 const decks = files({ accept: ["application/pdf"], maxBytes: 10 });
 export default defineConfig({ files: { decks } });"#,
             "`files` is gone: a file bucket registers by its export",
             "`file(decks)` takes the export",
         ),
         (
-            r#"import { defineConfig, action } from "first";
+            r#"import { defineConfig, action } from "typedpress";
 const like = action({ input: {}, handler() { return 1; } });
 export default defineConfig({ actions: { like } });"#,
             "`actions` is gone: an action registers by its export",
             "the client call is `first.like()`",
         ),
         (
-            r#"import { defineConfig, job } from "first";
+            r#"import { defineConfig, job } from "typedpress";
 const digest = job({ input: {}, handler() {} });
 export default defineConfig({ jobs: { digest } });"#,
             "`jobs` is gone: a job registers by its export",
             "export const digest = job(...)",
         ),
         (
-            r#"import { defineConfig, table, text } from "first";
+            r#"import { defineConfig, table, text } from "typedpress";
 export const notes = table({ title: text() });
 export default defineConfig({ hooks: { notes: { beforeCreate() {} } } });"#,
             "`hooks` is gone: hooks are declared on the kind",
@@ -625,7 +629,7 @@ export default defineConfig({ hooks: { notes: { beforeCreate() {} } } });"#,
         ),
         // A kind registered by no export was registered by its config key in 0.3.0 (ruling 37).
         (
-            r#"import { defineConfig, table, text } from "first";
+            r#"import { defineConfig, table, text } from "typedpress";
 const hidden = table({ title: text() });
 export default defineConfig({});"#,
             "`hidden` is a table but isn't exported, so it has no name",
@@ -634,9 +638,9 @@ export default defineConfig({});"#,
     ];
     for (config, message, help) in cases {
         let work = tempfile::tempdir().unwrap();
-        fs::write(work.path().join("first.config.ts"), config).unwrap();
-        let Err(error) = first::bundle::sources(work.path(), &work.path().join("captured")) else {
-            panic!("a First project compiled a 0.3.0 form: {config}")
+        fs::write(work.path().join("typedpress.config.ts"), config).unwrap();
+        let Err(error) = typedpress::bundle::sources(work.path(), &work.path().join("captured")) else {
+            panic!("a TypedPress project compiled a 0.3.0 form: {config}")
         };
         assert!(error.message.contains(message), "{config}\n{}", error.message);
         assert!(
@@ -671,7 +675,7 @@ fn a_raw_zero_project_is_captured_as_the_0_3_compiler_captured_it() {
         let work = tempfile::tempdir().unwrap();
         let project = raw(work.path(), fixture);
         let captured = work.path().join("captured");
-        first::host::sources(&project, &captured).unwrap();
+        typedpress::host::sources(&project, &captured).unwrap();
         let expected = Path::new(FIXTURE).join(sources);
         assert_eq!(tree(&captured), tree(&expected), "{fixture}");
     }
@@ -688,8 +692,8 @@ fn a_raw_zero_project_compiles_like_its_0_3_capture() {
         let capture = Path::new(FIXTURE).join(sources);
         let from_raw = work.path().join("from-raw");
         let from_capture = work.path().join("from-capture");
-        first::host::compile_sources(&project, &from_raw, &project, None).unwrap();
-        first::host::compile_sources(&capture, &from_capture, &capture, None).unwrap();
+        typedpress::host::compile_sources(&project, &from_raw, &project, None).unwrap();
+        typedpress::host::compile_sources(&capture, &from_capture, &capture, None).unwrap();
         assert_eq!(tree(&from_raw), tree(&from_capture), "{fixture}");
 
         // On the 0.3.0 output (its ledger under the 0.3 names, which the stored-name upgrade moves):
@@ -699,7 +703,7 @@ fn a_raw_zero_project_compiles_like_its_0_3_capture() {
             serde_json::from_slice(&fs::read(dir.join("snapshot.json")).unwrap()).unwrap()
         };
         let again = work.path().join("again");
-        first::host::compile_sources(&project, &again, &project, Some(&previous)).unwrap();
+        typedpress::host::compile_sources(&project, &again, &project, Some(&previous)).unwrap();
         assert_eq!(
             tree(&again.join("migrations")),
             tree(&previous.join("migrations")),
@@ -709,7 +713,7 @@ fn a_raw_zero_project_compiles_like_its_0_3_capture() {
 
         // The build store compiles it the same way.
         let store = work.path().join("store");
-        let build = first::host::compile_to_store(&project, &store, &project, None).unwrap();
+        let build = typedpress::host::compile_to_store(&project, &store, &project, None).unwrap();
         let stored = store.join("app").join(&build.app_hash);
         assert_eq!(
             tree(&stored.join("migrations")),
@@ -726,12 +730,12 @@ fn a_raw_zero_project_is_refused_as_its_capture_is_and_only_the_host_reads_it() 
     let refused = |project: &Path| {
         let work = tempfile::tempdir().unwrap();
         let captured = work.path().join("captured");
-        let Err(a) = first::host::sources(project, &captured) else {
+        let Err(a) = typedpress::host::sources(project, &captured) else {
             panic!("{} was captured", project.display())
         };
         assert!(!captured.exists());
         let output = work.path().join("out");
-        let b = first::host::compile_sources(project, &output, project, None).unwrap_err();
+        let b = typedpress::host::compile_sources(project, &output, project, None).unwrap_err();
         assert!(!output.exists());
         assert_eq!((&a.message, &a.help), (&b.message, &b.help));
         a
@@ -761,33 +765,34 @@ fn a_raw_zero_project_is_refused_as_its_capture_is_and_only_the_host_reads_it() 
         fs::write(&path, "export default () => null;").unwrap();
         let error = refused(&project);
         assert_eq!(
-            error.message, "this bundle has TSX pages (pages/) rendered by the 0.3.0 compiler, which First can't serve",
+            error.message,
+            "this bundle has TSX pages (pages/) rendered by the 0.3.0 compiler, which TypedPress can't serve",
             "{page}"
         );
-        assert!(error.help.unwrap_or_default().contains("first/app/<path>/page.tsx"));
+        assert!(error.help.unwrap_or_default().contains("tp/app/<path>/page.tsx"));
     }
 
     // Two things to publish in one tree: which one the owner meant is not the host's to guess.
     for (extra, message) in [
         (
-            "first.config.ts",
-            "this upload has both zero.config.ts (from before the rename to First) and first.config.ts",
+            "typedpress.config.ts",
+            "this upload has both zero.config.ts (from before the rename to TypedPress) and typedpress.config.ts",
         ),
         (
             ".zero-source/manifest.json",
             "this upload has both a raw zero.config.ts project and a captured bundle (.zero-source)",
         ),
         (
-            ".first-source/manifest.json",
-            "this upload has both a raw zero.config.ts project and a captured bundle (.first-source)",
+            ".typedpress-source/manifest.json",
+            "this upload has both a raw zero.config.ts project and a captured bundle (.typedpress-source)",
         ),
         (
             "app.zero.json",
             "this upload has both a raw zero.config.ts project and a captured bundle (app.zero.json)",
         ),
         (
-            "app.first.json",
-            "this upload has both a raw zero.config.ts project and a captured bundle (app.first.json)",
+            "app.typedpress.json",
+            "this upload has both a raw zero.config.ts project and a captured bundle (app.typedpress.json)",
         ),
     ] {
         let work = tempfile::tempdir().unwrap();
@@ -798,8 +803,8 @@ fn a_raw_zero_project_is_refused_as_its_capture_is_and_only_the_host_reads_it() 
         assert_eq!(refused(&project).message, message, "{extra}");
     }
 
-    // A First project with a stray zero.config.ts is one of those: refused on the host. Its own
-    // capture (`first sources`, the CLI and the browser compiler) never reads zero.config.ts.
+    // A TypedPress project with a stray zero.config.ts is one of those: refused on the host. Its own
+    // capture (`typedpress sources`, the CLI and the browser compiler) never reads zero.config.ts.
     let work = tempfile::tempdir().unwrap();
     let pantry = work.path().join("pantry");
     copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/pantry"), &pantry);
@@ -809,17 +814,17 @@ fn a_raw_zero_project_is_refused_as_its_capture_is_and_only_the_host_reads_it() 
     )
     .unwrap();
     assert!(refused(&pantry).message.contains("both zero.config.ts"));
-    first::bundle::sources(&pantry, &work.path().join("native")).unwrap();
+    typedpress::bundle::sources(&pantry, &work.path().join("native")).unwrap();
     assert_eq!(
         manifest(&work.path().join("native"))["format"],
-        "first.source-bundle.v1"
+        "typedpress.source-bundle.v1"
     );
 
-    // A raw 0.3.0 project outside the host entries is not a project: `first sources` (and `first
-    // build`/`check`/`dev`, which read only first.config.ts) refuse it as before.
+    // A raw 0.3.0 project outside the host entries is not a project: `typedpress sources` (and `first
+    // build`/`check`/`dev`, which read only typedpress.config.ts) refuse it as before.
     let project = raw(work.path(), "app");
-    let Err(error) = first::bundle::sources(&project, &work.path().join("cli")) else {
-        panic!("first sources read zero.config.ts")
+    let Err(error) = typedpress::bundle::sources(&project, &work.path().join("cli")) else {
+        panic!("typedpress sources read zero.config.ts")
     };
-    assert!(error.message.contains("first.config.ts"), "{}", error.message);
+    assert!(error.message.contains("typedpress.config.ts"), "{}", error.message);
 }

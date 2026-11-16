@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR;
+namespace TypedPress\Identity\Vendor\CBOR;
 
-use First\Identity\Vendor\CBOR\OtherObject\OtherObjectInterface;
+use TypedPress\Identity\Vendor\CBOR\OtherObject\OtherObjectInterface;
 
 abstract class OtherObject extends AbstractCBORObject implements OtherObjectInterface
 {

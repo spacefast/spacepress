@@ -1,1 +1,1 @@
-<?php return array('name' => 'user', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/core-data-next', '@wordpress/route'), 'version' => 'e8f34beb816eed2cdb1b');
+<?php return array('name' => 'user', 'dependencies' => array(), 'moduleDependencies' => array('@typedpress-admin/core-data-next', '@wordpress/route'), 'version' => 'fdb482aa5296c121c9d5');

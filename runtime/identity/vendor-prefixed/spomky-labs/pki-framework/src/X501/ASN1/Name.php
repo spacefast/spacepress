@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1;
 
 use ArrayIterator;
 use function count;
 use Countable;
 use IteratorAggregate;
 use RangeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
 use Stringable;
 
 /**

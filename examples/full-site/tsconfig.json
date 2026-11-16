@@ -8,17 +8,17 @@
     "noEmit": true,
     "types": [],
     "jsx": "react-jsx",
-    "jsxImportSource": "first",
+    "jsxImportSource": "typedpress",
     "paths": {
-      "first": ["../../types/first/index.d.ts"],
-      "first/app": ["../../types/first/app.d.ts"],
-      "first/client": ["../../types/first/client.d.ts"],
-      "first/jsx-runtime": ["../../types/first/jsx-runtime.d.ts"],
-      "first/jsx-dev-runtime": ["../../types/first/jsx-dev-runtime.d.ts"]
+      "typedpress": ["../../types/typedpress/index.d.ts"],
+      "typedpress/app": ["../../types/typedpress/app.d.ts"],
+      "typedpress/client": ["../../types/typedpress/client.d.ts"],
+      "typedpress/jsx-runtime": ["../../types/typedpress/jsx-runtime.d.ts"],
+      "typedpress/jsx-dev-runtime": ["../../types/typedpress/jsx-dev-runtime.d.ts"]
     },
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["first.config.ts", "first/**/*.ts", "first/**/*.tsx"],
-  "exclude": ["first/dist"]
+  "include": ["typedpress.config.ts", "tp/**/*.ts", "tp/**/*.tsx"],
+  "exclude": ["tp/dist"]
 }

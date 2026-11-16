@@ -49,7 +49,7 @@ describe( 'RadioGroupControl', () => {
 					{
 						label: 'Option A',
 						value: 'a',
-						description: 'First option',
+						description: 'TypedPress option',
 					},
 				] }
 			/>
@@ -58,7 +58,7 @@ describe( 'RadioGroupControl', () => {
 		expect(
 			screen.getByRole( 'radio', {
 				name: 'Option A',
-				description: 'First option',
+				description: 'TypedPress option',
 			} )
 		).toBeVisible();
 	} );

@@ -1,7 +1,7 @@
 import { __experimentalHStack as HStack } from '@wordpress/components';
 import { useContext } from '@wordpress/element';
-import { getStyle } from '@first-admin/global-styles-engine';
-import type { Color } from '@first-admin/global-styles-engine';
+import { getStyle } from '@typedpress-admin/global-styles-engine';
+import type { Color } from '@typedpress-admin/global-styles-engine';
 import { GlobalStylesContext } from './context';
 
 export function ColorPreview() {

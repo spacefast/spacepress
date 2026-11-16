@@ -1,7 +1,7 @@
 {
-	"name": "@first-admin/dataviews",
+	"name": "@typedpress-admin/dataviews",
 	"version": "1.0.0",
-	"description": "Private wrapper around @wordpress/dataviews for First Admin",
+	"description": "Private wrapper around @wordpress/dataviews for TypedPress Admin",
 	"type": "module",
 	"private": true,
 	"wpModule": true,

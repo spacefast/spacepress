@@ -29,10 +29,10 @@ export async function archive({ binary, target, output, revision, workingTree = 
   const destination = join(output, name);
   const reserve = await open(destination, 'wx');
   await reserve.close();
-  const stage = await mkdtemp(join(tmpdir(), 'first-release-'));
+  const stage = await mkdtemp(join(tmpdir(), 'typedpress-release-'));
   try {
-    await copyFile(binary, join(stage, 'first'));
-    await cp(new URL('types/first/', root), join(stage, 'types'), { recursive: true });
+    await copyFile(binary, join(stage, 'typedpress'));
+    await cp(new URL('types/typedpress/', root), join(stage, 'types'), { recursive: true });
     for (const name of ['LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock']) await copyFile(new URL(name, root), join(stage, name));
     async function notices(directory, prefix = '') {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -107,7 +107,7 @@ export async function archive({ binary, target, output, revision, workingTree = 
       signed: false, licenses: 'See LICENSE for component ownership; runtime notices retain their original paths under licenses/runtime/. Rust notices and metadata are under licenses/rust/ and licenses/DEPENDENCIES.json; exact versions and registry checksums are recorded in Cargo.lock.',
     }, null, 2) + '\n');
     // GNU tar treats a drive letter in the archive argument as a remote host.
-    await exec('tar', ['-czf', name, '-C', stage, 'first', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock', 'SOURCE.json', 'licenses', 'types'], { cwd: output });
+    await exec('tar', ['-czf', name, '-C', stage, 'typedpress', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock', 'SOURCE.json', 'licenses', 'types'], { cwd: output });
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(destination)) hash.update(chunk);
     const sha256 = hash.digest('hex');

@@ -2,7 +2,7 @@
 /**
  * Core media fields collection - applies to attachment post type
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(

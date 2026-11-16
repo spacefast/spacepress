@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\DirectoryName;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\DirectoryName;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
 use UnexpectedValueException;
 
 /**

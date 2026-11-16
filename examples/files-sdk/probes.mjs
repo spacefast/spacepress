@@ -1,8 +1,8 @@
 // Host-API probes. The syntax pass stops the files-sdk build at its first
 // layer, so these show what's next: one tiny app per API, each compiled twice,
-// as authored TypeScript in first.config.ts and as an imported JavaScript package
+// as authored TypeScript in typedpress.config.ts and as an imported JavaScript package
 // (the way files-sdk's own code reaches the compiler). A probe passes when
-// `first check` reports no diagnostics.
+// `typedpress check` reports no diagnostics.
 import { spawnSync } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -34,7 +34,7 @@ export const PROBES = [
   ["class inside a function", "function make() { class A { v() { return 1; } } return new A(); } return make().v();", "function make() { class A { v() { return 1; } } return new A(); } return make().v();"],
 ];
 
-const config = (body) => `import { action, defineConfig, text } from "first";
+const config = (body) => `import { action, defineConfig, text } from "typedpress";
 ${body.imports ?? ""}
 export const a = action({ access: "anyone", input: { s: text() }, async handler(input) {
 ${body.handler}
@@ -63,7 +63,7 @@ export async function runProbes(first, work) {
     await mkdir(tsDir, { recursive: true });
     // The body runs directly in the handler, so only the API itself is measured.
     await writeFile(
-      path.join(tsDir, "first.config.ts"),
+      path.join(tsDir, "typedpress.config.ts"),
       config({ imports: declarations, handler: ts.replace(/return ([^;]+);(?![\s\S]*return )/, "return { v: String($1) };") }),
     );
     const jsDir = path.join(work, `${index}-js`);
@@ -71,7 +71,7 @@ export async function runProbes(first, work) {
     await writeFile(path.join(jsDir, "node_modules/probe-lib/package.json"), '{"name":"probe-lib","type":"module","exports":"./index.js"}');
     await writeFile(path.join(jsDir, "node_modules/probe-lib/index.js"), `${declarations}\nexport function run(s) { ${js} }\n`);
     await writeFile(
-      path.join(jsDir, "first.config.ts"),
+      path.join(jsDir, "typedpress.config.ts"),
       config({
         imports: 'import { run } from "probe-lib";',
         handler: /Promise|async|setTimeout/.test(js)

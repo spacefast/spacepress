@@ -24,12 +24,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "src/wordpress/catalog.json"
-# The generated half of types/first/wordpress.d.ts, between these markers.
-TYPES = ROOT / "types/first/wordpress.d.ts"
+# The generated half of types/typedpress/wordpress.d.ts, between these markers.
+TYPES = ROOT / "types/typedpress/wordpress.d.ts"
 BEGIN, END = "// BEGIN GENERATED: scripts/wordpress-catalog.py", "// END GENERATED"
 CACHE = ROOT / "tests/wp/cache/catalog"
 
-# WordPress 7.1.x: the newest stubs php-stubs/wordpress-stubs has released. First's floor is 7.2-beta5
+# WordPress 7.1.x: the newest stubs php-stubs/wordpress-stubs has released. TypedPress's floor is 7.2-beta5
 # (src/platform.rs); every name the catalog takes from 7.1 is still in 7.2.
 PINS = {
     "hooks": {
@@ -269,7 +269,7 @@ def render():
 
 
 def render_types(catalog):
-    """The catalog as declarations: class views and the hook map, for types/first/wordpress.d.ts."""
+    """The catalog as declarations: class views and the hook map, for types/typedpress/wordpress.d.ts."""
     lines = [BEGIN]
     for cls, fields in catalog["classes"].items():
         lines.append(f"/** A read-only view of `{cls}` as a hook handler receives it. */")
@@ -286,7 +286,7 @@ def render_types(catalog):
         throws = " Throws an HttpError when WordPress returns a WP_Error." if f["wpError"] else ""
         lines.append(f"/** WordPress `{name}()`.{throws} */")
         lines.append(f"export declare function {name}({params}): {f['returns']};")
-    lines.append("/** The WordPress hooks `first/wp-hooks/` accepts: kind and arguments, from core's docblocks. */")
+    lines.append("/** The WordPress hooks `tp/wp-hooks/` accepts: kind and arguments, from core's docblocks. */")
     lines.append("export interface Hooks {")
     for name, h in catalog["hooks"].items():
         params = ", ".join(f"{p['name']}: {p['type']}" for p in h["params"])

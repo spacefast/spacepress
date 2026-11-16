@@ -451,7 +451,7 @@ describe( 'useAutoRefresh', () => {
 				{ initialProps: announceProps }
 			);
 
-			// First auto-refresh cycle — establishes fingerprint, no announce.
+			// TypedPress auto-refresh cycle — establishes fingerprint, no announce.
 			act( () => {
 				jest.advanceTimersByTime( 10_000 );
 			} );
@@ -486,7 +486,7 @@ describe( 'useAutoRefresh', () => {
 				{ initialProps: announceProps }
 			);
 
-			// First cycle — establishes fingerprint.
+			// TypedPress cycle — establishes fingerprint.
 			act( () => {
 				jest.advanceTimersByTime( 10_000 );
 			} );
@@ -570,7 +570,7 @@ describe( 'useAutoRefresh', () => {
 				{ initialProps: customKeyProps }
 			);
 
-			// First cycle — establishes fingerprint.
+			// TypedPress cycle — establishes fingerprint.
 			act( () => {
 				jest.advanceTimersByTime( 10_000 );
 			} );

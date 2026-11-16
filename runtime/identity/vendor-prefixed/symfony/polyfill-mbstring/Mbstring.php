@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Polyfill\Mbstring;
+namespace TypedPress\Identity\Vendor\Symfony\Polyfill\Mbstring;
 
 /**
  * Partial mbstring implementation in PHP, iconv based, UTF-8 centric.
@@ -330,14 +330,14 @@ final class Mbstring
             $s = self::iconv($encoding, 'UTF-8', $s);
         }
 
-        if (\FIRST_IDENTITY_VENDOR_MB_CASE_TITLE == $mode) {
+        if (\TP_IDENTITY_VENDOR_MB_CASE_TITLE == $mode) {
             static $titleRegexp = null;
             if (null === $titleRegexp) {
                 $titleRegexp = self::getData('titleCaseRegexp');
             }
             $s = preg_replace_callback($titleRegexp, [__CLASS__, 'title_case'], $s);
         } else {
-            if (\FIRST_IDENTITY_VENDOR_MB_CASE_UPPER == $mode) {
+            if (\TP_IDENTITY_VENDOR_MB_CASE_UPPER == $mode) {
                 static $upper = null;
                 if (null === $upper) {
                     $upper = self::getData('upperCase');
@@ -653,12 +653,12 @@ final class Mbstring
 
     public static function mb_strtolower($s, $encoding = null)
     {
-        return self::mb_convert_case($s, \FIRST_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
+        return self::mb_convert_case($s, \TP_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
     }
 
     public static function mb_strtoupper($s, $encoding = null)
     {
-        return self::mb_convert_case($s, \FIRST_IDENTITY_VENDOR_MB_CASE_UPPER, $encoding);
+        return self::mb_convert_case($s, \TP_IDENTITY_VENDOR_MB_CASE_UPPER, $encoding);
     }
 
     public static function mb_substitute_character($c = null)
@@ -708,8 +708,8 @@ final class Mbstring
     public static function mb_stripos($haystack, $needle, $offset = 0, $encoding = null)
     {
         [$haystack, $needle] = str_replace(self::SIMPLE_CASE_FOLD[0], self::SIMPLE_CASE_FOLD[1], [
-            self::mb_convert_case($haystack, \FIRST_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding),
-            self::mb_convert_case($needle, \FIRST_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding),
+            self::mb_convert_case($haystack, \TP_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding),
+            self::mb_convert_case($needle, \TP_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding),
         ]);
 
         return self::mb_strpos($haystack, $needle, $offset, $encoding);
@@ -745,8 +745,8 @@ final class Mbstring
 
     public static function mb_strripos($haystack, $needle, $offset = 0, $encoding = null)
     {
-        $haystack = self::mb_convert_case($haystack, \FIRST_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
-        $needle = self::mb_convert_case($needle, \FIRST_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
+        $haystack = self::mb_convert_case($haystack, \TP_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
+        $needle = self::mb_convert_case($needle, \TP_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
 
         $haystack = str_replace(self::SIMPLE_CASE_FOLD[0], self::SIMPLE_CASE_FOLD[1], $haystack);
         $needle = str_replace(self::SIMPLE_CASE_FOLD[0], self::SIMPLE_CASE_FOLD[1], $needle);
@@ -942,7 +942,7 @@ final class Mbstring
         }
 
         $firstChar = mb_substr($string, 0, 1, $encoding);
-        $firstChar = mb_convert_case($firstChar, \FIRST_IDENTITY_VENDOR_MB_CASE_TITLE, $encoding);
+        $firstChar = mb_convert_case($firstChar, \TP_IDENTITY_VENDOR_MB_CASE_TITLE, $encoding);
 
         return $firstChar.mb_substr($string, 1, null, $encoding);
     }
@@ -957,7 +957,7 @@ final class Mbstring
         }
 
         $firstChar = mb_substr($string, 0, 1, $encoding);
-        $firstChar = mb_convert_case($firstChar, \FIRST_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
+        $firstChar = mb_convert_case($firstChar, \TP_IDENTITY_VENDOR_MB_CASE_LOWER, $encoding);
 
         return $firstChar.mb_substr($string, 1, null, $encoding);
     }
@@ -1019,7 +1019,7 @@ final class Mbstring
 
     private static function title_case(array $s)
     {
-        return self::mb_convert_case($s[1], \FIRST_IDENTITY_VENDOR_MB_CASE_UPPER, 'UTF-8').self::mb_convert_case($s[2], \FIRST_IDENTITY_VENDOR_MB_CASE_LOWER, 'UTF-8');
+        return self::mb_convert_case($s[1], \TP_IDENTITY_VENDOR_MB_CASE_UPPER, 'UTF-8').self::mb_convert_case($s[2], \TP_IDENTITY_VENDOR_MB_CASE_LOWER, 'UTF-8');
     }
 
     private static function getData($file)

@@ -3,7 +3,7 @@
 // password reset commits, must not create a session (two connections).
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use First\Identity\{Plugin, Security, Mfa};
+use TypedPress\Identity\{Plugin, Security, Mfa};
 
 ob_start();
 $tag = bin2hex(random_bytes(4));
@@ -12,7 +12,7 @@ $uid = Plugin::$accounts->emailLogin($email);
 $db = Plugin::$db;
 $mfa = new Mfa($db, Plugin::$security);
 $setup = $mfa->setup($uid, 'Race');
-$mfa->verify($uid, \First\Identity\Vendor\OTPHP\TOTP::createFromSecret($setup['secret'])->now(), true);
+$mfa->verify($uid, \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret($setup['secret'])->now(), true);
 $recovery = $mfa->recoveryCodes($uid)[0];
 $binding = Security::token();
 $challenge = Plugin::$security->challenge('mfa', $uid, '', [], $binding);

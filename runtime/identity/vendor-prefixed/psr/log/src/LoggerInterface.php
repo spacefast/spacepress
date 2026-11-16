@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Identity\Vendor\Psr\Log;
+namespace TypedPress\Identity\Vendor\Psr\Log;
 
 /**
  * Describes a logger instance.
@@ -92,7 +92,7 @@ interface LoggerInterface
      * @param mixed $level
      * @param mixed[] $context
      *
-     * @throws \First\Identity\Vendor\Psr\Log\InvalidArgumentException
+     * @throws \TypedPress\Identity\Vendor\Psr\Log\InvalidArgumentException
      */
     public function log($level, string|\Stringable $message, array $context = []): void;
 }

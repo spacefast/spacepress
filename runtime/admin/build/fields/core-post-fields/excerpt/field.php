@@ -2,12 +2,12 @@
 /**
  * Excerpt field definition for core post fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Excerpt', 'first-admin' ),
+	'label'              => __( 'Excerpt', 'typedpress-admin' ),
 	'enableSorting'      => false,
 	'enableHiding'       => true,
 	'enableGlobalSearch' => true,

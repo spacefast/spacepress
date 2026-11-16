@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Identity\Vendor\Firebase\JWT;
+namespace TypedPress\Identity\Vendor\Firebase\JWT;
 
 class BeforeValidException extends \UnexpectedValueException implements JWTExceptionWithPayloadInterface
 {

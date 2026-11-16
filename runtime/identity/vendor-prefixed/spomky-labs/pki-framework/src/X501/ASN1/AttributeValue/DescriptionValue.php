@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature\DirectoryString;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature\DirectoryString;
 
 /**
  * 'description' attribute value.

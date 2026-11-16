@@ -2,9 +2,9 @@
 	"name": "core-plugin-fields",
 	"version": "1.0.0",
 	"dependencies": {
-		"@first-admin/design-system": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
 		"@wordpress/core-data": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/i18n": "catalog:",
 		"@wordpress/ui": "catalog:"
 	}

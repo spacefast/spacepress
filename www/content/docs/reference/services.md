@@ -6,16 +6,16 @@ order: 2
 status: published
 publishedAt: 2026-11-15T21:51:55.000Z
 ---
-First's native services module adds validated contact forms, queued mail, publication search and Stripe-hosted checkout. WordPress remains the authority for users, publication and content permissions. The existing First transaction, receipt, outbox and Action Scheduler implementations own atomic writes, request replay and delivery retries.
+TypedPress's native services module adds validated contact forms, queued mail, publication search and Stripe-hosted checkout. WordPress remains the authority for users, publication and content permissions. The existing TypedPress transaction, receipt, outbox and Action Scheduler implementations own atomic writes, request replay and delivery retries.
 
-Author services in `first.config.ts` or a trusted WordPress plugin. Both configure the same native runtime. TypeScript pages call the HTTP endpoints with `fetch`; no JavaScript service runtime is needed.
+Author services in `typedpress.config.ts` or a trusted WordPress plugin. Both configure the same native runtime. TypeScript pages call the HTTP endpoints with `fetch`; no JavaScript service runtime is needed.
 
 ## Enable and configure
 
 The runtime registers the services module, its built-in jobs and its system tables automatically. The TypeScript example configures the services at build time:
 
 ```ts
-import { collection, defineConfig, env, text } from "first";
+import { collection, defineConfig, env, text } from "typedpress";
 
 const posts = collection({ title: text(), excerpt: text().optional() }, {
   title: "title", drafts: true, access: { read: "anyone" },
@@ -42,7 +42,7 @@ export default defineConfig({
 });
 ```
 
-`recipient` and `sender` require `env("NAME")`. The compiler emits variable names into a private `first_services_config` filter in the app's `functions.php`; it never reads their build-machine values. WordPress resolves them when the mail job runs. Services are excluded from `schema.php`, migration snapshots, generated client descriptors and the public schema. The provider and rate-limit variables below retain their native runtime names; they are deployment settings, not additional `services` options.
+`recipient` and `sender` require `env("NAME")`. The compiler emits variable names into a private `tp_services_config` filter in the app's `functions.php`; it never reads their build-machine values. WordPress resolves them when the mail job runs. Services are excluded from `schema.php`, migration snapshots, generated client descriptors and the public schema. The provider and rate-limit variables below retain their native runtime names; they are deployment settings, not additional `services` options.
 
 The compiler rejects unknown options, duplicate declarations and invalid definitions at their source property. Form fields support `text`, `email`, `integer` and `boolean`, optional `notNull`, and integer `rules.min`/`rules.max` for text length or integer bounds. Boolean fields have no bounds. Omit unused sections; a supplied registry or form field map must be nonempty. Form and product ids are lowercase slugs of at most 80 characters. Products require a nonempty name of at most 160 UTF-8 bytes, an integer amount from 50 to 99,999,999 and three lowercase currency letters. Configure `products` and an absolute HTTP(S) `checkoutReturnUrl` together.
 
@@ -50,31 +50,31 @@ Search keys name authored collections; the compiler binds them to the stored col
 
 Classic PHP plugins remain supported. The generated filter runs at priority 10 and merges `forms`, `search` and `products` by entry name. An authored entry replaces the whole same-name entry supplied by an earlier filter; unrelated entries and native options survive. A trusted filter at priority 20 can deliberately extend or override the result. Native plugins can use the runtime's broader schema validation features; the TypeScript bridge accepts only the documented subset.
 
-For PHP authoring, a trusted WordPress plugin supplies private configuration through `first_services_config`. The complete working example is first-app-services.php. It defines:
+For PHP authoring, a trusted WordPress plugin supplies private configuration through `tp_services_config`. The complete working example is typedpress-app-services.php. It defines:
 
 - Form `contact`, with the existing schema column definitions for email and message validation.
 - Searchable `posts` fields `title` and `excerpt`.
 - Product `workshop`, priced at 1900 USD minor units on the server.
 - An application-owned checkout return URL.
 
-Recipients, senders and provider secrets are environment-variable names in this plugin. Values are resolved at runtime through `First\Env`, which also supports wp-config constants, except WordPress's own database login, keys and salts (see Runtime variables). They never enter generated schema, client JavaScript, catalog descriptions or responses.
+Recipients, senders and provider secrets are environment-variable names in this plugin. Values are resolved at runtime through `TypedPress\Env`, which also supports wp-config constants, except WordPress's own database login, keys and salts (see Runtime variables). They never enter generated schema, client JavaScript, catalog descriptions or responses.
 
-| Variable                                                   | Purpose                                                                             |
-|------------------------------------------------------------|-------------------------------------------------------------------------------------|
-| `FIRST_SERVICES_RATE_SECRET`                               | Random deployment secret used to hash client addresses for rate counters            |
-| `FIRST_SERVICES_MAIL_TO`, `FIRST_SERVICES_MAIL_FROM`       | One valid recipient and sender address each, as referenced by the example form      |
-| `FIRST_SERVICES_SMTP_HOST`                                 | Optional native SMTP transport; omit to use the existing WordPress mail integration |
-| `FIRST_SERVICES_SMTP_PORT`                                 | SMTP port, default 587                                                              |
-| `FIRST_SERVICES_SMTP_ENCRYPTION`                           | PHPMailer encryption, default `tls`; empty only for a local sink                    |
-| `FIRST_SERVICES_SMTP_USER`, `FIRST_SERVICES_SMTP_PASSWORD` | Optional SMTP authentication                                                        |
-| `FIRST_SERVICES_STRIPE_SECRET`                             | Stripe API secret, supplied only on the server                                      |
-| `FIRST_SERVICES_STRIPE_WEBHOOK_SECRET`                     | Signing secret for this endpoint's Stripe events                                    |
+| Variable                                             | Purpose                                                                             |
+|------------------------------------------------------|-------------------------------------------------------------------------------------|
+| `TP_SERVICES_RATE_SECRET`                            | Random deployment secret used to hash client addresses for rate counters            |
+| `TP_SERVICES_MAIL_TO`, `TP_SERVICES_MAIL_FROM`       | One valid recipient and sender address each, as referenced by the example form      |
+| `TP_SERVICES_SMTP_HOST`                              | Optional native SMTP transport; omit to use the existing WordPress mail integration |
+| `TP_SERVICES_SMTP_PORT`                              | SMTP port, default 587                                                              |
+| `TP_SERVICES_SMTP_ENCRYPTION`                        | PHPMailer encryption, default `tls`; empty only for a local sink                    |
+| `TP_SERVICES_SMTP_USER`, `TP_SERVICES_SMTP_PASSWORD` | Optional SMTP authentication                                                        |
+| `TP_SERVICES_STRIPE_SECRET`                          | Stripe API secret, supplied only on the server                                      |
+| `TP_SERVICES_STRIPE_WEBHOOK_SECRET`                  | Signing secret for this endpoint's Stripe events                                    |
 
 Keep prices, currency, product names and the return URL in trusted server configuration. Use HTTPS for the deployed site and return URL. Configure a real WP-Cron or WP-CLI cron runner for Action Scheduler on deployed WordPress.
 
 ## HTTP contract
 
-Paths below follow `/__first/api/v1`. Successes use `{ "data": ... }`; failures use the existing problem-document envelope. Both POST entry points require an `Idempotency-Key` header of 1–64 bytes. Retry the same intent with the same body and key; use a new key after editing the input.
+Paths below follow `/__tp/api/v1`. Successes use `{ "data": ... }`; failures use the existing problem-document envelope. Both POST entry points require an `Idempotency-Key` header of 1–64 bytes. Retry the same intent with the same body and key; use a new key after editing the input.
 
 | Method and path                                    | Input / result                                                                                                                               |
 |----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
@@ -101,7 +101,7 @@ Job states distinguish `pending`, `running`, `failed`, `dead` and `done`. A mail
 
 Search is the same search as `posts.list({ search })` and `GET /search`, narrowed to the configured fields: a viewer-bound `db()->findMany` with `search` and `searchFields`, an explicit `published` filter, and the configured fields as the returned columns. A row matches when every word of `q` starts a word in one of those fields (search index). Existing row and field access rules run before SQL; asking for a configured field the caller may not read is a 403, so a hidden field is never a membership oracle. An editor's draft privileges do not make draft content searchable here.
 
-The index is kept in step inside every write's transaction, wp-admin and core REST saves included. Editing, unpublishing, republishing or deleting through WordPress takes effect on the next query. Search is word-prefix matching in the kind's own order (oldest first here), not semantic search, fuzzy ranking or an external search provider. It supports publication-enabled First collections; configured fields must be authored text fields (not `status`), the fields the index holds.
+The index is kept in step inside every write's transaction, wp-admin and core REST saves included. Editing, unpublishing, republishing or deleting through WordPress takes effect on the next query. Search is word-prefix matching in the kind's own order (oldest first here), not semantic search, fuzzy ranking or an external search provider. It supports publication-enabled TypedPress collections; configured fields must be authored text fields (not `status`), the fields the index holds.
 
 ## Hosted checkout and webhook recovery
 

@@ -2,12 +2,12 @@
 
 A personal pet pantry whose interface is WordPress. Pets and foods have native
 wp-admin edit screens with generated Secure Custom Fields groups. Vet notes use
-Gutenberg. First Admin, which every build includes, edits the SQL tables. There are no
+Gutenberg. TypedPress Admin, which every build includes, edits the SQL tables. There are no
 custom frontend components, public assets, pages, or frontend dependencies.
 
 **The app is not running yet.** Main rejects the exported `AccessCtx` type.
 The Spacefast CLI published a restricted static source listing instead of a
-First app. Local actions, admin screenshots, and live app verification are not
+TypedPress app. Local actions, admin screenshots, and live app verification are not
 done. The exact blockers are recorded below.
 
 ## Storage choices
@@ -24,7 +24,7 @@ done. The exact blockers are recorded below.
 Every row has an `ownerId` assigned by `beforeCreate` from the signed-in
 WordPress user, overwriting client input. Read, update, and delete rules return
 an owner filter. Reference hooks reject another user's pets and foods. Internal
-action database calls are trusted by First, so actions explicitly filter by
+action database calls are trusted by TypedPress, so actions explicitly filter by
 owner too. Guests cannot use this app.
 
 `foods.afterCreate` creates the shopping-list candidate while the user's actor
@@ -38,44 +38,44 @@ From the repository root:
 
 ```sh
 cargo build --locked
-./target/debug/first check examples/pet-food --json
-./target/debug/first build examples/pet-food
-./target/debug/first dev examples/pet-food --port 8897 --no-watch
+./target/debug/typedpress check examples/pet-food --json
+./target/debug/typedpress build examples/pet-food
+./target/debug/typedpress dev examples/pet-food --port 8897 --no-watch
 ```
 
 These commands currently stop at the diagnostic below. Once main accepts the
-source, Studio supplies WordPress, SCF, Action Scheduler, and MCP Adapter. First
+source, Studio supplies WordPress, SCF, Action Scheduler, and MCP Adapter. TypedPress
 Admin is included in every build. When installing elsewhere, follow the
 generated manifest's activation order and enable pretty permalinks.
 
 Sign in at `http://localhost:8897/wp-admin/` with the disposable local account
-`admin` / `first-test-admin`. Use `/wp-admin/new/` for Pantry stock, Feeding history,
+`admin` / `typedpress-test-admin`. Use `/wp-admin/new/` for Pantry stock, Feeding history,
 and Shopping list. Pets, Foods, and Vet notes have native wp-admin menus.
 WordPress sign-in needs no custom frontend or OAuth client registration.
 
 Create an application password and run the real HTTP verifier:
 
 ```sh
-./target/debug/first dev wp examples/pet-food -- user application-password create admin pet-food-local --porcelain
-read -rs 'FIRST_AUTH?WordPress username:application-password: '; echo
-export FIRST_AUTH
-FIRST_SITE=http://localhost:8897 node examples/pet-food/verify.mjs
+./target/debug/typedpress dev wp examples/pet-food -- user application-password create admin pet-food-local --porcelain
+read -rs 'TP_AUTH?WordPress username:application-password: '; echo
+export TP_AUTH
+TP_SITE=http://localhost:8897 node examples/pet-food/verify.mjs
 ```
 
 `verify.mjs` prints commands with credential variables and actual JSON responses.
 It creates Miso, salmon kibble, stock, and a vet note. It exercises pet CRUD and
 every action, owner spoofing, idempotent replay, and rollback after refused
-feedings. Set `FIRST_OTHER_AUTH` to another WordPress user's application-password
+feedings. Set `TP_OTHER_AUTH` to another WordPress user's application-password
 credential to include cross-user reads, writes, actions, and reference checks.
 It retains fixtures for screenshots. Reruns create independent fixtures.
 
 After the verifier succeeds, execute the queued Action Scheduler jobs:
 
 ```sh
-./target/debug/first dev wp examples/pet-food -- action-scheduler run --group=first-pet-food --force
-./target/debug/first dev wp examples/pet-food -- first jobs list
-curl --fail-with-body -u "$FIRST_AUTH" 'http://localhost:8897/__first/api/v1/shopping_list'
-unset FIRST_AUTH FIRST_OTHER_AUTH
+./target/debug/typedpress dev wp examples/pet-food -- action-scheduler run --group=typedpress-pet-food --force
+./target/debug/typedpress dev wp examples/pet-food -- typedpress jobs list
+curl --fail-with-body -u "$TP_AUTH" 'http://localhost:8897/__tp/api/v1/shopping_list'
+unset TP_AUTH TP_OTHER_AUTH
 ```
 
 The salmon candidate must have `needed: true` and a non-null `checkedAt`.
@@ -114,22 +114,22 @@ The scheduler refreshes stored candidates after food creation, stock changes, an
 all candidates; filter `needed: true` to read the current shopping list:
 
 ```sh
-curl --get --fail-with-body -u "$FIRST_AUTH" \
+curl --get --fail-with-body -u "$TP_AUTH" \
 	--data-urlencode 'where={"needed":true}' \
-	'http://localhost:8897/__first/api/v1/shopping_list'
+	'http://localhost:8897/__tp/api/v1/shopping_list'
 ```
 
 ## Customize the admin
 
-Edit [first/lib/schema.ts](first/lib/schema.ts), then rebuild:
+Edit [tp/lib/schema.ts](tp/lib/schema.ts), then rebuild:
 
 | Change | Mechanism |
 | --- | --- |
-| Field groups | Add fields to a post-backed `collection()`. First regenerates its SCF group. `.ui({ label, help, placeholder, width })` configures supported SCF controls. Edit the schema rather than its generated local SCF group. |
+| Field groups | Add fields to a post-backed `collection()`. TypedPress regenerates its SCF group. `.ui({ label, help, placeholder, width })` configures supported SCF controls. Edit the schema rather than its generated local SCF group. |
 | Labels | Change a resource's `label` for menus and screens. Use field `.ui()` labels independently of API names. |
 | Title and Gutenberg | `title` chooses the native post title. `content` chooses the rich-text field rendered in Gutenberg. Pets and Foods use SCF forms without a block-editor body. |
-| List columns | First Admin derives fields from the schema and lets you choose visible columns in its table view. Classic wp-admin uses native title/date columns. Main has no per-resource option for custom classic list columns or their order. |
-| Menus | Register collections for native wp-admin menus and tables for First Admin. Access rules determine the data users can reach. Main has no separate menu-visibility option. |
+| List columns | TypedPress Admin derives fields from the schema and lets you choose visible columns in its table view. Classic wp-admin uses native title/date columns. Main has no per-resource option for custom classic list columns or their order. |
+| Menus | Register collections for native wp-admin menus and tables for TypedPress Admin. Access rules determine the data users can reach. Main has no separate menu-visibility option. |
 | Icons | Main hardcodes `dashicons-database` for generated post types. There is no supported per-resource icon option. |
 
 `ownerId` cannot be updated through clients. Hiding a menu never changes access
@@ -138,13 +138,13 @@ SQL before applying field removals or type changes to existing personal data.
 
 ## Use it from your agent
 
-MCP endpoint: `/wp-json/mcp/first-pet-food`. Authenticate with HTTP Basic using
+MCP endpoint: `/wp-json/mcp/typedpress-pet-food`. Authenticate with HTTP Basic using
 your WordPress username and an application password from **Users > Profile >
 Application passwords**. Store it in your agent's secret settings. The hosted
 Space's team-access gate is separate from WordPress authorization.
 
 The names come from the server registration and kebab-case naming in
-[`runtime/First/Wp/Abilities/Register.php`](../../runtime/First/Wp/Abilities/Register.php).
+[`runtime/TypedPress/Wp/Abilities/Register.php`](../../runtime/TypedPress/Wp/Abilities/Register.php).
 The failed build has not emitted a plugin, so generated-plugin discovery and
 execution of these abilities are not verified.
 
@@ -170,37 +170,37 @@ verified:
 
 | View | Route |
 | --- | --- |
-| Native Pets list | `/wp-admin/edit.php?post_type=first_pets` |
+| Native Pets list | `/wp-admin/edit.php?post_type=tp_pets` |
 | Pet edit screen with SCF fields | `/wp-admin/post.php?post=ID&action=edit`, using a real pet's WordPress post ID |
-| First Admin stock table | `/wp-admin/new/`, then Pantry stock |
+| TypedPress Admin stock table | `/wp-admin/new/`, then Pantry stock |
 
 ## Known gaps on main (b66e98b3866037061198c51ebef9534609a5e301)
 
 The native compiler was rebuilt from this revision with `cargo build --locked`.
-`first check --json` emits one error, counted from `diagnostics` filtered by
+`typedpress check --json` emits one error, counted from `diagnostics` filtered by
 `severity == "error"`. It stops at the first blocker; later compilation stages
 are not proven error-free.
 
-At `first/lib/schema.ts:6`, the source is `export function owned(ctx: AccessCtx) {`.
-`AccessCtx` is exported by `types/first/index.d.ts`, but the callback compiler
-does not recognize the imported type. `first build` prints this verbatim:
+At `tp/lib/schema.ts:6`, the source is `export function owned(ctx: AccessCtx) {`.
+`AccessCtx` is exported by `types/typedpress/index.d.ts`, but the callback compiler
+does not recognize the imported type. `typedpress build` prints this verbatim:
 
 ```text
 error: unknown type `AccessCtx`
-  --> first/lib/schema.ts:6:28
+  --> tp/lib/schema.ts:6:28
   |
 6 | export function owned(ctx: AccessCtx) {
   |                            ^^^^^^^^^
 ```
 
-`first dev examples/pet-food --port 8897 --no-watch` prints that diagnostic,
+`typedpress dev examples/pet-food --port 8897 --no-watch` prints that diagnostic,
 followed by:
 
 ```text
-first dev: Failed (1): build
+typedpress dev: Failed (1): build
 ```
 
-Generated `first/_generated/client/`, `first/_generated/migrations/`, `first/_generated/db.d.ts`, and plugin locks
+Generated `tp/_generated/client/`, `tp/_generated/migrations/`, `tp/_generated/db.d.ts`, and plugin locks
 are absent because the build exits before emission. They have not been
 handwritten. The local collection probe reports `fetch failed: ECONNREFUSED`.
 `verify.mjs` passed `node --check` only. Local actions, CRUD, the scheduler,
@@ -210,7 +210,7 @@ SCF saves, and Gutenberg editing remain unverified.
 | --- | --- |
 | `Db::update()` selects with the filter, then `WpTableStore::update()` writes by primary key only. | The `gramsLeft` predicate in `feed` is not atomic compare-and-set. Distinct concurrent meals can spend the same stock. Idempotency only protects replay of the same meal. Concurrent stock safety requires a runtime change outside this example. |
 | `Abilities\\Invoke::call()` invokes actions without forwarding request headers. | MCP `feed` retries do not carry the REST idempotency key and can double-log meals. |
-| Fixed menu icon and no per-resource classic list-column or menu-visibility settings. | Labels and SCF forms are configured here; those presentation requests need support in First. |
+| Fixed menu icon and no per-resource classic list-column or menu-visibility settings. | Labels and SCF forms are configured here; those presentation requests need support in TypedPress. |
 | SCF marks readable `ownerId` as a required number field and does not render `update: false` as readonly. | The server assigns and preserves ownership, but the generated form still asks for an owner number. A clean server-assigned ownership form needs renderer support; its browser behavior is unverified. |
 | Public WordPress media URLs. | Owner filters on rows do not make uploaded pet or pack photos private. Qualify host media access before uploading sensitive photos. |
 
@@ -219,11 +219,11 @@ SCF saves, and Gutenberg editing remain unverified.
 Space: <https://pet-food.space.fast/>. Destination team was resolved and checked
 as `spacefast-examples`, ID `team_b65faad473cf46189230addaade3991a`.
 
-The installed `spacefast/0.8.0` CLI rejected the documented `sf first check`
+The installed `spacefast/0.8.0` CLI rejected the documented `sf typedpress check`
 preflight with this exact message:
 
 ```text
-Unknown command `sf first check`. Did you mean `sf zero ls`? Run `sf help zero` for available commands.
+Unknown command `sf typedpress check`. Did you mean `sf zero ls`? Run `sf help zero` for available commands.
 ```
 
 From `examples/pet-food`, publication used the requested CLI and team access:
@@ -252,7 +252,7 @@ The remaining active grants allow the owning team on live and version URLs.
 Authenticated platform probes used:
 
 ```sh
-sf fetch /wp-json/first/v1/pets --space spc_429d2abd17024946a1cda69e5322ed2c --status --json
+sf fetch /wp-json/tp/v1/pets --space spc_429d2abd17024946a1cda69e5322ed2c --status --json
 sf fetch /wp-login.php --space spc_429d2abd17024946a1cda69e5322ed2c --status --json
 sf fetch /wp-admin/ --space spc_429d2abd17024946a1cda69e5322ed2c --status --json
 ```
@@ -261,7 +261,7 @@ sf fetch /wp-admin/ --space spc_429d2abd17024946a1cda69e5322ed2c --status --json
 | --- | --- | --- |
 | Collection | `"status":404,"contentType":"application/json; charset=UTF-8","versionId":null` | App collection route absent after authenticated platform access. |
 | Sign-in page | `"status":200,"contentType":"text/html; charset=UTF-8","versionId":null` | Host page reachable. App WordPress sign-in not verified. |
-| Admin page | `"status":200,"contentType":"text/html; charset=UTF-8","versionId":null` | Host page reachable. App SCF and First Admin not verified. |
+| Admin page | `"status":200,"contentType":"text/html; charset=UTF-8","versionId":null` | Host page reachable. App SCF and TypedPress Admin not verified. |
 
 The action attempt was:
 
@@ -281,10 +281,10 @@ the handoff and cookies in memory. It made the actual collection read and
 action POST with authenticated Space access. These are its exact responses:
 
 ```json
-{"method":"GET","path":"/wp-json/first/v1/pets","status":404,"body":{"code":"rest_no_route","message":"No route was found matching the URL and request method.","data":{"status":404}}}
-{"method":"POST","path":"/wp-json/first/v1/actions/restockList","status":404,"body":{"code":"rest_no_route","message":"No route was found matching the URL and request method.","data":{"status":404}}}
+{"method":"GET","path":"/wp-json/tp/v1/pets","status":404,"body":{"code":"rest_no_route","message":"No route was found matching the URL and request method.","data":{"status":404}}}
+{"method":"POST","path":"/wp-json/tp/v1/actions/restockList","status":404,"body":{"code":"rest_no_route","message":"No route was found matching the URL and request method.","data":{"status":404}}}
 ```
 
 Live app reads and actions fail; WordPress sign-in remains unverified. A
-working compiler and a CLI that captures this First config are required before
+working compiler and a CLI that captures this TypedPress config are required before
 the app can be deployed and its screenshots and behavior verified.

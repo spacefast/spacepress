@@ -12,7 +12,7 @@ export function hostFs(getExports) {
     try { response = { data: operation(name) }; }
     catch (error) { response = { error: { kind: error.code, message: error.message } }; }
     const bytes = encoder.encode(JSON.stringify(response));
-    const out = exports.first_alloc(bytes.length + 4);
+    const out = exports.tp_alloc(bytes.length + 4);
     new DataView(exports.memory.buffer).setUint32(out, bytes.length, true);
     new Uint8Array(exports.memory.buffer, out + 4, bytes.length).set(bytes);
     return out;
@@ -31,11 +31,11 @@ export function hostFs(getExports) {
 
 export function call(exports, operation, request) {
   const bytes = new TextEncoder().encode(JSON.stringify(request));
-  const input = exports.first_alloc(bytes.length);
+  const input = exports.tp_alloc(bytes.length);
   new Uint8Array(exports.memory.buffer, input, bytes.length).set(bytes);
   const output = exports[operation](input, bytes.length);
   const length = new DataView(exports.memory.buffer).getUint32(output, true);
   const response = new TextDecoder().decode(new Uint8Array(exports.memory.buffer, output + 4, length));
-  exports.first_free(output, length + 4);
+  exports.tp_free(output, length + 4);
   return JSON.parse(response);
 }

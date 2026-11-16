@@ -18,26 +18,26 @@ export const targets = Object.freeze({
 
 export function releaseTarget({ platform = process.platform, arch = process.arch } = {}) {
   const target = targets[`${platform}-${arch}`];
-  if (!target) throw new Error(`No prebuilt First compiler for ${platform}/${arch}. Supported: macOS and glibc Linux, arm64 or x64. Set FIRST_BIN to an absolute path to your own compatible compiler.`);
+  if (!target) throw new Error(`No prebuilt TypedPress compiler for ${platform}/${arch}. Supported: macOS and glibc Linux, arm64 or x64. Set TP_BIN to an absolute path to your own compatible compiler.`);
   if (platform === 'linux' && platform === process.platform && arch === process.arch) {
     const glibc = process.report.getReport().header.glibcVersionRuntime;
     const [major, minor] = (glibc || '').split('.').map(Number);
-    if (!glibc || major < 2 || (major === 2 && minor < 39)) throw new Error('The Linux download requires glibc 2.39+ (Ubuntu 24.04 or newer). On older glibc or musl/Alpine, provide a compatible compiler with FIRST_BIN.');
+    if (!glibc || major < 2 || (major === 2 && minor < 39)) throw new Error('The Linux download requires glibc 2.39+ (Ubuntu 24.04 or newer). On older glibc or musl/Alpine, provide a compatible compiler with TP_BIN.');
   }
   return target;
 }
 
 export function assetName({ version = metadata.version, target }) {
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid First release version: ${version}`);
-  if (![...Object.values(targets), "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"].includes(target)) throw new Error(`Unsupported First release target: ${target}`);
-  return `first-v${version}-${target}.tar.gz`;
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid TypedPress release version: ${version}`);
+  if (![...Object.values(targets), "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"].includes(target)) throw new Error(`Unsupported TypedPress release target: ${target}`);
+  return `typedpress-v${version}-${target}.tar.gz`;
 }
 
 function baseURL(env, version) {
-  const url = new URL(env.FIRST_RELEASE_BASE_URL || `https://github.com/spacefast/zero/releases/download/v${version}/`);
+  const url = new URL(env.TP_RELEASE_BASE_URL || `https://github.com/spacefast/zero/releases/download/v${version}/`);
   if (!url.pathname.endsWith('/')) url.pathname += '/';
   if (!['https:', 'file:'].includes(url.protocol) && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) {
-    throw new Error('FIRST_RELEASE_BASE_URL must use HTTPS, file://, or loopback HTTP for a local release test.');
+    throw new Error('TP_RELEASE_BASE_URL must use HTTPS, file://, or loopback HTTP for a local release test.');
   }
   if (url.username || url.password || url.search || url.hash) throw new Error('Release base URLs cannot contain credentials, queries or fragments.');
   return url;
@@ -94,35 +94,35 @@ async function cached(directory, { version, target }) {
   } catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
   try {
     const receipt = JSON.parse(await readFile(join(directory, 'receipt.json'), 'utf8'));
-    const binary = join(directory, 'first');
+    const binary = join(directory, 'typedpress');
     if (receipt.version !== version || receipt.target !== target || receipt.binarySha256 !== await digest(binary)) {
-      throw new Error(`Cached First compiler failed integrity verification. Inspect and remove ${directory}, then retry.`);
+      throw new Error(`Cached TypedPress compiler failed integrity verification. Inspect and remove ${directory}, then retry.`);
     }
     return await executable(binary);
   } catch (error) {
-    throw new Error(`Cannot use cached First at ${directory}: ${error.message}. Inspect and remove this cache entry before retrying.`);
+    throw new Error(`Cannot use cached TypedPress at ${directory}: ${error.message}. Inspect and remove this cache entry before retrying.`);
   }
 }
 
 export async function compiler({ env = process.env } = {}) {
-  if (env.FIRST_BIN) {
-    if (!isAbsolute(env.FIRST_BIN)) throw new Error('FIRST_BIN must be an absolute path to a provided First compiler, not a command or relative path.');
-    try { return await executable(env.FIRST_BIN); }
-    catch (error) { throw new Error(`Cannot use FIRST_BIN=${env.FIRST_BIN}: ${error.message}`); }
+  if (env.TP_BIN) {
+    if (!isAbsolute(env.TP_BIN)) throw new Error('TP_BIN must be an absolute path to a provided TypedPress compiler, not a command or relative path.');
+    try { return await executable(env.TP_BIN); }
+    catch (error) { throw new Error(`Cannot use TP_BIN=${env.TP_BIN}: ${error.message}`); }
   }
   const version = metadata.version;
   const target = releaseTarget();
-  const cache = env.FIRST_CACHE_DIR || join(env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'first/npm');
-  if (!isAbsolute(cache)) throw new Error('FIRST_CACHE_DIR and XDG_CACHE_HOME must be absolute paths.');
+  const cache = env.TP_CACHE_DIR || join(env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'tp/npm');
+  if (!isAbsolute(cache)) throw new Error('TP_CACHE_DIR and XDG_CACHE_HOME must be absolute paths.');
   const directory = join(cache, version, target);
   const installed = await cached(directory, { version, target });
   if (installed) return installed;
-  if (env.FIRST_OFFLINE === '1' || env.npm_config_offline === 'true') {
-    throw new Error(`First ${version} (${target}) is not cached and downloads are disabled. Supply FIRST_BIN or install once while online.`);
+  if (env.TP_OFFLINE === '1' || env.npm_config_offline === 'true') {
+    throw new Error(`TypedPress ${version} (${target}) is not cached and downloads are disabled. Supply TP_BIN or install once while online.`);
   }
   const name = assetName({ version, target });
   const base = baseURL(env, version);
-  const temporary = await mkdtemp(join(tmpdir(), 'first-download-'));
+  const temporary = await mkdtemp(join(tmpdir(), 'typedpress-download-'));
   let stage;
   try {
     const archive = join(temporary, name);
@@ -136,9 +136,9 @@ export async function compiler({ env = process.env } = {}) {
     stage = `${directory}.${randomUUID()}.tmp`;
     await mkdir(stage, { mode: 0o700 });
     // Stream only the named regular payload; never extract archive paths or symlinks.
-    const { stdout } = await exec('tar', ['-xOzf', archive, 'first'], { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 });
+    const { stdout } = await exec('tar', ['-xOzf', archive, 'typedpress'], { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 });
     if (!stdout.length) throw new Error('Release archive contains an empty compiler.');
-    const binary = join(stage, 'first');
+    const binary = join(stage, 'typedpress');
     await writeFile(binary, stdout, { flag: 'wx', mode: 0o755 });
     await chmod(binary, 0o755);
     await writeFile(join(stage, 'receipt.json'), JSON.stringify({ version, target, archiveSha256: entry[0], binarySha256: await digest(binary) }) + '\n', { flag: 'wx' });
@@ -148,7 +148,7 @@ export async function compiler({ env = process.env } = {}) {
     if (!verified) throw new Error('Compiler cache disappeared during installation; retry the install.');
     return verified;
   } catch (error) {
-    throw new Error(`Cannot install First ${version} for ${target}: ${error.message}\nNo Rust build or alternate executable was attempted. Check that this release has been published, or supply FIRST_BIN.`);
+    throw new Error(`Cannot install TypedPress ${version} for ${target}: ${error.message}\nNo Rust build or alternate executable was attempted. Check that this release has been published, or supply TP_BIN.`);
   } finally {
     await rm(temporary, { recursive: true, force: true });
     if (stage) await rm(stage, { recursive: true, force: true });

@@ -9,10 +9,10 @@ import {
 	TextControl,
 	TextareaControl,
 } from '@wordpress/components';
-import { Page, RouterLink, useDocumentChanges } from '@first-admin/admin-toolkit';
-import type { View, Field } from '@first-admin/dataviews';
-import { DataViews, useView } from '@first-admin/views';
-import { uploadAttachment } from '@first-admin/attachment-importer';
+import { Page, RouterLink, useDocumentChanges } from '@typedpress-admin/admin-toolkit';
+import type { View, Field } from '@typedpress-admin/dataviews';
+import { DataViews, useView } from '@typedpress-admin/views';
+import { uploadAttachment } from '@typedpress-admin/attachment-importer';
 import { allowed, object, text, type Row } from './model';
 import { api, bootstrap, message, unwrap, useLoad } from './api';
 import { Loading } from './screens';
@@ -158,7 +158,7 @@ function focal(value: unknown): { x: number; y: number } {
 export function MediaDocument() {
 	const { id } = useParams({ from: '/media/$id' });
 	const state = useLoad(async () => {
-		const [core, first] = await Promise.all([
+		const [core, tp] = await Promise.all([
 			apiFetch({
 				path: `/wp/v2/media/${encodeURIComponent(id)}?context=edit`,
 			}).catch(() =>
@@ -168,13 +168,13 @@ export function MediaDocument() {
 			),
 			apiFetch(api(`/media/${encodeURIComponent(id)}`)),
 		]);
-		return { core: object(core), first: object(unwrap(first)) };
+		return { core: object(core), tp: object(unwrap(tp)) };
 	}, [id]);
 	return (
 		<Page
 			title="Media details"
 			breadcrumbs={
-				<RouterLink className="first-schema-back" to="/media">
+				<RouterLink className="typedpress-schema-back" to="/media">
 					Back to Media
 				</RouterLink>
 			}
@@ -187,15 +187,15 @@ export function MediaDocument() {
 					key={id}
 					id={id}
 					core={state.value.core}
-					first={state.value.first}
+					tp={state.value.tp}
 				/>
 			)}
 		</Page>
 	);
 }
-function MediaForms({ id, core, first }: { id: string; core: Row; first: Row }) {
-	const [alt, setAlt] = useState(text(first.alt) ?? ''),
-		[point, setPoint] = useState(focal(first.focal));
+function MediaForms({ id, core, tp }: { id: string; core: Row; tp: Row }) {
+	const [alt, setAlt] = useState(text(tp.alt) ?? ''),
+		[point, setPoint] = useState(focal(tp.focal));
 	const [title, setTitle] = useState(
 			text(object(core.title).raw) ?? text(object(core.title).rendered) ?? ''
 		),
@@ -268,7 +268,7 @@ function MediaForms({ id, core, first }: { id: string; core: Row; first: Row }) 
 		void navigate({ to: '/media' }).catch((e: unknown) => setError(message(e)));
 	}, [deleted, sharedChanges, navigate]);
 	return (
-		<div className="first-schema-form">
+		<div className="typedpress-schema-form">
 			{error && (
 				<Notice status="error" isDismissible={false}>
 					{error}
@@ -281,7 +281,7 @@ function MediaForms({ id, core, first }: { id: string; core: Row; first: Row }) 
 			)}
 			{text(core.media_type) === 'image' && (
 				<img
-					className="first-schema-media-preview"
+					className="typedpress-schema-media-preview"
 					src={text(core.source_url)}
 					alt={alt}
 				/>
@@ -316,7 +316,7 @@ function MediaForms({ id, core, first }: { id: string; core: Row; first: Row }) 
 				</Button>
 			</form>
 			<form
-				className="first-schema-caption-form"
+				className="typedpress-schema-caption-form"
 				onSubmit={(e) => {
 					e.preventDefault();
 					void mutate(saveCaption, 'Caption and title saved.').catch(() => undefined);
@@ -345,7 +345,7 @@ function MediaForms({ id, core, first }: { id: string; core: Row; first: Row }) 
 				</Button>
 			</form>
 			{canUpdate && (
-				<div className="first-schema-caption-form">
+				<div className="typedpress-schema-caption-form">
 					{confirming ? (
 						<>
 							<p>

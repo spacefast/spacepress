@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
 
 use Normalizer;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
 
 /**
  * Implements 'Normalize' step of the Internationalized String Preparation as specified by RFC 4518.

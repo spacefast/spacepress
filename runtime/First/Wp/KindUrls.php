@@ -110,8 +110,11 @@ final class KindUrls
             foreach ($query as $field => $match) {
                 $vars[] = match ($field) {
                     'slug' => 'name=' . $match,
-                    // A hierarchical kind: core resolves the whole parent chain (`get_page_by_path`).
-                    'path' => 'pagename=' . $match,
+                    // A hierarchical kind's parent chain, in First's own query var and resolved in
+                    // request(). Never core's `pagename`: under a permalink structure that starts with
+                    // `%postname%` (First's own), WP::parse_request skips a rule that sets it unless
+                    // a Page is at that path, so the URL was a 404 to the rest of WordPress.
+                    'path' => 'first_kind_path=' . $match,
                     'id' => 'p=' . $match,
                     'year' => 'year=' . $match,
                     'month' => 'monthnum=' . $match,
@@ -139,7 +142,7 @@ final class KindUrls
             }
             add_rewrite_rule('^' . $regex . '/?$', 'index.php?' . implode('&', $vars), 'top');
         }
-        foreach (['first_kind', 'first_term', 'first_term_slug', 'first_term_id', 'first_term_path'] as $tag) {
+        foreach (['first_kind', 'first_kind_path', 'first_term', 'first_term_slug', 'first_term_id', 'first_term_path'] as $tag) {
             add_rewrite_tag("%$tag%", '([^&]+)');
         }
         // The rules come from the build: flush once whenever the set of patterns changes, kinds' and
@@ -151,12 +154,17 @@ final class KindUrls
         }
     }
 
-    /** The patterns of this build's kinds and taxonomies, as `first_kind_urls` records them. */
+    /**
+     * The patterns of this build's kinds and taxonomies, as `first_kind_urls` records them, and the
+     * query var a `:path` rule carries the path in: rules stored while that was core's `pagename`
+     * were recorded without it, so a site that has one rebuilds its rules once.
+     */
     private static function digest(): string
     {
         $i = self::$instance;
+        $paths = array_filter($i?->kinds ?? [], static fn (array $kind): bool => !self::root($kind) && in_array(':path', $kind['segments'], true));
 
-        return md5((string) json_encode([...array_column($i?->kinds ?? [], 'pattern'), ...array_column($i?->terms ?? [], 'pattern')]));
+        return md5((string) json_encode([...array_column($i?->kinds ?? [], 'pattern'), ...array_column($i?->terms ?? [], 'pattern'), ...($paths === [] ? [] : ['first_kind_path'])]));
     }
 
     /** Whether the stored rules were built for this build's kind and taxonomy patterns. */
@@ -193,14 +201,21 @@ final class KindUrls
         }
         unset($vars['first_kind']);
         $vars['post_type'] = $this->kinds[$name]['type'];
-        if (isset($vars['pagename']) && in_array(':path', $this->kinds[$name]['segments'], true)) {
-            // Core resolves `pagename` as a Page first (WP_Query::parse_query), so a Page at the same
-            // path became the queried object and the URL redirected to itself. Resolve the path in
-            // this kind only, the whole parent chain, and query that item by id.
-            $post = get_page_by_path((string) $vars['pagename'], OBJECT, $this->kinds[$name]['type']);
-            unset($vars['pagename']);
+        // `pagename`: a rule stored before the path had a query var of First's own, which a managed
+        // site keeps until its next deploy rebuilds the rules.
+        $path = $vars['first_kind_path'] ?? $vars['pagename'] ?? null;
+        if ($path !== null && in_array(':path', $this->kinds[$name]['segments'], true)) {
+            // Resolve the path in this kind only, the whole parent chain, and query that item by id.
+            // Core would resolve a `pagename` as a Page first (WP_Query::parse_query), so a Page at the
+            // same path became the queried object and the URL redirected to itself.
+            $post = get_page_by_path((string) $path, OBJECT, $this->kinds[$name]['type']);
+            unset($vars['first_kind_path'], $vars['pagename']);
             // A `/` written as `%2F` (or `.`/`..`) in the URL isn't a path segment: no item has it.
             if (self::segments() === null) {
+                $post = null;
+            }
+            // Under an unpublished page an item is as hidden as that page, to everyone but an editor's preview.
+            if ($post instanceof \WP_Post && !self::published($post) && !(isset($vars['preview']) && current_user_can('edit_post', $post->ID))) {
                 $post = null;
             }
             if ($post instanceof \WP_Post) {

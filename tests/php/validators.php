@@ -217,6 +217,22 @@ file_put_contents($built, $bytes);
 chmod($built, 0000);
 clearstatcache();
 $out['openapi unreadable'] = array_map(static fn (string $match): int => fetch("$url/__tp/api/v1/openapi.json", ["If-None-Match: $match"])['status'], ['*', '""']);
+// The matcher itself, on headers a test request can't carry or shouldn't have to: a line break after
+// a tag is not part of a list of tags, and a long list is read in one pass (a regex over it ran out
+// of stack at 20,000 tags and lost the match).
+$named = static function (string $header): bool {
+    $_SERVER['HTTP_IF_NONE_MATCH'] = addslashes($header);
+    try {
+        return \TypedPress\Validator::matches('"hit"');
+    } finally {
+        unset($_SERVER['HTTP_IF_NONE_MATCH']);
+    }
+};
+$out['matcher'] = [
+    'line break' => array_map($named, ["\"hit\"\n", "\"hit\",\n", "\"miss\", \"hit\"\r\n"]),
+    'control bytes in a tag' => array_map($named, ["\"hit\", \"a\x00b\"", "\"hit\", \"a\x7Fb\"", '"hit", "a b"']),
+    'long list' => array_map($named, [str_repeat('"miss",', 49_999) . '"hit"', '"hit",' . str_repeat('"miss",', 49_999), str_repeat('"miss",', 50_000)]),
+];
 chmod($built, 0644);
 $out['openapi tag follows the bytes'] = [$touched['etag'] === $renamed['etag'], $edited['status'], json_decode($edited['body'], true)['openapi'] ?? null, $edited['etag'] !== $touched['etag']];
 

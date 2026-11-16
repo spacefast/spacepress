@@ -96,6 +96,15 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
     assert_eq!(seen["openapi follows the site"], json!([true, "Renamed"]));
     assert_eq!(seen["openapi bytes"], true);
     assert_eq!(seen["openapi unreadable"], json!([404, 404]));
+    // A line break or a control byte makes the field no list of tags; 50,000 tags are still read.
+    assert_eq!(
+        seen["matcher"],
+        json!({
+            "line break": [false, false, false],
+            "control bytes in a tag": [false, false, false],
+            "long list": [true, true, false]
+        })
+    );
     // Only the bytes decide the tag: a new mtime keeps it, an equal-length edit changes it.
     assert_eq!(seen["openapi tag follows the bytes"], json!([true, 200, "3.1.1", true]));
     // The facade's reads depend on who asks: never shareable, never answered from a validator.

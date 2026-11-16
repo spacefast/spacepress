@@ -107,6 +107,13 @@ explicit sync changes and report conflicts. Missing files do not imply deletion.
 and the [record policy](../runtime/TypedPress/Sync/Routes.php) where compatible, with Woo CRUD
 as the product writer. This support is new work, not an existing Woo integration.
 
+**Decision:** reuse collection activation, rollback and retry semantics. Code rollback does not
+restore earlier catalog content. Initial seeding must succeed before the build is marked ready;
+seeding is not atomic across the whole deployment, so earlier completed resources can remain
+when a later resource fails. Sync retries reconcile against current state through the existing
+baseline and merge contract. Verify Woo CRUD hooks, cache updates and stable identities under
+failure and retry; these are implementation checks, not a separate commerce lifecycle policy.
+
 ### Source files and an example
 
 **Decision:** reuse collection source-authoring behavior. Builds accept a missing UID and derive
@@ -400,8 +407,6 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **Activation and rollback:** source changes apply through explicit sync; code rollback must
-  not silently roll back the catalog. Define partial-sync retry and first-seed failure handling.
 - **Previews:** previews must not alter the live catalog or enable test purchases against live
   operational data. Choose read-only previews or an isolated staging store.
 - **Permissions and administration:** who can manage products and read orders, how TypedPress

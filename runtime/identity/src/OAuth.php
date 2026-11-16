@@ -451,14 +451,6 @@ final class OAuth
         }
     }
 
-    /** {@see logoutRequest()} then {@see endLogout()}: the whole RP logout, for callers that decided already. */
-    public function logout(array $query): string
-    {
-        $request = $this->logoutRequest($query);
-        $this->endLogout($request["claims"]);
-        return $request["target"];
-    }
-
     public static function claims(array $profile, array $scopes): array
     {
         $claims = ["sub" => $profile["id"]];

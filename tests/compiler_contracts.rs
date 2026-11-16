@@ -619,6 +619,44 @@ fn node_oracle_refuses_an_empty_selection_instead_of_reporting_success() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("oracle executed no cases"));
 }
 
+/// A tagged template's cooked string with a lone UTF-16 surrogate can't be stored as UTF-8, so the
+/// strings array is refused, except under `String.raw`, which reads only the raw source text.
+#[test]
+fn tagged_templates_refuse_lone_surrogates_except_under_string_raw() {
+    for (handler, compiles) in [
+        (r"() => String.raw`a\uD800b`", true),
+        (
+            r"() => { const t = (s: TemplateStringsArray) => s.raw[0]; return t`a\uD800b`; }",
+            false,
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("typedpress.config.ts"),
+            format!(
+                r#"
+import {{ collection, text, action, defineConfig }} from "typedpress";
+const notes = collection({{ title: text() }}, {{ title: "title" }});
+const __raw = action({{ input: {{}}, handler: {handler} }});
+export {{ notes, __raw as raw }}; export default defineConfig({{}});
+"#
+            ),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.success(), compiles, "{handler}: {report}");
+        if !compiles {
+            assert!(
+                report["diagnostics"][0]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("lone UTF-16 surrogates"),
+                "{handler}: {report}"
+            );
+        }
+    }
+}
+
 #[test]
 fn uri_encoding_refuses_coercion_and_discarded_arguments() {
     for expression in [

@@ -44,7 +44,13 @@ under Users, Profile, Application Passwords.
    well under 1 MB). A tree the site already holds is not sent again.
 3. Prints what installing it would change: tables, each migration, pages, the search index, URL
    rules. Nothing of the app's code runs for this.
-4. Installs it and makes it live. `--dry-run` stops after step 3, and it neither updates the site's TypedPress plugin nor installs the plugins the app needs: it says what a push would do, and stops before uploading when a needed plugin is missing.
+4. Installs it, copies its browser files to `wp-content/typedpress-assets/`, and makes it live.
+
+`--dry-run` stops after step 3. What it leaves on the site is the uploaded trees in the private
+build store and an open deployment that expires after an hour. It does not update the site's
+TypedPress plugin, install the plugins the app needs, make any file public, or run the live app's
+own code. It stops before uploading, and says so, when a plugin the app needs is missing or when the
+live build has lost a tree from the store, since storing that tree would run the live build again.
 
 The migration is planned against the site, not against `tp/_generated/migrations/` in the
 project: the site's own ledger is what its database ran. If someone else deployed while your build

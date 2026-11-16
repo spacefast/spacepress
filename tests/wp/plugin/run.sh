@@ -41,6 +41,8 @@ unset TP_APP_PASSWORD TP_TOKEN
 project="$work/project"
 step() { node "$here/steps.mjs" "$1" > "$project/typedpress.config.ts"; }
 push() { (cd "$project" && "$first" push "$@" 2>&1); }
+# An option read in the database itself: WP-CLI boots WordPress, which runs the live app.
+option() { "$harness" sql "SELECT option_value FROM wp_options WHERE option_name='$1'" | tail -n +2; }
 
 mkdir -p "$work/content/plugins" "$project/tp/app/about" "$project/public"
 "$harness" down
@@ -49,6 +51,7 @@ url=$(json url < "$work/harness.json")
 api="$url/wp-json/typedpress-deploy/v1"
 admin="admin:$(json users.admin.appPassword < "$work/harness.json")"
 editor="editor:$(json users.editor.appPassword < "$work/harness.json")"
+"$harness" sql "SELECT 1" >/dev/null || fail "the lane reads the database directly"
 # The disposable stack's web server doesn't own WordPress's files, so core would ask for FTP details.
 wp config set FS_METHOD direct >/dev/null
 # What a site owner puts in wp-config.php for the app's `process.env.GREETING`.
@@ -90,6 +93,16 @@ export default function About() {
 TSX
 echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7"/></svg>' > "$project/tp/app/about/mark.svg"
 echo 'served from public/' > "$project/public/hello.txt"
+# The app's own WordPress hook, which writes: it runs on the live app's requests, and never on the
+# deploy receiver's.
+mkdir -p "$project/tp/wp-hooks/init"
+cat > "$project/tp/wp-hooks/init/mark.ts" <<'TS'
+import { update_option } from "php/wordpress";
+
+export default function () {
+  update_option("pluginlane_hook_ran", "yes");
+}
+TS
 [[ $(push) == *"no site to deploy to"* ]] || fail "typedpress push before typedpress login says how to pick a site"
 (cd "$project" && "$first" login "$url" --no-browser > "$work/login.out" 2>&1; echo "exit $?" >> "$work/login.out") &
 for _ in $(seq 1 100); do grep -q 'authorize-application' "$work/login.out" 2>/dev/null && break; sleep 0.1; done
@@ -104,9 +117,22 @@ wait
 ok "typedpress login gets an application password through WordPress's Authorize Application screen"
 
 # ---- typedpress push ----------------------------------------------------------------------------------
+# Asking a site what it is writes nothing to it: the store gets its name with the first upload.
+curl -s -u "$admin" "$api/site" > "$work/answer.json"
+[[ $(json live < "$work/answer.json") == null && -z $(option tp_store_key) ]] || fail "reading a fresh site names no build store: $(cat "$work/answer.json")"
 out=$(push --dry-run) || fail "a dry run: $out"
 [[ $out == *"run migration 0001_init"* && $out == *"--dry-run"* ]] || fail "a dry run uploads and prints the plan: $out"
 [[ $(status "$url/__tp/api/v1") == 404 && -z $(wp option get tp_live_build 2>/dev/null) ]] || fail "a dry run makes nothing live"
+[[ -n $(option tp_store_key) ]] || fail "the first upload names the build store"
+# The uploaded build's browser files stay private until it is made live.
+candidate=$(python3 -c '
+import glob, json, os, sys
+store = sys.argv[1]
+app = json.load(open(max(glob.glob(store + "/build/*.json"), key=os.path.getmtime)))["app"]
+image = glob.glob(f"{store}/app/{app}/plugins/**/*.svg", recursive=True)[0]
+print(f"app/{app}/plugins/" + os.path.relpath(image, f"{store}/app/{app}/plugins"))' "$project/.tp/store")
+[[ $(status "$url/wp-content/typedpress-assets/$candidate") == 404 ]] || fail "a dry run makes none of the build's files public: $candidate"
+"$harness" compose exec -T wordpress test ! -e /var/www/html/wp-content/typedpress-assets || fail "a dry run creates no public directory"
 out=$(push) || fail "the first deploy: $out"
 [[ $out == *"the site already has this runtime tree"* && $out == *"applied migration 0001_init"* && $out == *"live: $url now runs pluginlane"* ]] || fail "the first deploy reuses the uploaded trees and goes live: $out"
 tp_build=$(wp option get tp_live_build)
@@ -116,6 +142,8 @@ curl -s "$url/about" > "$work/about.html"
 # The image the page imports is the app's own file: its URL is under the public copy, and answers.
 image=$(grep -o -m1 "$url/wp-content/typedpress-assets/app/[^\"' ]*\.svg" "$work/about.html" || true)
 [[ -n $image && $(curl -s "$image") == *"<circle"* ]] || fail "the page's imported image is served from wp-content/typedpress-assets: ${image:-not on the page}"
+[[ $(curl -s "$url/wp-content/typedpress-assets/$candidate") == *"<circle"* ]] || fail "making the uploaded build live makes its files public: $candidate"
+[[ $(option pluginlane_hook_ran) == yes ]] || fail "the live app runs its own WordPress hooks"
 [[ $(curl -s "$url/hello.txt") == "served from public/" ]] || fail "public/ is served at the site root"
 note=$(curl -s -u "$editor" -H 'Content-Type: application/json' -d '{"title":"Written before the second deploy"}' "$url/__tp/api/v1/notes")
 [[ $(json data.title <<< "$note") == "Written before the second deploy" ]] || fail "an editor writes through the API: $note"
@@ -173,8 +201,14 @@ ok "a second push applies only the new migration and keeps content"
 # plugin is made another one here by changing the hash it reports; push replaces it with its own.
 "$harness" compose exec -T wordpress sed -i "s/define('TP_PLUGIN_HASH', '[0-9a-f]*')/define('TP_PLUGIN_HASH', '$(printf '0%.0s' {1..64})')/" /var/www/html/wp-content/plugins/typedpress/typedpress.php
 [[ $(curl -s -u "$admin" "$api/site" | json pluginHash) == 0000* ]] || fail "the site reports the changed plugin"
+# The dry run plans new code (the sealed step) against the plugin the site has. None of the live
+# app's own code runs on the receiver's requests: its hook would write the option again.
+"$harness" sql "DELETE FROM wp_options WHERE option_name='pluginlane_hook_ran'" >/dev/null
+step sealed
 out=$(push --dry-run) || fail "a dry run to a site with another TypedPress plugin: $out"
-[[ $out == *"--dry-run: a push would update the TypedPress plugin"* && $(curl -s -u "$admin" "$api/site" | json pluginHash) == 0000* ]] || fail "a dry run leaves the site's plugin alone: $out"
+step additive
+[[ $out == *"--dry-run: a push would update the TypedPress plugin"*"uploading the app tree"*"--dry-run: the build is uploaded and not live"* && $(curl -s -u "$admin" "$api/site" | json pluginHash) == 0000* ]] || fail "a dry run uploads and plans against the site's plugin and leaves it alone: $out"
+[[ -z $(option pluginlane_hook_ran) ]] || fail "a dry run runs none of the live app's WordPress hooks"
 out=$(push) || fail "a push to a site with another TypedPress plugin: $out"
 [[ $out == *"updated the TypedPress plugin on the site"* && $(curl -s -u "$admin" "$api/site" | json pluginHash) != 0000* ]] || fail "push replaces the site's plugin with the one it carries: $out"
 [[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "the app keeps running across the plugin update"
@@ -475,6 +509,11 @@ runtime_tree=$("$harness" compose exec -T wordpress sh -c "sed -n 's/.*\"runtime
 [[ ${#runtime_tree} == 64 ]] || fail "the live build names its runtime tree: $runtime_tree"
 "$harness" compose exec -T wordpress mv "/var/www/html/wp-content/typedpress-store-$key/runtime/$runtime_tree" "/var/www/html/wp-content/typedpress-store-$key/.tmp/lost"
 [[ $(status "$url/") == 200 && $(status "$url/__tp/api/v1") == 404 ]] || fail "without its runtime tree the app does not run and WordPress serves"
+# Storing that tree would run the live build again with no deployment, so a dry run doesn't send it.
+out=$(push --dry-run) || fail "a dry run to a site that lost a tree: $out"
+[[ $out == *"has lost the runtime tree its live build runs"*"nothing was uploaded"* && $out != *"uploading the runtime tree"* ]] || fail "a dry run stops before restoring the live build's tree: $out"
+"$harness" compose exec -T wordpress test ! -e "/var/www/html/wp-content/typedpress-store-$key/runtime/$runtime_tree" || fail "a dry run leaves the live build's tree missing"
+[[ $(status "$url/__tp/api/v1") == 404 ]] || fail "after a dry run the live build still does not run"
 out=$(push) || fail "a push to a site that lost a tree: $out"
 [[ $out == *"has this code and is not running it"*"uploading the runtime tree"*"live:"* ]] || fail "push sends the missing tree again: $out"
 [[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane && $(curl -s "$url/__tp/api/v1/notes" | json data.0.title) == "Written before the second deploy" ]] || fail "the app runs again with its content"

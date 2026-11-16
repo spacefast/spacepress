@@ -200,20 +200,22 @@ fn run(args: &[String]) -> Result<(), String> {
     // The plugins a build needs are not a choice: push installs them, pinned by checksum.
     if !missing.is_empty() {
         println!("the site is missing plugins this app needs: {}", missing.join(", "));
-        // The site opens no deployment while a plugin the app needs is missing, so a dry run ends here.
+        // The site would take the build, but couldn't plan it: the runtime mounts no app whose plugins
+        // are missing, so a dry run says what a push would do and ends here, before uploading.
         if dry {
-            println!("--dry-run: a push would install them, then upload and plan this build; nothing changed on {site}");
+            println!(
+                "--dry-run: a push would install them, then upload and plan this build; nothing changed on {site}"
+            );
             return Ok(());
-        } else {
-            let answer = api
-                .post("/requirements", &json!({ "pins": pins }), &[])
-                .map_err(|e| e.to_string())?;
-            for installed in answer["installed"].as_array().into_iter().flatten() {
-                println!("installed {} on the site", installed.as_str().unwrap_or("a plugin"));
-            }
-            // The app may run now that its plugins are back.
-            info = api.get("/site", &[]).map_err(|e| e.to_string())?;
         }
+        let answer = api
+            .post("/requirements", &json!({ "pins": pins }), &[])
+            .map_err(|e| e.to_string())?;
+        for installed in answer["installed"].as_array().into_iter().flatten() {
+            println!("installed {} on the site", installed.as_str().unwrap_or("a plugin"));
+        }
+        // The app may run now that its plugins are back.
+        info = api.get("/site", &[]).map_err(|e| e.to_string())?;
     }
 
     // The same source compiles to the same two trees whatever it was compared with. That is only
@@ -246,7 +248,20 @@ fn run(args: &[String]) -> Result<(), String> {
         ));
     }
     let part = info["part"].as_u64().unwrap_or(1 << 20).clamp(64 * 1024, 16 << 20) as usize;
-    for (kind, tree) in [("runtime", &built.runtime_revision), ("app", &built.app_hash)] {
+    let trees = [("runtime", &built.runtime_revision), ("app", &built.app_hash)];
+    // A tree the live build names and the site has lost would bring that build back the moment it is
+    // stored, with no deployment: a dry run doesn't send it.
+    if dry {
+        for (kind, tree) in trees {
+            if created["need"][kind] == true && info["live"][kind].as_str() == Some(tree.as_str()) {
+                println!(
+                    "--dry-run: the site has lost the {kind} tree its live build runs, and uploading it would run that build again; nothing was uploaded. Run typedpress push to deploy."
+                );
+                return Ok(());
+            }
+        }
+    }
+    for (kind, tree) in trees {
         if created["need"][kind] == true {
             upload(&api, id, kind, &store.join(kind).join(tree), part)?;
         } else {

@@ -57,10 +57,11 @@ $announced = static function (callable $write) use ($stale): array {
 $edit = static fn (string $title) => static fn () => \TypedPress\db()->update('notes', ['title' => $title], ['id' => $hello]);
 
 $out = [];
-// Both spellings of the item's address, as a visitor may type either.
+// Both spellings of the item's address, as a visitor may type either: the bare one redirects.
 $slash = fetch("$url/notes/hello/");
 $bare = fetch("$url/notes/hello");
-$out['spellings'] = ['slash' => [$slash['status'], $slash['location']], 'bare' => [$bare['status'], $bare['location']], 'same html' => $slash['body'] === $bare['body']];
+$out['base'] = $url;
+$out['spellings'] = ['slash' => [$slash['status'], $slash['location']], 'bare' => [$bare['status'], $bare['location']]];
 fetch("$url/");
 fetch("$url/notes/hello.md");
 $out['index'] = $wpdb->get_col("SELECT url FROM $reads ORDER BY url");
@@ -84,11 +85,11 @@ $out['rolled back'] = $announced(static fn () => \TypedPress\db()->transaction(s
 
 // Over the limit across both sources (neither alone over it): one whole-host purge.
 $own = count($out['edit']['calls'][0] ?? []);
-$listed = intdiv(\TypedPress\Wp\Purges::PURGE_LIMIT - $own, 3) + 1; // each listed page: both spellings and its twin
+$listed = intdiv(\TypedPress\Wp\Purges::PURGE_LIMIT - $own, 2) + 1; // each listed page: its address and its twin
 for ($i = 0; $i < $listed; $i++) {
     $wpdb->insert($reads, ['kind' => 'notes', 'item' => '*', 'url' => "/many/$i/", 'seenAt' => gmdate('Y-m-d\TH:i:s.000\Z')]);
 }
-$out['limit'] = ['index alone' => 3 * $listed <= \TypedPress\Wp\Purges::PURGE_LIMIT, 'union over' => $own + 3 * $listed > \TypedPress\Wp\Purges::PURGE_LIMIT] + $announced($edit('Hello at last'));
+$out['limit'] = ['index alone' => 2 * $listed <= \TypedPress\Wp\Purges::PURGE_LIMIT, 'union over' => $own + 2 * $listed > \TypedPress\Wp\Purges::PURGE_LIMIT] + $announced($edit('Hello at last'));
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

@@ -190,6 +190,12 @@ final class Forms
         if (!preg_match('#\A/(?![/\\\\])[^\x00-\x20\x7f]*\z#', $back)) {
             $back = '/';
         }
+        // The return is the request URI, which carries a subdirectory install's home path
+        // (`/blog/join`); home_url() below adds that path, so it is taken off once here.
+        $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
+        if ($base !== '' && preg_match('#\A' . preg_quote($base, '#') . '(?=[/?\#]|\z)#', $back) === 1) {
+            $back = '/' . ltrim(substr($back, strlen($base)), '/');
+        }
         $values = [];
         if ($problem !== null) {
             // What the visitor typed, to fill the form again. Never a password.
@@ -228,7 +234,9 @@ final class Forms
             $sealed = self::seal($flash);
         }
         $id = bin2hex(random_bytes(6));
-        $location = self::withoutMarker($back);
+        // Back at the page's one address (`/notes/a/`): the other spelling would redirect, and the
+        // page answers a flash where it is asked.
+        $location = \TypedPress\Wp\AppRouter::href(self::withoutMarker($back));
         $location .= (str_contains($location, '?') ? '&' : '?') . self::MARKER . '=' . $id;
         $cookie = self::COOKIE . $id . '=' . $sealed . '; Max-Age=' . self::TTL . '; Path=/; HttpOnly; SameSite=Lax' . (is_ssl() ? '; Secure' : '');
 

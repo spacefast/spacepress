@@ -27,6 +27,13 @@ Decisions (2026-11-08):
 | Head | `metadata` / `generateMetadata` | `head()` | `<svelte:head>`, frontmatter | **`metadata` object or function** |
 | Middleware | `middleware.ts` | route and handler middleware | hooks | **`layout.tsx` may export `guard`** (§2) |
 
+A page answers at one address: its path spelled as the permalink structure spells a post's
+(`/docs/intro/` under TypedPress's `/%postname%/`), as WordPress's `redirect_canonical()` does. The
+router 301s the other spelling there with its query string; `<Link>`, `metadata.canonical`,
+`redirect()`, the sitemap and purges all use the one address. While a page renders, WordPress's
+main query is the item a kind URL names (`is_singular()`, the `single-<post type>` body classes, no
+404 headers), or the static route's code Page.
+
 So TypedPress uses Next's file names because agents write them most reliably. From
 TanStack it takes typed links, typed search params and page+handler in one
 file. From React Router 7 and SvelteKit it takes forms that work without JavaScript.

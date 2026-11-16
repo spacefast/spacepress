@@ -140,18 +140,18 @@ $out = [];
 for ($i = 0; $i < 10 && as_has_scheduled_action(\TypedPress\Render\Prebuilt::ACTION, null, 'typedpress'); $i++) {
     ActionScheduler_QueueRunner::instance()->run('TypedPress tests');
 }
-$about = fetch("$url/about");
+$about = fetch("$url/about/");
 $twin = fetch("$url/about.md");
 $out['prebuilt'] = [$about['status'], $about['prebuilt'], $twin['prebuilt']];
-$out['prebuilt validators'] = $validated('/about', $about);
+$out['prebuilt validators'] = $validated('/about/', $about);
 $out['prebuilt twin has its own'] = $twin['etag'] !== null && $twin['etag'] !== $about['etag'];
-$out['prebuilt 304 keeps the cache policy'] = fetch("$url/about", ['If-None-Match: ' . $about['etag']])['cache'] === $about['cache'];
+$out['prebuilt 304 keeps the cache policy'] = fetch("$url/about/", ['If-None-Match: ' . $about['etag']])['cache'] === $about['cache'];
 // A signed-in visitor isn't served the file, so isn't answered from its validator.
-$out['prebuilt signed in'] = [fetch("$url/about", [$cookie, 'If-None-Match: ' . $about['etag']])['status'], fetch("$url/about", [$cookie])['prebuilt']];
+$out['prebuilt signed in'] = [fetch("$url/about/", [$cookie, 'If-None-Match: ' . $about['etag']])['status'], fetch("$url/about/", [$cookie])['prebuilt']];
 // A HEAD gets the same validator.
-$out['prebuilt head'] = fetch("$url/about", [], 'HEAD')['etag'] === $about['etag'];
+$out['prebuilt head'] = fetch("$url/about/", [], 'HEAD')['etag'] === $about['etag'];
 // Replaced between the tag and the body: whatever body is sent, the tag sent names exactly it.
-$swapped = fetch("$url/about", ['X-Swap: replace']);
+$swapped = fetch("$url/about/", ['X-Swap: replace']);
 $out['prebuilt replaced between reads'] = [$swapped['status'], $swapped['prebuilt'], $swapped['body'], $swapped['etag'] === \TypedPress\Validator::bytes($swapped['body'])];
 // A file that exists but can't be read: rendered as usual (no prebuilt answer), never a 304.
 // A page of 8 MiB served with 2 MiB of memory left in the request: streamed whole, with the tag of its bytes.
@@ -159,19 +159,19 @@ $large = str_repeat("<p>prebuilt page text</p>\n", intdiv(8 * 1024 * 1024, 26));
 $aboutPath = \TypedPress\Render\Prebuilt::dir() . '/about.html';
 $aboutBefore = (string) file_get_contents($aboutPath);
 file_put_contents($aboutPath, $large);
-$big = fetch("$url/about", ['X-Swap: large']);
+$big = fetch("$url/about/", ['X-Swap: large']);
 file_put_contents($aboutPath, $aboutBefore);
 $out['prebuilt larger than memory_limit'] = [$big['status'], $big['prebuilt'], strlen($big['body']) === strlen($large), $big['etag'] === \TypedPress\Validator::bytes($large), strlen($large) > 2 * 1024 * 1024];
 // A stream that ends before the size it reported, and one that reads nothing without ever ending:
 // both render as usual, with no prebuilt header, and never a 304, whatever the client sends.
 foreach (['short', 'empty-read'] as $mode) {
     $out["prebuilt $mode"] = array_map(static function (?string $match) use ($url, $mode): array {
-        $r = fetch("$url/about", ["X-Swap: $mode", ...($match === null ? [] : ["If-None-Match: $match"])]);
+        $r = fetch("$url/about/", ["X-Swap: $mode", ...($match === null ? [] : ["If-None-Match: $match"])]);
         return [$r['status'], $r['prebuilt'], $r['etag']];
     }, [null, '*']);
 }
 $out['prebuilt unreadable'] = array_map(static function (string $match) use ($url): array {
-    $r = fetch("$url/about", ['X-Swap: unreadable', "If-None-Match: $match"]);
+    $r = fetch("$url/about/", ['X-Swap: unreadable', "If-None-Match: $match"]);
     return [$r['status'], $r['prebuilt']];
 }, ['*', '""']);
 // The validator is the bytes served: another content of the same length, with the same modification
@@ -183,7 +183,7 @@ $changed = substr_replace($about['body'], 'ABOUT', (int) strpos($about['body'], 
 file_put_contents($aboutFile, $changed);
 touch($aboutFile, $mtime);
 clearstatcache();
-$replaced = fetch("$url/about", ['If-None-Match: ' . $about['etag']]);
+$replaced = fetch("$url/about/", ['If-None-Match: ' . $about['etag']]);
 $out['prebuilt same size and mtime'] = [strlen($changed) === strlen($about['body']), filemtime($aboutFile) === $mtime, $replaced['status'], $replaced['body'] === $changed, $replaced['etag'] !== $about['etag']];
 
 // ---- the OpenAPI document --------------------------------------------------------------------------

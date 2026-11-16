@@ -186,6 +186,15 @@ if ($base !== '') {
     $r = (new Browser($url))->go('/identity/account?tab=1');
     parse_str((string) parse_url((string) $r['location'], PHP_URL_QUERY), $q);
     $out['subdirectory'] = ['status' => $r['status'], 'login' => strtok((string) $r['location'], '?'), 'back' => $q['redirect_to'] ?? null, 'url' => $url];
+    // An app page under a layout guard, at either spelling: back to its one address, base once.
+    foreach (['guard' => '/account?tab=1', 'guard slash' => '/account/?tab=1'] as $key => $path) {
+        $g = (new Browser($url))->go($path);
+        parse_str((string) parse_url((string) $g['location'], PHP_URL_QUERY), $gq);
+        $out[$key] = ['status' => $g['status'], 'back' => $gq['redirect_to'] ?? null];
+    }
+    // login.tsx's own redirect() (the copy built for this run calls `redirect("/account")` when
+    // `redirect_to` names `/go-account`): to the page's one address, below the subdirectory once.
+    $out['login redirect'] = (new Browser($url))->go('/wp-login.php?redirect_to=' . rawurlencode("$url/go-account"))['location'];
     echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
     $site->destroy();
     exit;
@@ -194,11 +203,11 @@ if ($base !== '') {
 // ---------------------------------------------------------------- (a) login.tsx is wp-login.php's sign-in view
 $b = new Browser($url);
 $out['get'] = view($b->go('/wp-login.php'));
-$out['wrong password'] = view($b->go('/wp-login.php', ['log' => 'ana', 'pwd' => 'nope', 'testcookie' => '1', 'redirect_to' => "$url/account"]));
+$out['wrong password'] = view($b->go('/wp-login.php', ['log' => 'ana', 'pwd' => 'nope', 'testcookie' => '1', 'redirect_to' => "$url/account/"]));
 $out['unknown user'] = view($b->go('/wp-login.php', ['log' => 'nobody', 'pwd' => 'nope', 'testcookie' => '1']));
-$signin = $b->go('/wp-login.php', ['log' => 'ana', 'pwd' => $password, 'testcookie' => '1', 'redirect_to' => "$url/account"]);
+$signin = $b->go('/wp-login.php', ['log' => 'ana', 'pwd' => $password, 'testcookie' => '1', 'redirect_to' => "$url/account/"]);
 $out['sign in'] = ['status' => $signin['status'], 'location' => $signin['location'], 'signed in' => $b->signedIn()];
-$out['account after sign in'] = $b->go('/account')['status'];
+$out['account after sign in'] = $b->go('/account/')['status'];
 // Signing out is WordPress's (its nonce'd link); it comes back to the sign-in page with its message.
 // The nonce is bound to the browser's session token, as a page rendered for it would carry it.
 $cookieName = array_values(array_filter(array_keys($b->cookies), static fn (string $k): bool => str_starts_with($k, 'wordpress_logged_in_')))[0];
@@ -218,12 +227,16 @@ $fresh->cookies = [];
 $fields = ['log' => 'ana', 'pwd' => $password, 'redirect_to' => html_entity_decode((string) ($home['inputs']['redirect_to'] ?? ''))];
 $fromHome = $fresh->go('/wp-login.php', $fields);
 $out['form elsewhere sign in'] = ['status' => $fromHome['status'], 'location' => $fromHome['location'], 'signed in' => $fresh->signedIn()];
-$guard = (new Browser($url))->go('/account');
+$guard = (new Browser($url))->go('/account/');
 $out['guard'] = ['status' => $guard['status'], 'to login' => str_starts_with((string) $guard['location'], $login)];
+// The bare spelling of a guarded page asks a signed-out visitor to sign in too, before any redirect
+// to the page's address.
+$guardBare = (new Browser($url))->go('/account');
+$out['guard bare'] = ['status' => $guardBare['status'], 'to login' => str_starts_with((string) $guardBare['location'], $login)];
 
 // ---------------------------------------------------------------- (b) Identity MFA through Two Factor on wp-login.php
 $m = new Browser($url);
-$first = $m->go('/wp-login.php', ['log' => 'mo', 'pwd' => $password, 'testcookie' => '1', 'redirect_to' => "$url/account"]);
+$first = $m->go('/wp-login.php', ['log' => 'mo', 'pwd' => $password, 'testcookie' => '1', 'redirect_to' => "$url/account/"]);
 preg_match('#name="wp-auth-nonce"[^>]*value="([^"]+)"#', $first['body'], $nonce);
 preg_match('#name="provider"[^>]*value="([^"]+)"#', $first['body'], $provider);
 $out['mfa password step'] = [
@@ -232,12 +245,12 @@ $out['mfa password step'] = [
     'provider' => html_entity_decode($provider[1] ?? ''),
     'signed in' => $m->signedIn(),
 ];
-$wrong = $m->go('/wp-login.php?action=validate_2fa', ['wp-auth-id' => (string) $mfaUser, 'wp-auth-nonce' => $nonce[1] ?? '', 'provider' => html_entity_decode($provider[1] ?? ''), 'authcode' => '000000', 'redirect_to' => "$url/account"]);
+$wrong = $m->go('/wp-login.php?action=validate_2fa', ['wp-auth-id' => (string) $mfaUser, 'wp-auth-nonce' => $nonce[1] ?? '', 'provider' => html_entity_decode($provider[1] ?? ''), 'authcode' => '000000', 'redirect_to' => "$url/account/"]);
 preg_match('#name="wp-auth-nonce"[^>]*value="([^"]+)"#', $wrong['body'], $nonce);
 $out['mfa wrong code'] = ['status' => $wrong['status'], 'signed in' => $m->signedIn(), 'asks again' => str_contains($wrong['body'], 'validate_2fa')];
 // Two Factor waits between failed codes; the next attempt comes after it.
 delete_user_meta($mfaUser, Two_Factor_Core::USER_RATE_LIMIT_KEY);
-$done = $m->go('/wp-login.php?action=validate_2fa', ['wp-auth-id' => (string) $mfaUser, 'wp-auth-nonce' => $nonce[1] ?? '', 'provider' => html_entity_decode($provider[1] ?? ''), 'authcode' => $recovery[0], 'redirect_to' => "$url/account"]);
+$done = $m->go('/wp-login.php?action=validate_2fa', ['wp-auth-id' => (string) $mfaUser, 'wp-auth-nonce' => $nonce[1] ?? '', 'provider' => html_entity_decode($provider[1] ?? ''), 'authcode' => $recovery[0], 'redirect_to' => "$url/account/"]);
 $out['mfa recovery code'] = ['status' => $done['status'], 'location' => $done['location'], 'signed in' => $m->signedIn()];
 // That real sign-in (password, then Identity's factor through Two Factor) is an identity sign-in.
 $out['mfa identity'] = $m->go('/identity/account')['status'];

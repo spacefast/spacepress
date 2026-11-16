@@ -268,7 +268,7 @@ $purged = static function (callable $event) use ($wpdb): array {
 };
 // A page at another address that rendered the note and its thread, cached for anonymous visitors:
 // approving a comment purges it too. A page that only listed notes keeps its copy.
-$featured = fetch("$url/featured");
+$featured = fetch("$url/featured/");
 $out['featured cache'] = $featured['headers']['cache-control'][0] ?? null;
 $out['featured purged'] = (static function () use ($wpdb, $note, $url): array {
     \TypedPress\Wp\Purges::flush();
@@ -281,7 +281,7 @@ $out['featured purged'] = (static function () use ($wpdb, $note, $url): array {
     wp_set_current_user(0);
     wp_cache_delete('test_purges', 'options');
     $all = (array) get_option('test_purges', []);
-    return [in_array('/featured', $all, true), in_array('/notes/open-note/', $all, true)];
+    return [in_array('/featured/', $all, true), in_array('/notes/open-note/', $all, true)];
 })();
 $out['purges'] = [
     'held' => $purged(static function () use ($note, &$held): void {

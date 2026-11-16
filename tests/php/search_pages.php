@@ -88,24 +88,24 @@ $out['form'] = [
     'cache' => $home['headers']['cache-control'][0] ?? null,
     'robots' => $home['headers']['x-robots-tag'][0] ?? null,
 ];
-$out['empty'] = seen(fetch("$url/find"));
-$out['blank q'] = seen(fetch("$url/find?q=%20%20"));
+$out['empty'] = seen(fetch("$url/find/"));
+$out['blank q'] = seen(fetch("$url/find/?q=%20%20"));
 $before = $reads();
 // Site-wide: every kind with a URL (notes and guides, not memos), two per kind with a link to the rest.
-$out['site'] = seen(fetch("$url/find?q=tea"));
+$out['site'] = seen(fetch("$url/find/?q=tea"));
 // One kind, paged by `page`; links keep `q`. A draft and a hidden-field match never show or count.
-$out['one kind'] = seen(fetch("$url/notes-search?q=tea"));
-$out['page two'] = seen(fetch("$url/notes-search?q=tea&page=2"));
-$out['hidden field'] = seen(fetch("$url/notes-search?q=zebrafish"));
+$out['one kind'] = seen(fetch("$url/notes-search/?q=tea"));
+$out['page two'] = seen(fetch("$url/notes-search/?q=tea&page=2"));
+$out['hidden field'] = seen(fetch("$url/notes-search/?q=zebrafish"));
 // Narrowing the site-wide page to a kind: its rows; a kind it doesn't cover gives nothing.
-$out['narrowed'] = seen(fetch("$url/find?q=tea&kind=notes"));
-$out['narrowed to memos'] = seen(fetch("$url/find?q=tea&kind=memos"));
-$out['narrowed to nothing'] = seen(fetch("$url/find?q=tea&kind=nope"));
+$out['narrowed'] = seen(fetch("$url/find/?q=tea&kind=notes"));
+$out['narrowed to memos'] = seen(fetch("$url/find/?q=tea&kind=memos"));
+$out['narrowed to nothing'] = seen(fetch("$url/find/?q=tea&kind=nope"));
 // A query longer than the input allows, typed into the URL: a plain message, never an error page.
-$out['too long'] = seen(fetch("$url/notes-search?q=" . str_repeat('a', 201)));
+$out['too long'] = seen(fetch("$url/notes-search/?q=" . str_repeat('a', 201)));
 // Three different searches left nothing in the page cache's read index.
-fetch("$url/find?q=gardens");
-fetch("$url/find?q=history");
+fetch("$url/find/?q=gardens");
+fetch("$url/find/?q=history");
 $out['recorded'] = $reads() - $before;
 
 // A signed-in editor: the draft and the hidden-field match, at the same URL, never shared.
@@ -113,8 +113,8 @@ $id = $site->userId('chief');
 $expires = time() + 3600;
 $token = WP_Session_Tokens::get_instance($id)->create($expires);
 $editor = ['Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode(wp_generate_auth_cookie($id, $expires, 'logged_in', $token))];
-$out['editor'] = seen(fetch("$url/notes-search?q=tea", $editor));
-$out['editor hidden'] = seen(fetch("$url/notes-search?q=zebrafish", $editor))['results'];
+$out['editor'] = seen(fetch("$url/notes-search/?q=tea", $editor));
+$out['editor hidden'] = seen(fetch("$url/notes-search/?q=zebrafish", $editor))['results'];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

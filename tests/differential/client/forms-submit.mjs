@@ -180,7 +180,7 @@ try {
     await page.evaluate(() => { window.tpMarker = "same document"; });
     let releaseLink;
     const linkHeld = new Promise((r) => { releaseLink = r; });
-    await page.route("**/other", async (route) => { await linkHeld; await route.continue().catch(() => {}); });
+    await page.route("**/other/", async (route) => { await linkHeld; await route.continue().catch(() => {}); });
     const releasePost = await hold(page, "**/__tp/api/v1/actions/vote");
     await page.click(".vote .maybe");
     await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
@@ -191,7 +191,7 @@ try {
     await page.waitForTimeout(500);
     const beforeLink = { url: path(page.url()), voted: await page.$(".voted").then((el) => el !== null) };
     releaseLink();
-    await page.unroute("**/other");
+    await page.unroute("**/other/");
     await page.waitForSelector(".other-page", { timeout: 15000 });
     out.slowLink = {
       beforeLink,
@@ -337,7 +337,7 @@ try {
   // (the submit's own marker doesn't outlive the swap and enable it again). The page's status
   // message is announced.
   {
-    const { page } = await open(`${url}/poll`);
+    const { page } = await open(`${url}/poll/`);
     await page.click("form.close button");
     await page.waitForSelector(".closed", { timeout: 15000 });
     await page.waitForFunction(() => !document.querySelector("form.close").hasAttribute("aria-busy"));

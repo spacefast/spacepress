@@ -78,12 +78,12 @@ $cookie = static function (string $user) use ($site): string {
 $out = [
     // Every page reads differently: home lists notes, /notes/hello reads one, /about reads nothing.
     'home' => fetch("$url/"),
-    'note' => fetch("$url/notes/hello"),
-    'other note' => fetch("$url/notes/other"),
-    'about' => fetch("$url/about"),
-    'as editor' => fetch("$url/notes/hello", [$cookie('chief')]),
-    'guarded' => fetch("$url/account", [$cookie('chief')]),
-    'missing' => fetch("$url/notes/nope"),
+    'note' => fetch("$url/notes/hello/"),
+    'other note' => fetch("$url/notes/other/"),
+    'about' => fetch("$url/about/"),
+    'as editor' => fetch("$url/notes/hello/", [$cookie('chief')]),
+    'guarded' => fetch("$url/account/", [$cookie('chief')]),
+    'missing' => fetch("$url/notes/nope/"),
 ];
 // Every policy Cache::policy() hands out, as Batcache reads it: a shareable page is kept for its
 // window (also a filtered one), anything else for none.

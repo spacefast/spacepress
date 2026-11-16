@@ -494,7 +494,7 @@ final class Prebuilt
      * plugins_loaded: answer a GET or HEAD for a prebuilt path from its file, before WordPress parses
      * the request. Anything that could make the answer differ falls through to the router: a query
      * string, a signed-in, preview or comment-author cookie, `Accept: text/markdown` (the Markdown
-     * negotiation's, rendering.md §5), another spelling of the path, a missing file or one past
+     * negotiation's, rendering.md §5), another spelling of the path (`/about` for `/about/`), a missing file or one past
      * MAX_AGE, and a site that hides itself from the public.
      */
     public static function serve(): void
@@ -533,6 +533,14 @@ final class Prebuilt
         }
         $markdown = str_ends_with($path, '.md');
         $html = $markdown ? (substr($path, 0, -3) === '/index' ? '/' : substr($path, 0, -3)) : $path;
+        // A page only at its one address (`/about/`, AppRouter::address): the other spelling reaches
+        // the router, which redirects it. A twin is `/about.md` only, so `/about/.md` is rejected below.
+        if (!$markdown) {
+            if ($html !== AppRouter::address($html)) {
+                return;
+            }
+            $html = $html === '/' ? '/' : rtrim($html, '/');
+        }
         if ($html !== '/' && (str_ends_with($html, '/') || str_contains(rawurldecode($html), '..') || str_contains(rawurldecode($html), "\0") || str_contains(rawurldecode($html), '\\'))) {
             return;
         }
@@ -577,7 +585,7 @@ final class Prebuilt
         if ($markdown) {
             header('Content-Type: ' . MarkdownTwins::CONTENT_TYPE);
             header('X-Content-Type-Options: nosniff');
-            header('Link: <' . home_url($html) . '>; rel="canonical"');
+            header('Link: <' . home_url(AppRouter::address($html)) . '>; rel="canonical"');
         } else {
             header('Content-Type: text/html; charset=' . get_option('blog_charset'));
             header('Link: <' . MarkdownTwins::twin(home_url($html)) . '>; rel="alternate"; type="text/markdown"');

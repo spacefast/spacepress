@@ -873,8 +873,9 @@ listens and purges those URLs from Batcache and the edge. With no listener
   with inserts of 100 rows each. A committed write to a kind adds every recorded path that read
   that row or listed the kind, with its `.md` twin, to the same announcement
   as the paths above: one `tp_purge_urls` call per committed transaction.
-  The router answers a page with or without its trailing slash, so both
-  spellings are purged. More than 200 paths in that call becomes `/*`, a
+  A page answers at that one address only: the router 301s the other
+  spelling of its path (with or without the trailing slash, as the
+  permalink structure says) to it, so one spelling is purged. More than 200 paths in that call becomes `/*`, a
   whole-host purge. Nothing is recorded or announced without a listener.
 - **Prebuilt pages** (`Render\Prebuilt::serve`) open the file once, hash that
   handle in 64 KiB chunks, rewind it and stream it (`fpassthru`), so the `ETag`

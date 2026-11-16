@@ -93,7 +93,7 @@ $out = [
         preg_match('#<title>(.*?)</title>#s', $r['body'], $t);
         preg_match('#<body class="([^"]*)"#', $r['body'], $b);
         return ['status' => $r['status'], 'title' => html_entity_decode($t[1] ?? '', ENT_QUOTES), 'error404' => str_contains(' ' . ($b[1] ?? '') . ' ', ' error404 '), 'page' => str_contains($r['body'], 'Thing 42')];
-    })($got('/things/42')),
+    })($got('/things/42/')),
     'site name' => get_bloginfo('name'),
     // WordPress's own title on its 404, whoever rendered it.
     'missing title' => preg_match('#<title>(.*?)</title>#s', $got('/no-such-page/')['body'], $t) === 1 ? html_entity_decode($t[1], ENT_QUOTES) : null,

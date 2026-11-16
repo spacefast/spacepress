@@ -114,9 +114,10 @@ const exampleChecks: Record<string, { title: string; run: (base: string, admin: 
 			const visitor = browser(base, { signedOut: true });
 			const list = await visitor("/notes/");
 			assert.equal(list.status, 200);
-			assert.match(list.body, /<a href="[^"]*\/notes\/dawn-on-the-ridge"[^>]*>Dawn on the ridge<\/a>/);
+			// A <Link> is written at the page's one address, the permalink structure's (`/notes/x/`).
+			assert.match(list.body, /<a href="[^"]*\/notes\/dawn-on-the-ridge\/"[^>]*>Dawn on the ridge<\/a>/);
 			assert.doesNotMatch(list.body, /Notes for next week/, "a draft is listed to a signed-out visitor");
-			const note = await visitor("/notes/dawn-on-the-ridge");
+			const note = await visitor("/notes/dawn-on-the-ridge/");
 			assert.equal(note.status, 200);
 			assert.match(note.body, /<h1[^>]*>Dawn on the ridge<\/h1>/);
 			assert.match(note.body, /data-wp-interactive="fullsite\/CheerButton"/);
@@ -124,7 +125,7 @@ const exampleChecks: Record<string, { title: string; run: (base: string, admin: 
 			assert.doesNotMatch(note.body, /Check the photo credit/, "desk notes shown to a signed-out visitor");
 			// Issue #311's page: a first/app page that lists every note it may read. A signed-out
 			// visitor reads the published ones only; the seeded draft is for staff.
-			const applause = await visitor("/applause");
+			const applause = await visitor("/applause/");
 			assert.equal(applause.status, 200);
 			assert.match(applause.body, /Dawn on the ridge/);
 			assert.doesNotMatch(applause.body, /Notes for next week/, "a draft is listed on /applause to a signed-out visitor");

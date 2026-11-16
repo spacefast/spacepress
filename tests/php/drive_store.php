@@ -126,7 +126,7 @@ $out['search'] = texts(fetch("$url/?q=samsung")['body'], "$cards//h2");
 $out['filter'] = texts(fetch("$url/?media=nvme")['body'], "$cards//h2");
 
 // A product page in both languages; the Turkish one falls back to English where nobody translated.
-$page = fetch("$url/drives/wd-red-plus-4tb");
+$page = fetch("$url/drives/wd-red-plus-4tb/");
 $out['product'] = [
     'status' => $page['status'],
     'h1' => texts($page['body'], '//h1'),
@@ -136,20 +136,20 @@ $out['product'] = [
 ];
 // A translation is served at its own slug (the kind's pattern, without Polylang's `/tr/` prefix),
 // and so is its Markdown twin; WordPress links it there too.
-$pageTr = fetch("$url/drives/wd-red-plus-4tb-tr");
+$pageTr = fetch("$url/drives/wd-red-plus-4tb-tr/");
 $out['product tr'] = ['status' => $pageTr['status'], 'lede' => texts($pageTr['body'], "//p[@class='lede']"), 'facts' => texts($pageTr['body'], "//dl[@class='facts']/dt"), 'switch' => texts($pageTr['body'], "//p[@class='lang']/a/@href")];
 $twinTr = fetch("$url/drives/wd-red-plus-4tb-tr.md");
 $out['twin tr'] = [$twinTr['status'], strtok($twinTr['body'], "\n")];
 $trId = (int) array_values(array_filter(\TypedPress\db()->findMany('drives', ['locale' => '*']), static fn (array $r): bool => $r['slug'] === 'wd-red-plus-4tb-tr'))[0]['id'];
 $out['permalink tr'] = parse_url((string) get_permalink($trId), PHP_URL_PATH);
 $out['polylang prefix'] = fetch("$url/tr/drives/wd-red-plus-4tb-tr/")['status'];
-$out['untranslated tr'] = texts(fetch("$url/drives/crucial-p3-2tb?language=tr")['body'], "//p[@class='lede']");
+$out['untranslated tr'] = texts(fetch("$url/drives/crucial-p3-2tb/?language=tr")['body'], "//p[@class='lede']");
 
 // A guest buys with scripts off: the order comes back on the page, and the stock goes down.
 $buy = form($page['body'], '/actions/buy');
 $sold = submit($buy, ['buyerName' => 'Guest Buyer', 'buyerEmail' => 'guest@example.test', 'quantity' => '1']);
 $out['guest buy'] = [$sold['status'], $sold['path'], preg_replace('/[0-9A-F]{8}/', 'CODE', texts($sold['body'], "//p[@class='ok']")[0] ?? '')];
-$out['stock after'] = texts(fetch("$url/drives/wd-red-plus-4tb")['body'], "//aside[@class='buybox']//p[@class='muted']");
+$out['stock after'] = texts(fetch("$url/drives/wd-red-plus-4tb/")['body'], "//aside[@class='buybox']//p[@class='muted']");
 $out['over stock'] = texts(submit($buy, ['buyerName' => 'Greedy', 'buyerEmail' => 'g@example.test', 'quantity' => '3'])['body'], "//p[@class='error']");
 // The buyer never sends a price: the action takes none (an unknown field is refused), and the hook sets it.
 $priced = fetch("$url/__tp/api/v1/actions/buy", 'POST', ['Content-Type: application/json'], '{"drive":1,"buyerName":"X","buyerEmail":"x@example.test","total":1}');
@@ -157,36 +157,36 @@ $out['price from buyer'] = $priced['status'];
 
 // A signed-in customer buys, then finds the order under My orders; nobody else sees it.
 $ann = session($site, 'ann');
-$samsung = fetch("$url/drives/samsung-870-evo-1tb", headers: ["Cookie: $ann"]);
+$samsung = fetch("$url/drives/samsung-870-evo-1tb/", headers: ["Cookie: $ann"]);
 $annBuy = submit(form($samsung['body'], '/actions/buy'), ['buyerName' => 'Ann', 'buyerEmail' => 'ann@example.test', 'quantity' => '2'], $ann);
 $out['ann buy'] = preg_replace('/[0-9A-F]{8}/', 'CODE', texts($annBuy['body'], "//p[@class='ok']")[0] ?? '');
 $out['my orders'] = [
-    'ann' => texts(fetch("$url/orders", headers: ["Cookie: $ann"])['body'], '//tbody/tr/td[2]'),
-    'bo' => texts(fetch("$url/orders", headers: ['Cookie: ' . session($site, 'bo')])['body'], "//p[@class='empty']"),
+    'ann' => texts(fetch("$url/orders/", headers: ["Cookie: $ann"])['body'], '//tbody/tr/td[2]'),
+    'bo' => texts(fetch("$url/orders/", headers: ['Cookie: ' . session($site, 'bo')])['body'], "//p[@class='empty']"),
 ];
-$anon = fetch("$url/orders");
+$anon = fetch("$url/orders/");
 $out['my orders signed out'] = [$anon['status'], str_contains($anon['headers']['location'][0] ?? '', '/wp-login.php')];
 
 // Staff: the guard, shipping an order and restocking, each through its action.
-$out['staff as customer'] = fetch("$url/staff", headers: ["Cookie: $ann"])['status'];
+$out['staff as customer'] = fetch("$url/staff/", headers: ["Cookie: $ann"])['status'];
 $editor = session($site, 'editor');
-$staff = fetch("$url/staff", headers: ["Cookie: $editor"]);
+$staff = fetch("$url/staff/", headers: ["Cookie: $editor"]);
 $out['staff'] = ['status' => $staff['status'], 'to ship' => count(texts($staff['body'], '//table[1]//tbody/tr')), 'low' => texts($staff['body'], "//ul[@class='list']/li/span")];
 $out['ship'] = preg_replace('/[0-9A-F]{8}/', 'CODE', texts(submit(form($staff['body'], '/actions/markShipped'), [], $editor)['body'], "//p[@class='ok']")[0] ?? '');
 $out['restock'] = texts(submit(form($staff['body'], '/actions/restock'), ['quantity' => '4'], $editor)['body'], "//p[@class='ok']");
-$out['movements'] = texts(fetch("$url/staff", headers: ["Cookie: $editor"])['body'], '//table[last()]//tbody/tr/td[4]');
+$out['movements'] = texts(fetch("$url/staff/", headers: ["Cookie: $editor"])['body'], '//table[last()]//tbody/tr/td[4]');
 $restock = fetch("$url/__tp/api/v1/actions/restock", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('ann'))], '{"drive":1,"quantity":1}');
 $out['restock as customer'] = $restock['status'];
 $orders = fetch("$url/__tp/api/v1/orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('ann'))]);
 $out['orders api as ann'] = array_column(json_decode($orders['body'], true)['data'] ?? [], 'buyerName');
 
 // Reviews: a customer's first review is held and shown only to them; a signed-out visitor gets a link.
-$seagate = fetch("$url/drives/seagate-exos-x16", headers: ["Cookie: $ann"]);
+$seagate = fetch("$url/drives/seagate-exos-x16/", headers: ["Cookie: $ann"]);
 $review = submit(form($seagate['body'], '/comments'), ['content' => 'Arrived well packed, SMART clean.'], $ann);
 $out['review'] = [$review['status'], texts($review['body'], "//section[@class='reviews']//div[@class='typedpress-comment-body']")];
 $out['review signed out'] = [
-    texts(fetch("$url/drives/seagate-exos-x16")['body'], "//section[@class='reviews']//div[@class='typedpress-comment-body']"),
-    texts(fetch("$url/drives/seagate-exos-x16")['body'], "//section[@class='reviews']//a"),
+    texts(fetch("$url/drives/seagate-exos-x16/")['body'], "//section[@class='reviews']//div[@class='typedpress-comment-body']"),
+    texts(fetch("$url/drives/seagate-exos-x16/")['body'], "//section[@class='reviews']//a"),
 ];
 
 // WordPress's own RSS feed of the drives post type, linked from every page.

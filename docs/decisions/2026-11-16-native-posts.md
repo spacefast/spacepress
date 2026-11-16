@@ -55,7 +55,6 @@ post kept its id, both revisions and its comment.
 
 ## Rendering
 
-The blog's pages keep rendering through `tp/app/blog/`. Theme templates for app pages are #520
-(`tp/page` block, templates registered with `register_block_template()`); a post's page is an app
-page like any other, so it gets them when #520 lands. This change adds no template mechanism of its
-own.
+The blog's pages keep rendering through `tp/app/blog/`, inside the block templates #520 registers
+(`tp/page` block, `register_block_template()`); a post's page is an app page like any other. This
+change adds no template mechanism of its own.

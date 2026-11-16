@@ -108,7 +108,7 @@ const { Content } = await render(entry);
   item it loaded; a collection's hint adds `<kind>`. The kind is its storage name (`field_notes`),
   as in webhook events; the loaders take either that or the typed client's name (`fieldNotes`).
 - `tpLiveLoader()` without a kind serves every kind; the filter names it:
-  `getLiveEntry("first", { kind: "posts", id: "hello" })`.
+  `getLiveEntry("site", { kind: "posts", id: "hello" })`.
 
 ## Webhooks: purge or rebuild on write
 

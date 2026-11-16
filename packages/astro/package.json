@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "A TypedPress site as the content source of an Astro site: build-time and live content collections, cache tags, signed webhooks, and EmDash's official templates unchanged.",
   "license": "MIT",
+  "homepage": "https://github.com/spacefast/zero/tree/main/packages/astro#readme",
   "type": "module",
   "engines": {
     "node": ">=22.23.4"
@@ -26,7 +27,7 @@
   "keywords": [
     "astro",
     "astro-loader",
-    "first",
+    "typedpress",
     "wordpress"
   ],
   "dependencies": {
@@ -48,5 +49,9 @@
     "type": "git",
     "url": "https://github.com/spacefast/zero.git",
     "directory": "packages/astro"
+  },
+  "bugs": "https://github.com/spacefast/zero/issues",
+  "publishConfig": {
+    "access": "public"
   }
 }

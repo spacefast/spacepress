@@ -25,7 +25,7 @@ async function request(method, path, body, credential = password, extraHeaders =
 async function ok(method, path, body, credential = password, headers = {}) {
   const response = await request(method, path, body, credential, headers);
   assert.ok(response.status >= 200 && response.status < 300, `${method} ${path} failed`);
-  assert.ok(Object.hasOwn(response.json, "data"), `${path} lacks a First response envelope`);
+  assert.ok(Object.hasOwn(response.json, "data"), `${path} lacks a TypedPress response envelope`);
   return response.json.data;
 }
 

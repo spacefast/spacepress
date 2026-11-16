@@ -176,24 +176,19 @@ publication evidence.
 
 ## Publish to Spacefast
 
-Use the documented preflight and publish commands once the installed CLI supports
-them. Prepare only the intended source and public assets, excluding local
-WordPress data, credentials, dependencies and caches:
+Hosted deployment of a `typedpress.config.ts` project is not available in a
+released `spacefast` CLI yet; see the [Spacefast deploy guide](../../docs/spacefast-deploy.md). Stage only the intended source and
+public assets, excluding local WordPress data, credentials, dependencies and
+caches:
 
 ```sh
-sf typedpress check examples/drive-locker
 npm --prefix examples/drive-locker/web ci
 npm --prefix examples/drive-locker/web run build
 node examples/drive-locker/prepare-publish.mjs
-sf publish examples/drive-locker/.tp/publish --team spacefast-examples \
-	--name 'Drive Locker' --slug drive-locker --access team --json --wait
 ```
 
-The staging script preserves the CLI's `.spacefast/` selection for later
-updates. Reuse that Space instead of creating another. Verify the receipt's
-team, live revision and team-only access. Register the live frontend callback
-with typedpress-identity, then verify sign-in, a collection read and an action on
-that hostname. No live URL exists for this attempt.
+After publishing, register the live frontend callback with typedpress-identity,
+then verify sign-in, a collection read and an action on that hostname.
 
 ## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
 
@@ -206,17 +201,10 @@ The final source has no compiler diagnostics. The compiler diagnostic count is
 | Owner-filtered unique writes | HTTP 403, `forbidden`, `You can't set serialKey`, pointer `/serialKey` | `serialKey.unique()` with the owner-filtered `access` in `typedpress.config.ts`; `POST /__tp/api/v1/drives` |
 | Owner-filtered referential deletes | HTTP 409, `reference_violation`, `Rows in health_readings may reference this row` | Drive references from `healthReadings.driveId` and deleting a drive |
 | Owner-filtered referential deletes | HTTP 409, `reference_violation`, `Rows in drives may reference this row` | `drives.placeId` and deleting an empty place |
-| Missing CLI preflight | `Command zero:check not found.` | `sf typedpress check --help` using installed `spacefast/0.8.0` |
-| Publishing team resolution | `validation_error`, `Could not find team "team_3f222eb89f634980a2552a38fbdc70ba".` | `sf publish ... --team <resolved team ID> --access team` |
 
 The constraint refusals follow main's
 [write pipeline contract](../../docs/runtime-contract.md#write-pipeline-dbinsertupdatedelete-rest-and-cli-all-go-through-it).
 The app preserves its owner filters, database uniqueness and references. It
 does not make reads public or replace constraints with a race-prone lookup.
 
-The CLI's typedpress-page team lookup omits the target team even though a direct
-authenticated team read confirms access. Publication stopped before Space
-creation. Its dry run also classifies this raw-source input as static with
-`runtime: null`; host compilation remains unproven. No compiler, runtime or
-shared CLI changes are included here. Resolved build diagnostics and the failed
-initial publication plan are preserved [separately](verification/diagnostics.md).
+Resolved build diagnostics are preserved [separately](verification/diagnostics.md).

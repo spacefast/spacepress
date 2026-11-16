@@ -2,7 +2,7 @@
 
 `typedpress build` reads `typedpress.config.ts`, evaluates it at build time with TypedPress's own
 Rust evaluator (no Node, no JS engine), and compiles hooks/actions to PHP.
-Everything below is exported from the `"first"` module. Shapes follow Drizzle
+Everything below is exported from the `"typedpress"` module. Shapes follow Drizzle
 ORM 1.0 (beta.22): column builders, relational-query `findMany`/`findFirst` with
 object filters.
 
@@ -41,7 +41,7 @@ site that deployed such a collection keeps its rows where they are: see
 | Read about | In |
 |---|---|
 | fields, options and access rules both halves share | [Columns](#columns), [Collections, tables and user projections](#collections-tables-and-user-projections) |
-| the HTTP API, locales and sync, which work on both | [The `/__tp/api/v1` API](#the-__firstapiv1-api), [Locales](#locales), [Sync](#sync) |
+| the HTTP API, locales and sync, which work on both | [The `/__tp/api/v1` API](#the-__tpapiv1-api), [Locales](#locales), [Sync](#sync) |
 | globals, media and files, sign-in | [Content](#content) |
 | relations, tables TypedPress didn't create, schema changes at deploy, transactions, queries | [Database](#database) |
 
@@ -63,7 +63,7 @@ my-project/
 A relative import from `typedpress.config.ts` or from a module under `tp/` must
 resolve inside `tp/`. Anything else, such as `import { x } from "./lib/x"`
 at the root or `"../src/x"` from `tp/`, fails with `F1210` and names the
-file to move. Packages (`"first"`, `"php/wordpress"`, npm packages) are always
+file to move. Packages (`"typedpress"`, `"php/wordpress"`, npm packages) are always
 allowed, and an installed package's own relative imports are its business.
 
 ### Exports register by name
@@ -637,7 +637,7 @@ answers exactly what core answers under TypedPress's rules.
 | `GET /__tp/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
 | `GET /__tp/api/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
 
-Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
+Rows are TypedPress rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
 `published` or `private`. Errors are RFC 9457 problem documents (`code`,
 `detail`, `pointer`). Callers authenticate the way core accepts: the cookie
 with `X-WP-Nonce`, an application password, or a TypedPress Identity bearer token.
@@ -877,11 +877,11 @@ import { defineConfig } from "typedpress";
 ```
 
 ```sh group="install"
-npm install first
+npm install typedpress
 ```
 
 ```sh title="pnpm" group="install"
-pnpm add first
+pnpm add typedpress
 ```
 ````
 
@@ -994,7 +994,7 @@ authentication; it creates no second user table or post type. It needs
 `email: email().unique()`, gets a write-only `password` and an
 admin-only `role`, and cannot have drafts, revisions, slugs or localization. Members sign in
 through the typed client: `auth.signIn()` and `auth.handleCallback()` redirect
-through the first-identity screens (register the frontend once with
+through the typedpress-identity screens (register the frontend once with
 `typedpress identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
 `GET /me` returns the user with their `member` row.
 
@@ -1481,7 +1481,7 @@ export default defineConfig({ use: [seo({ suffix: " | Site" })] });
   hook's `data`. A throw aborts the request, as in app hooks.
 - A plugin's actions and jobs are registered as `<name>_<key>`.
   Inside the plugin, `jobs.<key>` names its own jobs.
-- A plugin package can import its own modules, `"first"` and ordinary npm
+- A plugin package can import its own modules, `"typedpress"` and ordinary npm
   packages. Importing the app's modules or another plugin's package fails
   with `F1201`. Each plugin's compiled helpers, captured data, class state
   and `once()` keys are its own.
@@ -1557,7 +1557,7 @@ A plugin's `hooks` (keyed by the app's export names) run before the kind's own `
 
 `ctx` is an ordinary value. Pass it to helpers, return it, and read its keys,
 including `ctx["user"]` and keys typed `keyof HookCtx`. Type a helper's
-parameters with the types `"first"` exports:
+parameters with the types `"typedpress"` exports:
 
 - `HookCtx` for the context of an action, hook or route;
 - `JobCtx` for a job's context, which adds `attempt` and `jobId`;
@@ -1815,7 +1815,7 @@ or spreading `process.env`, writing to it, and every other `process` member are
 compile errors, so request input can never choose a server variable. Reading
 `process.env` while the config is evaluated is an error too: settings that
 WordPress resolves later (webhook URLs and secrets, action signatures, upload
-credentials) take `env("NAME")` from `"first"`, which is a reference, not a
+credentials) take `env("NAME")` from `"typedpress"`, which is a reference, not a
 value, and is refused inside handlers.
 
 ## Hashing and random values
@@ -1865,7 +1865,7 @@ action's or route's `signature` option, which also checks timestamps.
 
 ## Email
 
-`mail.send(message)` from `"first"` sends email from a hook, action, route or
+`mail.send(message)` from `"typedpress"` sends email from a hook, action, route or
 job:
 
 ```ts
@@ -1940,7 +1940,7 @@ export default defineConfig({});
   `--only acme/*` (repeatable) keeps matching names. The pull signs in only
   with `TP_APP_PASSWORD=user:application-password` from the environment.
   `typedpress build` and `typedpress check` read the lock and never contact the site.
-- Map `"php/wordpress"` in tsconfig.json next to `"first"`
+- Map `"php/wordpress"` in tsconfig.json next to `"typedpress"`
   (`types/wordpress.d.ts` in the CLI package); `typedpress build` writes the ability
   types into `tp/_generated/db.d.ts` when the app imports the module.
 - The call runs core's `WP_Ability::execute()` for the current WordPress user:
@@ -2078,7 +2078,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   editor save, cron, REST, WP-CLI. They are in a TypedPress transaction only when the
   hook fires during a TypedPress write (see [Transactions](#transactions)). `db`
   works and, outside such a write, each write commits on its own; `ctx` and
-  `HttpError` responses don't apply, since there is no First request.
+  `HttpError` responses don't apply, since there is no TypedPress request.
 - A handler that throws is logged to the PHP error log as
   `[typedpress] tp/wp-hooks/<hook>: ...`. A filter then returns the value it was given,
   so one broken handler leaves the page as WordPress rendered it. An action's
@@ -2203,7 +2203,7 @@ call without `await`.
 Build-time evaluation forbids I/O, `Date.now()`, `new Date()`, `Math.random()`,
 and `db`, and stops runaway loops with a step budget.
 
-Imports: `"first"`, `"node:crypto"` (or `"crypto"`), relative TypeScript/ESM
+Imports: `"typedpress"`, `"node:crypto"` (or `"crypto"`), relative TypeScript/ESM
 JavaScript sources, and locally installed source packages. Package imports search the nearest `node_modules`, support scoped
 names and exact subpath exports, and select `import`/`default` export conditions,
 an explicit `module` entry, or a supported `main`/index entry. `.mjs`, `.ts` and `.mts` identify

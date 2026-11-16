@@ -210,25 +210,33 @@ The committed admin bundle is rebuilt on Linux; CI checks it byte-for-byte.
 
 ## Releases
 
-The existing unsigned release workflow also builds the static musl Linux and
-Windows compiler archives and `typedpress.wasm` for Spacefast. It never publishes npm
-packages. PRs and manual runs retain Actions artifacts. A maintainer-created
-`v<Cargo version>` tag attaches the archives, wasm, and `compiler-assets.json`
-to a GitHub release. The manifest records the exact Git revision and SHA-256 of
-each asset. Every native archive retains its source revision, editor types,
-Cargo lockfile, and original dependency license notices.
+The repository publishes four npm packages:
 
-The `spacefast` npm release owns the platform packages and their versions.
-Its `packages/cli/typedpress-compiler.json` is the package-name and compiler pin
-constant. Each platform package has the same exact npm version as `spacefast`,
-which depends on it directly through `optionalDependencies`. The compiler's
-Cargo version can differ from that npm version. Its Git source revision must
-match both the downloaded manifest and each archive's `SOURCE.json`.
-Changing that pin requires a Spacefast changeset. Users install `spacefast`
-and run `sf typedpress`; there is no `@spacefast/typedpress-v2` wrapper.
+| Package | Directory | Version | What |
+|---|---|---|---|
+| `typedpress` | `packages/cli` | the Cargo version | the command; downloads the matching prebuilt compiler |
+| `create-typedpress` | `packages/create-typedpress` | the Cargo version | `npm create typedpress` |
+| `@typedpress/astro` | `packages/astro` | its own | the Astro content loaders |
+| `@typedpress/blocks` | `packages/blocks` | its own | TSX for Gutenberg content and block themes |
 
-The independent upstream `typedpress` scaffolding and acceptance
-checks remain available. They are not dependencies of `spacefast`.
+`typedpress` and `create-typedpress` share the compiler's version: root `Cargo.toml` and both
+manifests must agree (`node scripts/release/version.mjs` checks them). The adapters are
+versioned independently.
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) runs on PRs that touch the
+release tooling, on a manual dispatch, and on a pushed `v<Cargo version>` tag. It builds seven
+native compiler archives (`typedpress-v<version>-<rust target>.tar.gz`, each with a `.sha256`)
+and `typedpress.wasm`, packs all four npm packages and checks each tarball's file list
+(`scripts/release/pack-check.mjs`: required files present, no tests, fixtures, environment
+files or keys), installs the packed `typedpress` from a local copy of the release assets,
+and runs the packed starter end to end on WordPress. Every archive carries its source
+revision, editor types, `Cargo.lock`, both license texts and every upstream notice.
+
+PRs and manual runs keep everything as an Actions artifact. A tag also attaches the archives,
+checksums, wasm, `compiler-assets.json` (the revision and SHA-256 of each asset), the exact
+source archive and the four npm tarballs to a GitHub release. The workflow never publishes
+to npm: a maintainer publishes the reviewed tarballs from that release, `typedpress` first.
+The [installation guide](docs/installation.md#maintainer-release-steps) has the steps.
 
 ## Layout
 
@@ -252,16 +260,18 @@ checks remain available. They are not dependencies of `spacefast`.
 | `runtime/admin/` | the `typedpress-admin` plugin and its screens, emitted unless `admin: false` |
 | `runtime/wp-plugin/` | the `typedpress-runtime` and `typedpress-app` plugin templates |
 | `runtime/client/` | the handwritten half of the typed client |
-| `types/typedpress/` | TypeScript declarations for `"first"` |
+| `types/typedpress/` | TypeScript declarations for `"typedpress"` |
 | `examples/` | pantry, blog, site, wp-plugins, reusable field recipes |
 | `tests/` | Rust, PHP, WordPress and system suites, fixtures |
+| `packages/` | the npm packages (see [Releases](#releases)) |
+| `www/` | the framework website, itself a TypedPress app |
 | `docs/` | API, contracts, design documents |
 
 ## Licensing
 
 Changes under `runtime/TypedPress`, `runtime/identity`, `runtime/admin` and
 `runtime/wp-plugin` are GPL-2.0-or-later; everything else
-is MIT, and bundled third-party code keeps its own license. [`LICENSE`](LICENSE) has the map.
+is MIT, and bundled third-party code keeps its own license. [`LICENSING.md`](LICENSING.md) has the map.
 Don't add a dependency to the runtime whose license is incompatible with
 GPL-2.0-or-later, and don't copy GPL code into the MIT side.
 

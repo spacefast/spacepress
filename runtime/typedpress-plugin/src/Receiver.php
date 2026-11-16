@@ -151,6 +151,9 @@ final class Receiver
             'protocol' => Site::PROTOCOL,
             'plugin' => TP_PLUGIN_VERSION,
             'pluginHash' => TP_PLUGIN_HASH,
+            // This receiver runs no app code on its own requests and publishes nothing before a
+            // build is made live, so `typedpress push --dry-run` may upload to it and plan.
+            'dryRun' => true,
             'home' => untrailingslashit(home_url()),
             'name' => get_bloginfo('name'),
             'multisite' => is_multisite(),
@@ -279,7 +282,8 @@ final class Receiver
         }
         self::current($manifest);
         $build = hash('sha256', $bytes);
-        $root = Site::root();
+        // The first build a site takes names its store.
+        $root = Site::store();
         Trees::prepare($root);
         if (!is_file("$root/build/$build.json")) {
             Trees::write($root, "build/$build.json", $bytes);
@@ -336,7 +340,8 @@ final class Receiver
 
     /**
      * One part of a tree's ZIP: `index` of `total`, and the whole ZIP's `sha256`. The last part joins
-     * them, checks the checksum, and publishes the tree if its contents are what the build names.
+     * them, checks the checksum, and stores the tree if its contents are what the build names. Nothing
+     * of it is public until the build is made live ({@see activate()}).
      */
     public static function part(\WP_REST_Request $request): array
     {
@@ -355,7 +360,7 @@ final class Receiver
         if (strlen($body) > self::PART_LIMIT) {
             throw new Refusal('tp_invalid', 'The part is larger than this site takes; send parts of the size it names.', 413);
         }
-        $root = Site::root();
+        $root = Site::store();
         $parts = "$root/.tmp/deploy-{$request['id']}-$kind";
         Trees::prepare($root);
         // One part at a time: the parts already held are counted and this one is stored under a
@@ -418,7 +423,6 @@ final class Receiver
             }
             try {
                 Trees::publish($root, $kind, $deployment['manifest'][$kind], $zip);
-                Trees::mirror($root, Site::assets(), $kind, $deployment['manifest'][$kind]);
             } catch (\RuntimeException $error) {
                 throw new Refusal('tp_invalid', $error->getMessage(), 422);
             }
@@ -443,7 +447,7 @@ final class Receiver
     {
         $deployment = self::deployment($request['id']);
         self::mounted($request['id'], $deployment, 'inspect');
-        $plan = \TypedPress\Loader\Loader::inspect(Site::root(), $deployment['build']);
+        $plan = \TypedPress\Loader\Loader::inspect((string) Site::root(), $deployment['build']);
 
         return ['build' => $deployment['build'], 'steps' => $plan['steps'], 'refusals' => $plan['refusals'], 'live' => Site::live()];
     }
@@ -456,9 +460,10 @@ final class Receiver
         if (function_exists('set_time_limit')) {
             @set_time_limit(300);
         }
-        $root = Site::root();
+        $root = Site::store();
         $build = $deployment['build'];
-        // A tree that was already in the store (an earlier deployment's) may predate its public copy.
+        // A build's browser files are made public here, when it goes live, and not when its trees
+        // are uploaded: a dry run uploads them too.
         foreach (['runtime', 'app'] as $kind) {
             Trees::mirror($root, Site::assets(), $kind, $deployment['manifest'][$kind]);
         }

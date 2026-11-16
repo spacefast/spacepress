@@ -12,7 +12,7 @@ comes next and must not need any of this undone.
 ## Decision
 
 **The form posts to the action's facade URL.** `<form action={subscribe}>`
-renders `method="post" action="/__first/api/v1/actions/subscribe"`. The request's
+renders `method="post" action="/__tp/api/v1/actions/subscribe"`. The request's
 content type picks the answer: form-encoded gets `303 See Other`, JSON is
 unchanged (`{ data }` or a problem document). The JavaScript submit will fetch
 the URL the markup already carries.
@@ -72,7 +72,7 @@ nonce.
 - Without the nonce, a signed-in cookie is not the user: the action runs signed
   out, as a JSON call without `X-WP-Nonce` does.
 
-**`useFormState(action)` from `"first/app"`** returns
+**`useFormState(action)` from `"typedpress/app"`** returns
 `{ pending, error: { code, message, fields } | null, result, values }`.
 
 - `result` is typed with the action's result.
@@ -99,3 +99,128 @@ on the result.
   a sign-in error instead of their result.
 - Nothing is stored on the server and no host hook is involved: the host keeps
   no session or per-version state for forms.
+
+## Follow-up (2026-11-16): the JavaScript submit
+
+**Problem.** With scripts on, a submit still loaded the whole page again: the
+"JavaScript submit" this decision promised wasn't built. An owner clicking
+Restock on a staff page expected it to update in place, as a `<Link>` does.
+
+**The submit is the router's.** `<form action={name}>` and the comments form
+render `data-wp-interactive="tp/router" data-wp-on--submit="actions.submit"`,
+and the router module is enqueued on any page with one, not only on pages with a
+`<Link>`. `actions.submit` sits next to `navigate` and `prefetch` in
+runtime/TypedPress/Render/client/router.js. It takes a plain submit: a form-encoded
+post, in this tab, to this site, from inside the router region. It sends the
+same body with `fetch` (`credentials: "same-origin"`; `_tp_return`,
+`_wpnonce` and the pressed button's name and value exactly as the browser sends
+them) and lets `fetch` follow the 303. The HTML of the page it comes back to
+goes to `@wordpress/interactivity-router`'s `actions.navigate(url, { html,
+force })`, the way client/live-region.js hands the router a changed region. The
+router diffs the region, so client components and scroll stay. An input whose
+server HTML has a `value` attribute (a `defaultValue`, or a value refilled from
+the flash) is reset to the value the server rendered; text typed into an input
+without one stays.
+
+- **The page is fetched once.** The flash cookie is read once and deleted with
+  that response. Following the redirect in `fetch` and handing the router that
+  HTML means the router never asks for the page again. `force` replaces any
+  cached copy of the page in the router's page cache, so going back to it
+  shows what the visitor last saw.
+- **Rejected: a JSON answer (`{ location }`) for script submits.** It needs a
+  second request for the page and a second contract on the action endpoint.
+  Following the 303 needs neither, and the server is unchanged.
+- **Rejected: `navigate(url)` after the post.** That fetches the page a second
+  time, by which point the flash is gone.
+- **Rejected: rendering the fetched HTML ourselves.** It would rebuild the
+  region and lose client state. The router already diffs.
+
+**The URL bar ends on the page without `?_flash`.** The history entry is the
+URL `fetch` ended on with the marker removed. Coming back to the page the form
+is on (compared without the marker) replaces its entry instead of adding one.
+A page the browser loaded with the marker (a post without this script) takes it
+out of the address bar with `history.replaceState` when the router module
+loads. Either way the marker never reaches a URL someone copies, bookmarks or
+shares. Reloading afterwards shows the page without the flash, which is right
+for a read-once result.
+
+**Pending is an attribute, not state.** While the post is in flight the form
+has `aria-busy="true"` and `data-tp-pending`. Its enabled submit buttons,
+including ones outside it with `form="id"`, are disabled and get
+`data-tp-pending`, and only those are enabled again afterwards. They are
+enabled just before the router swaps the page in, so the router's diff sets
+`disabled` to what the new page renders: the diff never touches an attribute
+the script set by hand. The form keeps `aria-busy` until the swap is done. A
+button the page disabled stays disabled. A second submit of the form while one is in
+flight does nothing. Authors style `form[aria-busy="true"]`.
+`useFormState().pending` stays `false`: the page is server-rendered, and a
+client copy of the form state would be a second state system for a few hundred
+milliseconds of feedback. After the swap, the element that had focus gets it
+back if the swap dropped it.
+
+**A post is never sent twice.** Once `fetch` is called, the action may have
+run. Any failure after that does not post again. That covers a rejected
+`fetch`, an answer that isn't a 2xx page from this site (a 500, a 503 problem),
+and a body that can't be read. The form is enabled again and a message
+appears in an `aria-live` alert inside it (`.tp-form-error`, translatable,
+passed through `wp_interactivity_config('tp/router')`). The browser posts
+the form itself only when the router module fails to load, because nothing has
+been sent at that point; the form stays busy while that page loads. The script
+also leaves the submit to the browser for:
+
+- another encoding (`enctype` or `formenctype`), another target or method;
+- a form outside the router region;
+- a page core marks as not client-navigable.
+
+An answer that came back to a page without a router region is loaded with a
+full navigation to its URL, without the marker. That is a second request for the
+page, so its flash is gone by then. A page the 303 came back to that answers 404
+or 500 (a deleted post's own page, say) is still that page: it is swapped in
+like a 200, because the action ran and that page is what the visitor sees without
+JavaScript. Only an answer that isn't a redirect needs a 2xx.
+
+On success the page's flash message, its first `role="status"` or
+`role="alert"` element in the region, is announced politely through one
+visually hidden live region outside the router region. Without one, the page's
+title is announced.
+
+Errors (422, a refused origin, an expired nonce) already come back as a 303 to
+the page with the error in the flash, so they take the same path as success.
+
+**Late answers lose.** Each submit records the page it was sent from, how many
+`<Link>` navigations had started, and a page-wide sequence number. Its answer is
+not rendered if any of these holds:
+
+- a `<Link>` navigation started meanwhile (counted when it is clicked, because
+  the router changes the URL only once the next page has loaded, and rendering
+  the answer before then would cancel that navigation);
+- the URL changed meanwhile (back);
+- the form is no longer on the page;
+- a later submit's answer is already on the page. That form shows a message
+  saying its result isn't shown, so a dropped answer is never silent.
+
+**`<Live>` swaps and submits take turns.** Both hand the router a whole page
+for the current URL, so the later one would undo the earlier. client/live-region.js
+waits while a submit is in flight. If a submit's page rendered while it waited,
+it doesn't apply the answer it held, since either could be newer. Instead the
+region asks again without its token, and the answer to that ask, from after the
+submit, is applied. Dropping it outright would leave the region stale, because
+the server answers "not modified" to the old token. The copy also leaves out a
+form's error message (`data-tp-form-error`). A submit waits for a `<Live>` swap in progress before rendering.
+The copy of the document a `<Live>` swap builds has the pending markers
+(`data-tp-pending`, the form's `aria-busy`, the disabled buttons) taken out.
+The shared counters live on `globalThis[Symbol.for("tp/forms")]`, which
+router.js and live-region.js both read.
+
+**Costs.**
+
+- A form must be inside the root layout's router region to submit in place.
+  TypedPress Admin and wp-login.php pages have no region, so their forms post as
+  before.
+- File inputs aren't supported: action forms are form-encoded, and an upload
+  already answers 415.
+- After a failure the visitor doesn't know whether the action ran; the message
+  says to reload and check, rather than guessing or posting again.
+- The router's loading bar shows if the page takes longer than 400 ms. The
+  screen-reader "page loaded" announcement is off for submits, because the
+  page didn't change.

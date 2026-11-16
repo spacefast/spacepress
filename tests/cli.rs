@@ -1748,7 +1748,13 @@ fn add_api_reference_builds_in_a_static_site() {
     assert_ne!(source, static_source, "the scaffold's config calls defineConfig({{");
     std::fs::write(&config, static_source).unwrap();
     let added = add(&project, &["api-reference"]);
-    assert_eq!(added.status.code(), Some(0), "{}{}", text(&added.stdout), text(&added.stderr));
+    assert_eq!(
+        added.status.code(),
+        Some(0),
+        "{}{}",
+        text(&added.stdout),
+        text(&added.stderr)
+    );
     let built = first().arg("build").arg(&project).output().unwrap();
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
 }

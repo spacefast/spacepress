@@ -269,36 +269,44 @@ const ADDRESS_FILE = 'tp-dev-address.php';
 const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require ABSPATH . '${ADDRESS_FILE}'; } // typedpress dev --url / --host`;
 
 // Where in wp-config.php the address line goes, found by PHP's own tokenizer: PHP code that reads
-// the file at the path in $tp_config and prints the byte offset of the
-// `require_once ABSPATH . 'wp-settings.php';` PHP runs, at the top level of the file, after a
-// token that ends a statement or a block. Comments, strings, heredocs, attributes and text
-// outside <?php ?> are tokens of their own there, so a copy of the require in one of them is not
-// taken. -1 when there is no such line.
+// the file at the path in $tp_config and prints the byte offset of the `require_once ABSPATH .
+// 'wp-settings.php';` that loads WordPress, or -1 when the file is not shaped so that it surely is
+// that one. The require must be the file's last code (only whitespace, comments, a `?>` and blank
+// text after it), as in wp-config-sample.php and the configs WordPress and Studio write, and the
+// code just before it must be a bare `;` or `}` (one that ends a statement or block, not a brace
+// inside a string, which is no token of its own) or the open tag. A require in a string, a
+// heredoc, a comment, an attribute or text outside PHP is not code; one in a function, class or
+// braced block is followed by that block's `}`; one that is an unbraced if/else/while body
+// follows `)` or `else`. Files
+// with alternative control syntax (`if (…): … endif;`), which can leave a block open at the end of
+// a file, are refused.
 export const SETTINGS_OFFSET = String.raw`
-$tokens = token_get_all(file_get_contents($tp_config));
 $code = array();
 $offset = 0;
-foreach ($tokens as $token) {
-  $text = is_array($token) ? $token[1] : $token;
+foreach (token_get_all(file_get_contents($tp_config)) as $token) {
   $id = is_array($token) ? $token[0] : null;
-  if (!in_array($id, array(T_WHITESPACE, T_COMMENT, T_DOC_COMMENT), true)) $code[] = array($id, $text, $offset);
+  $text = is_array($token) ? $token[1] : $token;
+  $skip = in_array($id, array(T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_CLOSE_TAG), true) || ($id === T_INLINE_HTML && trim($text) === '');
+  if (!$skip) $code[] = array($id, $text, $offset);
   $offset += strlen($text);
 }
-$depth = 0;
 $found = -1;
-foreach ($code as $i => $t) {
-  if ($t[1] === '{' || $t[0] === T_CURLY_OPEN || $t[0] === T_DOLLAR_OPEN_CURLY_BRACES) $depth++;
-  if ($t[1] === '}') $depth--;
-  if ($depth !== 0 || ($t[0] !== T_REQUIRE_ONCE && $t[0] !== T_REQUIRE)) continue;
-  $rest = array_pad(array_map(function ($c) { return $c[1]; }, array_slice($code, $i + 1, 6)), 6, '');
-  $paren = $rest[0] === '(';
-  $args = $paren ? array_slice($rest, 1) : $rest;
-  if ($args[0] !== 'ABSPATH' || $args[1] !== '.' || !in_array($args[2], array("'wp-settings.php'", '"wp-settings.php"'), true)) continue;
-  if (($paren ? $args[3] . $args[4] : $args[3]) !== ($paren ? ');' : ';')) continue;
-  $previous = $i > 0 ? $code[$i - 1] : null;
-  if ($previous !== null && !in_array($previous[1], array(';', '{', '}'), true) && $previous[0] !== T_OPEN_TAG) continue;
-  $found = $t[2];
-  break;
+$ends = array(T_ENDIF, T_ENDWHILE, T_ENDFOR, T_ENDFOREACH, T_ENDSWITCH, T_ENDDECLARE);
+$alternative = false;
+foreach ($code as $t) $alternative = $alternative || in_array($t[0], $ends, true);
+$is = function ($t, $want) {
+  if ($want === 'require') return $t[0] === T_REQUIRE_ONCE || $t[0] === T_REQUIRE;
+  if ($want === 'ABSPATH') return $t[0] === T_STRING && $t[1] === 'ABSPATH';
+  if ($want === 'file') return $t[0] === T_CONSTANT_ENCAPSED_STRING && ($t[1] === "'wp-settings.php'" || $t[1] === '"wp-settings.php"');
+  return $t[0] === null && $t[1] === $want;
+};
+foreach (array(array('require', 'ABSPATH', '.', 'file', ';'), array('require', '(', 'ABSPATH', '.', 'file', ')', ';')) as $shape) {
+  $i = count($code) - count($shape);
+  if ($alternative || $i < 1) continue;
+  $match = true;
+  foreach ($shape as $k => $want) $match = $match && $is($code[$i + $k], $want);
+  $before = $code[$i - 1];
+  if ($match && ($before[0] === T_OPEN_TAG || ($before[0] === null && ($before[1] === ';' || $before[1] === '}')))) $found = $code[$i][2];
 }
 echo $found;
 `;

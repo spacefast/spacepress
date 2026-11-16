@@ -247,6 +247,18 @@ function patch(source) {
   }
 }
 
+const ADDRESS = "if ( is_file( ABSPATH . 'tp-dev-address.php' ) ) { require ABSPATH . 'tp-dev-address.php'; } // typedpress dev --url / --host";
+
+test('PHP prints an offset, or the start is refused', async () => {
+  // Anything but a number from PHP (a notice, a warning) is refused, never read as an offset.
+  await assert.rejects(settingsOffset(async () => 'Notice: something 12\n3', '/x'), /Could not read wp-config\.php/);
+  assert.equal(await settingsOffset(async () => '42\n', '/x'), 42);
+  // The path reaches PHP as one escaped string: a quote in it doesn't end the string.
+  let seen = '';
+  await settingsOffset(async (code) => { seen = code; return '-1'; }, "/tmp/it's/wp-config.php");
+  assert.ok(seen.startsWith("$tp_config = '/tmp/it\\'s/wp-config.php';"), seen);
+});
+
 test('the address reaches WordPress before it loads, from one line in wp-config.php', async () => {
   const php = addressPhp('https://box.example.ts.net:8443');
   assert.equal(php.split("'https://box.example.ts.net:8443'").length, 2);
@@ -293,6 +305,22 @@ test('the address reaches WordPress before it loads, from one line in wp-config.
     assert.equal(lines[at - 1], '}', decoy);
     assert.equal(lines.filter((line) => line.startsWith('if ( is_file( ABSPATH')).length, 1, decoy);
   }
+  // Braces in strings are no tokens of their own, so they open and close nothing; a dormant require
+  // in a function body is not the last statement. The bootstrap at the end is the one patched.
+  for (const lead of ['$help = "$x}";\nfunction f() {\n' + settings + '\n}', '$help = "$x{";', '$help = "${x}";\n$y = "{$z}";']) {
+    const source = `<?php\n${lead}\n${settings}\n`;
+    const lines = (await patch(source)).split('\n');
+    assert.equal(lines.at(-3), ADDRESS, lead);
+    assert.equal(lines.at(-2), settings, lead);
+  }
+  // Alternative control syntax can leave a block open at the end of a file: refused, not guessed.
+  await assert.rejects(patch(`<?php\nif (false):\n$a = 1;\n${settings}\nendif;\n${settings}\n`), /in a statement of its own/);
+  // Code after the require: it isn't the last statement, so refused.
+  await assert.rejects(patch(`<?php\n${settings}\ndefine( 'LATE', 1 );\n`), /in a statement of its own/);
+  // The require must start its line: another statement before it on the line is refused.
+  await assert.rejects(patch(`<?php\n$a = 1; ${settings}\n`), /in a statement of its own/);
+  // A closing tag and blank text after it are fine.
+  assert.match(await patch(`<?php\n${settings}\n?>\n\n`), /tp-dev-address\.php/);
   // Only in a decoy: nothing runs it, so nothing is changed.
   await assert.rejects(patch(`<?php\n/*\n${settings}\n*/\n`), /in a statement of its own/);
   const commented = await patch("<?php\ndefine( 'A', 1 ); // one\n/** Sets up WordPress vars and included files. */\nrequire_once( ABSPATH . 'wp-settings.php' );\n");

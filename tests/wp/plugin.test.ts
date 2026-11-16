@@ -512,6 +512,10 @@ test("a runtime-only update converts the blog's old ledger on its next request, 
   sql("DROP TABLE wp_tp__migrations");
   sql("CREATE TABLE wp_tp__migrations (`id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB");
   sql("INSERT INTO wp_tp__migrations (id, applied_at) VALUES ('0001_init', '2026-01-01T00:00:00.000Z')");
+  // A runtime update ships new runtime files, so the site's install marker (keyed by the runtime's
+  // hash) no longer matches and the next request checks storage again; here only the ledger changed.
+  sql("DELETE FROM wp_options WHERE option_name = 'tp_installed'");
+  wp("cache", "flush");
   const comments = sql("SELECT COUNT(*) AS n FROM wp_tp_comments")[0].n;
   try {
     assert.equal((await fetch(`${api}/comments?limit=1`)).status, 200);

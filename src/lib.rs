@@ -27,6 +27,7 @@ pub mod layout;
 pub mod loader;
 pub mod lower;
 pub mod migrate;
+mod minify;
 pub mod num;
 pub mod openapi;
 pub mod pipeline;

@@ -35,7 +35,7 @@ final class Module
     {
         Extensions::route('auth', self::route(...));
         Extensions::beforeRead(self::guardQuery(...), constraintSafe: true);
-        Extensions::onRead(self::strip(...), constraintSafe: true);
+        Extensions::onRead(self::strip(...), constraintSafe: true, reads: static fn (): array => []);
         Extensions::normalizeWrite(self::password(...));
         Extensions::onWrite(self::guardWrite(...));
         Extensions::schemaDescribe(self::describe(...));

@@ -272,7 +272,8 @@ final class WpPostStore implements Store
         $pk = $spec['primaryKey'];
         $lists = $nested = [];
         foreach ($spec['columns'] as $col => $def) {
-            if ($this->isMeta($spec, (string) $col)) {
+            // A read that selected some columns (`columns`) finishes only those.
+            if ($this->isMeta($spec, (string) $col) && array_key_exists($col, $rows[0])) {
                 if ($def['type'] === 'select' || $def['type'] === 'mediaList') {
                     $lists[] = (string) $col;
                 } elseif (in_array($def['type'], ['group', 'repeater', 'blocks'], true)) {

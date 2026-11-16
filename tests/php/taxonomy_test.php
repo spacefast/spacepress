@@ -184,4 +184,16 @@ eq('core terms controller: the overridden handlers take ($request)', array_map(s
 eq('core terms controller: prepare_item_for_response($item, $request), get_collection_params()', [$member(WP_REST_Terms_Controller::class, 'prepare_item_for_response'), $member(WP_REST_Terms_Controller::class, 'get_collection_params')], [['public', 2, 2], ['public', 0, 0]]);
 eq('core term meta fields: constructed with ($taxonomy); get_value($object_id, $request)', [$member(WP_REST_Term_Meta_Fields::class, '__construct'), $member(WP_REST_Meta_Fields::class, 'get_value')], [['public', 1, 1], ['public', 2, 2]]);
 
+// `columns` on a term-backed kind: only what was asked (and the key) is selected, the result as before.
+$statements = [];
+\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
+    $statements[] = $sql;
+};
+$narrow = $db->findMany('topics', ['columns' => ['name' => true, 'shades' => true], 'orderBy' => ['id' => 'asc']]);
+\TypedPress\Wp\Connection::$observer = null;
+$wide = array_map(static fn (array $r): array => array_intersect_key($r, array_flip(['name', 'shades'])), $db->findMany('topics', ['orderBy' => ['id' => 'asc']]));
+eq('a term read with columns returns what reading every column gave', $narrow, $wide);
+$termSql = array_values(array_filter($statements, static fn (string $s): bool => str_contains($s, 'AS `name`')))[0] ?? '';
+check('and selects no other term field or meta join', !str_contains($termSql, 'AS `color`') && !str_contains($termSql, 'AS `description`') && !str_contains($termSql, "meta_key = 'tp_color'"), $termSql);
+
 finish('taxonomy');

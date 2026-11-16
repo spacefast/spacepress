@@ -10,7 +10,7 @@ final class Platform
     public const MYSQL = '8.0';
     public const MARIADB = '10.11';
     /** The SQLite Database Integration plugin (WordPress Playground, sites without a MySQL server). */
-    public const SQLITE = '3.1.2';
+    public const SQLITE = '3.1.1';
     public const PLUGINS = [
         'secure-custom-fields' => ['version' => '6.9.7', 'sha256' => '5b10edab948f64b84d44d81a29fd5794a2573205e0d5e7ea9538024fc93ff52c'],
         'action-scheduler' => ['version' => '4.2.0', 'sha256' => 'a360712a5adb066a0d60db76cbe2768234731cbcc363ba7dc2d51bf4559e4551'],

@@ -3,7 +3,7 @@ pub const PHP: &str = "8.2";
 pub const MYSQL: &str = "8.0";
 pub const MARIADB: &str = "10.11";
 /// The SQLite Database Integration plugin: WordPress on SQLite (Playground, sites without a MySQL server).
-pub const SQLITE: &str = "3.1.2";
+pub const SQLITE: &str = "3.1.1";
 pub const SERIES: &str = "0.3";
 
 /// Exact platform floors; user pins may override them only without lowering a floor.

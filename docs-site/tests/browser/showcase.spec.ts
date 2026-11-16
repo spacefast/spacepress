@@ -59,6 +59,9 @@ test("the explorer follows the site's dark theme", async ({ page }) => {
 	const scheme = (selector: string) => page.locator(selector).first().evaluate((el) => getComputedStyle(el).colorScheme);
 	expect(await scheme(".explorer file-tree-container")).toBe("dark");
 	expect(await scheme(".explorer-config diffs-container")).toBe("dark");
+	// The explorer opens the app's functions.php itself and scrolls the tree to it. Wait for that, so
+	// the click below lands on a row that has stopped moving.
+	await expect(viewer(page)).toContainText("function escapeHtml(");
 	await row(page, `${plugins}/typedpress-app-reading-list/tp/app/schema.php`).click();
 	await expect(viewer(page)).toContainText("<?php");
 	expect(await scheme(".explorer-loaded diffs-container")).toBe("dark");

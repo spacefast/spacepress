@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Zero Admin
- * Description: Optional admin screens for a Zero app: collections, media and globals on top of the Zero runtime.
+ * Description: WordPress admin and Zero collections, tables, media and globals in one optional interface.
  * Version: {{zeroVersion}}
  * Requires at least: {{wpVersion}}
  * Requires PHP: {{phpVersion}}

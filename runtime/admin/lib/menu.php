@@ -26,3 +26,14 @@ add_action( 'zero_admin_init', static function () {
     zero_admin_register_menu_item( 'globals', array( 'to' => '/globals', 'label' => __( 'Globals', 'zero-admin' ), 'icon' => 'dashicons-admin-settings' ) );
     zero_admin_register_menu_item( 'classic', array( 'to' => admin_url(), 'label' => __( 'Classic admin', 'zero-admin' ), 'icon' => 'dashicons-wordpress' ) );
 } );
+
+// Zero collections already have access-aware entries. Keep native WordPress types alongside them.
+add_filter( 'zero_admin_native_post_types', static function ( $types ) {
+    unset( $types['attachment'] );
+    foreach ( \Zero\Wp\Runtime::plugin()->schema->collections() as $collection ) {
+        if ( isset( $collection['wp']['postType'] ) ) {
+            unset( $types[$collection['wp']['postType']] );
+        }
+    }
+    return $types;
+} );

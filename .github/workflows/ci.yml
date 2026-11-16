@@ -136,6 +136,9 @@ jobs:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ runner.os }}-${{ hashFiles('runtime/admin/apps/pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
+      - name: Verify retained upstream admin sources
+        working-directory: ${{ github.workspace }}
+        run: node --test tests/wp/admin/upstream-drift.test.mjs
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
@@ -143,7 +146,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           git diff --exit-code -- runtime/admin/build
-          untracked=$(git ls-files --others --exclude-standard -- runtime/admin/build)
+          untracked=$(git ls-files --others -- runtime/admin/build)
           if [ -n "$untracked" ]; then
             printf 'Untracked admin bundle files:\n%s\n' "$untracked"
             exit 1
@@ -166,6 +169,7 @@ jobs:
       - run: node --test runtime/client/index.test.ts
       - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
       - run: node --test scripts/dev/studio.test.mjs
+      - run: node --test packages/cli/test/*.test.mjs packages/create-zero/test/*.test.mjs scripts/release/archive.test.mjs
 
   wp:
     runs-on: ubuntu-24.04

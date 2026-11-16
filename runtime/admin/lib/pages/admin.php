@@ -45,8 +45,7 @@ wp_register_script( 'zero-admin-gutenberg-experiments', '', array(), defined( 'G
 wp_add_inline_script( 'zero-admin-gutenberg-experiments', 'window.__experimentalDataViewsMediaModal = true' );
 wp_enqueue_script( 'zero-admin-gutenberg-experiments' );
 
-// The boot module's dependencies. The build output is committed separately; until it exists the
-// page still renders its shell and payload, which is what the harness proves at this stage.
+// The boot module dependencies come from the committed module build.
 $asset_file = is_file( ZERO_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php' )
 	? include ZERO_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php'
 	: array(
@@ -80,13 +79,15 @@ wp_add_inline_script(
 function zero_admin_get_boot_context() {
 	return apply_filters(
 		'zero_admin_boot_context',
-		array(
+		array_merge( zero_admin_get_dashboard_context(), array(
 			'logout_url' => html_entity_decode( wp_logout_url() ),
+			'dashboard_widget_types' => zero_admin_get_dashboard_widgets(),
+			'dashboard_default_layout' => apply_filters( 'zero_admin_dashboard_widgets', array() ),
 			// Where this admin is mounted and where wp-admin is: a WordPress installed below the
 			// origin root (`/blog/`) routes and frames correctly only if the app learns both here.
 			'mount_url'  => zero_admin_url( '/' ),
 			'admin_url'  => admin_url(),
-		)
+		) )
 	);
 }
 
@@ -173,6 +174,15 @@ foreach ( zero_admin_get_admin_routes() as $route ) {
 			'id'     => $route['content_module'],
 		);
 	}
+}
+
+// Native widgets are lazy script modules and need entries in the import map.
+foreach ( zero_admin_get_dashboard_widgets() as $widget ) {
+    foreach ( array( 'render_module', 'widget_module' ) as $key ) {
+        if ( ! empty( $widget[$key] ) ) {
+            $boot_dependencies[] = array( 'import' => 'dynamic', 'id' => $widget[$key] );
+        }
+    }
 }
 
 // Add all registered init modules as dependencies.

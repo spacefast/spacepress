@@ -35,5 +35,8 @@ ownership and storage configuration remain in place.
 Collections in the sidebar expands to the app's readable collections. Choose
 All collections to return to the overview. Classic admin opens the full native
 WordPress admin, including its sidebar and plugin screens. Choose Zero in the
-WordPress sidebar to return to Zero Admin. WordPress manages users, settings,
-themes and plugins through these native screens.
+WordPress sidebar to return to Zero Admin. Zero Admin also includes the native Users, Settings, Plugins, Themes and Design
+routes. Classic admin remains available for every WordPress plugin screen.
+The upstream dashboard is at /zero-admin/dashboard; demonstration widgets
+explicitly label their example data. See docs/admin.md for provenance, build
+commands and external-service boundaries.

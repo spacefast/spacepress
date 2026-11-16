@@ -28,7 +28,8 @@
 		"esbuild-sass-plugin": "catalog:",
 		"lightningcss": "catalog:",
 		"listr2": "catalog:",
-		"sass-embedded": "catalog:"
+		"sass-embedded": "catalog:",
+		"resolve-pkg": "^2.0.0"
 	},
 	"peerDependencies": {
 		"browserslist": "catalog:"

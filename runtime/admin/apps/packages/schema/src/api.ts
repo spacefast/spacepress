@@ -327,3 +327,11 @@ export async function list(
 			: undefined,
 	};
 }
+
+/** Resolve editor navigation through the active Zero adapter or the native WordPress routes. */
+export function entityEditorPath(postType: string, postId: string): string {
+    const collection = Object.entries(bootstrap().native).find(([, value]) => value.postType === postType)?.[0];
+    return collection
+        ? `/collections/${encodeURIComponent(collection)}/${encodeURIComponent(postId)}`
+        : `/types/${encodeURIComponent(postType)}/edit/${encodeURIComponent(postId)}`;
+}

@@ -1,4 +1,4 @@
-import { collectionForPostType } from '@zero-admin/schema';
+import { entityEditorPath } from '@zero-admin/schema';
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, privateApis as routePrivateApis } from '@wordpress/route';
 import { unlock } from '@zero-admin/admin-toolkit';
@@ -61,9 +61,7 @@ export function useNavigateToEntity(
 		( params: EntityRecord ) => {
 			// Navigate to the new entity
 			navigate( {
-				to: `/collections/${ collectionForPostType(params.postType) }/${ encodeURIComponent(
-					params.postId
-				) }`,
+				to: entityEditorPath(params.postType, params.postId),
 			} );
 		},
 		[ navigate ]

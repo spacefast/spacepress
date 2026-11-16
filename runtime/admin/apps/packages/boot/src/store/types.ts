@@ -1,5 +1,10 @@
 import type { ComponentType, ComponentProps } from 'react';
 import type { Icon } from '@wordpress/ui';
+import type {
+	Dashboard,
+	DashboardWidget,
+	RegisteredDashboardWidgetType,
+} from '@zero-admin/dashboard';
 
 interface RouteSurfaces {
 	// `content` is the main surface of the route, where the primary content is displayed (TanStack Router's `Outlet`).
@@ -28,7 +33,7 @@ type CanvasExtraOptions = {
 	/**
 	 * The link to the edit page of the post.
 	 */
-	editLink?: string;
+	editLink?: string | null;
 };
 
 export type UrlCanvas = { url: string };
@@ -87,7 +92,7 @@ export interface Route {
 		params: Record< string, string >;
 		search: Record< string, unknown >;
 	} ) => string | Promise< string >;
-	beforeLoad?: ( context: { params: Record<string, string>; search: Record<string, unknown> } ) => void | Promise<void>;
+	beforeLoad?: (context: { params: Record<string, string>; search: Record<string, unknown> }) => void | Promise<void>;
 	staticData?: Record< string, unknown >;
 	canvas?: ( {
 		params,
@@ -122,7 +127,7 @@ export interface Route {
 	/**
 	 * TanStack Router gcTime (milliseconds) for loader cache eviction.
 	 *
-	 * Zero Admin-only: not present in Gutenberg's routing framework.
+	 * CIAB-only: not present in Gutenberg's routing framework.
 	 * Remove when migrating to Gutenberg. Do not rely on this for new routes.
 	 */
 	gc_time?: number;
@@ -160,6 +165,8 @@ export interface MenuItem {
 	) => void | Promise< void > | Promise< unknown >;
 }
 
+export type { RegisteredDashboardWidgetType };
+
 /**
  * Nudge interface matching backend structure.
  */
@@ -188,10 +195,53 @@ export interface EntityDependency {
 }
 
 /**
- * Context the page hands the app at boot.
+ * Infer notice types from Dashboard component props.
+ */
+type DashboardProps = ComponentProps< typeof Dashboard >;
+type DashboardNoticeType = NonNullable< DashboardProps[ 'notices' ] >[ number ];
+type DashboardNoticeAction = NonNullable<
+	DashboardNoticeType[ 'actions' ]
+>[ number ];
+
+/**
+ * Action with click handler for store-registered notices.
+ */
+export interface DashboardNoticeConfigAction extends DashboardNoticeAction {
+	onClick: () => void;
+}
+
+/**
+ * Dashboard notice configuration.
+ * Extends inferred props with store-specific properties.
+ */
+export interface DashboardNoticeConfig
+	extends Omit< DashboardNoticeType, 'actions' > {
+	actions?: DashboardNoticeConfigAction[];
+	/**
+	 * Function that returns whether notice should be shown.
+	 * This allows reactive notices that respond to data changes.
+	 */
+	shouldShow?: () => boolean;
+	/**
+	 * Optional priority for ordering (higher = shown first).
+	 */
+	priority?: number;
+	/**
+	 * Entity record dependencies that this notice depends on.
+	 * The dashboard will subscribe to these to trigger re-renders when data changes.
+	 */
+	dataDependencies?: EntityDependency[];
+}
+
+/**
+ * Dashboard context data from plugins via filter.
  */
 export interface DashboardContext {
+	dashboard_widget_types?: RegisteredDashboardWidgetType[];
+	dashboard_default_layout?: DashboardWidget<unknown>[];
 	logout_url: string;
+	overrideRoute?: string;
+	partner: { slug: string; dashboard_url: string; dashboard_name: string };
 	[ key: string ]: unknown;
 }
 
@@ -200,7 +250,10 @@ export interface DashboardContext {
  * Used to provide type safety when using useSelect with the zero-admin store.
  */
 export interface StoreSelectors {
+	getDashboardWidgetTypes: () => RegisteredDashboardWidgetType[];
+	getDashboardNotices: () => DashboardNoticeConfig[];
 	getDashboardContext: () => DashboardContext;
+	getDashboardDefaultLayout: () => DashboardWidget< unknown >[];
 }
 
 /**

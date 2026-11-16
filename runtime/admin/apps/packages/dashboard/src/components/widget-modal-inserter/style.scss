@@ -1,0 +1,7 @@
+.zero-admin-dashboard-widget-modal-inserter .components-modal__content {
+	padding: 0;
+
+	> div:not( .components-modal__header ) {
+		height: 100%;
+	}
+}

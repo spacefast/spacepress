@@ -1,0 +1,266 @@
+import { unlock } from '@zero-admin/admin-toolkit';
+import type { GlobalStylesConfig } from '@zero-admin/global-styles-engine';
+import { __, sprintf } from '@wordpress/i18n';
+import { Button, Composite } from '@wordpress/components';
+import { dateI18n, getDate, humanTimeDiff, getSettings } from '@wordpress/date';
+import { store as coreStore } from '@wordpress/core-data';
+import { useSelect } from '@wordpress/data';
+// @ts-expect-error - WordPress block-editor package doesn't have complete type definitions
+import { privateApis as blockEditorPrivateApis } from '@wordpress/block-editor';
+import { ENTER, SPACE } from '@wordpress/keycodes';
+
+const DAY_IN_MILLISECONDS = 60 * 60 * 1000 * 24;
+const { getGlobalStylesChanges } = unlock( blockEditorPrivateApis );
+
+interface Revision extends GlobalStylesConfig {
+	id: string | number;
+	author?: {
+		name: string;
+		avatar_urls?: Record< string, string >;
+		id?: number;
+		url?: string;
+	};
+	modified?: string;
+	isLatest?: boolean;
+}
+
+interface ChangesSummaryProps {
+	revision: Revision;
+	previousRevision?: Revision;
+}
+
+function ChangesSummary( { revision, previousRevision }: ChangesSummaryProps ) {
+	const changes: string[] = getGlobalStylesChanges(
+		revision,
+		previousRevision,
+		{
+			maxResults: 7,
+		}
+	);
+
+	if ( ! changes.length ) {
+		return null;
+	}
+
+	return (
+		<ul
+			data-testid="global-styles-revision-changes"
+			className="zero-admin-global-styles-screen-revisions__changes"
+		>
+			{ changes.map( ( change ) => (
+				<li key={ change }>{ change }</li>
+			) ) }
+		</ul>
+	);
+}
+
+/**
+ * Returns a button label for the revision.
+ * @param id
+ * @param authorDisplayName
+ * @param formattedModifiedDate
+ * @param areStylesEqual
+ */
+function getRevisionLabel(
+	id: string | number,
+	authorDisplayName: string,
+	formattedModifiedDate: string,
+	areStylesEqual: boolean
+): string {
+	if ( 'parent' === id ) {
+		return __( 'Reset the styles to the theme defaults', 'zero-admin' );
+	}
+
+	if ( 'unsaved' === id ) {
+		return sprintf(
+			/* translators: %s: author display name */
+			__( 'Unsaved changes by %s', 'zero-admin' ),
+			authorDisplayName
+		);
+	}
+
+	return areStylesEqual
+		? sprintf(
+				// translators: 1: author display name. 2: revision creation date.
+				__(
+					'Changes saved by %1$s on %2$s. This revision matches current editor styles.',
+					'zero-admin'
+				),
+				authorDisplayName,
+				formattedModifiedDate
+		  )
+		: sprintf(
+				// translators: 1: author display name. 2: revision creation date.
+				__( 'Changes saved by %1$s on %2$s', 'zero-admin' ),
+				authorDisplayName,
+				formattedModifiedDate
+		  );
+}
+
+interface RevisionButtonsProps {
+	userRevisions: Revision[];
+	selectedRevisionId?: string | number;
+	onChange: ( revision: Revision ) => void;
+	canApplyRevision?: boolean;
+	onApplyRevision?: () => void;
+}
+
+/**
+ * Returns a rendered list of revisions buttons.
+ * @param root0
+ * @param root0.userRevisions
+ * @param root0.selectedRevisionId
+ * @param root0.onChange
+ * @param root0.canApplyRevision
+ * @param root0.onApplyRevision
+ */
+function RevisionsButtons( {
+	userRevisions,
+	selectedRevisionId,
+	onChange,
+	canApplyRevision,
+	onApplyRevision,
+}: RevisionButtonsProps ) {
+	const { currentThemeName, currentUser } = useSelect( ( select ) => {
+		const { getCurrentTheme, getCurrentUser } = select( coreStore );
+		const currentTheme = getCurrentTheme();
+		return {
+			currentThemeName:
+				currentTheme?.name?.rendered || currentTheme?.stylesheet,
+			currentUser: getCurrentUser(),
+		};
+	}, [] );
+	const dateNowInMs = getDate( null ).getTime();
+	const { datetimeAbbreviated } = getSettings().formats;
+
+	return (
+		<Composite
+			orientation="vertical"
+			className="zero-admin-global-styles-screen-revisions__revisions-list"
+			aria-label={ __( 'Global styles revisions list', 'zero-admin' ) }
+			role="listbox"
+		>
+			{ userRevisions.map( ( revision, index ) => {
+				const { id, author, modified } = revision;
+				const isUnsaved = 'unsaved' === id;
+				// Unsaved changes are created by the current user.
+				const revisionAuthor = isUnsaved ? currentUser : author;
+				const authorDisplayName =
+					revisionAuthor?.name || __( 'User', 'zero-admin' );
+				const authorAvatar = revisionAuthor?.avatar_urls?.[ '48' ];
+				const isFirstItem = index === 0;
+				const isSelected = selectedRevisionId
+					? selectedRevisionId === id
+					: isFirstItem;
+				const areStylesEqual = ! canApplyRevision && isSelected;
+				const isReset = 'parent' === id;
+				const modifiedDate = getDate( modified ?? null );
+				const displayDate =
+					modified &&
+					dateNowInMs - modifiedDate.getTime() > DAY_IN_MILLISECONDS
+						? dateI18n( datetimeAbbreviated, modifiedDate )
+						: humanTimeDiff( modified ?? modifiedDate, undefined );
+				const revisionLabel = getRevisionLabel(
+					id,
+					authorDisplayName,
+					dateI18n( datetimeAbbreviated, modifiedDate ),
+					areStylesEqual
+				);
+
+				return (
+					<Composite.Item
+						key={ id }
+						className="zero-admin-global-styles-screen-revisions__revision-item"
+						aria-current={ isSelected }
+						role="option"
+						onKeyDown={ ( event ) => {
+							const { keyCode } = event;
+							if ( keyCode === ENTER || keyCode === SPACE ) {
+								onChange( revision );
+							}
+						} }
+						onClick={ ( event ) => {
+							event.preventDefault();
+							onChange( revision );
+						} }
+						aria-selected={ isSelected }
+						aria-label={ revisionLabel }
+						render={ <div /> }
+					>
+						<span className="zero-admin-global-styles-screen-revisions__revision-item-wrapper">
+							{ isReset ? (
+								<span className="zero-admin-global-styles-screen-revisions__description">
+									{ __( 'Default styles', 'zero-admin' ) }
+									<span className="zero-admin-global-styles-screen-revisions__meta">
+										{ currentThemeName }
+									</span>
+								</span>
+							) : (
+								<span className="zero-admin-global-styles-screen-revisions__description">
+									{ isUnsaved ? (
+										<span className="zero-admin-global-styles-screen-revisions__date">
+											{ __( '(Unsaved)', 'zero-admin' ) }
+										</span>
+									) : (
+										<time
+											className="zero-admin-global-styles-screen-revisions__date"
+											dateTime={ modified }
+										>
+											{ displayDate }
+										</time>
+									) }
+									<span className="zero-admin-global-styles-screen-revisions__meta">
+										<img
+											alt={ authorDisplayName }
+											src={ authorAvatar }
+										/>
+										{ authorDisplayName }
+									</span>
+									{ isSelected && (
+										<ChangesSummary
+											revision={ revision }
+											previousRevision={
+												index < userRevisions.length
+													? userRevisions[ index + 1 ]
+													: undefined
+											}
+										/>
+									) }
+								</span>
+							) }
+						</span>
+						{ isSelected &&
+							( areStylesEqual ? (
+								<p className="zero-admin-global-styles-screen-revisions__applied-text">
+									{ __(
+										'These styles are already applied to your site.',
+										'zero-admin'
+									) }
+								</p>
+							) : (
+								<Button
+									size="compact"
+									variant="primary"
+									className="zero-admin-global-styles-screen-revisions__apply-button"
+									onClick={ onApplyRevision }
+									aria-label={ __(
+										'Apply the selected revision to your site.',
+										'zero-admin'
+									) }
+								>
+									{ isReset
+										? __(
+												'Reset to defaults',
+												'zero-admin'
+										  )
+										: __( 'Apply', 'zero-admin' ) }
+								</Button>
+							) ) }
+					</Composite.Item>
+				);
+			} ) }
+		</Composite>
+	);
+}
+
+export default RevisionsButtons;

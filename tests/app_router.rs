@@ -2027,9 +2027,10 @@ export const nope = state.result?.nope;
 
 /// The JavaScript submit (rendering.md §4.2), in Chromium on tests/fixtures/forms: a submit swaps
 /// the page it comes back to into the router region with no page load, the page with the flash is
-/// fetched once, the URL bar ends on the page without `?_flash`, the form is busy while the post is
-/// in flight, a refusal (422) shows its error in place, and a network failure falls back to the
-/// browser's own post.
+/// fetched once, the URL bar ends on the page without `?_flash`, and the form is busy while the post
+/// is in flight. A second submit then, a failure after the post was sent, and a `<Link>` click or a
+/// `<Live>` update during it never post again or undo each other. Only a router module that can't
+/// load falls back to the browser's own post.
 #[test]
 fn forms_submit_in_place_in_the_browser() {
     assert!(
@@ -2078,12 +2079,18 @@ fn forms_submit_in_place_in_the_browser() {
     );
     assert_eq!(
         seen["pending"],
-        serde_json::json!({ "busy": "true", "disabled": true }),
+        serde_json::json!({ "busy": "true", "disabled": [true] }),
         "{seen}"
     );
     let success = &seen["success"];
     assert_eq!(
         success["done"], "Subscribed ada@example.test for 3 (weekly: true)",
+        "{seen}"
+    );
+    // A second submit while the first was in flight sent nothing.
+    assert_eq!(
+        success["posts"],
+        serde_json::json!(["/__first/api/v1/actions/subscribe"]),
         "{seen}"
     );
     // The same document: the window marker survives and no navigation entry was added.
@@ -2109,7 +2116,7 @@ fn forms_submit_in_place_in_the_browser() {
     );
     assert_eq!(
         success["afterPending"],
-        serde_json::json!({ "busy": null, "disabled": false }),
+        serde_json::json!({ "busy": null, "disabled": [false] }),
         "{seen}"
     );
     assert_eq!(
@@ -2139,10 +2146,55 @@ fn forms_submit_in_place_in_the_browser() {
         "{seen}"
     );
     assert_eq!(refused["requests"].as_array().map(Vec::len), Some(1), "{seen}");
-    // No network for the fetch: the browser posts the form itself, as without JavaScript.
+    // The pressed button's value is the input, from inside the form and from a `form="vote"` button
+    // outside it, which is disabled and marked while pending; a button the page disabled stays so.
     assert_eq!(
-        seen["offline"],
-        serde_json::json!({ "done": "Subscribed lin@example.test for 2 (weekly: true)", "marker": null, "flashInUrl": true }),
+        seen["buttons"],
+        serde_json::json!({ "maybe": "Voted maybe", "no": "Voted no", "outsidePending": [true, true], "yesPending": false, "after": [false, false] }),
+        "{seen}"
+    );
+    // A 500 after the action ran, and a dropped connection: an error in the form, one post each.
+    assert_eq!(
+        seen["failed"],
+        serde_json::json!({
+            "posts": ["/__first/api/v1/actions/subscribe"],
+            "message": ["alert", true],
+            "afterPending": { "busy": null, "disabled": [false] },
+            "marker": "same document",
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["dropped"],
+        serde_json::json!({ "posts": ["/__first/api/v1/actions/subscribe"], "message": true, "marker": "same document" }),
+        "{seen}"
+    );
+    // A `<Link>` click during a submit: the linked page stays; the late answer isn't rendered.
+    assert_eq!(
+        seen["link"],
+        serde_json::json!({ "url": "/other", "other": true, "voted": false, "marker": "same document" }),
+        "{seen}"
+    );
+    // A `<Live>` update during a submit waits for it: the page that comes back has both entries,
+    // and no pending marker from the copy the update would have used.
+    assert_eq!(
+        seen["live"],
+        serde_json::json!({
+            "write": 201,
+            "whileHeld": [],
+            "heldBusy": "true",
+            "signed": "Signed Mine",
+            "entries": ["Theirs", "Mine"],
+            "afterPending": { "busy": null, "disabled": [false] },
+        }),
+        "{seen}"
+    );
+    assert_eq!(seen["ranOnce"], serde_json::json!({ "posts": 1, "rows": 1 }), "{seen}");
+    // The router module can't load: the browser posts the form itself, nothing sent before; the
+    // address bar loses `?_flash` when the page's module runs.
+    assert_eq!(
+        seen["fallback"],
+        serde_json::json!({ "done": "Subscribed lin@example.test for 2 (weekly: false)", "marker": null, "url": "/?ref=nav" }),
         "{seen}"
     );
 }

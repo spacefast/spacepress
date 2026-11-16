@@ -110,14 +110,17 @@ Restock on a staff page expected it to update in place, as a `<Link>` does.
 render `data-wp-interactive="first/router" data-wp-on--submit="actions.submit"`,
 and the router module is enqueued on any page with one, not only on pages with a
 `<Link>`. `actions.submit` sits next to `navigate` and `prefetch` in
-runtime/First/Render/client/router.js. It takes a plain submit (a post, in this
-tab, to this site, from inside the router region), sends the same form-encoded
-body with `fetch` (`credentials: "same-origin"`, the hidden `_first_return` and
-`_wpnonce` fields exactly as the browser sends them), and lets `fetch` follow
-the 303. The HTML of the page it comes back to goes to
-`@wordpress/interactivity-router`'s `actions.navigate(url, { html, force })`,
-the way client/live-region.js hands the router a changed region: the router
-diffs the region, so client components, typed text, focus and scroll stay.
+runtime/First/Render/client/router.js. It takes a plain submit: a form-encoded
+post, in this tab, to this site, from inside the router region. It sends the
+same body with `fetch` (`credentials: "same-origin"`; `_first_return`,
+`_wpnonce` and the pressed button's name and value exactly as the browser sends
+them) and lets `fetch` follow the 303. The HTML of the page it comes back to
+goes to `@wordpress/interactivity-router`'s `actions.navigate(url, { html,
+force })`, the way client/live-region.js hands the router a changed region. The
+router diffs the region, so client components and scroll stay. An input whose
+server HTML has a `value` attribute (a `defaultValue`, or a value refilled from
+the flash) is reset to the value the server rendered; text typed into an input
+without one stays.
 
 - **The page is fetched once.** The flash cookie is read once and deleted with
   that response. Following the redirect in `fetch` and handing the router that
@@ -134,40 +137,71 @@ diffs the region, so client components, typed text, focus and scroll stay.
 
 **The URL bar ends on the page without `?_flash`.** The history entry is the
 URL `fetch` ended on with the marker removed. Coming back to the page the form
-is on replaces its entry instead of adding one. The no-JavaScript path still
-shows the marker, because it can't avoid it. Removing it in the script means
-the marker never reaches a URL someone copies, bookmarks or shares. Reloading
-afterwards shows the page without the flash, which is right for a read-once
-result.
+is on (compared without the marker) replaces its entry instead of adding one.
+A page the browser loaded with the marker (a post without this script) takes it
+out of the address bar with `history.replaceState` when the router module
+loads. Either way the marker never reaches a URL someone copies, bookmarks or
+shares. Reloading afterwards shows the page without the flash, which is right
+for a read-once result.
 
 **Pending is an attribute, not state.** While the post is in flight the form
-has `aria-busy="true"` and its enabled submit buttons are disabled. A second
-submit while one is in flight does nothing. Authors style
-`form[aria-busy="true"]`. `useFormState().pending` stays `false`: the page is
-server-rendered, and a client copy of the form state would be a second state
-system for a few hundred milliseconds of feedback. After the swap, the element
-that had focus gets it back if the swap dropped it.
+has `aria-busy="true"` and `data-first-pending`. Its enabled submit buttons,
+including ones outside it with `form="id"`, are disabled and get
+`data-first-pending`, and only those are enabled again afterwards. A button the
+page disabled stays disabled. A second submit of the form while one is in
+flight does nothing. Authors style `form[aria-busy="true"]`.
+`useFormState().pending` stays `false`: the page is server-rendered, and a
+client copy of the form state would be a second state system for a few hundred
+milliseconds of feedback. After the swap, the element that had focus gets it
+back if the swap dropped it.
 
-**Fallbacks are the browser's own submit.** If the router module can't load
-or the request fails, the script lets the browser post the form, as without
-JavaScript. The script also leaves the submit to the browser for:
+**A post is never sent twice.** Once `fetch` is called, the action may have
+run. Any failure after that does not post again. That covers a rejected
+`fetch`, an answer that isn't a 2xx page from this site (a 500, a 503 problem),
+and a body that can't be read. The form is enabled again and a message
+appears in an `aria-live` alert inside it (`.first-form-error`, translatable,
+passed through `wp_interactivity_config('first/router')`). The browser posts
+the form itself only when the router module fails to load, because nothing has
+been sent at that point; the form stays busy while that page loads. The script
+also leaves the submit to the browser for:
 
-- an answer that came back to a page without a router region (the browser loads
-  that page);
-- an answer that isn't a page at all, such as a 503 problem (the browser posts
-  again);
+- another encoding (`enctype` or `formenctype`), another target or method;
+- a form outside the router region;
 - a page core marks as not client-navigable.
+
+An answer that came back to a page without a router region is loaded with a
+full navigation to its URL, without the marker. That is a second request for the
+page, so its flash is gone by then.
 
 Errors (422, a refused origin, an expired nonce) already come back as a 303 to
 the page with the error in the flash, so they take the same path as success.
+
+**Late answers lose.** Each submit records the page it was sent from and takes
+a page-wide sequence number. Its answer is not rendered if any of these holds:
+
+- the URL changed meanwhile (a `<Link>` click, back);
+- the form is no longer on the page;
+- a later submit's answer is already on the page.
+
+**`<Live>` swaps and submits take turns.** Both hand the router a whole page
+for the current URL, so the later one would undo the earlier. client/live-region.js
+waits while a submit is in flight. If a submit's page rendered while it waited,
+that page is newer than its answer, so it drops the answer and applies the next
+one in full. A submit waits for a `<Live>` swap in progress before rendering.
+The copy of the document a `<Live>` swap builds has the pending markers
+(`data-first-pending`, the form's `aria-busy`, the disabled buttons) taken out.
+The shared counters live on `globalThis[Symbol.for("first/forms")]`, which
+router.js and live-region.js both read.
 
 **Costs.**
 
 - A form must be inside the root layout's router region to submit in place.
   First Admin and wp-login.php pages have no region, so their forms post as
   before.
-- `formenctype` and file inputs aren't supported: action forms are
-  form-encoded, and an upload already answers 415.
+- File inputs aren't supported: action forms are form-encoded, and an upload
+  already answers 415.
+- After a failure the visitor doesn't know whether the action ran; the message
+  says to reload and check, rather than guessing or posting again.
 - The router's loading bar shows if the page takes longer than 400 ms. The
   screen-reader "page loaded" announcement is off for submits, because the
   page didn't change.

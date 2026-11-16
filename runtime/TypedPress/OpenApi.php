@@ -29,23 +29,17 @@ final class OpenApi
             throw HttpError::notFound('No such route');
         }
         App::allow($method, ['GET', 'HEAD']);
-        $plugin = Wp\Plugin::instance();
-        $file = $plugin === null ? null : $plugin->dir . '/tp/app/openapi.json';
-        if ($file === null || !is_file($file)) {
-            throw HttpError::notFound('This build has no OpenAPI document; build the app again with this TypedPress version');
-        }
-        // The representation is a function of the built file's bytes and the server put in it (this
-        // site's API address and name), so a digest of those three is a digest of what is served,
-        // without decoding and encoding the document to compute it.
-        [$url, $name] = self::server();
-        $etag = \TypedPress\Validator::bytes(\TypedPress\Validator::file($file) . "\0" . $url . "\0" . $name);
+        // The representation is built once, from one read of the built file and one server, encoded
+        // once: the ETag is that string's digest and the body is that string.
+        $document = self::document() ?? throw HttpError::notFound('This build has no OpenAPI document; build the app again with this TypedPress version');
+        $body = (string) json_encode($document, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $etag = \TypedPress\Validator::bytes($body);
         $headers = ['Content-Type' => 'application/json; charset=utf-8', 'Cache-Control' => 'public, max-age=300', 'ETag' => $etag];
         if (\TypedPress\Validator::matches($etag)) {
             return Response::raw('', 304, $headers);
         }
-        $document = self::document() ?? throw HttpError::notFound('This build has no OpenAPI document; build the app again with this TypedPress version');
 
-        return Response::raw($method === 'HEAD' ? '' : (string) json_encode($document, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), 200, $headers);
+        return Response::raw($method === 'HEAD' ? '' : $body, 200, $headers);
     }
 
     /** @return array{string, string} the document's server: the API's address and the site's name */
@@ -59,11 +53,12 @@ final class OpenApi
     {
         $plugin = Wp\Plugin::instance();
         $file = $plugin === null ? null : $plugin->dir . '/tp/app/openapi.json';
-        if ($file === null || !is_file($file)) {
+        $bytes = $file === null ? false : @file_get_contents($file);
+        if (!is_string($bytes)) {
             return null;
         }
         // Decoded to objects, so an empty schema `{}` stays an object when it is encoded again.
-        $document = json_decode((string) file_get_contents($file), false);
+        $document = json_decode($bytes, false);
         if (!$document instanceof \stdClass) {
             return null;
         }

@@ -927,12 +927,14 @@ final class Db
 
     /**
      * A viewer's delete acts on the rows that reference this one only when the viewer can read every
-     * one of them (docs/decisions/2026-11-16-per-row-delete-visibility.md). The check looks at the rows
-     * referencing this row, never at whole tables. A referencing row the viewer can't read is never
-     * returned, written, cascaded or counted: one or many answer the same generic 409, which is the one
-     * bit a viewer allowed to delete the row learns. Referential writes on visible rows run as before and
-     * carry the viewer's own constraint checks (update's $errorViewer). Cascades are followed through
-     * the visible rows first, so a refusal anywhere in the graph comes before any write.
+     * one of them (docs/decisions/2026-11-16-per-row-delete-visibility.md). It looks at the rows
+     * referencing this row, never at whole tables, and decides by counting them twice, once trusted and
+     * once as the viewer, so no referencing row is loaded before the decision and none it can't read is
+     * returned, written or cascaded. Every refusal is the same body ({@see hiddenReference()}), whatever
+     * the table, the depth or how many rows are hidden. Visible cascades are followed to every depth
+     * before any referential write; set null / set default branches with rows keep the generated-value
+     * preflight. When a registered read extension may hide rows (Extensions::constraintReadsSafe()),
+     * counts can't prove anything, and any relationship to this collection refuses, as #72 did.
      */
     private function refuseHiddenReferences(string $collection, array $row, Viewer $viewer, array &$seen = []): void
     {
@@ -946,13 +948,12 @@ final class Db
             $child = (string) $child;
             foreach ($spec['columns'] as $col => $def) {
                 $ref = $def['references'] ?? null;
-                // A term's links go with the term; core's own delete removes them.
-                if ($ref === null || $ref['collection'] !== $collection
-                    || ($def['type'] === 'refList' && str_starts_with($ref['join'], 'term:'))) {
+                if ($ref === null || $ref['collection'] !== $collection) {
                     continue;
                 }
-                if (FieldAccess::mayHide($parent['columns'][$ref['column']], $viewer)) {
-                    throw new HttpError(409, 'reference_violation', 'A hidden field may be referenced by this row');
+                if (FieldAccess::mayHide($parent['columns'][$ref['column']], $viewer) || FieldAccess::mayHide($def, $viewer)
+                    || !Extensions::constraintReadsSafe()) {
+                    throw self::hiddenReference();
                 }
                 $value = $row[$ref['column']] ?? null;
                 if ($value === null) {
@@ -960,45 +961,84 @@ final class Db
                 }
                 $pk = $spec['primaryKey'];
                 $many = $def['type'] === 'refList';
-                $where = $many
-                    ? [$pk => ['in' => array_values(array_unique(array_column($this->links()->links($ref['join'], 'target_id', [$value]), 'owner_id')))]]
-                    : [(string) $col => $value];
-                if ($many && $where[$pk]['in'] === []) {
+                if ($many) {
+                    // The links are the relationship: their owners are the rows that reference this one.
+                    $owners = array_values(array_unique(array_column($this->links()->links($ref['join'], 'target_id', [$value]), 'owner_id')));
+                    if ($owners === []) {
+                        continue;
+                    }
+                    $where = [$pk => ['in' => $owners]];
+                } else {
+                    $where = [(string) $col => $value];
+                }
+                $trusted = $this->countRows($child, $where, null);
+                if ($trusted === 0) {
                     continue;
                 }
-                $opts = ['where' => $where];
-                $referencing = $this->selectDecoded($child, $opts, '', null);
-                if ($referencing === []) {
-                    continue;
-                }
-                $hidden = new HttpError(409, 'reference_violation', "Rows in $child may reference this row");
-                if (FieldAccess::mayHide($def, $viewer)) {
-                    throw $hidden;
-                }
-                $read = ['where' => $where] + (($spec['localized'] ?? false) ? ['locale' => '*'] : []);
+                $extra = ($spec['localized'] ?? false) ? ['locale' => '*'] : [];
                 try {
-                    $readable = $this->findMany($child, $read, $viewer);
+                    $visible = $this->countRows($child, $where, $viewer, $extra);
                 } catch (HttpError) {
-                    throw $hidden;
+                    throw self::hiddenReference();
                 }
-                $visible = [];
-                foreach ($readable as $r) {
-                    if (array_key_exists($pk, $r) && ($many || (array_key_exists((string) $col, $r) && Js::strictEq($r[$col], $value)))) {
-                        $visible[self::key($r[$pk])] = true;
-                    }
+                if ($visible !== $trusted) {
+                    throw self::hiddenReference();
                 }
-                foreach ($referencing as $r) {
-                    if (!isset($visible[self::key($r[$pk])])) {
-                        throw $hidden;
-                    }
+                if ($many) {
+                    continue; // a deleted target only loses its links
                 }
-                if (!$many && strtolower($ref['onDelete'] ?? 'no action') === 'cascade') {
-                    foreach ($referencing as $r) {
-                        $this->refuseHiddenReferences($child, $r, $viewer, $seen);
+                $action = strtolower($ref['onDelete'] ?? 'no action');
+                if ($action === 'cascade') {
+                    foreach ($this->findMany($child, ['where' => $where] + $extra, $viewer) as $dependent) {
+                        $this->refuseHiddenReferences($child, $dependent, $viewer, $seen);
                     }
+                } elseif (in_array($action, ['set null', 'set default'], true)) {
+                    $this->requireReferentialUpdateVisibility($child, $spec, (string) $col, $def, $action, $viewer);
                 }
             }
         }
+    }
+
+    /** {@see count()} for a write's own check, on the store's connection, without marking a render's reads. */
+    private function countRows(string $collection, array $where, ?Viewer $viewer, array $extra = []): int
+    {
+        $q = $this->countQuery($collection, $where, $viewer, $extra);
+        $store = $this->store;
+        if (!$store instanceof Wp\CompositeStore) {
+            throw new \LogicException('Counting referencing rows needs the WordPress store');
+        }
+
+        return (int) ($store->db->run($q['sql'], $q['params'])[0]['n'] ?? 0);
+    }
+
+    /** The one refusal for a delete that rows the viewer can't read may depend on: it names no table, row or count. */
+    private static function hiddenReference(): HttpError
+    {
+        return new HttpError(409, 'reference_violation', 'Rows you can\'t read may reference this row');
+    }
+
+    /**
+     * A set null / set default write on visible rows runs as a referential effect, but its errors belong
+     * to the viewer: potential generated values (the new key, on-update columns, anything a beforeUpdate
+     * hook may write into a unique or reference column) are preflighted, so their outcome can't depend on
+     * values the viewer can't read.
+     */
+    private function requireReferentialUpdateVisibility(string $child, array $spec, string $col, array $def, string $action, Viewer $viewer): void
+    {
+        $inputs = [$col => $action === 'set default' ? ($def['default'] ?? ['value' => null]) : ['value' => null]];
+        foreach ($spec['columns'] as $name => $column) {
+            if ($name !== $col && isset($column['onUpdate'])) {
+                $inputs[$name] = $column['onUpdate'];
+            }
+        }
+        if (isset($spec['hooks']['beforeUpdate'])) {
+            foreach ($spec['columns'] as $name => $column) {
+                if ($name !== $spec['primaryKey'] && (($column['unique'] ?? false) || isset($column['references']))) {
+                    $inputs[$name] = ['fn' => true]; // a hook may replace any constraint value
+                }
+            }
+        }
+        $this->requireGeneratedVisibility($child, $inputs, $viewer);
     }
 
     /** Incoming foreign keys can reject a key change or propagate it into another hidden branch. */

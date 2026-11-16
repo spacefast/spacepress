@@ -935,7 +935,7 @@ fn a_pointerless_reference_refusal_is_not_reported_as_a_missing_target() {
     assert_eq!(
         data_or_error(&out)["failed"],
         serde_json::json!([format!(
-            "snippets/{uid}: Rows in safes may reference this row (reference_violation)"
+            "snippets/{uid}: Rows you can't read may reference this row (reference_violation)"
         )])
     );
     assert_eq!(site.rows("snippets").len(), 1, "the refused delete did not land");

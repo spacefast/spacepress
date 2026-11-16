@@ -208,7 +208,7 @@ generated client, migrations, `db.d.ts`, and plugin lock.
 Owner deletes work: a delete checks only the rows that reference the deleted
 row, not whole tables
 ([decision](../../docs/decisions/2026-11-16-per-row-delete-visibility.md)).
-The `Rows in vet_notes may reference this row` refusal now appears only when
+The `Rows you can't read may reference this row` refusal now appears only when
 another user's hidden row references the deleted row.
 
 | Gap on main | Consequence |

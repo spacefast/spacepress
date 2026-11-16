@@ -77,7 +77,7 @@ Deleting an owned subscription that has charges returns 200 and cascades to
 its charges through `charges.subscriptionId`'s `onDelete("cascade")`. A delete
 checks only the rows that reference the deleted row, not whole tables
 ([decision](../../docs/decisions/2026-11-16-per-row-delete-visibility.md)). The
-`Rows in charges may reference this row` refusal now appears only when another
+`Rows you can't read may reference this row` refusal now appears only when another
 user's hidden charge references the subscription. The earlier runtime refused
 every such delete with that 409, as the earlier transcript below records.
 

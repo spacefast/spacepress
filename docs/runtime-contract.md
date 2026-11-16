@@ -264,16 +264,21 @@ Potential generated constraints are preflighted before defaults and on-update
 generators run; hook-written references are checked before field validation.
 A viewer's delete looks at the rows that reference the deleted row, never at
 whole tables ([decision](decisions/2026-11-16-per-row-delete-visibility.md)).
-When the viewer can read every one of them and the referencing column, `onDelete`
-applies to them as before; a row nobody references deletes. When any referencing
-row, or the referencing column, is hidden from the viewer, the delete is refused
-with `409 reference_violation` and the detail `Rows in <child> may reference this
-row`, the same body for one or many hidden rows. Hidden rows are never returned,
-written, cascaded or counted. The check follows visible cascade branches to every
-depth before any row is written. The one bit a viewer allowed to delete the row
-learns is whether a hidden row references it. Referential updates on visible rows
-(`setNull`, generated and hook-written values) keep the viewer's own constraint
-checks. Trusted writes (hooks, CLI, jobs) are not checked.
+It counts them twice, as a trusted read and as the viewer, without loading them.
+When the counts match, `onDelete` applies as before; a row nobody references
+deletes. Otherwise, or when the referencing column or referenced key may be
+hidden from the viewer, the delete is refused with `409 reference_violation`,
+detail `Rows you can't read may reference this row` and no pointer: the same
+body whatever the table, the depth or the number of hidden rows. Hidden rows are
+never returned, written or cascaded. This covers `ref().many()` links, including
+a taxonomy's terms on items. The check follows visible cascade branches to every
+depth before any referential write, and a `setNull` or `setDefault` branch that
+holds rows keeps the generated-value preflight (new keys, on-update values,
+anything a `beforeUpdate` hook may write into a unique or reference column). A
+registered read extension that may hide rows makes every relationship refuse,
+since counts can't prove visibility through it. The one bit a viewer allowed to
+delete the row learns is whether a row they can't read references it. Trusted
+writes (hooks, CLI, jobs) are not checked.
 These checks roll back the whole write on refusal.
 Changing a referenced key uses the same relationship visibility preflight,
 following native cascading updates before the database can expose hidden children.

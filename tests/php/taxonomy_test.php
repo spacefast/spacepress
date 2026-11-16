@@ -184,4 +184,19 @@ eq('core terms controller: the overridden handlers take ($request)', array_map(s
 eq('core terms controller: prepare_item_for_response($item, $request), get_collection_params()', [$member(WP_REST_Terms_Controller::class, 'prepare_item_for_response'), $member(WP_REST_Terms_Controller::class, 'get_collection_params')], [['public', 2, 2], ['public', 0, 0]]);
 eq('core term meta fields: constructed with ($taxonomy); get_value($object_id, $request)', [$member(WP_REST_Term_Meta_Fields::class, '__construct'), $member(WP_REST_Meta_Fields::class, 'get_value')], [['public', 1, 1], ['public', 2, 2]]);
 
+// A viewer's term delete refuses while an item they can't read carries the term, and keeps its link
+// (docs/decisions/2026-11-16-per-row-delete-visibility.md); core's own delete would remove it.
+(static function () use ($db, $fixture): void {
+    $term = $db->insert('tags', ['name' => 'Hidden link'], true)[0];
+    $post = $db->insert('posts', ['title' => 'Admin only', 'labels' => [$term['id']], 'status' => 'draft'], true)[0];
+    $raw = require "$fixture/schema.php";
+    $raw['collections']['posts']['access']['read'] = ['role' => 'admin'];
+    $probe = new \TypedPress\Db($db->store(), new \TypedPress\Schema($raw), $db->media());
+    $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
+    problem('a term on an item the viewer can\'t read refuses the delete', fn () => $probe->delete('tags', ['id' => $term['id']], false, $editor), 409, 'reference_violation');
+    eq('… and the item keeps the term', wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']), [$term['id']]);
+    $free = $db->insert('tags', ['name' => 'Free'], true)[0];
+    eq('a term no item carries deletes', count($probe->delete('tags', ['id' => $free['id']], true, $editor)), 1);
+})();
+
 finish('taxonomy');

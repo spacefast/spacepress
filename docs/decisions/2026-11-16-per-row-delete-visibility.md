@@ -16,30 +16,39 @@ bin, a subscription or a place.
 
 A viewer's delete looks only at the rows that reference this row:
 
-1. It selects, trusted, the rows whose referencing column holds this row's key (for a
-   `ref().many()`, the owners of links to it). It never inspects a whole table.
-2. It reads the same rows as the viewer. When any of them is not returned, or the referencing column
-   or the referenced key may be hidden from the viewer, the delete is refused with
-   `409 reference_violation`, detail `Rows in <child> may reference this row`, no pointer. One or
-   many hidden rows give the same body. Hidden rows are never returned, written, cascaded or counted.
+1. It counts, trusted, the rows whose referencing column holds this row's key (for a
+   `ref().many()`, including a taxonomy's terms, the owners of links to it). It never inspects a
+   whole table, and it loads no row before deciding, so hidden volume can't change the answer.
+2. It counts the same rows as the viewer. When the counts differ, or the referencing column or the
+   referenced key may be hidden from the viewer, the delete is refused with
+   `409 reference_violation`, detail `Rows you can't read may reference this row`, no pointer. Every
+   refusal has that body: it names no table, depth or count. Hidden rows are never returned,
+   written or cascaded.
 3. Under `onDelete: "cascade"` the check repeats for each visible child, to every depth, before any
-   row is written.
+   referential write.
 4. When every referencing row is visible, `onDelete` applies as it did: `restrict` refuses,
-   `setNull` updates through the pipeline with the viewer's constraint checks, `cascade` deletes
-   through the pipeline. Nothing new is hard-deleted; WordPress's trash stays an unpublish
+   `setNull` and `setDefault` update through the pipeline, `cascade` deletes through the pipeline.
+   A `setNull` or `setDefault` branch with rows keeps #72's generated-value preflight: the value it
+   writes, on-update columns and anything a `beforeUpdate` hook may write into a unique or reference
+   column must be visible to the viewer, so the answer can't depend on a hidden value. Nothing new
+   is hard-deleted; WordPress's trash stays an unpublish
    ([2026-11-14-trash-is-unpublish.md](2026-11-14-trash-is-unpublish.md)).
-5. Trusted writes (hooks, CLI, jobs) are not checked, as before.
+5. When a read extension is registered that may hide rows (`Extensions::constraintReadsSafe()` is
+   false), counts can't prove visibility, and any relationship to this collection refuses, as #72 did.
+6. Trusted writes (hooks, CLI, jobs) are not checked, as before.
 
 ## Costs
 
 - A viewer allowed to delete a row learns one bit: whether some row they cannot read references it.
   They learn it only for rows they may delete, and never how many rows, which rows, or their values.
   Databases with row-level security make the same trade for foreign keys.
-- The check costs one trusted select and one viewer read per referencing column, plus the same for
-  each visible cascaded row.
+- The check costs two counts per referencing column, plus a read of each visible cascaded row.
+- `beforeDelete` hooks run before the check; a refusal rolls their writes back with the transaction.
 
 ## Tests
 
-`tests/php/db_test.php` (the owner-scoped block and the hidden-child cases),
+`tests/php/db_test.php` (the owner-scoped block, the hidden-child cases and the PR #516 review
+cases: hook-written and default references, many-ref links, hidden volume, read extensions),
+`tests/php/taxonomy_test.php` (a term on an item the viewer can't read),
 `tests/wp/tables.test.ts` (both REST surfaces) and `tests/sync.rs`
 (`a_pointerless_reference_refusal_is_not_reported_as_a_missing_target`).

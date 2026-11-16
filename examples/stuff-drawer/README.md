@@ -120,7 +120,7 @@ These screenshots are not done. Run the HTTP verifier to create demo data, then 
 
 `typedpress check examples/stuff-drawer` passes. Earlier versions of this README recorded compile errors here; the source now reads them out: `AccessCtx` and `HookCtx` compile, the loan checks build their argument field by field instead of spreading a partial patch, `quantity` is read once before it is compared, and the search loop skips an absent word.
 
-Owner deletes work: a delete checks only the rows that reference the deleted row, not whole tables ([decision](../../docs/decisions/2026-11-16-per-row-delete-visibility.md)). Deleting an empty bin returns 200. The `Rows in things may reference this row` refusal now appears only when another user's hidden row references the deleted row.
+Owner deletes work: a delete checks only the rows that reference the deleted row, not whole tables ([decision](../../docs/decisions/2026-11-16-per-row-delete-visibility.md)). Deleting an empty bin returns 200. The `Rows you can't read may reference this row` refusal now appears only when another user's hidden row references the deleted row.
 
 ### Native editor saves skip before hooks
 

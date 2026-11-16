@@ -1508,7 +1508,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         $one = $failure(fn () => $db->delete('notes', ['id' => $note['id']], true, $editor));
         $db->insert('tags', ['name' => 'third hidden', 'noteId' => $note['id']], true);
         eq('one or many hidden rows answer the same body', $failure(fn () => $db->delete('notes', ['id' => $note['id']], true, $editor)), $one);
-        eq('the generic body names no row', [$one['status'], $one['code'], $one['pointer'] ?? null, $one['detail']], [409, 'reference_violation', null, 'Rows in tags may reference this row']);
+        eq('the generic body names no row', [$one['status'], $one['code'], $one['pointer'] ?? null, $one['detail']], [409, 'reference_violation', null, "Rows you can't read may reference this row"]);
         eq('a row nothing references deletes', $db->delete('notes', ['id' => $unreferenced['id']], true, $editor)[0]['id'], $unreferenced['id']);
         eq('trusted writes (hooks, CLI) check existence only', $db->insert('tags', ['name' => 'w', 'noteId' => $note['id']], true)[0]['noteId'], $note['id']);
         eq('hidden referencing rows are untouched by refused deletes', (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}tp_tags WHERE noteId = {$note['id']}"), 4);
@@ -1595,12 +1595,12 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         $mine = $insert('things', ['ownerId' => 7]);
         $theirs = $insert('loans', ['ownerId' => $other, 'thingId' => $mine['id']]);
         $direct = $failure(fn () => $db->delete('things', ['id' => $mine['id']], true, $me));
-        eq('a hidden restrict child refuses with the generic body', [$direct['status'], $direct['code'], $direct['detail']], [409, 'reference_violation', 'Rows in loans may reference this row']);
+        eq('a hidden restrict child refuses with the generic body', [$direct['status'], $direct['code'], $direct['detail']], [409, 'reference_violation', "Rows you can't read may reference this row"]);
         $db->delete('loans', ['id' => $theirs['id']], false);
         $myCharge = $insert('charges', ['ownerId' => 7, 'thingId' => $mine['id']]);
         $insert('receipts', ['ownerId' => $other, 'chargeId' => $myCharge['id']]);
         $deep = $failure(fn () => $db->delete('things', ['id' => $mine['id']], true, $me));
-        eq('a hidden grandchild under a visible cascade refuses the whole delete', [$deep['status'], $deep['code'], $deep['detail']], [409, 'reference_violation', 'Rows in receipts may reference this row']);
+        eq('a hidden grandchild under a visible cascade refuses the whole delete, with the same body: no table or depth', $deep, $direct);
         eq('the refused cascade rolled back nothing it should keep', [$count('things'), $count('charges'), $count('receipts')], [1, 1, 1]);
         $theirBin = $insert('bins', ['ownerId' => $other]);
         $insert('things', ['ownerId' => 7, 'binId' => $theirBin['id']]);
@@ -1608,6 +1608,112 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         eq('so it stays', $count('bins'), 1);
     } finally {
         \TypedPress\Db::setInstance($previous);
+    }
+})();
+
+// PR #516 review: a referential update on visible rows can't answer with hidden values, a many-ref
+// link from a hidden row refuses, hidden volume can't change the answer, and a read extension that may
+// hide rows makes every relationship refuse.
+(static function () use ($db): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $mine = ['fn' => static fn (array $ctx) => ['ownerId' => 7]];
+    $hidden = ['type' => 'integer', 'access' => ['read' => ['role' => 'admin']]];
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'r_parents' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_parents', 'access' => ['read' => $mine] + $open, 'columns' => ['id' => $id, 'ownerId' => ['type' => 'integer']]],
+        // A hook copies a hidden column into the reference set null writes.
+        'r_hooked' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_hooked', 'access' => $open, 'columns' => ['id' => $id,
+            'parentId' => ['type' => 'integer', 'references' => ['collection' => 'r_parents', 'column' => 'id', 'onDelete' => 'set null']], 'backupId' => $hidden],
+            'hooks' => ['beforeUpdate' => static function (array $data, array $existing): array { $data['parentId'] = $existing['backupId']; return $data; }]],
+        // set default writes a generated value.
+        'r_defaulted' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_defaulted', 'access' => $open, 'columns' => ['id' => $id,
+            'parentId' => ['type' => 'integer', 'default' => ['fn' => static fn () => $GLOBALS['r_default'] ?? null], 'references' => ['collection' => 'r_parents', 'column' => 'id', 'onDelete' => 'set default']]]],
+        'r_tags' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_tags', 'access' => $open, 'columns' => ['id' => $id, 'name' => ['type' => 'text']]],
+        'r_cards' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_cards', 'access' => ['read' => $mine] + $open, 'columns' => ['id' => $id, 'ownerId' => ['type' => 'integer'],
+            'tags' => ['type' => 'refList', 'notNull' => true, 'references' => ['collection' => 'r_tags', 'column' => 'id', 'onDelete' => 'cascade', 'join' => 'r_cards_tags']]]],
+        'r_bulky' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_r_bulky', 'access' => ['read' => ['role' => 'admin']] + $open, 'columns' => ['id' => $id, 'body' => ['type' => 'text'],
+            'tagId' => ['type' => 'integer', 'references' => ['collection' => 'r_tags', 'column' => 'id', 'onDelete' => 'cascade']]]],
+    ]]);
+    $wp->exec('CREATE TABLE {prefix}tp_r_parents (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, ownerId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_hooked (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, parentId BIGINT, backupId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_defaulted (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, parentId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_tags (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_cards (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, ownerId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_cards_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id, target_id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_r_bulky (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, body LONGTEXT, tagId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($probe);
+    $me = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    $answer = static function (callable $write): array {
+        try {
+            $write();
+
+            return ['status' => 200];
+        } catch (\Throwable $e) {
+            return \TypedPress\App::problem($e);
+        }
+    };
+    try {
+        $theirs = $probe->insert('r_parents', ['ownerId' => 8], true)[0];
+        $answers = [];
+        foreach ([null, $theirs['id']] as $backup) {
+            $parent = $probe->insert('r_parents', ['ownerId' => 7], true)[0];
+            $probe->insert('r_hooked', ['parentId' => $parent['id'], 'backupId' => $backup], true);
+            $answers[] = $answer(fn () => $probe->delete('r_parents', ['id' => $parent['id']], false, $me));
+        }
+        eq('a hook that may write a reference answers alike whether the hidden value it copies is empty or not', [$answers[0]['status'], $answers[0] == $answers[1]], [409, true]);
+        $probe->delete('r_hooked', ['parentId' => ['isNull' => false]]);
+        $answers = [];
+        foreach ([null, $theirs['id']] as $generated) {
+            $GLOBALS['r_default'] = $generated;
+            $parent = $probe->insert('r_parents', ['ownerId' => 7], true)[0];
+            $probe->insert('r_defaulted', ['parentId' => $parent['id']], true);
+            $answers[] = $answer(fn () => $probe->delete('r_parents', ['id' => $parent['id']], false, $me));
+        }
+        eq('set default answers alike whatever the generated reference is', [$answers[0]['status'], $answers[0] == $answers[1]], [409, true]);
+
+        $tag = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $probe->insert('r_cards', ['ownerId' => 7, 'tags' => [$tag['id']]], true);
+        $hiddenCard = $probe->insert('r_cards', ['ownerId' => 8, 'tags' => [$tag['id']]], true)[0];
+        problem('a many-ref link from a row the viewer can\'t read refuses the delete', fn () => $probe->delete('r_tags', ['id' => $tag['id']], false, $me), 409, 'reference_violation');
+        eq('… and keeps that row\'s link', $probe->findFirst('r_cards', ['where' => ['id' => $hiddenCard['id']]])['tags'], [$tag['id']]);
+        $own = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $probe->insert('r_cards', ['ownerId' => 7, 'tags' => [$own['id']]], true);
+        eq('a tag only the viewer\'s rows link to deletes', $answer(fn () => $probe->delete('r_tags', ['id' => $own['id']], false, $me))['status'], 200);
+
+        // Hidden volume: many large hidden rows answer as one does, within the default memory limit.
+        $bulk = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $one = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        $probe->insert('r_bulky', ['tagId' => $one['id'], 'body' => 'x'], true);
+        $payload = str_repeat('x', 2 * 1024 * 1024);
+        for ($i = 0; $i < 90; $i++) {
+            $wp->connection()->run('INSERT INTO wp_tp_r_bulky (body, tagId) VALUES (?, ?)', [$payload, $bulk['id']]);
+        }
+        unset($payload);
+        $limit = ini_get('memory_limit');
+        ini_set('memory_limit', '128M');
+        try {
+            eq('ninety 2 MiB hidden rows answer like one, without loading them', $answer(fn () => $probe->delete('r_tags', ['id' => $bulk['id']], false, $me)), $answer(fn () => $probe->delete('r_tags', ['id' => $one['id']], false, $me)));
+        } finally {
+            ini_set('memory_limit', $limit);
+        }
+
+        // Last, since registrations stay for the rest of the process: a read extension that may hide rows.
+        $free = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        \TypedPress\Extensions::beforeRead(static function (string $collection, array &$opts): void {
+            if ($collection === 'r_cards') {
+                $opts['limit'] = 1;
+            }
+        });
+        $limited = $probe->insert('r_tags', ['name' => 't'], true)[0];
+        problem('with an unproven read extension, every relationship to the row refuses', fn () => $probe->delete('r_tags', ['id' => $free['id']], false, $me), 409, 'reference_violation');
+        eq('trusted deletes are not affected', $answer(fn () => $probe->delete('r_tags', ['id' => $limited['id']]))['status'], 200);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+        unset($GLOBALS['r_default']);
     }
 })();
 

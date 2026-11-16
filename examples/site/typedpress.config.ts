@@ -118,7 +118,7 @@ export const announcements = table({
   attempt: integer(),
 }, { access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
 
-// Readers who sign in: WordPress users through the first-identity screens. Readers see and edit their own row; administrators can read the identities they manage.
+// Readers who sign in: WordPress users through the typedpress-identity screens. Readers see and edit their own row; administrators can read the identities they manage.
 export const members = userProjection({
   email: email().unique().max(191),
   name: text().max(80),

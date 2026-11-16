@@ -59,7 +59,7 @@ test('official plugin counterparts persist in real native Studio WordPress and c
   const fields = { profile: { name: 'Ada', featured: true }, ingredients: [{ name: 'Flour', quantity: 2 }], grid: [{ monday: 'Edit', tuesday: 'Publish' }], tags: ['native', 'free form'], palette: '#336699', embeds: [{ _type: 'youtube', id: 'dQw4w9WgXcQ' }, { _type: 'vimeo', id: '76979871' }] };
   const entry = await first('/entries', { method: 'POST', status: 201, body: { title: '  A lexical saffron story  ', body: '<!-- wp:paragraph --><p>Built with real plugins.</p><!-- /wp:paragraph -->', status: 'published', ...fields } });
   assert.equal(entry.title, 'A lexical saffron story');
-  await request(`/wp-json/wp/v2/tp_entries/${entry.id}`, { method: 'POST', body: { title: 'Native saffron edit', status: 'publish', acf: { first_profile: { name: 'Grace', featured: false }, tp_ingredients: [{ name: 'Rice', quantity: 3 }], tp_grid: [{ monday: 'Draft', tuesday: 'Review' }], tp_tags: '["native","updated"]', tp_palette: '#bb5522' } } });
+  await request(`/wp-json/wp/v2/tp_entries/${entry.id}`, { method: 'POST', body: { title: 'Native saffron edit', status: 'publish', acf: { tp_profile: { name: 'Grace', featured: false }, tp_ingredients: [{ name: 'Rice', quantity: 3 }], tp_grid: [{ monday: 'Draft', tuesday: 'Review' }], tp_tags: '["native","updated"]', tp_palette: '#bb5522' } } });
   const saved = await first(`/entries/${entry.id}`);
   assert.equal(saved.title, 'Native saffron edit');
   assert.deepEqual(saved.profile, { name: 'Grace', featured: false });

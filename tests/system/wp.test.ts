@@ -152,7 +152,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
   assert.deepEqual(readdirSync(join(artifact, "plugins")).filter((n) => !n.endsWith(".zip")).sort(), [...ORDER].sort());
   install(artifact);
   // Requires Plugins refuses to activate a plugin before its dependencies, so order matters.
-  assert.match(wpFails("plugin", "activate", "typedpress-app-site"), /requires 6 plugins.*Action Scheduler, TypedPress Runtime, MCP Adapter, Polylang, Secure Custom Fields, Two Factor/s);
+  assert.match(wpFails("plugin", "activate", "typedpress-app-site"), /requires 6 plugins.*Action Scheduler, MCP Adapter, Polylang, Secure Custom Fields, Two Factor, TypedPress Runtime/s);
   assert.match(wpFails("plugin", "activate", "typedpress-runtime"), /requires 4 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields, Two Factor/s);
   assert.deepEqual(active(), []);
   // This site sits behind a published port its own container can't reach, so the owner routes the
@@ -386,7 +386,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.equal(can(), "[true,false]", "posts' update rule lets editors edit any post, not subscribers");
   // Pending work in the app's and the runtime's groups, and in a group that isn't TypedPress's.
   const seeded = JSON.parse(wp("eval", "echo wp_json_encode([as_schedule_single_action(time() + 3600, 'not_zero', [], 'someone-else')]);"));
-  const [maintain] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE g.slug = 'first' AND a.hook = 'tp_jobs_maintain' AND a.status = 'pending'");
+  const [maintain] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE g.slug = 'typedpress' AND a.hook = 'tp_jobs_maintain' AND a.status = 'pending'");
   const status = (id: string | number) => sql(`SELECT status FROM wp_actionscheduler_actions WHERE action_id = ${id}`)[0];
   const pending = () => sql("SELECT CONCAT(g.slug, ':', a.hook) FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE a.status = 'pending' AND (g.slug LIKE 'typedpress%' OR g.slug = 'someone-else') ORDER BY 1");
   assert.ok(pending().includes("typedpress:tp_jobs_maintain"), pending().join(","));

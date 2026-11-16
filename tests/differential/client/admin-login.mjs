@@ -6,14 +6,10 @@
 // (not the app, not a theme), `/wp-admin/` while signed out goes to the login screen, the REST nonce
 // wp-admin uses works, and signing out ends the session. Prints JSON.
 import { createRequire } from "node:module";
-import { readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { chromiumPath } from "./chromium.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright-core");
-const cache = join(homedir(), ".cache/ms-playwright");
-const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()[0];
-const executablePath = process.env.TP_CHROMIUM ?? join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell");
+const executablePath = chromiumPath();
 const [url] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath });
 const out = {};
@@ -46,7 +42,10 @@ try {
   await page.goto(`${url}/wp-admin/index.php`);
   out.withoutDeveloperMode = { dashboard: route() };
   await page.goto(`${url}/wp-admin/edit.php?post_type=page`);
-  out.withoutDeveloperMode.pages = decodeURIComponent(route() ?? "");
+  // The slug is encoded twice in the route (lib/classic-route.php), and the frame opens it with its query.
+  out.withoutDeveloperMode.pages = decodeURIComponent(decodeURIComponent(route() ?? ""));
+  await page.waitForFunction(() => document.querySelector("iframe")?.getAttribute("src")?.includes("post_type=page"));
+  out.withoutDeveloperMode.framed = new URL(await page.locator("iframe").getAttribute("src"), url).pathname + new URL(await page.locator("iframe").getAttribute("src"), url).search;
   // Developer mode on (the user's own setting, saved through core's user route): classic wp-admin opens as itself.
   out.developerMode = await page.evaluate(async () => {
     const nonce = await (await fetch("/wp-admin/admin-ajax.php?action=rest-nonce", { credentials: "same-origin" })).text();

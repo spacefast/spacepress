@@ -75,8 +75,9 @@ export declare function notFound(): never;
 export declare function redirect(url: string, status?: 301 | 302 | 303 | 307 | 308): never;
 
 /**
- * What the last submit of a `<form action={action}>` on this page left: read once, after the form
- * posted without JavaScript and came back. `pending` is false on the server. `error.fields` names
+ * What the last submit of a `<form action={action}>` on this page left: read once, when the page
+ * the form came back to renders (with or without JavaScript). `pending` is always false: while a
+ * submit is in flight the form has `aria-busy="true"` instead. `error.fields` names
  * the field an input error is about; `values` is what was typed, to fill the form again (never a
  * password field).
  */

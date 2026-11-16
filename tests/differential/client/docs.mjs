@@ -4,14 +4,10 @@
 // block, a code group's tabs (switched with no script on the page), colours in light and dark, a
 // draft doc, the Markdown page, and every page's Markdown twin. Prints JSON.
 import { createRequire } from "node:module";
-import { readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { chromiumPath } from "./chromium.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright-core");
-const cache = join(homedir(), ".cache/ms-playwright");
-const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()[0];
-const executablePath = join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell");
+const executablePath = chromiumPath();
 const [site] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath });
 const out = { errors: [] };
@@ -28,14 +24,14 @@ try {
   // The router region went through core's directive pass: core/router's state.url is the page's
   // own URL from the server, as a block theme's page has it.
   out.serverUrl = await page.$eval("script[id='wp-script-module-data-@wordpress/interactivity']", (s) => JSON.parse(s.textContent).state?.["core/router"]?.url ?? null);
-  await page.evaluate(() => { window.firstSameDocument = true; });
+  await page.evaluate(() => { window.tpSameDocument = true; });
   await page.click("text=Read the docs");
   await page.waitForSelector("article.doc h1");
   out.intro = { path: new URL(page.url()).pathname, title: await page.title(), h1: await page.textContent("article.doc h1") };
   // A <Link> click is a region swap, not a document load: the router's state.url follows it, and
   // core's loading bar is on the page with its styles.
   out.navigation = {
-    sameDocument: await page.evaluate(() => window.firstSameDocument === true),
+    sameDocument: await page.evaluate(() => window.tpSameDocument === true),
     url: await page.evaluate(async () => (await import("@wordpress/interactivity-router")).state.url),
     loadingBar: await page.$$eval(".wp-interactivity-router-loading-bar", (bars) => bars.map((b) => [b.dataset.wpInteractive, getComputedStyle(b).position])),
   };

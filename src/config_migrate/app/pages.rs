@@ -61,6 +61,18 @@ pub(super) fn page(relative: &Path, text: &str, at: &str) -> Result<Page, Failur
 /// Where converted pages go in the candidate.
 pub(super) const APP: &str = "tp/app";
 
+/// A 0.8 site drew every page itself, with or without a `Layout`, so the converted root layout picks
+/// the blank block template: no theme header or footer around the page (docs/pages.md "Block
+/// templates"). Exported under an alias, so a `template` the 0.8 layout declared keeps its value.
+const BLANK: &str = "// A 0.8 site draws the whole page: no theme header or footer around it.\nconst typedpressTemplate = \"blank\";\nexport { typedpressTemplate as template };\n";
+
+/// The root layout of a 0.8 site without a `Layout`: the page alone, in the blank template.
+pub(super) fn bare_layout() -> String {
+    format!(
+        "import type {{ LayoutProps }} from \"typedpress/app\";\n\nexport default function Layout({{ children }}: LayoutProps) {{\n  return <>{{children}}</>;\n}}\n{BLANK}"
+    )
+}
+
 /// `client/index.tsx`'s `Layout` becomes `tp/app/layout.tsx` when it is static markup.
 pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
     let arena = Allocator::default();
@@ -102,13 +114,7 @@ pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
     if body.contains("ComponentChildren") || body.contains("preact") {
         return Err(fail(at, reason(text, "a 0.8 layout with Preact types")));
     }
-    // A 0.8 layout drew the whole page, so it keeps doing so: the blank block template, without the
-    // theme's header and footer around it (docs/pages.md "Block templates").
-    let body = format!(
-        "{}\n// The 0.8 layout draws the whole page: no theme header or footer around it.\nexport const template = \"blank\";\n",
-        body.trim_end()
-    );
-    Ok(Some(relocate(&body, 0)))
+    Ok(Some(relocate(&format!("{}\n{BLANK}", body.trim_end()), 0)))
 }
 
 /// Resolves `a/../b` without touching the filesystem; `None` when it climbs out of the capsule.

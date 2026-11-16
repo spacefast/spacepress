@@ -1551,10 +1551,53 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     ] {
         assert!(out.join(file).is_file(), "{file}");
     }
-    let layout = std::fs::read_to_string(out.join("tp/app/layout.tsx")).unwrap();
+    // A 0.8 site draws the whole page, so its root layout renders in the blank template (no theme
+    // header or footer): with its own Layout, without one, and when the Layout already has a local
+    // `template`, which keeps its value.
+    let schema = |out: &Path| {
+        std::fs::read_to_string(out.join("tp/dist/wp-content/plugins/typedpress-app-legacy-site/tp/app/schema.php"))
+            .unwrap()
+    };
+    let root_layout_is_blank = |schema: &str| {
+        schema
+            .lines()
+            .any(|l| l.contains("'app/layout.tsx'") && l.contains("'template' => 'blank'"))
+    };
+    build(&out);
+    assert!(root_layout_is_blank(&schema(&out)), "{}", schema(&out));
+    let bare = temp.path().join("bare-src");
+    copy_tree(&fixture("site"), &bare);
+    std::fs::remove_file(bare.join("client/index.tsx")).unwrap();
+    let bare_out = temp.path().join("bare");
+    let (ok, report) = migrate(&bare, &bare_out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    build(&bare_out);
+    assert!(root_layout_is_blank(&schema(&bare_out)), "{}", schema(&bare_out));
+    let named = temp.path().join("named-src");
+    copy_tree(&fixture("site"), &named);
+    let client = std::fs::read_to_string(named.join("client/index.tsx")).unwrap();
+    std::fs::write(
+        named.join("client/index.tsx"),
+        client
+            .replace(
+                "export function Layout",
+                "const template = \"Original site\";\n\nexport function Layout",
+            )
+            .replace("<main class=\"site\">", "<main class=\"site\" data-label={template}>"),
+    )
+    .unwrap();
+    let named_out = temp.path().join("named");
+    let (ok, report) = migrate(&named, &named_out, &["--space", "spc_migrate_test"]);
+    assert!(ok, "{report:#}");
+    build(&named_out);
+    assert!(root_layout_is_blank(&schema(&named_out)), "{}", schema(&named_out));
+    let functions = std::fs::read_to_string(
+        named_out.join("tp/dist/wp-content/plugins/typedpress-app-legacy-site/tp/app/functions.php"),
+    )
+    .unwrap();
     assert!(
-        layout.contains("export const template = \"blank\";"),
-        "the 0.8 layout draws the whole page, so it renders in the blank template: {layout}"
+        functions.contains("'data-label' => 'Original site'"),
+        "the layout's own `template` keeps its value: {functions}"
     );
     let pricing = std::fs::read_to_string(out.join("tp/app/pricing/page.tsx")).unwrap();
     assert!(

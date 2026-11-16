@@ -1003,20 +1003,32 @@ fn convert_pages(
         }
     }
     let client = root.join("client/index.tsx");
-    if !out.is_empty() && fs.is_file(&client) {
-        let text = fs.read_to_string(&client).map_err(io)?;
-        match pages::layout(&text, "/client/index.tsx") {
-            Ok(Some(layout)) => {
-                report.entries.push(super::entry(
-                    "/client/index.tsx",
-                    "mapped",
-                    "Layout becomes tp/app/layout.tsx",
-                ));
-                out.insert(format!("{}/layout.tsx", pages::APP), layout);
+    if !out.is_empty() {
+        let layout = if fs.is_file(&client) {
+            let text = fs.read_to_string(&client).map_err(io)?;
+            match pages::layout(&text, "/client/index.tsx") {
+                Ok(Some(layout)) => {
+                    report.entries.push(super::entry(
+                        "/client/index.tsx",
+                        "mapped",
+                        "Layout becomes tp/app/layout.tsx",
+                    ));
+                    Some(layout)
+                }
+                Ok(None) => None,
+                Err(e) => {
+                    report.errors.push(e);
+                    return Ok((out, converted));
+                }
             }
-            Ok(None) => {}
-            Err(e) => report.errors.push(e),
-        }
+        } else {
+            None
+        };
+        // Without a Layout, 0.8 drew each page alone: a root layout keeps it so, in the blank template.
+        out.insert(
+            format!("{}/layout.tsx", pages::APP),
+            layout.unwrap_or_else(pages::bare_layout),
+        );
     }
     Ok((out, converted))
 }

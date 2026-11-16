@@ -202,9 +202,17 @@ pub(crate) fn sign_in(site: &str) -> Result<Option<SignIn>, String> {
             return Err(format!("{PASSWORD_ENV} is user:application-password"));
         }
         (Some(password), None) => {
-            return Ok(Some(SignIn { credential: Credential::AppPassword(password), rest: None }));
+            return Ok(Some(SignIn {
+                credential: Credential::AppPassword(password),
+                rest: None,
+            }));
         }
-        (None, Some(token)) => return Ok(Some(SignIn { credential: Credential::Bearer(token), rest: None })),
+        (None, Some(token)) => {
+            return Ok(Some(SignIn {
+                credential: Credential::Bearer(token),
+                rest: None,
+            }));
+        }
         (None, None) => {}
     }
     // Stored under the address `typedpress login` was given, normalized the same way.

@@ -48,7 +48,9 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         Some(site) => site,
         None => super::dev::url(&project)?,
     };
-    let credential = super::remote::require(&site).map_err(|e| format!("{e}\n{USAGE}\n{}", super::remote::SIGN_IN))?.credential;
+    let credential = super::remote::require(&site)
+        .map_err(|e| format!("{e}\n{USAGE}\n{}", super::remote::SIGN_IN))?
+        .credential;
     let project = project
         .canonicalize()
         .map_err(|e| format!("{}: {e}", project.display()))?;

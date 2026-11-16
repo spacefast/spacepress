@@ -228,10 +228,7 @@ fn remote_commands_sign_in_one_way() {
     // Signed out, every command that needs a site's credential says how to sign in, before it
     // reaches the site.
     let site = "http://127.0.0.1:9";
-    for (args, code) in [
-        (&["sync", "--site", site][..], 3),
-        (&["pull", "--site", site][..], 1),
-    ] {
+    for (args, code) in [(&["sync", "--site", site][..], 3), (&["pull", "--site", site][..], 1)] {
         let out = run(args, &[]);
         assert_eq!(out.status.code(), Some(code), "{args:?}: {}", text(&out.stderr));
         assert!(
@@ -239,7 +236,11 @@ fn remote_commands_sign_in_one_way() {
             "{args:?}: {}",
             text(&out.stderr)
         );
-        assert!(text(&out.stderr).contains("in CI: TP_APP_PASSWORD"), "{}", text(&out.stderr));
+        assert!(
+            text(&out.stderr).contains("in CI: TP_APP_PASSWORD"),
+            "{}",
+            text(&out.stderr)
+        );
     }
     // A credential written into the address is refused and never printed, signed in or not.
     for args in [
@@ -251,7 +252,11 @@ fn remote_commands_sign_in_one_way() {
         for env in [&[][..], &[("TP_APP_PASSWORD", "a:b")][..]] {
             let out = run(args, env);
             assert!(!out.status.success(), "{args:?}");
-            assert!(!text(&out.stderr).contains("SENTINEL") && !text(&out.stdout).contains("SENTINEL"), "{args:?}: {}", text(&out.stderr));
+            assert!(
+                !text(&out.stderr).contains("SENTINEL") && !text(&out.stdout).contains("SENTINEL"),
+                "{args:?}: {}",
+                text(&out.stderr)
+            );
         }
     }
     // Both variables at once is refused, by every command alike.
@@ -264,7 +269,11 @@ fn remote_commands_sign_in_one_way() {
         );
     }
     let out = run(&["sync", "--site", site], &[("TP_APP_PASSWORD", "no-colon")]);
-    assert!(text(&out.stderr).starts_with("TP_APP_PASSWORD is user:application-password"), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).starts_with("TP_APP_PASSWORD is user:application-password"),
+        "{}",
+        text(&out.stderr)
+    );
     // What `typedpress login` stores is what sync signs in with: past the credential check, the
     // command reaches the site (and fails there, since nothing listens on port 9).
     std::fs::create_dir_all(&config).unwrap();
@@ -275,7 +284,11 @@ fn remote_commands_sign_in_one_way() {
     .unwrap();
     let out = run(&["sync", "--site", &format!("{site}/")], &[]);
     assert!(!text(&out.stderr).contains("not signed in"), "{}", text(&out.stderr));
-    assert!(!text(&out.stderr).contains("secret"), "the stored password is never printed: {}", text(&out.stderr));
+    assert!(
+        !text(&out.stderr).contains("secret"),
+        "the stored password is never printed: {}",
+        text(&out.stderr)
+    );
     // A stored login without its password is reported, not used.
     std::fs::write(
         config.join("sites.json"),
@@ -284,7 +297,9 @@ fn remote_commands_sign_in_one_way() {
     .unwrap();
     let out = run(&["sync", "--site", site], &[]);
     assert!(
-        text(&out.stderr).starts_with(&format!("the stored credential for {site} is incomplete. Run: typedpress login {site}")),
+        text(&out.stderr).starts_with(&format!(
+            "the stored credential for {site} is incomplete. Run: typedpress login {site}"
+        )),
         "{}",
         text(&out.stderr)
     );

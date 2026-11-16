@@ -147,7 +147,12 @@ pub(super) fn run(args: &Args) -> ExitCode {
     if ok { ExitCode::SUCCESS } else { ExitCode::from(1) }
 }
 
-fn remote(site: &str, credential: Option<&Credential>, manifest: &Value, checks: &mut Vec<Value>) -> Result<(), String> {
+fn remote(
+    site: &str,
+    credential: Option<&Credential>,
+    manifest: &Value,
+    checks: &mut Vec<Value>,
+) -> Result<(), String> {
     let mut url = url::Url::parse(site).map_err(|error| error.to_string())?;
     if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() || url.password().is_some() {
         return Err("site must be an HTTP(S) URL without credentials".into());

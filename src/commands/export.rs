@@ -158,7 +158,9 @@ fn run(flags: Flags) -> Result<(), String> {
     let (site, credential, _local) = match &flags.site {
         Some(site) => {
             let site = site.trim_end_matches('/').to_string();
-            let credential = super::remote::require(&site).map_err(|e| format!("{e}\n{USAGE}\n{}", super::remote::SIGN_IN))?.credential;
+            let credential = super::remote::require(&site)
+                .map_err(|e| format!("{e}\n{USAGE}\n{}", super::remote::SIGN_IN))?
+                .credential;
             (site, credential, None)
         }
         None => {

@@ -189,7 +189,10 @@ order. First deployment seeds missing terms and products. After that:
 - Changing `price` in the file and syncing updates that Woo product's regular price.
 - Editing its description in Woo and syncing brings the description into the Markdown body.
 - Changing the same field differently in both places reports a conflict through existing sync.
-- Removing a file does not delete its Woo record.
+- Removing a file leaves its Woo product unchanged, including its publication status.
+- To stop selling a product, set `status: draft` and sync. To resume, set `status: publish`
+  and sync with the same UID. Existing orders remain untouched. Reuse this existing status
+  and no-delete behavior; no separate retirement or reintroduction mechanism is needed.
 
 Different stores may assign different internal product and term IDs; their UIDs remain stable.
 Media IDs and image URLs retain the existing collection portability limitations.
@@ -397,9 +400,6 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **Removal:** explicit retirement and reintroduction. Prefer retirement over destructive
-  deletion, but settle this separately from
-  current sync's no-delete behavior. Preserve order history.
 - **Activation and rollback:** source changes apply through explicit sync; code rollback must
   not silently roll back the catalog. Define partial-sync retry and first-seed failure handling.
 - **Previews:** previews must not alter the live catalog or enable test purchases against live
@@ -421,7 +421,8 @@ the digital order receives a native Woo download grant and a working authorized 
 receipt/email rendering, and that unchanged sync preserves the download identity and grant.
 
 Prove file-to-Woo updates, Woo-to-file updates, conflicting edits, preserved stock and orders,
-partial-sync retry, removal behavior and preview isolation. Verify authorized order reads and
+partial-sync retry, file removal leaving products unchanged, draft/publish transitions with
+stable identity, and preview isolation. Verify authorized order reads and
 refusal of unauthorized reads. Then qualify the stock gateway with a payment and refund. Compatibility claims
 must come from those flows, not merely successful plugin installation.
 

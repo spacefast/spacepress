@@ -209,7 +209,8 @@ export function siteAddress(flags, port) {
   if (host !== undefined) {
     // WordPress writes one address into every page, so "every interface" names none. A bare number
     // (`0`, `2130706433`) is an IPv4 address to the resolver, so it is refused too.
-    const named = isIP(host) ? !unspecified(host) : HOSTNAME.test(host) && !/^[0-9.]+$/.test(host);
+    // A scoped IPv6 address (fe80::1%eth0) has no form in a URL WordPress can write.
+    const named = isIP(host) ? !unspecified(host) && !host.includes('%') : HOSTNAME.test(host) && !/^[0-9.]+$/.test(host);
     if (!named) throw new Error('--host takes one address or name of this machine, such as 10.0.0.24 (ip -4 addr lists them).');
     if (flags.includes('--no-watch')) throw new Error('--host needs typedpress dev to keep running, because that process is what listens there. Use --detach instead of --no-watch.');
     url = `http://${isIP(host) === 6 ? `[${host}]` : host}:${port}`;
@@ -267,15 +268,73 @@ unset( $tp_dev_url, $tp_dev_address, $tp_dev_option );
 const ADDRESS_FILE = 'tp-dev-address.php';
 const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require ABSPATH . '${ADDRESS_FILE}'; } // typedpress dev --url / --host`;
 
+// PHP source with everything that isn't code blanked to spaces (newlines kept, so offsets match):
+// comments, heredoc and nowdoc bodies, and text outside <?php ... ?>. Quoted strings stay, and are
+// read past so a `//` or `?>` in one is not taken for anything.
+export function phpCode(source) {
+  const out = source.split('');
+  const blank = (from, to) => { for (let i = from; i < to; i++) if (out[i] !== '\n') out[i] = ' '; };
+  let i = 0;
+  let html = true;
+  while (i < source.length) {
+    if (html) {
+      const open = source.indexOf('<?', i);
+      const at = open === -1 ? source.length : open;
+      blank(i, at);
+      if (open === -1) break;
+      i = source.startsWith('<?php', open) ? open + 5 : source.startsWith('<?=', open) ? open + 3 : open + 2;
+      html = false;
+      continue;
+    }
+    const c = source[i];
+    if (source.startsWith('?>', i)) { i += 2; html = true; continue; }
+    if (c === "'" || c === '"' || c === '`') {
+      let j = i + 1;
+      while (j < source.length && source[j] !== c) j += source[j] === '\\' ? 2 : 1;
+      i = j + 1;
+      continue;
+    }
+    if (c === '#' || source.startsWith('//', i)) {
+      // A line comment ends at the line's end or at `?>`.
+      let j = i;
+      while (j < source.length && source[j] !== '\n' && !source.startsWith('?>', j)) j++;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    if (source.startsWith('/*', i)) {
+      const close = source.indexOf('*/', i + 2);
+      const j = close === -1 ? source.length : close + 2;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    const doc = /^<<<[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\r?\n/.exec(source.slice(i, i + 200));
+    if (doc) {
+      const close = new RegExp(`\\n[ \\t]*${doc[2]}(?![A-Za-z0-9_])`, 'g');
+      close.lastIndex = i + doc[0].length - 1;
+      const found = close.exec(source);
+      const j = found ? found.index + found[0].length : source.length;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    i++;
+  }
+  return out.join('');
+}
+
 // wp-config.php with the one line that reads the address file, placed where WordPress starts loading.
-// Only a statement of its own: the previous line ends one (`;`, `}` or a comment) and the line is
-// `require_once ABSPATH . 'wp-settings.php';`, so the line put before it can't become the body of an
-// `if` or `else` above it, or split a statement.
+// Only before `require_once ABSPATH . 'wp-settings.php';` in code (not in a comment, a heredoc or
+// text outside PHP) as a statement of its own: the code before it ends one (`;`, `{`, `}` or the
+// open tag), so the line put before it can't become the body of an `if` or `else`, or split a
+// statement. Anything else is refused before a file is written.
 export function withAddressLine(config) {
   if (config.includes(ADDRESS_FILE)) return config;
-  const settings = /^[ \t]*require(?:_once)?[ (]*ABSPATH *\. *['"]wp-settings\.php['"] *\)? *;[ \t]*(\/\/.*|\/\*.*\*\/[ \t]*)?$/m.exec(config);
-  const before = settings ? config.slice(0, settings.index).replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*|\s)+$/, '') : '';
-  if (!settings || !/(;|\}|<\?php)$/.test(before) || /\belse\s*$/.test(before)) {
+  const code = phpCode(config);
+  const settings = /^[ \t]*require(?:_once)?[ (]*ABSPATH *\. *['"]wp-settings\.php['"] *\)? *;/m.exec(code);
+  const before = settings ? code.slice(0, settings.index).trimEnd() : '';
+  if (!settings || !/(;|\{|\}|<\?php)$/.test(before)) {
     throw new Error("wp-config.php does not load wp-settings.php in a statement of its own (require_once ABSPATH . 'wp-settings.php';); --url and --host cannot set the address.");
   }
   return `${config.slice(0, settings.index)}${ADDRESS_LINE}\n${config.slice(settings.index)}`;
@@ -291,7 +350,9 @@ async function announce(site, url) {
 }
 
 // --host: connections to this machine's address, passed to Studio's listener and back unchanged.
+// The address bound is the one `host` resolves to, refused when that is every interface.
 export async function forward(host, port, upstream) {
+  const bind = await listenAddress(host);
   const open = new Set();
   const server = createServer((client) => {
     const site = connect(upstream, 'localhost');
@@ -304,7 +365,7 @@ export async function forward(host, port, upstream) {
   });
   await new Promise((done, fail) => {
     server.once('error', (error) => fail(new Error(`Cannot listen on ${host}:${port}: ${error.message}`)));
-    server.listen(port, host, done);
+    server.listen(port, bind, done);
   });
   return {
     port: server.address().port,
@@ -632,7 +693,7 @@ async function main() {
     // The development identity app stays registered for this machine's own address.
     siteUrl = local;
     await announce(managed.owner.site, address.url);
-    if (address.listen) relay = await forward(await listenAddress(address.listen), port, port);
+    if (address.listen) relay = await forward(address.listen, port, port);
     const mu = join(managed.owner.site, 'wp-content/mu-plugins/typedpress-dev-runtime.php');
     if (!managed.owner.devMu && await exists(mu)) throw new Error('typedpress-dev-runtime.php already exists and is not managed by TypedPress.');
     await writeFile(mu, "<?php\n// Local development only: allow identity callbacks on the site's HTTP origin.\nif (!defined('TP_IDENTITY_DEV_HTTP')) define('TP_IDENTITY_DEV_HTTP', true);\n");

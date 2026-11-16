@@ -202,18 +202,22 @@ test('--url and --host name one address for WordPress and one for TypedPress to 
     assert.throws(() => siteAddress([`--url=${url}`], 8791), /--url takes an address/, url);
   }
   // WordPress writes one address into every page: "all interfaces" names none, however it is spelled.
-  for (const host of ['0.0.0.0', '::', '0:0:0:0:0:0:0:0', '::ffff:0.0.0.0', '::ffff:0:0', '0::0', '0', '2130706433', '*', '', 'a/b', 'http://10.0.0.24', '10.0.0.24:8791', 'a b', "a'b"]) {
+  for (const host of ['fe80::1%eth0', '0.0.0.0', '::', '0:0:0:0:0:0:0:0', '::ffff:0.0.0.0', '::ffff:0:0', '0::0', '0', '2130706433', '*', '', 'a/b', 'http://10.0.0.24', '10.0.0.24:8791', 'a b', "a'b"]) {
     assert.throws(() => siteAddress([`--host=${host}`], 8791), /--host takes one address or name of this machine/, host);
   }
   // The listener lives in the typedpress dev process, and --no-watch leaves none.
   assert.throws(() => siteAddress(['--no-watch', '--host=10.0.0.24'], 8791), /--host needs typedpress dev to keep running/);
 });
 
-test('--host is bound as the address it resolves to, never every interface', async () => {
+test('--host is bound as the address it resolves to, never every interface', { timeout: 10000 }, async () => {
   assert.equal(await listenAddress('127.0.0.1'), '127.0.0.1');
   assert.match(await listenAddress('localhost'), /^(127\.0\.0\.1|::1)$/);
-  // Checked again after resolving, for whatever spelling siteAddress let through.
+  // Checked again after resolving, for whatever spelling siteAddress let through, by the relay itself.
   await assert.rejects(listenAddress('0.0.0.0'), /every interface/);
+  for (const host of ['0.0.0.0', '::']) {
+    const bound = await forward(host, 0, 1).then((relay) => relay.close().then(() => true), () => false);
+    assert.equal(bound, false, `the relay listened on ${host}`);
+  }
 });
 
 test('the address file is PHP that only holds the address', () => {
@@ -251,6 +255,17 @@ test('the address reaches WordPress before it loads, from one line in wp-config.
   for (const body of ["if ( $a )\n\trequire_once ABSPATH . 'wp-settings.php';\nelse\n\texit;\n", "if ( $a ) { exit; } else\nrequire_once ABSPATH . 'wp-settings.php';\n", "$x = 1 +\nrequire_once ABSPATH . 'wp-settings.php';\n"]) {
     assert.throws(() => withAddressLine(`<?php\n${body}`), /in a statement of its own/, body);
   }
+  // The require WordPress runs, not a copy of it in a comment, a heredoc or text outside PHP.
+  const settings = "require_once ABSPATH . 'wp-settings.php';";
+  for (const decoy of [`/* old:\n${settings}\n*/`, `$help = <<<TXT\nx;\n${settings}\nTXT;`, `$help = <<<'TXT'\nx;\n${settings}\nTXT;`, `?>\n<p>x;\n${settings}</p>\n<?php`, `// ${settings}`, `# ${settings}`]) {
+    const source = `<?php\ndefine( 'A', 1 );\n${decoy}\nif ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n${settings}\n`;
+    const lines = withAddressLine(source).split('\n');
+    const at = lines.findIndex((line) => line.startsWith('if ( is_file( ABSPATH'));
+    assert.equal(lines[at + 1], settings, decoy);
+    assert.equal(lines[at - 1], '}', decoy);
+  }
+  // Only in a decoy: nothing runs it, so nothing is changed.
+  assert.throws(() => withAddressLine(`<?php\n/*\n${settings}\n*/\n`), /in a statement of its own/);
   const commented = withAddressLine("<?php\ndefine( 'A', 1 ); // one\n/** Sets up WordPress vars and included files. */\nrequire_once( ABSPATH . 'wp-settings.php' );\n");
   assert.match(commented, /tp-dev-address\.php/);
 });

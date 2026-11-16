@@ -330,7 +330,7 @@ impl Walk<'_> {
 /// The browser module for a rewritten program: TypeScript stripped, JSX on Preact's automatic
 /// runtime. Needs the oxc transformer, which only the native build carries (`host`): its target
 /// table reaches for JavaScript globals on wasm32, which the browser compiler cannot import.
-#[cfg(feature = "host")]
+#[cfg(any(feature = "host", feature = "browser-client"))]
 fn emit<'a>(
     arena: &'a Allocator,
     relative: &Path,
@@ -363,7 +363,7 @@ fn emit<'a>(
 }
 
 /// Without the transformer, every module still gets its coded refusals; the emit is the native CLI's.
-#[cfg(not(feature = "host"))]
+#[cfg(not(any(feature = "host", feature = "browser-client")))]
 fn emit<'a>(
     _arena: &'a Allocator,
     _relative: &Path,

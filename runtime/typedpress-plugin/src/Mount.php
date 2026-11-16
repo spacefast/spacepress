@@ -38,12 +38,14 @@ final class Mount
             if ($manifest === null || !Site::complete($manifest)) {
                 throw new \RuntimeException("TypedPress build $build is not in the build store");
             }
-            $root = Site::root();
+            $root = (string) Site::root();
             require_once $root . '/runtime/' . $manifest['runtime'] . '/typedpress-loader.php';
             \TypedPress\Loader\Loader::load($root, $build, [
                 'variables' => self::variables(),
                 'url' => Site::url(),
-                'inspect' => $mode === 'inspect',
+                // The receiver's requests run none of the app's own code: a dry run's `/site` and
+                // uploads mount the live build only to report whether it mounts.
+                'inspect' => $mode === 'inspect' || ($mode === 'live' && Site::route() !== null),
             ]);
             if (\TypedPress\Wp\Runtime::plugin() === null) {
                 throw new \RuntimeException('The build did not mount');

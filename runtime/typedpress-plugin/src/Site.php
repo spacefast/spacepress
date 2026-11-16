@@ -34,8 +34,9 @@ final class Site
      * The build store: `TP_STORE_DIR`, else `wp-content/typedpress-store-<key>`. It holds PHP, schema
      * snapshots, migrations and seed content, and many servers ignore `.htaccess`, so its name carries
      * a random key and no URL ever names it. What a browser needs is copied to {@see assets()}.
+     * Null while the site has no key: nothing was ever uploaded to it. Only {@see store()} makes one.
      */
-    public static function root(): string
+    public static function root(): ?string
     {
         if (defined('TP_STORE_DIR') && is_string(TP_STORE_DIR) && TP_STORE_DIR !== '') {
             // One constant serves a whole network: each site keeps its builds, and the record of which
@@ -43,15 +44,23 @@ final class Site
             return rtrim(TP_STORE_DIR, '/') . (is_multisite() ? '/site-' . get_current_blog_id() : '');
         }
         $key = get_option(self::KEY);
-        if (!is_string($key) || preg_match('/\A[0-9a-f]{32}\z/D', $key) !== 1) {
+
+        return is_string($key) && preg_match('/\A[0-9a-f]{32}\z/D', $key) === 1 ? WP_CONTENT_DIR . '/typedpress-store-' . $key : null;
+    }
+
+    /** {@see root()}, with its key made first when the site has none: for a request that writes to the store. */
+    public static function store(): string
+    {
+        $root = self::root();
+        if ($root === null) {
             // add_option keeps the first writer's key when two requests create it at once.
             add_option(self::KEY, bin2hex(random_bytes(16)), '', true);
             wp_cache_delete(self::KEY, 'options');
             wp_cache_delete('alloptions', 'options');
-            $key = (string) get_option(self::KEY);
+            $root = self::root() ?? throw new \RuntimeException('Cannot create the TypedPress build store: the ' . self::KEY . ' option holds something else');
         }
 
-        return WP_CONTENT_DIR . '/typedpress-store-' . $key;
+        return $root;
     }
 
     /**
@@ -63,7 +72,9 @@ final class Site
      */
     public static function exposure(): ?string
     {
-        $store = self::real(self::root());
+        // Before the first upload the store has no name yet; it will be made in wp-content.
+        $root = self::root() ?? WP_CONTENT_DIR . '/typedpress-store-<random>';
+        $store = self::real($root);
         $web = self::real(ABSPATH);
         // Core's own answer to "where does the document root end": wp-content can be moved out of it.
         $content = self::real(WP_CONTENT_DIR);
@@ -76,7 +87,7 @@ final class Site
             return null;
         }
 
-        return 'TypedPress keeps this site\'s builds (PHP, database migrations, seed content) in ' . self::root()
+        return 'TypedPress keeps this site\'s builds (PHP, database migrations, seed content) in ' . $root
             . ', which is inside the folder the web server serves. '
             . ($server === '' ? 'This server' : 'This server (' . preg_replace('/[^A-Za-z0-9 ._\/-]/', '', substr($server, 0, 40)) . ')')
             . ' may not read the .htaccess file that blocks it, so only the folder\'s random name keeps those files private.'
@@ -177,7 +188,8 @@ final class Site
         if (!self::validId($build)) {
             return null;
         }
-        $bytes = @file_get_contents(self::root() . '/build/' . $build . '.json');
+        $root = self::root();
+        $bytes = $root === null ? false : @file_get_contents($root . '/build/' . $build . '.json');
         if (!is_string($bytes)) {
             return null;
         }
@@ -206,14 +218,16 @@ final class Site
     {
         $root = self::root();
 
-        return is_file($root . '/runtime/' . $manifest['runtime'] . '/typedpress-loader.php')
+        return $root !== null && is_file($root . '/runtime/' . $manifest['runtime'] . '/typedpress-loader.php')
             && is_dir($root . '/app/' . $manifest['app'] . '/plugins/typedpress-app-' . $manifest['name']);
     }
 
     /** Whether the build has been initialized on this site, so it can be made live without installing. */
     public static function ready(string $build): bool
     {
-        return self::validId($build) && is_file(self::root() . '/ready/' . $build . '.json');
+        $root = self::root();
+
+        return $root !== null && self::validId($build) && is_file($root . '/ready/' . $build . '.json');
     }
 
     /** @return list<array{build: string, name: string, compiler: string, at: string, user: int, kind: string}> */
@@ -256,7 +270,8 @@ final class Site
      */
     public static function locked(callable $fn): mixed
     {
-        $root = self::root();
+        // A site with no store has no deployment to lock: {@see Receiver::create()} makes it first.
+        $root = self::root() ?? throw new \RuntimeException('This site has no TypedPress build store yet');
         Trees::prepare($root);
         $handle = fopen($root . '/.lock', 'c');
         if ($handle === false || !flock($handle, LOCK_EX)) {

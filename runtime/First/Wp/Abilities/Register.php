@@ -62,7 +62,8 @@ final class Register
     public static function mcp(object $adapter): void
     {
         $schema = self::schema();
-        if ($schema === null) {
+        // Not on First's API, which never serves `/mcp` (see Module::register).
+        if ($schema === null || \First\Wp\Facade::path() !== null) {
             return;
         }
         $id = 'first-' . self::kebab($schema->name());

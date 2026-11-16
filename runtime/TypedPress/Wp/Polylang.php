@@ -73,7 +73,7 @@ final class Polylang
             $locales = $plugin?->schema->locales();
             // Not while storage lags the build (the schema's locales may not be the stored ones yet).
             // The marker only says provisioning is done; assign() checks each write's language itself.
-            if ($plugin === null || $locales === null || !function_exists('PLL') || $plugin->unavailable() !== null || self::provisioned($locales)) {
+            if ($plugin === null || $locales === null || !function_exists('PLL') || $plugin->unavailable() !== null || !Runtime::installs() || self::provisioned($locales)) {
                 return;
             }
             // Until every language exists a localized write would store no language, so a failure
@@ -292,6 +292,12 @@ final class Polylang
     {
         wp_cache_set_terms_last_changed();
         PLL()->model->clean_languages_cache();
+    }
+
+    /** Whether every configured language is provisioned, read past the option caches. */
+    public static function installed(array $locales): bool
+    {
+        return self::provisioned($locales, true);
     }
 
     private static function provisioned(array $locales, bool $fresh = false): bool

@@ -572,6 +572,14 @@ final class Prebuilt
         if ($signal !== '') {
             header('Content-Signal: ' . $signal);
         }
+        // The file's own validator: a client (or edge) that holds this file gets an empty 304. The
+        // gates above already decided the file is what this request would get.
+        $etag = \TypedPress\Validator::file($file);
+        header('ETag: ' . $etag);
+        if (\TypedPress\Validator::matches($etag)) {
+            http_response_code(304);
+            exit;
+        }
         header('Content-Length: ' . (string) filesize($file));
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
             readfile($file);

@@ -97,9 +97,22 @@ final class Islands
         if ($plugin === null || !function_exists('wp_register_script_module') || !is_file($plugin->dir . '/tp/app/client/typedpress-client.js')) {
             return false;
         }
-        wp_register_script_module(self::CLIENT, $plugin->url('tp/app/client/typedpress-client.js'), [], null);
+        // The file has a fixed name: its version is a digest of its bytes, written by `typedpress build`.
+        $version = is_file($plugin->dir . '/tp/app/client-version.php') ? (string) require $plugin->dir . '/tp/app/client-version.php' : null;
+        wp_register_script_module(self::CLIENT, $plugin->url('tp/app/client/typedpress-client.js'), [], $version);
 
         return true;
+    }
+
+    /**
+     * The version of the runtime's fixed-name modules (`live.js`, `router.js`): a digest of the
+     * runtime's files, so a new runtime's module is never an old cached copy. A build mounted from
+     * the build store has no `typedpress-runtime.php` and no digest constant; its runtime URLs already
+     * name the runtime revision, so the release version is enough there.
+     */
+    public static function runtimeVersion(): string
+    {
+        return defined('TP_RUNTIME_HASH') ? (string) TP_RUNTIME_HASH : Wp\Runtime::VERSION;
     }
 
     /** The script module id of the glue `useLive` stores import (`Render/client/live.js`). */
@@ -115,7 +128,7 @@ final class Islands
         if (!self::registerClient()) {
             return $done = false;
         }
-        wp_register_script_module(self::LIVE, plugins_url('tp/Render/client/live.js', Wp\Runtime::file()), [self::CLIENT, '@wordpress/interactivity'], null);
+        wp_register_script_module(self::LIVE, plugins_url('tp/Render/client/live.js', Wp\Runtime::file()), [self::CLIENT, '@wordpress/interactivity'], self::runtimeVersion());
         // The live reads go as the visitor: a signed-in visitor's cookie needs the REST nonce.
         wp_interactivity_config('tp/live', ['nonce' => is_user_logged_in() ? wp_create_nonce('wp_rest') : '']);
 

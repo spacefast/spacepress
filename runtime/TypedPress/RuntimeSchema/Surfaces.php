@@ -40,7 +40,7 @@ final class Surfaces
         }
         add_filter('tp_ability_operations', [self::class, 'operations'], 10, 2);
         // Installing, not serving: a managed build grants it from initialize (Runtime::initialize).
-        add_action('init', static fn () => Runtime::managed() ? null : self::grant());
+        add_action('init', static fn () => Runtime::installs() ? self::grant() : null);
         add_action('wp_create_application_password', [self::class, 'inheritDeny'], 10, 2);
         add_action('tp_admin_screens', [self::class, 'screen']);
         // Outside the app's command transaction: applying takes the schema lock and commits its own.
@@ -58,6 +58,14 @@ final class Surfaces
 
     /** Records that the administrator role was given `tp_apply_schema` once, so it is never given again. */
     private const GRANTED = 'tp_schema_apply_granted';
+
+    /** Whether {@see grant()} has nothing left to do. */
+    public static function granted(): bool
+    {
+        $plugin = Runtime::plugin();
+
+        return $plugin === null || SchemaVersions::of($plugin) === null || get_option(self::GRANTED) !== false;
+    }
 
     /**
      * Gives the administrator role `tp_apply_schema` the first time an app with runtime schema

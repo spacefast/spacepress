@@ -8943,7 +8943,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("parseFloat", Some(v)) => {
                 Out::atom(format!("\\TypedPress\\Js::parseFloat({})", v.php), Ty::Num).checked_str(v, span)?
             }
-            ("isNaN", Some(v)) => Out::atom(format!("\\is_nan((float) \\TypedPress\\Js::toNumber({}))", v.php), Ty::Bool),
+            ("isNaN", Some(v)) => Out::atom(
+                format!("\\is_nan((float) \\TypedPress\\Js::toNumber({}))", v.php),
+                Ty::Bool,
+            ),
             ("isFinite", Some(v)) => Out::atom(
                 format!("\\TypedPress\\Js::isFinite(\\TypedPress\\Js::toNumber({}))", v.php),
                 Ty::Bool,

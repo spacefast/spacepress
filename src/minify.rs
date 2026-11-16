@@ -44,7 +44,13 @@ mod tests {
         let out = super::module(source);
         assert!(out.len() < source.len(), "{out}");
         assert!(!out.contains("a comment") && !out.contains('\n'), "{out}");
-        for kept in ["class TypedPressError", "export", "function call", "from\"x\"", "this.name="] {
+        for kept in [
+            "class TypedPressError",
+            "export",
+            "function call",
+            "from\"x\"",
+            "this.name=",
+        ] {
             assert!(out.contains(kept), "{kept} in {out}");
         }
         assert!(!out.contains("longName") && !out.contains("another"), "{out}");

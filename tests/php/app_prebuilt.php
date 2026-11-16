@@ -12,9 +12,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('app-prebuilt', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'],
-    // The test site serves plain http alone, as a host may say (docs/host-contract.md, "Prebuilt pages").
-    'muPlugins' => ['http-only' => "<?php add_filter('first_prebuilt_http_only', '__return_true');"]]);
+$site = wpSite('app-prebuilt', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
 wp_set_current_user(1);
 $hello = \First\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published'], true)[0];
 \First\db()->insert('notes', ['title' => 'Secret', 'slug' => 'secret', 'status' => 'draft']);
@@ -198,67 +196,16 @@ do_action('init');
 $drain();
 $negotiated = fetch("$url/about", ['Accept: text/markdown']);
 $out['accept markdown'] = [$negotiated['prebuilt'], fetch("$url/about.md")['prebuilt']];
-// What a host that serves the files before PHP reads (docs/host-contract.md, "Prebuilt pages"):
-// current.json names this build's directory and the headers to send, and goes with the files.
-do_action('init');
-$drain();
-$pointer = json_decode((string) @file_get_contents(\First\Render\Prebuilt::pointer()), true);
-$out['pointer'] = is_array($pointer) ? [
-    $pointer['build'] === basename(\First\Render\Prebuilt::dir()),
-    $pointer['maxAge'], $pointer['cacheControl'], $pointer['charset'], $pointer['home'],
-    is_file(dirname(\First\Render\Prebuilt::pointer()) . '/' . $pointer['build'] . '/about.html'),
-] : null;
-\First\Render\Prebuilt::forget();
-$out['pointer after forget'] = is_file(\First\Render\Prebuilt::pointer());
-do_action('init');
-$drain();
-update_option('blog_public', -1);
-$out['pointer while private'] = [is_file(\First\Render\Prebuilt::pointer())];
-do_action('init');
-$drain();
-$out['pointer while private'][] = is_file(\First\Render\Prebuilt::pointer());
-update_option('blog_public', 1);
-do_action('init');
-$drain();
-$pointer = json_decode((string) @file_get_contents(\First\Render\Prebuilt::pointer()), true);
-$out['pointer homeUrl'] = $pointer['homeUrl'] ?? null;
-// A pointer naming another build (a deploy changed the build id) goes on the next request.
-$named = $pointer;
-$named['build'] = '0123456789abcdef';
-file_put_contents(\First\Render\Prebuilt::pointer(), json_encode($named));
-fetch("$url/live");
-$out['pointer of another build'] = is_file(\First\Render\Prebuilt::pointer());
-// A build that started before a forget() writes no pointer when it ends.
-$epoch = (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null);
-\First\Render\Prebuilt::forget();
-(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, $epoch);
-$out['pointer after a forget mid-build'] = is_file(\First\Render\Prebuilt::pointer());
-// A plugin that decides per request (a first_prebuilt_serve callback) gets no pointer at all.
-do_action('init');
-$drain();
-add_filter('first_prebuilt_serve', static fn (bool $serve, string $path): bool => $serve && !str_starts_with($path, '/notes/'), 10, 2);
-(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null));
-$out['pointer with a serve filter'] = is_file(\First\Render\Prebuilt::pointer());
-remove_all_filters('first_prebuilt_serve');
 // More spellings that aren't a prebuilt page's URL: an empty segment, a `.` segment, `/.md`.
 $out['spellings'] = [fetch("$url/notes//hello")['prebuilt'], fetch("$url/./about")['prebuilt'], fetch("$url/.md")['prebuilt']];
-// A plugin that hides the site through a filter on blog_public (no stored change) gets no pointer.
-add_filter('option_blog_public', static fn (): int => -1);
-(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null));
-$out['pointer with a privacy filter'] = is_file(\First\Render\Prebuilt::pointer());
-remove_all_filters('option_blog_public');
-// Without the host's word that it serves http alone, an http site's links follow the request's
-// scheme, so it gets no pointer either.
-remove_all_filters('first_prebuilt_http_only');
-(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null));
-$out['pointer on an http site'] = is_file(\First\Render\Prebuilt::pointer());
-add_filter('first_prebuilt_http_only', '__return_true');
-// A chain of batches made obsolete by a forget() leaves a newer pointer alone.
-(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null));
-$out['newer pointer written'] = is_file(\First\Render\Prebuilt::pointer());
-$old = (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null) - 1;
-(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, $old);
-$out['newer pointer kept'] = is_file(\First\Render\Prebuilt::pointer());
+// A render that began before a forget() writes no file, and a full build that began before it
+// records nothing, so the next request schedules the build again.
+do_action('init');
+$drain();
+$started = microtime(true) - 5;
+\First\Render\Prebuilt::forget();
+$m = new ReflectionMethod(\First\Render\Prebuilt::class, 'write');
+$out['forget race'] = [$m->invoke(null, \First\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started), is_file(\First\Render\Prebuilt::dir() . '/about.html')];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

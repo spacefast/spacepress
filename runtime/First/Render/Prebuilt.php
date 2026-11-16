@@ -54,10 +54,10 @@ final class Prebuilt
      * cookie, so a prerender always reaches PHP and is never answered from a stored copy.
      */
     public const COOKIE = 'wordpress_first_prerender';
-    /** The option `forget()` advances, so a build running elsewhere knows its pointer is unwanted. */
-    private const EPOCH = 'first_prebuilt_epoch';
     /** The option holding when a write last named each prebuilt path (`stale()`). */
     private const MARKS = 'first_prebuilt_stale';
+    /** The option holding when `forget()` last dropped every file. */
+    private const FORGOTTEN = 'first_prebuilt_forgotten';
 
     private static ?Plugin $plugin = null;
     /** @var ?string the viewer function this prerender request called, reported in REFUSED */
@@ -72,13 +72,8 @@ final class Prebuilt
     public static function boot(Plugin $plugin): void
     {
         $app = $plugin->schema->app();
-        if (!is_array($app) || !self::any($app) || ($app['output'] ?? 'server') !== 'server') {
-            // No prebuilt pages are served by this build: a pointer an earlier build left goes, so a
-            // host stops serving that build's files on this request.
-            @unlink(self::pointerPath());
-            if (!is_array($app) || !self::any($app)) {
-                return;
-            }
+        if (!is_array($app) || !self::any($app)) {
+            return;
         }
         self::$plugin = $plugin;
         if (self::prerendering()) {
@@ -96,18 +91,9 @@ final class Prebuilt
             return;
         }
         add_action('plugins_loaded', self::serve(...), PHP_INT_MAX);
-        add_action(self::ACTION, self::build(...), 10, 2);
+        add_action(self::ACTION, self::build(...), 10, 1);
         // After a build is initialized (first request, migrate, activation) the files are made, and
         // made again every MAX_AGE by the same stock Action Scheduler action.
-        // A deploy changes the build id without forget(): a pointer naming another build would have a
-        // host serve that build's files. It goes on this request, before anything else it does.
-        $pointer = self::pointer();
-        if (is_file($pointer)) {
-            $named = json_decode((string) @file_get_contents($pointer), true);
-            if (!is_array($named) || ($named['build'] ?? null) !== basename(self::dir())) {
-                @unlink($pointer);
-            }
-        }
         add_action('init', static function (): void {
             if (self::$plugin?->unavailable() !== null || !function_exists('as_enqueue_async_action')) {
                 return;
@@ -144,120 +130,13 @@ final class Prebuilt
         if (self::$plugin === null) {
             return;
         }
-        // The pointer goes first: a host serving files before PHP stops at once. The epoch tells a
-        // build already running in another process that what it made is no longer wanted.
-        @unlink(self::pointer());
-        update_option(self::EPOCH, self::epoch() + 1, false);
-        // Again, after the bump: a publish() that checked the old epoch just before it may have
-        // renamed its pointer in since.
-        @unlink(self::pointer());
+        // Marked before the files go: a render already running in another process writes nothing,
+        // and a full build that began before now records nothing (write(), build()).
+        update_option(self::FORGOTTEN, microtime(true), false);
         if (is_dir(self::dir())) {
             self::remove(self::dir());
         }
         delete_option(self::option());
-    }
-
-    /** The epoch `forget()` advances, read from the database past any cache in this process. */
-    private static function epoch(): int
-    {
-        global $wpdb;
-        return (int) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::EPOCH));
-    }
-
-    /** An option read from the database, past this process's option cache. */
-    private static function fresh(string $name): mixed
-    {
-        global $wpdb;
-        $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name));
-        return $raw === null ? false : maybe_unserialize($raw);
-    }
-
-    /**
-     * `current.json` beside the build directories: what a host that serves prebuilt files before PHP
-     * needs and can't compute itself (docs/host-contract.md, "Prebuilt pages"). Written when a full
-     * build completes, removed with the files.
-     */
-    public static function pointer(): string
-    {
-        return self::pointerPath();
-    }
-
-    /** Where the pointer is: one per site (multisite keeps one directory per blog id). */
-    private static function pointerPath(): string
-    {
-        $root = (string) apply_filters('first_prebuilt_dir', WP_CONTENT_DIR . '/cache/first-prebuilt');
-        return $root . (is_multisite() ? '/sites/' . get_current_blog_id() : '') . '/current.json';
-    }
-
-    /**
-     * Writes the pointer for this build, when what `serve()` decides doesn't depend on the request:
-     * no plugin hooks `first_prebuilt_serve`, `first_app_cache_window`, `first_content_signal` or
-     * `first_prebuilt_dir` (each could answer differently per path or per request), the site shows
-     * itself to the public, and no `forget()` ran since this build started (`$epoch`). Otherwise the
-     * pointer is removed, and only `serve()` answers, request by request.
-     */
-    private static function publish(int $epoch): void
-    {
-        // A chain of batches a forget() made obsolete leaves alone whatever a newer build wrote.
-        if (self::epoch() !== $epoch) {
-            return;
-        }
-        // Whatever serve() reads through a filter could answer differently per request, and a host
-        // can't run filters: then there is no pointer, and only serve() answers. That covers
-        // privacy plugins (`option_blog_public`), multi-domain and language plugins (`home_url`), a
-        // home URL whose scheme follows the request, and First's own filters.
-        $hooks = ['first_prebuilt_serve', 'first_app_cache_window', 'first_content_signal', 'first_prebuilt_dir',
-            'home_url', 'option_home', 'pre_option_home', 'option_blog_charset', 'pre_option_blog_charset'];
-        foreach (['blog_public', 'wpcom_public_coming_soon', 'wpcom_coming_soon'] as $option) {
-            $hooks[] = "option_$option";
-            $hooks[] = "pre_option_$option";
-        }
-        // Core's own callbacks give the same answer on every request (`WP_HOME` and the charset's
-        // canonical spelling); any other is a plugin's, which may not.
-        $core = ['_config_wp_home', '_config_wp_siteurl', '_wp_specialchars', '_canonical_charset'];
-        $filtered = array_filter($hooks, static function (string $hook) use ($core): bool {
-            global $wp_filter;
-            foreach (($wp_filter[$hook] ?? null)?->callbacks ?? [] as $callbacks) {
-                foreach ($callbacks as $callback) {
-                    if (!is_string($callback['function']) || !in_array($callback['function'], $core, true)) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        });
-        $public = (int) self::fresh('blog_public') >= 0 && !self::fresh('wpcom_public_coming_soon') && !self::fresh('wpcom_coming_soon');
-        // home_url() switches to https for a request over TLS whatever the stored scheme is, so its
-        // links are the same for every request only when the stored home is already https (or a
-        // plain-http site the host serves on http alone; a host that knows that may say so with
-        // `first_prebuilt_http_only`).
-        $home = (string) self::fresh('home');
-        $fixedScheme = str_starts_with($home, 'https://') || (bool) apply_filters('first_prebuilt_http_only', false);
-        if (!$public || $filtered !== [] || !$fixedScheme) {
-            @unlink(self::pointer());
-            return;
-        }
-        [$control] = Cache::policy(200, true, false);
-        $pointer = [
-            'build' => basename(self::dir()),
-            'maxAge' => self::MAX_AGE,
-            'cacheControl' => $control,
-            'charset' => (string) get_option('blog_charset'),
-            'contentSignal' => MarkdownTwins::contentSignal(),
-            // The home path requests start with, and the URL the `Link` headers are built on.
-            'home' => rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/'),
-            'homeUrl' => rtrim($home, '/'),
-        ];
-        $tmp = self::pointer() . '.' . bin2hex(random_bytes(4)) . '.tmp';
-        if (wp_mkdir_p(dirname(self::pointer())) && file_put_contents($tmp, (string) wp_json_encode($pointer, JSON_UNESCAPED_SLASHES)) !== false) {
-            rename($tmp, self::pointer());
-            // A forget() between the check above and the rename: the pointer it removed is back.
-            if (self::epoch() !== $epoch) {
-                @unlink(self::pointer());
-            }
-        } else {
-            @unlink($tmp);
-        }
     }
 
     /** Prebuilt files are served here and kept current: the build is `output: "server"` with a prebuilt page. */
@@ -702,21 +581,18 @@ final class Prebuilt
 
     /**
      * The `first_prebuild` action: render paths (all of this build's when `$paths` is empty) and
-     * write their files. More than BATCH paths continue in another action. `$epoch` is set on the
-     * batches that continue a full build: the `forget()` epoch that build started under, so its last
-     * batch writes the pointer, and none does once `forget()` has run since.
+     * write their files. More than BATCH paths continue in another action.
      *
      * @param list<string> $paths
      */
-    public static function build(array $paths = [], ?int $epoch = null): void
+    public static function build(array $paths = []): void
     {
         $plugin = self::$plugin;
         if ($plugin === null || $plugin->unavailable() !== null) {
             return;
         }
         $all = $paths === [];
-        $full = $all || $epoch !== null;
-        $epoch ??= self::epoch();
+        $began = microtime(true);
         $listed = array_column(self::urls($plugin)['urls'], 'path');
         if ($all) {
             self::sweep();
@@ -734,7 +610,7 @@ final class Prebuilt
         }
         $rest = array_slice($paths, self::BATCH);
         if ($rest !== []) {
-            as_enqueue_async_action(self::ACTION, [$rest, $full ? $epoch : null], 'first');
+            as_enqueue_async_action(self::ACTION, [$rest], 'first');
         }
         foreach (array_slice($paths, 0, self::BATCH) as $path) {
             if (!self::render((string) $path)) {
@@ -745,13 +621,10 @@ final class Prebuilt
                 return;
             }
         }
-        // A forget() since this build started dropped its files and state: nothing is recorded.
-        if ($all && self::epoch() === $epoch) {
+        // A forget() since this build began dropped its files and state: the next request schedules
+        // a full build again, so nothing is recorded.
+        if ($all && self::forgotten() < $began) {
             update_option(self::option(), ['state' => 'built', 'at' => time(), 'retry' => 60], false);
-        }
-        // The pointer is written when a full build's last batch is done.
-        if ($full && $rest === []) {
-            self::publish($epoch);
         }
     }
 
@@ -809,10 +682,10 @@ final class Prebuilt
         return true;
     }
 
-    /** Write by rename, so a reader sees the old file or the new one, never part of one. */
     /**
      * Write by rename, so a reader sees the old file or the new one, never part of one. Nothing is
-     * written when a write named the path after the render started: that render is older than it.
+     * written when a write named the path, or `forget()` ran, after the render started: that render
+     * is older than it.
      */
     private static function write(string $file, string $bytes, string $path, float $started): bool
     {
@@ -821,7 +694,7 @@ final class Prebuilt
             return false;
         }
         $tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
-        if (file_put_contents($tmp, $bytes) !== strlen($bytes) || self::staleSince($path) >= $started) {
+        if (file_put_contents($tmp, $bytes) !== strlen($bytes) || max(self::staleSince($path), self::forgotten()) >= $started) {
             @unlink($tmp);
             return false;
         }
@@ -859,6 +732,13 @@ final class Prebuilt
         $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::MARKS));
         $marks = is_string($raw) ? maybe_unserialize($raw) : null;
         return is_array($marks) ? (float) ($marks[$path] ?? 0) : 0.0;
+    }
+
+    /** When `forget()` last ran, as a Unix time; 0 for never. Read from the database, as `staleSince()`. */
+    private static function forgotten(): float
+    {
+        global $wpdb;
+        return (float) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::FORGOTTEN));
     }
 
     /** Removes other builds' directories: files from another build are never served, and are a cache. */

@@ -46,3 +46,18 @@ export function Static({ name, items }: { name: string; items: string[] }) {
     </main>
   );
 }
+
+// A void element's children don't render, but they still run (no React case: React refuses them).
+export function VoidChildren() {
+  let n = 0;
+  const node = <br>{++n}</br>;
+  return <p>{n}{node}</p>;
+}
+
+function boom(): string {
+  throw new Error("a void element's child ran");
+}
+
+export function VoidThrows() {
+  return <p><hr>{boom()}</hr></p>;
+}

@@ -7209,6 +7209,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if spread || self.client.is_some() || !html::foldable_tag(tag) {
             return None;
         }
+        // A void element renders no children, but `Html::element` still receives (evaluates) them:
+        // their effects and errors stay on the runtime path.
+        if html::is_void(tag) && !jsx.children.is_empty() {
+            return None;
+        }
         let mut attrs = Vec::new();
         for attr in &jsx.attrs {
             let JsxAttr::Named { name, value, .. } = attr else {

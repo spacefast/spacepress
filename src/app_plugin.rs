@@ -67,7 +67,7 @@ pub(crate) fn files(
     for island in built.schema.islands.values() {
         files.push((
             at(&format!("first/app/client/{}", island.file)),
-            crate::minify::module(&island.source).into_bytes(),
+            island.shipped.as_bytes().to_vec(),
         ));
     }
     // Those are named by their bytes (`stem.<12 hex>.js`): browsers may keep them for good.

@@ -2010,7 +2010,7 @@
         "tags": ["Actions"],
         "operationId": "actions.pendingOrders",
         "summary": "Call pendingOrders",
-        "x-first-access": "editor",
+        "x-typedpress-access": "editor",
         "description": "Runs the `pendingOrders` action with the input sent and returns its result.\n\nAccess: Users with the `editor` role or a higher one may do this.",
         "requestBody": {
           "required": true,
@@ -2066,7 +2066,7 @@
         "tags": ["Actions"],
         "operationId": "actions.pendingOrders.read",
         "summary": "Call pendingOrders with GET",
-        "x-first-access": "editor",
+        "x-typedpress-access": "editor",
         "description": "Runs the read-only `pendingOrders` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Users with the `editor` role or a higher one may do this.",
         "parameters": [
           {

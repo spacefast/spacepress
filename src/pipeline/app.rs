@@ -68,6 +68,103 @@ fn route_id(v: &Value, span: Span) -> Result<String, Diag> {
     }
 }
 
+/// `export const template` on a page or layout: the block template the page renders in
+/// (docs/pages.md "Block templates"). `"theme"` is TypedPress's template with the theme's header and
+/// footer parts, `"blank"` the one with none; any other slug names a template the theme, a plugin
+/// or the Site Editor provides. A layout that says nothing and places `<TemplatePart>` itself is
+/// `"blank"`: it lays out the theme's parts where it wants them.
+fn template(
+    path: &str,
+    value: Option<&Value>,
+    program: &loader::Program,
+    module: usize,
+    span: Span,
+) -> Result<Option<String>, Diag> {
+    let help = "write `export const template = \"blank\"` for a page with no theme header and footer, `\"theme\"` for the theme's, or a template's slug";
+    match value {
+        None | Some(Value::Undef) => {
+            Ok((path.ends_with("layout.tsx") && places_template_parts(program, module)).then(|| "blank".to_string()))
+        }
+        Some(Value::Str(s))
+            if !s.is_empty()
+                && s.len() <= 100
+                && s.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+                && s.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') =>
+        {
+            Ok(Some(s.to_string()))
+        }
+        Some(Value::Str(s)) => Err(Diag::new(
+            export_at(program, module, "template"),
+            format!("`template` is \"{s}\", which isn't a block template's slug"),
+        )
+        .help(help)),
+        Some(other) => Err(Diag::new(
+            span,
+            format!("`template` is {}, not a template's slug", other.describe()),
+        )
+        .help(help)),
+    }
+}
+
+/// Whether `path` is the outermost layout of some route: `app/layout.tsx`, or a route group's
+/// (`app/(site)/layout.tsx`) when nothing above it wraps it.
+pub fn is_root_layout(path: &str, table: &app::Table) -> bool {
+    table
+        .routes
+        .iter()
+        .chain(table.not_found.iter())
+        .chain(table.login.iter())
+        .any(|r| r.layouts.first().is_some_and(|l| l == path))
+}
+
+/// Whether a layout component returns anything besides its `children` (or a fragment of only them).
+fn draws_chrome(func: &crate::ir::Func) -> bool {
+    use crate::ir::{Expr, ExprKind, FnBody, JsxKind, Stmt};
+    fn children_only(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Ident(n) => n == "children",
+            ExprKind::Member { prop, .. } => prop == "children",
+            ExprKind::Jsx(j) => matches!(j.kind, JsxKind::Fragment) && j.children.iter().all(children_only),
+            ExprKind::Str(s) => s.trim().is_empty(),
+            _ => false,
+        }
+    }
+    fn returns(stmts: &[Stmt], out: &mut Vec<Expr>) {
+        for s in stmts {
+            match s {
+                Stmt::Return(Some(e), _) => out.push(e.clone()),
+                Stmt::If(_, t, e) => {
+                    returns(t, out);
+                    if let Some(e) = e {
+                        returns(e, out);
+                    }
+                }
+                Stmt::Block(b) => returns(b, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    match &func.body {
+        FnBody::Expr(e) => out.push(e.clone()),
+        FnBody::Block(b) => returns(b, &mut out),
+    }
+    out.iter()
+        .any(|e| matches!(e.kind, ExprKind::Jsx(_)) && !children_only(e))
+}
+
+/// Whether a module imports `TemplatePart` from `"typedpress/app"`.
+fn places_template_parts(program: &loader::Program, module: usize) -> bool {
+    use crate::ir::{ImportName, Stmt};
+    program.modules[module].body.iter().any(|stmt| match stmt {
+        Stmt::Import { source, specs, .. } if source == loader::APP_MODULE => specs
+            .iter()
+            .any(|s| matches!(&s.imported, ImportName::Named(n) if n == "TemplatePart")),
+        _ => false,
+    })
+}
+
 /// The compiled-function name stem for a route file: `app/blog/[slug]/page.tsx` → `app__blog__slug__page`.
 fn stem(file: &str) -> String {
     let mut out = String::new();
@@ -194,6 +291,21 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
             Some(other) => {
                 return Err(Diag::new(span, format!("`prerender` is {}, not true or false", other.describe()))
                     .help("write `export const prerender = true` to prebuild the page, or `false` to render it per request"));
+            }
+        }
+        file.template = template(path, exports.get("template"), program, *module, span)?;
+        // A root layout that draws chrome of its own doesn't render under the theme's header and
+        // footer (docs/pages.md "Block templates"): say so, once, at build time.
+        if file.template.is_none()
+            && is_root_layout(path, &program.app)
+            && let Some(Value::Closure(c)) = exports.get("default")
+            && draws_chrome(&c.func)
+        {
+            let hint = format!(
+                "{path} renders markup around {{children}}, which the theme's header and footer replace on a block theme; add `export const template = \"blank\"` to keep it (docs/pages.md \"Block templates\")"
+            );
+            if !ext.hints.contains(&hint) {
+                ext.hints.push(hint);
             }
         }
         match exports.get("staticParams") {

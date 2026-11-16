@@ -80,5 +80,9 @@ $out['page wins'] = [$r['status'], str_contains($r['body'], 'The Page wins.'), s
 $out['post to a page'] = get("$url/about/", 'POST')['status'];
 // Another case of a path redirects to the item's own.
 $out['case'] = [get("$url/Reference/Config")['status'], get("$url/Reference/Config")['location']];
+// <Link> names no template for a path under the root kind's catch-all: WordPress may answer it (a
+// Page), so the router loads it rather than swap a region that isn't there. The app's own pages say theirs.
+$router = \TypedPress\Wp\AppRouter::instance();
+$out['link templates'] = ['/about/' => $router?->templateFor('/about/'), '/reference/config' => $router?->templateFor('/reference/config'), '/playground' => $router?->templateFor('/playground')];
 $site->destroy();
 echo json_encode($out, JSON_UNESCAPED_SLASHES), "\n";

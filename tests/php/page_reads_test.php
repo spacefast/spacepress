@@ -45,11 +45,39 @@ eq('a render that read nothing keeps no rows', $log('/about/'), []);
 $cost = $record('/many/', ['posts' => ['ids' => range(1, \First\Render\Cache::MAX_IDS + 1), 'listed' => false]]);
 eq('past MAX_IDS the kind is recorded as listed', $log('/many/'), ['posts *']);
 
-// The purge lookups read what was recorded.
+\First\Wp\Connection::$observer = null;
+
+// What was recorded is what a write purges: the page that read the row and the page that listed the
+// kind are announced, other pages are not; a page whose new render read nothing loses its rows.
 $purged = [];
 add_action('first_purge_urls', static function (array $urls) use (&$purged): void { $purged = [...$purged, ...$urls]; });
-$record('/a/', ['posts' => ['ids' => [41], 'listed' => false]]);
+$db = $wp->app()->db;
+$post = $db->insert('posts', ['title' => 'Read by a page'], true)[0];
+$other = $db->insert('posts', ['title' => 'Read by nobody'], true)[0];
+\First\Wp\Purges::flush();
+$record('/a/', ['posts' => ['ids' => [$post['id']], 'listed' => false]]);
 $record('/b/', ['posts' => ['ids' => [], 'listed' => true]]);
-eq('a row\'s own pages', array_map(static fn (string $u): string => (string) parse_url($u, PHP_URL_PATH), \First\Render\Cache::itemUrls('posts', 41)), ['/a/', '/a']);
-\First\Wp\Connection::$observer = null;
+$record('/c/', ['posts' => ['ids' => [$other['id']], 'listed' => false]]);
+$record('/d/', ['comments' => ['ids' => [1], 'listed' => true]]);
+eq('a row\'s own pages', array_map(static fn (string $u): string => (string) parse_url($u, PHP_URL_PATH), \First\Render\Cache::itemUrls('posts', $post['id'])), ['/a/', '/a']);
+$paths = static function () use (&$purged): array {
+    $out = array_values(array_unique(array_map(static fn (string $u): string => (string) parse_url($u, PHP_URL_PATH), $purged)));
+    sort($out);
+    $purged = [];
+
+    return $out;
+};
+$purged = [];
+$db->update('posts', ['title' => 'Read by a page, edited'], ['id' => $post['id']]);
+\First\Wp\Purges::flush();
+$announced = $paths();
+check('a write announces the page that read the row and the page that listed the kind', array_intersect(['/a/', '/b/'], $announced) === ['/a/', '/b/'], $announced);
+check('and not a page that read another row, or another kind', !in_array('/c/', $announced, true) && !in_array('/d/', $announced, true), $announced);
+// /a/ renders again and reads nothing: its rows go, and the next write no longer announces it.
+$record('/a/', []);
+eq('a recorded set replaced by an empty one leaves no rows', $log('/a/'), []);
+$db->update('posts', ['title' => 'Edited again'], ['id' => $post['id']]);
+\First\Wp\Purges::flush();
+$announced = $paths();
+check('so the next write announces the listing page only', in_array('/b/', $announced, true) && !in_array('/a/', $announced, true), $announced);
 finish('page_reads');

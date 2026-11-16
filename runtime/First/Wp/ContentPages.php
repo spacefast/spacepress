@@ -136,14 +136,6 @@ final class ContentPages
         return $steps;
     }
 
-    /** Whether this build's file versions are stored: {@see store()}'s own check. */
-    public static function stored(): bool
-    {
-        $self = self::$instance;
-
-        return $self === null || in_array($self->build(), $self->state()['builds'], true);
-    }
-
     /** init: stores this build's file versions, once, whichever request comes first. */
     public function store(): void
     {

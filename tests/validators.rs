@@ -66,6 +66,11 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
     // Signed in: the page renders per request, whatever the client cached.
     assert_eq!(seen["prebuilt signed in"], json!([200, false]));
     assert_eq!(seen["prebuilt head"], true);
+    // Same size and modification time, other bytes: the old tag no longer matches.
+    assert_eq!(
+        seen["prebuilt same size and mtime"],
+        json!([true, true, 200, true, true])
+    );
     assert_eq!(seen["openapi"][0], 200);
     assert_eq!(seen["openapi"][2], "public, max-age=300");
     assert_eq!(seen["openapi"][4], true);
@@ -73,6 +78,8 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
     assert_eq!(seen["openapi validators"], validated);
     assert_eq!(seen["openapi follows the site"], json!([true, "Renamed"]));
     assert_eq!(seen["openapi bytes"], true);
+    // Only the bytes decide the tag: a new mtime keeps it, an equal-length edit changes it.
+    assert_eq!(seen["openapi tag follows the bytes"], json!([true, 200, "3.1.1", true]));
     // The facade's reads depend on who asks: never shareable, never answered from a validator.
     assert_eq!(seen["facade"], json!([200, "private, no-store", null, 200]));
 }

@@ -124,7 +124,9 @@ done
 host "echo 'booted';" >/dev/null
 served=$(site)
 [[ $initialized == "$served" ]] || { diff <(echo "$initialized") <(echo "$served") >&2; fail "requests after initialize installed more"; }
-ok "requests to an initialized managed build install nothing more"
+# The plugin-mode install marker (Wp\InstallMarker) is never written on a managed site.
+[[ $(wp option get first_installed 2>/dev/null) == "" ]] || fail "a managed site recorded the plugin-mode install marker"
+ok "requests to an initialized managed build install nothing more, and record no install marker"
 echo "$initialized" > "$work/managed.txt"
 
 # WordPress rebuilding its rules itself (permalink settings saved, another plugin flushing) is serving:

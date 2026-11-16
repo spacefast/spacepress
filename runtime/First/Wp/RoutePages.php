@@ -215,12 +215,6 @@ final class RoutePages
         return $steps;
     }
 
-    /** Whether the Pages match this build's routes: {@see reconcile()}'s own check. */
-    public static function reconciled(): bool
-    {
-        return self::$instance === null || self::$instance->current();
-    }
-
     /** init: the Pages match this build's routes, once per build (or after something removed one). */
     public function reconcile(): void
     {

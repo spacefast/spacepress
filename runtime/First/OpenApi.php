@@ -34,10 +34,11 @@ final class OpenApi
         if ($file === null || !is_file($file)) {
             throw HttpError::notFound('This build has no OpenAPI document; build the app again with this First version');
         }
-        // The document is the built file with this site as its server: the file and the server
-        // decide its bytes, so they decide its validator, and a client that holds it needs no body.
+        // The representation is a function of the built file's bytes and the server put in it (this
+        // site's API address and name), so a digest of those three is a digest of what is served,
+        // without decoding and encoding the document to compute it.
         [$url, $name] = self::server();
-        $etag = '"' . substr(hash('sha256', \First\Validator::file($file) . "\0" . $url . "\0" . $name), 0, 32) . '"';
+        $etag = \First\Validator::bytes(\First\Validator::file($file) . "\0" . $url . "\0" . $name);
         $headers = ['Content-Type' => 'application/json; charset=utf-8', 'Cache-Control' => 'public, max-age=300', 'ETag' => $etag];
         if (\First\Validator::matches($etag)) {
             return Response::raw('', 304, $headers);

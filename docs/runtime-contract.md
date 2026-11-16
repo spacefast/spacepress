@@ -518,14 +518,24 @@ Action Scheduler groups and recurring actions, route and content Pages, Polylang
 languages, the search index shape, the runtime-schema capability) run until one
 request finds them all in place. That request records the autoloaded option
 `first_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
-`schema.php`, the system-tables version, the runtime version and hash, and the
-UTC day. While it matches, requests skip those checks, as a managed build always
-does (`Runtime::installs()`). It is recorded at the end of `wp_loaded` only after
-each check is read again and passes, so a failed, refused or held install never
-records it. A new build, a runtime update or a new day finds no match. Activating,
-deactivating or migrating the app, a change to an option those checks keep, to
-the active plugins or to an app route's Page, and a cancelled Action Scheduler
-action delete it. `Store` exposes `afterCommit(callable)` and
+`schema.php`, the system-tables version, the runtime version and hash, the UTC
+day and the active plugins (the site's and, on multisite, the network's). On
+multisite each site keeps its own. While it matches, requests skip those checks,
+as a managed build always does (`Runtime::installs()`); a managed site never
+records it. It is recorded at the end of `wp_loaded` only after each check is
+read again and passes, so a failed, refused or held install never records it. A
+new build, a runtime update, a plugin change or a new day finds no match.
+Activating, deactivating or migrating the app, a change to an option those checks
+keep or to an app route's Page, and a cancelled Action Scheduler action delete it.
+
+What it deliberately no longer re-checks on every request, until the marker is
+gone (at the latest the next UTC day): storage changed without WordPress's
+option hooks, such as the migration ledger or system tables rewritten by hand, a
+database restored from a backup taken before an install step, or an option
+those checks keep edited with SQL. After such a change, drop the marker so the
+next request checks everything: `wp option delete first_installed` (or
+`DELETE FROM <prefix>options WHERE option_name = 'first_installed'`, then flush
+the object cache). `Store` exposes `afterCommit(callable)` and
 `applySystemStatements(list<string>)` for these seams.
 
 `Wp\Scf::fieldFilter(fn)` transforms each fully-built field, including nested
@@ -538,18 +548,12 @@ requires handle-based compiled callbacks; schemas from the `0.2` compiler
 cannot load under this runtime. `Schema::version()` and
 `Schema::runtime()` report the loaded contract. New feature metadata passes
 through unchanged; feature modules own its behavior. Lazy scheduled promotion
-remains at the start of requests/commands. On WordPress it scans only
-table-backed kinds with drafts (core's cron publishes post-backed ones), and only
-once the autoloaded `first_<app>_due_at` time has come (`Wp\DueRows`): a row
-scheduled through First lowers that time when its write commits, so it is
-visible from the first request at or after its `publishedAt`; each scan sets the
-time to the earliest row still scheduled or one minute ahead, whichever is
-sooner, so a row scheduled another way (SQL, an import) is published at most a
-minute late. `wp first publish-due` always scans.
+remains at the start of requests/commands, so due records are visible in that
+same request.
 
 `App::dispatch(method, path, query, rawBody, Viewer, headers = [], files = [],
 form = []): Response` is the shared operation entry point for HTTP and Abilities.
-It opens or joins a transaction, promotes due rows (throttled as above), binds the explicit viewer
+It opens or joins a transaction, promotes due rows, binds the explicit viewer
 as hook actor, and restores the previous actor even on failure. It does not
 resolve credentials or convert exceptions to HTTP problems. `App::invoke(method,
 path, query, body, Viewer)` is its data-only convenience for JSON operations;
@@ -593,7 +597,7 @@ route); the facade maps input and output only. Everything else → 404 problem.
 | `POST /actions/{name}` (`GET` when readonly) | `/wp-abilities/v1/abilities/<app>/<name>/run` | 200 `{data: result}` |
 | `GET /me`, `/settings`, `/menus[/{location}]` | `/wp/v2/users/me`, `/wp/v2/settings`, `/wp/v2/menu-locations` + `/wp/v2/menu-items` | 200 `{data}` |
 | `/auth/*`, `/sync/*`, `/services/*`, `/files/*`, `/media/{id}/file/*` | First's own routes (no core route) | as each documents |
-| `GET /openapi.json` | the app plugin's `first/app/openapi.json` (`First\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` and an `ETag` from the file and the server it names; a matching `If-None-Match` is an empty 304 |
+| `GET /openapi.json` | the app plugin's `first/app/openapi.json` (`First\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` and an `ETag` digesting the built file's bytes and the server written into it; a matching `If-None-Match` is an empty 304 |
 
 Kinds are the app's collections, tables and users kind, plus WordPress's
 own (`posts`, `pages`, `comments`, `media`, `categories`, `tags`, `menus`)
@@ -867,8 +871,8 @@ listens and purges those URLs from Batcache and the edge. With no listener
   The router answers a page with or without its trailing slash, so both
   spellings are purged. More than 200 paths in that call becomes `/*`, a
   whole-host purge. Nothing is recorded or announced without a listener.
-- **Prebuilt pages** (`Render\Prebuilt::serve`) send an `ETag` (the file's
-  size and modification time, as public files spell it) and answer a matching
+- **Prebuilt pages** (`Render\Prebuilt::serve`) send an `ETag` (an xxh128 digest
+  of the file's bytes, taken when it is served) and answer a matching
   `If-None-Match` (itself, its weak form, a list, `*`) with an empty 304 that
   keeps the page's `Cache-Control`. The validator is checked only after every
   gate that decides the file is this request's answer (no query string,

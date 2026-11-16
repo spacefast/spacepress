@@ -52,16 +52,6 @@ final class Plugin
         if (!Runtime::managed()) {
             InstallMarker::register();
         }
-        // A table-backed row scheduled through First: promotion looks no later than its time (DueRows).
-        \First\Extensions::onWritten(function (string $op, string $collection, array $row): void {
-            if ($op === 'delete' || ($row['status'] ?? null) !== 'scheduled' || !is_string($row['publishedAt'] ?? null)
-                || !$this->schema->hasCollection($collection) || ($this->schema->collection($collection)['wp'] ?? null) !== null) {
-                return;
-            }
-            $connection = $this->connection();
-            $at = $row['publishedAt'];
-            $connection->beforeCommit(fn () => DueRows::scheduled($connection, $this->schema->name(), $at));
-        });
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);

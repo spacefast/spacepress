@@ -56,44 +56,79 @@ test("after DDL a kept statement is prepared again and sees the new table shape"
   const out = evaluate(`
     $db->run('CREATE TEMPORARY TABLE first_stmt_ddl (id INT PRIMARY KEY)');
     $db->run('INSERT INTO first_stmt_ddl (id) VALUES (?)', [1]);
-    $before = array_keys($db->run('SELECT * FROM first_stmt_ddl WHERE id = ?', [1])[0]);
+    $select = 'SELECT * FROM first_stmt_ddl WHERE id = ?';
+    $db->run($select, [1]);
+    $kept = $prepares();
+    $before = array_keys($db->run($select, [1])[0]);
+    $kept = $prepares() - $kept;
     $db->run("ALTER TABLE first_stmt_ddl ADD COLUMN extra VARCHAR(10) NOT NULL DEFAULT 'x'");
-    $after = $db->run('SELECT * FROM first_stmt_ddl WHERE id = ?', [1])[0];
-    echo json_encode(['before' => $before, 'after' => $after]);
+    $reprepares = static fn (): int => (int) $wpdb->get_row("SHOW SESSION STATUS LIKE 'Com_stmt_reprepare'", ARRAY_N)[1];
+    [$at, $server] = [$prepares(), $reprepares()];
+    $after = $db->run($select, [1])[0];
+    echo json_encode(['kept' => $kept, 'before' => $before, 'after' => $after, 'prepared' => $prepares() - $at, 'serverReprepared' => $reprepares() - $server]);
   `);
-  assert.deepEqual(out, { before: ["id"], after: { id: 1, extra: "x" } });
+  // Run again before the DDL: no prepare (it was kept). After the DDL the connection closed what it
+  // kept and prepares the SELECT anew, so the server never runs a statement prepared on the old shape
+  // (MariaDB re-prepares one itself, Com_stmt_reprepare; that is what this checks the runtime avoids).
+  assert.deepEqual(out, { kept: 0, before: ["id"], after: { id: 1, extra: "x" }, prepared: 1, serverReprepared: 0 });
 });
 
-test("a reconnect prepares again on the new connection", () => {
+test("a reconnect discards the kept statement and prepares again on the new connection", () => {
   const out = evaluate(`
     $sql = 'SELECT option_value AS v FROM ' . $wpdb->options . ' WHERE option_name = ?';
     $first = $db->run($sql, ['siteurl'])[0]['v'];
+    $at = $prepares();
+    $db->run($sql, ['home']);
+    $kept = $prepares() - $at;
     $wpdb->close();
     $wpdb->db_connect();
+    // A new session: its own counter starts again.
     $before = $prepares();
     $second = $db->run($sql, ['siteurl'])[0]['v'];
-    echo json_encode(['same' => $first === $second, 'prepares' => $prepares() - $before]);
+    $third = $db->run($sql, ['siteurl'])[0]['v'];
+    echo json_encode(['kept' => $kept, 'same' => $first === $second && $second === $third, 'prepares' => $prepares() - $before]);
   `);
-  assert.deepEqual(out, { same: true, prepares: 1 });
+  // Kept before the reconnect (0 prepares for the second run); prepared once on the new connection, then kept.
+  assert.deepEqual(out, { kept: 0, same: true, prepares: 1 });
 });
 
-test("the statements kept are bounded, and a failed one is not kept", () => {
+test("the statements kept are bounded", () => {
   const out = evaluate(`
-    $open = static fn (): int => (int) $wpdb->get_row("SHOW GLOBAL STATUS LIKE 'Prepared_stmt_count'", ARRAY_N)[1];
-    $start = $open();
-    for ($i = 0; $i < 300; $i++) {
+    // Every distinct statement is prepared once; past 64 the least recently used are closed, so
+    // running the first one again prepares it again, while the most recent is still kept.
+    for ($i = 0; $i < 100; $i++) {
       $db->run("SELECT ? + $i AS n", [1]);
     }
-    $held = $open() - $start;
+    $at = $prepares();
+    $db->run('SELECT ? + 99 AS n', [1]);
+    $recent = $prepares() - $at;
+    $at = $prepares();
+    $db->run('SELECT ? + 0 AS n', [1]);
+    $evicted = $prepares() - $at;
+    echo json_encode(['recent' => $recent, 'evicted' => $evicted]);
+  `);
+  assert.deepEqual(out, { recent: 0, evicted: 1 });
+});
+
+test("a kept statement whose execute fails is closed, and the next run prepares it again", () => {
+  const out = evaluate(`
+    $db->run('CREATE TEMPORARY TABLE first_stmt_fail (id INT PRIMARY KEY)');
+    $insert = 'INSERT INTO first_stmt_fail (id) VALUES (?)';
+    $db->run($insert, [1]);
+    $at = $prepares();
+    $db->run($insert, [2]);
+    $kept = $prepares() - $at;
     $failed = null;
     try {
-      $db->run('SELECT no_such_column FROM ' . $wpdb->options . ' WHERE option_name = ?', ['x']);
+      $db->run($insert, [2]); // a duplicate key: prepared already, fails at execute
     } catch (\\Throwable $e) {
-      $failed = get_class($e);
+      $failed = [get_class($e), $e->getCode()];
     }
-    echo json_encode(['held' => $held, 'failed' => $failed, 'after' => $open() - $start]);
+    $at = $prepares();
+    $db->run($insert, [3]);
+    $after = $prepares() - $at;
+    $rows = array_column($db->run('SELECT id FROM first_stmt_fail ORDER BY id'), 'id');
+    echo json_encode(['kept' => $kept, 'failed' => $failed, 'reprepared' => $after, 'rows' => $rows]);
   `);
-  assert.ok(out.held > 0 && out.held <= 64, JSON.stringify(out));
-  assert.equal(out.failed, "First\\Wp\\DbError");
-  assert.equal(out.after, out.held);
+  assert.deepEqual(out, { kept: 0, failed: ["First\\Wp\\DbError", 1062], reprepared: 1, rows: [1, 2, 3] });
 });

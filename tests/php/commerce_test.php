@@ -93,6 +93,11 @@ $uids = array_column($db->findMany('products'), 'uid');
 $db->delete('products', ['id' => $mug['id']], false, $admin);
 eq('product delete uses native Woo trash', get_post_status($mug['id']), 'trash');
 check('orders are not removed by catalog retirement', wc_get_order($order->get_id()) instanceof WC_Order);
+$retired = $db->insert('products', ['name' => 'Trash probe', 'price' => '1.00'], true, $admin)[0];
+$wooTrashed = 0;
+add_action('woocommerce_trash_product', static function ($id) use (&$wooTrashed, $retired): void { if ((int) $id === $retired['id']) { $wooTrashed++; } });
+$db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired));
+eq('explicit sync retirement uses Woo CRUD and its lifecycle hook', [get_post_status($retired['id']), $wooTrashed], ['trash', 1]);
 
 // A stock update bypasses post save; both the product and any page that listed it must purge.
 $purged = [];
@@ -127,9 +132,12 @@ $names = array_column($tools[1]['result']['tools'] ?? [], 'name');
 check('an agent without personal scope sees product and store tools, no order or Woo tools', $tools[0] === 200 && in_array('shop-products-list', $names, true) && in_array('shop-store-get', $names, true) && !array_filter($names, static fn ($n) => str_starts_with($n, 'shop-orders-') || str_starts_with($n, 'woocommerce-')), $tools);
 eq('a read-only agent cannot edit a product', $request('/__tp/api/v1/products/' . $guide['id'], 'PATCH', ['name' => 'Refused'])[0], 403);
 eq('Woo REST cannot bypass the app scope', $request('/wp-json/wc/v3/orders')[0], 403);
+eq('Woo core product REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product')[0], 403);
+eq('Woo core term REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product_cat')[0], 403);
 \TypedPress\Wp\AgentScope::store($wp->userId('admin'), $item['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
 eq('personal grant permits authorized order reads', $request('/__tp/api/v1/orders')[0], 200);
 eq('even a personal write agent cannot use Woo REST', $request('/wp-json/wc/v3/orders')[0], 403);
+eq('even a personal write agent cannot use Woo core aliases', $request('/wp-json/wp/v2/product')[0], 403);
 eq('orders remain read-only with every grant', $request('/__tp/api/v1/orders', 'POST', [])[0], 405);
 $log = $wp->debugLog();
 check('commerce runtime has no PHP warnings or fatal errors', !preg_match('/PHP (Warning|Fatal error):/', $log), $log);

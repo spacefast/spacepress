@@ -17,7 +17,14 @@ use TypedPress\Wp\WpTableStore;
 /** Select native identities with the shared query engine, then read/write objects through Woo CRUD. */
 final class Store implements \TypedPress\Store
 {
+    private bool $trash = false;
     public function __construct(private readonly Connection $db, private readonly Schema $schema, private readonly WpTableStore $tables) {}
+
+    public function withTrash(callable $fn): mixed
+    {
+        $previous = $this->trash; $this->trash = true;
+        try { return $fn(); } finally { $this->trash = $previous; }
+    }
 
     public function source(string $collection): Source
     {
@@ -38,7 +45,8 @@ final class Store implements \TypedPress\Store
             } else { $refs[$name] = new ColumnRef('NULL', '', '', ColumnRef::kindFor($col['type'])); }
         }
         $type = $order ? 'shop_order' : 'product';
-        return new Source("`{$wpdb->posts}`", "{a}.post_type = '$type' AND {a}.post_status NOT IN ('trash', 'auto-draft')", $refs);
+        $excluded = $this->trash ? "'auto-draft'" : "'trash', 'auto-draft'";
+        return new Source("`{$wpdb->posts}`", "{a}.post_type = '$type' AND {a}.post_status NOT IN ($excluded)", $refs);
     }
 
     public function select(string $collection, array $q): array

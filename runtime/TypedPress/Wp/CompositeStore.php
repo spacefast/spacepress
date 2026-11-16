@@ -83,6 +83,13 @@ final class CompositeStore implements Store, Links
         return $this->for($collection)->select($collection, $q);
     }
 
+    /** The post or native Woo store reads its just-trashed row for the update lifecycle. */
+    public function withTrash(string $collection, callable $fn): mixed
+    {
+        $store = $this->for($collection);
+        return method_exists($store, 'withTrash') ? $store->withTrash($fn) : $fn();
+    }
+
     public function insert(string $collection, array $values): int|string
     {
         return $this->for($collection)->insert($collection, $values);

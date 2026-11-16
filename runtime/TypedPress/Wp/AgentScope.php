@@ -284,6 +284,9 @@ final class AgentScope
         }
         $route = $request->get_route();
         if (preg_match('#^/(wc/v[1-4]|wc-admin|wc-analytics|wc-push-notifications|wc-telemetry)(/|$)#i', $route)) { return self::refused('administration'); }
+        // Woo also registers core REST controllers for its post types and taxonomies. These
+        // must not bypass the app's native-store projection and whole-kind scope checks.
+        if (preg_match('#^/wp/v2/(product|product_variation|product_cat|product_tag|product_shipping_class|shop_order|shop_order_refund)(/|$)#i', $route)) { return self::refused('administration'); }
         if (preg_match('#^/wp-abilities/v1/abilities/woocommerce/#i', $route)) { return self::refused('administration'); }
         $read = in_array(strtoupper($request->get_method()), self::READS, true);
         if (preg_match(self::PASSWORDS, $route) && !($read && preg_match('#/application-passwords/introspect/?$#i', $route))) {

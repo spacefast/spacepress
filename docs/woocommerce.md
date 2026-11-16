@@ -88,8 +88,8 @@ reads through TypedPress's usual purge hook.
 
 Scoped agent credentials use app abilities. Product/term writes require `--write`; the
 entire order kind additionally requires `--personal`, and its tools are hidden without it.
-The store has one read tool. Scoped credentials cannot call Woo's merchant REST namespaces
-or `woocommerce/*` abilities. Cart and checkout have no agent tools.
+The store has one read tool. Scoped credentials cannot call Woo's merchant REST namespaces,
+its core REST product/term aliases, or `woocommerce/*` abilities. Cart and checkout have no agent tools.
 
 ## Verification and hosting
 

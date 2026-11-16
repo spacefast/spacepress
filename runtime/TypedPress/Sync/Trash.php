@@ -64,7 +64,11 @@ final class Trash
         $pk = (int) $row[$spec['primaryKey']];
         $connection = Plugin::instance()->connection();
         $connection->touchPost($pk);
-        if (!$connection->core(static fn () => wp_trash_post($pk))) {
+        $trashed = $connection->core(static function () use ($pk, $spec): mixed {
+            if (($spec['commerce'] ?? null) === 'product') { $product = wc_get_product($pk); return $product ? $product->delete(false) : false; }
+            return wp_trash_post($pk);
+        });
+        if (!$trashed) {
             throw new \RuntimeException("Could not move post $pk to the trash");
         }
         if (($row['status'] ?? null) === 'published') {
@@ -117,6 +121,6 @@ final class Trash
     {
         $store = db()->store();
         $run = static fn () => db()->afterEditorSave($collection, $id, $before, db()->actor());
-        $store instanceof CompositeStore ? $store->posts->withTrash($run) : $run();
+        $store instanceof CompositeStore ? $store->withTrash($collection, $run) : $run();
     }
 }

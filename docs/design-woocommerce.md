@@ -513,6 +513,8 @@ rules as every other caller, and through nothing else.
   scoped credential is refused every `woocommerce/*` ability and every Woo REST namespace
   except the Store API (`wc/v1` to `wc/v4`, `wc-admin`, `wc-analytics`,
   `wc-push-notifications`, `wc-telemetry`), and the app's MCP server never lists them. An
+  alias under core REST for Woo post types or taxonomies (`/wp/v2/product`, `product_cat`,
+  `product_tag`, and their related Woo resources) is closed to a scoped credential too. An
   unscoped admin credential works on them as WordPress ships, which is its owner's choice.
 - **Woo's agent-commerce features stay off.** `ucp` (the catalog and a cart for AI shopping
   agents), `agent_readiness` and `mcp_integration` are experimental and off by default; v1

@@ -185,7 +185,9 @@ final class Forms
             $sealed = self::seal($flash);
         }
         $id = bin2hex(random_bytes(6));
-        $location = self::withoutMarker($back);
+        // Back at the page's one address (`/notes/a/`): the other spelling would redirect, and the
+        // page answers a flash where it is asked.
+        $location = \TypedPress\Wp\AppRouter::href(self::withoutMarker($back));
         $location .= (str_contains($location, '?') ? '&' : '?') . self::MARKER . '=' . $id;
         $cookie = self::COOKIE . $id . '=' . $sealed . '; Max-Age=' . self::TTL . '; Path=/; HttpOnly; SameSite=Lax' . (is_ssl() ? '; Secure' : '');
 

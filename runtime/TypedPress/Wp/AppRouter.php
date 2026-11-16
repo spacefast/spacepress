@@ -323,8 +323,11 @@ final class AppRouter
         // would render: a hidden item, a draft page.md or notFound() is a 404 at either spelling, so
         // the redirect never tells a visitor something exists. A prerender (the prebuild,
         // `typedpress export`) asks for the path as the build lists it and gets the page.
+        // A request carrying a form's result (`?_flash=`) is answered where it is: the page reads the
+        // result once, and that render is private and never recorded. Forms come back to the one
+        // address anyway (Forms::redirect).
         $moved = null;
-        if ($this->canonical($path) !== $path && !\TypedPress\Render\Prebuilt::prerendering()) {
+        if ($this->canonical($path) !== $path && !\TypedPress\Render\Prebuilt::prerendering() && !\TypedPress\Render\Forms::marked()) {
             $query = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '');
             $moved = home_url($this->canonical($path)) . ($query !== '' ? '?' . $query : '');
         }
@@ -343,6 +346,75 @@ final class AppRouter
             $this->notFound();
         }
         $this->serve($match['route'], $match['params'], $viewer, 200, $moved);
+    }
+
+    /**
+     * A redirect to a URL a `tp/app/` page serves, for this visitor (KindUrls' old-slug and wrong-path
+     * redirects): sent only when the page renders for them there, guards, read rules, unpublished
+     * parents and notFound() included, since a redirect says the page exists. Null when no page serves
+     * the URL, so the caller decides; true when the page does and the visitor isn't sent (the request
+     * goes on, and the router answers it).
+     */
+    public function moveTo(string $url): ?bool
+    {
+        $path = (string) (wp_parse_url($url, PHP_URL_PATH) ?? '/');
+        $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
+        if ($base !== '' && str_starts_with($path, $base)) {
+            $path = substr($path, strlen($base)) ?: '/';
+        }
+        $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        if ($match === null || ($match['route']['page'] ?? null) === null) {
+            return null;
+        }
+        // A form's result is read once, by the page it came back to: never by a probe.
+        $viewer = \TypedPress\Render\Forms::marked() ? null : CoreAccess::viewer();
+        if ($viewer !== null && $this->renders($match['route'], $match['params'], $path, $viewer)) {
+            wp_safe_redirect($url, 301);
+            exit;
+        }
+        return true;
+    }
+
+    /**
+     * Whether a page renders for $viewer at $path (below the home URL): its layouts' guards admit
+     * them, the item a kind route names is theirs to read, and nothing in the render calls notFound()
+     * or fails. What it rendered is dropped.
+     *
+     * @param array<string, string|list<string>> $params
+     */
+    private function renders(array $route, array $params, string $path, Viewer $viewer): bool
+    {
+        $this->plugin->app();
+        $page = $this->file($route['page']);
+        $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
+        foreach ($layouts as $layout) {
+            if (($layout['guard'] ?? null) !== null && !$this->allowed($layout['guard'], $viewer)) {
+                return false;
+            }
+        }
+        try {
+            return Reads::during(function () use ($route, $params, $path, $viewer, $page, $layouts): bool {
+                $props = new JsObject([
+                    'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \TypedPress\JsArray($v) : $v, $params)),
+                ]);
+                if (($page['search'] ?? null) !== null) {
+                    $props->p['search'] = $this->search($page['search']);
+                }
+                if (($route['kind'] ?? null) !== null) {
+                    $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params, $path));
+                    if ($item === null) {
+                        return false;
+                    }
+                    $props->p['item'] = $item;
+                }
+                Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
+                return true;
+            });
+        } catch (Halt $halt) {
+            return $halt->location !== null;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -494,8 +566,8 @@ final class AppRouter
             $this->failed($route, $error, $viewer);
         }
         if ($moved !== null) {
-            // A permanent move, cacheable like core's canonical redirect (redirect() isn't); nothing
-            // of the render is sent or recorded.
+            // A permanent move, cacheable like core's canonical redirect (redirect() isn't). The
+            // render's body, reads and cache headers go nowhere.
             wp_safe_redirect($moved, 301);
             exit;
         }
@@ -515,12 +587,13 @@ final class AppRouter
     /**
      * The item a kind URL names, read as the visitor (the caller binds the viewer), or null when it
      * is missing, not published to them, or the URL isn't its canonical one (`/2025/hello` for a
-     * post from 2026). `:slug`/`:path` find the item by slug, `:id` by id.
+     * post from 2026). `:slug`/`:path` find the item by slug, `:id` by id. `$path` is the URL path
+     * (below the home URL) to check against, the request's by default.
      *
      * @param array{name: string, params: array<string, string>} $kind
      * @param array<string, string|list<string>> $params
      */
-    private function item(array $kind, array $params): ?\TypedPress\JsObject
+    private function item(array $kind, array $params, ?string $path = null): ?\TypedPress\JsObject
     {
         $name = $kind['name'];
         $spec = $this->plugin->schema->collection($name);
@@ -569,7 +642,7 @@ final class AppRouter
             // Both sides without the home path: under a subdirectory install the request path
             // starts with it (`/blog/notes/a`), and the item's path never does (`/notes/a`).
             $want = $urls->path($name, $post);
-            $have = '/' . trim((string) $this->path(), '/');
+            $have = '/' . trim((string) ($path ?? $this->path()), '/');
             if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
                 return null;
             }

@@ -222,6 +222,13 @@ wp_set_current_user($site->userId('chief'));
 $under = wp_insert_post(['post_type' => $type, 'post_status' => 'publish', 'post_title' => 'Later', 'post_name' => 'later', 'post_parent' => $roadmap]);
 wp_set_current_user(0);
 $out['under a draft'] = [fetch("$url/docs/guides/roadmap/later/")['status'], fetch("$url/docs/guides/roadmap/later.md")['status']];
+// Nor does any other address of it redirect there: its bare spelling, another case, or `?name=`
+// with the wrong path (KindUrls::oldSlug). A redirect would tell the visitor it exists.
+$out['under a draft moved'] = [
+    fetch("$url/docs/guides/roadmap/later")['status'],
+    fetch("$url/docs/Guides/Roadmap/Later")['status'],
+    fetch("$url/docs/later?name=later")['status'],
+];
 // WordPress doesn't resolve it either, so a theme or plugin that renders what WordPress resolved shows nothing.
 $out['under a draft resolved'] = wordpress(fetch("$url/docs/guides/roadmap/later/"))['resolved'];
 wp_delete_post($under, true);

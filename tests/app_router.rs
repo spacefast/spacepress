@@ -1921,6 +1921,15 @@ fn refuses_client_code_outside_the_subset() {
 #[test]
 fn forms_work_without_javascript() {
     let project = fixture("forms", "serve");
+    // The same page at `/join` too: a page that isn't the front page has one address (`/join/`).
+    std::fs::create_dir_all(project.join("tp/app/join")).unwrap();
+    std::fs::write(
+        project.join("tp/app/join/page.tsx"),
+        std::fs::read_to_string(project.join("tp/app/page.tsx"))
+            .unwrap()
+            .replace("\"../server\"", "\"../../server\""),
+    )
+    .unwrap();
     build(&project);
     // `useFormState(action)` is typed with the action's result.
     let types = root().join("types/typedpress");
@@ -2017,6 +2026,13 @@ export const nope = state.result?.nope;
     assert_eq!(seen["handler error"], serde_json::json!("Five seats at most"));
     assert_eq!(seen["not a number"], serde_json::json!("seats must be an integer"));
     assert_eq!(seen["open redirect"], serde_json::json!(true));
+    // A form on a page's other spelling (`/join`) comes back to the page's one address, and the
+    // result shows there: the router never moves a request that carries a result.
+    assert_eq!(
+        seen["other spelling"],
+        serde_json::json!(["/join/", "Subscribed b@example.test for 2 (weekly: false)"])
+    );
+    assert_eq!(seen["flash bare"], serde_json::json!([200, null]));
     assert_eq!(
         seen["cross site"],
         serde_json::json!([303, "A form posts here only from this site's own pages", null])
@@ -3746,6 +3762,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(seen["moved old"], serde_json::json!([404]));
     // A published page under a draft is as hidden as the draft: its path names an unpublished page.
     assert_eq!(seen["under a draft"], serde_json::json!([404, 404]));
+    assert_eq!(seen["under a draft moved"], serde_json::json!([404, 404, 404]));
     assert_eq!(seen["under a draft resolved"], not_found);
     // A WordPress Page with a doc's slug doesn't take over the doc's URL.
     assert_eq!(seen["page with a doc slug"], serde_json::json!([200, ["Introduction"]]));

@@ -145,6 +145,15 @@ $evil = $subscribe;
 $evil['fields'] = array_map(static fn ($f) => $f[0] === '_tp_return' ? [$f[0], $f[1], '//evil.example/x'] : $f, $evil['fields']);
 $out['open redirect'] = parse_url((string) submit($evil, ['email' => 'd@example.test', 'seats' => '1'])['location'], PHP_URL_HOST) === parse_url($url, PHP_URL_HOST);
 
+// A form rendered at a page's other spelling (`/join`, before its redirect) comes back to `/join/`.
+$bare = $subscribe;
+$bare['fields'] = array_map(static fn ($f) => $f[0] === '_tp_return' ? [$f[0], $f[1], '/join'] : $f, $bare['fields']);
+$joined = submit($bare, ['email' => 'b@example.test', 'seats' => '2']);
+$out['other spelling'] = [parse_url((string) $joined['location'], PHP_URL_PATH), text($joined['back']['body'], 'done')];
+// A request that carries a result is answered where it is, even at the other spelling.
+$flashBare = fetch("$url/join?_flash=" . str_repeat('a', 12));
+$out['flash bare'] = [$flashBare['status'], $flashBare['headers']['location'][0] ?? null];
+
 // A cross-site form post is refused before the action runs.
 $cross = submit($subscribe, ['email' => 'e@example.test', 'seats' => '1'], ['Origin: https://evil.example']);
 $out['cross site'] = [$cross['post']['status'], text($cross['back']['body'], 'error'), text($cross['back']['body'], 'done')];

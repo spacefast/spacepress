@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TypedPress\Wp;
 
+use TypedPress\Db;
+
 /**
  * A kind's `url` pattern on WordPress (docs/spec/spec.md §2.7) and the front-end modes (§5).
  *
@@ -598,14 +600,13 @@ final class KindUrls
                 $type, $name,
             ));
             $post = $id > 0 ? get_post($id) : null;
-            if ($post instanceof \WP_Post && $this->readable($kind, $post) && ($url = $this->build($kind, $post)) !== null) {
-                wp_safe_redirect($url, 301);
-                exit;
+            if ($post instanceof \WP_Post && ($url = $this->build($kind, $post)) !== null) {
+                $this->move($kind, $post, $url);
             }
             return;
         }
         $post = get_queried_object();
-        if (!is_singular() || !$post instanceof \WP_Post || $post->post_type !== $this->kinds[$kind]['type'] || !$this->readable($kind, $post)) {
+        if (!is_singular() || !$post instanceof \WP_Post || $post->post_type !== $this->kinds[$kind]['type']) {
             return;
         }
         $want = $this->path($kind, $post);
@@ -615,22 +616,27 @@ final class KindUrls
             $have = substr($have, strlen($home)) ?: '/';
         }
         if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
-            wp_safe_redirect((string) $this->build($kind, $post), 301);
-            exit;
+            $this->move($kind, $post, (string) $this->build($kind, $post));
         }
     }
 
     /**
-     * Whether this request's visitor may read the item under its kind's read rule. A redirect to an
-     * item tells the visitor it exists, so an item they may not read gets none: its URL is the 404
-     * that the router or the theme answers.
+     * Sends the visitor to an item's URL, only when that item is theirs to see: a redirect says it
+     * exists. A tp/app/ page that serves the URL decides (AppRouter::moveTo): it renders the item for
+     * the visitor, guards and notFound() included, and redirects only what renders. Otherwise the
+     * theme renders it, and the redirect needs the kind's read rule and published parents.
      */
-    private function readable(string $kind, \WP_Post $post): bool
+    private function move(string $kind, \WP_Post $post, string $url): void
     {
+        if (AppRouter::instance()?->moveTo($url) === true) {
+            return;
+        }
         $viewer = CoreAccess::viewer();
-        $keys = $viewer === null ? false : CoreAccess::keys($kind, 'read', $viewer);
-
-        return $keys === null || (is_array($keys) && in_array($post->ID, array_map('intval', $keys), true));
+        if ($viewer === null || !self::published($post) || !Db::instance()->permits($kind, 'read', $post->ID, $viewer)) {
+            return;
+        }
+        wp_safe_redirect($url, 301);
+        exit;
     }
 
     /** `frontend: false`: no public HTML at all. */

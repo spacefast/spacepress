@@ -158,7 +158,9 @@ node examples/drive-locker/verify.mjs
 `TP_TEST_URL` names the local site (default `http://localhost:8796`). The
 verifier creates, edits and deletes drives, places and contents over HTTP as two
 owners, calls every action, runs Action Scheduler and reads the resulting stamp,
-then deletes its rows as their owner. Passwords stay in process memory and are
+then deletes its rows as their owner. Those deletes come last: on main the first
+of them answers 409 ([#533](https://github.com/spacefast/zero/issues/533)), after
+every other check has passed. Passwords stay in process memory and are
 revoked after the run.
 
 The checked-in [HTTP transcript](verification/local-http.txt) is an older run's

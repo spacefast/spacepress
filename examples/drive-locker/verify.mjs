@@ -54,7 +54,6 @@ try {
   assert.equal(duplicate.status, 409);
   const other = await request("Same serial allowed for another owner", "tp/v1/drives", { authorization: second, method: "POST", status: 201, body: { ...driveInput, placeId: null } });
   assert.notEqual(other.ownerId, drive.ownerId);
-  await request("Other owner deletes their own drive", `tp/v1/drives/${other.id}`, { authorization: second, method: "DELETE" });
   await request("Owner cannot be supplied", "tp/v1/places", { authorization: first, method: "POST", status: [403, 422], body: { name: run, kind: "drawer", ownerId: 999999 } });
   const hidden = await request("Other owner list", "tp/v1/drives", { authorization: second });
   assert.equal(hidden.some((row) => row.id === drive.id), false);
@@ -92,6 +91,8 @@ try {
   await request("Place update", `tp/v1/places/${place.id}`, { authorization: first, method: "PATCH", body: { name: `${run} updated` } });
   await request("MCP initialize", "mcp/typedpress-drive-locker", { authorization: first, method: "POST", body: { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "drive-locker-verifier", version: "1" } } } });
   await request("Content delete", `tp/v1/contents/${content.id}`, { authorization: first, method: "DELETE" });
+  // Owner deletes of referenced rows, last: on main they answer 409 (#533).
+  await request("Other owner deletes their own drive", `tp/v1/drives/${other.id}`, { authorization: second, method: "DELETE" });
   for (const [table, id] of created.reverse()) await request(`Delete ${table}`, `tp/v1/${table}/${id}`, { authorization: first, method: "DELETE" });
   created.length = 0;
   console.log("VERIFIED: drive CRUD over HTTP, all five actions, contents CRUD, two-owner isolation, trend verdicts, replacement job, MCP initialization and owner deletes with cascades.");

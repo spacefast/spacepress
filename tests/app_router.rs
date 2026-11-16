@@ -2025,6 +2025,128 @@ export const nope = state.result?.nope;
     );
 }
 
+/// The JavaScript submit (rendering.md §4.2), in Chromium on tests/fixtures/forms: a submit swaps
+/// the page it comes back to into the router region with no page load, the page with the flash is
+/// fetched once, the URL bar ends on the page without `?_flash`, the form is busy while the post is
+/// in flight, a refusal (422) shows its error in place, and a network failure falls back to the
+/// browser's own post.
+#[test]
+fn forms_submit_in_place_in_the_browser() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("forms", "browser");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .env("FIRST_WP_SCRIPT_DEBUG", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/forms-submit.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    assert_eq!(
+        seen["directive"],
+        serde_json::json!(["first/router", "actions.submit"]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["pending"],
+        serde_json::json!({ "busy": "true", "disabled": true }),
+        "{seen}"
+    );
+    let success = &seen["success"];
+    assert_eq!(
+        success["done"], "Subscribed ada@example.test for 3 (weekly: true)",
+        "{seen}"
+    );
+    // The same document: the window marker survives and no navigation entry was added.
+    assert_eq!(
+        (&success["marker"], &success["navigations"]),
+        (&serde_json::json!("same document"), &serde_json::json!(1)),
+        "{seen}"
+    );
+    // The page with the flash is fetched once (fetch following the 303), and the URL bar and the
+    // history entry are the page's, replaced, without the marker.
+    assert_eq!(success["requests"].as_array().map(Vec::len), Some(1), "{seen}");
+    assert!(
+        success["requests"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("GET /?ref=nav&_flash="),
+        "{seen}"
+    );
+    assert_eq!(
+        (&success["url"], &success["historyAdded"]),
+        (&serde_json::json!("/?ref=nav"), &serde_json::json!(0)),
+        "{seen}"
+    );
+    assert_eq!(
+        success["afterPending"],
+        serde_json::json!({ "busy": null, "disabled": false }),
+        "{seen}"
+    );
+    assert_eq!(
+        (&success["scrollKept"], &success["focus"]),
+        (&serde_json::json!(true), &serde_json::json!("BUTTON")),
+        "{seen}"
+    );
+    // A refusal: the error and what was typed, in place, the same way.
+    let refused = &seen["refused"];
+    assert_eq!(
+        (
+            &refused["error"],
+            &refused["code"],
+            &refused["done"],
+            &refused["email"],
+            &refused["marker"],
+            &refused["url"]
+        ),
+        (
+            &serde_json::json!("Five seats at most"),
+            &serde_json::json!("too_many"),
+            &serde_json::json!(false),
+            &serde_json::json!("grace@example.test"),
+            &serde_json::json!("same document"),
+            &serde_json::json!("/?ref=nav")
+        ),
+        "{seen}"
+    );
+    assert_eq!(refused["requests"].as_array().map(Vec::len), Some(1), "{seen}");
+    // No network for the fetch: the browser posts the form itself, as without JavaScript.
+    assert_eq!(
+        seen["offline"],
+        serde_json::json!({ "done": "Subscribed lin@example.test for 2 (weekly: true)", "marker": null, "flashInUrl": true }),
+        "{seen}"
+    );
+}
+
 /// `<Comments for={item} />` and the policy behind it (docs/decisions/2026-11-14-comments.md), with
 /// comments arriving all three ways: the component's form with JavaScript off, the facade's
 /// `POST /comments`, and core's `wp-comments-post.php`. Each gets the same answer from the one

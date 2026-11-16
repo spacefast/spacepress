@@ -177,32 +177,14 @@ origin. This script is for the disposable local site.
 
 Recorded HTTP responses are in [verification/local-http.jsonl](verification/local-http.jsonl).
 The [admin checks](verification/admin.md) record the screenshot routes and native form limitation.
-The [hosted receipt and probes](verification/spacefast.md) record the separate
-Spacefast result. A local proof does not establish hosted behavior.
+A local proof does not establish hosted behavior.
 
 ## Spacefast
 
-Space URL: <https://home-maintenance.space.fast/>. Access is team-only.
-The owning team's display name is `spacefast-examples`.
-
-The available CLI published source files rather than a running TypedPress app.
-The receipt reports `hasRuntime: false`, so this URL is not a working hosted
-maintenance log. Collection reads, actions, and WordPress sign-in remain
-unverified on Spacefast. The restriction itself was verified with HTTP 403
-for anonymous access and the active team grants.
-
-For a CLI release that supports the current TypedPress deployment contract, the
-intended commands from this example directory are:
-
-```sh
-sf typedpress check
-sf publish --team spacefast-examples --name 'Home maintenance' --access team
-```
-
-See [Spacefast deployment](../../docs/spacefast-deploy.md). Do not treat a
-static publish receipt as a successful TypedPress deployment. After publishing,
-inspect the Space's runtime and grants, then verify a collection, an action,
-and sign-in on the live origin.
+Hosted deployment of a `typedpress.config.ts` project is not available in a
+released `spacefast` CLI yet; see the [Spacefast deploy guide](../../docs/spacefast-deploy.md). After publishing, inspect the Space's
+runtime and grants, then verify a collection, an action, and sign-in on the
+live origin.
 
 ## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
 

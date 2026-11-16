@@ -214,34 +214,9 @@ calls were not part of the 2026-11-16 local run, and they are not live-verified.
 | "Show my subscriptions renewing in the next three days." | `subscriptions/renewing-soon` with `{ "days": 3 }` |
 | "Mark this subscription cancelled and show me the vendor's cancellation page." | `subscriptions/cancel` with the selected `subscriptionId` |
 
-## Publish and live status
+## Publish
 
-After resolving the CLI gap, build the frontend, run `sf typedpress
-check` from this directory, and publish to a new team-only Space with an explicit
-resolved team ID:
-
-```sh
-sf publish examples/subscriptions --team <resolved-team-id> --access team --name Subscriptions --json
-```
-
-Resolve `spacefast-examples` by its slug and verify the resulting Space's team
-ID. A different team has the same display name, so a name-only match is unsafe.
-Verify a collection read, an action, and a complete sign-in on the live host.
-
-This records an earlier publication attempt. The attempted upload is at https://subscriptions-xxkvwx6gw.space.fast/ . It is
-restricted to its owning team. The installed CLI selected the other team with
-the same name. Its open-link grant was revoked and the remaining grants were
-read back. The requested destination remains unmet. An attempted correction
-was refused with this exact API error:
-
-```text
-403 forbidden
-This credential can read this space but does not allow spaces:transfer. Use a credential with spaces:transfer for this space, or ask a signed-in team owner or admin to transfer it. The member who created the space can also transfer it from the dashboard while nobody else has published to it. Operation approval does not expand credential permissions.
-```
-
-Live HTTP probes returned `403` and the Space access page for
-`GET /wp-json/tp/v1/subscriptions`,
-`POST /wp-json/tp/v1/actions/monthlyBurn` with `{}`, and
-`GET /wp-json/tp/v1/auth/config`. This verifies the access gate only.
-Subscription CRUD, actions, and typedpress-identity sign-in are **not verified live**.
-No staging or production infrastructure was changed by hand.
+Hosted deployment of a `typedpress.config.ts` project is not available in a
+released `spacefast` CLI yet; see the [Spacefast deploy guide](../../docs/spacefast-deploy.md). After publishing, build the frontend,
+then verify a collection read, an action, and a complete sign-in on the live
+host.

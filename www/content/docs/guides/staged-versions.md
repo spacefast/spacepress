@@ -34,7 +34,7 @@ export const logs = collection({ title: text() }, { staged: false });
   over it. It is separate from core's own per-user autosave slot, which the editors overwrite and
   delete. A promote or discard gives it core's status and an ordinary revision's name. Staged
   revisions saved before the status existed get it when the runtime updates. Its fields are stored on the revision
-  under the same meta keys the post uses, as on every other revision of a First post.
+  under the same meta keys the post uses, as on every other revision of a TypedPress post.
   `_tp_staged` on the revision records the staged fields and a scheduled promote.
 
 ## Operations
@@ -44,13 +44,13 @@ gets, whether or not anything is staged.
 
 | Operation                 | API (`/__tp/api/v1`)                                                   | Client                            | Ability `<app>/<kind>-…` | `wp typedpress staged …`                          |
 |---------------------------|------------------------------------------------------------------------|-----------------------------------|----------------------------|-----------------------------------------------------|
-| Stage                     | `PATCH /<kind>/<id>/staged` with the fields                            | `first.posts.stage(id, patch)`    | `stage`                    | `stage <kind> <id> <json>`                          |
-| Read                      | `GET /<kind>/<id>/staged`                                              | `first.posts.staged(id)`          | `staged-get`               | `show <kind> <id>`                                  |
-| Compare                   | `GET /<kind>/<id>/staged/compare`                                      | `first.posts.compare(id)`         | `staged-compare`           | `compare <kind> <id>`                               |
-| Promote                   | `POST /<kind>/<id>/staged/promote`                                     | `first.posts.promote(id)`         | `staged-promote`           | `promote <kind> <id>`                               |
-| Schedule a promote        | the same route with `{ "at": "<ISO time>" }`; `{ "at": null }` cancels | `first.posts.promote(id, { at })` | `staged-promote` with `at` | `promote <kind> <id> --at=<ISO time>` or `--cancel` |
-| Discard                   | `DELETE /<kind>/<id>/staged`                                           | `first.posts.discard(id)`         | `staged-discard`           | `discard <kind> <id>`                               |
-| Preview link              | `POST /<kind>/<id>/staged/preview` with optional `{ "ttl": seconds }`  | `first.posts.previewLink(id)`     | `staged-preview`           |                                                     |
+| Stage                     | `PATCH /<kind>/<id>/staged` with the fields                            | `client.posts.stage(id, patch)`   | `stage`                    | `stage <kind> <id> <json>`                          |
+| Read                      | `GET /<kind>/<id>/staged`                                              | `client.posts.staged(id)`         | `staged-get`               | `show <kind> <id>`                                  |
+| Compare                   | `GET /<kind>/<id>/staged/compare`                                      | `client.posts.compare(id)`        | `staged-compare`           | `compare <kind> <id>`                               |
+| Promote                   | `POST /<kind>/<id>/staged/promote`                                     | `client.posts.promote(id)`        | `staged-promote`           | `promote <kind> <id>`                               |
+| Schedule a promote        | the same route with `{ "at": "<ISO time>" }`; `{ "at": null }` cancels | `client.posts.promote(id, { at })` | `staged-promote` with `at` | `promote <kind> <id> --at=<ISO time>` or `--cancel` |
+| Discard                   | `DELETE /<kind>/<id>/staged`                                           | `client.posts.discard(id)`        | `staged-discard`           | `discard <kind> <id>`                               |
+| Preview link              | `POST /<kind>/<id>/staged/preview` with optional `{ "ttl": seconds }`  | `client.posts.previewLink(id)`    | `staged-preview`           |                                                     |
 | List every staged version |                                                                        |                                   |                            | `list [<kind>]`                                     |
 
 `wp typedpress staged` is the trusted CLI: it applies no access rule and no field mask.

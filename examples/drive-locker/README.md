@@ -169,38 +169,23 @@ publication evidence.
 
 ## Publish to Spacefast
 
-Use the documented preflight and publish commands once the installed CLI supports
-them. Prepare only the intended source and public assets, excluding local
-WordPress data, credentials, dependencies and caches:
+Hosted deployment of a `typedpress.config.ts` project is not available in a
+released `spacefast` CLI yet; see the [Spacefast deploy guide](../../docs/spacefast-deploy.md). Stage only the intended source and
+public assets, excluding local WordPress data, credentials, dependencies and
+caches:
 
 ```sh
-sf typedpress check examples/drive-locker
 npm --prefix examples/drive-locker/web ci
 npm --prefix examples/drive-locker/web run build
 node examples/drive-locker/prepare-publish.mjs
-sf publish examples/drive-locker/.tp/publish --team spacefast-examples \
-	--name 'Drive Locker' --slug drive-locker --access team --json --wait
 ```
 
-The staging script preserves the CLI's `.spacefast/` selection for later
-updates. Reuse that Space instead of creating another. Verify the receipt's
-team, live revision and team-only access. Register the live frontend callback
-with typedpress-identity, then verify sign-in, a collection read and an action on
-that hostname. No live URL exists for this attempt.
+After publishing, register the live frontend callback with typedpress-identity,
+then verify sign-in, a collection read and an action on that hostname.
 
-## Known gaps
-
-| Gap | Exact observed diagnostic | Trigger in this example |
-| --- | --- | --- |
-| Missing CLI preflight | `Command zero:check not found.` | `sf typedpress check --help` using installed `spacefast/0.8.0` |
-| Publishing team resolution | `validation_error`, `Could not find team "team_3f222eb89f634980a2552a38fbdc70ba".` | `sf publish ... --team <resolved team ID> --access team` |
+## Notes
 
 Owner deletes work because a delete checks only the rows that reference the
 deleted row ([decision](../../docs/decisions/2026-11-16-per-row-delete-visibility.md)).
 
-The CLI's typedpress-page team lookup omits the target team even though a direct
-authenticated team read confirms access. Publication stopped before Space
-creation. Its dry run also classifies this raw-source input as static with
-`runtime: null`; host compilation remains unproven. No compiler, runtime or
-shared CLI changes are included here. Resolved build diagnostics and the failed
-initial publication plan are preserved [separately](verification/diagnostics.md).
+Resolved build diagnostics are preserved [separately](verification/diagnostics.md).

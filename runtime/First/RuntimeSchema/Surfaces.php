@@ -288,7 +288,12 @@ final class Surfaces
                     throw HttpError::invalidInput('`parent` is the version this change was made against', '/parent');
                 }
 
-                return self::version(self::versions()->apply($parent, ['format' => Loader::FORMAT, 'changes' => $changes($in)], self::actor('ability')));
+                $row = self::versions()->apply($parent, ['format' => Loader::FORMAT, 'changes' => $changes($in)], self::actor('ability'));
+
+                // As schema-read shows it: without the login and password name for a credential
+                // scoped without personal data.
+                return \First\Wp\AgentScope::may('personal') ? self::version($row)
+                    : ['actor' => array_intersect_key($row['actor'], ['user' => 1, 'via' => 1])] + self::version($row);
             },
         ];
 
@@ -381,9 +386,18 @@ final class Surfaces
             wp_die(esc_html__('Sorry, you are not allowed to access this page.'), 403);
         }
         $versions = self::versions();
-        $rows = array_reverse($versions->list());
+        try {
+            $rows = array_reverse($versions->list());
+            $broken = null;
+        } catch (Refused $e) {
+            // A broken chain: the screen says so, and lists nothing it can't vouch for.
+            [$rows, $broken] = [[], $e->getMessage()];
+        }
         $deploy = $versions->deployCheck();
         echo '<div class="wrap"><h1>' . esc_html__('Schema versions') . '</h1>';
+        if ($broken !== null) {
+            echo '<div class="notice notice-error"><p>' . esc_html(ucfirst($broken)) . '</p></div>';
+        }
         echo '<p>' . esc_html(sprintf(
             'Active version: %d. The build this site runs contains version %d.',
             $versions->active()['version'],

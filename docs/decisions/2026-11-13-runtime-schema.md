@@ -135,11 +135,16 @@ any `update_option` call rewrites, so a concurrent write of another plugin's opt
 older copy of this one back, as it can for any autoloaded option; requests then serve the older
 version until the next apply rewrites it.
 
-**Trust.** The table's hash chain is checked whenever the versions are read; a broken chain stops
-further changes and leaves the site serving the last state that checked out. Apply seals the option
-it writes, and the loader serves a sealed option only, and only as the operations a change can make:
-added kinds are rebuilt from their stored definitions and fields are re-checked, so whoever can
-write options can't give a kind access rules or code. A table() is build-only, label included.
+**Trust.** The table's hash chain is checked whenever the versions are read and whenever the schema
+is described; the option records the newest version and its hash, so removing the newest rows breaks
+the chain too. A broken chain stops further changes and leaves the site serving the last state that
+checked out; deploys still run, checked against that state. Apply seals the option it writes with an
+HMAC keyed by the site's salts, so only code on the site can seal one, and the loader serves a sealed
+option only, and only as the operations a change can make, under the rules a change passes: added
+kinds are rebuilt from their stored definitions and are never built-in kinds, fields are re-checked
+for name, definition and storage keys, and overrides land only where a change could put them. So
+whoever can write options can't give a kind access rules or code, or take over First's own records. A
+table() is build-only, label included; a label stored before that rule can be taken off.
 
 **Rollback** is a new version whose change set reverses an earlier one. **Removing** a field or kind
 hides it: it leaves the active schema, and its posts, post meta and options stay where they are. A

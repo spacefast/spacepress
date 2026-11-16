@@ -85,7 +85,7 @@ final class SchemaVersions
                 throw new Refused('schema_build_changed', 'A new build was deployed while this change waited for the schema lock. Read the schema again and propose the change on the new build', null, '/changes', 409);
             }
             $db->applySystemStatements(['CREATE TABLE IF NOT EXISTS `{prefix}' . self::TABLE . '` (`app` VARCHAR(191) NOT NULL, `version` BIGINT NOT NULL, `parent` BIGINT NOT NULL, `format` INT NOT NULL, `build` CHAR(64) NOT NULL, `actor` LONGTEXT NOT NULL, `changes` LONGTEXT NOT NULL, `hash` CHAR(64) NOT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`app`, `version`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin']);
-            $rows = $this->checked();
+            $rows = $this->verified();
             $newest = $rows === [] ? ['version' => 0, 'hash' => ''] : end($rows);
             if ($parent !== $newest['version']) {
                 throw new Refused('schema_conflict', "The schema is at version {$newest['version']}, not $parent: another change was applied first. Read the schema and propose the change again", null, '/parent', 409);
@@ -145,32 +145,61 @@ final class SchemaVersions
      */
     public function list(): array
     {
-        return $this->exists() ? $this->checked() : [];
+        return $this->checked();
     }
 
     /**
      * Every version, checked: each row's parent is the one before it and its hash covers it and its
-     * parent's hash. A row edited or removed in the database breaks the chain from there on.
+     * parent's hash. A row edited or removed in the database breaks the chain from there on, and so
+     * does a missing newest row: the sealed option records the newest version it was written for.
      *
      * @throws Refused 409 `schema_chain_broken`, naming the first version that doesn't check out
      */
     private function verified(): array
     {
-        $rows = $this->rows();
+        // A table that is gone holds no versions, which the sealed option then says is wrong.
+        $rows = $this->exists() ? $this->rows() : [];
         $parentHash = '';
         foreach ($rows as $i => $row) {
             if ($row['version'] !== $i + 1 || $row['parent'] !== $i || self::hashOf($parentHash, $row) !== $row['hash']) {
-                throw new Refused('schema_chain_broken', "schema version {$row['version']} does not match its hash: a stored version was changed outside First. Restore it from a backup; nothing is applied on top of a broken history", null, '/changes', 409);
+                throw self::broken($row['version']);
             }
             $parentHash = $row['hash'];
+        }
+        // The option apply sealed names the newest version and its hash; rows can't end before it.
+        $state = $this->sealedState();
+        $claimed = (int) ($state['version'] ?? 0);
+        if ($claimed > count($rows)) {
+            throw self::broken(count($rows) + 1, 'is missing');
+        }
+        if ($claimed > 0 && ($state['hash'] ?? null) !== $rows[$claimed - 1]['hash']) {
+            throw self::broken($claimed);
         }
 
         return $rows;
     }
 
+    private static function broken(int $version, string $how = 'does not match its hash'): Refused
+    {
+        return new Refused('schema_chain_broken', "schema version $version $how: a stored version was changed outside First. Restore it from a backup; nothing is applied on top of a broken history", null, '/changes', 409);
+    }
+
+    /** The option as apply last sealed it, fresh from the database; null when it isn't sealed. */
+    private function sealedState(): ?array
+    {
+        $app = $this->plugin->schema->name();
+        wp_cache_delete('alloptions', 'options');
+        wp_cache_delete(Loader::option($app), 'options');
+        $state = Loader::state($app);
+
+        return Loader::sealedBy($state) ? $state : null;
+    }
+
     /**
-     * The stored versions, checked, after which the option is the state they add up to. A broken
-     * chain keeps the option as the last state that checked out and records why on it.
+     * The stored versions, checked, after which the option is the state they add up to. Rewriting
+     * it takes the schema lock, so it never lands on top of a newer apply. A broken chain keeps the
+     * option as it is when apply sealed it (the last state that checked out), with the reason added;
+     * an option no apply sealed is never sealed here.
      */
     private function checked(): array
     {
@@ -178,20 +207,45 @@ final class SchemaVersions
         try {
             $rows = $this->verified();
         } catch (Refused $broken) {
-            $state = Loader::state($app);
-            if (($state['problem'] ?? null) !== self::chainProblem($broken)) {
-                update_option(Loader::option($app), Loader::sealed(['problem' => self::chainProblem($broken)] + $state), true);
+            $state = $this->sealedState();
+            if ($state !== null && ($state['problem'] ?? null) !== self::chainProblem($broken)) {
+                Migrator::locked($this->plugin->connection(), $this->plugin->schemaLock(), static function () use ($app, $state, $broken): void {
+                    update_option(Loader::option($app), Loader::sealed(['problem' => self::chainProblem($broken)] + $state), true);
+                });
             }
             throw $broken;
         }
-        $state = Loader::sealed($rows === [] ? Loader::EMPTY : $this->replay($rows));
-        wp_cache_delete('alloptions', 'options');
-        wp_cache_delete(Loader::option($app), 'options');
-        if ($rows !== [] && Loader::state($app) !== $state) {
-            update_option(Loader::option($app), $state, true);
+        if ($rows === []) {
+            return $rows;
+        }
+        $state = Loader::sealed($this->replay($rows));
+        if ($this->sealedState() !== $state) {
+            Migrator::locked($this->plugin->connection(), $this->plugin->schemaLock(), function () use ($app, $state): void {
+                // Another apply may have landed since the rows were read: only an option that is
+                // still behind those rows (or isn't sealed) is rewritten.
+                $now = $this->sealedState();
+                if ($now === null || (int) ($now['version'] ?? 0) <= $state['version']) {
+                    update_option(Loader::option($app), $state, true);
+                }
+            });
         }
 
         return $rows;
+    }
+
+    /**
+     * Why the stored versions don't check out, or null when they do: what the schema description
+     * (`GET /__first/api/v1`, `first doctor`) reports without waiting for something to list them.
+     */
+    public function problem(): ?string
+    {
+        try {
+            $this->verified();
+
+            return null;
+        } catch (Refused $broken) {
+            return self::chainProblem($broken);
+        }
     }
 
     private static function chainProblem(Refused $broken): string
@@ -248,7 +302,7 @@ final class SchemaVersions
         $rows = $this->list();
         $state = $rows === [] ? Loader::EMPTY : $this->replay($rows);
 
-        return Changes::lock($state);
+        return Changes::lock($state, $this->compiled());
     }
 
     /**
@@ -263,8 +317,18 @@ final class SchemaVersions
      */
     public function deployCheck(): array
     {
-        $rows = $this->list();
-        $state = $rows === [] ? Loader::EMPTY : $this->replay($rows);
+        try {
+            $rows = $this->list();
+            $state = $rows === [] ? Loader::EMPTY : $this->replay($rows);
+        } catch (Refused $broken) {
+            if ($broken->errorCode !== 'schema_chain_broken') {
+                throw $broken;
+            }
+            // A broken chain doesn't hold a deploy up: the build is checked against the last state
+            // that checked out, which is what the site keeps serving.
+            $state = $this->sealedState() ?? Loader::EMPTY;
+            $rows = $state['version'] ?? 0 ? [['version' => (int) $state['version'], 'hash' => (string) $state['hash']]] : [];
+        }
         $compiled = $this->compiled();
         $build = ['version' => (int) ($compiled['runtimeSchema']['version'] ?? 0), 'hash' => (string) ($compiled['runtimeSchema']['hash'] ?? '')];
         ['kept' => $kept, 'changed' => $changed, 'refusals' => $refusals] = \First\RuntimeSchema\Deploy::check($compiled, $state);

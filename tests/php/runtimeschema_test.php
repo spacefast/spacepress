@@ -527,6 +527,10 @@ $withActor = array_values(array_filter($privateRead['versions'] ?? [], static fn
 eq('a credential without personal data reads every version, but no login or password name', [count($privateRead['versions'] ?? []) > 0, $withActor, $privateRead['versions'][0]['actor'] ?? null],
     [true, [], ['user' => $wp->userId('admin'), 'via' => $privateRead['versions'][0]['actor']['via'] ?? null]]);
 eq('a credential with personal data still sees them', isset($run('schema-read', [], 'admin')[1]['versions'][0]['actor']['login']), true);
+// Applying answers with the stored version; without personal data, without the login and password name.
+\First\Wp\AgentScope::store($wp->userId('admin'), $private['uuid'], ['write' => true, 'personal' => false, 'abilities' => null]);
+$privateApply = $runAs('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Private']]], 'admin:' . $private['password']);
+eq('applying without personal data answers without the login or password name', [$privateApply[0], $privateApply[1]['actor'] ?? null], [200, ['user' => $wp->userId('admin'), 'via' => 'ability']]);
 
 eq('the three are agent tools', [$tools['rtschema/schema-read'] ?? null, $tools['rtschema/schema-propose'] ?? null, $tools['rtschema/schema-apply'] ?? null], [true, true, true]);
 
@@ -566,7 +570,42 @@ $goodState = get_option(Loader::option('rtschema'));
 $rowsBefore = $versions->list();
 $second = $rowsBefore[1];
 $wp->exec("UPDATE `$table` SET `changes` = ? WHERE `app` = 'rtschema' AND `version` = 2", [json_encode([['op' => 'addField', 'kind' => 'articles', 'field' => 'forged', 'definition' => ['type' => 'text']]])]);
+$d = $described();
+eq('the next request finds the broken chain itself, before anything reads the versions', [$d['runtimeSchema']['version'], $d['runtimeSchema']['problem'] ?? null], [$goodState['version'], 'schema version 2 does not match its hash']);
 eq('a broken chain refuses the next change, naming the first version that doesn\'t check out', $refusal(fn () => $versions->apply(count($rowsBefore), $add('afterForgery', ['type' => 'text']), $admin)), '409 schema_chain_broken /changes');
+// A broken chain doesn't stop a deploy: it is checked against the last state that checked out.
+$deployed = (static function () use ($wp): string {
+    try {
+        $wp->plugin()->initialize();
+
+        return 'deployed';
+    } catch (\Throwable $e) {
+        return get_class($e) . ': ' . $e->getMessage();
+    }
+})();
+eq('a deploy goes ahead on a broken chain, checked against the last state that checked out', $deployed, 'deployed');
+// The admin screen shows the problem instead of failing.
+wp_set_current_user($wp->userId('admin'));
+ob_start();
+$screen = (static function (): string {
+    try {
+        \First\RuntimeSchema\Surfaces::page();
+
+        return 'shown';
+    } catch (\Throwable $e) {
+        return get_class($e);
+    }
+})();
+$html = (string) ob_get_clean();
+eq('the admin screen shows a broken chain instead of failing', [$screen, str_contains($html, 'does not match its hash')], ['shown', true]);
+// An option written while the chain is broken stays unserved: nothing seals content no version made.
+$planted = $goodState;
+$planted['collections']['articles']['columns']['planted'] = ['type' => 'text'];
+unset($planted['seal']);
+update_option(Loader::option('rtschema'), $planted, true);
+$refusal(fn () => $versions->list());
+check('a broken chain never seals an option it didn\'t check', !isset($described()['kinds']['articles']['columns']['planted']), array_keys($described()['kinds']['articles']['columns']));
+update_option(Loader::option('rtschema'), $goodState, true);
 eq('it exports no lock from a broken chain', $refusal(fn () => $versions->lock()) !== 'accepted', true);
 $d = $described();
 eq('requests keep serving the last state that checked out, and the API says the chain is broken', [$d['runtimeSchema']['version'], $d['runtimeSchema']['problem'] ?? null, isset($d['kinds']['articles']['columns']['forged'])],
@@ -584,11 +623,30 @@ eq('an option edited outside apply is not served: the build\'s schema is, and th
 [$code, $listed] = $schemaCli(['list']);
 eq('reading the versions rebuilds it from the table', [$code, isset($described()['kinds']['articles']['columns']['subtitle']), $described()['runtimeSchema']['problem'] ?? null], [0, true, null]);
 
+// An option at version 0 without a seal (apply never writes one) is not served either.
+$zero = ['format' => 1, 'version' => 0, 'hash' => '', 'collections' => ['articles' => ['columns' => ['zeroPlanted' => ['type' => 'text']]]]];
+$kept = get_option(Loader::option('rtschema'));
+update_option(Loader::option('rtschema'), $zero, true);
+$d = $described();
+eq('an unsealed option at version 0 is not served, and the API says so', [isset($d['kinds']['articles']['columns']['zeroPlanted']), $d['runtimeSchema']['version'], isset($d['runtimeSchema']['problem'])], [false, 0, true]);
+update_option(Loader::option('rtschema'), $kept, true);
+
+// Deleting the newest versions is noticed: the option remembers the version it was written for.
+$rowsNow = $versions->list();
+$last = end($rowsNow);
+$wp->exec("DELETE FROM `$table` WHERE `app` = 'rtschema' AND `version` = ?", [$last['version']]);
+eq('a missing newest version breaks the chain', $refusal(fn () => $versions->list()), '409 schema_chain_broken /changes');
+$wp->exec("INSERT INTO `$table` (`app`, `version`, `parent`, `format`, `build`, `actor`, `changes`, `hash`, `createdAt`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ['rtschema', $last['version'], $last['parent'], $last['format'], $last['build'], json_encode($last['actor'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), json_encode($last['changes'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $last['hash'], $last['createdAt']]);
+eq('and putting it back mends it', count($versions->list()), count($rowsNow));
+
 // ================================================================ a format this runtime doesn't know
+// Sealed, so it is the format check that turns it away, not the seal.
 $state = get_option(Loader::option('rtschema'));
-update_option(Loader::option('rtschema'), ['format' => 2] + $state, true);
+update_option(Loader::option('rtschema'), Loader::sealed(['format' => 2] + $state), true);
 $d = $described();
 check('a state in a newer format isn\'t guessed at: the site serves the build\'s schema', !isset($d['kinds']['articles']['columns']['subtitle']) && !isset($d['kinds']['events']), array_keys($d['kinds']));
+eq('and says which format it found', $d['runtimeSchema']['problem'] ?? null, 'the site\'s runtime schema is in format 2; this runtime reads format 1');
 update_option(Loader::option('rtschema'), $state, true);
 check('and the known format loads again', isset($described()['kinds']['articles']['columns']['subtitle']));
 

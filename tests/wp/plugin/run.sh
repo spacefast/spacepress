@@ -87,6 +87,9 @@ step initial
 cat > "$project/tp/app/about/page.tsx" <<'TSX'
 import mark from "./mark.svg";
 
+// Prebuilt: the live app keeps its prebuilt pages' state in options, which a dry run must not write.
+export const prerender = true;
+
 export default function About() {
   return <main><h1>About this app</h1><img src={mark} alt="" width={16} height={16} /></main>;
 }
@@ -203,12 +206,21 @@ ok "a second push applies only the new migration and keeps content"
 [[ $(curl -s -u "$admin" "$api/site" | json pluginHash) == 0000* ]] || fail "the site reports the changed plugin"
 # The dry run plans new code (the sealed step) against the plugin the site has. None of the live
 # app's own code runs on the receiver's requests: its hook would write the option again.
-"$harness" sql "DELETE FROM wp_options WHERE option_name='pluginlane_hook_ran'" >/dev/null
+[[ -n $(option tp_prebuilt_id) ]] || fail "the live app records its prebuilt pages' state"
+"$harness" sql "DELETE FROM wp_options WHERE option_name='pluginlane_hook_ran' OR option_name LIKE 'tp\_prebuilt\_%'" >/dev/null
 step sealed
 out=$(push --dry-run) || fail "a dry run to a site with another TypedPress plugin: $out"
 step additive
 [[ $out == *"--dry-run: a push would update the TypedPress plugin"*"uploading the app tree"*"--dry-run: the build is uploaded and not live"* && $(curl -s -u "$admin" "$api/site" | json pluginHash) == 0000* ]] || fail "a dry run uploads and plans against the site's plugin and leaves it alone: $out"
 [[ -z $(option pluginlane_hook_ran) ]] || fail "a dry run runs none of the live app's WordPress hooks"
+[[ -z $("$harness" sql "SELECT option_name FROM wp_options WHERE option_name LIKE 'tp\_prebuilt\_%'" | tail -n +2) ]] || fail "a dry run records and schedules no prebuilt pages"
+# A plugin from before dry runs kept uploads private says nothing about it, and a dry run sends it nothing.
+"$harness" compose exec -T wordpress sed -i "/'dryRun' => true,/d" /var/www/html/wp-content/plugins/typedpress/src/Receiver.php
+[[ $(curl -s -u "$admin" "$api/site" | json dryRun 2>/dev/null || true) != true ]] || fail "the older plugin doesn't say it takes dry runs"
+step sealed
+out=$(push --dry-run) || fail "a dry run to a site with an older TypedPress plugin: $out"
+step additive
+[[ $out == *"can't take a dry run without changing the site, so nothing was uploaded"* && $out != *"uploading"* ]] || fail "a dry run sends an older plugin nothing: $out"
 out=$(push) || fail "a push to a site with another TypedPress plugin: $out"
 [[ $out == *"updated the TypedPress plugin on the site"* && $(curl -s -u "$admin" "$api/site" | json pluginHash) != 0000* ]] || fail "push replaces the site's plugin with the one it carries: $out"
 [[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "the app keeps running across the plugin update"

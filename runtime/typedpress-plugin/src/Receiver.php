@@ -151,6 +151,9 @@ final class Receiver
             'protocol' => Site::PROTOCOL,
             'plugin' => TP_PLUGIN_VERSION,
             'pluginHash' => TP_PLUGIN_HASH,
+            // This receiver runs no app code on its own requests and publishes nothing before a
+            // build is made live, so `typedpress push --dry-run` may upload to it and plan.
+            'dryRun' => true,
             'home' => untrailingslashit(home_url()),
             'name' => get_bloginfo('name'),
             'multisite' => is_multisite(),

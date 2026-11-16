@@ -131,7 +131,7 @@ final class Plugin
         Staged::register($this);
         add_filter('rest_pre_dispatch', [Rev::class, 'restLock'], 20, 3);
         // A build mounted to inspect it (Loader::load `inspect`) runs none of the app's own code.
-        if (!(class_exists(\TypedPress\Loader\Loader::class, false) && \TypedPress\Loader\Loader::inspecting())) {
+        if (!Runtime::inspecting()) {
             Hooks::register($this);
         }
         add_action('admin_menu', [$this, 'adminMenu'], 9);

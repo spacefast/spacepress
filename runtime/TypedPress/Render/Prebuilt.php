@@ -72,7 +72,8 @@ final class Prebuilt
     public static function boot(Plugin $plugin): void
     {
         $app = $plugin->schema->app();
-        if (!is_array($app) || !self::any($app)) {
+        // A build mounted to inspect serves no page and schedules no build of them.
+        if (!is_array($app) || !self::any($app) || \TypedPress\Wp\Runtime::inspecting()) {
             return;
         }
         self::$plugin = $plugin;

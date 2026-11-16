@@ -70,9 +70,16 @@ fn run(args: &[String]) -> Result<(), String> {
                 env!("CARGO_PKG_VERSION")
             ));
         }
-        // A dry run changes nothing on the site but the uploaded build, which is not live.
+        // A dry run changes nothing on the site but the uploaded build, which is not live. A plugin
+        // that doesn't say its receiver keeps uploads private and runs no app code is not sent any.
         if dry {
             println!("--dry-run: a push would update the TypedPress plugin on the site from {theirs}");
+            if info["dryRun"] != true {
+                println!(
+                    "--dry-run: the site's TypedPress plugin can't take a dry run without changing the site, so nothing was uploaded. Run typedpress push to update it."
+                );
+                return Ok(());
+            }
         } else {
             let zip = super::plugin::archive().map_err(|e| e.to_string())?;
             let sha = hex(Sha256::digest(&zip));

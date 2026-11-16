@@ -414,14 +414,14 @@ final class RoutePages
     {
         $route = $this->routeOf($post);
 
-        return $route === null ? $link : home_url($this->routes[$route]['pattern']);
+        return $route === null ? $link : home_url(AppRouter::address($this->routes[$route]['pattern']));
     }
 
     public function canonicalUrl(string|false $url, \WP_Post $post): string|false
     {
         $route = $this->routeOf($post->ID);
 
-        return $route === null ? $url : home_url($this->routes[$route]['pattern']);
+        return $route === null ? $url : home_url(AppRouter::address($this->routes[$route]['pattern']));
     }
 
     /** template_redirect: WordPress's own address for a code Page (its slug, `?page_id=`) goes to the route. */
@@ -439,7 +439,7 @@ final class RoutePages
         if (rawurldecode(rtrim($path, '/') ?: '/') === $this->routes[$route]['pattern'] && $own === []) {
             return;
         }
-        wp_safe_redirect(add_query_arg(urlencode_deep(array_diff_key($query, $own)), home_url($this->routes[$route]['pattern'])), 301);
+        wp_safe_redirect(add_query_arg(urlencode_deep(array_diff_key($query, $own)), home_url(AppRouter::address($this->routes[$route]['pattern']))), 301);
         exit;
     }
 }

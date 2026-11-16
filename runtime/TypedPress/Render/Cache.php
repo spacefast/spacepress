@@ -119,7 +119,7 @@ final class Cache
             'SELECT DISTINCT "url" FROM {reads} WHERE "kind" = ? AND ("item" = ? OR "item" = ?)',
             [$collection, '*', (string) $id],
         );
-        \TypedPress\Wp\Purges::recorded(array_merge(...array_map(static fn (array $r): array => self::spellings((string) $r['url']), $found)));
+        \TypedPress\Wp\Purges::recorded(array_map(static fn (array $r): string => self::address((string) $r['url']), $found));
     }
 
     /**
@@ -127,7 +127,7 @@ final class Cache
      * pages that listed the kind (`*`). For a change that only shows where the item is shown (its
      * thread), not in a listing.
      *
-     * @return list<string> absolute URLs, each recorded page under both its spellings
+     * @return list<string> absolute URLs, each recorded page at its one address
      */
     public static function itemUrls(string $collection, int|string $id): array
     {
@@ -136,33 +136,19 @@ final class Cache
         }
         $found = self::run('SELECT DISTINCT "url" FROM {reads} WHERE "kind" = ? AND "item" = ?', [$collection, (string) $id]);
 
-        return array_merge(...array_map(static fn (array $r): array => self::spellings((string) $r['url']), $found));
+        return array_map(static fn (array $r): string => self::address((string) $r['url']), $found);
     }
 
     /**
-     * The addresses a recorded URL is cached under, absolute: the page as WordPress links it, and the
-     * same path without its trailing slash, which the router answers too (it serves the page there
-     * rather than redirecting, so a host cache can hold both). A row recorded before addresses were
-     * stored canonically has the bare spelling, and gives the same two. A `.md` twin is one address.
-     *
-     * @return list<string>
+     * The address a recorded URL is cached under, absolute: the page as WordPress links it, the one
+     * spelling the router answers (the other redirects there). A row recorded before addresses were
+     * stored canonically has the bare spelling, and gives the same address.
      */
-    private static function spellings(string $url): array
+    private static function address(string $url): string
     {
         $path = (string) (wp_parse_url($url, PHP_URL_PATH) ?? '/');
         $query = (string) (wp_parse_url($url, PHP_URL_QUERY) ?? '');
-        $query = $query !== '' ? '?' . $query : '';
-        if ($path === '/' || str_ends_with($path, '.md')) {
-            return [home_url($path . $query)];
-        }
-        $bare = rtrim($path, '/');
-        return array_values(array_unique([home_url(self::canonical($bare) . $query), home_url($bare . $query)]));
-    }
-
-    /** A page path as WordPress links it: the permalink structure decides the trailing slash. */
-    private static function canonical(string $path): string
-    {
-        return $path === '/' || $path === '' || str_ends_with($path, '.md') ? ($path ?: '/') : user_trailingslashit($path);
+        return home_url(\TypedPress\Wp\AppRouter::address($path) . ($query !== '' ? '?' . $query : ''));
     }
 
     /**
@@ -177,7 +163,7 @@ final class Cache
         if ($base !== '' && str_starts_with($path, $base)) {
             $path = substr($path, strlen($base)) ?: '/';
         }
-        return substr(self::canonical($path) . ($query !== '' ? '?' . $query : ''), 0, 512);
+        return substr(\TypedPress\Wp\AppRouter::address($path) . ($query !== '' ? '?' . $query : ''), 0, 512);
     }
 
     /** @param list<int|float|string|null> $params @return list<array<string, mixed>> */

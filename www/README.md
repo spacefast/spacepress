@@ -163,10 +163,6 @@ It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://loca
   Stylesheet and image changes do rebuild under `typedpress dev`.
 - **JSX only compiles in `tp/components/`, pages and client components**, which is why the
   guide's sections are under `tp/components/guide/`.
-- **A docs page is a 404 to WordPress's main query.** `/docs/...` answers 200 with the right
-  content, but `<body>` has the class `error404` and the answer carries `Expires: 1984`. It is
-  being fixed in TypedPress (branch `tp/docs-kind-query`); nothing here works around it. When the
-  fix is on main, add a test that a docs page has no `error404` class.
 - **Smaller things in server code.** A timestamp field takes an ISO string on write, not a
   `Date`. `await response.json()` is `unknown`, so it needs `as { … }`. An object indexed by a
   prop needs a fixed set of keys, so lookups here use an array and `.find`.

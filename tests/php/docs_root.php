@@ -34,13 +34,13 @@ function get(string $url, string $method = 'GET'): array
 $page = static fn (string $path): array => array_intersect_key(get("$url$path"), ['status' => 1, 'h1' => 1, 'location' => 1]);
 
 // The kind's items at their paths, and the app's own pages beside them.
-foreach (['/', '/getting-started', '/reference', '/reference/config', '/playground', '/roadmap', '/reference/nothing', '/nothing', '/config'] as $path) {
+foreach (['/', '/getting-started/', '/reference/', '/reference/config/', '/playground/', '/roadmap/', '/reference/nothing/', '/nothing/', '/config/'] as $path) {
     $out['pages'][$path] = $page($path);
 }
 // Links WordPress builds follow the pattern, and the tree and pager use them.
 $config = get_page_by_path('reference/config', OBJECT, \TypedPress\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType']);
 $out['permalink'] = parse_url((string) get_permalink($config), PHP_URL_PATH);
-$doc = get("$url/getting-started")['body'];
+$doc = get("$url/getting-started/")['body'];
 preg_match_all('#<ul class="tree">(.*?)</ul>#s', $doc, $tree);
 preg_match_all('#href="([^"]+)"#', $tree[1][0] ?? '', $links);
 $out['tree'] = array_map(static fn (string $h): ?string => parse_url($h, PHP_URL_PATH), $links[1]);
@@ -79,6 +79,8 @@ $out['page wins'] = [$r['status'], str_contains($r['body'], 'The Page wins.'), s
 // A form posting back to a WordPress Page isn't refused by the app's catch-all.
 $out['post to a page'] = get("$url/about/", 'POST')['status'];
 // Another case of a path redirects to the item's own.
+// The bare spelling of an item's path redirects to its one address (#462).
+$out['bare'] = $page('/reference/config');
 $out['case'] = [get("$url/Reference/Config")['status'], get("$url/Reference/Config")['location']];
 $site->destroy();
 echo json_encode($out, JSON_UNESCAPED_SLASHES), "\n";

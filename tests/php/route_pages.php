@@ -81,12 +81,12 @@ $get = static function (string $path) use ($url): array {
 [$status, $location] = $get('/?page_id=' . $codePages['(site)/about']);
 $out['page_id redirect'] = [$status, $location];
 $out['slug redirect'] = array_slice($get('/typedpress-home/'), 0, 2);
-$out['about'] = $get('/about')[0];
+$out['about'] = $get('/about/')[0];
 $out['native'] = $get('/native/')[0];
 $out['sitemap pages'] = substr_count($get('/wp-sitemap-posts-page-1.xml')[2], '<loc>');
 $out['sitemap app'] = substr_count($get('/wp-sitemap-typedpress-app-pages-1.xml')[2], '<loc>');
 // The route renders with its Page as the queried object, as the page template would.
-$out['body class'] = (bool) preg_match('/<body class="[^"]*\bpage-id-' . $codePages['(site)/about'] . '\b/', $get('/about')[2]);
+$out['body class'] = (bool) preg_match('/<body class="[^"]*\bpage-id-' . $codePages['(site)/about'] . '\b/', $get('/about/')[2]);
 $out['home body class'] = (bool) preg_match('/<body class="[^"]*\bhome\b[^"]*"/', $get('/')[2]);
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

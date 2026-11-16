@@ -86,25 +86,25 @@ $out = [
     'home description' => str_contains($home['body'], '<meta name="description" content="Notes.">'),
     'home cache' => $home['headers']['cache-control'] ?? null,
     'router module' => str_contains($home['body'], 'tp/Render/client/router.js'),
-    'note' => page(fetch("$url/notes/hello")),
-    'note canonical' => (bool) preg_match('#<link rel="canonical" href="' . preg_quote($url, '#') . '/notes/hello">#', fetch("$url/notes/hello")['body']),
+    'note' => page(fetch("$url/notes/hello/")),
+    'note canonical' => (bool) preg_match('#<link rel="canonical" href="' . preg_quote($url, '#') . '/notes/hello/">#', fetch("$url/notes/hello/")['body']),
     // The layout's Open Graph type, card and link, with the page's image and link added.
     'note social' => (static function (string $body): array {
         preg_match_all('#<meta (?:property|name)="((?:og|twitter):[a-z]+)" content="([^"]*)">#', $body, $meta, PREG_SET_ORDER);
         preg_match_all('#<link rel="(describedby|alternate)" href="([^"]*)" type="([^"]*)">#', $body, $links, PREG_SET_ORDER);
         preg_match_all('#<script id="typedpress-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $body, $scripts);
         return ['meta' => array_map(static fn ($m) => [$m[1], html_entity_decode($m[2], ENT_QUOTES)], $meta), 'links' => array_map(static fn ($m) => array_slice($m, 1), $links), 'scripts' => $scripts[1]];
-    })(fetch("$url/notes/hello")['body']),
-    'note as editor' => page(fetch("$url/notes/hello", headers: [$cookie('chief')])),
-    'draft' => page(fetch("$url/notes/draft")),
-    'missing' => page(fetch("$url/notes/nope")),
-    'unrouted' => page(fetch("$url/no/such/page")),
-    'search' => page(fetch("$url/notes?page=3&q=tea")),
-    'search defaults' => page(fetch("$url/notes?page=abc")),
+    })(fetch("$url/notes/hello/")['body']),
+    'note as editor' => page(fetch("$url/notes/hello/", headers: [$cookie('chief')])),
+    'draft' => page(fetch("$url/notes/draft/")),
+    'missing' => page(fetch("$url/notes/nope/")),
+    'unrouted' => page(fetch("$url/no/such/page/")),
+    'search' => page(fetch("$url/notes/?page=3&q=tea")),
+    'search defaults' => page(fetch("$url/notes/?page=abc")),
     // `<Pagination>` on page 6 of 12, reached from a URL with another argument and a flash marker.
     'pagination' => (static function () use ($url): array {
         $doc = new DOMDocument();
-        @$doc->loadHTML((string) fetch("$url/notes?q=tea&page=6&_flash=abcdefabcdef")['body']);
+        @$doc->loadHTML((string) fetch("$url/notes/?q=tea&page=6&_flash=abcdefabcdef")['body']);
         $x = new DOMXPath($doc);
         $nav = $x->query('//nav[@class="typedpress-pagination"]')->item(0);
         $out = ['label' => $nav?->getAttribute('aria-label'), 'items' => []];
@@ -117,23 +117,23 @@ $out = [
     })(),
     'pagination first' => (static function () use ($url): array {
         $doc = new DOMDocument();
-        @$doc->loadHTML((string) fetch("$url/notes")['body']);
+        @$doc->loadHTML((string) fetch("$url/notes/")['body']);
         $x = new DOMXPath($doc);
         return array_map(static fn ($li) => trim($li->textContent), iterator_to_array($x->query('//nav[@class="typedpress-pagination"]//li')));
     })(),
-    'search noindex' => str_contains(fetch("$url/notes")['body'], 'noindex'),
-    'group' => page(fetch("$url/about")),
-    'docs index' => page(fetch("$url/docs")),
-    'docs deep' => page(fetch("$url/docs/a/b")),
-    'guard anonymous' => [fetch("$url/account")['status'], str_contains((fetch("$url/account")['headers']['location'][0] ?? ''), 'wp-login.php')],
-    'guard subscriber' => page(fetch("$url/account", headers: [$cookie('reader')])),
-    'broken' => page(fetch("$url/broken")),
+    'search noindex' => str_contains(fetch("$url/notes/")['body'], 'noindex'),
+    'group' => page(fetch("$url/about/")),
+    'docs index' => page(fetch("$url/docs/")),
+    'docs deep' => page(fetch("$url/docs/a/b/")),
+    'guard anonymous' => [fetch("$url/account/")['status'], str_contains((fetch("$url/account/")['headers']['location'][0] ?? ''), 'wp-login.php')],
+    'guard subscriber' => page(fetch("$url/account/", headers: [$cookie('reader')])),
+    'broken' => page(fetch("$url/broken/")),
     'api' => [fetch("$url/api/notes")['status'], fetch("$url/api/notes")['body']],
     'api method' => fetch("$url/api/notes", 'DELETE')['status'],
     // A page's own POST is for subscribers (its `access`), with the REST nonce as every cookie write needs.
-    'page POST anonymous' => fetch("$url/notes/hello", 'POST', ['Content-Type: application/x-www-form-urlencoded'], 'x=1')['status'],
+    'page POST anonymous' => fetch("$url/notes/hello/", 'POST', ['Content-Type: application/x-www-form-urlencoded'], 'x=1')['status'],
     'page POST' => (function () use ($url, $session): array {
-        $r = fetch("$url/notes/hello", 'POST', [$session('reader')['cookie'], $session('reader')['nonce']], 'x=1');
+        $r = fetch("$url/notes/hello/", 'POST', [$session('reader')['cookie'], $session('reader')['nonce']], 'x=1');
         return [$r['status'], $r['headers']['location'][0] ?? null];
     })(),
     // A signed webhook: a wrong signature is refused, the right one runs as the system (it counts the draft).
@@ -152,7 +152,7 @@ $out = [
     'twin note as editor' => fetch("$url/notes/hello.md", headers: [$cookie('chief')])['body'],
     'twin draft' => fetch("$url/notes/draft.md")['status'],
     'twin guarded' => fetch("$url/account.md", headers: [$cookie('reader')])['status'],
-    'twin link' => [fetch("$url/notes/hello")['headers']['link'] ?? [], str_contains(fetch("$url/notes/hello")['body'], '<link rel="alternate" type="text/markdown" href="' . $url . '/notes/hello.md"')],
+    'twin link' => [fetch("$url/notes/hello/")['headers']['link'] ?? [], str_contains(fetch("$url/notes/hello/")['body'], '<link rel="alternate" type="text/markdown" href="' . $url . '/notes/hello.md"')],
     'llms' => fetch("$url/llms.txt")['body'],
     'rest' => fetch("$url/wp-json/")['status'],
     'feed' => fetch("$url/feed/")['status'],
@@ -169,7 +169,7 @@ $out = [
             'additional css' => str_contains($head, '.owner-css { color: #654321; }'),
             'site icon' => (bool) preg_match('#<link rel="icon" href="[^"]*icon\.png"#', $head),
         ];
-    })(explode('</head>', fetch("$url/notes/hello")['body'])[0]),
+    })(explode('</head>', fetch("$url/notes/hello/")['body'])[0]),
 ];
 // `wp typedpress styles export`, which `typedpress styles pull` writes to tp/theme.json: the project's file
 // with the owner's Global Styles merged over it, settings and styles only.

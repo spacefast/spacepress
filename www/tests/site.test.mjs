@@ -60,16 +60,31 @@ test("the guide and a doc fit a phone", async () => {
 test("docs: /docs opens the first doc, with navigation, contents and highlighted code", async () => {
   const { page, errors, status, close } = await open("/docs");
   assert.equal(status, 200);
-  assert.equal(new URL(page.url()).pathname, "/docs/introduction");
+  assert.equal(new URL(page.url()).pathname, "/docs/introduction/");
   assert.equal(await page.locator("h1").textContent(), "Introduction");
   assert.ok(await page.locator(".sidebar a").count() >= 10);
   assert.ok(await page.locator(".onpage a").count() >= 1);
   assert.ok(await page.locator(".typedpress-code-block .hljs-keyword").count() >= 1, "the code fence is not highlighted");
   await page.locator(".sidebar a", { hasText: "Pages" }).click();
-  await page.waitForURL(/\/docs\/guides\/pages$/);
+  await page.waitForURL(/\/docs\/guides\/pages\/$/);
   assert.equal(await page.locator("h1").textContent(), "Pages");
   assert.deepEqual(errors, []);
   await close();
+});
+
+test("docs: WordPress sees a doc as the doc, at one address", async () => {
+  for (const path of ["/docs/introduction/", "/docs/reference/services/"]) {
+    const response = await fetch(`${base}${path}`);
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get("expires"), null, `${path} has the no-cache headers WordPress sends a 404`);
+    const body = (await response.text()).match(/<body class="([^"]*)"/)?.[1].split(" ") ?? [];
+    assert.ok(!body.includes("error404") && body.includes("single"), `${path}: <body class="${body.join(" ")}">`);
+  }
+  const bare = await fetch(`${base}/docs/introduction?ref=nav`, { redirect: "manual" });
+  assert.equal(bare.status, 301);
+  assert.equal(new URL(bare.headers.get("location")).pathname + new URL(bare.headers.get("location")).search, "/docs/introduction/?ref=nav");
+  const api = await fetch(`${base}/api/examples.json`, { redirect: "manual" });
+  assert.equal(api.status, 200, "an HTTP route keeps its spelling");
 });
 
 test("playground: an edit builds a migration, and a shared edit opens for someone else", async () => {
@@ -130,11 +145,11 @@ test("blog: the menu links to it, and a post renders in the site's layout", asyn
   const { page, errors, status, close } = await open("/");
   assert.equal(status, 200);
   await page.locator("header.top nav a", { hasText: "Blog" }).click();
-  await page.waitForURL(/\/blog$/);
+  await page.waitForURL(/\/blog\/$/);
   const first = page.locator(".postlist li a").first();
   const title = await first.textContent();
   await first.click();
-  await page.waitForURL(/\/blog\/[\w-]+$/);
+  await page.waitForURL(/\/blog\/[\w-]+\/$/);
   assert.equal(await page.locator("article h1").textContent(), title);
   assert.equal(await page.locator("header.top .brand").count(), 1, "the post is not inside the site's layout");
   assert.deepEqual(errors, []);

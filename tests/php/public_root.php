@@ -55,7 +55,7 @@ foreach (['/robots.txt', '/llms.txt', '/feed/x.txt', '/.well-known/openid-config
 }
 // A dynamic route at the root (`[slug]`) doesn't take a file's path.
 $out['beside a dynamic route'] = fetch("$url/logo.svg")['status'];
-$about = fetch("$url/about");
+$about = fetch("$url/about/");
 $out['about'] = [$about['status'], str_contains($about['body'], '<h1>About</h1>'), str_contains($about['body'], 'named like a page')];
 foreach (['/.env', '/nested/run.php', '/wp-json/index.json', '/wp-login.php.txt', '/files/../.env', '/files/%2e%2e/.env', '/files/..%2f.env', '/nested/', '/missing.png', '/nested/run.php.', '/nested/run.php%20', '/nested/run.php::$DATA', '/files%5c..%5c.env', '/linked.txt', '/NESTED/RUN.PHP'] as $path) {
     $r = fetch("$url$path");
@@ -79,7 +79,7 @@ $out['other origins'] = [
     fetch("$url/files/blog.json", 'GET', ['Origin: https://playground.wordpress.net'])['headers']['access-control-allow-origin'] ?? null,
     fetch("$url/logo.svg", 'GET', ["If-None-Match: $etag"])['headers']['access-control-allow-origin'] ?? null,
     // Not the app's pages: only files.
-    fetch("$url/about")['headers']['access-control-allow-origin'] ?? null,
+    fetch("$url/about/")['headers']['access-control-allow-origin'] ?? null,
 ];
 $out['post'] = fetch("$url/logo.svg", 'POST')['status'];
 

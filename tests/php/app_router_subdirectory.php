@@ -29,16 +29,18 @@ $get = static function (string $path) use ($url): array {
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30]);
     $body = (string) curl_exec($ch);
     preg_match('#<h1[^>]*>(.*?)</h1>#s', $body, $h);
-    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), html_entity_decode(trim(strip_tags($h[1] ?? '')), ENT_QUOTES)];
+    $location = curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: null;
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), $location ?? html_entity_decode(trim(strip_tags($h[1] ?? '')), ENT_QUOTES)];
 };
 echo json_encode([
     'url' => $url,
     'link' => $link,
     'notes' => $get('/notes/'),
-    'note' => $get('/notes/dawn-on-the-ridge'),
-    'note slash' => $get('/notes/dawn-on-the-ridge/'),
-    'draft' => $get('/notes/notes-for-next-week'),
-    'missing' => $get('/notes/nope'),
-    'about' => $get('/about'),
+    'note' => $get('/notes/dawn-on-the-ridge/'),
+    // The bare spelling redirects to the one address, under the subdirectory too (#462).
+    'note bare' => $get('/notes/dawn-on-the-ridge'),
+    'draft' => $get('/notes/notes-for-next-week/'),
+    'missing' => $get('/notes/nope/'),
+    'about' => $get('/about/'),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

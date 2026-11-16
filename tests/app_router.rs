@@ -78,8 +78,9 @@ fn app_router_serves_pages_on_wordpress() {
         seen["home cache"][0],
         "public, max-age=0, s-maxage=300, must-revalidate"
     );
-    // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
-    assert!(body.contains(r#"/notes" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
+    // `<Link>` to a path on the site is the router region's navigation, loaded on the page, and is
+    // written at the page's one address (`/notes/` under `/%postname%/`), never a redirect.
+    assert!(body.contains(r#"/notes/" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
     assert_eq!(seen["router module"], true);
     // Reads run as the visitor: the draft is missing for anonymous visitors, masked fields absent.
     assert_eq!(page("note").0, 200);
@@ -100,7 +101,8 @@ fn app_router_serves_pages_on_wordpress() {
             ["og:title", "Note hello · Field Notes"],
             ["og:description", "Notes."],
             ["og:type", "article"],
-            ["og:url", format!("{base}/notes/hello")],
+            // The page's `canonical: "/notes/hello"`, at the page's one address.
+            ["og:url", format!("{base}/notes/hello/")],
             ["og:image", format!("{base}/og/hello.png")],
             ["twitter:card", "summary_large_image"]
         ]),
@@ -154,17 +156,17 @@ fn app_router_serves_pages_on_wordpress() {
         serde_json::json!({
             "label": "Pagination",
             "items": [
-                "Previous /notes?q=tea&page=5 rel=prev",
-                "1 /notes?q=tea",
+                "Previous /notes/?q=tea&page=5 rel=prev",
+                "1 /notes/?q=tea",
                 "…",
-                "4 /notes?q=tea&page=4",
-                "5 /notes?q=tea&page=5",
+                "4 /notes/?q=tea&page=4",
+                "5 /notes/?q=tea&page=5",
                 "6 current",
-                "7 /notes?q=tea&page=7",
-                "8 /notes?q=tea&page=8",
+                "7 /notes/?q=tea&page=7",
+                "8 /notes/?q=tea&page=8",
                 "…",
-                "12 /notes?q=tea&page=12",
-                "Next /notes?q=tea&page=7 rel=next",
+                "12 /notes/?q=tea&page=12",
+                "Next /notes/?q=tea&page=7 rel=next",
             ],
         }),
         "{seen}"
@@ -290,7 +292,8 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
     assert_eq!(seen["link"], format!("{url}/notes/dawn-on-the-ridge/"));
     assert_eq!(seen["notes"], serde_json::json!([200, "Notes"]));
     assert_eq!(seen["note"], serde_json::json!([200, "Dawn on the ridge"]));
-    assert_eq!(seen["note slash"], serde_json::json!([200, "Dawn on the ridge"]));
+    // One address per page (#462): the bare spelling 301s to it, below the subdirectory.
+    assert_eq!(seen["note bare"], serde_json::json!([301, format!("{url}/notes/dawn-on-the-ridge/")]));
     // Still a 404: a draft for a signed-out visitor, and a slug no note has.
     assert_eq!(seen["draft"], serde_json::json!([404, "Not found"]));
     assert_eq!(seen["missing"], serde_json::json!([404, "Not found"]));
@@ -450,7 +453,7 @@ fn page_md_is_a_wordpress_page() {
     assert_eq!(guide["status"], 200);
     assert_eq!(guide["title"], "Field guide · Field Notes");
     assert_eq!(guide["description"], "How the notes are kept.");
-    assert!(text(&guide["canonical"]).ends_with("/guide"), "{guide}");
+    assert!(text(&guide["canonical"]).ends_with("/guide/"), "{guide}");
     assert_eq!(guide["cache"], shared);
     let body = text(&guide["body"]);
     assert!(body.starts_with(r#"<div class="site"><nav>"#), "{body}");
@@ -496,9 +499,9 @@ fn page_md_is_a_wordpress_page() {
         "{stored}"
     );
     // The route's path is the Page's permalink, and WordPress's own address for it redirects there.
-    assert!(text(&stored["link"]).ends_with("/guide"), "{stored}");
+    assert!(text(&stored["link"]).ends_with("/guide/"), "{stored}");
     assert_eq!(seen["by id"][0], 301);
-    assert!(text(&seen["by id"][1]).ends_with("/guide"), "{}", seen["by id"]);
+    assert!(text(&seen["by id"][1]).ends_with("/guide/"), "{}", seen["by id"]);
     // Its Markdown twin, advertised by the HTML page.
     assert_eq!(
         seen["guide twin"],
@@ -517,7 +520,7 @@ fn page_md_is_a_wordpress_page() {
         colophon.contains("&lt;script&gt;alert(1)&lt;/script&gt;") && !colophon.contains("<script>alert"),
         "{colophon}"
     );
-    assert!(text(&seen["colophon"]["canonical"]).ends_with("/colophon"));
+    assert!(text(&seen["colophon"]["canonical"]).ends_with("/colophon/"));
 
     // A draft: stored for its editors, a 404 for everyone else, HTML and twin alike, and uncached.
     assert_eq!(seen["hidden stored"]["status"], "draft");
@@ -562,9 +565,11 @@ fn page_md_is_a_wordpress_page() {
         "# Field guide, revised\n\nEdited in the block editor.\n"
     );
     let purged: Vec<String> = seen["purged"].as_array().unwrap().iter().map(text).collect();
-    for path in ["/guide", "/guide/", "/guide.md", "/llms.txt"] {
+    for path in ["/guide/", "/guide.md", "/llms.txt"] {
         assert!(purged.contains(&path.to_string()), "{path} in {purged:?}");
     }
+    // Only the one address: the bare spelling redirects to it, so no cache holds a copy there.
+    assert!(!purged.contains(&"/guide".to_string()), "{purged:?}");
     // Unsaved changes show from the editor's own Preview link only.
     assert!(text(&seen["preview as editor"]["body"]).contains("Not saved yet."));
     assert_eq!(seen["preview as editor"]["cache"], private);
@@ -634,7 +639,7 @@ fn page_md_is_a_wordpress_page() {
     assert!(text(&seen["fourth colophon route"]["body"]).contains("Colophon, now code"));
     // A query string through WordPress's address arrives unslashed.
     assert!(
-        text(&seen["fourth by id"]).ends_with("/guide?q=it%27s"),
+        text(&seen["fourth by id"]).ends_with("/guide/?q=it%27s"),
         "{}",
         seen["fourth by id"]
     );
@@ -2134,12 +2139,11 @@ fn comments_follow_the_kind_policy_on_every_path() {
     );
     assert_eq!(seen["featured purged"], serde_json::json!([true, true]), "{seen}");
     // The page cache: a comment event that changes what visitors see of the thread purges the
-    // item's URL (under both spellings the router answers), its twin and its comments feed; a held
-    // or spam submission purges nothing.
+    // item's URL (its one address), its twin and its comments feed; a held or spam submission purges
+    // nothing.
     let note = serde_json::json!([
         "/notes/open-note/",
         "/notes/open-note.md",
-        "/notes/open-note",
         "/notes/open-note/feed/"
     ]);
     let none = serde_json::json!([]);
@@ -2225,7 +2229,7 @@ fn search_pages_answer_as_the_visitor() {
         ]),
         "{seen}"
     );
-    assert_eq!(site["more"], json!(["/find?q=tea&kind=notes"]), "{seen}");
+    assert_eq!(site["more"], json!(["/find/?q=tea&kind=notes"]), "{seen}");
     assert_eq!(site["input"], json!(["q", "200", "tea"]), "{seen}");
     // One kind, paged by `page`, links keeping `q`; the draft and the hidden-field match never count.
     assert_eq!(seen["one kind"]["count"], "3 results", "{seen}");
@@ -2838,7 +2842,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         !index.iter().any(|r| r.ends_with(" /about") || r.ends_with(" /about/")),
         "{index:?}"
     );
-    // The router answers the bare spelling too, so a host cache can hold both: both are purged.
+    // The bare spelling redirects to that address (#462), so the page is purged at it alone.
     assert_eq!(
         seen["count reads"],
         serde_json::json!({ "notes": { "ids": [], "listed": true } }),
@@ -2846,7 +2850,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     );
     assert_eq!(
         seen["purged"],
-        serde_json::json!([["/", "/index.md", "/notes/hello/", "/notes/hello.md", "/notes/hello"]])
+        serde_json::json!([["/", "/index.md", "/notes/hello/", "/notes/hello.md"]])
     );
     // The runtime's own listener cleared those paths in Batcache (keyed as `http://`, no query),
     // the VIP edge and Jetpack Boost; `/*` reaches Boost's clear-all.
@@ -2860,7 +2864,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     // Boost clears a URL recursively, so the home page goes to its home action instead.
     let mut want = vec!["boost home".to_string()];
     for cache in ["batcache", "boost", "vip"] {
-        for path in ["/", "/index.md", "/notes/hello/", "/notes/hello.md", "/notes/hello"] {
+        for path in ["/", "/index.md", "/notes/hello/", "/notes/hello.md"] {
             if !(cache == "boost" && path == "/") {
                 want.push(format!("{cache} {path}"));
             }
@@ -2887,8 +2891,8 @@ fn app_pages_cache_and_purge_by_what_they_read() {
 
 /// One committed write, one announcement (docs/runtime-contract.md, "Purges"): a kind with a `url` is
 /// purged from two sources, the post hooks and the page cache's read index, and a write names the
-/// union once on `tp_purge_urls` and once to the prebuilt pages, under the address WordPress
-/// serves the page at, whichever spelling a visitor fetched. A row recorded under the old spelling
+/// union once on `tp_purge_urls` and once to the prebuilt pages, under the one address WordPress
+/// serves the page at (the other spelling redirects there). A row recorded under the old spelling
 /// still purges; a rolled-back write announces nothing; over the limit across both is one `/*`.
 #[test]
 fn one_write_announces_its_purges_once() {
@@ -2911,13 +2915,15 @@ fn one_write_announces_its_purges_once() {
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     use serde_json::json;
-    // The router answers both spellings itself (no canonical redirect): two host cache keys.
+    // One address per page (#462): the bare spelling 301s to the one the permalink structure gives,
+    // so a host cache holds one copy and a write purges one URL.
+    let base = seen["base"].as_str().unwrap();
     assert_eq!(
         seen["spellings"],
-        json!({ "slash": [200, null], "bare": [200, null], "same html": true }),
+        json!({ "slash": [200, null], "bare": [301, format!("{base}/notes/hello/")] }),
         "{seen}"
     );
-    // Recorded once, under the address WordPress links: the bare fetch and the slashed one are one row.
+    // Recorded once, under the address WordPress links.
     assert_eq!(
         seen["index"],
         json!(["/", "/notes/hello.md", "/notes/hello/"]),
@@ -2944,7 +2950,7 @@ fn one_write_announces_its_purges_once() {
     };
     for key in ["edit", "editor edit", "old row"] {
         let paths = once(key);
-        // The item under both spellings, its twin once, its comments feed (the post hooks' part).
+        // The item at its one address, its twin, its comments feed (the post hooks' part).
         let mut item: Vec<&str> = paths
             .iter()
             .copied()
@@ -2953,7 +2959,7 @@ fn one_write_announces_its_purges_once() {
         item.sort();
         assert_eq!(
             item,
-            ["/notes/hello", "/notes/hello.md", "/notes/hello/", "/notes/hello/feed/"],
+            ["/notes/hello.md", "/notes/hello/", "/notes/hello/feed/"],
             "{key}: {paths:?}"
         );
         for want in ["/", "/index.md", "/llms.txt"] {
@@ -3163,8 +3169,8 @@ fn api_reference_renders_openapi_as_pages() {
     assert_eq!(index["tags"][0], "notes");
     assert_eq!(index["tags"][1], "actions");
     assert_eq!(index["tags"][2], "word-press");
-    assert_eq!(index["notes"][0], "/api/notes/notes-list");
-    assert_eq!(index["notes"][4], "/api/notes/notes-delete");
+    assert_eq!(index["notes"][0], "/api/notes/notes-list/");
+    assert_eq!(index["notes"][4], "/api/notes/notes-delete/");
     // The document's Markdown description, as HTML.
     assert_eq!(index["description"], "apiref");
     // One operation: the endpoint, who may call it, each parameter with where it goes and its
@@ -3287,18 +3293,22 @@ fn docs_at_the_site_root() {
     let page = |status: u16, h1: &str| serde_json::json!({ "status": status, "h1": h1, "location": null });
     // Each published item at its path, parent by parent; the app's own pages beside them.
     assert_eq!(seen["pages"]["/"], page(200, "Home"));
-    assert_eq!(seen["pages"]["/getting-started"], page(200, "Get started"));
-    assert_eq!(seen["pages"]["/reference"], page(200, "Reference"));
-    assert_eq!(seen["pages"]["/reference/config"], page(200, "Config API"));
-    assert_eq!(seen["pages"]["/playground"], page(200, "Playground"));
+    assert_eq!(seen["pages"]["/getting-started/"], page(200, "Get started"));
+    assert_eq!(seen["pages"]["/reference/"], page(200, "Reference"));
+    assert_eq!(seen["pages"]["/reference/config/"], page(200, "Config API"));
+    assert_eq!(seen["pages"]["/playground/"], page(200, "Playground"));
+    assert_eq!(
+        seen["bare"],
+        serde_json::json!({ "status": 301, "h1": null, "location": "/reference/config/" })
+    );
     // A draft, a path with the wrong parent, the slug alone and an unknown path: the app's 404.
-    for path in ["/roadmap", "/reference/nothing", "/nothing", "/config"] {
+    for path in ["/roadmap/", "/reference/nothing/", "/nothing/", "/config/"] {
         assert_eq!(seen["pages"][path], page(404, "Not here"), "{path}");
     }
     // Links, the tree and the pager all use the root paths, as does WordPress's sitemap.
     assert_eq!(seen["permalink"], "/reference/config/");
-    assert_eq!(seen["tree"], serde_json::json!(["/getting-started", "/reference"]));
-    assert_eq!(seen["next"], "/reference");
+    assert_eq!(seen["tree"], serde_json::json!(["/getting-started/", "/reference/"]));
+    assert_eq!(seen["next"], "/reference/");
     assert_eq!(
         seen["sitemap"],
         serde_json::json!(["/getting-started/", "/reference/", "/reference/config/"])
@@ -3449,6 +3459,122 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             "roadmap": ["guides", 2, "draft"], "space": ["deploy", 0, "publish"],
         })
     );
+    // What the rest of WordPress is told a doc's URL is (an SEO or breadcrumb plugin, `is_singular()`,
+    // `get_queried_object()`): the doc, a singular item of the kind's post type, at the top of the tree
+    // or below it. Core prints `single single-<post type> postid-<id>` for it, and sends none of the
+    // no-cache headers it sends with a 404.
+    let wordpress = &seen["wordpress"];
+    assert_eq!(wordpress["type"], "tp_docs");
+    let is_doc = |page: &serde_json::Value, what: &str| {
+        let id = page["expected id"].as_u64().unwrap();
+        assert!(id > 0, "{what}");
+        let query = serde_json::json!({ "id": id, "type": "tp_docs", "is_404": false, "is_singular": true });
+        assert_eq!(page["status"], 200, "{what}");
+        assert_eq!(page["resolved"], query, "{what}: what WordPress resolved the URL to");
+        assert_eq!(page["query"], query, "{what}: what a plugin is told while the page renders");
+        assert_eq!(
+            page["body"],
+            serde_json::json!([
+                "wp-singular",
+                "tp_docs-template-default",
+                "single",
+                "single-tp_docs",
+                format!("postid-{id}"),
+                "wp-embed-responsive",
+                "typedpress-app"
+            ]),
+            "{what}"
+        );
+        assert_eq!(page["expires"], serde_json::Value::Null, "{what}: no `Expires: … 1984`");
+        assert_eq!(
+            page["cache"], "public, max-age=0, s-maxage=300, must-revalidate",
+            "{what}"
+        );
+    };
+    is_doc(&wordpress["install"], "/docs/guides/install");
+    is_doc(&wordpress["introduction"], "/docs/introduction");
+    is_doc(&wordpress["space"], "/docs/guides/deploy/space");
+    // A page argument that shares core's name (`?page=2`, `<!--nextpage-->` paging) is the page's own:
+    // the doc, a 200, no 404 headers (core adds its `paged-2` body classes, as for any paged post).
+    let paged = &wordpress["paged"];
+    let doc = serde_json::json!({ "id": paged["expected id"], "type": "tp_docs", "is_404": false, "is_singular": true });
+    assert_eq!((&paged["status"], &paged["resolved"], &paged["query"]), (&serde_json::json!(200), &doc, &doc), "{paged}");
+    assert_eq!(paged["expires"], serde_json::Value::Null, "{paged}");
+    assert!(!paged["body"].as_array().unwrap().contains(&serde_json::json!("error404")), "{paged}");
+    // A path with no item is the app's 404, and WordPress's.
+    let missing = &wordpress["missing"];
+    let not_found = serde_json::json!({ "id": 0, "type": null, "is_404": true, "is_singular": false });
+    assert_eq!(missing["status"], 404);
+    assert_eq!(missing["resolved"], not_found);
+    assert_eq!(missing["query"], not_found);
+    assert_eq!(
+        missing["body"],
+        serde_json::json!(["error404", "wp-embed-responsive", "typedpress-app"])
+    );
+    assert_eq!(missing["cache"], "private, no-store, max-age=0");
+    // One address per page (#462), the permalink structure's (`/%postname%/`, a trailing slash): the
+    // bare spelling 301s there with its query string. The address itself, a `.md` twin, the REST and
+    // `/__tp/` API routes and WordPress's own paths answer where they are. A path no doc has, and
+    // `/docs` (the catch-all with no item), are a 404 where they were asked, as WordPress answers one.
+    assert_eq!(
+        seen["spellings"],
+        serde_json::json!({
+            "bare": [301, "/docs/introduction/"],
+            "bare nested": [301, "/docs/guides/deploy/space/"],
+            "bare with query": [301, "/docs/introduction/?ref=nav&page=2"],
+            "bare section": [404, null],
+            "canonical": [200, null],
+            "twin": [200, null],
+            "api": [200, null],
+            "api slash": [200, null],
+            "rest": [200, null],
+            "sitemap": [200, null],
+            "missing": [404, null],
+        })
+    );
+    // Another case of the path is the same item: it redirects to the item's one URL.
+    assert_eq!(
+        wordpress["case"],
+        serde_json::json!({ "status": 301, "location": "/docs/guides/install/" })
+    );
+    // WordPress's sitemap lists the published docs at the kind's URLs.
+    assert!(
+        seen["sitemap"][0]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("/wp-sitemap-typedpress-docs-1.xml")),
+        "{}",
+        seen["sitemap"][0]
+    );
+    assert_eq!(
+        seen["sitemap"][1],
+        serde_json::json!([
+            "/docs/guides/",
+            "/docs/guides/deploy/",
+            "/docs/guides/deploy/space/",
+            "/docs/guides/install/",
+            "/docs/guides/setup/",
+            "/docs/introduction/",
+            "/docs/reference/"
+        ])
+    );
+    // A site built before the `:path` rule was TypedPress's own holds a rule that hands the path to core's
+    // `pagename`, which core skips unless a Page is at that path. It gets the new rule without anyone
+    // flushing: a managed build's deploy sees the stored rules are behind and rebuilds them, and a
+    // plugin-installed site rebuilds on its next request, which is already answered right.
+    let old_rule = "index.php?post_type=tp_docs&tp_kind=docs&pagename=$matches[1]";
+    let new_rule = "index.php?post_type=tp_docs&tp_kind=docs&tp_kind_path=$matches[1]";
+    let deploy = &seen["stale site"]["deploy"];
+    assert_eq!(deploy["rule before"], old_rule);
+    assert_eq!(deploy["recorded before"], false);
+    assert_eq!(deploy["rebuilt"], true);
+    assert_eq!(deploy["rule after"], new_rule);
+    assert_eq!(deploy["recorded after"], true);
+    let request = &seen["stale site"]["request"];
+    assert_eq!(request["rule before"], old_rule);
+    is_doc(&request["first request"], "the first request of a site with the old rule");
+    assert_eq!(request["rule after"], new_rule);
+    assert_eq!(request["recorded after"], true);
     // nav(): the published tree, siblings by order, the current item and its ancestors marked.
     let tree = |current: &str, open: &[&str]| {
         let mark = |name: &str, path: &str| {
@@ -3470,22 +3596,22 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             serde_json::json!({ k: v, "children": children })
         };
         serde_json::json!([
-            leaf("Introduction", "/docs/introduction"),
+            leaf("Introduction", "/docs/introduction/"),
             branch(
                 "Guides",
-                "/docs/guides",
+                "/docs/guides/",
                 serde_json::json!([
                     // Configure (setup.md, seeded after install.md) and Install share an order: by title.
-                    leaf("Configure", "/docs/guides/setup"),
-                    leaf("Install", "/docs/guides/install"),
+                    leaf("Configure", "/docs/guides/setup/"),
+                    leaf("Install", "/docs/guides/install/"),
                     branch(
                         "Deploy",
-                        "/docs/guides/deploy",
-                        serde_json::json!([leaf("To a Space", "/docs/guides/deploy/space")])
+                        "/docs/guides/deploy/",
+                        serde_json::json!([leaf("To a Space", "/docs/guides/deploy/space/")])
                     ),
                 ])
             ),
-            leaf("Reference", "/docs/reference"),
+            leaf("Reference", "/docs/reference/"),
         ])
     };
     assert_eq!(seen["introduction"]["tree"], tree("Introduction", &[]));
@@ -3496,33 +3622,33 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     let ends = |key: &str| (seen[key]["prev"].clone(), seen[key]["next"].clone());
     assert_eq!(
         ends("introduction"),
-        (serde_json::json!([]), serde_json::json!(["Guides /docs/guides"]))
+        (serde_json::json!([]), serde_json::json!(["Guides /docs/guides/"]))
     );
     assert_eq!(
         ends("guides"),
         (
-            serde_json::json!(["Introduction /docs/introduction"]),
-            serde_json::json!(["Configure /docs/guides/setup"])
+            serde_json::json!(["Introduction /docs/introduction/"]),
+            serde_json::json!(["Configure /docs/guides/setup/"])
         )
     );
     assert_eq!(
         ends("install"),
         (
-            serde_json::json!(["Configure /docs/guides/setup"]),
-            serde_json::json!(["Deploy /docs/guides/deploy"])
+            serde_json::json!(["Configure /docs/guides/setup/"]),
+            serde_json::json!(["Deploy /docs/guides/deploy/"])
         )
     );
     assert_eq!(
         ends("space"),
         (
-            serde_json::json!(["Deploy /docs/guides/deploy"]),
-            serde_json::json!(["Reference /docs/reference"])
+            serde_json::json!(["Deploy /docs/guides/deploy/"]),
+            serde_json::json!(["Reference /docs/reference/"])
         )
     );
     assert_eq!(
         ends("reference"),
         (
-            serde_json::json!(["To a Space /docs/guides/deploy/space"]),
+            serde_json::json!(["To a Space /docs/guides/deploy/space/"]),
             serde_json::json!([])
         )
     );
@@ -3580,13 +3706,22 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(seen["moved"]["status"], 200);
     assert_eq!(
         seen["moved"]["tree"][1]["children"][0],
-        serde_json::json!({ "Reference [current]": "/docs/guides/reference" })
+        serde_json::json!({ "Reference [current]": "/docs/guides/reference/" })
     );
     assert_eq!(seen["moved old"], serde_json::json!([404]));
     // A published page under a draft is as hidden as the draft: its path names an unpublished page.
     assert_eq!(seen["under a draft"], serde_json::json!([404, 404]));
+    assert_eq!(seen["under a draft resolved"], not_found);
     // A WordPress Page with a doc's slug doesn't take over the doc's URL.
     assert_eq!(seen["page with a doc slug"], serde_json::json!([200, ["Introduction"]]));
+    // Nor do Pages at a nested doc's whole path: the doc is served, with no redirect, and is still
+    // what WordPress says the URL is. The Pages keep their own addresses.
+    let pages = &seen["pages at a doc path"];
+    is_doc(&pages["top"], "/docs/introduction beside a Page `introduction`");
+    is_doc(&pages["nested"], "/docs/guides/install beside a Page at `guides/install`");
+    assert_eq!(pages["nested"]["h1"], serde_json::json!(["Install"]));
+    assert_eq!(pages["nested"]["location"], serde_json::Value::Null);
+    assert_eq!(pages["the page itself"], serde_json::json!([200, true]));
     // Slugs are unique among siblings: two pages named `install` under different parents each serve.
     assert_eq!(
         seen["same slug elsewhere"],
@@ -4010,7 +4145,7 @@ fn docs_example_reads_in_the_browser() {
     let seen = read_docs(&url);
     let _ = Command::new("kill").arg(server.id().to_string()).output();
     let _ = server.wait();
-    docs_read_as_published(&seen, &url, &url);
+    docs_read_as_published(&seen, &url, &url, "/");
 }
 
 /// `typedpress export` (docs/decisions/2026-11-13-static-output.md): examples/docs (`output: "static"`),
@@ -4148,7 +4283,7 @@ fn docs_example_exports_to_a_static_site() {
     let seen = read_docs(&url);
     let _ = server.kill();
     let _ = server.wait();
-    docs_read_as_published(&seen, &url, "https://docs.example.test");
+    docs_read_as_published(&seen, &url, "https://docs.example.test", "");
     // Below a path, as a GitHub Pages project site serves it: every same-site URL starts with it.
     let base = work.path().join("base");
     let out = first()
@@ -4565,7 +4700,7 @@ fn drive_store_example_sells_on_wordpress() {
         seen["guest buy"],
         json!([
             303,
-            "/drives/wd-red-plus-4tb",
+            "/drives/wd-red-plus-4tb/",
             "Thanks! Your order code is CODE ($48.00)."
         ])
     );
@@ -4656,8 +4791,9 @@ fn read_docs(url: &str) -> serde_json::Value {
 
 /// What a visitor reads in examples/docs, wherever it is served: the same on WordPress and in its
 /// static export.
-/// `url` is where the browser read the site, `canonical` the address the pages name as their own.
-fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) {
+/// `url` is where the browser read the site, `canonical` the address the pages name as their own,
+/// `slash` what ends a page's address: `/` on WordPress (its permalink structure), nothing in the export.
+fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str, slash: &str) {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
     assert_eq!(seen["home"], "TypedPress docs");
@@ -4669,13 +4805,13 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) 
         seen["navigation"],
         serde_json::json!({
             "sameDocument": true,
-            "url": format!("{url}/docs/introduction"),
+            "url": format!("{url}/docs/introduction{slash}"),
             "loadingBar": [["core/router/private", "fixed"]]
         })
     );
     assert_eq!(
         seen["intro"],
-        serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · TypedPress docs", "h1": "Introduction" })
+        serde_json::json!({ "path": format!("/docs/introduction{slash}"), "title": "Introduction · TypedPress docs", "h1": "Introduction" })
     );
     assert_eq!(
         seen["tree"],
@@ -4693,7 +4829,7 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) 
     // Next, next: the pager walks the tree, and the open section follows the reader.
     assert_eq!(
         seen["install"],
-        serde_json::json!({ "path": "/docs/guides/install", "prev": "← Guides", "next": "Deploy →", "open": "Guides", "current": "Install" })
+        serde_json::json!({ "path": format!("/docs/guides/install{slash}"), "prev": "← Guides", "next": "Deploy →", "open": "Guides", "current": "Install" })
     );
     assert_eq!(seen["space"], serde_json::json!(["Guides", "Deploy", "To a Space"]));
     assert_eq!(
@@ -4845,7 +4981,8 @@ fn static_routes_have_code_owned_pages() {
     // One Page per static page.tsx route: `page.md` routes own their own, parameterised routes none.
     let routes: Vec<&String> = seen["pages"].as_object().unwrap().keys().collect();
     assert_eq!(routes, ["(site)/about", "/", "account", "broken", "notes"], "{seen}");
-    for (route, path) in [("(site)/about", "/about"), ("/", "/"), ("notes", "/notes")] {
+    // Each Page's permalink is its route's one address (`/about/`).
+    for (route, path) in [("(site)/about", "/about/"), ("/", "/"), ("notes", "/notes/")] {
         let page = &seen["pages"][route];
         assert_eq!(
             (page["status"].as_str(), page["link"].as_str(), page["meta"].as_str()),
@@ -4857,7 +4994,7 @@ fn static_routes_have_code_owned_pages() {
     assert_eq!(seen["pages"]["account"]["status"], "private");
     assert_eq!(seen["pages"]["/"]["title"], "Home");
     assert_eq!(seen["front"], serde_json::json!(["page", true]));
-    assert_eq!(seen["canonical"], url("/notes"));
+    assert_eq!(seen["canonical"], url("/notes/"));
     // Hidden from wp-admin, its counts and REST edit lists; a public REST list has them like any page.
     for title in ["Home", "Notes", "About", "Account", "Broken"] {
         assert!(
@@ -4881,10 +5018,10 @@ fn static_routes_have_code_owned_pages() {
     assert_eq!(seen["can edit"], serde_json::json!([false, false, true]));
     assert_eq!(seen["after bypass"], serde_json::json!(["Notes", "publish"]));
     // Menus link the route; a lost record finds the same Pages again, so menu items keep working.
-    assert_eq!(seen["menu"], serde_json::json!([url("/about")]));
+    assert_eq!(seen["menu"], serde_json::json!([url("/about/")]));
     assert_eq!(seen["adopted"], true);
     // WordPress's own addresses for a code Page go to the route; a site's own Page is untouched.
-    assert_eq!(seen["page_id redirect"], serde_json::json!([301, url("/about")]));
+    assert_eq!(seen["page_id redirect"], serde_json::json!([301, url("/about/")]));
     assert_eq!(seen["slug redirect"], serde_json::json!([301, url("/")]));
     assert_eq!(
         (&seen["about"], &seen["native"]),
@@ -4942,8 +5079,8 @@ fn route_ids_keep_pages_when_files_move() {
         "the old URLs redirect"
     );
     for (title, before, after) in [
-        ("About", "/about", "/company/about"),
-        ("Colophon", "/colophon", "/company/colophon"),
+        ("About", "/about/", "/company/about/"),
+        ("Colophon", "/colophon/", "/company/colophon/"),
     ] {
         assert_eq!(seen["first"][title]["link"], before, "{title}: {seen}");
         assert_eq!(

@@ -104,23 +104,23 @@ $public = static fn (): string => implode("\n", array_map(static fn (string $pat
 
 $out = [];
 // ---- the first build: each page.md is a Page, rendered inside the route's layouts.
-$out['guide'] = page(fetch("$url/guide"));
+$out['guide'] = page(fetch("$url/guide/"));
 $out['guide stored'] = $stored('/guide');
 $out['guide twin'] = [fetch("$url/guide.md")['status'], fetch("$url/guide.md")['body'], fetch("$url/guide.md")['headers']['content-type'][0] ?? null];
-$out['guide twin link'] = $out['guide twin'] !== null ? (fetch("$url/guide")['headers']['link'] ?? []) : [];
-$out['colophon'] = page(fetch("$url/colophon"));
+$out['guide twin link'] = $out['guide twin'] !== null ? (fetch("$url/guide/")['headers']['link'] ?? []) : [];
+$out['colophon'] = page(fetch("$url/colophon/"));
 $out['colophon stored'] = $stored('/colophon');
 // A draft: the Page exists for its editors, and no anonymous surface shows it.
-$out['hidden'] = page(fetch("$url/hidden"));
+$out['hidden'] = page(fetch("$url/hidden/"));
 $out['hidden stored'] = $stored('/hidden');
-$out['hidden as editor'] = page(fetch("$url/hidden", [$cookie('chief')]));
-$out['hidden as subscriber'] = page(fetch("$url/hidden", [$cookie('reader')]))['status'];
+$out['hidden as editor'] = page(fetch("$url/hidden/", [$cookie('chief')]));
+$out['hidden as subscriber'] = page(fetch("$url/hidden/", [$cookie('reader')]))['status'];
 $out['hidden twin'] = fetch("$url/hidden.md")['status'];
 $out['hidden twin as editor'] = fetch("$url/hidden.md", [$cookie('chief')])['status'];
 // A page under a layout guard: stored private, shown to whoever the guard admits.
-$terms = fetch("$url/account/terms");
+$terms = fetch("$url/account/terms/");
 $out['terms anonymous'] = [$terms['status'], str_contains($terms['headers']['location'][0] ?? '', 'wp-login.php')];
-$out['terms subscriber'] = page(fetch("$url/account/terms", [$cookie('reader')]));
+$out['terms subscriber'] = page(fetch("$url/account/terms/", [$cookie('reader')]));
 $out['terms stored'] = $stored('/account/terms');
 $out['terms twin'] = fetch("$url/account/terms.md", [$cookie('reader')])['status'];
 $leaks = $public();
@@ -138,7 +138,7 @@ $edit('chief', ['ID' => $guide, 'post_title' => 'Field guide, revised', 'post_ex
 \TypedPress\Wp\Purges::flush(); // a wp-admin save announces when its request ends
 wp_cache_delete('test_purges', 'options');
 $out['purged'] = array_merge(...get_option('test_purges', []));
-$out['guide edited'] = page(fetch("$url/guide"));
+$out['guide edited'] = page(fetch("$url/guide/"));
 $out['guide edited twin'] = fetch("$url/guide.md")['body'];
 // Their unsaved changes show to them from the editor's Preview link, and to nobody else.
 require_once ABSPATH . 'wp-admin/includes/post.php'; // wp_create_post_autosave, as the editor's autosave calls it
@@ -146,7 +146,7 @@ $site->actAs('chief');
 wp_create_post_autosave(['post_ID' => $guide, 'post_type' => 'page', 'post_title' => 'Field guide, revised', 'post_excerpt' => 'Edited on the site.',
     'post_content' => "<!-- wp:paragraph -->\n<p>Not saved yet.</p>\n<!-- /wp:paragraph -->"]);
 $site->actAs(null);
-$preview = "$url/guide?preview=true&preview_id=$guide&preview_nonce=";
+$preview = "$url/guide/?preview=true&preview_id=$guide&preview_nonce=";
 $out['preview as editor'] = page(fetch($preview . $session('chief', 'post_preview_' . $guide), [$cookie('chief')]));
 $out['preview without nonce'] = fetch($preview . 'nope', [$cookie('chief')]);
 $out['preview anonymous'] = fetch($preview . $session('chief', 'post_preview_' . $guide));
@@ -155,14 +155,14 @@ foreach (['preview without nonce', 'preview anonymous'] as $key) {
 }
 // A password locks the body for every visitor; unpublishing takes the page away.
 $edit('chief', ['ID' => $guide, 'post_password' => 'open sesame']);
-$out['locked'] = page(fetch("$url/guide"));
+$out['locked'] = page(fetch("$url/guide/"));
 $out['locked twin'] = fetch("$url/guide.md")['body'];
 require_once ABSPATH . WPINC . '/class-phpass.php';
-$out['locked with cookie'] = page(fetch("$url/guide", ['Cookie: wp-postpass_' . COOKIEHASH . '=' . rawurlencode((new PasswordHash(8, true))->HashPassword('open sesame'))]))['body'];
+$out['locked with cookie'] = page(fetch("$url/guide/", ['Cookie: wp-postpass_' . COOKIEHASH . '=' . rawurlencode((new PasswordHash(8, true))->HashPassword('open sesame'))]))['body'];
 $edit('chief', ['ID' => $guide, 'post_password' => '', 'post_status' => 'draft']);
-$out['unpublished'] = [page(fetch("$url/guide"))['status'], fetch("$url/guide.md")['status']];
+$out['unpublished'] = [page(fetch("$url/guide/"))['status'], fetch("$url/guide.md")['status']];
 $edit('chief', ['ID' => $guide, 'post_status' => 'publish']);
-$out['republished'] = page(fetch("$url/guide"))['status'];
+$out['republished'] = page(fetch("$url/guide/"))['status'];
 
 // ---- the second build, installed over the first: files changed, one removed, one added.
 $app = glob($site->dir . '/content/plugins/typedpress-app-*')[0];
@@ -180,19 +180,19 @@ $holder = proc_open([PHP_BINARY, '-d', 'memory_limit=512M', __DIR__ . '/app_cont
 $out['holder'] = [trim((string) fgets($pipes[1]))];
 $site->startServer();
 $url = $site->url();
-$during = fetch("$url/news");
+$during = fetch("$url/news/");
 $out['while locked'] = ['news' => $during['status'], 'news stored' => $stored('/news'), 'colophon stored' => $stored('/colophon')['content'] ?? null];
 fwrite($pipes[0], "continue\n");
 $out['holder'][] = trim((string) fgets($pipes[1]));
 $out['holder'][] = proc_close($holder);
-$out['second colophon'] = page(fetch("$url/colophon"));
+$out['second colophon'] = page(fetch("$url/colophon/"));
 $out['second colophon stored'] = $stored('/colophon');
-$out['second news'] = page(fetch("$url/news"));
+$out['second news'] = page(fetch("$url/news/"));
 $out['second news stored'] = $stored('/news');
 // The editor's version wins over a changed file.
-$out['second guide'] = page(fetch("$url/guide"));
+$out['second guide'] = page(fetch("$url/guide/"));
 // A removed page.md leaves its Page on the site, and its URL is no longer the app's.
-$out['second hidden'] = page(fetch("$url/hidden"))['status'];
+$out['second hidden'] = page(fetch("$url/hidden/"))['status'];
 $out['second hidden stored'] = $stored('/hidden');
 // ---- the third build takes two pages away from visitors: the guide becomes a draft, and the
 // colophon moves under the account layout's guard. The site has lost its record of the Pages.
@@ -201,11 +201,11 @@ delete_option('tp_approuter_content');
 $install($argv[3]);
 $site->startServer();
 $url = $site->url();
-$out['third guide'] = [page(fetch("$url/guide"))['status'], fetch("$url/guide.md")['status']];
+$out['third guide'] = [page(fetch("$url/guide/"))['status'], fetch("$url/guide.md")['status']];
 // The editor's text is still the Page's; only its status followed the file.
 $out['third guide stored'] = $stored('/guide');
-$out['third colophon anonymous'] = fetch("$url/account/colophon")['status'];
-$out['third colophon subscriber'] = page(fetch("$url/account/colophon", [$cookie('reader')]));
+$out['third colophon anonymous'] = fetch("$url/account/colophon/")['status'];
+$out['third colophon subscriber'] = page(fetch("$url/account/colophon/", [$cookie('reader')]));
 $out['third colophon stored'] = $stored('/account/colophon');
 // The route moved, so its Page is a new one; the old one stays where WordPress has it.
 $out['third old colophon'] = $stored('/colophon');
@@ -220,11 +220,11 @@ $out['third record'] = get_option('tp_approuter_content')['pages']['/guide']['st
 $install($argv[4]);
 $site->startServer();
 $url = $site->url();
-$out['fourth guide'] = page(fetch("$url/guide"))['status'];
+$out['fourth guide'] = page(fetch("$url/guide/"))['status'];
 $out['fourth guide stored'] = $stored('/guide');
 // WordPress's own address for a page.md Page never takes over a route the app serves: the
 // colophon's old Page has the slug `colophon`, and /colophon is now a page.tsx route.
-$out['fourth colophon route'] = page(fetch("$url/colophon"));
+$out['fourth colophon route'] = page(fetch("$url/colophon/"));
 // A query string through WordPress's own address arrives unslashed at the route.
 $out['fourth by id'] = fetch("$url/?page_id=$guideId&q=it%27s")['headers']['location'][0] ?? null;
 wp_cache_flush();

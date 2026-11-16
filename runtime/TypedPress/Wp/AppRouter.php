@@ -63,10 +63,29 @@ final class AppRouter
         }
         // After the frontend-mode gate (-1) and a kind URL's old-slug redirect (0).
         add_action('template_redirect', [self::$instance, 'claim'], 1);
-        add_filter('redirect_canonical', static fn (string|false $redirect): string|false => self::$instance?->serving ? false : $redirect, 10, 1);
+        add_filter('pre_handle_404', [self::$instance, 'found'], 10, 2);
     }
 
-    private bool $serving = false;
+    /**
+     * `pre_handle_404`: an item WordPress found for a page that serves its kind is found, whatever
+     * the page's own query parameters are. Core reads `?page=2` as `<!--nextpage-->` paging and
+     * calls a post without it a 404 (WP::handle_404), but on an app page it is the page's argument
+     * (`<Pagination>`'s by default), and the page renders.
+     */
+    public function found(bool $preempt, \WP_Query $query): bool
+    {
+        if ($preempt || !$query->is_singular() || !$query->post instanceof \WP_Post || ($query->query_vars['page'] ?? '') === '') {
+            return $preempt;
+        }
+        $path = $this->path();
+        $match = $path === null || $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        if ($match === null || ($match['route']['page'] ?? null) === null || $this->kindType($match['route']) !== $query->post->post_type) {
+            return $preempt;
+        }
+        status_header(200);
+        return true;
+    }
+
     /** @var list<string> the stylesheets of the route being rendered, linked by document() */
     private array $styles = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
@@ -298,7 +317,21 @@ final class AppRouter
             }
             return;
         }
-        $this->serving = true;
+        // One address per page (#462): the spelling the permalink structure gives, as WordPress's
+        // redirect_canonical() gives a post's. That function runs later on template_redirect (10)
+        // than this, so it never sees a page the router serves. A kind's item is moved only once the
+        // visitor may read it (serve()), so the bare spelling of a hidden item is a 404 like a missing
+        // one. A prerender (the prebuild, `typedpress export`) asks for the path as the build lists
+        // it and gets the page.
+        $moved = null;
+        if ($this->canonical($path) !== $path && !\TypedPress\Render\Prebuilt::prerendering()) {
+            $query = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '');
+            $moved = home_url($this->canonical($path)) . ($query !== '' ? '?' . $query : '');
+            if (($match['route']['kind'] ?? null) === null) {
+                wp_safe_redirect($moved, 301);
+                exit;
+            }
+        }
         // A static route's code Page ({@see RoutePages}) is the queried object while it renders,
         // as WordPress's own page template would have it: menus, SEO plugins and `the_ID()` see it.
         $id = RoutePages::instance()?->pages()[(string) $match['route']['id']] ?? null;
@@ -313,7 +346,38 @@ final class AppRouter
         if ($viewer === null) {
             $this->notFound();
         }
-        $this->serve($match['route'], $match['params'], $viewer, 200);
+        $this->serve($match['route'], $match['params'], $viewer, 200, $moved);
+    }
+
+    /**
+     * The one spelling of a path below the home URL that a `tp/app/` page answers at ({@see address()}).
+     * A path no page serves (a `route.ts`, WordPress's own, a public file) keeps its spelling.
+     */
+    public function canonical(string $path): string
+    {
+        if ($this->reserved($path)) {
+            return $path;
+        }
+        $match = self::match($this->app['routes'], $path);
+        return $match === null || ($match['route']['page'] ?? null) === null ? $path : self::address($path);
+    }
+
+    /**
+     * A page's path below the home URL as WordPress spells a permalink: with a trailing slash when the
+     * permalink structure has one (`user_trailingslashit`; TypedPress's is Hardening::PERMALINKS, which
+     * is what a request answered before WordPress sets up its rewrites, a prebuilt file, goes by). The
+     * front page and a file name (a last segment with a dot, as in `.md` twins) keep their spelling.
+     */
+    public static function address(string $path): string
+    {
+        if ($path === '' || $path === '/' || str_contains((string) strrchr('/' . trim($path, '/'), '/'), '.')) {
+            return $path === '' ? '/' : $path;
+        }
+        $path = rtrim($path, '/');
+        if (!isset($GLOBALS['wp_rewrite'])) {
+            return str_ends_with(Hardening::PERMALINKS, '/') ? $path . '/' : $path;
+        }
+        return user_trailingslashit($path);
     }
 
     /** @param array<string, mixed> $route whether the route serves a kind whose url is the site root, `/:path` */
@@ -374,8 +438,12 @@ final class AppRouter
         $this->serve($route, [], $viewer, 404);
     }
 
-    /** @param array<string, string|list<string>> $params */
-    private function serve(array $route, array $params, Viewer $viewer, int $status): never
+    /**
+     * @param array<string, string|list<string>> $params
+     * @param ?string $moved the page's one address, when the request spelled it otherwise: a kind's
+     *   item the visitor may read redirects there
+     */
+    private function serve(array $route, array $params, Viewer $viewer, int $status, ?string $moved = null): never
     {
         $this->plugin->app(); // the compiled page functions live in the app's functions.php
         $this->styles = $route['styles'] ?? [];
@@ -400,11 +468,16 @@ final class AppRouter
             }
             // The item a kind URL names is one of the render's reads: a write to any of its fields
             // purges this URL (and rebuilds a prebuilt one), not only a write core's post hooks see.
-            [$head, $body] = Reads::during(function () use ($route, $params, $viewer, $props, $page, $layouts): array {
+            [$head, $body] = Reads::during(function () use ($route, $params, $viewer, $props, $page, $layouts, $moved): array {
                 if (($route['kind'] ?? null) !== null) {
                     $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
                     if ($item === null) {
                         throw Halt::notFoundSignal();
+                    }
+                    if ($moved !== null) {
+                        // A permanent move, cacheable like core's canonical redirect (redirect() isn't).
+                        wp_safe_redirect($moved, 301);
+                        exit;
                     }
                     $props->p['item'] = $item;
                 }
@@ -413,7 +486,7 @@ final class AppRouter
         } catch (Halt $halt) {
             if ($halt->location !== null) {
                 nocache_headers();
-                wp_redirect(str_starts_with($halt->location, '/') ? home_url($halt->location) : $halt->location, $halt->status);
+                wp_redirect(str_starts_with($halt->location, '/') && !str_starts_with($halt->location, '//') ? home_url(self::href($halt->location)) : $halt->location, $halt->status);
                 exit;
             }
             if ($status === 404) {
@@ -892,6 +965,20 @@ final class AppRouter
     }
 
     /**
+     * A same-site URL path as a link to it is written: a page's path at its one address
+     * ({@see canonical()}), so a link or a `rel="canonical"` never points at a redirect. Its query
+     * and fragment are kept; anything else is as it is.
+     */
+    public static function href(string $url): string
+    {
+        if (!str_starts_with($url, '/') || str_starts_with($url, '//')) {
+            return $url;
+        }
+        $path = substr($url, 0, strcspn($url, '?#'));
+        return (self::$instance?->canonical($path) ?? $path) . substr($url, strlen($path));
+    }
+
+    /**
      * The head's Open Graph and Twitter card tags and its extra `<link>`s, from `metadata.openGraph`,
      * `metadata.twitter` and `metadata.links`. Open Graph's title and description default to the
      * page's own, and its URL is the canonical one; a path is made absolute, as the protocol wants.
@@ -907,7 +994,7 @@ final class AppRouter
                 'og:title' => $graph['title'] ?? $head['title'] ?? null,
                 'og:description' => $graph['description'] ?? $head['description'] ?? null,
                 'og:type' => $graph['type'] ?? 'website',
-                'og:url' => is_string($head['canonical'] ?? null) && $head['canonical'] !== '' ? self::absolute($head['canonical']) : null,
+                'og:url' => is_string($head['canonical'] ?? null) && $head['canonical'] !== '' ? self::absolute(self::href($head['canonical'])) : null,
                 'og:image' => is_string($graph['image'] ?? null) && $graph['image'] !== '' ? self::absolute($graph['image']) : null,
             ];
             foreach ($tags as $property => $content) {
@@ -997,7 +1084,7 @@ final class AppRouter
             echo '<meta name="description" content="' . esc_attr($head['description']) . "\">\n";
         }
         if (is_string($head['canonical'] ?? null) && $head['canonical'] !== '') {
-            echo '<link rel="canonical" href="' . esc_url(self::absolute($head['canonical'])) . "\">\n";
+            echo '<link rel="canonical" href="' . esc_url(self::absolute(self::href($head['canonical']))) . "\">\n";
         }
         echo self::social($head);
         wp_head();

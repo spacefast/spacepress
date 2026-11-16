@@ -27,7 +27,7 @@ function get(string $url): array
 
 $out = [];
 foreach (['about', 'plain', 'colophon'] as $path) {
-    $page = get("$url/$path");
+    $page = get("$url/$path/");
     $html = new DOMDocument();
     @$html->loadHTML($page['body']);
     $xpath = new DOMXPath($html);

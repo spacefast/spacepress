@@ -31,7 +31,7 @@ $site->startServer();
 $url = $site->url();
 $get = static fn (string $path): int => (int) (function () use ($url, $path) { $ch = curl_init($url . $path); curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true]); curl_exec($ch); return curl_getinfo($ch, CURLINFO_RESPONSE_CODE); })();
 // A request stores the build's Pages: code Pages and page.md Pages alike.
-$out = ['first served' => [$get('/about'), $get('/colophon')]];
+$out = ['first served' => [$get('/about/'), $get('/colophon/')]];
 $out['first'] = $pages();
 $app = glob($site->dir . '/content/plugins/typedpress-app-*')[0];
 $site->stopServer();
@@ -39,7 +39,7 @@ exec('rm -rf ' . escapeshellarg($app));
 wpCopy($argv[2] . '/plugins/' . basename($app), $app);
 $site->startServer();
 $url = $site->url();
-$out['second served'] = [$get('/company/about'), $get('/company/colophon'), $get('/about'), $get('/colophon')];
+$out['second served'] = [$get('/company/about/'), $get('/company/colophon/'), $get('/about/'), $get('/colophon/')];
 // The links as the second build gives them: read by the server, which loaded that build.
 $out['second'] = $pages();
 foreach ($out['second'] as $title => $page) {

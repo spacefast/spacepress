@@ -62,7 +62,7 @@ foreach (['anonymous' => [], 'editor' => $editor] as $who => $headers) {
         'page' => $titles($home['body']),
         'page cache' => $home['headers']['cache-control'][0] ?? null,
         'layout' => (int) ($count[1] ?? -1),
-        'kind api' => $titles(fetch("$url/kind", headers: $headers)['body']),
+        'kind api' => $titles(fetch("$url/kind/", headers: $headers)['body']),
         'twin' => $titles(fetch("$url/index.md", headers: $headers)['body']),
         'route' => $titles(fetch("$url/api/titles", headers: $headers)['body']),
         'action db' => [$trusted['status'], $titles($trusted['body'])],

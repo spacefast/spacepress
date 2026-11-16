@@ -62,7 +62,6 @@ final class ContentPages
             add_action('init', [$self, 'store'], 2);
         }
         add_filter('page_link', [$self, 'link'], 10, 2);
-        add_filter('tp_post_purge_urls', [$self, 'purge'], 10, 2);
         add_action('template_redirect', [$self, 'canonical'], 0);
         // The route renders the twin; the stored Page is listed once, under the app's pages.
         add_filter('tp_markdown_twin', static fn (bool $has, \WP_Post $post): bool => $has && $self->routeOf($post->ID) === null, 10, 2);
@@ -361,7 +360,7 @@ final class ContentPages
         $post = self::$instance?->visible($route);
         if ($post !== null) {
             $out['title'] = $post->post_title;
-            $out['canonical'] ??= self::$instance->pages[$route]['path'];
+            $out['canonical'] ??= AppRouter::address(self::$instance->pages[$route]['path']);
             if ($post->post_excerpt !== '' && $post->post_password === '') {
                 $out['description'] = $post->post_excerpt;
             }
@@ -380,26 +379,10 @@ final class ContentPages
         return $route === null ? $link : $this->url($route);
     }
 
+    /** The route's one address (`/about/`, AppRouter::address), which the Page's permalink is. */
     private function url(string $route): string
     {
-        return home_url($this->pages[$route]['path']);
-    }
-
-    /**
-     * `tp_post_purge_urls`: an edit purges the route under both spellings a cache may hold
-     * (`/about` and `/about/`); the router answers both.
-     *
-     * @param list<string> $urls
-     * @return list<string>
-     */
-    public function purge(array $urls, \WP_Post $post): array
-    {
-        $route = $this->routeOf($post->ID);
-        if ($route !== null && $this->pages[$route]['path'] !== '/') {
-            $urls[] = trailingslashit($this->url($route));
-        }
-
-        return $urls;
+        return home_url(AppRouter::address($this->pages[$route]['path']));
     }
 
     /** template_redirect: WordPress's own address for the Page (its slug, `?page_id=`) goes to the route. */

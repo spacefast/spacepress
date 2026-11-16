@@ -48,8 +48,14 @@ final class Purges
         // A save, trash or delete of a template, part, Global Styles or navigation menu changes
         // every page: prebuilt files go, and the page cache purges the whole host.
         $design = static function (int $id, mixed $post = null): void {
-            $type = $post instanceof \WP_Post ? $post->post_type : get_post_type($id);
-            if (in_array($type, self::DESIGN_TYPES, true)) {
+            $post = $post instanceof \WP_Post ? $post : get_post($id);
+            // Core creates a default navigation menu lazily while a page renders
+            // (WP_Navigation_Fallback): not an owner's edit, and a render or prebuild must not throw
+            // away the files it is making.
+            if (!$post instanceof \WP_Post || $post->post_status === 'auto-draft' || self::frontEnd()) {
+                return;
+            }
+            if (in_array($post->post_type, self::DESIGN_TYPES, true)) {
                 \TypedPress\Render\Prebuilt::forget();
                 self::everything();
             }
@@ -178,6 +184,13 @@ final class Purges
         if ($plugin !== null && self::listening()) {
             self::add($plugin, $urls);
         }
+    }
+
+    /** A front-end request (a page render or a prerender), not a save an owner made. */
+    private static function frontEnd(): bool
+    {
+        return \TypedPress\Render\Prebuilt::prerendering()
+            || (did_action('template_redirect') > 0 && !is_admin() && !(defined('REST_REQUEST') && REST_REQUEST));
     }
 
     /**

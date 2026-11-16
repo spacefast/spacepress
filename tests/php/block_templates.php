@@ -164,9 +164,33 @@ $trashed = fetch("$url/notes");
 $out['trashed template'] = ['login form' => str_contains($trashed['body'], 'id="loginform"'), 'theme header' => shape($trashed)['theme header'], 'page' => shape($trashed)['page']];
 // 8. A template whose page block lives in a template part still places the page; one with none
 // falls back to tp-page, never a blank 200.
-fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-blank", 'POST', $admin, json_encode(['content' => "<!-- wp:paragraph --><p>No page here</p><!-- /wp:paragraph -->"]));
+// The failed render's own block styles (a styled group's) don't reach the fallback page, and the
+// head's tags print once.
+$noPage = "<!-- wp:paragraph --><p>No page here</p><!-- /wp:paragraph -->";
+fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-blank", 'POST', $admin, json_encode(['content' => $noPage]));
 $bare = fetch("$url/bare");
 $out['template without page'] = ['status' => $bare['status'], 'page' => shape($bare)['page'], 'owner text' => str_contains($bare['body'], 'No page here'), 'theme header' => shape($bare)['theme header']];
+// A template that places the page block, whose render a plugin then drops (a filter on
+// render_block): the page renders in tp-page, without the scripts the dropped render's blocks
+// enqueued, and its head tags print once. When tp-page loses it too, TypedPress's own document.
+$placed = "<!-- wp:paragraph --><p>Dropped render</p><!-- /wp:paragraph -->\n<!-- wp:search {\"buttonPosition\":\"button-only\"} /-->\n<!-- wp:tp/page /-->";
+fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-blank", 'POST', $admin, json_encode(['content' => $placed]));
+file_put_contents($site->dir . '/content/mu-plugins/drop-page.php', "<?php add_filter('render_block_tp/page', static fn (string \$html): string => isset(\$_GET['drop']) && (\$_GET['drop'] === 'all' || !str_contains((string) (\$GLOBALS['_wp_current_template_id'] ?? ''), 'tp-page')) ? '' : \$html);");
+$dropped = fetch("$url/bare?drop=blank");
+$out['page render dropped'] = ['status' => $dropped['status'], 'page' => shape($dropped)['page'], 'template' => shape($dropped)['template'], 'dropped text' => str_contains($dropped['body'], 'Dropped render'),
+    'descriptions' => substr_count($dropped['body'], '<meta name="description"'), 'scripts' => str_contains($dropped['body'], 'block-library/search/view')];
+$plain = fetch("$url/bare?drop=all");
+$out['no template places the page'] = ['status' => $plain['status'], 'page' => shape($plain)['page'], 'template' => shape($plain)['template'],
+    'titles' => substr_count($plain['body'], '<title>'), 'descriptions' => substr_count($plain['body'], '<meta name="description"'), 'scripts' => str_contains($plain['body'], 'block-library/search/view')];
+unlink($site->dir . '/content/mu-plugins/drop-page.php');
+fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-blank", 'POST', $admin, json_encode(['content' => $noPage]));
+// B. A wp_navigation post created while a page renders (core's lazy fallback menu): no purge.
+file_put_contents($site->dir . '/content/mu-plugins/purge-log.php', "<?php add_action('tp_purge_urls', static function (array \$paths): void { file_put_contents(WP_CONTENT_DIR . '/purges.log', json_encode(\$paths) . \"\\n\", FILE_APPEND); });");
+file_put_contents($site->dir . '/content/mu-plugins/render-nav.php', "<?php add_action('wp_head', static function (): void { if (isset(\$_GET['make-nav'])) { wp_insert_post(['post_type' => 'wp_navigation', 'post_status' => 'publish', 'post_title' => 'Fallback', 'post_content' => '']); } });");
+fetch("$url/notes?make-nav=1");
+$out['render purge'] = array_values(array_filter(explode("\n", (string) @file_get_contents($site->dir . '/content/purges.log'))));
+unlink($site->dir . '/content/mu-plugins/render-nav.php');
+@unlink($site->dir . '/content/purges.log');
 // 6. A Site Editor save announces a whole-site purge and forgets the prebuilt pages.
 file_put_contents($site->dir . '/content/mu-plugins/purge-log.php', "<?php add_action('tp_purge_urls', static function (array \$paths): void { file_put_contents(WP_CONTENT_DIR . '/purges.log', json_encode(\$paths) . \"\\n\", FILE_APPEND); });");
 fetch("$url/wp-json/wp/v2/templates/$stylesheet//tp-blank", 'POST', $admin, json_encode(['content' => "<!-- wp:tp/page /-->"]));

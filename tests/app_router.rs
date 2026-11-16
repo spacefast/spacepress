@@ -1463,6 +1463,15 @@ fn frontend_modes_on_wordpress() {
     // WordPress renders it: the app has no not-found.tsx to put in it.
     assert_eq!(app["note rendered"]["router"], true, "{app}");
     assert_eq!(app["missing rendered"], by_theme(404), "{app}");
+    // Its title is WordPress's, as with no app.
+    assert_eq!(app["missing title"], theme["missing title"], "{app}");
+    assert!(
+        app["missing title"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("Page not found"),
+        "{app}"
+    );
     assert_eq!(app["post rendered"], by_theme(200), "{app}");
     assert_eq!(
         (&app["note status"], &app["note by app"], &app["note body"]),
@@ -3329,6 +3338,11 @@ fn docs_at_the_site_root() {
     assert_eq!(seen["post to a page"], 200);
     // Another case of the path redirects to the item's own.
     assert_eq!(seen["case"], serde_json::json!([301, "/reference/config/"]));
+    // A link under the root kind's catch-all carries no template, so a click loads the page.
+    assert_eq!(
+        seen["link templates"],
+        serde_json::json!({ "/about/": null, "/reference/config": null, "/playground": "tp-page" })
+    );
 }
 
 /// The project's `public/` folder at the site root (spec §1: "static files, served as-is"), on
@@ -4123,6 +4137,21 @@ fn docs_example_exports_to_a_static_site() {
     for page in ["index.html", "docs/introduction.html", "404.html"] {
         let html = read(page);
         assert!(!html.contains("/feed") && !html.contains("wp-json"), "{page}");
+    }
+    // Every script and module the 404 (the theme's own 404 template) loads is a file of the export:
+    // its src attributes and the import map's paths, core's block view modules among them.
+    let not_found = read("404.html");
+    let urls: Vec<String> = regex::Regex::new(r#"(?:src="|":")(/[^"?]+\.js)"#)
+        .unwrap()
+        .captures_iter(&not_found)
+        .map(|c| c[1].replace("\\/", "/"))
+        .collect();
+    assert!(urls.iter().any(|u| u.contains("/block-library/")), "{urls:?}");
+    for url in &urls {
+        assert!(
+            files.iter().any(|f| format!("/{f}") == *url),
+            "404.html loads {url}, missing from {files:?}"
+        );
     }
     // JSON in a script element can never close it: `<` stays escaped as WordPress wrote it.
     for page in ["index.html", "docs/introduction.html"] {
@@ -5663,6 +5692,22 @@ fn pages_render_in_block_templates() {
         serde_json::json!({ "status": 200, "page": "Bare", "owner text": false, "theme header": 1 }),
         "{seen}"
     );
+    // A template's page render that a plugin drops: tp-page renders it instead, without the
+    // dropped render's scripts, each head tag once.
+    assert_eq!(
+        seen["page render dropped"],
+        serde_json::json!({ "status": 200, "page": "Bare", "template": "tp-page", "dropped text": false, "descriptions": 1, "scripts": false }),
+        "{seen}"
+    );
+    // When neither the chosen template nor tp-page places it, the page is TypedPress's own document:
+    // one title, one description, none of the failed renders' scripts.
+    assert_eq!(
+        seen["no template places the page"],
+        serde_json::json!({ "status": 200, "page": "Bare", "template": "document", "titles": 1, "descriptions": 1, "scripts": false }),
+        "{seen}"
+    );
+    // Core's lazy default navigation menu, made while a page renders, is no Site Editor edit.
+    assert_eq!(seen["render purge"], serde_json::json!([]), "{seen}");
     // A Site Editor save announces one whole-host purge.
     assert_eq!(seen["design purge"], serde_json::json!(["[\"\\/*\"]"]), "{seen}");
     // The owner's sign-in template held only the Page content block, and login.tsx went away:

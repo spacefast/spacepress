@@ -82,6 +82,21 @@ The owner replaced it with one mode.
 - A Login form block with per-request plugin fields makes the page private after the template
   renders, and refuses the prerender.
 
+Second review:
+
+- A `<Link>` with no `data-tp-template` loads the whole page. Links to paths the app doesn't
+  render, and paths under a root kind's `/:path` route (WordPress may answer those), carry none.
+  `templateFor()` is computed once per path per request.
+- The fallback document removes the template's head-tags callback, so the description, canonical
+  and social tags print once.
+- A failed template render's styles, scripts and script modules are dequeued before the fallback
+  renders.
+- Site Editor writes made by a front-end request or a prerender, and auto-drafts, purge nothing.
+  This covers core's lazy default navigation menu.
+- WordPress keeps its own title when no file set one (its 404: "Page not found – Site").
+- A page that turns private after its template rendered logs and keeps its Cache-Control if
+  output has already started.
+
 ## What stays identical
 
 Data reads, access rules, guards, the cache policy, purge recording and Markdown twins run in the

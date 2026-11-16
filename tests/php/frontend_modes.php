@@ -88,6 +88,8 @@ $out = [
     'post body' => str_contains($hello['body'], 'Welcome to WordPress'),
     'missing rendered' => $rendered($got('/no-such-page/')),
     'missing by wordpress' => str_contains($got('/no-such-page/')['body'], 'class="error404'),
+    // WordPress's own title on its 404, whoever rendered it.
+    'missing title' => preg_match('#<title>(.*?)</title>#s', $got('/no-such-page/')['body'], $t) === 1 ? html_entity_decode($t[1], ENT_QUOTES) : null,
     'note status' => $note1['status'],
     'note by theme' => str_contains($note1['body'], 'wp-block-post-title') || str_contains($note1['body'], 'Hello note'),
     'note by app' => str_contains($note1['body'], 'class="app-note"'),

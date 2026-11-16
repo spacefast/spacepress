@@ -75,6 +75,10 @@ final class AppRouter
      * until a route chooses another. Null only with a classic theme, where TypedPress prints the document.
      */
     private ?string $template = BlockTemplates::PAGE;
+    /** @var array<string, ?string> templateFor() by path, for this request */
+    private array $templates = [];
+    /** The wp_head callback that prints the head's description, canonical and social tags in a block template. */
+    private ?\Closure $headTags = null;
     /** @var list<string> the stylesheets of the route being rendered, linked by document() */
     private array $styles = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
@@ -217,14 +221,18 @@ final class AppRouter
      */
     public function templateFor(string $path): ?string
     {
-        if (!self::themed()) {
-            return 'document';
+        if (array_key_exists($path, $this->templates)) {
+            return $this->templates[$path];
         }
         $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
-        if ($match === null || ($match['route']['page'] ?? null) === null) {
-            return null;
-        }
-        return BlockTemplates::slug(BlockTemplates::choice($match['route'], $this->app['files'] ?? []));
+        // A kind served at the site root (`/:path`) answers only its own items, and claim() leaves
+        // every other path to WordPress: which one a path is, only that request knows.
+        $template = match (true) {
+            $match === null || ($match['route']['page'] ?? null) === null || $this->rootKind($match['route']) => null,
+            !self::themed() => 'document',
+            default => BlockTemplates::slug(BlockTemplates::choice($match['route'], $this->app['files'] ?? [])),
+        };
+        return $this->templates[$path] = $template;
     }
 
     /** Whether pages render in block templates: the active theme is a block theme. */
@@ -425,9 +433,9 @@ final class AppRouter
         $route = $this->app['notFound'] ?? null;
         $viewer = CoreAccess::viewer() ?? new Viewer(null);
         if (!is_array($route)) {
-            // The theme's own 404 template, as WordPress renders it.
+            // The theme's own 404 template, as WordPress renders it, with core's title.
             $this->template = BlockTemplates::NOT_FOUND;
-            $this->document(404, ['title' => __('Page not found')], '<h1>' . esc_html__('Page not found') . '</h1>');
+            $this->document(404, ['title' => __('Page not found'), 'coreTitle' => true], '<h1>' . esc_html__('Page not found') . '</h1>');
         }
         $this->serve($route, [], $viewer, 404);
     }
@@ -1013,6 +1021,11 @@ final class AppRouter
             $title = str_replace('%s', $title, (string) $template);
         }
         unset($out['titleIsDefault']);
+        // No file set a title: in a block template WordPress writes its own (the queried Page's,
+        // "Page not found", the site name).
+        if ($title === null) {
+            $out['coreTitle'] = true;
+        }
         $out['title'] = $title ?? get_bloginfo('name');
         return $out;
     }
@@ -1106,11 +1119,14 @@ final class AppRouter
      */
     private function templated(\WP_Block_Template $template, array $head, string $body): never
     {
-        // A non-empty pre_get_document_title is printed as it is, without core's escaping.
-        add_filter('pre_get_document_title', static fn (): string => esc_html((string) $head['title']), PHP_INT_MAX);
+        // A non-empty pre_get_document_title is printed as it is, without core's escaping. The
+        // router's own fallback pages (WordPress's 404) keep core's title ("Page not found – Site").
+        if (!($head['coreTitle'] ?? false)) {
+            add_filter('pre_get_document_title', static fn (): string => esc_html((string) $head['title']), PHP_INT_MAX);
+        }
         add_action('wp_head', '_block_template_viewport_meta_tag', 0);
         add_action('wp_head', '_block_template_render_title_tag', 1);
-        add_action('wp_head', static function () use ($head): void {
+        add_action('wp_head', $this->headTags = static function () use ($head): void {
             if (is_string($head['description'] ?? null) && $head['description'] !== '') {
                 echo '<meta name="description" content="' . esc_attr($head['description']) . "\">\n";
             }
@@ -1119,11 +1135,17 @@ final class AppRouter
             }
             echo self::social($head);
         }, 2);
+        $queued = self::queued();
         $html = BlockTemplates::html($template, Navigation::region('tp-page') . $body . Navigation::END);
         if ($html === null) {
-            // The template didn't place the page: the default template, else First's own document.
+            // The template didn't place the page: the default template, else First's own document,
+            // without the styles and scripts the failed render's blocks enqueued.
+            self::dequeueSince($queued);
             $fallback = $template->slug === BlockTemplates::PAGE ? null : BlockTemplates::resolve(BlockTemplates::PAGE);
             $html = $fallback === null ? null : BlockTemplates::html($fallback, Navigation::region('tp-page') . $body . Navigation::END);
+            if ($html === null) {
+                self::dequeueSince($queued);
+            }
             if ($html === null) {
                 $this->template = null;
                 $this->plain($head, $body);
@@ -1205,6 +1227,10 @@ final class AppRouter
         if (!\TypedPress\Render\LoginView::private() || str_starts_with($this->cacheControl, 'private')) {
             return;
         }
+        if (headers_sent($file, $line)) {
+            error_log("TypedPress: a Login form block made this page private, but output started at $file:$line, so its Cache-Control could not change");
+            return;
+        }
         $this->cacheControl = 'private, no-store, max-age=0';
         nocache_headers();
         header('Cache-Control: ' . $this->cacheControl);
@@ -1216,15 +1242,43 @@ final class AppRouter
     }
 
     /**
+     * What is enqueued now (styles, scripts, script modules), to take back what a render adds.
+     *
+     * @return array{0: list<string>, 1: list<string>, 2: list<string>}
+     */
+    private static function queued(): array
+    {
+        return [wp_styles()->queue, wp_scripts()->queue, function_exists('wp_script_modules') ? wp_script_modules()->get_queue() : []];
+    }
+
+    /** @param array{0: list<string>, 1: list<string>, 2: list<string>} $before */
+    private static function dequeueSince(array $before): void
+    {
+        [$styles, $scripts, $modules] = self::queued();
+        foreach (array_diff($styles, $before[0]) as $handle) {
+            wp_dequeue_style($handle);
+        }
+        foreach (array_diff($scripts, $before[1]) as $handle) {
+            wp_dequeue_script($handle);
+        }
+        foreach (array_diff($modules, $before[2]) as $id) {
+            wp_dequeue_script_module($id);
+        }
+    }
+
+    /**
      * TypedPress's own document: under a classic theme, or when a block template can't place the page.
      *
      * @param array<string, mixed> $head
      */
     private function plain(array $head, string $body): never
     {
-        // A block template that couldn't place the page may have hooked its title already.
+        // A block template that couldn't place the page may have hooked its title and head tags.
         remove_action('wp_head', '_block_template_render_title_tag', 1);
         remove_action('wp_head', '_block_template_viewport_meta_tag', 0);
+        if ($this->headTags !== null) {
+            remove_action('wp_head', $this->headTags, 2);
+        }
         echo "<!DOCTYPE html>\n<html " . get_language_attributes() . ">\n<head>\n<meta charset=\"" . esc_attr((string) get_option('blog_charset')) . "\">\n";
         echo "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
         echo '<title>' . esc_html((string) $head['title']) . "</title>\n";

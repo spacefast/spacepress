@@ -15,9 +15,11 @@ const sameSite = (event, ref) =>
 // The block template a page renders in (`<body data-tp-template>`) and the one a link's target
 // renders in (`data-tp-template` on the link): the router region swaps only between pages of one
 // template, so a link to a page with other chrome (the theme's header, or none) loads the page.
+// A link with no template (an address no app page serves) loads the page: what answers there has
+// no router region to swap.
 const sameTemplate = (ref) => {
   const target = ref.dataset.tpTemplate;
-  return target === undefined || target === document.body.dataset.tpTemplate;
+  return target !== undefined && target === document.body.dataset.tpTemplate;
 };
 
 store("tp/router", {

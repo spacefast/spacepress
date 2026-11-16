@@ -1,7 +1,7 @@
 "use client";
 // Rendered on the server like any component, then hydrated with the Interactivity API: a click
-// calls the `cheer` mutation and shows the stored count it returns.
-import { useState } from "typedpress/state";
+// calls the `cheer` action and shows the stored count it returns.
+import { useState } from "typedpress/client";
 import { cheer } from "../server";
 
 export function CheerButton({ noteId, count: initial }: { noteId: number; count: number }) {

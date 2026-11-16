@@ -8,7 +8,7 @@
  "notes": {
   "typedpress.config.ts": "site name and switches",
   "tp/schema.ts": "the two kinds",
-  "tp/server.ts": "one mutation",
+  "tp/server.ts": "one action",
   "tp/app/layout.tsx": "wraps every page",
   "tp/app/page.tsx": "serves /",
   "tp/app/notes/page.tsx": "serves /notes",

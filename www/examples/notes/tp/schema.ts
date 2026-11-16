@@ -24,7 +24,7 @@ export const notes = collection({
   },
 });
 
-// Reader applause per note. Anyone may read the counts; only the cheer mutation writes them.
+// Reader applause per note. Anyone may read the counts; only the cheer action writes them.
 export const cheers = table({
   noteId: ref(notes).unique().onDelete("cascade"),
   count: integer().default(0),

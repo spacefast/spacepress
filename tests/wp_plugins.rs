@@ -307,12 +307,12 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
             "duplicate/duplicate.php",
             b"<?php\n/*\nPlugin Name: Duplicate\nVersion: 1.0\n*/",
         ),
-        ("duplicate/tp.txt", b"first"),
+        ("duplicate/first.txt", b"first"),
         ("duplicate/other.txt", b"last"),
     ]);
     routes.insert(
         "/duplicate.zip".into(),
-        replace_zip_names(duplicate, b"duplicate/other.txt", b"duplicate/tp.txt", true),
+        replace_zip_names(duplicate, b"duplicate/other.txt", b"duplicate/first.txt", true),
     );
     let inconsistent = plugin_zip("header-mismatch", "1.0", "");
     routes.insert(
@@ -456,7 +456,7 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
 
     for declarations in [
         "const plugins = {alpha:'1.0',alpha:'2.0'};",
-        "const first = {alpha:'1.0',alpha:'2.0'}; const plugins = {...tp};",
+        "const first = {alpha:'1.0',alpha:'2.0'}; const plugins = {...first};",
         "const plugins = {...{alpha:'1.0'},...{alpha:'2.0'}};",
         "const plugins = {alpha:{version:'1.0',version:'2.0'}};",
         "const plugins = {alpha:'1.0'}; plugins.alpha = '2.0';",

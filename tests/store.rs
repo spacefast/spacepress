@@ -172,13 +172,13 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
         listed,
         [
             "action-scheduler",
-            "first",
-            "typedpress-admin",
-            "typedpress-app-pantry",
-            "typedpress-runtime",
             "mcp-adapter",
             "secure-custom-fields",
-            "two-factor"
+            "two-factor",
+            "typedpress",
+            "typedpress-admin",
+            "typedpress-app-pantry",
+            "typedpress-runtime"
         ]
     );
     let manifest: serde_json::Value =

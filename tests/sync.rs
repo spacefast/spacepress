@@ -376,7 +376,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     assert!(!read(&project, "content/notes/hello.md").contains("uid:"));
     assert_eq!(site.rows("notes").len(), 1);
 
-    // TypedPress run: the file gets a uid and is pushed; the site's record becomes a file; one commit
+    // First run: the file gets a uid and is pushed; the site's record becomes a file; one commit
     // holding only what sync wrote.
     let ignore = read(&project, ".gitignore");
     assert!(
@@ -1390,7 +1390,7 @@ fn a_file_edited_during_the_push_itself_is_not_overwritten() {
         "/__tp/api/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
-            std::fs::write(&path, t.replace("TypedPress.", "Typed during the push.")).unwrap();
+            std::fs::write(&path, t.replace("First.", "Typed during the push.")).unwrap();
         },
         edited.clone(),
     );
@@ -1588,7 +1588,7 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
         "/__tp/api/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
-            std::fs::write(&path, t.replace("TypedPress.", "Typed during a plain push.")).unwrap();
+            std::fs::write(&path, t.replace("First.", "Typed during a plain push.")).unwrap();
         },
         edited.clone(),
     );
@@ -2117,7 +2117,7 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
         "/__tp/api/v1/sync/notes/trash",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
-            std::fs::write(&path, t.replace("TypedPress.", "Kept: typed during the delete.")).unwrap();
+            std::fs::write(&path, t.replace("First.", "Kept: typed during the delete.")).unwrap();
         },
         edited.clone(),
     );
@@ -3106,7 +3106,7 @@ fn astro_content_fields_first_cant_map_are_build_errors_naming_the_field() {
             "  blog,",
             "  aVeryLongCollectionName: blog,",
             "collection `aVeryLongCollectionName` can't be a TypedPress kind's name",
-            "at most 14",
+            "at most 17",
         ),
         (
             "    title: z.string(),",

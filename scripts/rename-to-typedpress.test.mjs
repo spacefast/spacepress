@@ -63,3 +63,11 @@ test('mixed hidden-state and app-root arrays need only one pass', () => {
   assert.equal(once, 'for generated in [".tp", "tp"]');
   assert.equal(rename(once, 'tests/compiler.rs'), once);
 });
+
+
+test('ordinary spreads, archive entry names and sync edit sentinels survive', () => {
+  assert.equal(rename('const first = {}; const plugins = {...first};', 'tests/wp_plugins.rs'), 'const first = {}; const plugins = {...first};');
+  assert.equal(rename('"duplicate/first.txt"', 'tests/wp_plugins.rs'), '"duplicate/first.txt"');
+  assert.equal(rename('t.replace("First.", "Typed during the push.")', 'tests/sync.rs'), 't.replace("First.", "Typed during the push.")');
+  assert.equal(rename('// First run: the file gets a uid', 'tests/sync.rs'), '// First run: the file gets a uid');
+});

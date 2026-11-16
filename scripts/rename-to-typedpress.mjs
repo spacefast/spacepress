@@ -37,7 +37,7 @@ const KEEP = [
   /\b(?:array_key_first|acf_first_activated_version|event_first_activated_pro)\b/g,
   /\bfirst_(?:name|mut|key_value|chunk|entry|call|require|active|address|count|day|failed|head|listed|marked|post|profile|run|save|value|start|end|line|segment|element|item|index|seen|time|pass|attempt|argument|param|parameter|byte|character|char|error|match|row|column|token|statement|decl|declaration|span|offset|node|file|path|id|key|last_note)\b/g,
   /\b(?:CHILD_FIRST|SELF_FIRST)\b/g,
-  /\bFirst (?=commit callback|heading|paragraph|item|row|column|line|name|argument|parameter|step|attempt|pass|request|response|version:)/g,
+  /\bFirst (?=commit callback|heading|paragraph|item|row|column|line|name|argument|parameter|step|attempt|pass|request|response|version:|run:)/g,
   /\bfirstName\b/g,
   /(?<=[?&](?:q|search)=)First\b/g,
   /\bFirst (?:note|post|dek|light)(?=[.,<"'`\\]| ·|$)/gm,
@@ -131,6 +131,7 @@ export function rename(text, path = '') {
     .replace(/npx --no-install first\b/g, 'npx --no-install typedpress')
     .replace(/(\bwp\(\s*["'])first(?=["'])/g, '$1typedpress')
     .replace(/\b(meta|manifest)\.first\b/g, '$1.typedpress');
+  if (path === 'tests/sync.rs') text = text.replace(/at most 14/g, 'at most 17');
   if (path === 'tests/cli.rs') text = text.replace(/"first"/g, '"typedpress"').replaceAll('"first "', '"typedpress "').replace(/bin\.join\("tp"\)/g, 'bin.join("typedpress")');
   if (path === 'docs-site/tests/browser/compiler.spec.ts') text = text.replace(/\bfirst: \{ app:/g, 'tp: { app:').replace(/appFiles\.first\b/g, 'appFiles.tp');
   if (path === 'docs-site/tests/browser/showcase.spec.ts') text = text.replace(/first%2F/g, 'tp%2F').replace(/%2Ffirst-/g, '%2Ftypedpress-');
@@ -231,6 +232,7 @@ export function rename(text, path = '') {
   if (path === 'tests/system/journey.ts') out = shield(out, [/["']First["']/g], slots);
   if (path === 'runtime/admin/apps/packages/schema/src/fields.test.tsx') out = shield(out, [/["']First["']/g], slots);
   if (path === 'tests/php/taxonomy_test.php') out = shield(out, [/["']First["']/g, /\/notes\/news\/first\//g], slots);
+  if (path === 'tests/sync.rs') out = shield(out, [/(?<=\.replace\(")First\.(?=")/g], slots);
   out = out.replace(/\bfirst\/first\.php\b/g, 'typedpress/typedpress.php');
   if (/^runtime\/(?:first|typedpress)-plugin\/src\/Receiver\.php$/.test(path)) {
     out = out.replace(/(['"])first\1/g, '$1typedpress$1').replace(/first\//g, 'typedpress/');
@@ -240,7 +242,7 @@ export function rename(text, path = '') {
     out = out.replace(/(['"])first(?:\.cmd)?\1/g, (m) => m.includes('.cmd') ? m.replace('first.cmd', 'typedpress.cmd') : m.replace('first', 'typedpress'));
   }
   out = out.replace(/(["']wp["']\s*,\s*["'])first(?=["'])/g, '$1typedpress');
-  out = out.replace(/(?<![\w-])\.first(?=[\s"'`/.)}]|$)/gm, '.tp');
+  out = out.replace(/(?<![\w.-])\.first(?=[\s"'`/.)}]|$)/gm, '.tp');
   // Internal names normalized from upstream stay scoped to TypedPress Admin.
   out = out.replace(/@spacefast\/first-cli\b/g, 'typedpress')
     .replace(/@spacefast\/first(?=[@\s"'`]|$)/g, 'typedpress')
@@ -280,7 +282,7 @@ export function rename(text, path = '') {
     .replace(/\bFirst\b/g, 'TypedPress');
   out = out.replace(/(?<![\w-])first-(?=[a-z<${*'"`])/g, 'typedpress-')
     .replace(/\b(create|class|zz|x|single|hello|resolve|reject|base|such|nonexistent|fixture|spacefast)-first\b/g, '$1-typedpress')
-    .replace(/(?<![\w-])\.first(?=[\s"'`/.)}]|$)/gm, '.tp')
+    .replace(/(?<![\w.-])\.first(?=[\s"'`/.)}]|$)/gm, '.tp')
     .replace(/\bfirst(?=\.(?:config|gen|wasm|exe|mjs|rb|php|zip|json|d\.ts|hosted|source-bundle)\b)/g, 'typedpress')
     .replace(/\bwp(\s+(?:@\S+\s+)?)first\b/g, 'wp$1typedpress')
     .replace(/\bsf first\b/g, 'sf typedpress')
@@ -308,11 +310,17 @@ export function rename(text, path = '') {
   out = quotedProduct(out, path);
   // Filesystem paths are separate from public module imports, handled above.
   out = out.replace(/(?<![\w.-])first\//g, 'tp/')
-    .replace(/(?<=\/)first(?=["'`\s.)}]|$)/g, 'tp')
+    .replace(/(?<=\/)first(?=["'`\s)}]|$)/g, 'tp')
     .replace(/(?<=runtime\/)First(?=\/)/g, 'TypedPress');
   // Hidden state/app roots use short names, including literal ROOT and .join calls.
   if (path === 'src/layout.rs') out = out.replace(/(ROOT[^=]*=\s*)"typedpress"/g, '$1"tp"');
   out = out.replace(/(?<=types\/)tp(?=\/|["'`\s])/g, 'typedpress');
+  if (path === 'tests/store.rs') {
+    out = out.replace(/(listed,\s*\[)([\s\S]*?)(\]\s*\))/, (match, before, items, after) => {
+      const names = JSON.parse(`[${items}]`).map((name) => name === 'first' ? 'typedpress' : name).sort();
+      return before + '\n' + names.map((name) => '            ' + JSON.stringify(name)).join(',\n') + '\n        ' + after;
+    });
+  }
   if (path === 'tests/compiler.rs') {
     out = out.replace(/"plugins": \[([^\]\n]+)\]/g, (match, items) => {
       try {
@@ -355,6 +363,17 @@ function fixturePluginLock(text, path, read) {
   const lock = JSON.parse(text);
   for (const plugin of Object.values(lock.plugins)) plugin.integrity = `sha256-${hash.copy().digest('hex')}`;
   return JSON.stringify(lock, null, 2) + (text.endsWith('\n') ? '\n' : '');
+}
+
+function fixtureSourceManifest(text, path, read) {
+  if (!/^tests\/fixtures\/typedpress-sources\/[^/]+\/[^/]+\/sources\/manifest\.json$/.test(path)) return text;
+  const root = path.slice(0, path.lastIndexOf('/'));
+  for (const [key, file] of [['app_sha256', 'app.typedpress.json'], ['vendor_sha256', 'vendor.typedpress.json']]) {
+    const source = `${root}/${file}`;
+    const hash = createHash('sha256').update(rename(read(source), source)).digest('hex');
+    text = text.replace(new RegExp(`("${key}"\\s*:\\s*")[a-f0-9]+(")`), `$1${hash}$2`);
+  }
+  return text;
 }
 
 function main() {
@@ -411,7 +430,8 @@ function main() {
     const bytes = readFileSync(full);
     if (bytes.subarray(0, 8000).includes(0)) continue;
     const before = bytes.toString('utf8');
-    const after = fixturePluginLock(rename(before, path), path, (file) => readFileSync(join(root, dry ? originals.get(file) ?? file : file), 'utf8'));
+    const read = (file) => readFileSync(join(root, dry ? originals.get(file) ?? file : file), 'utf8');
+    const after = fixtureSourceManifest(fixturePluginLock(rename(before, path), path, read), path, read);
     if (before === after) continue;
     changed.push(path);
     if (!dry) writeFileSync(full, after);

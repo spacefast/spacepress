@@ -32,5 +32,16 @@ trash and "Undo" or "Restore" brings it back. Before this decision:
 - An app that wanted "trashed" to mean "deleted" for its own bookkeeping now sees an update.
   `afterUnpublish` (a planned hook) is where that will attach.
 - A refused item in a scheduled empty is retried and logged daily until its references are gone.
-- Content sync's own trash (`Sync\Trash::trash`) still runs the delete lifecycle; that is open
-  (its own issue).
+- A record that references a trashed item keeps the reference. A pull can't name a row in the trash,
+  so it reads that reference as null, and pushing the null back leaves the stored reference alone.
+
+## Content sync (2026-11-16)
+
+Content sync's trash (`Sync\Trash::trash`, what `typedpress sync` sends when a file is deleted) is
+the same trash, with the same rules: a published item is unpublished (`afterUpdate` and an `update`
+notice), a draft leaving is nothing to visitors, and no delete hook or referential action runs.
+Rows that point at the item, its links and its revisions stay. Pushing the file back restores the
+post in place, and back to published that is a publish. Before this, sync's trash ran the delete
+lifecycle, so `onDelete: "cascade"` removed dependent rows that a restore could not bring back
+(issue #482). Data is never deleted automatically: the delete lifecycle runs only when a person
+deletes the post from the trash, or WordPress empties the trash on its schedule.

@@ -898,7 +898,7 @@ For tables the file wins; files without a `uid` use a stable identity derived fr
 { sync: "content/posts/*.md" }
 ```
 
-`typedpress sync [--site <url>]`, with `TP_APP_PASSWORD=user:pass` (or `TP_TOKEN=<jwt>`) in the environment, keeps
+`typedpress sync [--site <url>]`, signed in with `typedpress login <site-url>` (in CI, `TP_APP_PASSWORD=user:pass` or `TP_TOKEN=<jwt>` in the environment instead), keeps
 `content/posts/<slug>.md` and the site in step: front matter for fields, the
 body as Markdown for the `content` column. Both sides may change; it merges
 per field, and writes `.tp/conflicts/<uid>.md` when the same field changed on
@@ -1382,7 +1382,7 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   `tp/_generated/runtime-schema.json`: `collections` and `globals` (fields added to declared
   kinds), `added` (new kinds) and `overrides` (labels and presentation), with the version number
   and hash. It reads `GET /__tp/api/v1/schema-versions/lock`, which answers administrators only
-  (`TP_APP_PASSWORD` or `TP_TOKEN`). Before it keeps the new lock it compiles the project
+  (signed in as any remote command is: `typedpress login`, or `TP_APP_PASSWORD` / `TP_TOKEN`). Before it keeps the new lock it compiles the project
   with it; a lock the project can't compile (it declares one of the names differently, say) is
   not written, and the error says why. Then it refreshes `tp/_generated/` (types, client).
   `--check` exits 1 when the lock is behind the site and writes nothing. The build declares what
@@ -1937,8 +1937,8 @@ export default defineConfig({});
   `unknown`: its ability publishes no output schema.
 - Other abilities come from `tp/_generated/abilities.json`, which you commit.
   `typedpress abilities pull [dir] --site <url>` writes it from a running site;
-  `--only acme/*` (repeatable) keeps matching names. The pull signs in only
-  with `TP_APP_PASSWORD=user:application-password` from the environment.
+  `--only acme/*` (repeatable) keeps matching names. The pull signs in with the credential
+  `typedpress login` stored, or `TP_APP_PASSWORD=user:application-password` from the environment.
   `typedpress build` and `typedpress check` read the lock and never contact the site.
 - Map `"php/wordpress"` in tsconfig.json next to `"typedpress"`
   (`types/wordpress.d.ts` in the CLI package); `typedpress build` writes the ability
@@ -1956,7 +1956,7 @@ export default defineConfig({});
   `required`, arrays, `enum`, `const`, `oneOf`/`anyOf` and
   `additionalProperties`. `allOf`, `$ref`, `not`, `patternProperties` and
   tuple `items` become `unknown`, and the pull prints a warning for each.
-- `typedpress doctor --site <url>` (with `TP_APP_PASSWORD`) reports every locked
+- `typedpress doctor --site <url>` (signed in) reports every locked
   ability the site no longer has or whose schema changed since the pull.
 
 ## WordPress functions

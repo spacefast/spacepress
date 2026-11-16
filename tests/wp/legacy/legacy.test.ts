@@ -65,7 +65,7 @@ test("a post's content is checked against the new app's content column", () => {
 
 test("an unknown flag is refused before anything runs", () => {
   // A typo like --dryrun must not fall through to a real migration.
-  const r = JSON.parse(wpTry("first", "migrate-legacy", "/tmp/typedpress-legacy-release.php", "--dryrun"));
+  const r = JSON.parse(wpTry("typedpress", "migrate-legacy", "/tmp/typedpress-legacy-release.php", "--dryrun"));
   assert.deepEqual([r.error.code, r.error.detail.includes("--dryrun")], ["invalid_command", true]);
   assert.deepEqual(snapshot(), before_);
 });

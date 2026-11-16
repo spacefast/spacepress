@@ -821,9 +821,13 @@ pub struct AppSearch {
 /// One compiled `"use client"` component: its store module and the server actions it calls.
 #[derive(Debug, Clone)]
 pub struct Island {
-    /// File name under the app plugin's `tp/app/client/`, content-hashed.
+    /// File name under the app plugin's `tp/app/client/`: `<stem>.<12 hex>.js`, the hex being the
+    /// start of the SHA-256 of [`Island::shipped`], the exact bytes served under that name.
     pub file: String,
+    /// The generated store module, readable.
     pub source: String,
+    /// What the app plugin ships: `source` minified (`crate::minify`).
+    pub shipped: String,
     pub actions: Vec<String>,
     /// The store keeps `useLive` reads current: the page also loads `@typedpress/live`.
     pub live: bool,

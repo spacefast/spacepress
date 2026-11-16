@@ -677,8 +677,8 @@ The project must say `output: "static"`, where every page is prebuilt.
 Editors work on a hosted WordPress running the app. `typedpress export --site https://cms.example.com`
 renders that site's published content with this checkout's pages.
 
-- **Credentials.** It needs an editor's credential in `TP_APP_PASSWORD` (`user:application-password`)
-  or `TP_TOKEN`, the same as `typedpress sync`.
+- **Credentials.** It signs in as an editor the way `typedpress sync` does: the credential
+  `typedpress login` stored, or `TP_APP_PASSWORD` (`user:application-password`) or `TP_TOKEN` in CI.
 - **The site must run this checkout's build.** Otherwise the export stops and says to deploy first.
 - **Rebuilding on publish.** Add the hosted site's `webhooks` config to call a CI job on publish
   (`events: ["*"]`). The job runs `typedpress export --site …` and uploads `tp/dist/static/`.

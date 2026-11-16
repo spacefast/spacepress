@@ -2,13 +2,13 @@
 # Every example under examples/ that commits files under tp/_generated/ commits what this
 # compiler builds. Each one is built again (`typedpress build`, its wp-content into a temporary --out),
 # after its committed outputs are deleted, and git must then see no change, deletion or new file
-# under its first/_generated/. That covers the whole client (the copied runtime files, client.js,
+# under its tp/_generated/. That covers the whole client (the copied runtime files, client.js,
 # client.d.ts, schema.ts, types.ts), db.d.ts, routes.d.ts and openapi.json, a migration the
 # compiler would add, and an output it no longer writes. Committed migrations and plugin locks are
 # inputs the build reads, so they are kept: an edit to an existing migration is not caught.
 # runtime/client/committed.test.ts checks only the copied client files, without building, on PRs.
 #
-#   scripts/check-generated.sh [path/to/first]
+#   scripts/check-generated.sh [path/to/typedpress]
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"

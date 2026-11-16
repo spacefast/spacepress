@@ -25,6 +25,8 @@ oxc_codegen = "=0.152.0"
 oxc_isolated_declarations = { version = "=0.152.0", optional = true }
 oxc_semantic = "=0.152.0"
 oxc_transformer = "=0.152.0"
+# Minifies the client modules the app plugin ships (src/minify.rs). Pinned with the other oxc crates.
+oxc_minifier = "=0.152.0"
 regex = "1.13.1"
 ryu-js = "1.0.3"
 serde = { version = "1.0.229", features = ["derive"] }

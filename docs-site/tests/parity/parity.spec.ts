@@ -9,6 +9,8 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
+import { pick } from "../tree.ts";
+
 interface SidebarEntry {
 	label: string;
 	href: string;
@@ -441,8 +443,10 @@ test("an example page lists every file, opens one, and opens one a link names", 
 	await page.goto(at("/examples/pantry"));
 	const tree = page.getByRole("tree").first();
 	await expect(tree).toBeVisible();
-	// The tree opens on the app plugin's folder; a click shows the file.
-	await tree.getByRole("treeitem", { name: "schema.php", exact: true }).first().click();
+	// The tree opens on the app plugin's folder and the explorer opens its compiled PHP. Wait for that
+	// file, so its selection doesn't replace the one made here; then a click shows the file.
+	await expect(page.getByRole("main").getByText("<?php").first()).toBeVisible();
+	await pick(page, file);
 	await expect(tree.getByRole("treeitem", { name: "schema.php", exact: true }).first()).toHaveAttribute("aria-selected", "true");
 	await expect(page).toHaveURL(/#file=.*schema\.php$/);
 	await expect(page.getByRole("main").getByText("'name' => 'pantry'", { exact: false }).first()).toBeVisible();

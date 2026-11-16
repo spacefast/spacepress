@@ -116,6 +116,7 @@ final class ZeroNames
                 wp_roles()->for_site();
             }
             add_option(self::DONE, ['at' => gmdate('c'), 'changed' => $changed, 'kept' => $upgrade->kept], '', false);
+            InstallMarker::forget();
 
             return $changed;
         });

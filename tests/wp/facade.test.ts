@@ -151,22 +151,24 @@ test("the users kind: rows as TypedPress reads them, writes through TypedPress's
   first("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ name }));
   const role = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { role: "admin" } });
   assert.equal(role.status, 403, JSON.stringify(role.json));
-  // Create reaches TypedPress's insert (not core's "missing username/password"): the create rule, TypedPress's
-  // password rule, and `self` reads keeping even an admin from setting a unique email it can't see
-  // (this app's members can only be created by trusted code).
+  // Create reaches TypedPress's insert (not core's "missing username/password"): the create rule and
+  // TypedPress's password rule. The email is unique and `self` hides other members' rows, but an
+  // administrator lists users on WordPress's Users screen, so it may set one (WpUserStore::showsUnique).
   const address = `facade-${run}@example.test`;
-  const body = { email: address, name: `Created ${run}`, password: "a long password 1" };
+  const body = { email: address, name: `Created ${run}`, password: "a long password 1", plan: "pro" };
   for (const [as, input, expected] of [
     ["editor", body, [403, "forbidden"]], // core's create_users refuses an editor first
     ["admin", { ...body, password: "short" }, [422, "invalid_input"]],
-    ["admin", body, [403, "forbidden"]],
   ] as const) {
     const viaFacade = await f("POST", "/members", { as, body: input });
     assert.deepEqual([viaFacade.status, viaFacade.json.code], expected, `${as} ${JSON.stringify(input)}`);
   }
   assert.equal(wp("eval", `echo email_exists('${address}') ? 'created' : 'none';`), "none", "a refused create leaves no user");
+  const created = await f("POST", "/members", { as: "admin", body });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const id = Number(wp("eval", `echo email_exists('${address}');`));
+  assert.ok(id > 0, "the administrator's create made the user");
   // A permanent delete (core refuses one without force), with TypedPress's delete rule.
-  const id = first("insert", "members", JSON.stringify({ email: address, name: `Created ${run}`, plan: "pro" }))[0].id;
   assert.equal((await f("DELETE", `/members/${id}`, { as: "editor" })).status, 403, "the admin-only delete rule");
   const removed = await f("DELETE", `/members/${id}`, { as: "admin" });
   assert.deepEqual([removed.status, removed.json.data?.plan], [200, "pro"], JSON.stringify(removed.json));

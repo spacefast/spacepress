@@ -37,7 +37,7 @@ final class Guests
             }
         });
         // Installing, not serving: a managed build schedules it from initialize.
-        add_action('action_scheduler_init', static fn () => Runtime::managed() ? null : self::install());
+        add_action('action_scheduler_init', static fn () => Runtime::installs() ? self::install() : null);
     }
 
     /** The daily guest pruning. */
@@ -46,6 +46,12 @@ final class Guests
         if (Runtime::plugin() !== null && !as_has_scheduled_action(self::HOOK, [], 'typedpress')) {
             as_schedule_recurring_action(time() + 3600, DAY_IN_SECONDS, self::HOOK, [], 'typedpress');
         }
+    }
+
+    /** What {@see install()} leaves: the pruning scheduled. */
+    public static function installed(): bool
+    {
+        return Runtime::plugin() === null || as_has_scheduled_action(self::HOOK, [], 'typedpress');
     }
 
     /** @return array{pruned: list<int>, kept: list<array{id: int, reason: string}>} */

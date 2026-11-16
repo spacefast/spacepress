@@ -31,6 +31,7 @@ pub(super) fn parse(path: &Path, text: &str, source: Source) -> Result<Value, Fa
         function_this: std::cell::Cell::new(false),
         reads_this: std::cell::Cell::new(false),
         this_reads: std::cell::RefCell::new(Vec::new()),
+        uses_arguments: std::cell::Cell::new(false),
         before_super: std::cell::Cell::new(false),
         commonjs_this: false,
         super_call: std::cell::Cell::new(false),

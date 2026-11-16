@@ -35,6 +35,8 @@ final class Cache
     public const WINDOW = 300;
     /** Rows recorded per render; a page that reads more records its kinds as listings. */
     public const MAX_IDS = 500;
+    /** Rows per insert when recording reads (at most about 900 bytes each). */
+    private const BATCH = 100;
 
     public static function register(): void
     {
@@ -96,10 +98,32 @@ final class Cache
                 }
             }
         }
+        $wanted = [];
+        foreach ($rows as [$kind, $item]) {
+            $wanted[$kind . "\0" . $item] = [$kind, $item];
+        }
+        // The same reads as the URL's last render (the usual case: a page re-rendered after its cache
+        // window): nothing to write.
+        $stored = [];
+        foreach (self::run('SELECT "kind", "item" FROM {reads} WHERE "url" = ?', [$url]) as $row) {
+            $stored[$row['kind'] . "\0" . $row['item']] = true;
+        }
+        if (array_diff_key($wanted, $stored) === [] && array_diff_key($stored, $wanted) === []) {
+            return;
+        }
         $now = gmdate('Y-m-d\TH:i:s.000\Z');
         self::run('DELETE FROM {reads} WHERE "url" = ?', [$url]);
-        foreach ($rows as [$kind, $item]) {
-            self::run('INSERT IGNORE INTO {reads} ("kind", "item", "url", "seenAt") VALUES (?, ?, ?, ?)', [$kind, $item, $url, $now]);
+        // Multi-row inserts, BATCH rows each. A row's parameters are at most (191 + 191 + 512)
+        // characters of utf8mb4, 4 bytes each, plus the 24-byte timestamp: 3,600 bytes, so a statement
+        // carries at most 100 × 3,600 = 360,000 bytes of parameters. That is below the default
+        // max_allowed_packet of MySQL 8 (64 MiB) and MariaDB (16 MiB); it is not checked against the
+        // server's own setting, so a server set below about 360 KB would refuse a full batch.
+        foreach (array_chunk(array_values($wanted), self::BATCH) as $chunk) {
+            $params = [];
+            foreach ($chunk as [$kind, $item]) {
+                array_push($params, $kind, $item, $url, $now);
+            }
+            self::run('INSERT IGNORE INTO {reads} ("kind", "item", "url", "seenAt") VALUES ' . implode(', ', array_fill(0, count($chunk), '(?, ?, ?, ?)')), $params);
         }
     }
 

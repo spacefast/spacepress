@@ -222,7 +222,7 @@ test("agents: false hides an ability from core REST and MCP while wp typedpress 
 
   const ran = JSON.parse(wp("typedpress", "run", "blog/agent-note", `--input=${JSON.stringify({ note: `hidden ${run}` })}`, "--user=editor")).data;
   assert.deepEqual(ran, { note: `hidden ${run}`, seen: 0 });
-  const denied = JSON.parse(wpTry("first", "run", "blog/agent-note", `--input=${JSON.stringify({ note: "no" })}`, "--user=subscriber"));
+  const denied = JSON.parse(wpTry("typedpress", "run", "blog/agent-note", `--input=${JSON.stringify({ note: "no" })}`, "--user=subscriber"));
   assert.deepEqual([denied.error.status, denied.error.code], [403, "forbidden"]);
 
   const mcp = await McpClient.connect("editor");

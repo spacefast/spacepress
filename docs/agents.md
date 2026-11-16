@@ -205,6 +205,9 @@ update abilities. Jobs are exposed only when explicitly opted in with
 
 The app server lists named tools directly. The adapter's separate default
 server has discovery and execution meta-tools; it is not the app endpoint above.
+Both are built on `/wp-json` requests only: a request to TypedPress's own API
+(`/__tp/api/v1`) never reaches `/mcp`, so it builds neither server and
+registers no abilities it doesn't run.
 
 The owning code is
 [`Register.php`](../runtime/TypedPress/Wp/Abilities/Register.php), which calls

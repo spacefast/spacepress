@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createServer } from 'node:net';
 import { chromium } from '@playwright/test';
+import { submitSignIn } from '../sign-in.mjs';
 
 const exec = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -222,7 +223,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   await record('failure envelopes and denied mutations preserve real state', { rest: badRest.json, core: badCore.json, mcp: badMcp, deniedMcp, missing });
 
   const updatedSettings = content(await call('editor', 'global-settings-update', { heading: 'Published with real tools' }));
-  assert.deepEqual(ok(await api('/globals/settings')), updatedSettings);
+  assert.deepEqual(ok(await api('/settings')), updatedSettings);
   const coreSettings = await ability('global-settings-get', {}, 'subscriber', 'GET');
   assert.deepEqual([coreSettings.status, coreSettings.json], [200, updatedSettings]);
   const review = content(await call('editor', 'job-review', { articleId: draft.id }));
@@ -257,9 +258,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
     await page.screenshot({ path: join(root, 'notebook-mobile.png'), fullPage: true });
     assert.deepEqual(errors, []);
     await page.goto(base + '/wp-admin/');
-    await page.locator('#user_login').fill('admin');
-    await page.locator('#user_pass').fill('first-test-admin');
-    await Promise.all([page.waitForURL('**/wp-admin/**'), page.locator('#wp-submit').click()]);
+    await Promise.all([page.waitForURL('**/wp-admin/**'), submitSignIn(page, 'admin', 'first-test-admin')]);
     await page.goto(base + '/wp-admin/plugins.php');
     await page.getByRole('heading', { name: 'Plugins', exact: true }).waitFor();
     await page.goto(base + '/wp-admin/options-general.php');

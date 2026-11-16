@@ -138,7 +138,7 @@ test('official portfolio runs on native Studio: uploads, native editing, public 
   const settingsWP = JSON.parse(await wp('eval', 'echo wp_json_encode(\\First\\Wp\\Plugin::instance()->schema->globals()["settings"]["wp"]);'));
   assert.notEqual(settingsWP, undefined);
   await wp('eval', `wp_set_current_user(1); update_field(${JSON.stringify(settingsWP.fieldKeyPrefix + 'title')}, 'Native Norma', ${JSON.stringify(settingsWP.postId)});`);
-  assert.equal((await api('/globals/settings')).title, 'Native Norma');
+  assert.equal((await api('/settings')).title, 'Native Norma');
   assert.match((await get('/')).text, /Native Norma/);
   assert.match((await get('/rss.xml')).text, /<title>Native Norma<\/title>/);
   // Drafts stay private through every public route even when the requester is otherwise an editor.

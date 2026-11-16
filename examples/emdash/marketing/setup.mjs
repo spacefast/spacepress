@@ -152,9 +152,9 @@ async function seed(client, seedFile) {
     }
     return value;
   }
-  const current = await client.api("/globals/site");
+  const current = await client.api("/site");
   if (!current.identity && !current.navigation && !current.footer)
-    await client.api("/globals/site", { method: "PATCH", body: seed.site });
+    await client.api("/site", { method: "PATCH", body: seed.site });
   const existing = await client.api("/pages");
   const pages = [];
   for (const source of seed.pages) {

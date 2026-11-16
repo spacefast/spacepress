@@ -349,11 +349,11 @@ test(
       ),
     );
     const native = await saveNativeSiteTitle(base, "Halden Native");
-    assert.equal((await api("/globals/site")).identity.title, "Halden Native");
+    assert.equal((await api("/site")).identity.title, "Halden Native");
     const globalHtml = await publicHtml("/");
     assert.match(globalHtml, /class="wordmark"[^>]*>Halden Native/);
     await writeFile(join(evidence, "native-scf-options.html"), native.html);
-    const nav = await api("/globals/site");
+    const nav = await api("/site");
     assert.equal(
       nav.navigation.length,
       6,
@@ -365,7 +365,7 @@ test(
       "SCF options save retains nested footer repeaters",
     );
     nav.navigation[0].label = "Native navigation";
-    await api("/globals/site", {
+    await api("/site", {
       method: "PATCH",
       body: { navigation: nav.navigation },
     });
@@ -471,11 +471,11 @@ test(
     );
     await wp(project, "plugin", "activate", "marketing-acceptance-extra");
     const beforeRebuild = await api("/pages");
-    const beforeGlobal = await api("/globals/site");
+    const beforeGlobal = await api("/site");
     await command(["dev", "stop", project]);
     await command(["dev", project, "--no-watch"]);
     assert.deepEqual(await api("/pages"), beforeRebuild);
-    assert.deepEqual(await api("/globals/site"), beforeGlobal);
+    assert.deepEqual(await api("/site"), beforeGlobal);
     assert.deepEqual(
       JSON.parse(
         await wp(

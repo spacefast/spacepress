@@ -28,7 +28,7 @@
       if (!response.ok) throw new Error(result.detail ?? 'Could not load notebook');
       return result.data;
     };
-    const [settings, articles] = await Promise.all([read('/globals/settings'), read('/articles?orderBy=-id')]);
+    const [settings, articles] = await Promise.all([read('/settings'), read('/articles?orderBy=-id')]);
     document.title = settings.heading;
     document.querySelector('#heading').textContent = settings.heading;
     document.querySelector('#description').textContent = settings.description;

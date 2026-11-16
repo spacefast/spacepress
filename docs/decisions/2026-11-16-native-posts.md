@@ -32,7 +32,9 @@ Not built here, each refused at build time with "isn't supported yet": `wp.pages
 | Fields | `register_post_meta` (with `auth_callback` false: TypedPress's codec writes them), SCF's field group on `post_type == post` |
 | The REST route and editor saves | `register_post_type_args` sets `rest_controller_class` on core's `post`; the controller is TypedPress's `PostsController`, a subclass of core's |
 | The address | core's `post_link` filter, plus the kind's rewrite rule; core's own addresses for a post (`/%postname%/`, `?p=`) answer 301 to it from `template_redirect` |
-| Who writes | core's `map_meta_cap` answers first; the app's rule can only turn an allowed capability into `do_not_allow`. TypedPress's own write path (the API, actions) checks `edit_posts`, `publish_posts`, `edit_post`, `delete_post` with `user_can` before the rule |
+| Who writes | core's `map_meta_cap` answers first; the app's rule can only turn an allowed capability into `do_not_allow`. TypedPress's own write path (the API, actions) checks `edit_posts`, `publish_posts`, `edit_post`, `delete_post` with `user_can` before the rule; so do sync's push and trash (`edit_post`, `delete_post`) and every staged-version route (`edit_post`) |
+| Who reads | a published, unprotected post: the app's rule. Anything else (a draft, a private or scheduled post) only for whom core lets read it: its author with `edit_posts`, or `edit_others_posts` + `read_private_posts`. The store adds that as a SQL guard on every read (the API, pages, sync, core's REST route), so a function rule like `read: () => true` can't open them |
+| Slugs | WordPress's: a taken slug becomes `hello-2` through `wp_unique_post_slug`, as in the block editor; no unique check of TypedPress's |
 | Comments | core's comments, `comments_open` and the comment policy TypedPress already enforces for collections |
 | Revisions | core's revisions (no table of TypedPress's; #498 removes the old SQL table history separately) |
 | Sitemap | core's posts provider drops `post` (`wp_sitemaps_post_types`); TypedPress's sitemap lists the kind by its `url` |
@@ -43,8 +45,13 @@ Not built here, each refused at build time with "isn't supported yet": `wp.pages
 `NativePosts::adopt` (run with the migrations, under the deploy lock) changes each `tp_posts` item's
 `post_type` to `post` in place. Ids, post meta, uids, revisions, comments and Markdown sync bases are
 kept, because none of them is keyed by the post type; a field stored as `tp_excerpt` becomes the
-post's `post_excerpt`, on its revisions too; comments open, since posts take comments. Nothing is
-deleted. Verified on a copy of the site: the post kept its id, both revisions and its comment.
+post's `post_excerpt`, on its revisions too; comments open, since posts take comments; a slug a core
+post already has is made unique by WordPress, the old one kept as `_wp_old_slug`. Nothing is deleted.
+
+It runs once per app and site (option `tp_<app>_adopted_posts`), in one transaction, and only when
+this app deployed on the site before (its `tp_<app>_schema` option holds an earlier build's hash), so
+a fresh app never takes `tp_posts` rows another app left behind. Verified on a copy of the site: the
+post kept its id, both revisions and its comment.
 
 ## Rendering
 

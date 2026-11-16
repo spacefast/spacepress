@@ -101,11 +101,15 @@ final class CoreAccess
                 return $caps;
             }
             $allowed = self::postAllowed($collection, $cap, $post, $userId);
-            // WordPress's own posts: core's capabilities decide writes first, and the app's rule can only
-            // narrow them. Reading is the rule's (with draft visibility): core's `read_post` asks for `read`,
-            // which a visitor reading a published post doesn't have.
-            if ($cap !== 'read_post' && (self::schema()->collection($collection)['native'] ?? false)) {
-                return $allowed ? $caps : ['do_not_allow'];
+            // WordPress's own posts: core's capabilities decide first, and the app's rule can only narrow
+            // them. A published post's read is the rule's alone: core asks for `read`, which a visitor
+            // doesn't have, and the store already confines unpublished posts to whom core lets read them
+            // ({@see NativePosts::readGuard}).
+            if (self::schema()->collection($collection)['native'] ?? false) {
+                if (!$allowed) {
+                    return ['do_not_allow'];
+                }
+                return $cap === 'read_post' && $post->post_status === 'publish' && $post->post_password === '' ? ['exist'] : $caps;
             }
 
             return self::grant($allowed);

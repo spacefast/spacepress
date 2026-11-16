@@ -105,6 +105,20 @@ final class WpPostStore implements Store
             return $this->visibility[$key];
         }
         $spec = $this->schema->collection($collection);
+        // WordPress's own posts: an unpublished post is read only by whom core lets read it (its author,
+        // editors), whatever the app's rule says; the rule can only narrow that.
+        if ($spec['native'] ?? false) {
+            $native = NativePosts::readGuard($this->db, $viewer);
+            if ($native !== null) {
+                return $this->visibility[$key] = [$native, ...$this->passwordGuards($collection, $viewer, $spec)];
+            }
+        }
+        return $this->visibility[$key] = $this->passwordGuards($collection, $viewer, $spec);
+    }
+
+    /** @return list<array|\TypedPress\SqlPredicate> the password-protection guards of a post kind for $viewer */
+    private function passwordGuards(string $collection, \TypedPress\Viewer $viewer, array $spec): array
+    {
         if ($viewer->user === null) {
             $guard = $this->passwordGuard($collection, $viewer, $spec);
             // Empty guards also certify unrestricted visibility to unique-write checks
@@ -115,7 +129,7 @@ final class WpPostStore implements Store
                 . str_replace('{a}', 'p', $guard->sql) . ') LIMIT 1',
                 [$spec['wp']['postType'], ...$guard->params],
             );
-            return $this->visibility[$key] = $hidden === [] ? [] : [$guard];
+            return $hidden === [] ? [] : [$guard];
         }
         $hidden = [];
         $acceptedPasswords = [];
@@ -136,7 +150,7 @@ final class WpPostStore implements Store
             }
         }
 
-        return $this->visibility[$key] = $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
+        return $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
     }
 
     private function passwordGuard(string $collection, \TypedPress\Viewer $viewer, array $spec): \TypedPress\SqlPredicate
@@ -496,6 +510,14 @@ final class WpPostStore implements Store
     private function withSlug(array $post, callable $fn, bool $preserveEmpty = false): mixed
     {
         if (!isset($post['post_name']) || ($post['post_name'] === '' && !$preserveEmpty)) {
+            return $fn();
+        }
+        // A `wp.posts` kind's slug is WordPress's: it has no unique check of TypedPress's, so core's
+        // wp_unique_post_slug makes a taken one unique (`hello-2`), as in the block editor. A kept slug
+        // (an update that doesn't change it) is passed through as before.
+        $collection = CoreAccess::collection((string) ($post['post_type'] ?? get_post_type((int) ($post['ID'] ?? 0))));
+        $spec = $collection === null ? null : $this->schema->collection($collection);
+        if ($spec !== null && isset($spec['excerpt']) && !$preserveEmpty) {
             return $fn();
         }
         $slug = $post['post_name'];

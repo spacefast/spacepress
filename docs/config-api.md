@@ -537,13 +537,16 @@ export const notes = wp.posts.clone({ version: text().max(20) }, { url: "/releas
   `access`, `label`, `sync`, `uid`, `agents`, `api`, `staged`, and `storageName` on `clone`.
   Posts always have drafts and revisions and never nest, so `drafts`, `revisions`, `hierarchical`,
   `title` and `content` are refused.
-- **Who writes.** On `extend`, WordPress's capabilities decide first, exactly as in wp-admin: an author
-  writes and publishes their own posts, an editor anyone's. `access` (default: anyone reads, authors
-  write) can only narrow that. A `clone`'s rules are its own, as on a collection.
+- **Who reads and writes.** On `extend`, WordPress's capabilities decide first, exactly as in wp-admin:
+  an author writes, publishes and reads their own drafts, an editor anyone's; a visitor reads
+  published posts only. `access` (default: anyone reads, authors write) can only narrow that, on every
+  path: the API, pages, core's REST route, sync and staged versions. A `clone`'s rules are its own, as
+  on a collection.
 - **Moving a collection to WordPress's posts.** A deploy that changes `export const posts = collection(...)`
   to `wp.posts.extend(...)` turns the collection's items (post type `tp_posts`) into WordPress posts
   in place: the same ids, fields, uids, revisions and comments; a field named `excerpt` becomes the
-  post's own excerpt. Nothing is deleted. The design is in
+  post's own excerpt, and a slug a core post already has becomes unique (the old address redirects).
+  It runs once, only for an app that deployed on the site before. Nothing is deleted. The design is in
   [native posts](decisions/2026-11-16-native-posts.md).
 
 ### Files that moved into `tp/_generated/`

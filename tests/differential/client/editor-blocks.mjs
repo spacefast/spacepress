@@ -5,14 +5,10 @@
 // inserts the fixture's `Badge` (no children: core's `autoRegister`) and `Callout` (children: inner
 // blocks), reads what the canvas and the sidebar show, saves, and prints JSON.
 import { createRequire } from "node:module";
-import { readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { chromiumPath } from "./chromium.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright-core");
-const cache = join(homedir(), ".cache/ms-playwright");
-const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()[0];
-const executablePath = process.env.FIRST_CHROMIUM ?? join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell");
+const executablePath = chromiumPath();
 const [url] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath });
 const out = { errors: [] };

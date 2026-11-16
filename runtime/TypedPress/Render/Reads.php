@@ -50,7 +50,7 @@ final class Reads
                     self::$current[$collection] = $entry;
                 }
                 return $rows;
-            }, true);
+            }, true, static fn (): array => []); // the primary key only, which every read selects
         }
         $previous = self::$current;
         self::$current = [];

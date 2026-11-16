@@ -10,6 +10,16 @@ pub enum Credential {
     Bearer(String),
 }
 
+impl Credential {
+    /// The `Authorization` header value.
+    pub fn header(&self) -> String {
+        match self {
+            Credential::Bearer(t) => format!("Bearer {t}"),
+            Credential::AppPassword(p) => format!("Basic {}", base64(p.as_bytes())),
+        }
+    }
+}
+
 pub struct Client {
     agent: ureq::Agent,
     base: String,
@@ -56,10 +66,7 @@ impl Client {
         if url.query().is_some() || url.fragment().is_some() {
             return Err("--site must be the site's URL without a query or fragment (https://example.test or https://example.test/blog)".into());
         }
-        let auth = match credential {
-            Credential::Bearer(t) => format!("Bearer {t}"),
-            Credential::AppPassword(p) => format!("Basic {}", base64(p.as_bytes())),
-        };
+        let auth = credential.header();
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(60)))
             .http_status_as_error(false)

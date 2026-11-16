@@ -191,6 +191,30 @@ function argumentSemanticsImpl(first: string, ...tail: string[]) {
 
 const BUILD_TIME_ARGUMENT_SEMANTICS = argumentSemanticsImpl("original", "tail");
 
+// Native comparisons and reads on typed numbers, strings and objects (src/compile.rs
+// number_compare, strict_eq and the plain-variable property read).
+function numberCompare(a: number, b: number) { return [a < b, a <= b, a > b, a >= b, a === b, a !== b]; }
+function compareOrder() { let x = 1; const y = x < (x = 5); let n = 0; const z = (n += 2) > n; return [y, x, z, n]; }
+function stringEquality(s: string) { return [s === "a", "a" === s, s !== "", s === undefined as unknown as string]; }
+function localRead(row: { title: string; count: number | null; tags: string[] }) {
+  const copy = row;
+  const other = Math.random() > 2 ? null : { title: "other", count: 0, tags: [] };
+  return [copy.title, copy.count, copy.tags.length, other?.title, other?.count];
+}
+function absentRead() { const o = JSON.parse("{}") as { title: string }; const t = o.title; return t === undefined; }
+// A literal *type* is not a literal value: these operands still take the run-time number check.
+function literalTypedNull(input: string) { const n = JSON.parse(input) as 0; return [n === 0, n !== 0, n < 1]; }
+function literalTypedMissing(input: string) { const row = JSON.parse(input) as { n: 1 }; return [row.n < 2, row.n === 1, row.n >= 1]; }
+function literalTypedCall() { let a = 1; const mutate = (): 1 => { a = 2; return 1; }; return [a === mutate(), a]; }
+function bigintAsNumber() { const b = 10n; const k = b as unknown as number; return [k > 1, k === 10, k < 100]; }
+
+// Which functions get an `arguments` object: only one that names it, directly or in an arrow.
+function argumentsShorthand(a: string, b: string) { return { arguments }.arguments.length; }
+function argumentsInNestedArrow(a: string) { const outer = () => () => arguments[0]; return outer()(); }
+function argumentsInInnerFunction(a: string) { function inner(b: string, c: string) { return arguments.length; } return [inner("x", "y"), typeof a]; }
+function argumentsUnused(a: string) { return a; }
+function argumentsInDefault(a: string, b: number = arguments.length) { return b; }
+
 function argumentSerializationImpl(...values: string[]) {
   return JSON.stringify(arguments);
 }
@@ -584,6 +608,14 @@ export const varSemantics = run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, ru
 export const argumentSemantics = run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemanticsImpl("original", "tail") }));
 
 export const argumentSerialization = run(() => argumentSerializationImpl("original", "tail"));
+export const nativeOperators = run(() => [
+  numberCompare(1, 2), numberCompare(2, 2), numberCompare(1, 1.0), numberCompare(-0, 0), numberCompare(NaN, NaN), numberCompare(NaN, 1),
+  numberCompare(Infinity, -Infinity), numberCompare(2 ** 53, 2 ** 53 + 1), numberCompare(9007199254740993, 9007199254740992), numberCompare(0.1 + 0.2, 0.3),
+  numberCompare(1.7976931348623157e308, Infinity), numberCompare(5e-324, 0), compareOrder(), stringEquality("a"), stringEquality(""),
+  localRead({ title: "t", count: null, tags: ["x"] }), absentRead(), bigintAsNumber(),
+  literalTypedNull("null"), literalTypedNull("0"), literalTypedMissing("{}"), literalTypedMissing("{\"n\":1}"), literalTypedCall(),
+]);
+export const argumentsUse = run(() => [argumentsShorthand("a", "b"), argumentsInNestedArrow("first"), argumentsInInnerFunction("a"), argumentsUnused("kept"), argumentsInDefault("a")]);
 
 export const languageTypes = run(() => {
   const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];

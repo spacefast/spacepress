@@ -99,6 +99,17 @@ final class Uploads
         }
     }
 
+    /** What {@see install()} leaves with S3 uploads: the site's namespace and the maintenance scheduled. */
+    public static function installed(): bool
+    {
+        if (!self::active()) {
+            return true;
+        }
+        $site = get_option('tp_upload_namespace');
+
+        return is_string($site) && preg_match('/^[a-f0-9]{32}$/D', $site) === 1 && as_has_scheduled_action(self::MAINTAIN, [], 'typedpress');
+    }
+
     private static function schedule(): void
     {
         if (self::active() && !as_has_scheduled_action(self::MAINTAIN, [], 'typedpress')) {
@@ -111,7 +122,7 @@ final class Uploads
         // App registration happens after the runtime loads. Decide inside each hook.
         // Install site identity before request transactions can begin; a managed build installs it
         // from initialize ({@see install()}).
-        add_action('init', static fn () => Runtime::managed() ? null : self::install(), 2);
+        add_action('init', static fn () => Runtime::installs() ? self::install() : null, 2);
         add_filter('upload_dir', static function (array $dir): array {
             if (!self::active()) {
                 return $dir;
@@ -279,7 +290,7 @@ final class Uploads
             }
         });
         add_action(self::MAINTAIN, self::maintain(...));
-        add_action('action_scheduler_init', static fn () => Runtime::managed() ? null : self::schedule());
+        add_action('action_scheduler_init', static fn () => Runtime::installs() ? self::schedule() : null);
     }
 
     public static function scratch(): string

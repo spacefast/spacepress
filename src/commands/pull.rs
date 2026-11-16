@@ -7,16 +7,16 @@
 //! compiled once here with the new lock, so a lock the compiler would refuse is reported before
 //! anything is written, and the generated types and typed client are refreshed to match.
 //!
-//! Credentials come only from `TP_APP_PASSWORD` or `TP_TOKEN`; the site answers an
-//! administrator only.
+//! It signs in as every remote command does (`remote::sign_in`); the site answers an administrator
+//! only.
 
 use crate::runtime_schema::LOCK;
-use crate::sync::client::{Client, Credential};
+use crate::sync::client::Client;
 use serde_json::Value;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: typedpress pull [project-dir] [--site <url>] [--check]\n       credential: TP_APP_PASSWORD=<user:application-password> or TP_TOKEN=<bearer token> (an administrator's)";
+const USAGE: &str = "usage: typedpress pull [project-dir] [--site <url>] [--check]   (as an administrator)";
 
 pub fn cli(args: &[String]) -> ExitCode {
     match run(args) {
@@ -44,21 +44,13 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             other => project = PathBuf::from(other),
         }
     }
-    let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
-    let credential = match (env("TP_APP_PASSWORD"), env("TP_TOKEN")) {
-        (Some(_), Some(_)) => return Err("set TP_APP_PASSWORD or TP_TOKEN, not both".into()),
-        (Some(password), None) => Credential::AppPassword(password),
-        (None, Some(token)) => Credential::Bearer(token),
-        (None, None) => {
-            return Err(format!(
-                "typedpress pull needs a credential in TP_APP_PASSWORD or TP_TOKEN\n{USAGE}"
-            ));
-        }
-    };
     let site = match site {
         Some(site) => site,
         None => super::dev::url(&project)?,
     };
+    let credential = super::remote::require(&site)
+        .map_err(|e| format!("{e}\n{USAGE}\n{}", super::remote::SIGN_IN))?
+        .credential;
     let project = project
         .canonicalize()
         .map_err(|e| format!("{}: {e}", project.display()))?;

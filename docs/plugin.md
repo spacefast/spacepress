@@ -30,8 +30,10 @@ readable by you only. Run inside a project, the command also records the site in
 `.tp/site.json`, so `typedpress push` needs no `--site`.
 
 WordPress accepts application passwords over HTTPS, or on a site whose `WP_ENVIRONMENT_TYPE` is
-`local`. In CI, set `TP_APP_PASSWORD=user:application-password` and pass `--site`; no login is
-needed. `typedpress logout <site-url>` forgets the credential on this machine; revoke it on the site
+`local`. Every command that talks to the site (`push`, `sync`, `pull`, `export --site`,
+`abilities pull`, `doctor --site`) uses the credential stored for it. In CI, set
+`TP_APP_PASSWORD=user:application-password` (or `TP_TOKEN` for the commands other than `push`) and
+pass `--site`; no login is needed, and the environment wins over a stored credential. `typedpress logout <site-url>` forgets the credential on this machine; revoke it on the site
 under Users, Profile, Application Passwords.
 
 ## 3. Push

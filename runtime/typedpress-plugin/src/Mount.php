@@ -99,12 +99,19 @@ final class Mount
             };
             $record = $mode === null ? null : (Site::pending()[$match[1]] ?? null);
             if (is_array($record) && is_string($record['token'] ?? null) && hash_equals($record['token'], hash('sha256', $match[2]))
-                && (int) ($record['expires'] ?? 0) > time() && Site::validId($record['build'] ?? null)
+                && (int) ($record['expires'] ?? 0) > time() && Site::validId($record['build'] ?? null)) {
                 // Last, and only for a holder of the token: this resolves the request's user. It must
                 // be an application password: a browser's cookie is only good with a REST nonce, which
-                // WordPress checks after plugins have loaded, and that is too late here.
-                && Receiver::authorized(true) === true && Receiver::password() !== null) {
-                return [$record['build'], $mode, $match[1]];
+                // WordPress checks after plugins have loaded, and that is too late here. The build's
+                // identity plugin is not loaded yet either, so its refusal of a suspended account is
+                // read here too.
+                $allowed = Receiver::authorized(true) === true && Receiver::password() !== null && !Site::suspended(get_current_user_id());
+                // WordPress keeps the user it resolved for the rest of the request. Forget it, so the
+                // routes resolve it again with every sign-in check the mounted build adds.
+                $GLOBALS['current_user'] = null;
+                if ($allowed) {
+                    return [$record['build'], $mode, $match[1]];
+                }
             }
         }
 

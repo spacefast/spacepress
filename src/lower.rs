@@ -59,6 +59,31 @@ impl Lowerer {
         Err(d)
     }
 
+    /// A string the source wrote, as UTF-8. A JavaScript string is UTF-16 and can hold half of a
+    /// surrogate pair (`"\uD800"`); the parser hands such a string over as `None`.
+    fn utf8(&self, s: oxc_span::Span, text: Option<&str>) -> Result<String> {
+        match text {
+            Some(text) => Ok(text.to_string()),
+            None => self.unsupported(
+                s,
+                "strings with lone UTF-16 surrogates",
+                "use complete characters; a lone surrogate can't be stored as UTF-8",
+            ),
+        }
+    }
+
+    /// A class member's name, or nothing for a computed key. A private name keeps its `#`, so it
+    /// can never collide with a public key.
+    fn class_member_name(&self, key: &a::PropertyKey<'_>) -> Result<Option<String>> {
+        match key {
+            a::PropertyKey::PrivateIdentifier(p) => Ok(Some(format!("#{}", p.name))),
+            other => other
+                .static_name()
+                .map(|n| self.utf8(other.span(), n.as_str()))
+                .transpose(),
+        }
+    }
+
     /// A source annotation, or nothing when this module's types are erased.
     fn annotation(&self, t: Option<&oxc_allocator::Box<'_, a::TSTypeAnnotation<'_>>>) -> Result<Option<TyAnn>> {
         if self.erase_types {
@@ -112,7 +137,7 @@ impl Lowerer {
                             let imported = match &s.imported {
                                 a::ModuleExportName::IdentifierName(n) => n.name.to_string(),
                                 a::ModuleExportName::IdentifierReference(n) => n.name.to_string(),
-                                a::ModuleExportName::StringLiteral(l) => l.value.to_string(),
+                                a::ModuleExportName::StringLiteral(l) => self.utf8(l.span, l.value.as_str())?,
                             };
                             let imported = if imported == "default" {
                                 ImportName::Default
@@ -141,7 +166,7 @@ impl Lowerer {
                     }
                 }
                 out.push(Stmt::Import {
-                    source: d.source.value.to_string(),
+                    source: self.utf8(d.source.span, d.source.value.as_str())?,
                     specs,
                     type_only,
                     span: self.sp(d.span),
@@ -156,7 +181,7 @@ impl Lowerer {
                     if s.export_kind == a::ImportOrExportKind::Type {
                         continue;
                     }
-                    names.push((self.export_name(&s.local), self.export_name(&s.exported)));
+                    names.push((self.export_name(&s.local)?, self.export_name(&s.exported)?));
                 }
                 out.push(Stmt::ExportNames {
                     names,
@@ -173,11 +198,11 @@ impl Lowerer {
                     if s.export_kind == a::ImportOrExportKind::Type {
                         continue;
                     }
-                    names.push((self.export_name(&s.local), self.export_name(&s.exported)));
+                    names.push((self.export_name(&s.local)?, self.export_name(&s.exported)?));
                 }
                 out.push(Stmt::ExportNames {
                     names,
-                    from: Some(d.source.value.to_string()),
+                    from: Some(self.utf8(d.source.span, d.source.value.as_str())?),
                     span: self.sp(d.span),
                 });
             }
@@ -190,7 +215,7 @@ impl Lowerer {
                     );
                 }
                 out.push(Stmt::ExportAll {
-                    from: d.source.value.to_string(),
+                    from: self.utf8(d.source.span, d.source.value.as_str())?,
                     span: self.sp(d.span),
                 });
             }
@@ -225,11 +250,11 @@ impl Lowerer {
         Ok(())
     }
 
-    fn export_name(&self, n: &a::ModuleExportName<'_>) -> String {
+    fn export_name(&self, n: &a::ModuleExportName<'_>) -> Result<String> {
         match n {
-            a::ModuleExportName::IdentifierName(n) => n.name.to_string(),
-            a::ModuleExportName::IdentifierReference(n) => n.name.to_string(),
-            a::ModuleExportName::StringLiteral(l) => l.value.to_string(),
+            a::ModuleExportName::IdentifierName(n) => Ok(n.name.to_string()),
+            a::ModuleExportName::IdentifierReference(n) => Ok(n.name.to_string()),
+            a::ModuleExportName::StringLiteral(l) => self.utf8(l.span, l.value.as_str()),
         }
     }
 
@@ -702,7 +727,7 @@ impl Lowerer {
                                 || m.r#type == a::MethodDefinitionType::TSAbstractMethodDefinition) => {}
                     a::ClassElement::TSIndexSignature(_) if self.erase_types => {}
                     a::ClassElement::PropertyDefinition(p) => {
-                        let Some(name) = class_member_name(&p.key) else {
+                        let Some(name) = self.class_member_name(&p.key)? else {
                             return self.unsupported(p.span, "computed class fields", "use named fields");
                         };
                         if name.starts_with('#') != p.key.is_private_identifier() {
@@ -745,7 +770,9 @@ impl Lowerer {
                             span: self.sp(p.span),
                         });
                     }
-                    a::ClassElement::MethodDefinition(m) if m.computed && class_member_name(&m.key).is_none() => {
+                    a::ClassElement::MethodDefinition(m)
+                        if m.computed && m.key.static_name().is_none() && !m.key.is_private_identifier() =>
+                    {
                         // `[key](...) {}`: the evaluator requires the key to be a symbol.
                         if m.kind != a::MethodDefinitionKind::Method
                             || !m.decorators.is_empty()
@@ -805,7 +832,7 @@ impl Lowerer {
                         });
                     }
                     a::ClassElement::MethodDefinition(m) => {
-                        let Some(name) = class_member_name(&m.key) else {
+                        let Some(name) = self.class_member_name(&m.key)? else {
                             return self.unsupported(m.span, "computed class methods", "use named methods");
                         };
                         if name.starts_with('#') != m.key.is_private_identifier() {
@@ -1138,7 +1165,7 @@ impl Lowerer {
                             "read the property first: `const value = obj[key];`",
                         );
                     };
-                    let key = key.to_string();
+                    let key = self.utf8(prop.key.span(), key.as_str())?;
                     props.push((key, self.pattern(&prop.value)?));
                 }
                 let rest = match &o.rest {
@@ -1260,9 +1287,10 @@ impl Lowerer {
                     };
                     let value = match &attr.value {
                         None => self.mk(attr.span, ExprKind::Bool(true)),
-                        Some(a::JSXAttributeValue::StringLiteral(text)) => {
-                            self.mk(text.span, ExprKind::Str(decode_jsx_entities(text.value.as_str())))
-                        }
+                        Some(a::JSXAttributeValue::StringLiteral(text)) => self.mk(
+                            text.span,
+                            ExprKind::Str(decode_jsx_entities(&self.utf8(text.span, text.value.as_str())?)),
+                        ),
                         Some(a::JSXAttributeValue::ExpressionContainer(c)) => match &c.expression {
                             a::JSXExpression::EmptyExpression(e) => {
                                 return self.unsupported(
@@ -1415,16 +1443,7 @@ impl Lowerer {
         let span = e.span();
         Ok(match e {
             E::NumericLiteral(n) => self.mk(span, ExprKind::Num(n.value)),
-            E::StringLiteral(s) => {
-                if s.lone_surrogates {
-                    return self.unsupported(
-                        s.span,
-                        "strings with lone UTF-16 surrogates",
-                        "use complete characters; a lone surrogate can't be stored as UTF-8",
-                    );
-                }
-                self.mk(span, ExprKind::Str(s.value.to_string()))
-            }
+            E::StringLiteral(s) => self.mk(span, ExprKind::Str(self.utf8(s.span, s.value.as_str())?)),
             E::BooleanLiteral(b) => self.mk(span, ExprKind::Bool(b.value)),
             E::NullLiteral(_) => self.mk(span, ExprKind::Null),
             E::BigIntLiteral(b) => self.mk(span, ExprKind::BigInt(b.value.to_string())),
@@ -1441,7 +1460,7 @@ impl Lowerer {
                     let Some(cooked) = q.value.cooked else {
                         return self.unsupported(q.span, "invalid escape sequences in templates", "escape the backslash, or move the template into imported JavaScript and tag it with `String.raw`");
                     };
-                    quasis.push(cooked.to_string());
+                    quasis.push(self.utf8(q.span, cooked.as_str())?);
                 }
                 let exprs = t.expressions.iter().map(|e| self.expr(e)).collect::<Result<_>>()?;
                 self.mk(span, ExprKind::Template(quasis, exprs))
@@ -1456,8 +1475,8 @@ impl Lowerer {
                             .quasi
                             .quasis
                             .iter()
-                            .map(|q| q.value.cooked.map(|c| c.to_string()))
-                            .collect(),
+                            .map(|q| q.value.cooked.map(|c| self.utf8(q.span, c.as_str())).transpose())
+                            .collect::<Result<_>>()?,
                         raw: t.quasi.quasis.iter().map(|q| q.value.raw.to_string()).collect(),
                     },
                 );
@@ -1512,7 +1531,7 @@ impl Lowerer {
                                     "use a plain property or a function",
                                 );
                             }
-                            if !p.computed && p.key.static_name().as_deref() == Some("__proto__") {
+                            if !p.computed && p.key.is_specific_static_name("__proto__") {
                                 // `__proto__: null` makes a null-prototype object. Any other
                                 // value would install a prototype, which First doesn't model;
                                 // shorthand and methods define an own property only in name.
@@ -1528,7 +1547,7 @@ impl Lowerer {
                                 PropKey::Computed(self.expr(p.key.to_expression())?)
                             } else {
                                 match p.key.static_name() {
-                                    Some(n) => PropKey::Static(n.to_string()),
+                                    Some(n) => PropKey::Static(self.utf8(p.key.span(), n.as_str())?),
                                     None => {
                                         return self.unsupported(
                                             p.span,
@@ -2028,7 +2047,7 @@ impl Lowerer {
                                 PropKey::Computed(self.expr(pp.name.to_expression())?)
                             } else {
                                 match pp.name.static_name() {
-                                    Some(n) => PropKey::Static(n.to_string()),
+                                    Some(n) => PropKey::Static(self.utf8(pp.name.span(), n.as_str())?),
                                     None => {
                                         return self.unsupported(
                                             pp.span,
@@ -2126,13 +2145,13 @@ impl Lowerer {
             ),
             T::TSParenthesizedType(p) => self.ty(&p.type_annotation)?,
             T::TSLiteralType(l) => match &l.literal {
-                a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(s.value.to_string()),
+                a::TSLiteral::StringLiteral(s) => TyAnn::StrLit(self.utf8(s.span, s.value.as_str())?),
                 a::TSLiteral::TemplateLiteral(t) if t.expressions.is_empty() => {
                     let q = &t.quasis[0];
                     let Some(cooked) = q.value.cooked else {
                         return self.unsupported(q.span, "invalid escape sequences in templates", "escape the backslash, or move the template into imported JavaScript and tag it with `String.raw`");
                     };
-                    TyAnn::StrLit(cooked.to_string())
+                    TyAnn::StrLit(self.utf8(q.span, cooked.as_str())?)
                 }
                 a::TSLiteral::TemplateLiteral(t) => {
                     return self.unsupported(
@@ -2269,7 +2288,7 @@ impl Lowerer {
                         Some(t) => self.ty(&t.type_annotation)?,
                         None => TyAnn::Any(self.sp(p.span)),
                     };
-                    fields.push((key.to_string(), ty, p.optional));
+                    fields.push((self.utf8(p.key.span(), key.as_str())?, ty, p.optional));
                 }
                 a::TSSignature::TSIndexSignature(i) => {
                     if !matches!(
@@ -2325,7 +2344,11 @@ impl Lowerer {
                         Some(t) => self.ty(&t.type_annotation)?,
                         None => TyAnn::Any(self.sp(ms.span)),
                     };
-                    fields.push((key.to_string(), TyAnn::Fn(params, Box::new(ret)), ms.optional));
+                    fields.push((
+                        self.utf8(ms.key.span(), key.as_str())?,
+                        TyAnn::Fn(params, Box::new(ret)),
+                        ms.optional,
+                    ));
                 }
                 other => {
                     return self.unsupported(
@@ -2642,14 +2665,6 @@ fn check_parameter_defaults(parameters: &[Param], body: &FnBody) -> Result<()> {
         check_parameter_pattern(&parameter.pat, &uninitialized, allow_functions)?;
     }
     Ok(())
-}
-
-/// Class member names; private names keep their `#` so they can never collide with public keys.
-fn class_member_name(key: &a::PropertyKey<'_>) -> Option<String> {
-    match key {
-        a::PropertyKey::PrivateIdentifier(p) => Some(format!("#{}", p.name)),
-        other => other.static_name().map(|n| n.to_string()),
-    }
 }
 
 /// Whether a function's own body assigns its name (not shadowed by a parameter, a `var` or a

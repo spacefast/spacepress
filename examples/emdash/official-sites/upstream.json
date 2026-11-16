@@ -171,6 +171,36 @@
       "file": "blog/src/live.config.ts",
       "upstream": "templates/blog/src/live.config.ts",
       "sha256": "5a04761c5d354874c09bd376adc47b68c0af6c5f02984b86a480fc4a656d3e57"
+    },
+    {
+      "file": "blank/tsconfig.json",
+      "upstream": "templates/blank/tsconfig.json",
+      "sha256": "64ed26f381ec8ef5bef254d4e0df6cb3c0083b212a0b3b5a9d26b559cc95298c"
+    },
+    {
+      "file": "blank/emdash-env.d.ts",
+      "upstream": "templates/blank/emdash-env.d.ts",
+      "sha256": "7f813222e8cb534a2e7e533689f6ab287e1413e27adaf0eb97f5077e45bea9b8"
+    },
+    {
+      "file": "starter/tsconfig.json",
+      "upstream": "templates/starter/tsconfig.json",
+      "sha256": "64ed26f381ec8ef5bef254d4e0df6cb3c0083b212a0b3b5a9d26b559cc95298c"
+    },
+    {
+      "file": "starter/emdash-env.d.ts",
+      "upstream": "templates/starter/emdash-env.d.ts",
+      "sha256": "7f813222e8cb534a2e7e533689f6ab287e1413e27adaf0eb97f5077e45bea9b8"
+    },
+    {
+      "file": "blog/tsconfig.json",
+      "upstream": "templates/blog/tsconfig.json",
+      "sha256": "64ed26f381ec8ef5bef254d4e0df6cb3c0083b212a0b3b5a9d26b559cc95298c"
+    },
+    {
+      "file": "blog/emdash-env.d.ts",
+      "upstream": "templates/blog/emdash-env.d.ts",
+      "sha256": "7f813222e8cb534a2e7e533689f6ab287e1413e27adaf0eb97f5077e45bea9b8"
     }
   ]
 }

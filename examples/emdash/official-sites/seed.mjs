@@ -2,9 +2,12 @@
 // administrator: settings, the primary menu, categories, tags, byline credits, the widget areas,
 // posts and pages with their terms, and the posts' cover images. Test seeding only: nothing here
 // runs when the template serves pages.
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
-const escape = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+const escape = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+/** A link target the seed may write: http(s) and mailto only. */
+const safeHref = (href) => (/^(https?:|mailto:|\/)/i.test(href ?? '') ? escape(href) : '#');
 
 /** The seed's Portable Text as WordPress block markup. */
 export function blocksHtml(blocks = []) {
@@ -20,7 +23,7 @@ export function blocksHtml(blocks = []) {
         else if (mark === 'code') part = `<code>${part}</code>`;
         else {
           const def = (block.markDefs ?? []).find((d) => d._key === mark && d._type === 'link');
-          if (def) part = `<a href="${escape(def.href)}">${part}</a>`;
+          if (def) part = `<a href="${safeHref(def.href)}">${part}</a>`;
         }
       }
       return part;
@@ -84,7 +87,8 @@ async function seedContent(data, first, mode, { terms = {}, credits = {} }) {
         body.credits = (item.bylines ?? []).map((c) => credits[c.byline]);
       }
       const row = await first(`/${collection}`, 'POST', body);
-      // A credit's role is per post in the seed and per term here: the last one written holds.
+      // A credit's role is per post in EmDash and per term here: the last role the seed gives a
+      // byline shows on every post that credits it (README: what differs).
       for (const credit of item.bylines ?? []) if (credit.roleLabel) await first(`/credits/${credits[credit.byline]}`, 'PATCH', { role: credit.roleLabel });
       entries.push({ id: row.id, collection, slug: item.slug, image: item.data.featured_image?.$media ?? null });
     }
@@ -99,7 +103,7 @@ async function seedContent(data, first, mode, { terms = {}, credits = {} }) {
     form.append('alt', entry.image.alt ?? '');
     const uploaded = await first('/media', 'POST', form);
     await first(`/${entry.collection}/${entry.id}`, 'PATCH', { cover: uploaded.id });
-    media.push({ id: uploaded.id, post: entry.id, source: entry.image.url, url: uploaded.url, bytes: bytes.length, bytesSha: null });
+    media.push({ id: uploaded.id, post: entry.id, source: entry.image.url, url: uploaded.url, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
   }
-  return { entries, media, images: Object.fromEntries(entries.filter((e) => e.image).map((e) => [e.id, e.image])) };
+  return { entries, media };
 }

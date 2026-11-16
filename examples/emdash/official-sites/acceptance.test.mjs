@@ -95,7 +95,7 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     await save(`${mode}-upstream-home.html`,home);
     for (const media of receipt.media) {
       const nativeBytes = Buffer.from(await (await fetch(media.url)).arrayBuffer());
-      assert.equal(nativeBytes.length, media.bytes, `${media.url}: the uploaded image's bytes`);
+      assert.equal(createHash('sha256').update(nativeBytes).digest('hex'), media.sha256, `${media.url}: the served image is the downloaded original`);
     }
 
     // A native WordPress/SCF edit must flow through both adapters into unchanged source.
@@ -210,16 +210,17 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     await editor.locator('button.save').click();
     await expect(page.locator(`#post-${first.id} .row-title`)).toHaveText(`Browser saved ${mode} source`);
     if (mode === 'blog') {
-      // The widget areas are the app's `widgets` global; an edit to it reaches the template's footer.
+      // The widget areas are the app's `widgets` global (an SCF JSON field in wp-admin); an edit
+      // to it through the API reaches the template's footer.
       const { areas } = await rest('__first/api/v1/widgets');
       const footer = areas.find(area => area.name === 'footer');
-      footer.widgets[0].content = [{ _type:'block', _key:'native-widget', style:'normal', children:[{ _type:'span', text:'A native widget edit reaches the official footer.' }] }];
+      footer.widgets[0].content = [{ _type:'block', _key:'native-widget', style:'normal', children:[{ _type:'span', text:'A widgets edit reaches the official footer.' }] }];
       await rest('__first/api/v1/widgets', { method:'PATCH', body: { areas } });
     }
     await page.goto(`${frontend}/posts/${first.slug}`);
     await expect(page.locator('h1')).toHaveText(`Browser saved ${mode} source`);
     if (mode === 'blog') {
-      await expect(page.locator('footer')).toContainText('A native widget edit reaches the official footer.');
+      await expect(page.locator('footer')).toContainText('A widgets edit reaches the official footer.');
     }
     assert.deepEqual(errors,[]);
     const plugins=JSON.parse(await wp(project,'plugin','list','--status=active','--format=json'));

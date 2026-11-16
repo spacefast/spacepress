@@ -12,14 +12,52 @@ const client = createClient({ nonce: getConfig("first/live").nonce || undefined 
 
 const html = new Map(); // region id → the HTML now on the page
 
+// Shared with client/router.js's form submit (the same object, whichever module runs first).
+const forms = (globalThis[Symbol.for("first/forms")] ??= { pending: 0, idle: Promise.resolve(), ticket: 0, last: 0, renders: 0, living: false, live: Promise.resolve() });
+
 async function apply(id, region) {
-  // The router applies a whole document: today's page with this region's new HTML in it.
+  // One swap at a time, and none while a form's post is in flight: both hand the router a whole
+  // page for this URL, and the later one would undo the other. If a submit's answer rendered while
+  // this one waited, that page is newer than this answer: it is dropped, and the next answer for
+  // the region is applied whatever it is.
+  for (;;) {
+    if (forms.pending > 0) {
+      const seen = forms.renders;
+      await forms.idle;
+      if (forms.renders !== seen) {
+        html.delete(id);
+        return;
+      }
+      continue;
+    }
+    if (forms.living) {
+      await forms.live;
+      continue;
+    }
+    break;
+  }
+  // The router applies a whole document: today's page with this region's new HTML in it, without
+  // a form's pending markers (client/router.js), which belong to no page the server rendered.
   const doc = document.documentElement.cloneNode(true);
   const target = doc.querySelector(`[data-first-live="${CSS.escape(id)}"]`);
   if (!target) return;
   target.innerHTML = region;
-  const { actions } = await import("@wordpress/interactivity-router");
-  await actions.navigate(window.location.href, { html: "<!DOCTYPE html>" + doc.outerHTML, force: true, replace: true, loadingAnimation: false, screenReaderAnnouncement: false });
+  for (const el of doc.querySelectorAll("[data-first-pending]")) {
+    el.removeAttribute("data-first-pending");
+    if (el instanceof HTMLFormElement) el.removeAttribute("aria-busy");
+    else el.removeAttribute("disabled");
+  }
+  forms.living = true;
+  const run = (async () => {
+    try {
+      const { actions } = await import("@wordpress/interactivity-router");
+      await actions.navigate(window.location.href, { html: "<!DOCTYPE html>" + doc.outerHTML, force: true, replace: true, loadingAnimation: false, screenReaderAnnouncement: false });
+    } finally {
+      forms.living = false;
+    }
+  })();
+  forms.live = run.catch(() => {});
+  await run;
 }
 
 function watch(element) {

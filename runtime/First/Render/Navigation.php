@@ -45,6 +45,8 @@ final class Navigation
         }
         wp_register_script_module('first-router', $url, [['id' => '@wordpress/interactivity', 'import' => 'static'], ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic']], null);
         wp_enqueue_script_module('first-router');
+        // What a form says when its post may have reached the server but no page came back.
+        wp_interactivity_config(self::NAMESPACE, ['failed' => __('Something went wrong sending this form. Reload the page to see whether it went through.')]);
         wp_interactivity_process_directives(self::region() . '</div>');
     }
 }

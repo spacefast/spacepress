@@ -14,6 +14,7 @@ mod classes;
 mod client;
 mod effects;
 mod host;
+mod html;
 mod javascript;
 
 use crate::builtins::ERROR_CONSTRUCTORS;
@@ -426,6 +427,9 @@ pub struct Compiler<'a, 'p> {
     /// next unused number so addresses of different kinds never collide.
     data_helpers: HashMap<(usize, u8, usize), String>,
     effects: effects::Effects,
+    /// A folded element with dynamic children (`fold_element`), by the PHP it compiled to: its
+    /// parts, so an enclosing folded element can place them inline.
+    folded_parts: HashMap<String, Vec<String>>,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
     pub output: String,
@@ -537,6 +541,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             helper_types: HashMap::new(),
             data_helpers: HashMap::new(),
             effects: effects::Effects::default(),
+            folded_parts: HashMap::new(),
             used_names: HashSet::new(),
             pending: Vec::new(),
             output: String::new(),
@@ -2174,7 +2179,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     let _ = writeln!(
                         out,
-                        "{p}{source} = {src};\n{p}for ({index} = 0; {index} < count({source}->a); {index}++) {{"
+                        "{p}{source} = {src};\n{p}for ({index} = 0; {index} < \\count({source}->a); {index}++) {{"
                     );
                     let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
                 }
@@ -2828,7 +2833,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 };
                 for (i, e) in elems.iter().enumerate() {
-                    let _ = writeln!(out, "{p}{done} = {done} || {i} >= count({src}->a);");
+                    let _ = writeln!(out, "{p}{done} = {done} || {i} >= \\count({src}->a);");
                     if let Some(e) = e {
                         let access =
                             format!("({done} ? \\First\\Js::undefined() : \\First\\Js::dynamicGet({src}, {i}))");
@@ -3413,7 +3418,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if parts.is_empty() {
                     Out::atom("''", Ty::Str)
                 } else {
-                    Out::atom(format!("implode('', [{}])", parts.join(", ")), Ty::Str)
+                    Out::atom(format!("\\implode('', [{}])", parts.join(", ")), Ty::Str)
                 }
             }
             ExprKind::Sequence(items) => {
@@ -4044,8 +4049,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 match op {
-                    BinOp::Div => Out::atom(format!("fdiv({}, {})", a.php, b.php), Ty::Num),
-                    BinOp::Rem => Out::atom(format!("fmod({}, {})", a.php, b.php), Ty::Num),
+                    BinOp::Div => Out::atom(format!("\\fdiv({}, {})", a.php, b.php), Ty::Num),
+                    BinOp::Rem => Out::atom(format!("\\fmod({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Exp => Out::atom(format!("\\First\\Js::pow({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Sub => Out::atom(format!("\\First\\Js::sub({}, {})", a.php, b.php), Ty::Num),
                     _ => Out::atom(format!("\\First\\Js::mul({}, {})", a.php, b.php), Ty::Num),
@@ -4059,7 +4064,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => ">=",
                 };
                 if a.ty.is_num() && b.ty.is_num() {
-                    self.javascript_binary(op, a, b, span)?
+                    self.number_compare(sym, a, b)
                 } else if a.ty.is_str() && b.ty.is_str() {
                     Out::new(
                         format!("\\First\\Js::stringCompare({}, {}) {sym} 0", a.php, b.php),
@@ -4156,7 +4161,96 @@ impl<'a, 'p> Compiler<'a, 'p> {
         ))
     }
 
-    fn strict_eq(&self, a: &Out, b: &Out) -> String {
+    /// `a < b` (and `<=`, `>`, `>=`) on two operands typed `number`. A PHP int or float is
+    /// compared natively, both sides as floats: that is JavaScript's comparison of two numbers,
+    /// including NaN (false), -0 == 0, ±Infinity, and an exact integer past 2^53, which JavaScript
+    /// reads as the nearest double (as `Js::n` does). Anything else at run time (a value the type
+    /// system was told is a number, such as a BigInt cast with `as unknown as number`) takes
+    /// `Js::dynamicBinary`, exactly as before. A literal operand needs no check.
+    fn number_compare(&mut self, sym: &str, a: Out, b: Out) -> Out {
+        let literal = |v: &Out| matches!(v.ty, Ty::NumLit(_) | Ty::FreshNumLit(_));
+        let plain = |v: &Out| literal(v) || is_php_variable(&v.php);
+        // Operands are read left to right: when the right one must be evaluated into a temporary
+        // (it may assign the left variable, as in `x < (x = 5)`), the left one is read first.
+        let copy_a = !literal(&a) && (!plain(&a) || !plain(&b));
+        let copy_b = !plain(&b);
+        let mut assign = Vec::new();
+        let mut test = Vec::new();
+        let mut side = |c: &mut Self, v: &Out, copy: bool| {
+            let php = if copy {
+                let tmp = c.tmp_var();
+                assign.push(format!("{tmp} = {}", v.php));
+                tmp
+            } else {
+                v.php.clone()
+            };
+            if !literal(v) {
+                test.push(format!("(\\is_int({php}) || \\is_float({php}))"));
+            }
+            php
+        };
+        let x = side(self, &a, copy_a);
+        let y = side(self, &b, copy_b);
+        let native = format!("(float) {x} {sym} (float) {y}");
+        if test.is_empty() {
+            return Out::new(native, Ty::Bool);
+        }
+        // A non-empty array literal is truthy: it only sequences the assignments.
+        let prefix = if assign.is_empty() {
+            String::new()
+        } else {
+            format!("[{}] && ", assign.join(", "))
+        };
+        Out::atom(
+            format!(
+                "({prefix}{} ? {native} : \\First\\Js::dynamicBinary({}, {x}, {y}))",
+                test.join(" && "),
+                php_str(sym)
+            ),
+            Ty::Bool,
+        )
+    }
+
+    /// `===` with JavaScript's meaning. Native PHP `===` is the same comparison when either side is
+    /// a literal string, boolean, null or undefined (no int/float or BigInt case can arise), and
+    /// `==` is the same for two PHP ints or floats (int 1 == float 1.0, NaN != NaN, -0 == 0, and
+    /// PHP 8 compares an int with a float exactly as JavaScript compares the two numbers). Typed
+    /// number operands are checked at run time, as in `number_compare`; anything else keeps
+    /// `Js::strictEq`.
+    fn strict_eq(&mut self, a: &Out, b: &Out) -> String {
+        let exact = |t: &Ty| {
+            matches!(
+                t,
+                Ty::StrLit(_) | Ty::FreshStrLit(_) | Ty::BoolLit(_) | Ty::FreshBoolLit(_) | Ty::Null | Ty::Undefined
+            )
+        };
+        if (exact(&a.ty) && literal_php(a)) || (exact(&b.ty) && literal_php(b)) {
+            return format!("{} === {}", a.wrapped(), b.wrapped());
+        }
+        // Two typed numbers, each a literal or a plain variable (read twice without effect).
+        let literal = |v: &Out| matches!(v.ty, Ty::NumLit(_) | Ty::FreshNumLit(_));
+        if a.ty.is_num()
+            && b.ty.is_num()
+            && (literal(a) || is_php_variable(&a.php))
+            && (literal(b) || is_php_variable(&b.php))
+        {
+            let test: Vec<String> = [a, b]
+                .into_iter()
+                .filter(|v| !literal(v))
+                .map(|v| format!("(\\is_int({0}) || \\is_float({0}))", v.php))
+                .collect();
+            if test.is_empty() {
+                return format!("{} == {}", a.php, b.php);
+            }
+            return format!(
+                "({} ? {} == {} : \\First\\Js::strictEq({}, {}))",
+                test.join(" && "),
+                a.php,
+                b.php,
+                a.php,
+                b.php
+            );
+        }
         format!("\\First\\Js::strictEq({}, {})", a.php, b.php)
     }
 
@@ -6228,6 +6322,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(out);
         }
         let native_object = self.native_object_receiver(obj);
+        // A local or parameter no assignment ever replaces, captures included.
+        let stable_local = matches!(&obj.kind, ExprKind::Ident(name)
+            if self.scope_local(name).is_some_and(|local| !self.effects.binding_reassigned(local.binding)));
         // Namespaces: Math.PI etc.
         if let ExprKind::Ident(n) = &obj.kind
             && let Ok(Resolved::Global(g)) = self.resolve(n, obj.span)
@@ -6418,7 +6515,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Out::atom(php, suffix_null(Ty::Num))
             }
             (Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_), "length") => {
-                let php = guarded(self, &|x| format!("count(({x})->a)"));
+                let php = guarded(self, &|x| format!("\\count(({x})->a)"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
             // `TemplateStringsArray.raw`: a tagged template's strings carry their source text.
@@ -6486,9 +6583,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return Err(self.no_field(&o.ty, prop, prop_span));
                 };
                 let map = matches!(base, Ty::Map(_));
+                // Every shape the receiver can have is a plain object (`JsObject`), never an array.
+                let plain_objects = base.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_)));
                 let php = guarded(self, &|x| {
-                    if native_object && !map && !opt_field {
-                        // Present non-null values skip the checked read; absent keys keep dataGet's semantics.
+                    // Present non-null values skip the checked read; absent keys, null values and any
+                    // receiver that is not a JsObject (null, undefined, a primitive: `??` reads them
+                    // without a diagnostic) keep dataGet's semantics. Beyond a proven parameter, the
+                    // receiver must be a local no assignment replaces, read as a plain variable.
+                    if (native_object && !map && !opt_field) || (plain_objects && stable_local && is_php_variable(x)) {
                         format!("({x}->p[{0}] ?? \\First\\Js::dataGet({x}, {0}))", php_str(prop))
                     } else {
                         format!("\\First\\Js::dataGet({x}, {})", php_str(prop))
@@ -6760,6 +6862,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             JsxKind::Fragment => {
                 let children = self.jsx_children(&jsx.children)?;
+                // A fragment of static markup is that markup.
+                if let [only] = children.as_slice()
+                    && static_markup(only).is_some()
+                {
+                    return Ok(Out::atom(only.clone(), Ty::Html));
+                }
                 Ok(Out::atom(
                     format!("\\First\\Html::children({})", children.join(", ")),
                     Ty::Html,
@@ -6781,7 +6889,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.jsx_child_type(&v.ty, child.span)?;
             out.push(v.php);
         }
-        Ok(out)
+        Ok(merge_static(out))
     }
 
     /// What React accepts as a child: text, numbers, booleans and nullish (which render nothing),
@@ -6988,13 +7096,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // properties the style's type declares: extra keys in the data are dropped.
                     let keys: Vec<String> = fields.keys().map(|k| php_str(k)).collect();
                     let narrowed = format!(
-                        "array_intersect_key(({})->p ?? [], array_flip([{}]))",
+                        "\\array_intersect_key(({})->p ?? [], \\array_flip([{}]))",
                         v.wrapped(),
                         keys.join(", ")
                     );
                     let narrowed = match fields.iter().find(|(k, _)| k.as_str() == "style") {
                         Some((_, (style_ty, _))) => format!(
-                            "(static function (array $a): array {{ if (array_key_exists('style', $a)) {{ $a['style'] = {}; }} return $a; }})({narrowed})",
+                            "(static function (array $a): array {{ if (\\array_key_exists('style', $a)) {{ $a['style'] = {}; }} return $a; }})({narrowed})",
                             style_of("$a['style']", style_ty)
                         ),
                         None => narrowed,
@@ -7047,7 +7155,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let attrs = if spread {
             // A later attribute replaces an earlier spread key, as object spread does.
             format!(
-                "array_merge({})",
+                "\\array_merge({})",
                 entries
                     .iter()
                     .map(|e| match e.strip_prefix("...") {
@@ -7090,10 +7198,68 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (children, None) => args.extend(self.jsx_children(children)?),
         }
         args.extend(form_fields);
+        if let Some(folded) = self.fold_element(&output_tag, jsx, spread || form_action.is_some(), &args[2..]) {
+            return Ok(Out::atom(folded, Ty::Html));
+        }
         Ok(Out::atom(
             format!("\\First\\Html::element({})", args.join(", ")),
             Ty::Html,
         ))
+    }
+
+    /// The element as markup computed now (`html::open_tag`), when everything `Html::element`
+    /// would read is known at build time: a tag it renders from attributes and children alone,
+    /// literal attribute values only, no spread, form action or client directive. `children` are the
+    /// compiled children; static ones are already escaped markup. A fully static element is one
+    /// `Html::raw`; one with dynamic children places them between its static open and close tags.
+    fn fold_element(&mut self, tag: &str, jsx: &Jsx, spread: bool, children: &[String]) -> Option<String> {
+        if spread || self.client.is_some() || !html::foldable_tag(tag) {
+            return None;
+        }
+        let mut attrs = Vec::new();
+        for attr in &jsx.attrs {
+            let JsxAttr::Named { name, value, .. } = attr else {
+                return None;
+            };
+            let literal = match &value.kind {
+                ExprKind::Str(text) => html::Lit::Str(text),
+                ExprKind::Bool(b) => html::Lit::Bool(*b),
+                _ => return None,
+            };
+            attrs.push((name.as_str(), literal));
+        }
+        let open = html::open_tag(tag, &attrs)?;
+        if html::is_void(tag) {
+            return Some(format!("\\First\\Html::raw({})", php_str(&format!("{open}/>"))));
+        }
+        // A single literal string child is passed to `Html::element` unescaped (see above).
+        let children: Vec<String> = match jsx.children.as_slice() {
+            [
+                Expr {
+                    kind: ExprKind::Str(text),
+                    ..
+                },
+            ] => vec![format!("\\First\\Html::raw({})", php_str(&jsx_escape(text)))],
+            _ => children.to_vec(),
+        };
+        let mut parts = vec![format!("\\First\\Html::raw({})", php_str(&format!("{open}>")))];
+        // A folded child element's parts join this element's, so static runs span the boundary.
+        for child in children {
+            match self.folded_parts.remove(&child) {
+                Some(inner) => parts.extend(inner),
+                None => parts.push(child),
+            }
+        }
+        parts.push(format!("\\First\\Html::raw({})", php_str(&format!("</{tag}>"))));
+        let parts = merge_static(parts);
+        Some(match parts.as_slice() {
+            [only] => only.clone(),
+            _ => {
+                let php = format!("\\First\\Html::children({})", parts.join(", "));
+                self.folded_parts.insert(php.clone(), parts);
+                php
+            }
+        })
     }
 
     /// One attribute of an intrinsic element, named in the source or set by a closed spread,
@@ -8709,7 +8875,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("parseFloat", Some(v)) => {
                 Out::atom(format!("\\First\\Js::parseFloat({})", v.php), Ty::Num).checked_str(v, span)?
             }
-            ("isNaN", Some(v)) => Out::atom(format!("is_nan((float) \\First\\Js::toNumber({}))", v.php), Ty::Bool),
+            ("isNaN", Some(v)) => Out::atom(format!("\\is_nan((float) \\First\\Js::toNumber({}))", v.php), Ty::Bool),
             ("isFinite", Some(v)) => Out::atom(
                 format!("\\First\\Js::isFinite(\\First\\Js::toNumber({}))", v.php),
                 Ty::Bool,
@@ -9098,10 +9264,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 all_num(&format!("Math.{m}"))?;
                 let x = php_args();
                 let php = match m {
-                    "floor" => format!("floor({x})"),
-                    "ceil" => format!("ceil({x})"),
-                    "abs" => format!("abs({x})"),
-                    "sqrt" => format!("sqrt({x})"),
+                    "floor" => format!("\\floor({x})"),
+                    "ceil" => format!("\\ceil({x})"),
+                    "abs" => format!("\\abs({x})"),
+                    "sqrt" => format!("\\sqrt({x})"),
                     "trunc" => format!("\\First\\Js::trunc({x})"),
                     "round" => format!("\\First\\Js::round({x})"),
                     "sign" => format!("\\First\\Js::sign({x})"),
@@ -9512,8 +9678,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Str,
                 )
             }
-            "toLowerCase" => Out::atom(format!("mb_strtolower({}, 'UTF-8')", s.php), Ty::Str),
-            "toUpperCase" => Out::atom(format!("mb_strtoupper({}, 'UTF-8')", s.php), Ty::Str),
+            "toLowerCase" => Out::atom(format!("\\mb_strtolower({}, 'UTF-8')", s.php), Ty::Str),
+            "toUpperCase" => Out::atom(format!("\\mb_strtoupper({}, 'UTF-8')", s.php), Ty::Str),
             "trim" | "trimStart" | "trimEnd" => js(m, &[]),
             "includes" | "startsWith" | "endsWith" if argv.len() > 1 => {
                 return err_help(
@@ -10580,12 +10746,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn filter_value(&self, col: &crate::schema::Column, v: &Out) -> String {
         match (col.ty, &v.ty) {
             (ColType::Timestamp, Ty::Date) => format!("\\First\\Js::iso(({})->milliseconds)", v.php),
-            (ColType::Date, Ty::Date) => format!("substr(\\First\\Js::iso(({})->milliseconds), 0, 10)", v.php),
+            (ColType::Date, Ty::Date) => format!("\\substr(\\First\\Js::iso(({})->milliseconds), 0, 10)", v.php),
             (ColType::Timestamp, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
                 format!("\\First\\Js::iso({})", v.php)
             }
             (ColType::Date, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
-                format!("substr(\\First\\Js::iso({}), 0, 10)", v.php)
+                format!("\\substr(\\First\\Js::iso({}), 0, 10)", v.php)
             }
             _ => v.php.clone(),
         }
@@ -10981,6 +11147,19 @@ fn php_local_base(name: &str) -> String {
     }
     let encoded = crate::hex(name);
     format!("__first_local_{encoded}")
+}
+
+/// A plain PHP variable (`$x`, `$__t3`): reading it twice has no effect and gives the same value.
+fn is_php_variable(php: &str) -> bool {
+    php.strip_prefix('$')
+        .is_some_and(|name| !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+}
+
+/// The PHP of a literal the compiler wrote: a quoted string, `true`/`false`, `null` or undefined.
+fn literal_php(v: &Out) -> bool {
+    let php = v.php.as_str();
+    matches!(php, "true" | "false" | "null" | "\\First\\Js::undefined()")
+        || ((php.starts_with('\'') || php.starts_with('"')) && matches!(v.ty, Ty::StrLit(_) | Ty::FreshStrLit(_)))
 }
 
 fn php_hint(t: &Ty) -> &'static str {
@@ -11854,6 +12033,68 @@ fn literal_position(e: &Expr) -> bool {
 }
 
 /// Text React would escape, escaped the same way (`&`, `<`, `>`, `"`, `'`).
+/// The markup of `\\First\\Html::raw('...')` as the compiler writes it, unquoted; `None` for any
+/// other PHP.
+fn static_markup(php: &str) -> Option<String> {
+    let inner = php.strip_prefix("\\First\\Html::raw(")?.strip_suffix(')')?;
+    unquote_php(inner)
+}
+
+/// The value of a PHP string literal `php_str` wrote; `None` for anything else.
+fn unquote_php(php: &str) -> Option<String> {
+    let mut out = String::new();
+    if let Some(body) = php.strip_prefix('\'').and_then(|p| p.strip_suffix('\'')) {
+        let mut chars = body.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => match chars.next()? {
+                    c @ ('\'' | '\\') => out.push(c),
+                    _ => return None,
+                },
+                '\'' => return None,
+                c => out.push(c),
+            }
+        }
+        return Some(out);
+    }
+    let body = php.strip_prefix('"')?.strip_suffix('"')?;
+    let mut chars = body.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => out.push(match chars.next()? {
+                'n' => '\n',
+                'r' => '\r',
+                c @ ('\\' | '"' | '$') => c,
+                _ => return None,
+            }),
+            '"' | '$' => return None,
+            c => out.push(c),
+        }
+    }
+    Some(out)
+}
+
+/// Adjacent `Html::raw` children joined into one, so static siblings concatenate at build time.
+fn merge_static(parts: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut run: Option<String> = None;
+    for part in parts {
+        match static_markup(&part) {
+            Some(markup) => run.get_or_insert_with(String::new).push_str(&markup),
+            None => {
+                if let Some(markup) = run.take() {
+                    out.push(format!("\\First\\Html::raw({})", php_str(&markup)));
+                }
+                out.push(part);
+            }
+        }
+    }
+    if let Some(markup) = run {
+        out.push(format!("\\First\\Html::raw({})", php_str(&markup)));
+    }
+    out
+}
+
 fn jsx_escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {

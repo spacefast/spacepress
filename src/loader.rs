@@ -850,6 +850,7 @@ fn parse(
         function_this: std::cell::Cell::new(false),
         reads_this: std::cell::Cell::new(false),
         this_reads: std::cell::RefCell::new(Vec::new()),
+        uses_arguments: std::cell::Cell::new(false),
         before_super: std::cell::Cell::new(false),
         // Only a source the module-syntax scan sees as a script can be CommonJS; the CommonJS
         // check after lowering decides, and an ESM module never reaches the evaluator binding.

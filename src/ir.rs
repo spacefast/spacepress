@@ -56,6 +56,9 @@ pub struct Func {
     pub receives_this: bool,
     /// The `this.<key>` names the body (or one of its arrows) reads, in source order.
     pub this_reads: Vec<String>,
+    /// The body, or an arrow function inside it, names `arguments`. Only then does an ordinary
+    /// function get the `arguments` object (an arrow's `arguments` is its defining function's).
+    pub uses_arguments: bool,
     pub ret: Option<TyAnn>,
     pub type_params: Vec<String>,
     pub span: Span,
@@ -142,6 +145,7 @@ impl ClassField {
             is_generator: false,
             receives_this: false,
             this_reads: vec![],
+            uses_arguments: false,
             ret: self.ann.clone(),
             type_params: vec![],
             span: self.span,

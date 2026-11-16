@@ -1621,6 +1621,18 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let runtime = plugins.join("first-runtime");
 
     let functions = std::fs::read_to_string(app.join("first/app/functions.php")).unwrap();
+    // Every PHP built-in the compiler emits is called by its full name (`\\count`), so PHP doesn't
+    // look it up in `namespace FirstApp` first.
+    let unqualified = Command::new("php")
+        .arg(root().join("tests/php/unqualified_calls.php"))
+        .arg(app.join("first/app/functions.php"))
+        .output()
+        .unwrap();
+    assert!(
+        unqualified.status.success(),
+        "unqualified built-in calls:\n{}",
+        String::from_utf8_lossy(&unqualified.stdout)
+    );
     let body = |name: &str| {
         functions
             .split(&format!("function {name}("))
@@ -1641,9 +1653,59 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("reboundParameter").contains("\\First\\Js::dataGet($input, 'n')")
             && !body("reboundParameter").contains("->p[")
     );
+    // A nullable receiver that no assignment replaces tries the property first: `??` gives the
+    // checked read for null and undefined, so a missing value still reads as dataGet does.
     assert!(
-        body("nullableParameter").contains("\\First\\Js::dataGet($input, 'n')")
-            && !body("nullableParameter").contains("->p[")
+        body("nullableParameter").contains("($input->p['n'] ?? \\First\\Js::dataGet($input, 'n'))"),
+        "{}",
+        body("nullableParameter")
+    );
+
+    // Typed number comparisons and equality are native after a run-time int/float check; a literal
+    // string side compares with `===`; a plain-variable object read tries the property first.
+    assert!(
+        !body("numberCompare").contains("dynamicBinary('<', $a, $b)")
+            || body("numberCompare").contains("\\is_float($a)")
+    );
+    assert!(
+        body("numberCompare").contains("(float) $a < (float) $b"),
+        "{}",
+        body("numberCompare")
+    );
+    assert!(body("numberCompare").contains("$a == $b"), "{}", body("numberCompare"));
+    assert!(
+        body("stringEquality").contains("$s === 'a'"),
+        "{}",
+        body("stringEquality")
+    );
+    assert!(
+        !body("stringEquality").contains("strictEq($s, 'a')"),
+        "{}",
+        body("stringEquality")
+    );
+    assert!(body("localRead").contains("->p['title'] ??"), "{}", body("localRead"));
+
+    // Only a function that names `arguments`, itself or in one of its arrows, builds the object.
+    for (name, uses) in [
+        ("argumentsUnused", false),
+        ("argumentsShorthand", true),
+        ("argumentsInNestedArrow", true),
+        ("argumentsInDefault", true),
+    ] {
+        assert_eq!(
+            body(name).contains("\\First\\Js::arguments("),
+            uses,
+            "{name}:\n{}",
+            body(name)
+        );
+    }
+    assert_eq!(
+        body("argumentsInInnerFunction")
+            .matches("\\First\\Js::arguments(")
+            .count(),
+        1,
+        "only the inner function names arguments:\n{}",
+        body("argumentsInInnerFunction")
     );
 
     let mut mismatches = Vec::new();

@@ -32,9 +32,21 @@ Every First file starts with `declare(strict_types=1);`. Namespace `First`.
     first/app/functions.php             generated: compiled hooks, actions, helpers (namespace FirstApp)
     first/app/openapi.json              generated: the API as OpenAPI 3.1, served at /__first/api/v1/openapi.json
     first/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
+    first/app/client/first-client.js   the typed client as a browser module (`@first/client`), minified
+    first/app/client-version.php       `return '<12 hex>';`: digest of first-client.js, its script version
+    first/app/client/<stem>.<12 hex>.js  "use client" stores, minified, named by their unminified bytes
+    first/app/client/.htaccess         an immutable year-long Cache-Control for those stores only
     public/...                         copied from <project>/public if present
   *.zip                                the same plugins, packaged
 ```
+
+Script modules with fixed names carry a version so a browser never keeps a copy from an earlier
+build: `@first/client` is registered with `client-version.php`'s digest, and the runtime's
+`@first/live` (`first/Render/client/live.js`) and `first-router` (`router.js`) with
+`FIRST_RUNTIME_HASH` (a digest of the runtime's `First/` files), or the release version when a
+build-store mount defines no such constant. The content-hashed store modules need no version.
+The app plugin's copies of these modules are minified (`oxc_minifier`, names of functions and
+classes kept); the committed `first/_generated/client/client.js` and `client.d.ts` stay readable.
 
 ### Build output reuse
 

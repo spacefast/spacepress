@@ -709,7 +709,10 @@ process; the four `undefined`-erasure deviations of §2.6. The hooks table's
 | Operation | Compiled PHP | Matches JS because |
 |---|---|---|
 | `a === b`, containers | `$a === $b` (pure right operand) or `Js::strictEq` | PHP object identity; the helper keeps JS's left-then-right evaluation. |
+| `a === b`, a literal string, boolean, `null` or `undefined` on either side | `$a === 'x'` | No int/float or BigInt case can arise against such a literal. |
+| `a === b`, two typed numbers, each a literal or a plain variable | `(is_int\|is_float on each) ? $a == $b : Js::strictEq` | PHP 8 `==` on two ints or floats is JS's number equality: `1 == 1.0`, `NAN != NAN`, `-0.0 == 0`, an int past 2^53 against a float compared as JS compares the two numbers. Checked against `strictEq` for every pair of 35 edge values on PHP 8.2 and 8.5. |
 | `a === b`, mixed/unknown | `Js::strictEq` | Numbers by value (`1 === 1.0`), everything else `===`. |
+| `a < b` (`<=`, `>`, `>=`), two typed numbers | `(is_int\|is_float on each) ? (float) $a < (float) $b : Js::dynamicBinary` | Both sides as doubles is JS's number comparison (NaN false, ±Infinity, an exact int past 2^53 rounded as `Js::n` rounds it). A value only cast to `number` (`10n as unknown as number`) fails the check and takes the helper. A non-variable operand is evaluated once into a temporary, left to right. |
 | `a == b` | compile error (unchanged) | Loose equality isn't supported in First code. |
 | `switch` | strict comparisons (unchanged) | |
 | `includes` | `sameValueZero` | NaN equals NaN, handles by identity. |

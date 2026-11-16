@@ -21,6 +21,34 @@ pub type Arr = Rc<RefCell<Vec<Value>>>;
 pub struct ObjCell {
     map: RefCell<IndexMap<String, Value>>,
     null_prototype: bool,
+    /// Attributes of own properties that aren't ordinary (writable, enumerable, configurable),
+    /// set by `Object.defineProperty`. An accessor property's value in `map` is
+    /// `Value::Accessor`; its `writable` here is unused.
+    attrs: RefCell<HashMap<String, Attrs>>,
+}
+
+/// Property attributes, as `Object.defineProperty` sets them. An absent entry is an ordinary
+/// property: writable, enumerable and configurable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Attrs {
+    pub enumerable: bool,
+    pub writable: bool,
+    pub configurable: bool,
+}
+
+impl Attrs {
+    pub const ORDINARY: Attrs = Attrs {
+        enumerable: true,
+        writable: true,
+        configurable: true,
+    };
+}
+
+/// An accessor property: `get`/`set` are functions or `undefined`.
+#[derive(Debug)]
+pub struct AccessorVal {
+    pub get: Value,
+    pub set: Value,
 }
 
 impl ObjCell {
@@ -34,6 +62,40 @@ impl ObjCell {
 
     pub fn null_prototype(&self) -> bool {
         self.null_prototype
+    }
+
+    pub fn attrs(&self, key: &str) -> Attrs {
+        self.attrs.borrow().get(key).copied().unwrap_or(Attrs::ORDINARY)
+    }
+
+    pub fn set_attrs(&self, key: &str, attrs: Attrs) {
+        if attrs == Attrs::ORDINARY {
+            self.attrs.borrow_mut().remove(key);
+        } else {
+            self.attrs.borrow_mut().insert(key.to_string(), attrs);
+        }
+    }
+
+    /// Removes an own property and its attributes.
+    pub fn remove(&self, key: &str) {
+        self.map.borrow_mut().shift_remove(key);
+        self.attrs.borrow_mut().remove(key);
+    }
+
+    /// Whether some own property is non-enumerable, read-only, non-configurable or an accessor.
+    pub fn has_attributes(&self) -> bool {
+        !self.attrs.borrow().is_empty() || self.map.borrow().values().any(|v| matches!(v, Value::Accessor(_)))
+    }
+
+    /// Own enumerable string keys in insertion order (callers order integer keys).
+    pub fn enumerable_keys(&self) -> Vec<String> {
+        let attrs = self.attrs.borrow();
+        self.map
+            .borrow()
+            .keys()
+            .filter(|k| attrs.get(*k).is_none_or(|a| a.enumerable))
+            .cloned()
+            .collect()
     }
 }
 #[derive(Clone, Debug)]
@@ -72,6 +134,9 @@ pub enum Value {
     Coll(Rc<CollVal>),
     /// A JavaScript symbol created while the config is evaluated.
     Symbol(Rc<SymbolVal>),
+    /// The slot of an accessor property inside an object's map (see `ObjCell`). Property reads
+    /// call its getter; it is never a value of its own.
+    Accessor(Rc<AccessorVal>),
     /// An empty `WeakMap` (`set == false`) or `WeakSet` created at module level.
     /// Each request gets its own; entries can only be added in compiled code.
     Weak(Rc<WeakVal>),
@@ -142,6 +207,10 @@ impl Closure {
         !self.props.borrow().is_empty()
     }
 }
+
+/// `Object.prototype` as a build-time value (`Builtin::Global`). Only its `hasOwnProperty`,
+/// `propertyIsEnumerable` and `toString` methods are modeled, called through `.call`/`.apply`.
+pub const OBJECT_PROTOTYPE: &str = "Object.prototype";
 
 /// Function properties First doesn't model: built-in own properties and `Function.prototype`.
 pub const FUNCTION_BUILTIN_PROPERTIES: &[&str] = &[
@@ -393,6 +462,7 @@ impl Value {
         Value::Object(Rc::new(ObjCell {
             map: RefCell::new(map),
             null_prototype: false,
+            attrs: RefCell::default(),
         }))
     }
 
@@ -401,6 +471,7 @@ impl Value {
         Value::Object(Rc::new(ObjCell {
             map: RefCell::new(map),
             null_prototype: true,
+            attrs: RefCell::default(),
         }))
     }
 
@@ -426,7 +497,9 @@ impl Value {
             Value::Num(_) => "number",
             Value::Str(_) => "string",
             Value::Builtin(
-                Builtin::Db | Builtin::Jobs | Builtin::Global("Math" | "JSON" | "console" | "globalThis"),
+                Builtin::Db
+                    | Builtin::Jobs
+                    | Builtin::Global("Math" | "JSON" | "console" | "globalThis" | OBJECT_PROTOTYPE),
             ) => "object",
             Value::Symbol(_) => "symbol",
             Value::Class(_) | Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) => "function",
@@ -463,6 +536,7 @@ impl Value {
             Value::Coll(c) => (if c.set { "a Set" } else { "a Map" }).into(),
             Value::Symbol(s) => format!("Symbol({})", s.description().unwrap_or_default()),
             Value::Weak(w) => if w.set { "a WeakSet" } else { "a WeakMap" }.into(),
+            Value::Accessor(_) => "an accessor property".into(),
         }
     }
 

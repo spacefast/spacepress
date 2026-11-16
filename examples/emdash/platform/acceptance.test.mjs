@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { chromium, expect } from '@playwright/test';
+import { submitSignIn } from '../sign-in.mjs';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -265,8 +266,7 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
       const adminContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
       const admin = await adminContext.newPage();
       await admin.goto(`${base}/wp-login.php`);
-      await admin.locator('#user_login').fill('admin'); await admin.locator('#user_pass').fill('first-test-admin');
-      await admin.locator('#wp-submit').click();
+      await submitSignIn(admin, 'admin', 'first-test-admin');
       await admin.goto(`${base}/wp-admin/plugins.php`);
       await expect(admin.getByRole('heading', { name: 'Plugins', exact: true })).toBeVisible();
       await expect(admin.getByText('Platform neighbor', { exact: true })).toBeVisible();

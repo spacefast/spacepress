@@ -34,7 +34,7 @@ async function content(blocks, upload) {
 
 export async function seedPortfolio({ api, upload }) {
   const seed = JSON.parse(await readFile(new URL('./seed.json', import.meta.url), 'utf8'));
-  const settings = await api('/globals/settings', { method: 'PATCH', body: {
+  const settings = await api('/settings', { method: 'PATCH', body: {
     title: seed.settings.title, tagline: seed.settings.tagline, separator: '—',
     social: { github: '@norma', instagram: 'norma.studio', linkedin: 'https://www.linkedin.com/company/norma/' },
     navigation: seed.menus.find((m) => m.name === 'primary').items.map((i) => ({ label: i.label, href: i.url })),

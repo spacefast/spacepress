@@ -4,6 +4,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, expect } from '@playwright/test';
+import { submitSignIn } from '../sign-in.mjs';
 import { cleanup, makeProject, start } from './local.mjs';
 
 test('native admin saves and public search/theme controls work in Chromium', { timeout: 600000 }, async (t) => {
@@ -24,9 +25,7 @@ test('native admin saves and public search/theme controls work in Chromium', { t
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${receipt.base}/wp-login.php`);
-  await page.locator('#user_login').fill('admin');
-  await page.locator('#user_pass').fill('first-test-admin');
-  await page.locator('#wp-submit').click();
+  await submitSignIn(page, 'admin', 'first-test-admin');
   await page.waitForURL(/\/wp-admin\//);
   await page.goto(`${receipt.base}/wp-admin/edit.php?post_type=first_posts`);
   const row = page.locator('#the-list tr').filter({ has: page.locator('.row-title') }).first();

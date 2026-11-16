@@ -140,6 +140,17 @@ steps=$(wp --exec="define('FIRST_TEST_BUILD', '$moved');" eval "echo json_encode
 [[ $before == "$(site)" ]] || fail "inspecting the taxonomy candidate changed the site"
 ok "a candidate that changes only a taxonomy URL pattern plans one step"
 
+# A site whose recorded digest was written before taxonomies existed (kind patterns only) and whose app
+# has no taxonomy plans no step: with no taxonomy the digest's input is the kind patterns alone, so a
+# deployment of this runtime to such a site needs no rewrite rebuild.
+rm "$work/installlane/first/topics.ts"
+"$bin" sources "$work/installlane" --out "$work/sources-no-term"
+plain=$("$bin" compile-to-store "$work/sources-no-term" "$store" "$work/sources-no-term" "$build" | json build)
+host "update_option('first_kind_urls', md5((string) json_encode(['/notes/:id'])), true);" >/dev/null
+steps=$(wp --exec="define('FIRST_TEST_BUILD', '$plain');" eval "echo json_encode(First\\Loader\\Loader::inspect('$root', '$plain')['install']);")
+[[ $steps == '[]' ]] || fail "an app without taxonomies, on a digest recorded from kind patterns alone, plans no step: $steps"
+ok "an app without taxonomies keeps the digest recorded from its kind patterns alone"
+
 # The same app installed as plugins on a fresh site, after its first requests: what initialize
 # installed is what a plugin-installed site installs on boot.
 "$here/harness.sh" down >/dev/null

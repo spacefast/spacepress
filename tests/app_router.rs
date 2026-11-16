@@ -5344,6 +5344,38 @@ fn one_sign_in_page_on_wordpress() {
         serde_json::json!({ "status": 303, "wordpress session": false, "identity revoked": true }),
         "{seen}"
     );
+    // N1: an expired hint on a GET (an image on another site) only asks; a current hint naming the
+    // browser's user signs out at once.
+    assert_eq!(
+        seen["expired hint"],
+        serde_json::json!({ "status": 200, "asks": true, "wordpress session": true, "identity revoked": false }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["named hint"],
+        serde_json::json!({ "status": 303, "wordpress session": false }),
+        "{seen}"
+    );
+    // N2: refresh needs the WordPress session alive, not the identity cookie's 24 hours.
+    assert_eq!(
+        seen["refresh after 24h"],
+        serde_json::json!({ "refresh": 200, "expired secret": true, "browser": 200, "new cookie": true }),
+        "{seen}"
+    );
+    // N3: a second first request rotates the secret, and the earlier cookie keeps working.
+    assert_eq!(
+        seen["parallel first requests"],
+        serde_json::json!({ "rotated": true, "earlier cookie": 200, "later cookie": 200 }),
+        "{seen}"
+    );
+    // M5 on REST: a planted guest cookie gives way to the WordPress sign-in there too.
+    assert_eq!(seen["rest mismatch"]["account"], seen["rest mismatch"]["wu"], "{seen}");
+    // N4: turning MFA on ends the other WordPress sessions and keeps this browser's.
+    assert_eq!(
+        seen["mfa enable"],
+        serde_json::json!({ "status": 200, "this browser": true, "other session": false, "still signed in": 200 }),
+        "{seen}"
+    );
 }
 
 /// L1: on a site below `/blog`, `/identity` sends a signed-out browser to wp-login.php and back to

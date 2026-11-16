@@ -606,6 +606,12 @@ final class Plugin
             Sessions::cookie("", time() - 3600);
             unset($_COOKIE[Sessions::cookieName()]);
         }
+        // Until this site's storage has `sessions.wp_token` (a managed build serves requests before
+        // its initialize), a WordPress sign-in opens no identity session: one it couldn't tie to the
+        // WordPress session would outlive it.
+        if (!Schema::linksWordPressSessions()) {
+            return null;
+        }
         $token = wp_get_session_token();
         $wp = $uid > 0 && $token !== "" ? \WP_Session_Tokens::get_instance($uid)->get($token) : null;
         if (!is_array($wp) || in_array(self::$accounts->status($uid), ["suspended", "deletion_requested", "deleted"], true)) {
@@ -653,7 +659,9 @@ final class Plugin
         $post = $_SERVER["REQUEST_METHOD"] === "POST";
         $query = $post ? $_POST : $_GET;
         $oauth = new OAuth(self::$db, self::$accounts);
-        $target = $oauth->logout($query);
+        // Checked first, revoked last: nothing ends before the decision below says it may.
+        $request = $oauth->logoutRequest($query);
+        $target = $request["target"];
         $uid = (int) wp_validate_auth_cookie("", "logged_in");
         $session = self::$sessions->find((string) ($_COOKIE[Sessions::cookieName()] ?? ""));
         $hint = is_string($query["id_token_hint"] ?? null) ? Keys::verify($query["id_token_hint"]) : null;
@@ -682,6 +690,9 @@ final class Plugin
                 . esc_html__("Stay signed in", "typedpress-identity") . "</a></main></body></html>";
             exit();
         }
+        // Here the sign-out may happen: the hint names this browser's user, the user confirmed, or
+        // the browser holds no WordPress session to end (an application's own identity session).
+        $oauth->endLogout($request["claims"]);
         if ($session) {
             self::$sessions->revoke((int) $session["wp_user_id"], (string) $session["id"]);
         }

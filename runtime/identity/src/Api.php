@@ -548,7 +548,13 @@ final class Api
                 $uid,
                 $s["id"],
             );
-            \WP_Session_Tokens::get_instance($uid)->destroy_all();
+            // Every other WordPress session ends; this browser's stays, or the identity session it
+            // came from would end with it and sign the user out mid-setup.
+            $cookie = wp_parse_auth_cookie("", "logged_in");
+            $current = (int) wp_validate_auth_cookie("", "logged_in") === $uid && is_array($cookie) ? (string) ($cookie["token"] ?? "") : "";
+            $current !== ""
+                ? \WP_Session_Tokens::get_instance($uid)->destroy_others($current)
+                : \WP_Session_Tokens::get_instance($uid)->destroy_all();
             $this->security->event($uid, "mfa.enabled");
             return ["recovery_codes" => $this->mfa->recoveryCodes($uid)];
         }

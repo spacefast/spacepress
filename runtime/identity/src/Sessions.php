@@ -7,6 +7,8 @@ namespace TypedPress\Identity;
 final class Sessions
 {
     public const COOKIE = "zi_session";
+    /** Seconds a reopened session's previous secret stays valid ({@see reopen()}). */
+    public const REOPEN_GRACE = 60;
     /**
      * Sibling hosts under a shared parent domain can plant Domain-scoped cookies; the __Host-
      * prefix makes the browser refuse any such cookie under this name. The prefix requires
@@ -87,7 +89,6 @@ final class Sessions
                 "created_at" => time(),
                 "expires_at" => min(time() + 86400, $until ?? PHP_INT_MAX),
                 "verified_at" => min(time(), $verifiedAt ?? PHP_INT_MAX),
-                "wp_token" => $wpToken,
                 "label" => substr(
                     sanitize_text_field(
                         $_SERVER["HTTP_USER_AGENT"] ?? "Server session",
@@ -96,6 +97,9 @@ final class Sessions
                     200,
                 ),
             ];
+            if ($wpToken !== null) {
+                $session["wp_token"] = $wpToken;
+            }
             $this->db->insert("sessions", $session);
             $this->security->event($uid, "session.created");
             return ["secret" => $secret, "session" => $session];
@@ -131,6 +135,18 @@ final class Sessions
         if ($session && !hash_equals((string) $session['secret_hash'], self::digest($secret))) {
             $session = null;
         }
+        // A secret {@see reopen()} replaced a moment ago (parallel first requests of one browser).
+        if (!$session && Schema::linksWordPressSessions()) {
+            $session = $this->db->row(
+                "SELECT s.* FROM {$this->db->prefix}sessions s JOIN {$this->db->prefix}accounts a ON a.wp_user_id=s.wp_user_id WHERE s.previous_secret_hash=%s AND s.previous_until>%d AND s.revoked_at IS NULL AND s.expires_at>%d AND a.status='active'",
+                self::digest($secret),
+                time(),
+                time(),
+            );
+            if ($session && !hash_equals((string) $session['previous_secret_hash'], self::digest($secret))) {
+                $session = null;
+            }
+        }
         // Opened from a WordPress sign-in: it ends with that WordPress session.
         if ($session && !self::linked($session)) {
             $this->db->run("UPDATE {$this->db->prefix}sessions SET revoked_at=%d WHERE id=%s AND revoked_at IS NULL", time(), $session["id"]);
@@ -147,16 +163,20 @@ final class Sessions
     }
     /**
      * Whether a session opened from a WordPress sign-in still has it: the WordPress session exists
-     * and the identity session hasn't expired. Every other session is its own.
+     * (WordPress drops it at its own expiry). Every other session is its own.
+     *
+     * The identity session's 24-hour expiry is not part of this: it bounds the browser's cookie
+     * ({@see find()} reads only unexpired sessions), not the application families started from it,
+     * which live until they are revoked, as they do for a session made by Identity's own sign-in.
+     * A family started through wp-login.php ends when its WordPress session does.
      */
     public static function linked(array $session): bool
     {
-        $verifier = $session["wp_token"] ?? null;
+        $verifier = Schema::linksWordPressSessions() ? ($session["wp_token"] ?? null) : null;
         if (!is_string($verifier) || $verifier === "") {
             return true;
         }
-        return (int) $session["expires_at"] > time()
-            && WordPressSessions::find((int) $session["wp_user_id"], $verifier) !== null;
+        return WordPressSessions::find((int) $session["wp_user_id"], $verifier) !== null;
     }
     /**
      * The open session this browser already has for a WordPress session, given a new secret so a
@@ -164,6 +184,9 @@ final class Sessions
      */
     public function reopen(int $uid, string $verifier): ?array
     {
+        if (!Schema::linksWordPressSessions()) {
+            return null;
+        }
         return $this->db->transaction(function () use ($uid, $verifier) {
             $this->db->lock($uid);
             $row = $this->db->row(
@@ -175,14 +198,24 @@ final class Sessions
             if (!$row) {
                 return null;
             }
+            // The row's secret isn't stored, only its digest, so the browser gets a new one. Parallel
+            // first requests each do this: the session keeps the digest it had until the replacement
+            // was made, for a short grace, so a cookie set a moment ago keeps working.
             $secret = Security::token();
-            $this->db->run("UPDATE {$this->db->prefix}sessions SET secret_hash=%s WHERE id=%s", self::digest($secret), $row["id"]);
+            $this->db->run(
+                "UPDATE {$this->db->prefix}sessions SET previous_secret_hash=secret_hash, previous_until=%d, secret_hash=%s WHERE id=%s",
+                time() + self::REOPEN_GRACE,
+                self::digest($secret),
+                $row["id"],
+            );
             return ["secret" => $secret, "session" => ["secret_hash" => self::digest($secret)] + $row];
         });
     }
     public function require(?string $csrf = null): array
     {
-        $session = $this->find((string) ($_COOKIE[self::cookieName()] ?? ""));
+        // This browser's session as the hosted screens see it ({@see Plugin::browserSession}): one
+        // whose user isn't the browser's WordPress user gives way to the WordPress sign-in.
+        $session = Plugin::browserSession();
         if (!$session) {
             throw new Failure("unauthenticated", "Sign in to continue.", 401);
         }
@@ -253,7 +286,9 @@ final class Sessions
                 );
                 return null;
             }
-            return $this->db->row("SELECT wp_token FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d", $id, $uid)["wp_token"] ?? null;
+            return Schema::linksWordPressSessions()
+                ? $this->db->row("SELECT wp_token FROM {$this->db->prefix}sessions WHERE id=%s AND wp_user_id=%d", $id, $uid)["wp_token"] ?? null
+                : null;
         });
         if ($id === null) {
             \WP_Session_Tokens::get_instance($uid)->destroy_all();

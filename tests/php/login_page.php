@@ -387,5 +387,86 @@ $out['logout confirmed'] = [
     'identity revoked' => array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $l->token)))[0]['revoked_at'] !== null,
 ];
 
+// ---------------------------------------------------------------- an expired hint on a GET ends nothing (N1)
+// `<img src="/identity/logout?id_token_hint=<expired>">` on another site: it asks, and both sessions live.
+$n1 = planted($url, $wpUser);
+$n1->go('/identity/account');
+$n1Row = array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $n1->token)))[0];
+$expired = \TypedPress\Identity\Keys::sign(['iss' => \TypedPress\Identity\OAuth::issuer(), 'aud' => $app['id'], 'sub' => (string) $wpUser, 'sid' => $n1Row['id'], 'iat' => time() - 7200, 'exp' => time() - 3600]);
+$silent = $n1->go('/identity/logout?id_token_hint=' . rawurlencode($expired));
+$out['expired hint'] = [
+    'status' => $silent['status'],
+    'asks' => str_contains($silent['body'], 'name="confirm"'),
+    'wordpress session' => wpSession($wpUser, $n1->token),
+    'identity revoked' => (array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['id'] === $n1Row['id']))[0]['revoked_at'] ?? null) !== null,
+];
+// A current hint naming the browser's user ends both at once (the application showed who signs out).
+$current = \TypedPress\Identity\Keys::sign(['iss' => \TypedPress\Identity\OAuth::issuer(), 'aud' => $app['id'], 'sub' => (string) $wpUser, 'sid' => $n1Row['id'], 'iat' => time(), 'exp' => time() + 300]);
+$named = $n1->go('/identity/logout?id_token_hint=' . rawurlencode($current));
+$out['named hint'] = ['status' => $named['status'], 'wordpress session' => wpSession($wpUser, $n1->token)];
+
+// ---------------------------------------------------------------- refresh outlives the identity cookie's 24 hours (N2)
+// A family started through wp-login.php lives while its WordPress session does, as a standalone one
+// lives until revoked: the identity session's 24-hour expiry bounds the browser cookie only.
+$n2 = planted($url, $wpUser);
+$n2->go('/identity/account');
+$n2Row = array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $n2->token)))[0];
+$n2Grant = (static function () use ($n2, $url, $app): array {
+    $verifier = bin2hex(random_bytes(32));
+    $q = ['response_type' => 'code', 'client_id' => $app['id'], 'redirect_uri' => 'http://127.0.0.1:18999/callback', 'scope' => 'openid', 'state' => 'st-' . bin2hex(random_bytes(12)), 'nonce' => 'n-' . bin2hex(random_bytes(12)), 'code_challenge_method' => 'S256', 'code_challenge' => rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=')];
+    $page = $n2->go('/identity/authorize?' . http_build_query($q));
+    preg_match('#name="csrf" value="([0-9a-f]{64})"#', $page['body'], $c);
+    $ok = $n2->go('/identity/authorize', [...$q, 'csrf' => $c[1] ?? ''], ["Origin: $url"]);
+    parse_str((string) parse_url((string) $ok['location'], PHP_URL_QUERY), $back);
+    $t = (new Browser($url))->go('/identity/token', ['grant_type' => 'authorization_code', 'client_id' => $app['id'], 'redirect_uri' => 'http://127.0.0.1:18999/callback', 'code' => $back['code'] ?? '', 'code_verifier' => $verifier]);
+    return json_decode($t['body'], true) ?? [];
+})();
+$idb = \TypedPress\Identity\Plugin::$db;
+$idb->run("UPDATE {$idb->prefix}sessions SET expires_at=%d WHERE id=%s", time() - 60, $n2Row['id']);
+$n2Cookie = $n2->cookies['zi_session'] ?? '';
+$out['refresh after 24h'] = [
+    'refresh' => $refresh((string) ($n2Grant['refresh_token'] ?? ''))['status'],
+    // The expired row no longer signs the browser in; the live WordPress session opens a new one.
+    'expired secret' => \TypedPress\Identity\Plugin::$sessions->find($n2Cookie) === null,
+    'browser' => $n2->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'new cookie' => ($n2->cookies['zi_session'] ?? '') !== $n2Cookie,
+];
+
+// ---------------------------------------------------------------- parallel first requests keep each cookie (N3)
+$n3 = planted($url, $wpUser);
+$n3->go('/identity/account');
+$firstCookie = $n3->cookies['zi_session'] ?? '';
+$second = clone $n3;
+unset($second->cookies['zi_session']);
+$second->go('/identity/account');
+$out['parallel first requests'] = [
+    'rotated' => ($second->cookies['zi_session'] ?? '') !== $firstCookie,
+    'earlier cookie' => $n3->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'later cookie' => $second->go('/wp-json/typedpress-identity/v1/account')['status'],
+];
+
+// ---------------------------------------------------------------- REST gives way to the WordPress sign-in too (M5 on REST)
+$rest = planted($url, $wpUser);
+$rest->cookies['zi_session'] = \TypedPress\Identity\Plugin::$sessions->create($guest)['secret'];
+$restMe = json_decode($rest->go('/wp-json/typedpress-identity/v1/account')['body'], true);
+$out['rest mismatch'] = ['account' => (string) ($restMe['data']['account']['id'] ?? ''), 'wu' => (string) $wpUser];
+
+// ---------------------------------------------------------------- turning MFA on keeps this browser signed in (N4)
+$n4User = $site->addUser('nf', 'subscriber', $password);
+$n4 = planted($url, $n4User);
+$elsewhere = WP_Session_Tokens::get_instance($n4User)->create(time() + 3600);
+$n4->go('/identity/account');
+preg_match('#"csrf":"([0-9a-f]{64})"#', $n4->go('/wp-json/typedpress-identity/v1/account')['body'], $nc);
+$headers = ["Origin: $url", 'X-Identity-CSRF: ' . ($nc[1] ?? ''), 'Content-Type: application/json'];
+$setup = json_decode($n4->go('/wp-json/typedpress-identity/v1/mfa/setup', [], $headers)['body'], true);
+$code = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret((string) ($setup['data']['secret'] ?? 'AAAA'))->now();
+$enable = $n4->go('/wp-json/typedpress-identity/v1/mfa/enable', ['code' => $code], ["Origin: $url", 'X-Identity-CSRF: ' . ($nc[1] ?? '')]);
+$out['mfa enable'] = [
+    'status' => $enable['status'],
+    'this browser' => wpSession($n4User, $n4->token),
+    'other session' => wpSession($n4User, $elsewhere),
+    'still signed in' => $n4->go('/wp-json/typedpress-identity/v1/account')['status'],
+];
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

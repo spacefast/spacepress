@@ -170,3 +170,33 @@ disagree. These rules replace the matching bullets above.
   the subdirectory appears once.
 
 **Left as is.** One low-severity finding of that review (L4) is deliberately not changed here.
+
+## Second revision (2026-11-16)
+
+A re-review found these, now fixed:
+
+- **RP logout checks before it ends anything.** `OAuth::logoutRequest` validates the hint and
+  `post_logout_redirect_uri` and revokes nothing; `OAuth::endLogout` revokes the hint's session.
+  `/identity/logout` calls the second only when one of these holds:
+  - the hint is unexpired and names the browser's WordPress user;
+  - the user confirmed on the form;
+  - the browser has no WordPress session to end.
+  Before this, an expired hint on a GET (an image on another site) revoked the identity session,
+  and through it the WordPress session.
+- **Refresh follows the WordPress session, not the 24-hour cookie.** A family started through
+  wp-login.php refreshes while its WordPress session is alive, as a family from Identity's own
+  sign-in lives until revoked. The identity session's 24 hours bound only the browser cookie; after
+  them a browser still signed in to WordPress gets a new identity session.
+- **Parallel first requests.** Reopening a bridged session gives the browser a new secret. The
+  previous one stays valid for 60 seconds (`previous_secret_hash`, `previous_until`), so a cookie
+  set by a request a moment earlier keeps working.
+- **Turning MFA on** ends the user's other WordPress sessions and keeps this browser's
+  (`destroy_others`). Ending all of them would end the identity session it came from and sign the
+  user out mid-setup.
+- **Identity's REST API** applies the same rule as the hosted screens: an identity cookie for a
+  different user than the WordPress session gives way to the WordPress sign-in.
+- **A managed build before `Loader::initialize`.** A host can serve requests from a mounted build
+  before its initialize has brought identity storage to schema 4. Until the stored version says 4,
+  nothing reads or writes the new session columns and no WordPress sign-in opens an identity
+  session (`Schema::linksWordPressSessions`). A session the bridge couldn't tie to its WordPress
+  session would otherwise outlive it.

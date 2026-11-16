@@ -363,8 +363,8 @@ test("without developer mode, a classic page opened as a page is framed in Typed
     ["", "/wp-admin/new/"],
     ["index.php", "/wp-admin/new/"],
     ["options-permalink.php", "/wp-admin/new/classic/options-permalink.php"],
-    ["edit-comments.php?comment_status=moderated", "/wp-admin/new/classic/edit-comments.php%3Fcomment_status%3Dmoderated"],
-    ["tools.php?page=typedpress-screen-test-admin-only", "/wp-admin/new/classic/tools.php%3Fpage%3Dtypedpress-screen-test-admin-only"],
+    ["edit-comments.php?comment_status=moderated", "/wp-admin/new/classic/edit-comments.php%253Fcomment_status%253Dmoderated"],
+    ["tools.php?page=typedpress-screen-test-admin-only", "/wp-admin/new/classic/tools.php%253Fpage%253Dtypedpress-screen-test-admin-only"],
   ]) {
     const response = await open(path, "document");
     assert.equal(response.status, 302, path);

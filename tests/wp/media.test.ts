@@ -860,7 +860,7 @@ test("a media item reads on the API exactly as on core's media route: its parent
     await replica.media.delete(image.id);
     assert.equal((await fetch(focal.url)).status, 404);
     compose("up", "-d", "--wait", "garage");
-    assert.equal(replicaPhp("echo as_has_scheduled_action('tp_uploads_maintain', [], 'first') ? 'scheduled' : 'missing';"), "scheduled", "cleanup has durable Action Scheduler delivery");
+    assert.equal(replicaPhp("echo as_has_scheduled_action('tp_uploads_maintain', [], 'typedpress') ? 'scheduled' : 'missing';"), "scheduled", "cleanup has durable Action Scheduler delivery");
     // Durable maintenance retries failed deletes; a committed editor attachment remains referenced.
     const recovered: { remaining: string[] } = JSON.parse(replicaPhp(String.raw`
       \TypedPress\Wp\Uploads::reconcile(time() + 1);

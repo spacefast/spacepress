@@ -350,8 +350,14 @@ and a second set of merchant API credentials are unnecessary for local operation
 
 ### Dashboard scope
 
-Order lists/details, refund reads and product inventory reads are enough for an initial operational
-dashboard. Sales charts require a later bounded reporting API with defined timezone, currency,
+**Decision:** v1 provides authorized paginated order lists and individual order details. Order
+details include status, dates, purchased items, quantities, prices, totals, billing/shipping
+addresses, customer reference, payment method and refund summaries. These are read-only;
+order changes and stock quantity changes remain in Woo administration. No dedicated TypedPress
+stock-write API is included in v1.
+
+Aggregate reporting APIs, revenue charts and best-selling-product reports are deferred. They
+require a later bounded reporting API with defined timezone, currency,
 status and refund treatment; clients must not sum one page of orders and present it as store revenue.
 Expose native order notes as a subsequent authorized read if the first support interface needs
 them. Refund, cancellation and fulfillment writes should be explicit actions with lifecycle
@@ -435,8 +441,6 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **API scope:** confirm the proposed resource table, especially inventory
-  mutations, order detail depth and the first dashboard's reporting needs.
 - **Download declaration:** finalize the nested file-reference shape and how new stable download
   IDs are assigned. Reuse native Woo permissions; additional backing-file protection, retention
   and versioning are future improvements. Custom email authoring is separate from v1 Woo defaults.

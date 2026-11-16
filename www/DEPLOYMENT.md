@@ -47,15 +47,16 @@ Authenticate from `www/`, then inspect the plan:
 
 A human starts a production release. The deployment command is `typedpress push`.
 A push seeds the synced Markdown on an empty site. Later edits to existing content
-use `typedpress sync --site <url> --no-commit`; it currently needs credentials through
-`TP_APP_PASSWORD` or `TP_TOKEN`, separately from `typedpress login`. Supply those
-through a secure environment mechanism.
+use `typedpress sync --site <url>`, run from `www/`. It signs in with the credential
+`typedpress login` stored for the site; on a machine without one (CI), supply
+`TP_APP_PASSWORD` through a secure environment mechanism instead. It commits the synced files and
+`.tp/sync-base.json`; `--no-commit` leaves them for you to commit.
 
 After the build and initial deployment, run `SITE_URL=<site-url> bun run seed`
 with `TP_APP_PASSWORD` supplied through the environment. It adds the featured
 examples through the app API and retains existing rows and star counts.
 See [website build and seeding work](https://github.com/spacefast/zero/issues/500)
-and [Pressable qualification and sync credentials](https://github.com/spacefast/zero/issues/501).
+and [Pressable qualification](https://github.com/spacefast/zero/issues/501).
 
 ## Verify a nonproduction deployment
 

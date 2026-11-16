@@ -89,7 +89,7 @@ TypedPress is an active plugin there. While it is active, sealed mode:
   - where: `GET /__tp/api/v1` under `runtime.wp.sealed` (`{enforced}` only for
     anyone who isn't an administrator); `typedpress doctor --site <url>`, whose
     `sealed` check fails when an unlisted plugin is active and which lists the
-    rest for information (sign in with `TP_APP_PASSWORD` or `TP_TOKEN`);
+    rest for information (sign in with `typedpress login`, or `TP_APP_PASSWORD` / `TP_TOKEN`);
     and a wp-admin notice naming the unlisted active plugins.
 
 This is not a guarantee that only listed code runs, and it holds only against

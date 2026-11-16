@@ -43,7 +43,7 @@ final class Navigation
         if (!self::$used || !function_exists('wp_register_script_module')) {
             return;
         }
-        wp_register_script_module('typedpress-router', $url, [['id' => '@wordpress/interactivity', 'import' => 'static'], ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic']], null);
+        wp_register_script_module('typedpress-router', $url, [['id' => '@wordpress/interactivity', 'import' => 'static'], ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic']], \TypedPress\Islands::runtimeVersion());
         wp_enqueue_script_module('typedpress-router');
         // What a form says when its post may have reached the server but no page came back.
         wp_interactivity_config(self::NAMESPACE, ['failed' => __('Something went wrong sending this form. Reload the page to see whether it went through.')]);

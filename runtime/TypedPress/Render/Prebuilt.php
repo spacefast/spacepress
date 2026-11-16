@@ -558,6 +558,19 @@ final class Prebuilt
         if (!apply_filters('tp_prebuilt_serve', $public, $html)) {
             return;
         }
+        // One open: the handle's content is tagged, measured and sent, so the ETag names exactly the
+        // body even when a rebuild renames a new file into place meanwhile, and the page is streamed,
+        // never held whole in memory. Any failure here renders as usual, before a prebuilt header.
+        $handle = @fopen($file, 'rb');
+        if ($handle === false) {
+            return;
+        }
+        $stat = @fstat($handle);
+        $etag = is_array($stat) ? \TypedPress\Validator::stream($handle, (int) $stat['size']) : null;
+        if ($etag === null) {
+            fclose($handle);
+            return;
+        }
         [$control] = Cache::policy(200, true, false);
         header('Cache-Control: ' . $control);
         header('X-TypedPress-Prebuilt: 1');
@@ -573,10 +586,19 @@ final class Prebuilt
         if ($signal !== '') {
             header('Content-Signal: ' . $signal);
         }
-        header('Content-Length: ' . (string) filesize($file));
-        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
-            readfile($file);
+        // The content's own validator: a client (or edge) that holds it gets an empty 304. The gates
+        // above already decided the file is what this request would get.
+        header('ETag: ' . $etag);
+        if (\TypedPress\Validator::matches($etag)) {
+            fclose($handle);
+            http_response_code(304);
+            exit;
         }
+        header('Content-Length: ' . (string) $stat['size']);
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
+            fpassthru($handle);
+        }
+        fclose($handle);
         exit;
     }
 

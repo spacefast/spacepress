@@ -1633,6 +1633,18 @@ fn compiled_php_matches_node_on_every_differential_case() {
     let runtime = plugins.join("typedpress-runtime");
 
     let functions = std::fs::read_to_string(app.join("tp/app/functions.php")).unwrap();
+    // Every PHP built-in the compiler emits is called by its full name (`\\count`), so PHP doesn't
+    // look it up in `namespace TypedPressApp` first.
+    let unqualified = Command::new("php")
+        .arg(root().join("tests/php/unqualified_calls.php"))
+        .arg(app.join("tp/app/functions.php"))
+        .output()
+        .unwrap();
+    assert!(
+        unqualified.status.success(),
+        "unqualified built-in calls:\n{}",
+        String::from_utf8_lossy(&unqualified.stdout)
+    );
     let body = |name: &str| {
         functions
             .split(&format!("function {name}("))
@@ -1653,9 +1665,75 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("reboundParameter").contains("\\TypedPress\\Js::dataGet($input, 'n')")
             && !body("reboundParameter").contains("->p[")
     );
+    // A nullable receiver that no assignment replaces tries the property first: `??` gives the
+    // checked read for null and undefined, so a missing value still reads as dataGet does.
     assert!(
-        body("nullableParameter").contains("\\TypedPress\\Js::dataGet($input, 'n')")
-            && !body("nullableParameter").contains("->p[")
+        body("nullableParameter").contains("($input->p['n'] ?? \\TypedPress\\Js::dataGet($input, 'n'))"),
+        "{}",
+        body("nullableParameter")
+    );
+
+    // Typed number comparisons and equality are native after a run-time int/float check; a literal
+    // string side compares with `===`; a plain-variable object read tries the property first.
+    assert!(
+        !body("numberCompare").contains("dynamicBinary('<', $a, $b)")
+            || body("numberCompare").contains("\\is_float($a)")
+    );
+    assert!(
+        body("numberCompare").contains("(float) $a < (float) $b"),
+        "{}",
+        body("numberCompare")
+    );
+    assert!(body("numberCompare").contains("$a == $b"), "{}", body("numberCompare"));
+    assert!(
+        body("stringEquality").contains("$s === 'a'"),
+        "{}",
+        body("stringEquality")
+    );
+    assert!(
+        !body("stringEquality").contains("strictEq($s, 'a')"),
+        "{}",
+        body("stringEquality")
+    );
+    assert!(body("localRead").contains("->p['title'] ??"), "{}", body("localRead"));
+    // A literal-typed value that may hold anything is still checked; a call stays on the helper.
+    assert!(
+        body("literalTypedNull").contains("(\\is_int($n) || \\is_float($n)) ? $n == 0"),
+        "{}",
+        body("literalTypedNull")
+    );
+    assert!(
+        body("literalTypedMissing").contains("\\is_float($__t"),
+        "{}",
+        body("literalTypedMissing")
+    );
+    assert!(
+        body("literalTypedCall").contains("\\TypedPress\\Js::strictEq($a, "),
+        "{}",
+        body("literalTypedCall")
+    );
+
+    // Only a function that names `arguments`, itself or in one of its arrows, builds the object.
+    for (name, uses) in [
+        ("argumentsUnused", false),
+        ("argumentsShorthand", true),
+        ("argumentsInNestedArrow", true),
+        ("argumentsInDefault", true),
+    ] {
+        assert_eq!(
+            body(name).contains("\\TypedPress\\Js::arguments("),
+            uses,
+            "{name}:\n{}",
+            body(name)
+        );
+    }
+    assert_eq!(
+        body("argumentsInInnerFunction")
+            .matches("\\TypedPress\\Js::arguments(")
+            .count(),
+        1,
+        "only the inner function names arguments:\n{}",
+        body("argumentsInInnerFunction")
     );
 
     let mut mismatches = Vec::new();
@@ -1870,6 +1948,79 @@ fn compiled_tsx_renders_the_html_react_renders() {
         rendered["0"]["html"],
         "<div>a<br/>b<svg><foreignObject></foreignObject></svg></div>"
     );
+    // A void element's children are evaluated even though they don't render (React refuses them,
+    // so there is no React case): folding `<br>` must not drop their effects or errors.
+    let cases = serde_json::json!([
+        { "component": "components/static.tsx#VoidChildren", "props": {} },
+        { "component": "components/static.tsx#VoidThrows", "props": {} },
+    ]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("typedpress-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(rendered["0"]["html"], "<p>1<br/></p>", "{rendered}");
+    assert_eq!(rendered["1"]["error"], "a void element's child ran", "{rendered}");
+    // Literal JSX is folded into markup at build time; what folding leaves to the runtime still
+    // calls `Html::element` (src/compile/html.rs).
+    let functions = std::fs::read_to_string(app.join("tp/app/functions.php")).unwrap();
+    let body = |name: &str| {
+        functions
+            .split(&format!("function component__components_{name}("))
+            .nth(1)
+            .and_then(|rest| rest.split("\n}\n").next())
+            .unwrap_or_else(|| panic!("no {name} in functions.php"))
+            .to_string()
+    };
+    let folded = body("static__Static");
+    for element in [
+        "'main'",
+        "'header'",
+        "'h1'",
+        "'nav'",
+        "'a'",
+        "'svg'",
+        "'table'",
+        "'details'",
+        "'br'",
+        "'img'",
+    ] {
+        assert!(
+            !folded.contains(&format!("\\TypedPress\\Html::element({element}")),
+            "{element} not folded:\n{folded}"
+        );
+    }
+    assert!(folded.contains("<main class=\"page\" id=\"top\""), "{folded}");
+    // Left to the runtime: a custom element, a list item with a dynamic key, a void element with children.
+    assert!(folded.contains("\\TypedPress\\Html::element('link-like'"), "{folded}");
+    assert!(
+        folded.contains("\\TypedPress\\Html::element('li', ['className' => 'item', 'key' => $item]"),
+        "{folded}"
+    );
+    assert!(
+        body("static__VoidChildren").contains("\\TypedPress\\Html::element('br', [], "),
+        "{}",
+        body("static__VoidChildren")
+    );
+    let attributes = body("attributes__Attributes");
+    for element in [
+        "'input'",
+        "'textarea'",
+        "'select'",
+        "'option'",
+        "'pre'",
+        "'form'",
+        "'my-widget'",
+    ] {
+        assert!(
+            attributes.contains(&format!("\\TypedPress\\Html::element({element}")),
+            "{element} folded:\n{attributes}"
+        );
+    }
     // Extra keys in decoded JSON never reach `style` or a spread's attributes.
     let evil = "url(//evil.example/t)";
     let cases = serde_json::json!([{

@@ -47,7 +47,7 @@ test("typed comparisons and ordering on meta columns", async () => {
   // Storage forms SCF expects: Ymd dates, UTC "Y-m-d H:i:s", "1"/"0", serialized arrays.
   const meta = Object.fromEntries(sql(`SELECT meta_key AS k, meta_value AS v FROM wp_postmeta WHERE post_id = ${ids.B} AND meta_key LIKE 'tp\\_%'`).map((r) => [r.k, r.v]));
   assert.deepEqual(
-    [meta.first_day, meta.tp_startsAt, meta.tp_open, meta.tp_kinds],
+    [meta.tp_day, meta.tp_startsAt, meta.tp_open, meta.tp_kinds],
     ["20260201", "2026-02-01 18:30:00", "0", 'a:2:{i:0;s:4:"talk";i:1;s:8:"workshop";}'],
   );
 });
@@ -173,8 +173,8 @@ test("core meta writes go through TypedPress's codec and validation", async () =
     [created.json.meta.seats, created.json.meta.day, created.json.meta.startsAt, created.json.meta.kinds, created.json.meta.extra],
     [12, "2026-03-04", "2026-03-04T08:00:00.000Z", ["social"], { a: {} }],
   );
-  const meta = Object.fromEntries(sql(`SELECT meta_key AS k, meta_value AS v FROM wp_postmeta WHERE post_id = ${id} AND meta_key IN ('first_day', 'tp_startsAt')`).map((r) => [r.k, r.v]));
-  assert.deepEqual(meta, { first_day: "20260304", tp_startsAt: "2026-03-04 08:00:00" });
+  const meta = Object.fromEntries(sql(`SELECT meta_key AS k, meta_value AS v FROM wp_postmeta WHERE post_id = ${id} AND meta_key IN ('tp_day', 'tp_startsAt')`).map((r) => [r.k, r.v]));
+  assert.deepEqual(meta, { tp_day: "20260304", tp_startsAt: "2026-03-04 08:00:00" });
   const updated = await http("POST", `${core}/tp_events/${id}`, { as: "editor", body: { meta: { seats: null, open: true } } });
   assert.deepEqual([updated.status, updated.json.meta.seats, updated.json.meta.open], [200, null, true]);
   assert.deepEqual([(await ok("GET", `/events/${id}`)).seats, (await ok("GET", `/events/${id}`)).open], [null, true]);

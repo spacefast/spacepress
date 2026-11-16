@@ -157,7 +157,7 @@ export const tours: Tour[] = [
         slug: "members",
         title: "Readers who sign in",
         prose: [
-          "`userProjection()` in `users` projects native WordPress accounts: the first-identity plugin provides the sign-in screens, sessions, passkeys and MFA. In hooks and access rules `ctx.user` is the signed-in identity (`id`, `name`, `role`); the member's own row comes from `/me`.",
+          "`userProjection()` in `users` projects native WordPress accounts: the typedpress-identity plugin provides the sign-in screens, sessions, passkeys and MFA. In hooks and access rules `ctx.user` is the signed-in identity (`id`, `name`, `role`); the member's own row comes from `/me`.",
           "`\"self\"` is the rule for a member's own row: here both `read` and `update` are `\"self\"`, so a member reads and edits their row and nobody else's. An operation without a rule takes the default: reads are open to anyone, writes need an editor.",
         ],
         config: { file: "typedpress.config.ts", lines: { from: 'userProjection(', to: 'access: { read: "self", update: "self"' } },

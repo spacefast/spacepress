@@ -51,7 +51,7 @@ test("table relations use the generated client, SQL joins and the target's acces
 test("unique() maps to 409 with a pointer: the meta check on posts, SQL UNIQUE on tables", async () => {
   // authors.email is unique meta on a post-backed collection: no SQL constraint exists, the store checks.
   first("insert", "authors", JSON.stringify({ name: "U1", email: `u-${run}@example.test` }));
-  const dup = JSON.parse(wpTry("first", "insert", "authors", JSON.stringify({ name: "U2", email: `u-${run}@example.test` })));
+  const dup = JSON.parse(wpTry("typedpress", "insert", "authors", JSON.stringify({ name: "U2", email: `u-${run}@example.test` })));
   assert.deepEqual([dup.error.status, dup.error.code, dup.error.pointer], [409, "unique_violation", "/email"]);
   // signups (tests/wp/app) is an SQL table with a real UNIQUE index: MySQL error 1062, mapped.
   await ok("POST", "/signups", { as: "editor", body: { email: `s-${run}@example.test` } });

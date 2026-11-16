@@ -125,9 +125,22 @@ function tp_admin_framed_url( $pagenow, $query, $page ) {
 		return tp_admin_url( '/' );
 	}
 	$slug = $pagenow . ( '' !== $query ? '?' . $query : '' );
-	$route = '/classic/' . rawurlencode( $slug );
+	$route = tp_admin_classic_route( $slug );
 	// Apache refuses an encoded slash in a path: a plugin page named after its file goes in the query form.
 	return str_contains( $slug, '/' ) ? tp_admin_query_url( $route ) : tp_admin_url( $route );
+}
+
+/**
+ * The TypedPress Admin route that frames a wp-admin page (`edit.php?post_type=page`). The slug is
+ * encoded twice, as the classic route's own navigation writes it: WordPress's router decodes the
+ * path once and keeps only `% \\ / ; : @ & = + $ ,` encoded, so a slug encoded once loses its `?`
+ * and the frame opens the page without its query. stage.tsx decodes the parameter once more.
+ *
+ * @param string $slug A path below wp-admin/, with its query.
+ * @return string
+ */
+function tp_admin_classic_route( $slug ) {
+	return '/classic/' . rawurlencode( rawurlencode( $slug ) );
 }
 
 /**
@@ -156,11 +169,12 @@ function tp_admin_redirect_classic_page() {
 
 /**
  * The route's earlier address, `/legacy/<slug>`, for links saved before it was renamed: the same
- * page at `/classic/<slug>`.
+ * page at `/classic/<slug>`. A legacy slug was encoded once (`admin.php%3Fpage%3Dx`); it is
+ * decoded and encoded the way {@see tp_admin_classic_route()} writes it, so its query survives.
  *
  * @param string $route The TypedPress Admin route the request asked for.
  * @return string|null The route to redirect to, or null.
  */
 function tp_admin_renamed_route( $route ) {
-	return preg_match( '#^/legacy(/.*)$#', $route, $m ) ? '/classic' . $m[1] : null;
+	return preg_match( '#^/legacy/(.+)$#', $route, $m ) ? tp_admin_classic_route( rawurldecode( $m[1] ) ) : null;
 }

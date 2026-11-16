@@ -295,8 +295,8 @@ if ($phase === 'nested') {
     wp_set_current_user(0);
     proof(!array_key_exists('spacefastSubject', (array) (json_decode((string) $mask, true)['data'] ?? [])), 'the API never exposes the migrated subject');
     proof((int)get_term($child)->parent===$parent && get_term_meta($child,'fixture',true)==='retained' && wp_get_object_terms($post,'category',['fields'=>'ids'])===[$child], 'taxonomy hierarchy, metadata and relationships retained');
-    proof(get_post($project)->post_type==='tp_projects' && get_post_meta($project,'tp_budget',true)==='42.5' && get_post_meta($project,'first_active',true)==='1', 'collection tag maps to candidate type and typed metadata');
-    proof(get_post_meta($projectRevision,'tp_budget',true)==='12.5' && get_post_meta($projectRevision,'first_active',true)==='0', 'collection revision fields use parent mapping');
+    proof(get_post($project)->post_type==='tp_projects' && get_post_meta($project,'tp_budget',true)==='42.5' && get_post_meta($project,'tp_active',true)==='1', 'collection tag maps to candidate type and typed metadata');
+    proof(get_post_meta($projectRevision,'tp_budget',true)==='12.5' && get_post_meta($projectRevision,'tp_active',true)==='0', 'collection revision fields use parent mapping');
     if (is_callable([\TypedPress\Identity\Accounts::class, 'rememberPasswordHash'])) {
         $profiles = get_option('tp_identity_password_profiles');
         foreach ($passwordUsers as $encoding => $fixture) {

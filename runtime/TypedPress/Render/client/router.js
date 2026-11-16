@@ -117,7 +117,7 @@ const showError = (form, message) => {
   }
   const config = getConfig("tp/router") ?? {};
   box.textContent = (message === "overtaken" ? config.overtaken : config.failed) ||
-    (message === "overtaken" ? "Another form on this page was sent after this one, so this one's result isn't shown. Reload the page to see it." : "Something went wrong sending this form. Reload the page to see whether it went through.");
+    (message === "overtaken" ? "Another form on this page was sent after this one, and its result is the one shown." : "Something went wrong sending this form. Reload the page to see whether it went through.");
 };
 
 // After a submit's page is swapped in: a polite announcement of what came back. A paragraph the

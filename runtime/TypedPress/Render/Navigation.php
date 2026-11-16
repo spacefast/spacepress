@@ -49,7 +49,7 @@ final class Navigation
         wp_interactivity_config(self::NAMESPACE, [
             'failed' => __('Something went wrong sending this form. Reload the page to see whether it went through.'),
             // And when another form on the page was sent after it, whose answer is the one shown.
-            'overtaken' => __('Another form on this page was sent after this one, so this one\'s result isn\'t shown. Reload the page to see it.'),
+            'overtaken' => __('Another form on this page was sent after this one, and its result is the one shown.'),
         ]);
         wp_interactivity_process_directives(self::region() . '</div>');
     }

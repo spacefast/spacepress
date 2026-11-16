@@ -2211,7 +2211,8 @@ fn forms_submit_in_place_in_the_browser() {
     // A `<Link>` click during a submit: the linked page stays; the late answer isn't rendered.
     assert_eq!(
         seen["link"],
-        serde_json::json!({ "url": "/other", "other": true, "voted": false, "marker": "same document" }),
+        // `<Link href="/other">` is written at the page's one address.
+        serde_json::json!({ "url": "/other/", "other": true, "voted": false, "marker": "same document" }),
         "{seen}"
     );
     // A `<Live>` update during a submit waits for it: the page that comes back has both entries,
@@ -2233,7 +2234,7 @@ fn forms_submit_in_place_in_the_browser() {
     // page loads, and the navigation the click started finishes.
     assert_eq!(
         seen["slowLink"],
-        serde_json::json!({ "beforeLink": { "url": "/?ref=nav", "voted": false }, "url": "/other", "other": true, "marker": "same document" }),
+        serde_json::json!({ "beforeLink": { "url": "/?ref=nav", "voted": false }, "url": "/other/", "other": true, "marker": "same document" }),
         "{seen}"
     );
     // Two forms at once, the older answer last: the newer page stays, and the older form says so.

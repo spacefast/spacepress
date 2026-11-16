@@ -536,6 +536,14 @@ pub(crate) fn seed_records(
                 )
             };
             let (mut fields, body) = parsed.map_err(|(line, message)| diagnostic(line, message))?;
+            if collection.commerce.as_deref() == Some("product")
+                && fields.get("price").is_some_and(|v| !v.is_string() && !v.is_null())
+            {
+                return Err(diagnostic(
+                    1,
+                    "price must be an exact decimal string (quote it in front matter)".into(),
+                ));
+            }
             // Below the sync folder: what a folder-tree file is named by, and its stable identity.
             let below = relative(&sync_dir, &path).map_err(io)?;
             let place = if nested {
@@ -787,10 +795,11 @@ pub(crate) fn compile_tree(
         std::fs::create_dir_all(&client).map_err(io)?;
         std::fs::write(client.join(name), bytes).map_err(io)?;
     }
-    let requirements: BTreeMap<_, _> = crate::platform::plugins(built.schema.locales.is_some())
-        .into_iter()
-        .map(|p| (p.slug, p.version))
-        .collect();
+    let requirements: BTreeMap<_, _> =
+        crate::platform::app_plugins(built.schema.locales.is_some(), built.schema.store.is_some())
+            .into_iter()
+            .map(|p| (p.slug, p.version))
+            .collect();
     // The app's `tp/app/` routes and pages, so the host can tell which of its URLs outside
     // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the app
     // plugin's own files are not listed. Both lists use the route path grammar: a
@@ -851,7 +860,7 @@ pub(crate) fn compile_tree(
     let mut tables: Vec<&str> = schema
         .collections
         .values()
-        .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none())
+        .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none() && c.commerce.is_none())
         .map(|c| c.table.as_str())
         .collect();
     tables.sort();
@@ -864,6 +873,10 @@ pub(crate) fn compile_tree(
     let mut manifest = serde_json::json!({"format":"typedpress.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
         "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "routes":routes, "pagePaths":page_paths,
         "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
+    if built.schema.store.is_some() {
+        manifest["maxTablePrefix"] = serde_json::json!(20);
+        manifest["host"]["maxTablePrefix"] = serde_json::json!(20);
+    }
     let sealed = sealed_plugins(&built.schema, hosted_first(&built.schema));
     // No key when the app isn't sealed, so an unsealed app's tree hashes as it did before.
     if let Some(sealed) = &sealed {
@@ -930,7 +943,7 @@ pub(crate) fn sealed_plugins(
         // runs its builds through.
         .chain(["typedpress".to_string(), "typedpress-admin".to_string()])
         .chain(
-            crate::platform::plugins(schema.locales.is_some())
+            crate::platform::app_plugins(schema.locales.is_some(), schema.store.is_some())
                 .into_iter()
                 .map(|p| p.slug),
         )

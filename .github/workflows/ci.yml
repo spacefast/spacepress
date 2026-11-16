@@ -350,7 +350,7 @@ jobs:
       - run: tsc -p examples/blog
       - run: tsc -p examples/showcase
       - run: tsc -p examples/blog/client-tests
-      - run: node --test runtime/client/index.test.ts runtime/client/committed.test.ts
+      - run: node --test runtime/client/index.test.ts runtime/client/committed.test.ts runtime/client/commerce.test.ts
       - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
       - run: node --test scripts/dev/studio.test.mjs
       - run: node --test packages/cli/test/*.test.mjs packages/create-typedpress/test/*.test.mjs scripts/release/archive.test.mjs

@@ -283,6 +283,8 @@ final class AgentScope
             return $result;
         }
         $route = $request->get_route();
+        if (preg_match('#^/(wc/v[1-4]|wc-admin|wc-analytics|wc-push-notifications|wc-telemetry)(/|$)#i', $route)) { return self::refused('administration'); }
+        if (preg_match('#^/wp-abilities/v1/abilities/woocommerce/#i', $route)) { return self::refused('administration'); }
         $read = in_array(strtoupper($request->get_method()), self::READS, true);
         if (preg_match(self::PASSWORDS, $route) && !($read && preg_match('#/application-passwords/introspect/?$#i', $route))) {
             return self::refused('passwords');
@@ -357,6 +359,9 @@ final class AgentScope
         if ($scope === null || !is_string($name) || !$ability instanceof \WP_Ability) {
             return $pre;
         }
+        if (str_starts_with($name, 'woocommerce/')) { return self::error('administration'); }
+        $kind = $ability->get_meta_item('typedpress', [])['collection'] ?? null;
+        if (!$scope['personal'] && is_string($kind) && Plugin::instance()?->schema->hasCollection($kind) && (Plugin::instance()?->schema->collection($kind)['commerce'] ?? '') === 'order') { return self::error('personal'); }
         if (str_starts_with($name, 'mcp-adapter/')) {
             // The adapter's execute tool carries another ability's name, judged when that one runs. Its
             // discovery tools list every ability, which a credential limited to named ones doesn't see.
@@ -378,7 +383,22 @@ final class AgentScope
     /** mcp_adapter_tools_list: a credential limited to named abilities is shown those tools only. */
     public static function tools(mixed $tools): mixed
     {
-        $allowed = self::current()['abilities'] ?? null;
+        $scope = self::current();
+        if ($scope !== null && is_array($tools)) {
+            $tools = array_values(array_filter($tools, static function ($tool) use ($scope): bool {
+                $name = is_object($tool) && method_exists($tool, 'getName') ? (string) $tool->getName() : (is_array($tool) ? (string) ($tool['name'] ?? '') : '');
+                if (str_starts_with($name, 'woocommerce-')) { return false; }
+                if (!$scope['personal']) {
+                    foreach (Abilities\Register::operations() as $op) {
+                        $kind = $op['typedpress']['collection'] ?? null;
+                        $schema = Plugin::instance()?->schema;
+                        if (str_replace('/', '-', $op['name']) === $name && is_string($kind) && $schema?->hasCollection($kind) && ($schema->collection($kind)['commerce'] ?? '') === 'order') { return false; }
+                    }
+                }
+                return true;
+            }));
+        }
+        $allowed = $scope['abilities'] ?? null;
         if ($allowed === null || !is_array($tools)) {
             return $tools;
         }

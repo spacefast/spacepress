@@ -295,7 +295,7 @@ final class Register
         $app = self::kebab($schema->name());
         $label = self::appLabel($schema);
         $ops = [];
-        foreach ($schema->collections() as $name => $spec) {
+        foreach ($schema->kinds() as $name => $spec) {
             array_push($ops, ...self::collection($app, $label, (string) $name, $spec, $schema->locales()['all'] ?? []));
         }
         foreach ($schema->actions() as $name => $action) {
@@ -348,6 +348,7 @@ final class Register
     {
         $k = self::kebab($name);
         $agents = (bool) ($spec['agents'] ?? true);
+        if (($spec['commerce'] ?? '') === 'order' && !\TypedPress\Wp\AgentScope::may('personal')) { $agents = false; }
         $rules = Access::collectionRules($spec);
         $row = JsonSchema::row($spec);
         $pk = $spec['columns'][$spec['primaryKey']]['type'] === 'integer' ? ['type' => 'integer'] : ['type' => 'string'];

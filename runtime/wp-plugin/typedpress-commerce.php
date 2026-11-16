@@ -1,0 +1,12 @@
+<?php
+/** Commerce installation policy. Loaded before Woo, including its first activation. */
+declare(strict_types=1);
+defined('ABSPATH') || exit;
+global $wpdb;
+if (strlen($wpdb->prefix) > 20) {
+    throw new RuntimeException('WooCommerce requires a WordPress table prefix of at most 20 characters');
+}
+add_filter('woocommerce_create_pages', '__return_empty_array', PHP_INT_MAX);
+add_filter('woocommerce_enable_hpos_by_default_for_new_shops', '__return_false', PHP_INT_MAX);
+add_filter('pre_option_woocommerce_custom_orders_table_enabled', static fn () => 'no', PHP_INT_MAX);
+add_filter('pre_option_woocommerce_custom_orders_table_data_sync_enabled', static fn () => 'no', PHP_INT_MAX);

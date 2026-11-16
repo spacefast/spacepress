@@ -174,6 +174,7 @@ pub fn build(
     let blocks = components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::content_page::register(program, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    crate::commerce::pages(&ext.schema, config_span).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::runtime_schema::apply(runtime_lock.as_ref(), &mut ev, &mut ext)?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
@@ -762,16 +763,25 @@ impl Built {
     pub fn summary(&self) -> String {
         let s = &self.schema;
         format!(
-            "{} collections, {} tables, {} user projections, {}{} globals, {} hooks, {} actions",
+            "{} collections, {} tables, {} user projections, {}{}{} globals, {} hooks, {} actions",
             s.collections.values().filter(|c| c.editor).count(),
             s.collections
                 .values()
-                .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none())
+                .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none() && c.commerce.is_none())
                 .count(),
             s.collections.values().filter(|c| c.auth).count(),
             match s.collections.values().filter(|c| c.taxonomy.is_some()).count() {
                 0 => String::new(),
                 n => format!("{n} taxonomies, "),
+            },
+            match s
+                .collections
+                .values()
+                .filter(|c| c.commerce.is_some() && c.taxonomy.is_none())
+                .count()
+            {
+                0 => String::new(),
+                n => format!("{n} commerce kinds, "),
             },
             s.globals.len(),
             s.collections.values().map(|c| c.hooks.len()).sum::<usize>(),

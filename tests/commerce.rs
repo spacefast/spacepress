@@ -1,0 +1,124 @@
+//! The declared commerce surface, scaffold and native Woo runtime on WordPress/SQLite.
+#![cfg(feature = "cli")]
+use std::path::Path;
+use std::process::{Command, Output};
+
+fn cli(command: &str, project: &Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+        .arg(command)
+        .arg(project)
+        .output()
+        .unwrap()
+}
+fn success(out: Output) -> Output {
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    out
+}
+#[test]
+fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
+    let project = tempfile::tempdir().unwrap();
+    for (exports, error) in [
+        ("export const products = product();", "require an exported store()"),
+        (
+            "export const a = store({currency:'EUR',country:'PL'}); export const b = store({currency:'EUR',country:'PL'});",
+            "at most one store()",
+        ),
+        (
+            "export const shop = store({currency:'XYZ',country:'PL'});",
+            "unknown currency",
+        ),
+        (
+            "export const shop = store({currency:'EUR',country:'XX'});",
+            "unknown country",
+        ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL',taxes:true});",
+            "no option `taxes`",
+        ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL',shipping:[{name:'PL',countries:['PL'],methods:[{type:'flatRate',title:'Post',cost:15}]}]});",
+            "exact decimal string",
+        ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL'}); export const products=product({access:{read:'anyone'}});",
+            "no option `access`",
+        ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL'}); export const a=product(); export const b=product();",
+            "at most one product()",
+        ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL'}); export const orders=order({api:{create:true}});",
+            "read-only",
+        ),
+    ] {
+        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,order}} from 'typedpress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        let out = cli("check", project.path());
+        assert!(!out.status.success(), "accepted {exports}");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains(error),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+#[test]
+fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("typedpress.config.ts"),
+        "import {defineConfig} from 'typedpress'; export default defineConfig({name:'shop'});",
+    )
+    .unwrap();
+    std::fs::create_dir_all(project.path().join("tp/app")).unwrap();
+    let layout =
+        "export default function Layout({children}) { return <section data-existing=\"yes\">{children}</section>; }";
+    std::fs::write(project.path().join("tp/app/layout.tsx"), layout).unwrap();
+    std::fs::write(
+        project.path().join("tp/app/page.tsx"),
+        "export default function Home() { return <main>Existing app</main>; }",
+    )
+    .unwrap();
+    let add = || {
+        Command::new(env!("CARGO_BIN_EXE_typedpress"))
+            .args(["add", "shop"])
+            .arg(project.path())
+            .output()
+            .unwrap()
+    };
+    success(add());
+    assert_eq!(
+        std::fs::read_to_string(project.path().join("tp/app/layout.tsx")).unwrap(),
+        layout
+    );
+    assert!(project.path().join("tp/app/(shop)/layout.tsx").is_file());
+    let product = project.path().join("content/products/ceramic-mug.md");
+    let original = std::fs::read(&product).unwrap();
+    success(add());
+    assert_eq!(std::fs::read(&product).unwrap(), original);
+    success(cli("build", project.path()));
+    let snapshot: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(project.path().join("tp/_generated/migrations/snapshot.json")).unwrap())
+            .unwrap();
+    assert!(
+        snapshot["tables"].as_object().unwrap().is_empty(),
+        "Woo owns all commerce storage: {snapshot}"
+    );
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(project.path().join("tp/dist/wp-content/typedpress-manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest["requires"]["woocommerce"], ">=11.3.0");
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=1G"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/commerce_test.php"))
+        .arg(project.path().join("tp/dist/wp-content"))
+        .output()
+        .unwrap();
+    success(out);
+}

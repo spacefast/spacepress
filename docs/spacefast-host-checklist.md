@@ -92,3 +92,24 @@ When it fails:
 
 Bundles with TSX pages (`pages/` and `zero/pages.json`) are refused with a message that tells the
 owner to move each page to `tp/app/<path>/page.tsx` and publish again; nothing reads them.
+
+## Commerce host qualification
+
+TypedPress now compiles `store()` and native Woo kinds and proves them on Playground; that does
+not move Spacefast's compiler pin or provision Woo there. Before accepting a commerce build:
+
+- Fulfil the manifest's `woocommerce >=11.3.0` platform requirement. Mount the build before
+  Woo initializes, so the loader's commerce policy prevents automatic Woo pages and HPOS.
+  Local `typedpress build` output carries the same early policy in
+  `mu-plugins/typedpress-commerce.php`; preserve it when installing that artifact.
+- Honour the manifest's `maxTablePrefix: 20`, including the first Woo installation. The
+  ordinary 35-character TypedPress limit is insufficient for Woo's download-permission table.
+- Initialize Woo before seeding products/terms and declaring the store ready. Keep Action
+  Scheduler/WP-Cron, gateway callbacks, merchant administration and `wp_mail` operational.
+- Give each preview its own fresh SQLite database and test payment/email configuration.
+  Promotion publishes source; it never copies preview orders, customers or inventory.
+- Route `/wp-json/wc/store/*` uncached. Cart, checkout and receipt paths are private/no-store.
+  A guest's `wp_woocommerce_session_*` cookie does not invalidate shared catalog HTML.
+- Repeat `docs-site/tests/playground/commerce.test.ts` on the host, prove preview isolation,
+  then qualify the pilot gateway with a payment and refund. Playground coverage establishes
+  neither host readiness nor compatibility with an arbitrary external gateway.

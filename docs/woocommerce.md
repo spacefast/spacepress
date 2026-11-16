@@ -1,0 +1,106 @@
+# WooCommerce shops
+
+`typedpress add shop` creates a working storefront over native Woo products, terms, carts
+and orders. Woo is a pinned platform dependency only when the app exports a `store()`.
+There is no second commerce database or merchant REST credential.
+
+```sh
+typedpress add shop
+typedpress dev
+```
+
+The module creates `tp/shop.ts`, two source products, terms, a mini-cart component, browser
+cart code and storefront pages under `tp/app/(shop)/`. The route group's layout supplies the
+shop styles and scripts even when the app already has a root layout. Existing files remain
+untouched. Visit `/shop`; `/wp-admin/` remains the merchant interface for inventory and orders.
+
+## Declarations
+
+```ts
+import { store, product, productCategory, productTag, order } from 'typedpress';
+
+export const shop = store({
+  currency: 'EUR', country: 'PL', sellTo: ['PL', 'DE'],
+  shipping: [{ name: 'Poland', countries: ['PL'], methods: [
+    { type: 'flatRate', title: 'Courier', cost: '15.00' },
+  ] }],
+  payments: ['cod'],
+});
+export const products = product({sync: 'content/products/*.md', url: '/products/:slug'});
+export const categories = productCategory({sync: 'content/categories/*.md', url: '/shop/:path'});
+export const tags = productTag({sync: 'content/tags/*.md'});
+export const orders = order();
+```
+
+Each is a fixed native kind, with at most one export per builder. Fields and access rules
+cannot be replaced. Products are public only while published and visible; writes require
+`admin`. Orders are read-only and require `admin`, including server-side page reads.
+Use the ordinary `db.query.products`, generated client, facade, OpenAPI and app abilities.
+`GET /__tp/api/v1/store` supplies effective currency/precision, display conventions, units,
+selling countries, supported product types, cart/checkout URLs and checkout availability.
+
+Product fields are `uid`, `name`, `slug`, `sku`, `status`, description, `shortDescription`,
+exact decimal `price`, ordered media `images`, category/tag references, `virtual`,
+`downloadable`, and `downloads: [{id, name, file}]`. Reads add `type`, `purchasable`,
+`availability` and `url`. Native variable/grouped/external products identify their type;
+v1 writes accept simple products only. Stock is operational data managed by Woo.
+
+Product filtering supports identity, name/slug/descriptions, SKU, status, price,
+availability, virtual/downloadable flags and term membership. Order filtering supports
+identity, status, creation/update date ranges, customer, total and currency. Projection
+fields such as nested order addresses are not filterable; unsupported filters are refused.
+Lists use the normal bounded pagination and deterministic ordering.
+
+## Source and merchant edits
+
+A first install seeds missing products and terms. Redeploying preserves existing catalog
+edits, stock and orders. `typedpress sync --site <url>` merges subsequent file and merchant
+edits through the ordinary UID-based sync workflow and writes conflicts for review.
+References and category parents travel as UIDs; numeric Woo IDs are local to the site.
+Removing a catalog source file leaves the native product/term unchanged. Retire it explicitly
+through Woo administration or an authorized API operation.
+
+Download IDs must remain stable: renaming a file or its display name keeps the same ID.
+Changing its ID is a new file entitlement. Paid orders receive Woo's own download grants
+and authorized receipt/email links. COD does not automatically mark a digital order paid.
+Additional file-access protection beyond Woo is outside v1.
+
+Declared store settings belong to source and are shown read-only in Woo settings. Scalars
+are option filters, so removing a declaration restores the stored setting. Shipping uses
+Woo zone CRUD: a declared list owns the whole zone list, matched by name; `[]` ships nothing.
+Undeclared settings remain Woo's. Gateways take credentials from their own server settings.
+Taxes, coupons, signup/accounts, reviews/ratings, sale prices and backorders stay disabled.
+Historical order tax, coupon, item and refund snapshots remain readable.
+
+## Cart, checkout and agents
+
+The generated client exports `cart` and `createCartClient`: get/add/update/remove,
+update the customer address, select shipping, and subscribe to updates. It calls Woo's
+same-origin Store API with the Woo session cookie and rotating nonce. It uses no Cart-Token
+or TypedPress shopper session. Money normalizes minor units to exact decimal strings.
+
+Checkout is a public `page.md` containing the native Woo Checkout Block. It remains a real
+WordPress Page inside the app layout. Receipt and order-pay endpoints use that same Page;
+full-page navigation initializes Woo's scripts. Removing the checkout block or trashing
+its Page is refused. Cart, checkout and receipts are private/no-store and noindex; catalog
+HTML stays public for a guest with a Woo cookie. Native stock changes purge item and listing
+reads through TypedPress's usual purge hook.
+
+Scoped agent credentials use app abilities. Product/term writes require `--write`; the
+entire order kind additionally requires `--personal`, and its tools are hidden without it.
+The store has one read tool. Scoped credentials cannot call Woo's merchant REST namespaces
+or `woocommerce/*` abilities. Cart and checkout have no agent tools.
+
+## Verification and hosting
+
+[The example README](../examples/shop/README.md) gives the Playground test commands.
+`tests/commerce.rs` checks declarations, scaffold preservation and native WordPress CRUD,
+settings, access scopes, MCP visibility, stock purges and historical order reads.
+`docs-site/tests/playground/commerce.test.ts` clicks cart/shipping/COD checkout and a dummy
+paid gateway, verifies decline/retry and downloads, and drives the real sync CLI.
+
+Spacefast must complete its [host checklist](spacefast-host-checklist.md#commerce-host-qualification)
+before deployment: Woo provisioning, a maximum 20-character table prefix, isolated preview
+databases, mail/callbacks/jobs and the required cache exclusions. Playground proof does not
+qualify arbitrary payment gateways or the live host. The complete v1 decisions and deferred
+scope are in the [design](design-woocommerce.md).

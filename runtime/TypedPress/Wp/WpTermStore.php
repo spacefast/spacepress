@@ -87,6 +87,7 @@ final class WpTermStore implements Store, Links
             $type = $def['type'];
             $refs[$col] = match (true) {
                 $col === $spec['primaryKey'] => new ColumnRef('{a}.term_id', '', '', 'scalar'),
+                $col === 'uid' => new ColumnRef($v, "LEFT JOIN `{$wpdb->termmeta}` {j} ON {j}.term_id = {a}.term_id AND {j}.meta_key = '_tp_uid'", $v, 'scalar'),
                 $col === 'name' => new ColumnRef('{j}.name', $terms, '', 'scalar'),
                 $col === 'slug' => new ColumnRef('{j}.slug', $terms, '', 'scalar'),
                 $col === 'description' => new ColumnRef('{a}.description', '', '', 'scalar'),
@@ -249,6 +250,7 @@ final class WpTermStore implements Store, Links
         try {
             foreach ($values as $col => $stored) {
                 $col = (string) $col;
+                if ($col === 'uid') { $this->db->core(static fn () => update_term_meta($id, '_tp_uid', $stored)); continue; }
                 if (!self::isMeta($spec, $col)) {
                     continue;
                 }
@@ -318,6 +320,12 @@ final class WpTermStore implements Store, Links
     {
         $taxonomy = $this->linkTaxonomy($join);
         $this->db->touchPost((int) $owner);
+        if (in_array($taxonomy, ['product_cat', 'product_tag'], true) && get_post_type((int) $owner) === 'product') {
+            $product = wc_get_product((int) $owner);
+            $product->{$taxonomy === 'product_cat' ? 'set_category_ids' : 'set_tag_ids'}(array_values(array_map('intval', $targets)));
+            $this->db->core(static fn () => $product->save());
+            return;
+        }
         $done = $this->db->core(static fn () => wp_set_object_terms((int) $owner, array_values(array_map('intval', $targets)), $taxonomy, false));
         if ($done instanceof \WP_Error) {
             throw new HttpError(400, (string) $done->get_error_code(), $done->get_error_message());

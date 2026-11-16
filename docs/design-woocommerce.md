@@ -1,6 +1,6 @@
 # WooCommerce support in TypedPress
 
-Date: 2026-11-16. Status: proposal.
+Date: 2026-11-16. Status: implemented and exercised on Playground; Spacefast host qualification remains separate.
 
 ## Goal and scope
 
@@ -693,9 +693,30 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decision status
 
-This document is a proposal. Every item marked **Decision** is made; nothing in it is left
-open. What remains is implementation, the checks listed under each section, and the
-explicitly deferred work.
+Every item marked **Decision** defines the v1 contract. The implementation and usage are
+documented in [WooCommerce shops](woocommerce.md). The scaffold uses a `(shop)` route group
+so its layout, styles and cart script work alongside an existing app layout; the public
+URLs in this document are unchanged. Spacefast provisioning and the explicitly deferred
+work remain outside this implementation.
+
+Verification on 2026-11-16: `tests/commerce.rs` exercises native Woo CRUD, term UIDs,
+settings, repeat seeds, private order reads, scoped credentials, MCP tool visibility,
+historical tax/coupon snapshots and stock purges. The three browser journeys in
+`docs-site/tests/playground/commerce.test.ts` pass on WordPress 7.2-beta5, PHP 8.4,
+SQLite 3.1.2 and Woo 11.3.0: stock COD checkout with shipping recalculation; dummy payment
+decline/retry and an authorized paid PDF download from receipt/email; and the real CLI's
+push/pull/conflict/partial-retry workflow while preserving stock, orders and grants.
+Desktop, mobile and long product names are inspected in Chrome. Mail is captured, no
+external payment is charged, and optional TypedPress Identity is not activated in this
+guest-only Playground fixture.
+
+Broader regression checks include the compiler, existing sync and browser suites, PHP
+runtime suites, TypeScript declarations, cart-client tests, formatting and clippy. The
+native macOS PHP 8.5 full run also exposes unrelated existing failures: the 8 MiB prebuilt
+streaming memory-budget test (`fpassthru` buffers under this SAPI), cURL connection metadata,
+and the mail fixture's Linux-only `/bin/true`. The non-UTF-8 filename test is skipped on this
+filesystem, which rejects the fixture filename itself. These are separate from the passing
+Playground commerce proof.
 
 ## First implementation proof
 

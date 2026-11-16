@@ -214,6 +214,7 @@ final class Runtime
             Jobs\ActionSchedulerQueue::install();
             Guests::install();
         }
+        \TypedPress\Commerce\Module::initialize(self::$plugin);
         ContentPages::install();
         RoutePages::install();
         \TypedPress\Search\Index::reindexChanged();

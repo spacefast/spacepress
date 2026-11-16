@@ -109,6 +109,11 @@ eq('code, a table pipe, a fence in a list item, backticks in code and an escaped
     array_map(static fn (string $md): string => Markdown::toBlocks(Markdown::fromBlocks(Markdown::toBlocks($md))), $kept),
     array_map(static fn (string $md): string => Markdown::toBlocks($md), $kept));
 eq('an escaped < is text, never an element', str_contains(Markdown::toBlocks("a \\<hook\\> b\n"), '<hook>'), false);
+$nativeCheckout = '<!-- wp:woocommerce/checkout --><div class="wp-block-woocommerce-checkout"></div><!-- /wp:woocommerce/checkout -->';
+$nativeStored = Markdown::toBlocks("Before checkout.\n\n" . $nativeCheckout . "\n\nAfter checkout.");
+check('native blocks stay serialized between Markdown paragraphs', str_contains($nativeStored, $nativeCheckout) && substr_count($nativeStored, '<!-- wp:paragraph -->') === 2);
+$quotedBlock = Markdown::toBlocks("```html\n<!-- wp:woocommerce/checkout /-->\n```\n\n" . $nativeCheckout);
+check('serialized block examples inside fences remain code', str_contains($quotedBlock, '<!-- wp:code') && str_contains($quotedBlock, '&lt;!-- wp:woocommerce/checkout /--&gt;') && substr_count($quotedBlock, '<!-- wp:woocommerce/checkout') === 1);
 eq('a comparison is not a tag', md('<!-- wp:html --><p>1 &lt; 2</p><!-- /wp:html -->'), "1 < 2\n");
 register_block_type('typedpress-test/broken', ['render_callback' => static fn (): never => throw new RuntimeException('broken block')]);
 eq('a post whose rendering throws shows nothing, never a partial or unfiltered body', md('<!-- wp:paragraph --><p>Before.</p><!-- /wp:paragraph --><!-- wp:typedpress-test/broken /--><!-- wp:html --><p>After.</p><!-- /wp:html -->'), '');

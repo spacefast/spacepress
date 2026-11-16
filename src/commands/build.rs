@@ -186,7 +186,10 @@ fn zip_plugin(directory: &Path) -> std::io::Result<()> {
 pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Result<PathBuf> {
     let empty = wp_plugins::Config { plugins: Vec::new() };
     let config = built.plugins.as_ref().unwrap_or(&empty);
-    let plan = wp_plugins::resolve(config, &platform::plugins(built.schema.locales.is_some()))?;
+    let plan = wp_plugins::resolve(
+        config,
+        &platform::app_plugins(built.schema.locales.is_some(), built.schema.store.is_some()),
+    )?;
     let parent = root
         .parent()
         .ok_or_else(|| std::io::Error::other("output needs a parent directory"))?;
@@ -246,6 +249,15 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
         std::fs::create_dir(&stage)?;
     }
     prepared.install_into(&stage.join("plugins"))?;
+    let commerce_bootstrap = stage.join("mu-plugins/typedpress-commerce.php");
+    if built.schema.store.is_some() {
+        write(
+            &commerce_bootstrap,
+            runtime_file("wp-plugin/typedpress-commerce.php").expect("embedded commerce bootstrap"),
+        )?;
+    } else if commerce_bootstrap.is_file() {
+        std::fs::remove_file(commerce_bootstrap)?;
+    }
     let plugins = stage.join("plugins");
     let generated = crate::app_plugin::tp_plugins(&built.schema);
     let revision = crate::store::runtime_revision();
@@ -292,11 +304,15 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
     for dependency in prepared.dependencies() {
         versions.insert(dependency.slug.clone(), dependency.version.clone().into());
     }
-    let requires: serde_json::Map<String, serde_json::Value> = platform::plugins(built.schema.locales.is_some())
-        .into_iter()
-        .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
-        .collect();
+    let requires: serde_json::Map<String, serde_json::Value> =
+        platform::app_plugins(built.schema.locales.is_some(), built.schema.store.is_some())
+            .into_iter()
+            .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
+            .collect();
     let mut manifest = serde_json::json!({"typedpress":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"runtimeRevision":revision,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
+    if built.schema.store.is_some() {
+        manifest["maxTablePrefix"] = serde_json::json!(20);
+    }
     // Sealed mode (docs/sealed.md): the plugin slugs this site runs, for a host to enforce. No key
     // when the app isn't sealed.
     if let Some(sealed) = crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::tp_plugins(&built.schema)) {

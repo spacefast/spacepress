@@ -19,7 +19,7 @@ These commands run on your machine, on the project's files.
 | `typedpress build [dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]` | Write the WordPress plugins to tp/dist/wp-content. |
 | `typedpress export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]` | Write tp/app/ as a static site to tp/dist/static (output: "static"); --site renders a hosted site's content, signed in as an editor. |
 | `typedpress check [dir] [--json] [--frozen]` | Compile and report problems; write nothing. |
-| `typedpress add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: db (SQL tables), api-reference (pages at /api documenting the HTTP API) |
+| `typedpress add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: shop (WooCommerce storefront), db (SQL tables), api-reference (pages at /api documenting the HTTP API) |
 | `typedpress doctor [dir] [--out dir] [--site url [--links]] [--json]` | Check a build, and a running site (signed in as an administrator to see what it loads); --links follows every link and #anchor its pages make. |
 | `typedpress init [dir] [--check] [--github]` | Write AGENTS.md, .mcp.json and the agent skills for this project; --github adds the content sync workflow; --check exits 1 when they are out of date. |
 | `typedpress mcp [dir] [--allow-remote-read] [--allow-writes]` | Serve the project to a coding agent as an MCP server on stdio. |

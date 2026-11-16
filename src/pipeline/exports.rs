@@ -26,11 +26,16 @@ struct Taken {
 fn registry(value: &Value) -> Option<&'static str> {
     Some(match value {
         Value::Collection(c) => match c.kind {
+            StorageKind::Product => "products",
+            StorageKind::ProductCategory => "productCategories",
+            StorageKind::ProductTag => "productTags",
+            StorageKind::Order => "orders",
             StorageKind::Collection => "collections",
             StorageKind::Table => "tables",
             StorageKind::UserProjection => "users",
             StorageKind::Taxonomy => "taxonomies",
         },
+        Value::Store(_) => "stores",
         Value::Global(_) => "globals",
         Value::FileBucket(_) => "files",
         Value::Action(_) => "actions",
@@ -44,6 +49,7 @@ fn registry(value: &Value) -> Option<&'static str> {
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Collection(a), Value::Collection(b)) => Rc::ptr_eq(a, b),
+        (Value::Store(a), Value::Store(b)) => Rc::ptr_eq(a, b),
         (Value::Global(a), Value::Global(b)) => Rc::ptr_eq(a, b),
         (Value::FileBucket(a), Value::FileBucket(b)) => Rc::ptr_eq(a, b),
         (Value::Action(a), Value::Action(b))
@@ -56,6 +62,7 @@ fn same(a: &Value, b: &Value) -> bool {
 fn span_of(value: &Value) -> Span {
     match value {
         Value::Collection(c) => c.span,
+        Value::Store(a) => a.span,
         Value::Global(g) => g.span,
         Value::FileBucket(b) => b.span,
         Value::Action(a) | Value::Job(a) | Value::Screen(a) => a.span,
@@ -75,6 +82,19 @@ fn duplicate(root: &Path, name: &str, first: Span, second: Span) -> Diag {
 /// refused where it's written, with the export form that replaces it. A 0.3.0 capture still
 /// writes them, and is read as it was (ruling 41).
 const REMOVED: &[(&str, &str, &str)] = &[
+    ("stores", "a store registers by its export", "store"),
+    ("products", "a product kind registers by its export", "product"),
+    (
+        "productCategories",
+        "a product category kind registers by its export",
+        "productCategory",
+    ),
+    (
+        "productTags",
+        "a product tag kind registers by its export",
+        "productTag",
+    ),
+    ("orders", "an order kind registers by its export", "order"),
     ("collections", "a kind registers by its export", "collection"),
     ("tables", "a table registers by its export", "table"),
     ("users", "the users kind registers by its export", "userProjection"),
@@ -180,7 +200,11 @@ fn noun(value: &Value) -> &'static str {
             StorageKind::Table => "a table",
             StorageKind::UserProjection => "a user projection",
             StorageKind::Taxonomy => "a taxonomy",
+            StorageKind::Product | StorageKind::ProductCategory | StorageKind::ProductTag | StorageKind::Order => {
+                "a commerce kind"
+            }
         },
+        Value::Store(_) => "a store",
         Value::Global(_) => "a global",
         Value::FileBucket(_) => "a file bucket",
         Value::Action(_) => "an action",
@@ -193,6 +217,7 @@ fn noun(value: &Value) -> &'static str {
 fn builder(value: &Value) -> &'static str {
     match value {
         Value::Collection(c) => c.kind.builder(),
+        Value::Store(_) => "store",
         Value::Global(_) => "global",
         Value::FileBucket(_) => "files",
         Value::Action(_) => "action",
@@ -358,7 +383,16 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
     }
     // `"typedpress:db"` resolves to every registered kind, by its registry key.
     let mut kinds = IndexMap::new();
-    for registry in ["collections", "tables", "users", "taxonomies"] {
+    for registry in [
+        "collections",
+        "tables",
+        "users",
+        "taxonomies",
+        "products",
+        "productCategories",
+        "productTags",
+        "orders",
+    ] {
         if let Some(Value::Object(entries)) = cfg.borrow().get(registry) {
             for (name, value) in entries.borrow().iter() {
                 kinds.insert(name.clone(), value.clone());

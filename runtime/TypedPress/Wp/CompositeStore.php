@@ -18,6 +18,7 @@ use TypedPress\Store;
  */
 final class CompositeStore implements Store, Links
 {
+    private ?\TypedPress\Commerce\Store $commerce = null;
     public function __construct(
         private readonly Schema $schema,
         public readonly Connection $db,
@@ -51,6 +52,9 @@ final class CompositeStore implements Store, Links
         // The auth collection's rows are WordPress users (§6.2).
         if ($this->users !== null && $collection === ($this->schema->auth()['collection'] ?? null)) {
             return $this->users;
+        }
+        if (isset($this->schema->collection($collection)['commerce']) && !isset($this->schema->taxonomies()[$collection])) {
+            return $this->commerce ??= new \TypedPress\Commerce\Store($this->db, $this->schema, $this->tables);
         }
         if (isset($this->schema->taxonomies()[$collection])) {
             return $this->terms ?? throw new \LogicException('No term store');

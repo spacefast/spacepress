@@ -132,6 +132,11 @@ TypedPress puts every table under WordPress's `$wpdb->prefix` and never changes 
 
 ### Manifest `host` object
 
+For a build with `store()`, both the hosted manifest's `maxTablePrefix` and
+`host.maxTablePrefix` are **20**, because Woo's longest table suffix is 44 characters.
+The loader's early commerce policy enforces this before Woo initializes. Other builds use
+the ordinary 35-character limit shown below.
+
 ```json
 {
   "reservedPaths": [

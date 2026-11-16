@@ -67,7 +67,10 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
     assert_eq!(seen["prebuilt signed in"], json!([200, false]));
     assert_eq!(seen["prebuilt head"], true);
     // Same size and modification time, other bytes: the old tag no longer matches.
-    assert_eq!(seen["prebuilt same size and mtime"], json!([true, true, 200, true, true]));
+    assert_eq!(
+        seen["prebuilt same size and mtime"],
+        json!([true, true, 200, true, true])
+    );
     assert_eq!(seen["openapi"][0], 200);
     assert_eq!(seen["openapi"][2], "public, max-age=300");
     assert_eq!(seen["openapi"][4], true);

@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/dashboard",
+	"name": "@typedpress-admin/dashboard",
 	"version": "1.0.0",
 	"description": "Dashboard widgets store, components, and types",
 	"type": "module",
@@ -11,9 +11,9 @@
 		"build"
 	],
 	"dependencies": {
-		"@first-admin/design-system": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
 		"@automattic/grid": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/base-styles": "catalog:",
 		"@wordpress/components": "catalog:",
 		"@wordpress/compose": "catalog:",

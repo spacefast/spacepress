@@ -62,11 +62,11 @@ function FontFamiliesInner() {
 			<VStack spacing={ 2 }>
 				<HStack justify="space-between">
 					<Subtitle level={ 3 }>
-						{ __( 'Fonts', 'first-admin' ) }
+						{ __( 'Fonts', 'typedpress-admin' ) }
 					</Subtitle>
 					<Button
 						onClick={ () => setModalTabOpen?.( 'installed-fonts' ) }
-						label={ __( 'Manage fonts', 'first-admin' ) }
+						label={ __( 'Manage fonts', 'typedpress-admin' ) }
 						icon={ settings }
 						size="small"
 					/>
@@ -87,11 +87,11 @@ function FontFamiliesInner() {
 					<>
 						<Text as="p">
 							{ hasInstalledFonts
-								? __( 'No fonts activated.', 'first-admin' )
-								: __( 'No fonts installed.', 'first-admin' ) }
+								? __( 'No fonts activated.', 'typedpress-admin' )
+								: __( 'No fonts installed.', 'typedpress-admin' ) }
 						</Text>
 						<Button
-							className="first-admin-global-styles-font-families__manage-fonts"
+							className="typedpress-admin-global-styles-font-families__manage-fonts"
 							variant="secondary"
 							__next40pxDefaultSize
 							onClick={ () => {
@@ -103,8 +103,8 @@ function FontFamiliesInner() {
 							} }
 						>
 							{ hasInstalledFonts
-								? __( 'Manage fonts', 'first-admin' )
-								: __( 'Add fonts', 'first-admin' ) }
+								? __( 'Manage fonts', 'typedpress-admin' )
+								: __( 'Add fonts', 'typedpress-admin' ) }
 						</Button>
 					</>
 				) }

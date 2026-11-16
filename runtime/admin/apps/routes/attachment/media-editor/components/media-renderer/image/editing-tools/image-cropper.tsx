@@ -2,7 +2,7 @@ import {
 	ImageCropper as ImageCropperComponent,
 	type MediaSize,
 	useImageCropper,
-} from '@first-admin/image-cropper';
+} from '@typedpress-admin/image-cropper';
 import {
 	useState,
 	useRef,
@@ -145,7 +145,7 @@ export default function ImageCropper( { src }: { src: string } ) {
 
 	return (
 		<div
-			className="first-admin-media-editor-content__cropper"
+			className="typedpress-admin-media-editor-content__cropper"
 			ref={ containerRef }
 			style={ containerStyle || DEFAULT_CONTAINER_STYLE }
 		>

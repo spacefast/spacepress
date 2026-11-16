@@ -3,7 +3,7 @@
 @use "@wordpress/base-styles/colors";
 @use "pkg:@wordpress/theme/design-tokens.css";
 
-.first-admin-layout {
+.typedpress-admin-layout {
 	height: 100%;
 	display: flex;
 	flex-direction: column;
@@ -22,13 +22,13 @@
 	}
 }
 
-.first-admin-layout__content {
+.typedpress-admin-layout__content {
 	height: 100%;
 	flex-grow: 1;
 	display: flex;
 }
 
-.first-admin-layout__sidebar-region {
+.typedpress-admin-layout__sidebar-region {
 	flex-shrink: 0;
 
 	@include mixins.break-medium {
@@ -36,7 +36,7 @@
 	}
 
 	// This is only necessary for the exit animation
-	.first-admin-layout.has-full-canvas & {
+	.typedpress-admin-layout.has-full-canvas & {
 		position: fixed !important;
 		height: 100vh;
 		left: 0;
@@ -48,7 +48,7 @@
 	}
 }
 
-.first-admin-layout__sidebar-backdrop {
+.typedpress-admin-layout__sidebar-backdrop {
 	position: fixed;
 	top: 0;
 	left: 0;
@@ -58,7 +58,7 @@
 	z-index: 4; // Above all surfaces, below sidebar
 }
 
-.first-admin-layout__surface {
+.typedpress-admin-layout__surface {
 	margin: 0;
 	overflow: hidden;
 	box-shadow: variables.$elevation-x-small;
@@ -115,8 +115,8 @@
 }
 
 // List views.
-.first-admin-layout__content:has( .first-admin-layout__canvas-container )
-	.first-admin-layout__surface.is-stage {
+.typedpress-admin-layout__content:has( .typedpress-admin-layout__canvas-container )
+	.typedpress-admin-layout__surface.is-stage {
 	@include mixins.break-medium() {
 		width: 380px;
 		flex-grow: 0;
@@ -124,17 +124,17 @@
 }
 
 // Inverse layout preset: canvas is a 380px rail, stage expands.
-.first-admin-layout.is-canvas-compact {
+.typedpress-admin-layout.is-canvas-compact {
 	@include mixins.break-medium() {
 		// Ensure stage remains flexible when a canvas exists.
-		.first-admin-layout__content:has( .first-admin-layout__canvas-container )
-			.first-admin-layout__surface.is-stage {
+		.typedpress-admin-layout__content:has( .typedpress-admin-layout__canvas-container )
+			.typedpress-admin-layout__surface.is-stage {
 			width: auto;
 			flex-grow: 1;
 		}
 
 		// Make the canvas container a fixed-width column.
-		.first-admin-layout__canvas-container {
+		.typedpress-admin-layout__canvas-container {
 			flex-grow: 0;
 			flex-shrink: 0;
 			width: calc( 400px + #{variables.$grid-unit-10} );
@@ -142,7 +142,7 @@
 	}
 }
 
-.first-admin-layout__canvas-container {
+.typedpress-admin-layout__canvas-container {
 	// Mobile: canvas takes full screen with lowest priority
 	position: fixed;
 	top: 0;
@@ -160,7 +160,7 @@
 	}
 }
 
-.first-admin-layout__canvas {
+.typedpress-admin-layout__canvas {
 	// Mobile-first: full screen canvas within container
 	align-items: center;
 	display: flex;
@@ -197,7 +197,7 @@
 	}
 }
 
-.first-admin-layout__sidebar {
+.typedpress-admin-layout__sidebar {
 	height: 100%;
 	// Animation for customization menu shouldn't show scrollbars.
 	position: relative;
@@ -214,7 +214,7 @@
 	}
 }
 
-.first-admin-layout__mobile-sidebar-drawer {
+.typedpress-admin-layout__mobile-sidebar-drawer {
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -228,11 +228,11 @@
 	align-items: center;
 }
 
-.first-admin-layout__canvas.has-mobile-drawer {
+.typedpress-admin-layout__canvas.has-mobile-drawer {
 	top: variables.$grid-unit-15 * 2 + variables.$grid-unit-40;
 }
 
-.first-admin-notices__snackbar {
+.typedpress-admin-notices__snackbar {
 	@include mixins.snackbar-container;
 }
 
@@ -282,10 +282,10 @@
 
 // Hide the FAB button when the sidebar is visible
 @include mixins.break-medium {
-	// Hide the floating chat button — First Admin sidebar has its own IconButton
+	// Hide the floating chat button — TypedPress Admin sidebar has its own IconButton
 	body:has(
-			.first-admin-layout:not( .has-full-canvas )
-				.first-admin-layout__sidebar-region
+			.typedpress-admin-layout:not( .has-full-canvas )
+				.typedpress-admin-layout__sidebar-region
 		)
 		[data-slot="chat-floating"]:has( [data-slot="collapsed-view"] ) {
 		visibility: hidden;
@@ -293,8 +293,8 @@
 
 	// Hide the docked chat's FAB button — same condition: only when sidebar is a real panel
 	body:has(
-			.first-admin-layout:not( .has-full-canvas )
-				.first-admin-layout__sidebar-region
+			.typedpress-admin-layout:not( .has-full-canvas )
+				.typedpress-admin-layout__sidebar-region
 		)
 		.agents-manager-sidebar-fab {
 		display: none;

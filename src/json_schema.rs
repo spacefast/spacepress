@@ -1,5 +1,5 @@
 //! JSON Schemas of the app's values, from the same columns that type the client (`client.rs`) and
-//! that the runtime publishes as Ability schemas (`runtime/First/Wp/Abilities/JsonSchema.php`).
+//! that the runtime publishes as Ability schemas (`runtime/TypedPress/Wp/Abilities/JsonSchema.php`).
 //! Each function here is that class's function of the same name, so the OpenAPI document
 //! (`openapi.rs`) describes a row, a create input and a patch exactly as the Abilities do;
 //! `openapi_schemas_are_the_registered_ability_schemas` in tests/compiler_contracts.rs runs both
@@ -26,7 +26,7 @@ fn number(n: f64) -> Value {
 }
 
 /// A value of one column. `output` widens media references, which `with` may populate, and adds
-/// the formats a response carries; an input has none, because First validates it itself.
+/// the formats a response carries; an input has none, because TypedPress validates it itself.
 pub fn column(c: &Column, output: bool) -> Value {
     let media = || {
         if output {
@@ -44,7 +44,7 @@ pub fn column(c: &Column, output: bool) -> Value {
         ColType::Slug => json!({ "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 }),
         ColType::Boolean => json!({ "type": "boolean" }),
         ColType::Timestamp if output => json!({ "type": "string", "format": "date-time" }),
-        // The API also accepts epoch milliseconds and any date string First parses.
+        // The API also accepts epoch milliseconds and any date string TypedPress parses.
         ColType::Timestamp => json!({ "type": ["string", "integer"] }),
         ColType::Date if output => json!({ "type": "string", "format": "date" }),
         ColType::Date => json!({ "type": "string" }),
@@ -86,7 +86,7 @@ pub fn column(c: &Column, output: bool) -> Value {
         }
     }
     // A `pattern` rule is a JavaScript regular expression, which a JSON Schema validator may read
-    // differently; First checks it.
+    // differently; TypedPress checks it.
     if c.not_null { s } else { nullable(s) }
 }
 

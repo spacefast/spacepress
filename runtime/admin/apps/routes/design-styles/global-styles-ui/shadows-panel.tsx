@@ -15,7 +15,7 @@ import {
 	moreVertical,
 } from '@wordpress/icons';
 import { useState } from '@wordpress/element';
-import { unlock } from '@first-admin/admin-toolkit';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { Subtitle } from './subtitle';
 import { NavigationButtonAsItem } from './navigation-button';
 import { ScreenHeader } from './screen-header';
@@ -53,42 +53,42 @@ export default function ShadowsPanel() {
 				<ConfirmResetShadowDialog
 					text={ __(
 						'Are you sure you want to remove all custom shadows?',
-						'first-admin'
+						'typedpress-admin'
 					) }
-					confirmButtonText={ __( 'Remove', 'first-admin' ) }
+					confirmButtonText={ __( 'Remove', 'typedpress-admin' ) }
 					isOpen={ isResetDialogOpen }
 					toggleOpen={ toggleResetDialog }
 					onConfirm={ handleResetShadows }
 				/>
 			) }
 			<ScreenHeader
-				title={ __( 'Shadows', 'first-admin' ) }
+				title={ __( 'Shadows', 'typedpress-admin' ) }
 				description={ __(
 					'Manage and create shadow styles for use across the site.',
-					'first-admin'
+					'typedpress-admin'
 				) }
 			/>
-			<div className="first-admin-global-styles-screen">
+			<div className="typedpress-admin-global-styles-screen">
 				<VStack
-					className="first-admin-global-styles__shadows-panel"
+					className="typedpress-admin-global-styles__shadows-panel"
 					spacing={ 7 }
 				>
 					{ defaultShadowsEnabled && (
 						<ShadowList
-							label={ __( 'Default', 'first-admin' ) }
+							label={ __( 'Default', 'typedpress-admin' ) }
 							shadows={ defaultShadows || [] }
 							category="default"
 						/>
 					) }
 					{ themeShadows && themeShadows.length > 0 && (
 						<ShadowList
-							label={ __( 'Theme', 'first-admin' ) }
+							label={ __( 'Theme', 'typedpress-admin' ) }
 							shadows={ themeShadows || [] }
 							category="theme"
 						/>
 					) }
 					<ShadowList
-						label={ __( 'Custom', 'first-admin' ) }
+						label={ __( 'Custom', 'typedpress-admin' ) }
 						shadows={ customShadows || [] }
 						category="custom"
 						canCreate
@@ -123,7 +123,7 @@ function ShadowList( {
 		onCreate?.( {
 			name: sprintf(
 				/* translators: %d: is an index for a preset */
-				__( 'Shadow %d', 'first-admin' ),
+				__( 'Shadow %d', 'typedpress-admin' ),
 				newIndex
 			),
 			shadow: defaultShadow,
@@ -135,12 +135,12 @@ function ShadowList( {
 		<VStack spacing={ 2 }>
 			<HStack justify="space-between">
 				<Subtitle level={ 3 }>{ label }</Subtitle>
-				<FlexItem className="first-admin-global-styles__shadows-panel__options-container">
+				<FlexItem className="typedpress-admin-global-styles__shadows-panel__options-container">
 					{ canCreate && (
 						<Button
 							size="small"
 							icon={ plus }
-							label={ __( 'Add shadow', 'first-admin' ) }
+							label={ __( 'Add shadow', 'typedpress-admin' ) }
 							onClick={ () => {
 								handleAddShadow();
 							} }
@@ -155,7 +155,7 @@ function ShadowList( {
 										icon={ moreVertical }
 										label={ __(
 											'Shadow options',
-											'first-admin'
+											'typedpress-admin'
 										) }
 									/>
 								}
@@ -165,7 +165,7 @@ function ShadowList( {
 									<Menu.ItemLabel>
 										{ __(
 											'Remove all custom shadows',
-											'first-admin'
+											'typedpress-admin'
 										) }
 									</Menu.ItemLabel>
 								</Menu.Item>

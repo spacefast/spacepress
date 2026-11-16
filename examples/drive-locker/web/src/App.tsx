@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import type { User } from "../../first/_generated/client/index.ts";
+import type { User } from "../../tp/_generated/client/index.ts";
 import { allRows, choice, driveKinds, errorMessage, field, gb, numberField, placeKinds, statuses, today, first, type Capacity, type Content, type Drive, type Place, type Reading } from "./api.ts";
 
 type Remote<T> = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; value: T };

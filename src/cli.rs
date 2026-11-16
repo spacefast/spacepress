@@ -1,6 +1,6 @@
-//! The `first` command line: one table (`runtime/First/Cli/commands.json`, also read by `wp first help`)
-//! lists every command. "build" commands run here; "site" commands forward to `wp first <command>`
-//! on the site `--site` picks, and `first wp <args>` forwards any WP-CLI command
+//! The `typedpress` command line: one table (`runtime/TypedPress/Cli/commands.json`, also read by `wp typedpress help`)
+//! lists every command. "build" commands run here; "site" commands forward to `wp typedpress <command>`
+//! on the site `--site` picks, and `typedpress wp <args>` forwards any WP-CLI command
 //! (docs/decisions/2026-11-07-one-cli.md).
 
 use serde_json::Value;
@@ -17,18 +17,18 @@ pub struct Args {
     pub(crate) site: Option<String>,
     pub(crate) json: bool,
     pub(crate) no_watch: bool,
-    /// `first dev`: run in the background, or stay attached whatever is driving the command.
+    /// `typedpress dev`: run in the background, or stay attached whatever is driving the command.
     pub(crate) detach: bool,
     pub(crate) foreground: bool,
     pub(crate) allow_destructive: bool,
     pub(crate) preserve_data: Option<PathBuf>,
     /// Refuse plugin grants the committed lock doesn't hold (also on whenever `CI` is set).
     pub(crate) frozen: bool,
-    /// `first doctor --links`: follow every link and anchor the site's pages make.
+    /// `typedpress doctor --links`: follow every link and anchor the site's pages make.
     pub(crate) links: bool,
 }
 
-pub(crate) const COMMANDS: &str = include_str!("../runtime/First/Cli/commands.json");
+pub(crate) const COMMANDS: &str = include_str!("../runtime/TypedPress/Cli/commands.json");
 
 struct Entry {
     name: String,
@@ -38,7 +38,7 @@ struct Entry {
 }
 
 fn table() -> Vec<Entry> {
-    let table: Value = serde_json::from_str(COMMANDS).expect("runtime/First/Cli/commands.json is JSON");
+    let table: Value = serde_json::from_str(COMMANDS).expect("runtime/TypedPress/Cli/commands.json is JSON");
     let mut entries = Vec::new();
     for group in ["build", "site"] {
         for row in table[group].as_array().expect("command group") {
@@ -53,16 +53,16 @@ fn table() -> Vec<Entry> {
     entries
 }
 
-/// `first help`: the commands by group, one line each.
+/// `typedpress help`: the commands by group, one line each.
 pub fn help() -> String {
     let entries = table();
     let width = entries.iter().map(|e| e.name.len()).max().unwrap_or(0);
-    let mut out = String::from("usage: first <command> [options]\n");
+    let mut out = String::from("usage: typedpress <command> [options]\n");
     for (group, title) in [
         ("build", "Build (runs here, on the project's files)"),
         (
             "site",
-            "Site (runs as `wp first <command>`; --site <dir | workspace | @alias>, default: this project's dev site)",
+            "Site (runs as `wp typedpress <command>`; --site <dir | workspace | @alias>, default: this project's dev site)",
         ),
     ] {
         out.push_str(&format!("\n{title}:\n"));
@@ -71,7 +71,7 @@ pub fn help() -> String {
         }
     }
     out.push_str(
-        "\nfirst help <command> shows its arguments. Credentials come from FIRST_APP_PASSWORD or FIRST_TOKEN.\n",
+        "\ntypedpress help <command> shows its arguments. Credentials come from TP_APP_PASSWORD or TP_TOKEN.\n",
     );
     out
 }
@@ -81,7 +81,11 @@ fn usage(name: &str) -> Option<String> {
     let lines: Vec<String> = table()
         .into_iter()
         .filter(|e| e.name == name || e.name.starts_with(&format!("{name} ")))
-        .map(|e| format!("usage: first {} {}", e.name, e.args).trim_end().to_string())
+        .map(|e| {
+            format!("usage: typedpress {} {}", e.name, e.args)
+                .trim_end()
+                .to_string()
+        })
         .collect();
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
@@ -143,7 +147,9 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
                     .ok_or_else(|| fail("--port needs a number between 1 and 65535".into()))?;
             }
             "--quiet" | "-q" if command == "build" => args.quiet = true,
-            other if other.starts_with('-') => return Err(fail(format!("unknown option {other} for first {command}"))),
+            other if other.starts_with('-') => {
+                return Err(fail(format!("unknown option {other} for typedpress {command}")));
+            }
             other => args.project = PathBuf::from(other),
         }
     }
@@ -186,7 +192,7 @@ pub fn main() -> ExitCode {
         "deploy" if rest.first().is_some_and(|mode| mode == "wp") => {
             eprintln!(
                 "{}",
-                usage_error("wp", "WP-CLI on a workspace is first wp --site <workspace> <args>")
+                usage_error("wp", "WP-CLI on a workspace is typedpress wp --site <workspace> <args>")
             );
             ExitCode::from(2)
         }
@@ -229,7 +235,7 @@ pub fn main() -> ExitCode {
             let mut rest = rest;
             exit(crate::commands::site::take_site(&mut rest).and_then(|site| {
                 if rest.is_empty() {
-                    return Err(usage_error("wp", "first wp needs WP-CLI arguments"));
+                    return Err(usage_error("wp", "typedpress wp needs WP-CLI arguments"));
                 }
                 Ok(crate::commands::site::forward(site.as_deref(), &rest))
             }))
@@ -238,7 +244,7 @@ pub fn main() -> ExitCode {
             Some(entry) if entry.group == "site" => {
                 let mut rest = rest;
                 exit(crate::commands::site::take_site(&mut rest).map(|site| {
-                    let mut args = vec!["first".to_string(), command.clone()];
+                    let mut args = vec!["typedpress".to_string(), command.clone()];
                     args.extend(rest);
                     crate::commands::site::forward(site.as_deref(), &args)
                 }))

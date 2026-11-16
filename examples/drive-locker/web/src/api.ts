@@ -1,7 +1,7 @@
-import { createClient, FirstError, type Collections, type Actions } from "../../first/_generated/client/index.ts";
+import { createClient, TypedPressError, type Collections, type Actions } from "../../tp/_generated/client/index.ts";
 
 export const first = createClient({
-  url: "/__first/api/v1",
+  url: "/__tp/api/v1",
   auth: {
     clientId: "app_drive_locker",
     redirectUri: location.origin + location.pathname,
@@ -25,7 +25,7 @@ export async function allRows<T>(read: (page: { limit: number; offset: number })
 }
 
 export function errorMessage(error: unknown): string {
-  return error instanceof FirstError ? error.detail : error instanceof Error ? error.message : "Could not reach the server. Try again.";
+  return error instanceof TypedPressError ? error.detail : error instanceof Error ? error.message : "Could not reach the server. Try again.";
 }
 
 export function field(form: FormData, name: string): string {

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Encryption;
+namespace TypedPress\Identity\Vendor\Cose\Encryption;
 
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use First\Identity\Vendor\Cose\Structure\CoseStructure;
+use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use TypedPress\Identity\Vendor\Cose\Structure\CoseStructure;
 
 /**
  * The Enc_structure of a COSE_Encrypt (RFC 9052 section 5.3).

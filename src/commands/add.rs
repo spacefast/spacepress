@@ -1,4 +1,4 @@
-//! `first add <module> [dir]`: adds an optional part of First to a project as ordinary files the
+//! `typedpress add <module> [dir]`: adds an optional part of TypedPress to a project as ordinary files the
 //! author then owns. A module is a row in [`MODULES`]: its name, what it is, and the files it
 //! writes. A new module is one more row and its files under `add/<name>/`.
 //!
@@ -46,7 +46,7 @@ const MODULES: &[Module] = &[
         summary: "SQL tables beside your WordPress content: table(), foreign keys, a schema check at deploy",
         files: &[
             File {
-                path: "first/tables.ts",
+                path: "tp/tables.ts",
                 content: include_str!("add/db/tables.ts"),
                 what: "two example tables, with a reference between them and access rules",
                 when: When::NoTables,
@@ -58,16 +58,16 @@ const MODULES: &[Module] = &[
                 when: When::Tables(&["projects", "tasks"]),
             },
             File {
-                path: "first/DATABASE.md",
+                path: "tp/DATABASE.md",
                 content: include_str!("add/db/DATABASE.md"),
                 what: "how tables, migrations and the deploy check work",
                 when: When::Always,
             },
         ],
         next: &[
-            "first build   writes the SQL for new tables to first/_generated/migrations/ (commit it)",
-            "first dev     applies it to the local site",
-            "tsc           checks the new files once tsconfig.json includes them (first/DATABASE.md)",
+            "typedpress build   writes the SQL for new tables to tp/_generated/migrations/ (commit it)",
+            "typedpress dev     applies it to the local site",
+            "tsc           checks the new files once tsconfig.json includes them (tp/DATABASE.md)",
         ],
     },
     Module {
@@ -75,38 +75,38 @@ const MODULES: &[Module] = &[
         summary: "pages at /api that document the app's HTTP API from its OpenAPI document",
         files: &[
             File {
-                path: "first/app/api/page.tsx",
+                path: "tp/app/api/page.tsx",
                 content: include_str!("add/api-reference/page.tsx"),
                 what: "/api: every operation, by tag",
                 when: When::Always,
             },
             File {
-                path: "first/app/api/[tag]/[operation]/page.tsx",
+                path: "tp/app/api/[tag]/[operation]/page.tsx",
                 content: include_str!("add/api-reference/operation.tsx"),
                 what: "/api/<tag>/<operation>: parameters, body, responses and a request to copy",
                 when: When::Always,
             },
             File {
-                path: "first/components/ApiFields.tsx",
+                path: "tp/components/ApiFields.tsx",
                 content: include_str!("add/api-reference/ApiFields.tsx"),
                 what: "the fields of a parameter list, body or response",
                 when: When::Always,
             },
             File {
-                path: "first/API.md",
+                path: "tp/API.md",
                 content: include_str!("add/api-reference/API.md"),
                 what: "what the pages read and how to change them",
                 when: When::Always,
             },
         ],
         next: &[
-            "first dev     serves the reference at /api",
-            "first build   keeps it in step with the schema: it reads first/_generated/openapi.json",
+            "typedpress dev     serves the reference at /api",
+            "typedpress build   keeps it in step with the schema: it reads tp/_generated/openapi.json",
         ],
     },
 ];
 
-/// The modules, one line each, for usage errors and `first help add`.
+/// The modules, one line each, for usage errors and `typedpress help add`.
 pub(crate) fn modules() -> String {
     let width = MODULES.iter().map(|m| m.name.len()).max().unwrap_or(0);
     let mut out = String::from("modules:\n");
@@ -117,7 +117,7 @@ pub(crate) fn modules() -> String {
 }
 
 fn usage(message: &str) -> ExitCode {
-    eprint!("{message}\nusage: first add <module> [dir]\n{}", modules());
+    eprint!("{message}\nusage: typedpress add <module> [dir]\n{}", modules());
     ExitCode::from(2)
 }
 
@@ -187,23 +187,23 @@ impl Created {
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
     if let Some(option) = args.iter().find(|a| a.starts_with('-')) {
-        return usage(&format!("unknown option {option} for first add"));
+        return usage(&format!("unknown option {option} for typedpress add"));
     }
     let (name, dir) = match args {
         [name] => (name, "."),
         [name, dir] => (name, dir.as_str()),
-        [] => return usage("first add needs a module"),
-        _ => return usage("first add takes one module and one directory"),
+        [] => return usage("typedpress add needs a module"),
+        _ => return usage("typedpress add takes one module and one directory"),
     };
     let Some(module) = MODULES.iter().find(|m| m.name == name) else {
         return usage(&format!("no module {name}"));
     };
     let project = PathBuf::from(dir);
     let project = project.canonicalize().unwrap_or(project);
-    let command = format!("first add {}", module.name);
-    if !project.join("first.config.ts").is_file() {
+    let command = format!("typedpress add {}", module.name);
+    if !project.join("typedpress.config.ts").is_file() {
         eprintln!(
-            "{command}: no first.config.ts in {}. Run it in a First project, or pass the project's directory.",
+            "{command}: no typedpress.config.ts in {}. Run it in a TypedPress project, or pass the project's directory.",
             project.display()
         );
         return ExitCode::from(1);

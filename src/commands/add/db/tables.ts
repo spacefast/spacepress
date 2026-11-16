@@ -1,4 +1,4 @@
-// The database module, added by `first add db`. This file is yours: rename the tables, change the
+// The database module, added by `typedpress add db`. This file is yours: rename the tables, change the
 // fields, or delete it all and start again.
 //
 // A table() is a real SQL table: typed columns, foreign keys and indexes. Use it for the data your
@@ -6,13 +6,13 @@
 // collection() for what people write and publish in the WordPress editor.
 //
 // - Every exported table() registers under its export name: the typed client gets `first.tasks`,
-//   and the API gets `/__first/api/v1/tasks`.
-// - `first build` writes the SQL for each change here to first/_generated/migrations/. Commit that
+//   and the API gets `/__tp/api/v1/tasks`.
+// - `typedpress build` writes the SQL for each change here to tp/_generated/migrations/. Commit that
 //   folder and never edit it.
 // - A deploy checks every change against the live rows before it runs any of them. Removing a table
 //   or field that holds rows is refused until the deploy names the row count (`--drop=tasks=12`).
 //   Rename with `was: "old_name"` on the table or `.was("old")` on a field and the rows stay.
-import { boolean, date, ref, table, text } from "first";
+import { boolean, date, ref, table, text } from "typedpress";
 
 export const projects = table({
   name: text().max(120),

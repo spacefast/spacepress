@@ -1,8 +1,8 @@
-// eslint-disable-next-line @first-admin/design-system/use-new-components
-import { Stack } from '@first-admin/design-system';
-import { usePostFields } from '@first-admin/fields-next';
-import { unlock } from '@first-admin/admin-toolkit';
-import { DataForm } from '@first-admin/dataviews';
+// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
+import { Stack } from '@typedpress-admin/design-system';
+import { usePostFields } from '@typedpress-admin/fields-next';
+import { unlock } from '@typedpress-admin/admin-toolkit';
+import { DataForm } from '@typedpress-admin/dataviews';
 import { useDispatch, useSelect } from '@wordpress/data';
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
 import { __ } from '@wordpress/i18n';
@@ -55,7 +55,7 @@ export default function MediaEditorSidebar() {
 	}
 
 	return (
-		<div className="first-admin-media-editor-sidebar__details">
+		<div className="typedpress-admin-media-editor-sidebar__details">
 			<Stack direction="column" gap={ 4 }>
 				{ editedPost && (
 					<>

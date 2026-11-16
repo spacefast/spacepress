@@ -17,7 +17,7 @@ directory.mkdir(parents=True, exist_ok=True)
 class SMTP(socketserver.StreamRequestHandler):
     def handle(self):
         self.connection.settimeout(20)
-        self.wfile.write(b"220 localhost First disposable SMTP sink\r\n")
+        self.wfile.write(b"220 localhost TypedPress disposable SMTP sink\r\n")
         while line := self.rfile.readline(65536):
             command = line.split(b" ", 1)[0].strip().upper()
             if command in (b"EHLO", b"HELO"):

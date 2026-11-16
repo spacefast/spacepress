@@ -1,4 +1,4 @@
-import type { DashboardWidgetType } from '@first-admin/dashboard';
+import type { DashboardWidgetType } from '@typedpress-admin/dashboard';
 import { __ } from '@wordpress/i18n';
 
 type RecentPostsWidgetType = { numberOfPosts: number; showExcerpts: boolean };
@@ -8,17 +8,17 @@ const widget: Omit<
 	'render_module'
 > = {
 	name: 'core/recent-posts',
-	title: __( 'Recent Posts (example data)', 'first-admin' ),
+	title: __( 'Recent Posts (example data)', 'typedpress-admin' ),
 	attributes: [
 		{
 			id: 'numberOfPosts',
 			type: 'integer',
-			label: __( 'Number of Posts', 'first-admin' ),
+			label: __( 'Number of Posts', 'typedpress-admin' ),
 		},
 		{
 			id: 'showExcerpts',
 			type: 'boolean',
-			label: __( 'Show Excerpts', 'first-admin' ),
+			label: __( 'Show Excerpts', 'typedpress-admin' ),
 		},
 	],
 	example: {

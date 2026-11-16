@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
 
 /**
  * @author Mathias Arlaud <mathias.arlaud@gmail.com>

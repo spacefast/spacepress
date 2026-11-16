@@ -1,8 +1,8 @@
 {
-	"name": "first-docs",
+	"name": "typedpress-docs",
 	"private": true,
 	"type": "module",
-	"description": "The First documentation site: guides, every example, the in-browser compiler playground and the generated reference.",
+	"description": "The TypedPress documentation site: guides, every example, the in-browser compiler playground and the generated reference.",
 	"license": "MIT",
 	"packageManager": "pnpm@12.9.1",
 	"engines": {

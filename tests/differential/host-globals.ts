@@ -1,7 +1,7 @@
 // Host globals, run once in Node and once as the generated PHP (tests/compiler_contracts.rs).
 // Every action is called with input `{}`; HOST_SECRET is " lane secret \n" and HOST_URL names an
 // origin that answers /json, /text and /redirect identically on both sides.
-import { action, defineConfig } from "first";
+import { action, defineConfig } from "typedpress";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import * as nodeCrypto from "node:crypto";
 import { digest, mac } from "./host-crypto.cjs";

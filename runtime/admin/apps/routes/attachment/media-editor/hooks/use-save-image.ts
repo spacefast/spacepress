@@ -1,5 +1,5 @@
-import { useImageCropper, normalizeRotation } from '@first-admin/image-cropper';
-import { unlock } from '@first-admin/admin-toolkit';
+import { useImageCropper, normalizeRotation } from '@typedpress-admin/image-cropper';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { useDispatch } from '@wordpress/data';
 import { useEntityRecord, store as coreStore } from '@wordpress/core-data';
 import { useCallback, useMemo, useState, useEffect } from '@wordpress/element';
@@ -125,7 +125,7 @@ export function useSaveImage( props?: {
 					url: response.source_url,
 				} );
 				createSuccessNotice(
-					__( 'Image edited and saved.', 'first-admin' ),
+					__( 'Image edited and saved.', 'typedpress-admin' ),
 					{
 						type: 'snackbar',
 						id: 'image-editing-success-notice',
@@ -139,7 +139,7 @@ export function useSaveImage( props?: {
 			createErrorNotice(
 				sprintf(
 					/* translators: %s: Error message. */
-					__( 'Could not edit image. %s', 'first-admin' ),
+					__( 'Could not edit image. %s', 'typedpress-admin' ),
 					stripHTML( errorMessage )
 				),
 				{

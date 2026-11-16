@@ -1,11 +1,11 @@
-// The schema-check lane's app at each deploy, one first.config.ts per step. `run.sh` builds them
+// The schema-check lane's app at each deploy, one typedpress.config.ts per step. `run.sh` builds them
 // in order into one project, so every step's migration is planned against the previous step's
 // ledger, exactly as successive deploys of one app would be.
 //
-//   node steps.mjs <step>   prints that step's first.config.ts
+//   node steps.mjs <step>   prints that step's typedpress.config.ts
 //
-// `tasks` is bound to a table the app did not create (`existingTable`), as `first migrate app
-// --from zero-0.8 --space <id>` binds a migrated Space's tables. `likes` and `notes` are First's.
+// `tasks` is bound to a table the app did not create (`existingTable`), as `typedpress migrate app
+// --from zero-0.8 --space <id>` binds a migrated Space's tables. `likes` and `notes` are TypedPress's.
 const tasks = (fields = "") => `export const tasks = table({
   title: text(),
   note: text().optional(),${fields}
@@ -17,13 +17,13 @@ const notes = (fields = "", options = "") => `export const notes = table({
   body: text().optional(),${fields}
 }${options});`;
 
-const app = (parts) => `import { boolean, defineConfig, integer, number, ref, table, text } from "first";
+const app = (parts) => `import { boolean, defineConfig, integer, number, ref, table, text } from "typedpress";
 ${parts.join("\n")}
 export default defineConfig({ name: "schema-check" });
 `;
 
 export const steps = {
-  // 1. The first deploy: adopts tasks, creates likes and notes.
+  // 1. The typedpress deploy: adopts tasks, creates likes and notes.
   initial: app([tasks(), likes(), notes()]),
   // 2. Additive: a new kind, an optional field, a required field with a default. No --drop, no refusal.
   additive: app([tasks(), likes(`\n  emoji: text().optional(),`), notes(`\n  state: text().default("open"),`),

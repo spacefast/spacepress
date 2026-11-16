@@ -7,16 +7,16 @@ declare(strict_types=1);
  * app-router fixture as built, then two later builds of it (files changed, removed, added, and
  * taken away from visitors) installed over it in turn. Prints one JSON object: label => observed.
  *
- *   FIRST_WP_THEMES=1 php tests/php/app_content.php <wp-content dir> <second build's> <third build's> <fourth build's>
+ *   TP_WP_THEMES=1 php tests/php/app_content.php <wp-content dir> <second build's> <third build's> <fourth build's>
  */
 
 require __DIR__ . '/wp.php';
 
-// A must-use plugin stands in for the host: it records each `first_purge_urls` announcement.
+// A must-use plugin stands in for the host: it records each `tp_purge_urls` announcement.
 $site = wpSite('app-content', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber', 'chief' => 'editor'],
     'muPlugins' => ['secret' => "<?php define('APPROUTER_HOOK_SECRET', 'hook-secret');", 'host' => <<<'PHP'
         <?php
-        add_action('first_purge_urls', static function (array $paths): void {
+        add_action('tp_purge_urls', static function (array $paths): void {
             $seen = get_option('test_purges', []);
             $seen[] = $paths;
             update_option('test_purges', $seen, false);
@@ -48,7 +48,7 @@ function fetch(string $url, array $headers = []): array
 function page(array $r): array
 {
     preg_match('#<title>(.*?)</title>#s', $r['body'], $t);
-    preg_match('#data-wp-router-region="first/main">(.*)</div>\n#s', $r['body'], $m);
+    preg_match('#data-wp-router-region="tp/main">(.*)</div>\n#s', $r['body'], $m);
     preg_match('#<meta name="description" content="(.*?)">#', $r['body'], $d);
     preg_match('#<link rel="canonical" href="(.*?)">#', $r['body'], $c);
     return [
@@ -82,7 +82,7 @@ $cookie = static fn (string $user): string => $session($user);
 /** The stored Page of a route, read fresh (the server process writes it). */
 $stored = static function (string $route): ?array {
     wp_cache_flush();
-    $found = get_posts(['post_type' => 'page', 'post_status' => ['publish', 'draft', 'private', 'trash'], 'meta_key' => '_first_route', 'meta_value' => $route, 'numberposts' => -1]);
+    $found = get_posts(['post_type' => 'page', 'post_status' => ['publish', 'draft', 'private', 'trash'], 'meta_key' => '_tp_route', 'meta_value' => $route, 'numberposts' => -1]);
     if (count($found) !== 1) {
         return ['count' => count($found)];
     }
@@ -135,7 +135,7 @@ $guide = (int) $out['guide stored']['id'];
 delete_option('test_purges');
 $edit('chief', ['ID' => $guide, 'post_title' => 'Field guide, revised', 'post_excerpt' => 'Edited on the site.',
     'post_content' => "<!-- wp:paragraph -->\n<p>Edited in the block editor.</p>\n<!-- /wp:paragraph -->"]);
-\First\Wp\Purges::flush(); // a wp-admin save announces when its request ends
+\TypedPress\Wp\Purges::flush(); // a wp-admin save announces when its request ends
 wp_cache_delete('test_purges', 'options');
 $out['purged'] = array_merge(...get_option('test_purges', []));
 $out['guide edited'] = page(fetch("$url/guide"));
@@ -165,7 +165,7 @@ $edit('chief', ['ID' => $guide, 'post_status' => 'publish']);
 $out['republished'] = page(fetch("$url/guide"))['status'];
 
 // ---- the second build, installed over the first: files changed, one removed, one added.
-$app = glob($site->dir . '/content/plugins/first-app-*')[0];
+$app = glob($site->dir . '/content/plugins/typedpress-app-*')[0];
 $install = static function (string $wpContent) use ($site, $app): void {
     $site->stopServer();
     exec('rm -rf ' . escapeshellarg($app));
@@ -197,7 +197,7 @@ $out['second hidden stored'] = $stored('/hidden');
 // ---- the third build takes two pages away from visitors: the guide becomes a draft, and the
 // colophon moves under the account layout's guard. The site has lost its record of the Pages.
 $edit('chief', ['ID' => (int) $out['second colophon stored']['id'], 'post_content' => "<!-- wp:paragraph -->\n<p>Kept by the site.</p>\n<!-- /wp:paragraph -->"]);
-delete_option('first_approuter_content');
+delete_option('tp_approuter_content');
 $install($argv[3]);
 $site->startServer();
 $url = $site->url();
@@ -216,7 +216,7 @@ $out['third leaks'] = array_values(array_filter(['Edited in the block editor', '
 $guideId = (int) $out['third guide stored']['id'];
 $edit('chief', ['ID' => $guideId, 'post_status' => 'publish']);
 wp_cache_flush();
-$out['third record'] = get_option('first_approuter_content')['pages']['/guide']['status'] ?? null;
+$out['third record'] = get_option('tp_approuter_content')['pages']['/guide']['status'] ?? null;
 $install($argv[4]);
 $site->startServer();
 $url = $site->url();
@@ -229,7 +229,7 @@ $out['fourth colophon route'] = page(fetch("$url/colophon"));
 $out['fourth by id'] = fetch("$url/?page_id=$guideId&q=it%27s")['headers']['location'][0] ?? null;
 wp_cache_flush();
 // page.md Pages only: static page.tsx routes have code-owned Pages of their own (RoutePages).
-$out['pages'] = array_map('intval', $GLOBALS['wpdb']->get_col("SELECT COUNT(*) FROM {$GLOBALS['wpdb']->postmeta} m WHERE m.meta_key = '_first_route' AND NOT EXISTS (SELECT 1 FROM {$GLOBALS['wpdb']->postmeta} c WHERE c.post_id = m.post_id AND c.meta_key = '_first_code_page') GROUP BY m.meta_value"));
+$out['pages'] = array_map('intval', $GLOBALS['wpdb']->get_col("SELECT COUNT(*) FROM {$GLOBALS['wpdb']->postmeta} m WHERE m.meta_key = '_tp_route' AND NOT EXISTS (SELECT 1 FROM {$GLOBALS['wpdb']->postmeta} c WHERE c.post_id = m.post_id AND c.meta_key = '_tp_code_page') GROUP BY m.meta_value"));
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

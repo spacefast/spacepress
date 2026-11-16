@@ -7,19 +7,19 @@ declare(strict_types=1);
  * Validators come from the fixture's functions.php.
  */
 
-require __DIR__ . '/../../runtime/First/bootstrap.php';
+require __DIR__ . '/../../runtime/TypedPress/bootstrap.php';
 require __DIR__ . '/../fixtures/blog/functions.php';
 require __DIR__ . '/harness.php';
 
-use First\Schema;
+use TypedPress\Schema;
 
 $fixture = __DIR__ . '/../fixtures/blog/schema.php';
 $schema = Schema::load($fixture);
-eq('PHP platform policy matches the shared golden', \First\Wp\Platform::requirements(), json_decode(file_get_contents(__DIR__ . '/../fixtures/platform.json'), true, 512, JSON_THROW_ON_ERROR));
+eq('PHP platform policy matches the shared golden', \TypedPress\Wp\Platform::requirements(), json_decode(file_get_contents(__DIR__ . '/../fixtures/platform.json'), true, 512, JSON_THROW_ON_ERROR));
 // The WordPress floor is 7.2-beta5: what $wp_version reads on each build, whole (core's suffix-dropping check would pass every 7.2 pre-release).
 $floor = ['7.2-beta5' => true, '7.2-beta5-65525' => true, '7.2-beta6' => true, '7.2-RC1' => true, '7.2-RC2-65600' => true, '7.2' => true, '7.2.1' => true, '7.3-alpha-61000' => true, '8.0' => true,
     '7.1' => false, '7.1.4' => false, '7.1.9' => false, '7.2-beta4' => false, '7.2-beta4-65000' => false, '7.2-alpha-64000' => false];
-eq('WordPress floor accepts 7.2-beta5 and later, rejects 7.1.x and 7.2-beta4', array_map(\First\Wp\Platform::wordpressSupported(...), array_map('strval', array_keys($floor))), array_values($floor));
+eq('WordPress floor accepts 7.2-beta5 and later, rejects 7.1.x and 7.2-beta4', array_map(\TypedPress\Wp\Platform::wordpressSupported(...), array_map('strval', array_keys($floor))), array_values($floor));
 $posts = $schema->collection('posts')['columns'];
 $comments = $schema->collection('comments')['columns'];
 $settings = $schema->global('settings')['fields'];
@@ -46,8 +46,8 @@ foreach ([
         Schema::load($tmp);
         check('incompatible schema is refused', false);
     } catch (RuntimeException $e) {
-        $expected = $raw['version'] !== 3 ? 'schema.php version 3 required; rebuild with this First version'
-            : 'schema.php built for runtime ' . ($raw['runtime'] ?? '(missing)') . '; this runtime is 0.3; rebuild with this First version';
+        $expected = $raw['version'] !== 3 ? 'schema.php version 3 required; rebuild with this TypedPress version'
+            : 'schema.php built for runtime ' . ($raw['runtime'] ?? '(missing)') . '; this runtime is 0.3; rebuild with this TypedPress version';
         eq('incompatible schema is refused', $e->getMessage(), $expected);
     }
 }
@@ -123,11 +123,11 @@ eq('group: absent optional → null, absent defaulted → default, every sub-key
 problem('group: unknown sub-field', fn () => Schema::encode($posts['seo'], ['nope' => 1], 'seo', '/seo'), 422, 'invalid_input', '/seo/nope');
 // json() values preserve object/list shape, including nested values and generated defaults.
 $box = ['type' => 'group', 'fields' => ['label' => ['type' => 'text'], 'extra' => ['type' => 'json']]];
-$encoded = Schema::encode($box, ['label' => 'x', 'extra' => \First\Js::decodeJson('{"a":{}}')], 'box', '/box');
-eq('a json sub-field in a group keeps {} through encode and decode', [$encoded, \First\Js::jsonStringify(Schema::decode($box, $encoded))],
+$encoded = Schema::encode($box, ['label' => 'x', 'extra' => \TypedPress\Js::decodeJson('{"a":{}}')], 'box', '/box');
+eq('a json sub-field in a group keeps {} through encode and decode', [$encoded, \TypedPress\Js::jsonStringify(Schema::decode($box, $encoded))],
     ['{"label":"x","extra":{"a":{}}}', '{"label":"x","extra":{"a":{}}}']);
-eq('a json() default holding {} generates the empty object', \First\Js::jsonStringify(Schema::generate(['value' => ['a' => []], 'json' => '{"a":{}}'], ['type' => 'json'])), '{"a":{}}');
-$undefinedDefault = ['type' => 'text', 'default' => ['fn' => static fn () => \First\JsUndefined::Value]];
+eq('a json() default holding {} generates the empty object', \TypedPress\Js::jsonStringify(Schema::generate(['value' => ['a' => []], 'json' => '{"a":{}}'], ['type' => 'json'])), '{"a":{}}');
+$undefinedDefault = ['type' => 'text', 'default' => ['fn' => static fn () => \TypedPress\JsUndefined::Value]];
 eq('undefined generators become nullable storage values', Schema::validateInput([
     'note' => $undefinedDefault,
     'payload' => ['type' => 'json', 'default' => $undefinedDefault['default']],
@@ -135,21 +135,21 @@ eq('undefined generators become nullable storage values', Schema::validateInput(
 problem('undefined generators still enforce required fields', fn () => Schema::validateInput([
     'note' => $undefinedDefault + ['notNull' => true],
 ], []), 422, 'invalid_input', '/note');
-$undefinedInput = new \First\JsObject(['note' => \First\Js::undefined(), 'payload' => \First\Js::undefined(),
-    'nested' => new \First\JsObject(['note' => \First\Js::undefined()])]);
+$undefinedInput = new \TypedPress\JsObject(['note' => \TypedPress\Js::undefined(), 'payload' => \TypedPress\Js::undefined(),
+    'nested' => new \TypedPress\JsObject(['note' => \TypedPress\Js::undefined()])]);
 $undefinedFields = ['note' => ['type' => 'text'], 'payload' => ['type' => 'json'],
     'nested' => ['type' => 'group', 'fields' => ['note' => ['type' => 'text']]]];
 eq('explicit undefined becomes null at shaped storage boundaries', Schema::validateInput($undefinedFields, $undefinedInput),
     ['note' => null, 'payload' => null, 'nested' => ['note' => null]]);
 problem('explicit undefined still enforces required storage fields', fn () => Schema::validateInput([
     'note' => ['type' => 'text', 'notNull' => true],
-], new \First\JsObject(['note' => \First\Js::undefined()])), 422, 'invalid_input', '/note');
+], new \TypedPress\JsObject(['note' => \TypedPress\Js::undefined()])), 422, 'invalid_input', '/note');
 $deepDefault = str_repeat('[', 520) . '1' . str_repeat(']', 520);
 $deepValue = Schema::validateInput([
     'deep' => ['type' => 'json', 'default' => ['json' => $deepDefault]],
 ], [])['deep'];
 eq('container defaults preserve values deeper than request JSON through storage',
-    [\First\Js::jsonStringify($deepValue), \First\Js::jsonStringify(Schema::decode(['type' => 'json'], Schema::store(['type' => 'json'], $deepValue)))],
+    [\TypedPress\Js::jsonStringify($deepValue), \TypedPress\Js::jsonStringify(Schema::decode(['type' => 'json'], Schema::store(['type' => 'json'], $deepValue)))],
     [$deepDefault, $deepDefault]);
 problem('group: sub-field type', fn () => Schema::encode($posts['seo'], ['noindex' => 'yes'], 'seo', '/seo'), 422, 'invalid_input', '/seo/noindex');
 problem('group: sub-field rule (max), nested pointer', fn () => $write($posts['seo'], ['metaTitle' => str_repeat('x', 71)], 'seo'), 422, 'invalid_input', '/seo/metaTitle');
@@ -193,16 +193,16 @@ eq('pattern accepted', $write($pattern, 'ABC', 'code'), 'ABC');
 eq('action input: nested defaults + coercion', Schema::validateInput(['tags' => $posts['tags'], 'seo' => $posts['seo']], ['seo' => []]),
     ['tags' => [], 'seo' => ['metaTitle' => null, 'metaDescription' => null, 'noindex' => false]]);
 
-// SCF codec for nested booleans (First\Wp\Scf is pure here). SCF keeps an unchecked true_false as ''
+// SCF codec for nested booleans (TypedPress\Wp\Scf is pure here). SCF keeps an unchecked true_false as ''
 // in the sub-field's meta row, and writes '' for null too: a notNull boolean reads it as false, a
 // nullable one keeps it as null. Both row key forms (field key and core REST meta name) agree.
 $scfGroup = ['type' => 'group', 'fields' => [
     'req' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false]],
     'opt' => ['type' => 'boolean'],
 ]];
-$scfBack = static fn (array $raw) => Schema::decode($scfGroup, \First\Wp\Scf::toStorage($scfGroup, $raw, 'field_x'));
+$scfBack = static fn (array $raw) => Schema::decode($scfGroup, \TypedPress\Wp\Scf::toStorage($scfGroup, $raw, 'field_x'));
 eq('scf group: unchecked notNull toggle is false, unset nullable stays null', $scfBack(['field_x_req' => '', 'field_x_opt' => '']), ['req' => false, 'opt' => null]);
-eq('scf group: the same through core REST meta names', $scfBack(['first_x_req' => '', 'first_x_opt' => '']), ['req' => false, 'opt' => null]);
+eq('scf group: the same through core REST meta names', $scfBack(['tp_x_req' => '', 'tp_x_opt' => '']), ['req' => false, 'opt' => null]);
 eq('scf group: checked toggles are true', $scfBack(['field_x_req' => 1, 'field_x_opt' => '1']), ['req' => true, 'opt' => true]);
 
 // ================================================================ comment policy (spec §2.3)

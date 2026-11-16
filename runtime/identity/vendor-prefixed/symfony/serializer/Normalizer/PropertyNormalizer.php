@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
 
 /**
  * Converts between objects and arrays by mapping properties.

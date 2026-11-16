@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Brick\Math\Exception;
+namespace TypedPress\Identity\Vendor\Brick\Math\Exception;
 
 use RuntimeException;
 

@@ -1,1 +1,1 @@
-<?php return array('name' => '@first-admin/core-data-next', 'dependencies' => array('wp-api-fetch', 'wp-compose', 'wp-data', 'wp-element', 'wp-url'), 'moduleDependencies' => array('@first-admin/admin-toolkit'), 'version' => '90e0ae39d6f380c8015e');
+<?php return array('name' => '@typedpress-admin/core-data-next', 'dependencies' => array('wp-api-fetch', 'wp-compose', 'wp-data', 'wp-element', 'wp-url'), 'moduleDependencies' => array('@typedpress-admin/admin-toolkit'), 'version' => 'fa43cc3a90a6a97f5c73');

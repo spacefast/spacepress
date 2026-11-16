@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR;
+namespace TypedPress\Identity\Vendor\CBOR;
 
 use function chr;
 

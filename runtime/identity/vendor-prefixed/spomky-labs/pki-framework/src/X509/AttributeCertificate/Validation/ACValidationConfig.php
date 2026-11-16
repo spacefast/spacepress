@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation;
 
 use function array_values;
 use DateTimeImmutable;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Target\Target;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Target\Target;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
 
 /**
  * Provides configuration context for the attribute certificate validation.

@@ -14,7 +14,7 @@
         "wp-sitemap.xml",
         "xmlrpc.php",
         "feed",
-        "__first",
+        "__tp",
         "__spacefast",
         "llms.txt",
         "robots.txt",
@@ -39,7 +39,7 @@
         "identity",
         "index.php",
         "wp-config.php",
-        "first-admin",
+        "typedpress-admin",
         "auth"
     ],
     "site": {
@@ -162,10 +162,10 @@
                 "delete": true
             },
             "wp": {
-                "postType": "first_authors",
-                "groupKey": "group_first_authors",
-                "metaPrefix": "first_",
-                "fieldKeyPrefix": "field_first_authors_"
+                "postType": "tp_authors",
+                "groupKey": "group_tp_authors",
+                "metaPrefix": "tp_",
+                "fieldKeyPrefix": "field_tp_authors_"
             },
             "table": null
         },
@@ -392,10 +392,10 @@
                 "delete": true
             },
             "wp": {
-                "postType": "first_posts",
-                "groupKey": "group_first_posts",
-                "metaPrefix": "first_",
-                "fieldKeyPrefix": "field_first_posts_"
+                "postType": "tp_posts",
+                "groupKey": "group_tp_posts",
+                "metaPrefix": "tp_",
+                "fieldKeyPrefix": "field_tp_posts_"
             },
             "table": null
         },
@@ -498,7 +498,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "first_comments"
+            "table": "tp_comments"
         }
     },
     "globals": {
@@ -559,11 +559,11 @@
                 }
             },
             "wp": {
-                "postId": "first_global_settings",
-                "menuSlug": "first-global-settings",
-                "groupKey": "group_first_global_settings",
-                "fieldKeyPrefix": "field_first_global_settings_",
-                "optionPrefix": "first_global_settings_"
+                "postId": "tp_global_settings",
+                "menuSlug": "typedpress-global-settings",
+                "groupKey": "group_tp_global_settings",
+                "fieldKeyPrefix": "field_tp_global_settings_",
+                "optionPrefix": "tp_global_settings_"
             }
         }
     },

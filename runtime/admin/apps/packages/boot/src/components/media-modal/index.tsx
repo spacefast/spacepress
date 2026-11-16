@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import importAttachment from '@first-admin/attachment-importer';
+import importAttachment from '@typedpress-admin/attachment-importer';
 import { addFilter } from '@wordpress/hooks';
 import { Modal, Button, FormFileUpload } from '@wordpress/components';
 import { useState, useMemo } from '@wordpress/element';
@@ -110,8 +110,8 @@ export function MediaModal({ render, onSelect, allowedTypes, multiple, value }: 
 			{isOpen && (
 				<Modal
 					size="fill"
-					className="first-admin-media-modal"
-					title={__('Media Library', 'first-admin')}
+					className="typedpress-admin-media-modal"
+					title={__('Media Library', 'typedpress-admin')}
 					onRequestClose={() => setIsOpen(false)}
 					headerActions={
 						<FormFileUpload
@@ -129,7 +129,7 @@ export function MediaModal({ render, onSelect, allowedTypes, multiple, value }: 
 							multiple={true}
 							render={({ openFileDialog }) => (
 								<Button icon={upload} onClick={openFileDialog}>
-									{__('Upload', 'first-admin')}
+									{__('Upload', 'typedpress-admin')}
 								</Button>
 							)}
 						/>
@@ -166,7 +166,7 @@ export function MediaModal({ render, onSelect, allowedTypes, multiple, value }: 
 						queryParams={{
 							media_type: allowedTypes,
 						}}
-						itemListLabel={__('Media list', 'first-admin')}
+						itemListLabel={__('Media list', 'typedpress-admin')}
 					/>
 				</Modal>
 			)}

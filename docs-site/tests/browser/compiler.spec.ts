@@ -25,34 +25,34 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await source.pressSequentially(" // typed");
   await expect(page.locator(".code-editor[data-highlighted] #source-view")).toHaveText(await source.inputValue());
   await expect(status).toHaveAttribute("data-state", "ok");
-  await generatedFile.selectOption("first/app/schema.php");
-  await expect(generated).toHaveValue(/'postType' => 'first_posts'/);
+  await generatedFile.selectOption("tp/app/schema.php");
+  await expect(generated).toHaveValue(/'postType' => 'tp_posts'/);
   await expect(generated).toHaveValue(/'sync' => \['dir' => 'content\/posts'/);
 
   await page.getByRole("button", { name: "Post writes", exact: true }).click();
-  await expect(generatedFile).toHaveValue("runtime/First/Wp/WpPostStore.php");
+  await expect(generatedFile).toHaveValue("runtime/TypedPress/Wp/WpPostStore.php");
   await expect(generated).toHaveValue(/wp_insert_post\(wp_slash\(\$post\), true\)/);
   await expect(page.locator("#file-description")).toContainText("Shared WordPress runtime");
   await page.getByRole("button", { name: "Users", exact: true }).click();
   await expect(generated).toHaveValue(/wp_insert_user\(/);
 
   await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("pantry");
-  await generatedFile.selectOption("first/app/functions.php");
+  await generatedFile.selectOption("tp/app/functions.php");
   await expect(generated).toHaveValue(/function items__beforeCreate/);
 
   const original = await source.inputValue();
   await source.fill(original.replace("name can't be empty", "Give this item a name"));
   await expect(generated).toHaveValue(/Give this item a name/);
-  await generatedFile.selectOption("first/app/schema.php");
+  await generatedFile.selectOption("tp/app/schema.php");
   await expect(generated).toHaveValue(/<\?php[\s\S]*'collections' =>/);
 
-  await page.getByRole("combobox", { name: "Source file", exact: true }).selectOption("first/lib/fields.ts");
+  await page.getByRole("combobox", { name: "Source file", exact: true }).selectOption("tp/lib/fields.ts");
   await source.fill((await source.inputValue()).replace("LOW_STOCK = 1", "LOW_STOCK = 7"));
   await expect(generated).toHaveValue(/'lowStockAt' => [^\n]*'value' => 7/);
 
   await source.fill("export const =");
   await expect(status).toHaveAttribute("data-state", "diagnostics");
-  await expect(page.getByRole("alert")).toContainText("first/lib/fields.ts");
+  await expect(page.getByRole("alert")).toContainText("tp/lib/fields.ts");
   await expect(generated).toHaveValue("");
   await expect(page.getByRole("button", { name: "Download file" })).toBeDisabled();
 
@@ -64,7 +64,7 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("blog");
   await expect(status).toHaveAttribute("data-state", "ok");
   await expect(source).toHaveValue(/export const posts/);
-  await generatedFile.selectOption("first/app/schema.php");
+  await generatedFile.selectOption("tp/app/schema.php");
   await expect(generated).toHaveValue(/'posts' =>/);
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download file" }).click();
@@ -75,7 +75,7 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("full-site");
   await expect(status).toHaveAttribute("data-state", "ok");
   await expect(source).toHaveValue(/export const notes = collection/);
-  await expect(generated).toHaveValue(/'postType' => 'first_notes'/);
+  await expect(generated).toHaveValue(/'postType' => 'tp_notes'/);
   await expect(page.locator("#example-description")).toContainText("Pages written in TSX");
 });
 
@@ -99,7 +99,7 @@ test("Run in WordPress runs the config in the editor", async ({ page }) => {
   await run.click();
   await expect(frame).toBeVisible();
   const committed = blueprintOf((await frame.getAttribute("src"))!);
-  const app = (print: typeof committed) => print.steps.find((step) => step.pluginData?.name === "first-app-pantry")!.pluginData!;
+  const app = (print: typeof committed) => print.steps.find((step) => step.pluginData?.name === "typedpress-app-pantry")!.pluginData!;
   expect(JSON.stringify(app(committed).files)).not.toContain("'note'");
   expect(committed.steps.some((step) => step.step === "runPHP")).toBe(true);
 
@@ -112,15 +112,15 @@ test("Run in WordPress runs the config in the editor", async ({ page }) => {
   const edited = blueprintOf((await frame.getAttribute("src"))!);
   const plugin = app(edited);
   expect(plugin.resource).toBe("literal:directory");
-  const appFiles = plugin.files as { first: { app: { "schema.php": string; migrations: Record<string, string> } } };
-  expect(appFiles.first.app["schema.php"]).toContain("'note'");
-  expect(Object.keys(appFiles.first.app.migrations)).toEqual(["0001_init.sql", "0002_update.sql", "0003_update.sql", "0004_update.sql"]);
-  expect(appFiles.first.app.migrations["0004_update.sql"]).toMatch(/note/);
+  const appFiles = plugin.files as { tp: { app: { "schema.php": string; migrations: Record<string, string> } } };
+  expect(appFiles.tp.app["schema.php"]).toContain("'note'");
+  expect(Object.keys(appFiles.tp.app.migrations)).toEqual(["0001_init.sql", "0002_update.sql", "0003_update.sql", "0004_update.sql"]);
+  expect(appFiles.tp.app.migrations["0004_update.sql"]).toMatch(/note/);
   // The schema changed, so the seed written for the committed schema stays out.
   expect(edited.steps.some((step) => step.step === "runPHP")).toBe(false);
-  // First's shared plugins come from this site; the order is the activation order.
+  // TypedPress's shared plugins come from this site; the order is the activation order.
   const installs = edited.steps.filter((step) => step.step === "installPlugin").map((step) => step.pluginData!.url ?? step.pluginData!.name);
-  expect(installs.slice(-4)).toEqual([expect.stringMatching(/\/files\/plugins\/first-runtime\.zip$/), expect.stringMatching(/\/files\/plugins\/first-identity\.zip$/), "first-app-pantry", expect.stringMatching(/\/files\/plugins\/first-admin\.zip$/)]);
+  expect(installs.slice(-4)).toEqual([expect.stringMatching(/\/files\/plugins\/typedpress-runtime\.zip$/), expect.stringMatching(/\/files\/plugins\/typedpress-identity\.zip$/), "typedpress-app-pantry", expect.stringMatching(/\/files\/plugins\/typedpress-admin\.zip$/)]);
   await expect(page.locator("#wordpress-note")).toContainText("sample data isn't loaded");
 });
 

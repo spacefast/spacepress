@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter\PassthroughFormatter;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter\PassthroughFormatter;
 
 use function sprintf;
 use function str_repeat;

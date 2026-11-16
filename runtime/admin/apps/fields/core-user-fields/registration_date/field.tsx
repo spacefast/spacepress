@@ -1,6 +1,6 @@
 import { dateI18n } from '@wordpress/date';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@first-admin/dataviews';
+import type { Field } from '@typedpress-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< User > > = {
 	getValue: ( { item } ) => item.registered_date,

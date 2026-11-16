@@ -1,1 +1,1 @@
-export { lock, unlock } from '@first-admin/admin-toolkit';
+export { lock, unlock } from '@typedpress-admin/admin-toolkit';

@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
 
 use function max;
 use function str_repeat;

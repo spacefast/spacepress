@@ -4,7 +4,7 @@ import {
 	type GlobalStylesConfig,
 } from '@wordpress/global-styles-engine';
 import { privateApis as themePrivateApis } from '@wordpress/theme';
-import { unlock } from '@first-admin/private-apis';
+import { unlock } from '@typedpress-admin/private-apis';
 
 // A private API of @wordpress/theme (no public replacement yet), unlocked as core's packages do.
 const { useThemeProviderStyles } = unlock( themePrivateApis ) as {
@@ -12,7 +12,7 @@ const { useThemeProviderStyles } = unlock( themePrivateApis ) as {
 		color?: { primary?: string; background?: string };
 	} ) => { themeProviderStyles: Record< string, string > | null };
 };
-import { store as coreDataNextStore } from '@first-admin/core-data-next';
+import { store as coreDataNextStore } from '@typedpress-admin/core-data-next';
 import { store as coreStore } from '@wordpress/core-data';
 import { useMemo, useSyncExternalStore } from '@wordpress/element';
 import { useSelect } from '@wordpress/data';

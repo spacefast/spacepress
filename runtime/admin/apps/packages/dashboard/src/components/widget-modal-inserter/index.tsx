@@ -39,9 +39,9 @@ export default function WidgetModalInserter( {
 	return (
 		<Modal
 			size="large"
-			title={ __( 'Add widget', 'first-admin' ) }
+			title={ __( 'Add widget', 'typedpress-admin' ) }
 			onRequestClose={ onClose }
-			className="first-admin-dashboard-widget-modal-inserter"
+			className="typedpress-admin-dashboard-widget-modal-inserter"
 			focusOnMount="firstContentElement"
 		>
 			<WidgetPicker onSelect={ selectWidgets } />

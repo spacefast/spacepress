@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use First\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use TypedPress\Identity\Vendor\Cose\Key\RsaKeyValidator;
 use const E_USER_WARNING;
 use const OPENSSL_ALGO_SHA1;
 use function trigger_error;

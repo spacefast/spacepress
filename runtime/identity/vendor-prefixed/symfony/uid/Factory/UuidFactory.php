@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Uid\Factory;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Uid\Factory;
 
-use First\Identity\Vendor\Symfony\Component\Uid\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use First\Identity\Vendor\Symfony\Component\Uid\UuidV1;
-use First\Identity\Vendor\Symfony\Component\Uid\UuidV4;
-use First\Identity\Vendor\Symfony\Component\Uid\UuidV5;
-use First\Identity\Vendor\Symfony\Component\Uid\UuidV7;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\Exception\LogicException;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV1;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV4;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV5;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV7;
 
 class UuidFactory
 {

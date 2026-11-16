@@ -9,21 +9,21 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
+namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
 
 /**
  * Resolves type on reflection prioriziting PHP documentation.

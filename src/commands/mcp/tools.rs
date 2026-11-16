@@ -1,6 +1,6 @@
-//! The tools `first mcp` lists. Each is something the binary already does: the compiler behind
-//! `first check`, the command table behind `first help`, the dev site behind `first dev status`, and
-//! the site commands (`first find`, `first action`, `first insert`, `first update`).
+//! The tools `typedpress mcp` lists. Each is something the binary already does: the compiler behind
+//! `typedpress check`, the command table behind `typedpress help`, the dev site behind `typedpress dev status`, and
+//! the site commands (`typedpress find`, `typedpress action`, `typedpress insert`, `typedpress update`).
 
 use super::{INVALID_PARAMS, Options, RpcError, child, docs};
 use crate::commands::{build, describe, dev};
@@ -43,21 +43,21 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
             "Project schema",
             "This project's kinds with their fields, access rules, relations and hooks; its globals, actions, jobs, \
              pages and HTTP routes, file buckets, roles, the Abilities the site registers and its endpoints. Compiled \
-             from the source as `first check` compiles it. Pass `kind` for one kind only.",
+             from the source as `typedpress check` compiles it. Pass `kind` for one kind only.",
             object(json!({ "kind": kind }), &[]),
             read.clone(),
         ),
         tool(
             "check",
             "Compile and report problems",
-            "Compiles the project and returns the `first-diagnostics` envelope `first check --json` prints: `ok`, and \
+            "Compiles the project and returns the `typedpress-diagnostics` envelope `typedpress check --json` prints: `ok`, and \
              each diagnostic's code, message, help and source location. Writes nothing. Run it after every edit.",
             object(json!({}), &[]),
             read.clone(),
         ),
         tool(
             "docs_search",
-            "Search First's documentation",
+            "Search TypedPress's documentation",
             "Searches the documentation this compiler was built with and returns matching sections with their page \
              path, heading and a snippet. Read a result with `docs_read`.",
             object(
@@ -72,7 +72,7 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
         tool(
             "docs_read",
             "Read a documentation page",
-            "Reads one page of First's documentation by the path `docs_search` returned, or one section of it by \
+            "Reads one page of TypedPress's documentation by the path `docs_search` returned, or one section of it by \
              heading. A long page read whole answers with its opening and its list of sections.",
             object(
                 json!({
@@ -85,9 +85,9 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
         ),
         tool(
             "commands",
-            "The first command table",
-            "Every `first` command with its arguments and a one-line summary, as `first help` prints them. `build` \
-             commands run on the project's files; `site` commands run inside WordPress as `wp first <command>`.",
+            "The typedpress command table",
+            "Every `typedpress` command with its arguments and a one-line summary, as `typedpress help` prints them. `build` \
+             commands run on the project's files; `site` commands run inside WordPress as `wp typedpress <command>`.",
             object(json!({}), &[]),
             read.clone(),
         ),
@@ -95,8 +95,8 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
             "dev_status",
             "The local dev site",
             "Whether this project has a local WordPress dev site, whether it is running, its URL and port, and \
-             whether a `first dev` process is rebuilding it on save (`watching`, `pid`, `log`). `first dev --detach` \
-             starts it in the background; `first dev stop` stops it and keeps its data.",
+             whether a `typedpress dev` process is rebuilding it on save (`watching`, `pid`, `log`). `typedpress dev --detach` \
+             starts it in the background; `typedpress dev stop` stops it and keeps its data.",
             object(json!({}), &[]),
             read.clone(),
         ),
@@ -104,7 +104,7 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
             "query",
             "Read records",
             &format!(
-                "Reads a kind's records from the local dev site with `first find`, as the trusted command line: no \
+                "Reads a kind's records from the local dev site with `typedpress find`, as the trusted command line: no \
                  access rules, drafts included. Returns {DEFAULT_ROWS} rows unless `limit` says otherwise, at most \
                  {MOST_ROWS}. Like every request to the site, it first publishes scheduled posts that are due.{}",
                 if options.allow_remote_read {
@@ -145,7 +145,7 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
             tool(
                 "run_action",
                 "Run an action",
-                "Runs one of the project's actions on the local dev site with `first action`, as the trusted command line.",
+                "Runs one of the project's actions on the local dev site with `typedpress action`, as the trusted command line.",
                 object(
                     json!({
                         "name": { "type": "string", "description": "An action's name as `schema` lists it." },
@@ -158,7 +158,7 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
             tool(
                 "insert",
                 "Insert records",
-                "Inserts records of a kind into the local dev site with `first insert`, as the trusted command line.",
+                "Inserts records of a kind into the local dev site with `typedpress insert`, as the trusted command line.",
                 object(
                     json!({
                         "kind": kind.clone(),
@@ -171,7 +171,7 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
             tool(
                 "update",
                 "Update records",
-                "Updates the records of a kind that match `where` on the local dev site with `first update`, as the trusted command line.",
+                "Updates the records of a kind that match `where` on the local dev site with `typedpress update`, as the trusted command line.",
                 object(
                     json!({
                         "kind": kind.clone(),
@@ -244,16 +244,16 @@ fn known_arguments(options: &Options, name: &str, arguments: &Arguments) -> Resu
     })
 }
 
-/// The project has a dev site: `first dev` wrote its marker (scripts/dev/studio.mjs).
+/// The project has a dev site: `typedpress dev` wrote its marker (scripts/dev/studio.mjs).
 fn dev_site(options: &Options) -> Result<(), String> {
     if dev::created(&options.project) {
         Ok(())
     } else {
-        Err("this project has no dev site yet; start one with `first dev` (`first dev --no-watch` starts it and returns)".into())
+        Err("this project has no dev site yet; start one with `typedpress dev` (`typedpress dev --no-watch` starts it and returns)".into())
     }
 }
 
-/// `first mcp <dir> --compile`: the project compiled as `first check` compiles it, as one JSON
+/// `typedpress mcp <dir> --compile`: the project compiled as `typedpress check` compiles it, as one JSON
 /// document: the diagnostics `envelope`, and the `schema` description when there are no
 /// diagnostics. It runs in a process of its own (see [`compile`]).
 pub(super) fn compiled(project: &std::path::Path) -> Value {
@@ -265,7 +265,7 @@ pub(super) fn compiled(project: &std::path::Path) -> Value {
 fn not_run(what: &str, ran: child::Ran, options: &Options) -> Value {
     match ran {
         child::Ran::TimedOut => failed(format!(
-            "{what} took longer than {} seconds and was stopped; FIRST_MCP_TIMEOUT sets the limit",
+            "{what} took longer than {} seconds and was stopped; TP_MCP_TIMEOUT sets the limit",
             options.timeout.as_secs()
         )),
         // Never sent: the client cancelled the request.
@@ -324,18 +324,18 @@ fn document(stdout: &str) -> Option<Value> {
         .find_map(|line| serde_json::from_str::<Value>(line.trim()).ok().filter(Value::is_object))
 }
 
-/// Runs `first <args>` in the project, as an author would, and answers with what it printed. The
+/// Runs `typedpress <args>` in the project, as an author would, and answers with what it printed. The
 /// site commands print one JSON document: `{"data": …}`, or `{"error": …}` with a non-zero status.
 fn site_command(options: &Options, args: &[String]) -> Value {
     let first = match std::env::current_exe() {
         Ok(first) => first,
-        Err(error) => return failed(format!("cannot run first {}: {error}", args[0])),
+        Err(error) => return failed(format!("cannot run typedpress {}: {error}", args[0])),
     };
     let mut command = Command::new(first);
     command.args(args).current_dir(&options.project);
     let output = match child::run(options, command) {
         child::Ran::Finished(output) => output,
-        ran => return not_run(&format!("first {}", args[0]), ran, options),
+        ran => return not_run(&format!("typedpress {}", args[0]), ran, options),
     };
     let stdout = String::from_utf8_lossy(&output.stdout);
     match document(&stdout) {
@@ -355,7 +355,7 @@ fn site_command(options: &Options, args: &[String]) -> Value {
                 .collect();
             let tail = said[said.len().saturating_sub(6)..].join("\n");
             failed(format!(
-                "first {} did not answer (exit {}):\n{tail}",
+                "typedpress {} did not answer (exit {}):\n{tail}",
                 args[0],
                 output
                     .status
@@ -375,7 +375,7 @@ fn query(options: &Options, arguments: &Arguments) -> Result<Value, String> {
         None => {}
         Some(site) if !options.allow_remote_read => {
             return Err(format!(
-                "query reads this project's dev site only, and was asked for {site}. Start the server as `first mcp --allow-remote-read` to read another site."
+                "query reads this project's dev site only, and was asked for {site}. Start the server as `typedpress mcp --allow-remote-read` to read another site."
             ));
         }
         // WP-CLI would read it as one of its own options.
@@ -424,7 +424,7 @@ fn query(options: &Options, arguments: &Arguments) -> Result<Value, String> {
 fn write(options: &Options, name: &str, arguments: &Arguments) -> Result<Value, String> {
     if !options.allow_writes {
         return Err(format!(
-            "{name} writes to the dev site, and this server was started read-only. Start it as `first mcp --allow-writes` to allow writes to this project's dev site."
+            "{name} writes to the dev site, and this server was started read-only. Start it as `typedpress mcp --allow-writes` to allow writes to this project's dev site."
         ));
     }
     if arguments.contains_key("site") {
@@ -526,7 +526,7 @@ pub(super) fn call(options: &Options, name: &str, arguments: &Arguments) -> Resu
             )?))
         })(),
         "commands" => Ok(ok(
-            serde_json::from_str(crate::cli::COMMANDS).expect("runtime/First/Cli/commands.json is JSON")
+            serde_json::from_str(crate::cli::COMMANDS).expect("runtime/TypedPress/Cli/commands.json is JSON")
         )),
         // Studio's own status, for a site with no state file, is bounded and cancellable too.
         "dev_status" => dev::status_with(&options.project, |studio| match child::run(options, studio) {

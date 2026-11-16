@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Encoder;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonDecode;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncode;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonDecode;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncode;
 
 /**
  * A helper providing autocompletion for available JsonEncoder options.

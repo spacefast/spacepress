@@ -1,5 +1,5 @@
 import { dispatch } from '@wordpress/data';
-import { store as firstAdminStore } from './store';
+import { store as tpAdminStore } from './store';
 import type {
 	FlatMenuItem,
 	Nudge,
@@ -12,42 +12,42 @@ export function updateMenuItem(
 	id: string,
 	changes: Partial< FlatMenuItem >
 ): void {
-	void dispatch( firstAdminStore ).updateMenuItem( id, changes );
+	void dispatch( tpAdminStore ).updateMenuItem( id, changes );
 }
 
 export function unregisterSiteHubHelpMenuItem( id: string ): void {
-	void dispatch( firstAdminStore ).unregisterSiteHubHelpMenuItem( id );
+	void dispatch( tpAdminStore ).unregisterSiteHubHelpMenuItem( id );
 }
 
 export function setNudges( nudges: Nudge[] ): void {
-	void dispatch( firstAdminStore ).setNudges( nudges );
+	void dispatch( tpAdminStore ).setNudges( nudges );
 }
 
 export function registerDashboardNotice( notice: DashboardNoticeConfig ): void {
-	void dispatch( firstAdminStore ).registerDashboardNotice( notice );
+	void dispatch( tpAdminStore ).registerDashboardNotice( notice );
 }
 
 export function unregisterDashboardNotice( id: string ): void {
-	void dispatch( firstAdminStore ).unregisterDashboardNotice( id );
+	void dispatch( tpAdminStore ).unregisterDashboardNotice( id );
 }
 
 export function updateDashboardNotice(
 	id: string,
 	changes: Partial< DashboardNoticeConfig >
 ): void {
-	void dispatch( firstAdminStore ).updateDashboardNotice( id, changes );
+	void dispatch( tpAdminStore ).updateDashboardNotice( id, changes );
 }
 
 export function registerModal( modal: RegisteredModal ): void {
-	void dispatch( firstAdminStore ).registerModal( modal );
+	void dispatch( tpAdminStore ).registerModal( modal );
 }
 
 export function unregisterModal( id: string ): void {
-	void dispatch( firstAdminStore ).unregisterModal( id );
+	void dispatch( tpAdminStore ).unregisterModal( id );
 }
 
 export function setDashboardContext(
 	context: Partial< DashboardContext >
 ): void {
-	void dispatch( firstAdminStore ).setDashboardContext( context );
+	void dispatch( tpAdminStore ).setDashboardContext( context );
 }

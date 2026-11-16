@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Policy;
 
 use function count;
 use function in_array;
 use LogicException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\ValidatorState;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\ValidatorState;
 
 final class PolicyTree
 {

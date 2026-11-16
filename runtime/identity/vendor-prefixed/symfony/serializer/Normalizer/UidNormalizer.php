@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use First\Identity\Vendor\Symfony\Component\Uid\AbstractUid;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\AbstractUid;
 
 final class UidNormalizer implements NormalizerInterface, DenormalizerInterface
 {

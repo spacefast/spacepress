@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Annotation;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation;
 
-class_exists(\First\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap::class);
+class_exists(\TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap::class);
 
 if (false) {
     /**
-     * @deprecated since Symfony 7.4, use {@see \First\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap} instead
+     * @deprecated since Symfony 7.4, use {@see \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap} instead
      */
     #[\Attribute(\Attribute::TARGET_CLASS)]
-    class DiscriminatorMap extends \First\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap
+    class DiscriminatorMap extends \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap
     {
     }
 }

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
 
-use First\Identity\Vendor\Brick\Math\BigInteger;
+use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
 use function in_array;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RSA\RSAPublicKey;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\AlgorithmIdentifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RSA\RSAPublicKey;
 
 /**
  * The parts of a validation policy that apply to any signature, wherever it is verified.

@@ -41,7 +41,7 @@ describe( 'Page', () => {
 		);
 
 		expect( container.firstChild ).toHaveClass(
-			'first-admin-page',
+			'typedpress-admin-page',
 			'custom-class'
 		);
 	} );
@@ -67,7 +67,7 @@ describe( 'Page', () => {
 
 		const contentDiv = screen.getByText( 'Test content' ).parentNode;
 		expect( contentDiv ).toHaveClass(
-			'first-admin-page__content',
+			'typedpress-admin-page__content',
 			'has-padding'
 		);
 	} );
@@ -80,7 +80,7 @@ describe( 'Page', () => {
 		);
 
 		const contentDiv = screen.getByText( 'Test content' ).parentNode;
-		expect( contentDiv ).toHaveClass( 'first-admin-page__content' );
+		expect( contentDiv ).toHaveClass( 'typedpress-admin-page__content' );
 		expect( contentDiv ).not.toHaveClass( 'has-padding' );
 	} );
 

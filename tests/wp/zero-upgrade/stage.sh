@@ -21,7 +21,7 @@ mkdir -p "$work/app" && cp "$here/zero.config.ts" "$work/app/"
 "$harness" up --wp-content "$work/app/.zero/wp-content" > "$work/up.json"
 # The harness publishes WordPress on a host port the container can't reach: probe the private files
 # through the web server's in-network name (the filter hosts use for the same reason).
-"$harness" wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . "/test-probe-route.php", "<?php\nforeach ([\"zero_private_probe_url\", \"first_private_probe_url\"] as \$f) { add_filter(\$f, fn (\$u) => str_replace(home_url(), \"http://wordpress\", \$u)); }\n");'
+"$harness" wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . "/test-probe-route.php", "<?php\nforeach ([\"zero_private_probe_url\", \"tp_private_probe_url\"] as \$f) { add_filter(\$f, fn (\$u) => str_replace(home_url(), \"http://wordpress\", \$u)); }\n");'
 [[ $("$harness" wp eval 'echo Zero\Wp\WpFiles::probe() ? "ok" : "exposed";') == ok ]]
 editor=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["users"]["editor"]["appPassword"])' "$work/up.json")
 "$here/seed.sh" "http://127.0.0.1:$ZERO_WP_PORT" "$editor" > "$work/seeded.json"
@@ -29,7 +29,7 @@ rm -rf "$here/fixture" && mkdir -p "$here/fixture/uploads"
 "$harness" compose exec -T db mariadb-dump -uroot -pzero-test-root --skip-dump-date --skip-extended-insert --order-by-primary wordpress > "$here/fixture/site.sql"
 "$harness" compose exec -T wordpress tar -C /var/www/html/wp-content/uploads -cf - zero-private | tar -C "$here/fixture/uploads" -xf -
 cp "$work/seeded.json" "$here/fixture/seeded.json"
-# The ledger the 0.3.0 build committed: the port in first.config.ts builds on it (run.sh).
+# The ledger the 0.3.0 build committed: the port in typedpress.config.ts builds on it (run.sh).
 mkdir -p "$here/fixture/migrations" && cp "$work/app/zero/migrations/"* "$here/fixture/migrations/"
 # The generated client 0.3.0 served: an open browser tab keeps running it after the upgrade.
 mkdir -p "$here/fixture/client" && cp "$work/app/zero/client/client.js" "$here/fixture/client/client.js"

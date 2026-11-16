@@ -1,5 +1,5 @@
 import { useNavigate } from '@wordpress/route';
-import type { Action } from '@first-admin/dataviews';
+import type { Action } from '@typedpress-admin/dataviews';
 import type { Post } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
 import { pencil } from '@wordpress/icons';
@@ -9,7 +9,7 @@ export function useEditNavigationAction(): Action< Post > {
 
 	return {
 		id: 'edit',
-		label: __( 'Edit', 'first-admin' ),
+		label: __( 'Edit', 'typedpress-admin' ),
 		isPrimary: true,
 		icon: pencil,
 		callback: ( items: Post[] ) => {

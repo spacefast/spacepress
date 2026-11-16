@@ -8,8 +8,8 @@
     "noEmit": true,
     "types": [],
     "paths": {
-      "first": ["../../types/first/index.d.ts"]
+      "typedpress": ["../../types/typedpress/index.d.ts"]
     }
   },
-  "include": ["first.config.ts", "first/_generated/db.d.ts", "first/lib/**/*.ts"]
+  "include": ["typedpress.config.ts", "tp/_generated/db.d.ts", "tp/lib/**/*.ts"]
 }

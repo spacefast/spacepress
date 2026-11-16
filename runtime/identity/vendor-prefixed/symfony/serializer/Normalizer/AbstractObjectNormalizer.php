@@ -9,41 +9,41 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchIndexException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\CsvEncoder;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\XmlEncoder;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\ExtraAttributesException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorFromClassMetadata;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException as TypeInfoLogicException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\IntersectionType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\NullableType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\WrappingTypeInterface;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionTypeResolver;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchIndexException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyAccess;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\CsvEncoder;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\XmlEncoder;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\ExtraAttributesException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorFromClassMetadata;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorResolverInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException as TypeInfoLogicException;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\IntersectionType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\NullableType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\UnionType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\WrappingTypeInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionTypeResolver;
 
 /**
  * Base class for a normalizer dealing with objects.

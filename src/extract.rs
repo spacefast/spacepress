@@ -47,32 +47,32 @@ pub enum Slot {
     WpHook {
         index: usize,
     },
-    /// A server component exported from `first/components/`; `name` keys `Schema::components`.
+    /// A server component exported from `tp/components/`; `name` keys `Schema::components`.
     Component {
         name: String,
     },
-    /// The default export of a `first/app/` route file (page, layout, not-found, error): a component
+    /// The default export of a `tp/app/` route file (page, layout, not-found, error): a component
     /// whose props the router supplies, typed from the route.
     AppPage {
         file: String,
     },
-    /// `export const metadata = (props) => ({ … })` in a `first/app/` page or layout.
+    /// `export const metadata = (props) => ({ … })` in a `tp/app/` page or layout.
     AppMetadata {
         file: String,
     },
-    /// `export const access = (ctx) => boolean` for a `first/app/` file's HTTP handlers.
+    /// `export const access = (ctx) => boolean` for a `tp/app/` file's HTTP handlers.
     AppAccess {
         file: String,
     },
-    /// `export const guard = (ctx) => boolean` in a `first/app/` layout.
+    /// `export const guard = (ctx) => boolean` in a `tp/app/` layout.
     AppGuard {
         file: String,
     },
-    /// `export async function staticParams()` in a dynamic `first/app/` page: the params to prebuild.
+    /// `export async function staticParams()` in a dynamic `tp/app/` page: the params to prebuild.
     AppStaticParams {
         file: String,
     },
-    /// `export async function POST(req, ctx)` in a `first/app/` page or `route.ts`.
+    /// `export async function POST(req, ctx)` in a `tp/app/` page or `route.ts`.
     AppHandler {
         file: String,
         method: String,
@@ -94,7 +94,7 @@ pub struct Extracted {
     pub roots: Vec<Root>,
     /// Schema-key → collection value, for resolving captured collections.
     pub collections: Vec<Rc<CollectionVal>>,
-    /// Non-fatal advice printed by `first build` (§3.5.1 postmeta hint).
+    /// Non-fatal advice printed by `typedpress build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
     /// Each registered action's value (its allocation) → its registered name, so a page's
     /// `<form action={subscribe}>` and `useFormState(subscribe)` name the action they were given.
@@ -178,10 +178,10 @@ const REGISTRIES: &[&str] = &[
 const RESERVED_COLLECTIONS: &[&str] = &[
     "media", "files", "globals", "actions", "me", "_schema", "auth", "services", "search",
 ];
-/// WordPress limits post types to 20 characters; First prefixes `first_`.
-const MAX_POST_TYPE_TABLE: usize = 20 - "first_".len();
-/// WordPress limits taxonomy names to 32 characters; First prefixes `first_`.
-const MAX_TAXONOMY_TABLE: usize = 32 - "first_".len();
+/// WordPress limits post types to 20 characters; TypedPress prefixes `tp_`.
+const MAX_POST_TYPE_TABLE: usize = 20 - "tp_".len();
+/// WordPress limits taxonomy names to 32 characters; TypedPress prefixes `tp_`.
+const MAX_TAXONOMY_TABLE: usize = 32 - "tp_".len();
 /// `taxonomy()` options (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
 const TAXONOMY_OPTIONS: &[&str] = &[
     "storageName",
@@ -260,7 +260,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             );
             if key == "routes" {
                 d = d.help(
-                    "an HTTP route is a file now: first/app/<path>/route.ts exporting `access` (or `signature`) and GET, POST, … handlers",
+                    "an HTTP route is a file now: tp/app/<path>/route.ts exporting `access` (or `signature`) and GET, POST, … handlers",
                 );
             } else if let Some(s) = suggest(key, CONFIG_KEYS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
@@ -291,7 +291,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     other.describe()
                 ),
             )
-            .help("it becomes the WordPress plugin slug `first-<name>`"));
+            .help("it becomes the WordPress plugin slug `typedpress-<name>`"));
         }
     };
     out.schema.admin = bool_option(&cfg_map, "admin", true, span_of(ev, config, "admin", config_span))?;
@@ -320,7 +320,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     other.describe()
                 ),
             )
-            .help("leave it out for the default: the theme, or first/app when it exists"));
+            .help("leave it out for the default: the theme, or tp/app when it exists"));
         }
     };
     out.schema.output = match cfg_map.get("output") {
@@ -332,15 +332,15 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 span_of(ev, config, "output", config_span),
                 format!("`output` is \"server\" or \"static\", not {}", other.describe()),
             )
-            .help("leave it out for \"server\": pages render on WordPress, and `export const prerender = true` prebuilds one; \"static\" prebuilds every page for `first export`"));
+            .help("leave it out for \"server\": pages render on WordPress, and `export const prerender = true` prebuilds one; \"static\" prebuilds every page for `typedpress export`"));
         }
     };
     if out.schema.output == crate::schema::Output::Static && out.schema.frontend.is_some() {
         return Err(Diag::new(
             span_of(ev, config, "output", config_span),
-            "`output: \"static\"` renders the site from first/app/, and `frontend` hands it to another site",
+            "`output: \"static\"` renders the site from tp/app/, and `frontend` hands it to another site",
         )
-        .help("keep one: remove `frontend` to export first/app/, or remove `output` to keep the other frontend"));
+        .help("keep one: remove `frontend` to export tp/app/, or remove `output` to keep the other frontend"));
     }
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
@@ -371,7 +371,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             return Err(Diag::new(
                 span_of(ev, config, "plugins", config_span),
                 format!(
-                    "a sealed site can't run {denied}: it serves stored content around First's read rules. Remove it from plugins, or turn sealed mode off."
+                    "a sealed site can't run {denied}: it serves stored content around TypedPress's read rules. Remove it from plugins, or turn sealed mode off."
                 ),
             ));
         }
@@ -431,7 +431,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             if RESERVED_COLLECTIONS.contains(&canonical.as_str()) {
                 return Err(Diag::new(
                     c.span,
-                    format!("\"{canonical}\" is reserved: First serves a built-in route with that name"),
+                    format!("\"{canonical}\" is reserved: TypedPress serves a built-in route with that name"),
                 ));
             }
             let table = match c.options.as_ref().and_then(|options| {
@@ -445,7 +445,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 Some(_) => {
                     return Err(
                         Diag::new(span, "`storageName` must be an identifier starting with a letter")
-                            .help("use the existing physical name without the WordPress or first_ prefix"),
+                            .help("use the existing physical name without the WordPress or tp_ prefix"),
                     );
                 }
             };
@@ -455,7 +455,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             {
                 return Err(Diag::new(
                     c.span,
-                    format!("\"{table}\" is reserved: First serves a built-in route with that name"),
+                    format!("\"{table}\" is reserved: TypedPress serves a built-in route with that name"),
                 ));
             }
             if let Some(other) = out.schema.collections.get(&table) {
@@ -471,7 +471,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 return Err(Diag::new(
                     c.span,
                     format!(
-                        "\"{table}\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and First prefixes `first_`"
+                        "\"{table}\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and TypedPress prefixes `tp_`"
                     ),
                 )
                 .help(format!(
@@ -1628,7 +1628,7 @@ fn collection_options(
                 span("was"),
                 "`was` takes the table's old storage name, and only on table()",
             )
-            .help("write `was: \"old_name\"`: the name in first/_generated/migrations/snapshot.json"));
+            .help("write `was: \"old_name\"`: the name in tp/_generated/migrations/snapshot.json"));
         }
     };
     if let Some(name) = &existing_table
@@ -1688,12 +1688,12 @@ fn collection_options(
         return Err(Diag::new(
             c.span,
             format!(
-                "\"{}\" is too long for an editor collection: WordPress post types are limited to 20 characters and First prefixes `first_`",
+                "\"{}\" is too long for an editor collection: WordPress post types are limited to 20 characters and TypedPress prefixes `tp_`",
                 c.table()
             ),
         )
         .help(format!(
-            "use a name of at most {MAX_POST_TYPE_TABLE} characters, or use table() for SQL data; a site that ran this collection before the rename to First keeps its posts under `zero_{}` until they are moved to the new name",
+            "use a name of at most {MAX_POST_TYPE_TABLE} characters, or use table() for SQL data; a site that ran this collection before the rename to TypedPress keeps its posts under `zero_{}` until they are moved to the new name",
             c.table()
         )));
     }
@@ -2378,7 +2378,7 @@ fn column(
     };
     let many_ref = b.ty == ColType::RefList;
     if many_ref {
-        // A many-ref is a set of links in First's join table, not a value: nothing to make unique,
+        // A many-ref is a set of links in TypedPress's join table, not a value: nothing to make unique,
         // default, translate or regenerate (docs/decisions/2026-11-11-authoring-surface.md, ruling 3).
         let bad = [
             ("unique", b.unique),
@@ -2391,7 +2391,7 @@ fn column(
                 b.span_of(m),
                 format!("`.{m}()` isn't valid on a `ref().many()` field (`{name}`)"),
             )
-            .help("a many-ref is a list of links First keeps in its own table; remove the modifier"));
+            .help("a many-ref is a list of links TypedPress keeps in its own table; remove the modifier"));
         }
     }
     let default = if b.terms {
@@ -2965,7 +2965,7 @@ fn link_key(r: &RefField) -> String {
 }
 
 /// A many-ref's join table key (`posts` + `relatedPosts` → `posts_related_posts`), stored as
-/// `{prefix}first_<key>`.
+/// `{prefix}tp_<key>`.
 pub fn join_key(table: &str, field: &str) -> String {
     format!("{table}_{}", crate::schema::physical_name(field))
 }
@@ -3468,13 +3468,13 @@ pub(crate) fn signature_config(v: &Value, span: Span, legacy: bool) -> Result<Js
         .is_match(&header)
     {
         return Err(Diag::new(span, "signature.header must be an HTTP header name")
-            .help("use stripe-signature or first-signature"));
+            .help("use stripe-signature or typedpress-signature"));
     }
     let mut scheme = string(o.get("scheme"), span, "signature.scheme")?;
     if legacy && scheme == "zero" {
-        scheme = "first".into();
+        scheme = "typedpress".into();
     }
-    if scheme != "first" && scheme != "hmac-sha256" {
+    if scheme != "typedpress" && scheme != "hmac-sha256" {
         return Err(
             Diag::new(span, "signature.scheme must be first or hmac-sha256").help("choose a supported HMAC scheme")
         );
@@ -4218,7 +4218,7 @@ mod legacy {
     pub const CONFIG_KEYS: &[&str] = &["routes", "hooks"];
 
     /// `routes: { feed: route({ method, path, access | signature, handler }) }`, from the config or a
-    /// plugin, read onto the `first/app/` route table as one handler route per entry: its path is the
+    /// plugin, read onto the `tp/app/` route table as one handler route per entry: its path is the
     /// route pattern, its handler and access rule are the route file's. The table says it came from
     /// here (`App::legacy_routes`), so the runtime serves it as 0.3.0 did: a route is matched among
     /// those of the request's method, its reads are trusted, and the theme keeps the front end.
@@ -4354,11 +4354,11 @@ mod legacy {
     }
 
     /// A 0.3.0 route path: literal segments, `:name`, and a last `*name`; never one of WordPress's or
-    /// First's own first segments.
+    /// TypedPress's own first segments.
     fn path(path: &str, span: Span) -> Result<String> {
         let bad = |why: &str| {
             Diag::new(span, format!("route path {path:?} {why}")).help(
-                "publish again with a client that captures First sources: an HTTP route is first/app/<path>/route.ts",
+                "publish again with a client that captures TypedPress sources: an HTTP route is tp/app/<path>/route.ts",
             )
         };
         let Some(rest) = path.strip_prefix('/') else {
@@ -4395,9 +4395,9 @@ mod legacy {
         let first = segments[0].to_ascii_lowercase();
         if first.starts_with(':')
             || first.starts_with('*')
-            || crate::kind_url::RESERVED_FIRST_SEGMENTS.contains(&first.as_str())
+            || crate::kind_url::RESERVED_TP_SEGMENTS.contains(&first.as_str())
         {
-            return Err(bad("starts with a segment WordPress or First owns"));
+            return Err(bad("starts with a segment WordPress or TypedPress owns"));
         }
         Ok(format!("/{rest}"))
     }

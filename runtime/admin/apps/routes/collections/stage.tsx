@@ -1,1 +1,1 @@
-export { Overview as default } from '@first-admin/schema';
+export { Overview as default } from '@typedpress-admin/schema';

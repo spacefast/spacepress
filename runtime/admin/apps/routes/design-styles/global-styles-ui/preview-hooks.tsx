@@ -1,4 +1,4 @@
-import type { Color } from '@first-admin/global-styles-engine';
+import type { Color } from '@typedpress-admin/global-styles-engine';
 import { useSetting, useStyle } from './hooks';
 
 export function useStylesPreviewColors() {

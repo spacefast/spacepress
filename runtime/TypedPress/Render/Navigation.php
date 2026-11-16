@@ -1,0 +1,50 @@
+<?php
+
+declare(strict_types=1);
+
+namespace TypedPress\Render;
+
+/**
+ * Region navigation for `<Link>` (docs/spec/rendering.md §4.3): the root layout's content region is
+ * a router region, and a link click fetches the next page and swaps that region with
+ * `@wordpress/interactivity-router`. The store module is enqueued only on pages that render a link.
+ */
+final class Navigation
+{
+    public const NAMESPACE = 'tp/router';
+    public const REGION = 'tp/main';
+    private static bool $used = false;
+
+    public static function used(): void
+    {
+        self::$used = true;
+    }
+
+    public static function reset(): void
+    {
+        self::$used = false;
+    }
+
+    /** The router region's opening tag; the page's HTML follows it, then `</div>`. */
+    public static function region(): string
+    {
+        return '<div class="wp-site-blocks" data-wp-interactive="' . esc_attr(self::NAMESPACE) . '" data-wp-router-region="' . esc_attr(self::REGION) . '">';
+    }
+
+    /**
+     * On a page that renders a link: the store module, and core's processing of the router region.
+     * Core's directive pass runs over the region's empty wrapper only, so its router-region
+     * processor seeds `core/router`'s `state.url`, enqueues the navigation animation styles and
+     * prints the loading bar in the footer, as on a block theme's page. The page's HTML is final
+     * already (compiled components print their own values), so it is not processed again.
+     */
+    public static function enqueue(string $url): void
+    {
+        if (!self::$used || !function_exists('wp_register_script_module')) {
+            return;
+        }
+        wp_register_script_module('typedpress-router', $url, [['id' => '@wordpress/interactivity', 'import' => 'static'], ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic']], null);
+        wp_enqueue_script_module('typedpress-router');
+        wp_interactivity_process_directives(self::region() . '</div>');
+    }
+}

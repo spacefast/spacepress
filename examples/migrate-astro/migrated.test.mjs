@@ -1,6 +1,6 @@
 // The migrated journal (after/) on WordPress-on-SQLite, read in Chromium: the pages the Astro site
 // had (home, blog, a post, about), the collection seeded from its Markdown files, and the island,
-// which hydrates and counts clicks. Needs the `first` binary (FIRST_BIN, default target/debug/first),
+// which hydrates and counts clicks. Needs the `typedpress` binary (TP_BIN, default target/debug/typedpress),
 // PHP 8.2+ with pdo_sqlite, and `npm ci` plus Chromium's headless shell in tests/differential/client.
 //
 //   node --test examples/migrate-astro/migrated.test.mjs
@@ -16,9 +16,9 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
-const bin = process.env.FIRST_BIN ?? join(repo, "target/debug/first");
+const bin = process.env.TP_BIN ?? join(repo, "target/debug/typedpress");
 const { chromium } = createRequire(join(repo, "tests/differential/client/package.json"))("playwright-core");
-const work = mkdtempSync(join(tmpdir(), "first-journal-"));
+const work = mkdtempSync(join(tmpdir(), "typedpress-journal-"));
 let server;
 let url;
 let browser;
@@ -29,14 +29,14 @@ const first = (...args) => {
 };
 
 before(async () => {
-  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin first), or set FIRST_BIN; ${bin} is missing`);
+  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin typedpress), or set TP_BIN; ${bin} is missing`);
   const project = join(work, "journal");
   cpSync(join(here, "after"), project, { recursive: true });
   first("build", project, "--quiet");
   first("sources", project, "--out", join(work, "sources"));
   first("compile-sources", join(work, "sources"), join(work, "compiled"), project);
-  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/serve_built.php"), join(project, "first/dist/wp-content"), join(work, "compiled/seed")], {
-    env: { ...process.env, FIRST_WP_THEMES: "1" },
+  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/serve_built.php"), join(project, "tp/dist/wp-content"), join(work, "compiled/seed")], {
+    env: { ...process.env, TP_WP_THEMES: "1" },
     stdio: ["ignore", "pipe", "inherit"],
   });
   url = JSON.parse(await new Promise((ok, fail) => {
@@ -70,7 +70,7 @@ test("the migrated journal serves the Astro site's pages, and its island counts 
   assert.deepEqual(await page.$$eval("main time", (ts) => ts.map((t) => t.textContent)), ["2026-04-11", "2026-03-02"]);
 
   await page.goto(`${url}/blog/first-light`, { waitUntil: "networkidle" });
-  assert.equal(await page.title(), "First light · Journal");
+  assert.equal(await page.title(), "TypedPress light · Journal");
   assert.equal(await page.textContent("article b, article strong"), "crocuses");
   // The hero image moved to public/, which the host serves as files (this harness serves WordPress only).
   assert.equal(await page.$eval("article img", (img) => img.getAttribute("src")), "/images/first-light.svg");

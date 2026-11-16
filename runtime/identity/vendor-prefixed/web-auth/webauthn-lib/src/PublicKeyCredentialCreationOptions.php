@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace TypedPress\Identity\Vendor\Webauthn;
 
 use function in_array;
 use InvalidArgumentException;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
-use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 final class PublicKeyCredentialCreationOptions extends PublicKeyCredentialOptions
 {

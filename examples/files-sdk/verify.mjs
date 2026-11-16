@@ -1,8 +1,8 @@
-// Differential test: run every scenario in app/first/scenarios.mjs under Node against
-// the installed files-sdk, then through the PHP that First generates, and compare
+// Differential test: run every scenario in app/tp/scenarios.mjs under Node against
+// the installed files-sdk, then through the PHP that TypedPress generates, and compare
 // the JSON output byte for byte.
 //
-//   FIRST_BIN=/abs/first node verify.mjs [--expect-red] [--only <action>]
+//   TP_BIN=/abs/tp node verify.mjs [--expect-red] [--only <action>]
 //
 // --expect-red keeps the exit code 0 while the probe is blocked or diverges, so
 // CI shows the state without blocking unrelated PRs. Remove the flag from CI in
@@ -15,17 +15,17 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { sourceFiles } from "./sources.mjs";
 import { measure, table } from "./table.mjs";
-import * as scenarios from "./app/first/scenarios.mjs";
+import * as scenarios from "./app/tp/scenarios.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const { values: options } = parseArgs({
   options: { "expect-red": { type: "boolean", default: false }, only: { type: "string", multiple: true } },
 });
-const first = path.resolve(process.env.FIRST_BIN ?? path.join(root, "../../target/debug/first"));
+const first = path.resolve(process.env.TP_BIN ?? path.join(root, "../../target/debug/typedpress"));
 const work = path.join(root, ".work");
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-// The scenarios and their inputs. Keep in step with app/first.config.ts.
+// The scenarios and their inputs. Keep in step with app/typedpress.config.ts.
 const CASES = [
   { action: "probe", input: { key: "hello.txt", body: "hello" }, node: (i) => probe(i) },
   { action: "roundtrip", input: { key: "notes/é ü.txt", body: "héllo \"wörld\" <b>" }, node: (i) => scenarios.roundtrip(i.key, i.body) },

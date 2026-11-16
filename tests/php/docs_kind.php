@@ -7,14 +7,14 @@ declare(strict_types=1);
  * `docs_kind_*`): the fixture tests/fixtures/docs-kind as built, seeded from the records a hosted
  * compile wrote for its content/docs/ folder tree, and served by php -S. Prints one JSON object.
  *
- *   FIRST_WP_THEMES=1 php tests/php/docs_kind.php <wp-content dir> <seed records dir>
+ *   TP_WP_THEMES=1 php tests/php/docs_kind.php <wp-content dir> <seed records dir>
  */
 
 require __DIR__ . '/wp.php';
 
 $site = wpSite('docs-kind', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
 $out = [];
-$out['seed'] = \First\Sync\Seed::run(\First\Wp\Runtime::plugin(), $argv[2]);
+$out['seed'] = \TypedPress\Sync\Seed::run(\TypedPress\Wp\Runtime::plugin(), $argv[2]);
 $site->startServer();
 $url = $site->url();
 
@@ -79,7 +79,7 @@ $cookie = static function (string $user) use ($site): string {
 
 // The rows as WordPress stores them: a Page-like tree in post_parent and menu_order.
 global $wpdb;
-$type = \First\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType'];
+$type = \TypedPress\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType'];
 $rows = $wpdb->get_results($wpdb->prepare("SELECT ID, post_name, post_parent, menu_order, post_status FROM {$wpdb->posts} WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'inherit') ORDER BY post_name", $type), ARRAY_A);
 $byId = array_column($rows, 'post_name', 'ID');
 foreach ($rows as $row) {
@@ -146,13 +146,13 @@ $out['headings beside a gallery'] = [$gallery['toc'], $gallery['anchors']];
 
 // Heading ids follow GitHub's rule: each case's id as github-slugger gives it. Prints the ones that differ.
 $ids = json_decode((string) file_get_contents(dirname(__DIR__) . '/fixtures/docs-kind/heading-ids.json'), true, flags: JSON_THROW_ON_ERROR);
-$out['heading ids'] = array_values(array_filter(array_map(static fn (array $c): ?array => \First\Content\Nav::slug($c[0]) === $c[1] ? null : [$c[0], $c[1], \First\Content\Nav::slug($c[0])], $ids['cases'])));
+$out['heading ids'] = array_values(array_filter(array_map(static fn (array $c): ?array => \TypedPress\Content\Nav::slug($c[0]) === $c[1] ? null : [$c[0], $c[1], \TypedPress\Content\Nav::slug($c[0])], $ids['cases'])));
 $out['heading id cases'] = count($ids['cases']);
 // A heading with its own id keeps it, and no generated id repeats it; the rest number around it.
 $own = ("<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">Why</h2>\n<!-- /wp:heading -->\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\" id=\"why\">Mine</h2>\n<!-- /wp:heading -->\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">Why</h2>\n<!-- /wp:heading -->");
-$out['own ids'] = array_map(static fn (\First\JsObject $h): string => $h->p['id'], \First\Content\Nav::headings(['content' => $own], 'content')->a);
+$out['own ids'] = array_map(static fn (\TypedPress\JsObject $h): string => $h->p['id'], \TypedPress\Content\Nav::headings(['content' => $own], 'content')->a);
 // The query API reads the same tree.
-$out['api'] = array_map(static fn (array $r): array => [$r['slug'], $r['parent'] === null ? null : $byId[$r['parent']] ?? $r['parent'], $r['order']], \First\Seam::toPhp(\First\Seam::kindList('docs', ['orderBy' => ['order' => 'asc'], 'where' => ['parent' => null]], true)));
+$out['api'] = array_map(static fn (array $r): array => [$r['slug'], $r['parent'] === null ? null : $byId[$r['parent']] ?? $r['parent'], $r['order']], \TypedPress\Seam::toPhp(\TypedPress\Seam::kindList('docs', ['orderBy' => ['order' => 'asc'], 'where' => ['parent' => null]], true)));
 
 // Components in Markdown: the file's tags are the app's blocks, stored as blocks, rendered through
 // the components on the route, and written back as the same tags.
@@ -164,13 +164,13 @@ $page = fetch("$url/docs/guides/install");
 preg_match('#<aside class="callout callout-warning".*?</aside>#s', $page['body'], $callout);
 preg_match('#<span class="badge">.*?</span>#s', $page['body'], $badge);
 $out['blocks rendered'] = [$page['status'], preg_replace('/\s+/', ' ', $callout[0] ?? ''), $badge[0] ?? null];
-$out['blocks back'] = \First\Sync\Markdown::fromBlocks($stored);
+$out['blocks back'] = \TypedPress\Sync\Markdown::fromBlocks($stored);
 $out['blocks twin'] = fetch("$url/docs/guides/install.md")['body'];
 // An editor changes a prop in the block editor: the file's tag follows.
 $changed = str_replace('{"type":"warning","title":"Before you start"}', '{"type":"note","title":"Before you start"}', $stored);
-$out['blocks edited back'] = \First\Sync\Markdown::fromBlocks($changed);
+$out['blocks edited back'] = \TypedPress\Sync\Markdown::fromBlocks($changed);
 // The editor stores a cleared text field or choice as "": written back, the prop isn't there.
-$out['blocks cleared back'] = \First\Sync\Markdown::fromBlocks('<!-- wp:docskind/status {"label":"","kind":""} /-->' . "\n\n" . '<!-- wp:docskind/badge {"label":"x","count":3} /-->');
+$out['blocks cleared back'] = \TypedPress\Sync\Markdown::fromBlocks('<!-- wp:docskind/status {"label":"","kind":""} /-->' . "\n\n" . '<!-- wp:docskind/badge {"label":"x","count":3} /-->');
 // What a Markdown file can't say about a block is refused with the reason, never stored half.
 foreach ([
     'unknown tag' => "<Tabs>\nx\n</Tabs>\n",
@@ -181,14 +181,14 @@ foreach ([
     'unclosed' => "<Callout type=\"note\">\nx\n",
 ] as $case => $markdown) {
     try {
-        \First\Sync\Markdown::toBlocks($markdown);
+        \TypedPress\Sync\Markdown::toBlocks($markdown);
         $out['blocks refused'][$case] = null;
-    } catch (\First\HttpError $e) {
+    } catch (\TypedPress\HttpError $e) {
         $out['blocks refused'][$case] = $e->getMessage();
     }
 }
 // A tag inside a code fence is code, not a block.
-$out['blocks fenced'] = \First\Sync\Markdown::toBlocks("```md\n<Callout type=\"note\">\n```\n");
+$out['blocks fenced'] = \TypedPress\Sync\Markdown::toBlocks("```md\n<Callout type=\"note\">\n```\n");
 
 // Code blocks (docs/decisions/2026-11-13-code-blocks.md): highlighted on the route, with titles,
 // marked lines and a tab group, no script; written back as the same fences.
@@ -199,23 +199,23 @@ $x = new DOMXPath($html);
 $text = static fn (?DOMNode $n): ?string => $n === null ? null : trim($n->textContent);
 $out['code'] = [
     'status' => $setup['status'],
-    'titles' => array_map($text, iterator_to_array($x->query('//figcaption[@class="first-code-title"]'))),
+    'titles' => array_map($text, iterator_to_array($x->query('//figcaption[@class="typedpress-code-title"]'))),
     'keywords' => array_map($text, iterator_to_array($x->query('//pre[contains(@class, "language-ts")]//span[@class="hljs-keyword"]'))),
-    'marked' => array_map($text, iterator_to_array($x->query('//span[contains(@class, "first-code-marked")]'))),
-    'tabs' => array_map($text, iterator_to_array($x->query('//div[@class="first-code-group"]/label'))),
-    'tab inputs' => $x->query('//div[@class="first-code-group"]/input[@type="radio"]')->length,
-    'panels' => array_map(static fn (DOMNode $n): string => trim($n->textContent), iterator_to_array($x->query('//div[@class="first-code-group"]/figure'))),
+    'marked' => array_map($text, iterator_to_array($x->query('//span[contains(@class, "typedpress-code-marked")]'))),
+    'tabs' => array_map($text, iterator_to_array($x->query('//div[@class="typedpress-code-group"]/label'))),
+    'tab inputs' => $x->query('//div[@class="typedpress-code-group"]/input[@type="radio"]')->length,
+    'panels' => array_map(static fn (DOMNode $n): string => trim($n->textContent), iterator_to_array($x->query('//div[@class="typedpress-code-group"]/figure'))),
     'plain' => $text($x->query('//pre[contains(@class, "language-text")]')->item(0)),
     'plain spans' => $x->query('//pre[contains(@class, "language-text")]//span[starts-with(@class, "hljs")]')->length,
-    'stylesheet' => $x->query('//link[@id="first-code-css"]')->length,
+    'stylesheet' => $x->query('//link[@id="typedpress-code-css"]')->length,
     'scripts' => array_values(array_filter(array_map(static fn (DOMNode $n): string => (string) $n->getAttribute('src'), iterator_to_array($x->query('//script[@src]'))), static fn (string $s): bool => str_contains($s, 'code'))),
 ];
-$css = fetch($x->query('//link[@id="first-code-css"]')->item(0)?->getAttribute('href') ?? "$url/none");
-$out['code css'] = [$css['status'], str_contains($css['body'], '@media (prefers-color-scheme: dark)'), str_contains($css['body'], '.first-code .hljs-keyword'),
+$css = fetch($x->query('//link[@id="typedpress-code-css"]')->item(0)?->getAttribute('href') ?? "$url/none");
+$out['code css'] = [$css['status'], str_contains($css['body'], '@media (prefers-color-scheme: dark)'), str_contains($css['body'], '.typedpress-code .hljs-keyword'),
     // A page's own theme switch wins over the scheme: data-theme="dark" or "light" on <html>.
-    str_contains($css['body'], ':root[data-theme="dark"] .first-code .hljs-keyword') && str_contains($css['body'], ':root:not([data-theme="light"]) .first-code .hljs-keyword')];
+    str_contains($css['body'], ':root[data-theme="dark"] .typedpress-code .hljs-keyword') && str_contains($css['body'], ':root:not([data-theme="light"]) .typedpress-code .hljs-keyword')];
 $setupPost = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'setup'", $type));
-$out['code back'] = \First\Sync\Markdown::fromBlocks((string) get_post_field('post_content', $setupPost));
+$out['code back'] = \TypedPress\Sync\Markdown::fromBlocks((string) get_post_field('post_content', $setupPost));
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

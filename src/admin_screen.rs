@@ -1,10 +1,10 @@
-//! `adminScreen({ ... })`: a First Admin screen declared in TypeScript (docs/admin-screens.md).
+//! `adminScreen({ ... })`: a TypedPress Admin screen declared in TypeScript (docs/admin-screens.md).
 //!
 //! A screen registers by its export like a kind or an action. Extraction checks it against the
-//! actions it names and compiles it to the declaration `first_admin_register_screen()` takes
+//! actions it names and compiles it to the declaration `tp_admin_register_screen()` takes
 //! (runtime/admin/lib/screens.php), with each action reference replaced by the name of the Ability
 //! the runtime registers for it (`<app>/<kebab action>`). The declaration goes into schema.php
-//! (`screens`), and the app plugin registers it on `first_admin_screens` (First\Wp\Plugin), so a
+//! (`screens`), and the app plugin registers it on `tp_admin_screens` (TypedPress\Wp\Plugin), so a
 //! TypeScript screen and a PHP one end up in the same registry.
 
 use crate::diag::{Diag, Result, Span, suggest};
@@ -35,8 +35,8 @@ const ACTION_KEYS: &[&str] = &["id", "label", "action", "input", "destructive", 
 const FIELD_KEYS: &[&str] = &["label", "type", "elements", "description"];
 const FIELD_TYPES: &[&str] = &["text", "integer", "number", "boolean", "datetime", "array"];
 const LAYOUT_TYPES: &[&str] = &["table", "grid", "list"];
-/// `access` as First's roles, read as the WordPress capability each one stands for (the ladder
-/// First\Wp\WpAuth::map reads back).
+/// `access` as TypedPress's roles, read as the WordPress capability each one stands for (the ladder
+/// TypedPress\Wp\WpAuth::map reads back).
 const ROLES: &[(&str, &str)] = &[
     ("admin", "manage_options"),
     ("editor", "edit_others_posts"),
@@ -44,8 +44,8 @@ const ROLES: &[(&str, &str)] = &[
     ("subscriber", "read"),
     ("authenticated", "read"),
 ];
-/// Screen ids First Admin and the runtime register themselves (runtime/admin/lib/screens.php,
-/// First\RuntimeSchema\Surfaces).
+/// Screen ids TypedPress Admin and the runtime register themselves (runtime/admin/lib/screens.php,
+/// TypedPress\RuntimeSchema\Surfaces).
 const RESERVED: &[&str] = &["schema-versions"];
 
 /// Every exported `adminScreen()` (in `cfg.screens`), into
@@ -70,9 +70,9 @@ pub fn screens(v: &Value, span: Span, ev: &Evaluator<'_>, out: &mut Extracted) -
         if RESERVED.contains(&id.as_str()) || id.starts_with("table-") {
             return Err(Diag::new(
                 screen.span,
-                format!("the screen id `{id}` is one First registers itself"),
+                format!("the screen id `{id}` is one TypedPress registers itself"),
             )
-            .help("export the screen under another name; `table-*` and `schema-versions` are First's own"));
+            .help("export the screen under another name; `table-*` and `schema-versions` are TypedPress's own"));
         }
         if out.schema.screens.contains_key(&id) {
             return Err(
@@ -270,11 +270,11 @@ impl Screen<'_, '_, '_> {
         Ok(Json::Object(decl))
     }
 
-    /// `access` (a First role) or `capability` (a WordPress capability); default administrators.
+    /// `access` (a TypedPress role) or `capability` (a WordPress capability); default administrators.
     fn capability(&self, cfg: &Value, o: &IndexMap<String, Value>, span: Span) -> Result<String> {
         match (o.get("access"), o.get("capability")) {
             (Some(_), Some(_)) => Err(Diag::new(self.at(cfg, "capability", span), "a screen has `access` or `capability`, not both")
-                .help("keep `access: \"editor\"` (a First role) or `capability: \"edit_others_posts\"` (a WordPress capability)")),
+                .help("keep `access: \"editor\"` (a TypedPress role) or `capability: \"edit_others_posts\"` (a WordPress capability)")),
             (Some(Value::Str(role)), None) => ROLES
                 .iter()
                 .find(|(r, _)| *r == role.as_ref())

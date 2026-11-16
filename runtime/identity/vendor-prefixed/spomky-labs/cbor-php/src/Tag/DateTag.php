@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag;
+namespace TypedPress\Identity\Vendor\CBOR\Tag;
 
-use First\Identity\Vendor\Brick\Math\BigInteger;
-use First\Identity\Vendor\Brick\Math\Exception\MathException;
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\NegativeIntegerObject;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\CBOR\Tag;
-use First\Identity\Vendor\CBOR\UnsignedIntegerObject;
+use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
+use TypedPress\Identity\Vendor\CBOR\CBORObject;
+use TypedPress\Identity\Vendor\CBOR\NegativeIntegerObject;
+use TypedPress\Identity\Vendor\CBOR\Normalizable;
+use TypedPress\Identity\Vendor\CBOR\Tag;
+use TypedPress\Identity\Vendor\CBOR\UnsignedIntegerObject;
 use DateTimeImmutable;
 use DateTimeInterface;
 use InvalidArgumentException;

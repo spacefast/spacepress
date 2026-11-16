@@ -6,7 +6,7 @@ export default async function (fake) {
     calls.push({ url, method: init.method, nonce: init.headers["x-wp-nonce"], body: JSON.parse(init.body) });
     return { ok: true, json: async () => ({ data: 142 }) };
   };
-  fake.setConfig("clients/LikeButton", { actions: { like: "/__first/api/v1/actions/like" }, nonce: "n0nce" });
+  fake.setConfig("clients/LikeButton", { actions: { like: "/__tp/api/v1/actions/like" }, nonce: "n0nce" });
   const s = fake.stores.get("clients/LikeButton");
   const context = { count: 1, busy: false, postId: 42 };
   const label1 = await fake.within(context, () => s.state.label);

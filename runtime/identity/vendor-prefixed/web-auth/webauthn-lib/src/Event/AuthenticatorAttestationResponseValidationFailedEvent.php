@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Event;
+namespace TypedPress\Identity\Vendor\Webauthn\Event;
 
 use Throwable;
-use First\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
 
 readonly class AuthenticatorAttestationResponseValidationFailedEvent
 {

@@ -2,7 +2,7 @@ import { forwardRef } from 'react';
 import { Link as DSLink } from '@wordpress/ui';
 import { privateApis as routePrivateApis } from '@wordpress/route';
 import type { LinkProps } from '@wordpress/route';
-import { unlock } from '@first-admin/private-apis';
+import { unlock } from '@typedpress-admin/private-apis';
 
 const { createLink } = unlock( routePrivateApis );
 

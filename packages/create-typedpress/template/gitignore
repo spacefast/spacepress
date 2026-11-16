@@ -1,0 +1,10 @@
+node_modules/
+.tp/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+
+# tp/_generated/ is committed; tp/dist/ is build output.
+tp/dist/

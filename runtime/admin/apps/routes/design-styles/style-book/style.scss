@@ -1,6 +1,6 @@
 @use "@wordpress/base-styles/variables";
 
-.first-admin-style-book {
+.typedpress-admin-style-book {
 	// Ensure the style book fills the available vertical space.
 	// This is useful when the style book is used to fill a frame.
 	height: 100%;
@@ -15,7 +15,7 @@
 	align-items: stretch;
 }
 
-.first-admin-style-book__iframe {
+.typedpress-admin-style-book__iframe {
 	display: block;
 	height: 100%;
 	width: 100%;

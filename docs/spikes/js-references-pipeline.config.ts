@@ -1,4 +1,4 @@
-import { action, db, defineConfig, integer, json, text, table, ref } from "first";
+import { action, db, defineConfig, integer, json, text, table, ref } from "typedpress";
 const owners = table({ name: text() });
 const records = table({
   name: text(), ownerId: ref(owners),

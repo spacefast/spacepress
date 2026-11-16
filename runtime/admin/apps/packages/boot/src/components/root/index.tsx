@@ -15,7 +15,7 @@ import {
 	unlock,
 	EntityValidityProvider,
 	DEFAULT_SITE_NAME,
-} from '@first-admin/admin-toolkit';
+} from '@typedpress-admin/admin-toolkit';
 import { IconButton } from '@wordpress/ui';
 import { ThemeProvider } from '@wordpress/theme';
 import { menu } from '@wordpress/icons';
@@ -48,13 +48,13 @@ import Sidebar from '../sidebar';
 import { useCommands } from '../commands';
 import './style.scss';
 import { ErrorBoundary } from '../error-boundary';
-import { store as agentContextStore } from '@first-admin/ai-agent';
+import { store as agentContextStore } from '@typedpress-admin/ai-agent';
 import { buildSitemapData, preloadSitemapData } from '../../utils/sitemap-context';
 import { store as rootStore } from '../../store';
 import UnsavedChangesWarning from '../unsaved-changes-warning';
 import { findClosestMenuItem } from '../sidebar/path-matching';
 import NavigationProgressBar from '../navigation-progress-bar';
-const AIAgent = lazy(() => import('@first-admin/ai-agent'));
+const AIAgent = lazy(() => import('@typedpress-admin/ai-agent'));
 const Canvas = lazy( () => import('../canvas') );
 import UnsavedChangesModal from '../unsaved-changes-modal';
 
@@ -175,7 +175,7 @@ function Root() {
 				/* translators: %s: plugin name */
 				__(
 					'The "%s" plugin has encountered an error and cannot be rendered.',
-					'first-admin'
+					'typedpress-admin'
 				),
 				name
 			)
@@ -234,7 +234,7 @@ function Root() {
 									onClick={ () =>
 										setIsMobileSidebarOpen( true )
 									}
-									label={ __( 'Open sidebar', 'first-admin' ) }
+									label={ __( 'Open sidebar', 'typedpress-admin' ) }
 									size="compact"
 								/>
 							</Page.SidebarToggleFill>
@@ -242,13 +242,13 @@ function Root() {
 						<UnsavedChangesWarning />
 						<UnsavedChangesModal />
 						<CommandMenu />
-						<SnackbarNotices className="first-admin-notices__snackbar" />
+						<SnackbarNotices className="typedpress-admin-notices__snackbar" />
 						{ /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */ }
 						<div
 							{ ...navigateRegionsProps }
 							ref={ navigateRegionsProps.ref }
 							className={ clsx(
-								'first-admin-layout',
+								'typedpress-admin-layout',
 								navigateRegionsProps.className,
 								{
 									'has-full-canvas':
@@ -258,7 +258,7 @@ function Root() {
 								}
 							) }
 						>
-							<div className="first-admin-layout__content">
+							<div className="typedpress-admin-layout__content">
 								<AnimatePresence>
 									{ isMobileViewport &&
 										isMobileSidebarOpen && (
@@ -275,7 +275,7 @@ function Root() {
 												} }
 												role="button"
 												tabIndex={ -1 }
-												className="first-admin-layout__sidebar-backdrop"
+												className="typedpress-admin-layout__sidebar-backdrop"
 												onClick={ () =>
 													setIsMobileSidebarOpen(
 														false
@@ -307,7 +307,7 @@ function Root() {
 														: ANIMATION_DURATION,
 													ease: 'easeOut',
 												} }
-												className="first-admin-layout__sidebar is-mobile"
+												className="typedpress-admin-layout__sidebar is-mobile"
 											>
 												<Sidebar />
 											</motion.div>
@@ -317,11 +317,11 @@ function Root() {
 									<NavigableRegion
 										ariaLabel={ __(
 											'Navigation',
-											'first-admin'
+											'typedpress-admin'
 										) }
-										className="first-admin-layout__sidebar-region"
+										className="typedpress-admin-layout__sidebar-region"
 									>
-										<div className="first-admin-layout__sidebar">
+										<div className="typedpress-admin-layout__sidebar">
 											<Sidebar />
 										</div>
 									</NavigableRegion>
@@ -342,10 +342,10 @@ function Root() {
 									<ThemeProvider
 										color={ themeColorSettings.app }
 									>
-										<div className="first-admin-layout__canvas-container">
+										<div className="typedpress-admin-layout__canvas-container">
 											{ canvas.isPreview &&
 												isMobileViewport && (
-													<div className="first-admin-layout__mobile-sidebar-drawer">
+													<div className="typedpress-admin-layout__mobile-sidebar-drawer">
 														<IconButton
 															variant="minimal"
 															tone="neutral"
@@ -357,7 +357,7 @@ function Root() {
 															}
 															label={ __(
 																'Open sidebar',
-																'first-admin'
+																'typedpress-admin'
 															) }
 															size="compact"
 														/>
@@ -365,7 +365,7 @@ function Root() {
 												) }
 											<div
 												className={ clsx(
-													'first-admin-layout__canvas',
+													'typedpress-admin-layout__canvas',
 													{
 														'is-full-canvas':
 															! canvas.isPreview,

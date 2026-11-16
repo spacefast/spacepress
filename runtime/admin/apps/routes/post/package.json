@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/post",
+	"name": "@typedpress-admin/post",
 	"version": "1.0.0",
 	"private": true,
 	"route": {

@@ -1,15 +1,15 @@
 import type { APIContext } from "astro";
 import type { Loader, LiveLoader } from "astro/loaders";
 
-/** Where the First site is and who reads it. Every option has an environment variable. */
-export interface FirstOptions {
-  /** The site's URL (`https://example.com`). Default: `FIRST_URL`. */
+/** Where the TypedPress site is and who reads it. Every option has an environment variable. */
+export interface TypedPressOptions {
+  /** The site's URL (`https://example.com`). Default: `TP_URL`. */
   site?: string;
-  /** `user:application-password`, sent as Basic auth. Default: `FIRST_APP_PASSWORD`. */
+  /** `user:application-password`, sent as Basic auth. Default: `TP_APP_PASSWORD`. */
   appPassword?: string;
-  /** A First Identity bearer token. Default: `FIRST_TOKEN`. */
+  /** A TypedPress Identity bearer token. Default: `TP_TOKEN`. */
   token?: string;
-  /** Read as an anonymous visitor: ignore `appPassword`, `token`, FIRST_APP_PASSWORD and FIRST_TOKEN. */
+  /** Read as an anonymous visitor: ignore `appPassword`, `token`, TP_APP_PASSWORD and TP_TOKEN. */
   anonymous?: boolean;
   /** Extra headers on every request; an `Authorization` here wins over the two above. */
   headers?: Record<string, string>;
@@ -17,8 +17,8 @@ export interface FirstOptions {
 }
 
 /** Which rows of the kind become entries, and how they are named. */
-export interface FirstQueryOptions extends FirstOptions {
-  /** A First filter, as the typed client takes it: `{ featured: true }`. */
+export interface TypedPressQueryOptions extends TypedPressOptions {
+  /** A TypedPress filter, as the typed client takes it: `{ featured: true }`. */
   where?: Record<string, unknown>;
   /** Relations to load into each row: `{ author: true }`. Media fields are loaded unless `media: false`. */
   with?: Record<string, unknown>;
@@ -32,22 +32,22 @@ export interface FirstQueryOptions extends FirstOptions {
   id?: string | ((row: Record<string, unknown>) => string | number);
 }
 
-export interface FirstLoaderOptions extends FirstQueryOptions {
+export interface TypedPressLoaderOptions extends TypedPressQueryOptions {
   /** Rows per request, 1 to 100 (the API's largest page). Default: 100. */
   pageSize?: number;
 }
 
-export interface FirstLiveOptions extends FirstQueryOptions {
+export interface TypedPressLiveOptions extends TypedPressQueryOptions {
   /** Attach core's rendered HTML of the content field: on single entries (default), on lists too ("always"), or never. */
   rendered?: "entries" | "always" | "never";
 }
 
-/** A build-time content collection of one First kind. */
-export declare function firstLoader(kind: string, options?: FirstLoaderOptions): Loader;
+/** A build-time content collection of one TypedPress kind. */
+export declare function tpLoader(kind: string, options?: TypedPressLoaderOptions): Loader;
 
 /** A live collection filter: a field match, `id` (matched against the slug or the `id` option), or `where`. */
-export type FirstEntryFilter = { kind?: string; id?: string | number; where?: Record<string, unknown>; with?: Record<string, unknown> } & Record<string, unknown>;
-export type FirstCollectionFilter = {
+export type TypedPressEntryFilter = { kind?: string; id?: string | number; where?: Record<string, unknown>; with?: Record<string, unknown> } & Record<string, unknown>;
+export type TypedPressCollectionFilter = {
   kind?: string;
   where?: Record<string, unknown>;
   with?: Record<string, unknown>;
@@ -63,10 +63,10 @@ export type FirstCollectionFilter = {
 };
 
 /** A live collection; entries carry `cacheHint.tags` (`<kind>`, `<kind>:<id>`) for `Astro.cache.set`. */
-export declare function firstLiveLoader(kind?: string, options?: FirstLiveOptions): LiveLoader<Record<string, any>, FirstEntryFilter, FirstCollectionFilter>;
-export declare function firstLiveLoader(options?: FirstLiveOptions): LiveLoader<Record<string, any>, FirstEntryFilter, FirstCollectionFilter>;
+export declare function tpLiveLoader(kind?: string, options?: TypedPressLiveOptions): LiveLoader<Record<string, any>, TypedPressEntryFilter, TypedPressCollectionFilter>;
+export declare function tpLiveLoader(options?: TypedPressLiveOptions): LiveLoader<Record<string, any>, TypedPressEntryFilter, TypedPressCollectionFilter>;
 
-export interface FirstWebhookEvent {
+export interface TypedPressWebhookEvent {
   id: number | string;
   event: string;
   collection: string;
@@ -74,30 +74,30 @@ export interface FirstWebhookEvent {
   data: { row: Record<string, unknown>; previous?: Record<string, unknown> };
 }
 
-export interface FirstWebhookOptions {
-  /** The webhook's secret, as in `first.config.ts`'s `webhooks`. Default: `FIRST_WEBHOOK_SECRET`. */
+export interface TypedPressWebhookOptions {
+  /** The webhook's secret, as in `typedpress.config.ts`'s `webhooks`. Default: `TP_WEBHOOK_SECRET`. */
   secret?: string;
   /** Runs after a verified event: start a static rebuild, log, or purge another cache. */
-  onEvent?: (event: { tags: string[]; event: FirstWebhookEvent; context: APIContext }) => void | Promise<void>;
+  onEvent?: (event: { tags: string[]; event: TypedPressWebhookEvent; context: APIContext }) => void | Promise<void>;
 }
 
-/** An Astro endpoint that verifies First's signed webhook and invalidates the event's cache tags. */
-export declare function firstWebhook(options?: FirstWebhookOptions): (context: APIContext) => Promise<Response>;
+/** An Astro endpoint that verifies TypedPress's signed webhook and invalidates the event's cache tags. */
+export declare function tpWebhook(options?: TypedPressWebhookOptions): (context: APIContext) => Promise<Response>;
 
-/** Whether `First-Signature` signs `body` with `secret` (`t=<unix>,v1=hex(HMAC-SHA256(secret, "t.body"))`, five minutes' tolerance). */
+/** Whether `TypedPress-Signature` signs `body` with `secret` (`t=<unix>,v1=hex(HMAC-SHA256(secret, "t.body"))`, five minutes' tolerance). */
 export declare function verifySignature(secret: string, header: string | null, body: string, now?: number): Promise<boolean>;
 
 /** `<collection>` and `<collection>:<id>` of a webhook event. */
 export declare function eventTags(event: unknown): string[];
 
-export declare class FirstError extends Error {
+export declare class TypedPressError extends Error {
   readonly status: number;
   readonly code: string;
   readonly detail: string;
   readonly pointer?: string;
 }
 
-export interface FirstConnection {
+export interface TypedPressConnection {
   readonly site: string;
   /** `extra`: headers for this one request, such as a visitor's `cookie`. */
   request(method: string, path: string, body?: unknown, extra?: Record<string, string>): Promise<any>;
@@ -105,4 +105,4 @@ export interface FirstConnection {
 }
 
 /** The connection the loaders share for one site and set of credentials. */
-export declare function connect(options?: FirstOptions): FirstConnection;
+export declare function connect(options?: TypedPressOptions): TypedPressConnection;

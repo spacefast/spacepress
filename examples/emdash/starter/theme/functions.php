@@ -2,22 +2,22 @@
 /** Original Zero counterpart of the pinned EmDash publishing examples; see ../README.md. */
 declare(strict_types=1);
 
-function zp_mode(): string { return (string) get_option('first_publication_mode', 'starter'); }
+function zp_mode(): string { return (string) get_option('tp_publication_mode', 'starter'); }
 function zp_type(string $kind): string {
-    return zp_mode() === 'blank' ? ($kind === 'posts' ? 'post' : 'page') : 'first_' . $kind;
+    return zp_mode() === 'blank' ? ($kind === 'posts' ? 'post' : 'page') : 'tp_' . $kind;
 }
 function zp_url(WP_Post $post): string {
-    $prefix = in_array($post->post_type, ['first_pages', 'page'], true)
+    $prefix = in_array($post->post_type, ['tp_pages', 'page'], true)
         ? (zp_mode() === 'blog' ? '/pages/' : '/') : '/posts/';
     return home_url($prefix . $post->post_name);
 }
 function zp_excerpt(WP_Post $post): string {
     if (post_password_required($post)) return '';
-    return zp_mode() === 'blank' ? $post->post_excerpt : (string) get_post_meta($post->ID, 'first_excerpt', true);
+    return zp_mode() === 'blank' ? $post->post_excerpt : (string) get_post_meta($post->ID, 'tp_excerpt', true);
 }
 function zp_cover(WP_Post $post): int {
     if (post_password_required($post)) return 0;
-    return zp_mode() === 'blank' ? (int) get_post_thumbnail_id($post) : (int) get_post_meta($post->ID, 'first_cover', true);
+    return zp_mode() === 'blank' ? (int) get_post_thumbnail_id($post) : (int) get_post_meta($post->ID, 'tp_cover', true);
 }
 function zp_query(array $args = []): WP_Query {
     return new WP_Query(array_merge([
@@ -72,22 +72,22 @@ add_action('init', static function (): void {
     if (zp_mode() === 'blog') add_post_type_support(zp_type('posts'), 'comments');
 }, 30);
 add_filter('post_type_link', static function (string $url, WP_Post $post): string {
-    return in_array($post->post_type, ['first_posts', 'first_pages'], true) ? zp_url($post) : $url;
+    return in_array($post->post_type, ['tp_posts', 'tp_pages'], true) ? zp_url($post) : $url;
 }, 10, 2);
 // Our public routes query published CPTs directly. Admin, REST, plugins and uploads
-// retain WordPress's routing; the theme does not change First's content registration.
+// retain WordPress's routing; the theme does not change TypedPress's content registration.
 add_filter('redirect_canonical', static function ($url) {
     $path = wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
     return preg_match('~^/(posts|pages|category|tag|search|rss\.xml)(/|$)~', (string) $path) ? false : $url;
 });
 add_action('wp_enqueue_scripts', static function (): void {
-    wp_enqueue_style('first-publication', get_stylesheet_uri(), [], '1');
-    wp_enqueue_script('first-publication-theme', get_template_directory_uri() . '/theme.js', [], '1', true);
+    wp_enqueue_style('typedpress-publication', get_stylesheet_uri(), [], '1');
+    wp_enqueue_script('typedpress-publication-theme', get_template_directory_uri() . '/theme.js', [], '1', true);
 });
 add_action('customize_register', static function (WP_Customize_Manager $customizer): void {
-    $customizer->add_section('first_publication', ['title' => 'Publication appearance']);
-    $customizer->add_setting('first_accent', ['default' => '#355e42', 'sanitize_callback' => 'sanitize_hex_color']);
-    $customizer->add_control(new WP_Customize_Color_Control($customizer, 'first_accent', ['label' => 'Accent color', 'section' => 'first_publication']));
-    $customizer->add_setting('first_footer', ['default' => 'Made with First. Published with care.', 'sanitize_callback' => 'sanitize_text_field']);
-    $customizer->add_control('first_footer', ['label' => 'Footer text', 'section' => 'first_publication']);
+    $customizer->add_section('tp_publication', ['title' => 'Publication appearance']);
+    $customizer->add_setting('tp_accent', ['default' => '#355e42', 'sanitize_callback' => 'sanitize_hex_color']);
+    $customizer->add_control(new WP_Customize_Color_Control($customizer, 'tp_accent', ['label' => 'Accent color', 'section' => 'tp_publication']));
+    $customizer->add_setting('tp_footer', ['default' => 'Made with TypedPress. Published with care.', 'sanitize_callback' => 'sanitize_text_field']);
+    $customizer->add_control('tp_footer', ['label' => 'Footer text', 'section' => 'tp_publication']);
 });

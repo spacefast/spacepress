@@ -2,12 +2,12 @@
 /**
  * Name field definition for core plugins fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Plugin Name', 'first-admin' ),
+	'label'              => __( 'Plugin Name', 'typedpress-admin' ),
 	'enableHiding'       => true,
 	'filterBy'           => array(
 		'operators' => array( 'contains', 'startsWith', 'is', 'isNot' ),

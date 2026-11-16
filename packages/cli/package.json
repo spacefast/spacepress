@@ -1,11 +1,11 @@
 {
-  "name": "@spacefast/first-cli",
+  "name": "typedpress",
   "version": "0.3.0",
-  "description": "The First compiler and local WordPress development command, without a Rust toolchain",
+  "description": "The TypedPress compiler and local WordPress development command, without a Rust toolchain",
   "license": "MIT",
   "type": "module",
   "engines": { "node": ">=22" },
-  "bin": { "first": "bin/first.mjs" },
+  "bin": { "typedpress": "bin/typedpress.mjs" },
   "files": ["bin", "lib", "types", "LICENSE", "README.md"],
   "scripts": {
     "prepack": "node scripts/prepare.mjs",

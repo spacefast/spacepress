@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception;
 
 use RuntimeException;
 

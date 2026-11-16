@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { usePostFields } from '@first-admin/fields-next';
-import { unlock, viewToQuery } from '@first-admin/admin-toolkit';
-import { DataViewsPicker } from '@first-admin/dataviews';
-import type { View } from '@first-admin/dataviews';
+import { usePostFields } from '@typedpress-admin/fields-next';
+import { unlock, viewToQuery } from '@typedpress-admin/admin-toolkit';
+import { DataViewsPicker } from '@typedpress-admin/dataviews';
+import type { View } from '@typedpress-admin/dataviews';
 import {
 	privateApis as coreDataPrivateApis,
 	useEntityRecord,
@@ -125,7 +125,7 @@ export default function PostPicker( {
 	queryParams,
 	onSelect,
 	multiple,
-	itemListLabel = __( 'Posts list', 'first-admin' ),
+	itemListLabel = __( 'Posts list', 'typedpress-admin' ),
 }: PostPickerProps ) {
 	const [ selection, setSelection ] =
 		useState< string[] >( currentSelection );
@@ -183,7 +183,7 @@ export default function PostPicker( {
 		() => [
 			{
 				id: 'select',
-				label: __( 'Select', 'first-admin' ),
+				label: __( 'Select', 'typedpress-admin' ),
 				isPrimary: true,
 				async callback() {
 					if ( selection.length === 0 ) {
@@ -287,7 +287,7 @@ export default function PostPicker( {
 									} );
 							}
 						} }
-						label={ __( 'Drop files to upload', 'first-admin' ) }
+						label={ __( 'Drop files to upload', 'typedpress-admin' ) }
 						className="post-picker__drop-zone"
 					/>
 				) }

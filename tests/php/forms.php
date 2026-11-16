@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 /*
  * Forms without JavaScript (docs/spec/rendering.md §4.2): tests/fixtures/forms, built by
- * `first build`, on WordPress with php -S. Each step is what a browser with scripts off does: GET
+ * `typedpress build`, on WordPress with php -S. Each step is what a browser with scripts off does: GET
  * the page, POST the form as `application/x-www-form-urlencoded` to its `action`, follow the 303
  * with the cookie it set. Prints one JSON object of what each step saw.
  *
- *   FIRST_WP_THEMES=1 php tests/php/forms.php <wp-content dir>
+ *   TP_WP_THEMES=1 php tests/php/forms.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -142,7 +142,7 @@ $out['not a number'] = text(submit($subscribe, ['email' => 'c@example.test', 'se
 
 // The return path is a path on this site, never another host.
 $evil = $subscribe;
-$evil['fields'] = array_map(static fn ($f) => $f[0] === '_first_return' ? [$f[0], $f[1], '//evil.example/x'] : $f, $evil['fields']);
+$evil['fields'] = array_map(static fn ($f) => $f[0] === '_tp_return' ? [$f[0], $f[1], '//evil.example/x'] : $f, $evil['fields']);
 $out['open redirect'] = parse_url((string) submit($evil, ['email' => 'd@example.test', 'seats' => '1'])['location'], PHP_URL_HOST) === parse_url($url, PHP_URL_HOST);
 
 // A cross-site form post is refused before the action runs.

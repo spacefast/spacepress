@@ -14,7 +14,7 @@ function ColorIndicatorWrapper( {
 	return (
 		<Flex
 			className={ clsx(
-				'first-admin-global-styles__color-indicator-wrapper',
+				'typedpress-admin-global-styles__color-indicator-wrapper',
 				className
 			) }
 			{ ...props }

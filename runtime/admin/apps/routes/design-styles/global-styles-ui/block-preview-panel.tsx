@@ -51,7 +51,7 @@ const BlockPreviewPanel = ( {
 	return (
 		<Spacer marginX={ 4 } marginBottom={ 4 }>
 			<div
-				className="first-admin-global-styles__block-preview-panel"
+				className="typedpress-admin-global-styles__block-preview-panel"
 				style={ { maxHeight: previewHeight, boxSizing: 'initial' } }
 			>
 				<BlockPreview

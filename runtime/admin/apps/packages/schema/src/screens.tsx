@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import { useNavigate, useParams, useSearch } from '@wordpress/route';
 import { Button, Notice, Spinner } from '@wordpress/components';
-import { Page, RouterLink, useDocumentChanges } from '@first-admin/admin-toolkit';
-import type { Field, View } from '@first-admin/dataviews';
-import { DataViews, useView } from '@first-admin/views';
+import { Page, RouterLink, useDocumentChanges } from '@typedpress-admin/admin-toolkit';
+import type { Field, View } from '@typedpress-admin/dataviews';
+import { DataViews, useView } from '@typedpress-admin/views';
 import {
 	EditingObjects,
 	allowed,
@@ -54,7 +54,7 @@ export function Overview() {
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
-				<div className="first-schema-cards">
+				<div className="typedpress-schema-cards">
 					{Object.values(state.value.collections)
 						.filter((c) => bootstrap().readable.includes(c.name))
 						.map((c) => (
@@ -281,7 +281,7 @@ export function DocumentForm({
 	}, [savedResult, onSaved, sharedChanges]);
 	return (
 		<form
-			className="first-schema-form"
+			className="typedpress-schema-form"
 			onSubmit={(e) => {
 				e.preventDefault();
 				if (disabled || busy || !drafts.valid) return;
@@ -346,7 +346,7 @@ export function NewDocument() {
 			title={`New ${c.label}`}
 			breadcrumbs={
 				<RouterLink
-					className="first-schema-back"
+					className="typedpress-schema-back"
 					to={`/collections/${collection}`}
 				>
 					Back to {c.label}
@@ -399,7 +399,7 @@ export function PlainDocument() {
 			title={`Edit ${c.label}`}
 			breadcrumbs={
 				<RouterLink
-					className="first-schema-back"
+					className="typedpress-schema-back"
 					to={`/collections/${collection}`}
 				>
 					Back to {c.label}
@@ -447,7 +447,7 @@ export function Globals() {
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
-				<div className="first-schema-cards">
+				<div className="typedpress-schema-cards">
 					{state.value.map((g) => (
 						<article key={g.name}>
 							<h2>

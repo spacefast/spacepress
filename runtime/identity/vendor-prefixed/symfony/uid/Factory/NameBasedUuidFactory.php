@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Uid\Factory;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Uid\Factory;
 
-use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
-use First\Identity\Vendor\Symfony\Component\Uid\UuidV3;
-use First\Identity\Vendor\Symfony\Component\Uid\UuidV5;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV3;
+use TypedPress\Identity\Vendor\Symfony\Component\Uid\UuidV5;
 
 class NameBasedUuidFactory
 {

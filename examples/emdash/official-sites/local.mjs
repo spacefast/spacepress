@@ -20,15 +20,15 @@ export async function freePort() {
 }
 export async function makeProject(mode) {
   if (!['blank','starter','blog'].includes(mode)) throw new Error('Unknown official source template.');
-  const project = await mkdtemp(join(tmpdir(), `first-official-${mode}-`));
-  await cp(join(root, ...(mode === 'blank' ? ['blank','first.config.ts'] : ['first.config.ts'])), join(project, 'first.config.ts'));
-  if (mode !== 'blank') await cp(join(root, 'first'), join(project, 'first'), { recursive: true });
-  await writeFile(join(project, 'official-owner.json'), JSON.stringify({ project, mode, kind: 'first-official-source' }));
+  const project = await mkdtemp(join(tmpdir(), `typedpress-official-${mode}-`));
+  await cp(join(root, ...(mode === 'blank' ? ['blank','typedpress.config.ts'] : ['typedpress.config.ts'])), join(project, 'typedpress.config.ts'));
+  if (mode !== 'blank') await cp(join(root, 'tp'), join(project, 'tp'), { recursive: true });
+  await writeFile(join(project, 'official-owner.json'), JSON.stringify({ project, mode, kind: 'typedpress-official-source' }));
   return project;
 }
 export async function start(project, mode, { onProcess = () => {} } = {}) {
   const owned = JSON.parse(await readFile(join(project, 'official-owner.json'), 'utf8'));
-  if (owned.project !== await realpath(project) || owned.mode !== mode || owned.kind !== 'first-official-source') throw new Error('Not an owned official-source project.');
+  if (owned.project !== await realpath(project) || owned.mode !== mode || owned.kind !== 'typedpress-official-source') throw new Error('Not an owned official-source project.');
   // The frontend's port is chosen first, so the app is built with it as its `frontend`: WordPress's
   // links and preview links point at the Astro site.
   // Held by a listener of ours until Astro starts, so nothing else takes it while WordPress seeds.
@@ -38,20 +38,20 @@ export async function start(project, mode, { onProcess = () => {} } = {}) {
   const frontend = `http://127.0.0.1:${port}`;
   let backend, entries = [], media = [];
   try {
-    const config = join(project, 'first.config.ts');
+    const config = join(project, 'typedpress.config.ts');
     const source = (await readFile(config, 'utf8')).replace(/^ {2}frontend: .*\n/m, '');
     await writeFile(config, source.replace('defineConfig({', `defineConfig({\n  frontend: "${frontend}",`));
     await command(['dev', project, '--port', String(await freePort()), '--no-watch']);
-    const owner = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
-    const site = join(project, '.first/dev/wordpress');
+    const owner = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8'));
+    const site = join(project, '.tp/dev/wordpress');
     if (owner.project !== project || owner.site !== site) throw new Error('Native Studio ownership mismatch.');
     const status = JSON.parse(await command(['dev','status',project]));
     if (!status.isOnline || typeof status.siteUrl !== 'string') throw new Error('Native Studio did not report online.');
     backend = status.siteUrl.replace(/\/$/, '');
     if (mode !== 'blank') {
-      // The templates' menu location: the one piece of WordPress setup First can't declare yet.
+      // The templates' menu location: the one piece of WordPress setup TypedPress can't declare yet.
       await mkdir(join(site, 'wp-content/mu-plugins'), { recursive: true });
-      await cp(join(root, 'menus.php'), join(site, 'wp-content/mu-plugins/first-official-menus.php'));
+      await cp(join(root, 'menus.php'), join(site, 'wp-content/mu-plugins/typedpress-official-menus.php'));
       const password = await wp(project, 'user', 'application-password', 'create', 'admin', 'official-seed', '--porcelain');
       const seeded = await seed({ backend, authorization: `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`, mode,
         seedFile: join(root, mode, 'seed/seed.json'), wp: (...args) => wp(project, ...args) });
@@ -67,7 +67,7 @@ export async function start(project, mode, { onProcess = () => {} } = {}) {
   const out = openSync(join(project, 'frontend.log'), 'a');
   await new Promise((done) => holder.close(done));
   const child = spawn(process.execPath, [join(root, mode, 'dist/server/entry.mjs')], { cwd: join(root, mode),
-    env: { ...process.env, FIRST_URL: backend, HOST: '127.0.0.1', PORT: String(port) }, stdio: ['ignore', out, out] });
+    env: { ...process.env, TP_URL: backend, HOST: '127.0.0.1', PORT: String(port) }, stdio: ['ignore', out, out] });
   onProcess(child);
   await new Promise((done, fail) => { child.once('spawn', done); child.once('error', fail); });
   closeSync(out);
@@ -89,7 +89,7 @@ export async function start(project, mode, { onProcess = () => {} } = {}) {
 }
 export async function cleanup(project) {
   const owned = JSON.parse(await readFile(join(project, 'official-owner.json'), 'utf8'));
-  if (owned.project !== await realpath(project) || owned.kind !== 'first-official-source') throw new Error('Refusing cleanup of another project.');
+  if (owned.project !== await realpath(project) || owned.kind !== 'typedpress-official-source') throw new Error('Refusing cleanup of another project.');
   let receipt;
   try { receipt = JSON.parse(await readFile(join(project, 'official-site.json'), 'utf8')); }
   catch(error) { if (error.code !== 'ENOENT') throw error; }
@@ -102,7 +102,7 @@ export async function cleanup(project) {
       process.kill(receipt.pid, 'SIGTERM');
     } else if (cmdline) throw new Error('Frontend PID now belongs to another process.');
   }
-  try { await readFile(join(project, '.first/dev/owner.json')); }
+  try { await readFile(join(project, '.tp/dev/owner.json')); }
   catch(error) { if (error.code !== 'ENOENT') throw error; await rm(project, {recursive:true}); return { project, startupAbortedBeforeNativeOwnership: true }; }
   const native = await cleanupBackend(project);
   if (receipt) {
@@ -121,7 +121,7 @@ export async function launch() {
   const owned = await makeProject(mode);
   try {
     const receipt = await start(owned, mode, { onProcess(child) { child.unref(); } });
-    console.log(JSON.stringify({ ...receipt, admin: `${receipt.backend}/wp-admin/`, initialLogin: 'admin / first-test-admin (disposable native site only)', cleanup: `node examples/emdash/official-sites/run.mjs ${mode} cleanup ${owned}` },null,2));
+    console.log(JSON.stringify({ ...receipt, admin: `${receipt.backend}/wp-admin/`, initialLogin: 'admin / typedpress-test-admin (disposable native site only)', cleanup: `node examples/emdash/official-sites/run.mjs ${mode} cleanup ${owned}` },null,2));
   } catch(error) { await cleanup(owned); throw error; }
 }
 export { command, wp };

@@ -1,7 +1,7 @@
 # Keep upstream formatting in the generated, prefixed dependency bundle.
-runtime/First/vendor-prefixed/** -whitespace linguist-vendored
+runtime/TypedPress/vendor-prefixed/** -whitespace linguist-vendored
 # The upstream merge guide intentionally shows seven-character conflict markers.
-runtime/First/vendor-prefixed/wp-php-toolkit/merge/README.md conflict-marker-size=32
+runtime/TypedPress/vendor-prefixed/wp-php-toolkit/merge/README.md conflict-marker-size=32
 # Upstream setext headings contain seven equals signs; preserve the original documents.
-runtime/First/vendor-prefixed/psr/log/README.md conflict-marker-size=32
-runtime/First/vendor-prefixed/symfony/polyfill-php83/README.md conflict-marker-size=32
+runtime/TypedPress/vendor-prefixed/psr/log/README.md conflict-marker-size=32
+runtime/TypedPress/vendor-prefixed/symfony/polyfill-php83/README.md conflict-marker-size=32

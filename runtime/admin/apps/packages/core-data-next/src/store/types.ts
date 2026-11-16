@@ -4,7 +4,7 @@ import type {
 	SupportedLayouts,
 	Form,
 	Filter,
-} from '@first-admin/dataviews';
+} from '@typedpress-admin/dataviews';
 
 export interface FieldDefinition {
 	type: string;

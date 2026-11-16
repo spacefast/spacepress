@@ -4,7 +4,7 @@ import type {
 	Dashboard,
 	DashboardWidget,
 	RegisteredDashboardWidgetType,
-} from '@first-admin/dashboard';
+} from '@typedpress-admin/dashboard';
 
 interface RouteSurfaces {
 	// `content` is the main surface of the route, where the primary content is displayed (TanStack Router's `Outlet`).

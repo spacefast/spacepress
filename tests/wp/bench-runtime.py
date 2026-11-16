@@ -13,8 +13,8 @@ import urllib.request
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--before", type=Path, required=True, help="baseline runtime/First snapshot")
-    parser.add_argument("--after", type=Path, required=True, help="candidate runtime/First snapshot")
+    parser.add_argument("--before", type=Path, required=True, help="baseline runtime/TypedPress snapshot")
+    parser.add_argument("--after", type=Path, required=True, help="candidate runtime/TypedPress snapshot")
     parser.add_argument("--content", type=Path, required=True, help="mounted disposable wp-content")
     parser.add_argument("--url", required=True, help="public fixture collection URL")
     parser.add_argument("--rows", type=int, default=25)
@@ -40,10 +40,10 @@ def main():
     if args.body and not args.expected:
         parser.error("POST requires --expected")
     here = Path(__file__).resolve().parent
-    destination = args.content.resolve() / "plugins/first-runtime/first"
+    destination = args.content.resolve() / "plugins/typedpress-runtime/tp"
     for snapshot in [args.before, args.after, destination]:
         if not (snapshot / "bootstrap.php").is_file():
-            parser.error(f"not a First runtime: {snapshot}")
+            parser.error(f"not a TypedPress runtime: {snapshot}")
     if min(args.rows, args.runs, args.requests, args.warmup) < 1:
         parser.error("counts must be positive")
     if destination in [args.before.resolve(), args.after.resolve()]:
@@ -83,7 +83,7 @@ def main():
         with urllib.request.urlopen(req, timeout=30) as response:
             body = response.read()
             elapsed = (time.perf_counter_ns() - start) / 1e6
-            metrics = json.loads(response.headers["X-First-Bench"])
+            metrics = json.loads(response.headers["X-TypedPress-Bench"])
             assert response.status == 200, response.status
         if args.expected:
             assert json.loads(body) == expected, body
@@ -109,7 +109,7 @@ def main():
         results["instrumented"] = True
     if args.expected:
         results.update({"method": "POST" if request_body else "GET", "expected_response": expected})
-    probe = "/var/www/html/wp-content/mu-plugins/first-runtime-bench.php"
+    probe = "/var/www/html/wp-content/mu-plugins/typedpress-runtime-bench.php"
     fixture = "runtime-mcp-metrics.php" if args.mcp_profile else "runtime-metrics.php"
     harness("compose", "cp", str(here / "fixtures" / fixture), "wordpress:" + probe)
     try:

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace TypedPress\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 81: an array of IEEE 754 binary32 values, big endian.

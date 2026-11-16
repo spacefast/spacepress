@@ -1,7 +1,7 @@
 import { useNavigate } from '@wordpress/route';
 import { IconButton } from '@wordpress/ui';
-import type { Form as FormType } from '@first-admin/dataviews';
-import { Page } from '@first-admin/admin-toolkit';
+import type { Form as FormType } from '@typedpress-admin/dataviews';
+import { Page } from '@typedpress-admin/admin-toolkit';
 import { seen } from '@wordpress/icons';
 import { __ } from '@wordpress/i18n';
 import { useSelect, useDispatch } from '@wordpress/data';
@@ -28,14 +28,14 @@ function SettingsGeneral() {
 
 	return (
 		<Page
-			title={ __( 'General settings', 'first-admin' ) }
+			title={ __( 'General settings', 'typedpress-admin' ) }
 			actions={
 				<IconButton
 					aria-pressed={ showCanvas }
 					tone="neutral"
 					variant="minimal"
 					icon={ seen }
-					label={ __( 'Preview', 'first-admin' ) }
+					label={ __( 'Preview', 'typedpress-admin' ) }
 					onClick={ async () => {
 						await set(
 							'core/settings-route',

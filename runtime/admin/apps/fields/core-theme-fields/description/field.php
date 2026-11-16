@@ -2,12 +2,12 @@
 /**
  * Description field definition for core theme fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Description', 'first-admin' ),
+	'label'              => __( 'Description', 'typedpress-admin' ),
 	'enableSorting'      => false,
 	'enableGlobalSearch' => true,
 	'filterBy'           => false,

@@ -14,15 +14,15 @@ const cases = JSON.parse(readFileSync(casesFile, "utf8"));
 const here = path.dirname(new URL(import.meta.url).pathname);
 const files = [...new Set(cases.map((c) => c.component.split("#")[0]))];
 const result = await build({
-  entryPoints: files.map((f) => path.join(project, "first", f)),
+  entryPoints: files.map((f) => path.join(project, "tp", f)),
   outdir: path.join(here, ".out"),
-  outbase: path.join(project, "first"),
+  outbase: path.join(project, "tp"),
   bundle: true,
   format: "esm",
   platform: "node",
   jsx: "automatic",
   external: ["react", "react-dom", "react/jsx-runtime"],
-  alias: { "first/client": path.join(here, "first-client.mjs") },
+  alias: { "typedpress/client": path.join(here, "typedpress-client.mjs") },
   write: true,
   logLevel: "silent",
 });

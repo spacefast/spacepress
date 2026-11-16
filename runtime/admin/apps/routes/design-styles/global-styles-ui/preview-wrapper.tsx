@@ -91,7 +91,7 @@ function PreviewWrapper( {
 			</div>
 			{ isReady && (
 				<div
-					className="first-admin-global-styles-preview__wrapper"
+					className="typedpress-admin-global-styles-preview__wrapper"
 					style={ {
 						height: normalizedHeight * ratio,
 					} }

@@ -23,7 +23,7 @@ interface ScreenRevisionsProps {
 function ScreenRevisions( { onClose }: ScreenRevisionsProps = {} ) {
 	const { user: currentEditorGlobalStyles, onChange: setUserConfig } =
 		useContext( GlobalStylesContext );
-	// Local state instead of first-admin store dependencies
+	// Local state instead of typedpress-admin store dependencies
 	const [ _, setViewMode ] = useState< 'revisions' | 'style-book' >(
 		'revisions'
 	);
@@ -106,19 +106,19 @@ function ScreenRevisions( { onClose }: ScreenRevisionsProps = {} ) {
 					revisionsCount
 						? sprintf(
 								// translators: %d: number of revisions.
-								__( 'Revisions (%d)', 'first-admin' ),
+								__( 'Revisions (%d)', 'typedpress-admin' ),
 								revisionsCount
 						  )
-						: __( 'Revisions', 'first-admin' )
+						: __( 'Revisions', 'typedpress-admin' )
 				}
 				description={ __(
 					'Click on previously saved styles to preview them. To restore a selected version to the editor, hit "Apply." When you\'re ready, use the Save button to save your changes.',
-					'first-admin'
+					'typedpress-admin'
 				) }
 				onBack={ onCloseRevisions }
 			/>
 			{ ! hasRevisions && (
-				<Spinner className="first-admin-global-styles-screen-revisions__loading" />
+				<Spinner className="typedpress-admin-global-styles-screen-revisions__loading" />
 			) }
 			{ 'todo: handle revisions properly' }
 			<RevisionsButtons
@@ -133,22 +133,22 @@ function ScreenRevisions( { onClose }: ScreenRevisionsProps = {} ) {
 				}
 			/>
 			{ numPages > 1 && (
-				<div className="first-admin-global-styles-screen-revisions__footer">
+				<div className="typedpress-admin-global-styles-screen-revisions__footer">
 					<Pagination
-						className="first-admin-global-styles-screen-revisions__pagination"
+						className="typedpress-admin-global-styles-screen-revisions__pagination"
 						currentPage={ currentPage }
 						numPages={ numPages }
 						changePage={ setCurrentPage }
 						totalItems={ revisionsCount }
 						disabled={ isLoading }
-						label={ __( 'Global Styles pagination', 'first-admin' ) }
+						label={ __( 'Global Styles pagination', 'typedpress-admin' ) }
 					/>
 				</div>
 			) }
 			{ isLoadingRevisionWithUnsavedChanges && (
 				<ConfirmDialog
 					isOpen={ isLoadingRevisionWithUnsavedChanges }
-					confirmButtonText={ __( 'Apply', 'first-admin' ) }
+					confirmButtonText={ __( 'Apply', 'typedpress-admin' ) }
 					onConfirm={ () =>
 						restoreRevision( currentlySelectedRevision )
 					}
@@ -159,7 +159,7 @@ function ScreenRevisions( { onClose }: ScreenRevisionsProps = {} ) {
 				>
 					{ __(
 						'Are you sure you want to apply this revision? Any unsaved changes will be lost.',
-						'first-admin'
+						'typedpress-admin'
 					) }
 				</ConfirmDialog>
 			) }

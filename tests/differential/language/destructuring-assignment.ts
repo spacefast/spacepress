@@ -2,7 +2,7 @@
 // swaps, reassigning several locals from a helper's tuple, and pulling fields into existing
 // variables or object fields. Every action runs under Node and as compiled PHP; the JSON results
 // must be byte-identical. `destructuring-assignment-helpers.mjs` runs the same shapes untyped.
-import { action, defineConfig } from "first";
+import { action, defineConfig } from "typedpress";
 import { destructuringUntyped as destructuringUntypedImpl } from "./destructuring-assignment-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

@@ -1,7 +1,7 @@
 {
-	"name": "@first-admin/fields-next",
+	"name": "@typedpress-admin/fields-next",
 	"version": "1.0.0",
-	"description": "Fields for First Admin",
+	"description": "Fields for TypedPress Admin",
 	"type": "module",
 	"wpModule": true,
 	"private": true,
@@ -12,12 +12,12 @@
 		"build"
 	],
 	"dependencies": {
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/core-data-next": "workspace:*",
+		"@typedpress-admin/admin-toolkit": "workspace:*",
+		"@typedpress-admin/core-data-next": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/editor": "catalog:",
 		"@wordpress/element": "catalog:",
 		"@wordpress/html-entities": "catalog:",

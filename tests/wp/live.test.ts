@@ -1,5 +1,5 @@
 // Reactive queries on real WordPress + MariaDB: the per-kind counters under concurrent writers, and
-// POST /__first/api/v1/_live answering "not modified" or a fresh result as the caller: a reader the
+// POST /__tp/api/v1/_live answering "not modified" or a fresh result as the caller: a reader the
 // kind refuses, a field hidden from the caller, and saves made through core REST (what wp-admin and
 // the block editor send). The in-process suite (tests/php/live_test.php) covers each rule in turn.
 import { test } from "node:test";
@@ -15,7 +15,7 @@ async function live(as: Role | undefined, queries: Query[]): Promise<Result[]> {
   return r.json.data.results;
 }
 const one = async (as: Role | undefined, query: Query) => (await live(as, [query]))[0];
-const counter = (kind: string, scope = "all") => Number(sql(`SELECT version FROM wp_first__versions WHERE kind = '${kind}' AND scope = '${scope}'`)[0]?.version ?? 0);
+const counter = (kind: string, scope = "all") => Number(sql(`SELECT version FROM wp_tp__versions WHERE kind = '${kind}' AND scope = '${scope}'`)[0]?.version ?? 0);
 
 test("concurrent writers: every committed transaction is counted once, and no write is lost to a subscriber", async () => {
   const where = { body: { like: `Race ${run}%` } };
@@ -94,7 +94,7 @@ test("a save through core REST (what wp-admin and the block editor send) reaches
   const held = await one(undefined, query);
   assert.equal(held.data.title, `Live ${run}`);
   assert.equal((await one(undefined, { ...query, token: held.token })).changed, false);
-  const res = await fetch(`${core}/first_events/${event.id}`, {
+  const res = await fetch(`${core}/tp_events/${event.id}`, {
     method: "POST",
     headers: { ...auth("editor"), "content-type": "application/json" },
     body: JSON.stringify({ title: `Live edited ${run}` }),
@@ -114,14 +114,14 @@ test("a write a hook rolls back counts nothing", async () => {
 
 test("the counter is part of the write's transaction: a write whose counter can't be written doesn't commit", async () => {
   const title = `Uncounted ${run}`;
-  sql("RENAME TABLE wp_first__versions TO wp_first__versions_away");
+  sql("RENAME TABLE wp_tp__versions TO wp_tp__versions_away");
   try {
     const r = await http("POST", `${api}/guest_notes`, { as: "subscriber", body: { body: title } });
     assert.equal(r.status, 500, JSON.stringify(r.json));
   } finally {
-    sql("RENAME TABLE wp_first__versions_away TO wp_first__versions");
+    sql("RENAME TABLE wp_tp__versions_away TO wp_tp__versions");
   }
-  assert.deepEqual(sql(`SELECT id FROM wp_first_guest_notes WHERE body = '${title}'`), [], "the row rolled back with its counter");
+  assert.deepEqual(sql(`SELECT id FROM wp_tp_guest_notes WHERE body = '${title}'`), [], "the row rolled back with its counter");
   const before = counter("guest_notes");
   await ok("POST", "/guest_notes", { as: "subscriber", body: { body: title } });
   assert.equal(counter("guest_notes"), before + 1, "and the next write counts as usual");

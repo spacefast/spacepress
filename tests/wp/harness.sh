@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Disposable WordPress 7.2-beta5 + MariaDB 11.4 + pinned platform plugins for First's WP target (design §9.2).
+# Disposable WordPress 7.2-beta5 + MariaDB 11.4 + pinned platform plugins for TypedPress's WP target (design §9.2).
 #
 #   harness.sh up --wp-content <dir> boot and activate the declared split plugins,
 #                                    create admin/editor/author/subscriber with application passwords;
@@ -12,32 +12,32 @@
 #                                    a fresh WordPress with users only: no plugin is installed or
 #                                    activated, so the caller installs an artifact as a site owner would
 #   harness.sh up --wp-content <dir> --platform
-#                                    install and activate only the manifest's platform dependencies; First
+#                                    install and activate only the manifest's platform dependencies; TypedPress
 #                                    itself arrives another way (the build store's must-use loader)
 #   harness.sh wp <args...>          WP-CLI inside the stack
 #   harness.sh sql "<query>"         run SQL in MariaDB; tab-separated rows with a header line
 #   harness.sh down                  remove containers and volumes
 #
-# FIRST_WP_PORT (default 8790) picks the host port and FIRST_WP_PROJECT (default first-wp-test) the
+# TP_WP_PORT (default 8790) picks the host port and TP_WP_PROJECT (default typedpress-wp-test) the
 # compose project, so several worktrees can each run their own stack at once. Credentials here are
 # throwaway values for this local container only and are tracked intentionally.
 set -euo pipefail
 caller="$PWD"   # relative --wp-content paths are the caller's, not this directory's
 cd "$(dirname "$0")"
-export FIRST_WP_PORT="${FIRST_WP_PORT:-8790}"
-export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-test}"
+export TP_WP_PORT="${TP_WP_PORT:-8790}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-test}"
 # Compose lowercases and strips other characters, so distinct inputs could share one stack.
-[[ $FIRST_WP_PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "FIRST_WP_PROJECT must match ^[a-z0-9][a-z0-9_-]*\$" >&2; exit 2; }
-export FIRST_WP_UID="$(id -u)" FIRST_WP_GID="$(id -g)"
+[[ $TP_WP_PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "TP_WP_PROJECT must match ^[a-z0-9][a-z0-9_-]*\$" >&2; exit 2; }
+export TP_WP_UID="$(id -u)" TP_WP_GID="$(id -g)"
 STATE=.harness-state
 [[ -f $STATE ]] && source "$STATE"
-export FIRST_WP_CONTENT="${FIRST_WP_CONTENT:-$PWD/empty-wp-content}"
+export TP_WP_CONTENT="${TP_WP_CONTENT:-$PWD/empty-wp-content}"
 
 # -p wins over an inherited COMPOSE_PROJECT_NAME, which would otherwise merge stacks.
 compose() {
   local -a files=(-f compose.yml)
-  [[ ${FIRST_WP_S3:-0} != 1 ]] || files+=(-f compose.s3.yml)
-  docker compose -p "$FIRST_WP_PROJECT" "${files[@]}" "$@"
+  [[ ${TP_WP_S3:-0} != 1 ]] || files+=(-f compose.s3.yml)
+  docker compose -p "$TP_WP_PROJECT" "${files[@]}" "$@"
 }
 wp() { compose exec -T cli wp "$@"; }
 sql() { compose exec -T db mariadb -uwordpress -pfirst-test-db wordpress --batch -e "$1"; }
@@ -45,7 +45,7 @@ sql() { compose exec -T db mariadb -uwordpress -pfirst-test-db wordpress --batch
 # Provider provisioning is separate from installing/activating the WordPress artifact.
 # Only the named disposable resources are owned here; a repeated setup retains their bytes.
 s3_setup() {
-  [[ ${FIRST_WP_S3:-0} == 1 ]] || { echo 's3-setup requires FIRST_WP_S3=1' >&2; exit 2; }
+  [[ ${TP_WP_S3:-0} == 1 ]] || { echo 's3-setup requires TP_WP_S3=1' >&2; exit 2; }
   local node layout_version
   layout_version=$(compose exec -T garage /garage json-api GetClusterLayout | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
   if [[ $layout_version == 0 ]]; then
@@ -53,17 +53,17 @@ s3_setup() {
     compose exec -T garage /garage layout assign -z test -c 1G "$node" >/dev/null
     compose exec -T garage /garage layout apply --version 1 >/dev/null
   fi
-  if ! compose exec -T garage /garage bucket info first-uploads >/dev/null 2>&1; then
-    compose exec -T garage /garage bucket create first-uploads >/dev/null
+  if ! compose exec -T garage /garage bucket info typedpress-uploads >/dev/null 2>&1; then
+    compose exec -T garage /garage bucket create typedpress-uploads >/dev/null
   fi
   if ! compose exec -T garage /garage key info GK111111111111111111111111 >/dev/null 2>&1; then
-    compose exec -T garage /garage key import --yes -n first-test GK111111111111111111111111 1111111111111111111111111111111111111111111111111111111111111111 >/dev/null
+    compose exec -T garage /garage key import --yes -n typedpress-test GK111111111111111111111111 1111111111111111111111111111111111111111111111111111111111111111 >/dev/null
   fi
-  compose exec -T garage /garage bucket allow --read --write --owner first-uploads --key GK111111111111111111111111 >/dev/null
+  compose exec -T garage /garage bucket allow --read --write --owner typedpress-uploads --key GK111111111111111111111111 >/dev/null
 }
 
 up() {
-  local content="${FIRST_WP_CONTENT}" env=0 bare=0 platform=0 subdir=""
+  local content="${TP_WP_CONTENT}" env=0 bare=0 platform=0 subdir=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --wp-content) content="$2"; shift 2 ;;
@@ -75,14 +75,14 @@ up() {
     esac
   done
   [[ $content == /* ]] || content="$caller/$content"
-  FIRST_WP_CONTENT="$(cd "$content" && pwd)"
-  export FIRST_WP_CONTENT
-  [[ $bare == 1 || -f $FIRST_WP_CONTENT/first-manifest.json ]] || { echo 'build a wp-content artifact first' >&2; exit 1; }
-  printf 'export FIRST_WP_CONTENT=%q\n' "$FIRST_WP_CONTENT" > "$STATE"
+  TP_WP_CONTENT="$(cd "$content" && pwd)"
+  export TP_WP_CONTENT
+  [[ $bare == 1 || -f $TP_WP_CONTENT/typedpress-manifest.json ]] || { echo 'build a wp-content artifact first' >&2; exit 1; }
+  printf 'export TP_WP_CONTENT=%q\n' "$TP_WP_CONTENT" > "$STATE"
   mkdir -p cache
   local slug version sha zip
   local -a pins=()
-  [[ $bare == 1 ]] || mapfile -t pins < <(python3 - "$FIRST_WP_CONTENT/first-manifest.json" ../fixtures/platform.json <<'PINS'
+  [[ $bare == 1 ]] || mapfile -t pins < <(python3 - "$TP_WP_CONTENT/typedpress-manifest.json" ../fixtures/platform.json <<'PINS'
 import json,sys
 manifest=json.load(open(sys.argv[1])); platform=json.load(open(sys.argv[2]))
 for slug,spec in platform['plugins'].items():
@@ -103,9 +103,9 @@ PINS
     printf '%s  %s\n' "$sha" "$zip" | sha256sum -c --quiet
   done
 
-  local url="http://127.0.0.1:${FIRST_WP_PORT}"
+  local url="http://127.0.0.1:${TP_WP_PORT}"
   compose up -d --wait >/dev/null 2>&1 || compose up -d --wait
-  if [[ ${FIRST_WP_S3:-0} == 1 ]]; then
+  if [[ ${TP_WP_S3:-0} == 1 ]]; then
     s3_setup
   fi
   if [[ -n $subdir ]]; then
@@ -119,74 +119,74 @@ PINS
       && apache2ctl -k graceful" >/dev/null
     url="$url/$subdir"
   fi
-  if [[ -n ${FIRST_WP_CORE_ZIP:-} ]]; then
+  if [[ -n ${TP_WP_CORE_ZIP:-} ]]; then
     # A WordPress build other than the image's (.github/workflows/wordpress-ahead.yml: nightly or a pre-release):
     # its files replace the image's core, wp-content and wp-config stay. The ZIP is under ./cache.
-    compose exec -T --user "$FIRST_WP_UID:$FIRST_WP_GID" wordpress sh -c "cd /tmp && rm -rf core-swap && mkdir core-swap && cd core-swap \
-      && php -r '\$z = new ZipArchive(); exit(\$z->open(\$argv[1]) === true && \$z->extractTo(\".\") ? 0 : 1);' /first-cache/${FIRST_WP_CORE_ZIP} \
+    compose exec -T --user "$TP_WP_UID:$TP_WP_GID" wordpress sh -c "cd /tmp && rm -rf core-swap && mkdir core-swap && cd core-swap \
+      && php -r '\$z = new ZipArchive(); exit(\$z->open(\$argv[1]) === true && \$z->extractTo(\".\") ? 0 : 1);' /typedpress-cache/${TP_WP_CORE_ZIP} \
       && rm -rf wordpress/wp-content && cp -a wordpress/. /var/www/html/ && cd / && rm -rf /tmp/core-swap" >/dev/null
   fi
   if ! wp core is-installed >/dev/null 2>&1; then
-    wp core install --url="$url" --title="First Test" --admin_user=admin --admin_password=first-test-admin \
+    wp core install --url="$url" --title="TypedPress Test" --admin_user=admin --admin_password=typedpress-test-admin \
       --admin_email=admin@example.test --skip-email >/dev/null
     wp rewrite structure '/%postname%/' >/dev/null
     for role in editor author subscriber; do
-      wp user create "$role" "$role@example.test" --role="$role" --display_name="${role^}" --user_pass="first-test-$role" >/dev/null
+      wp user create "$role" "$role@example.test" --role="$role" --display_name="${role^}" --user_pass="typedpress-test-$role" >/dev/null
     done
   fi
   local installed
   for pin in "${pins[@]}"; do
     read -r slug version sha <<< "$pin"
-    wp plugin is-installed "$slug" >/dev/null 2>&1 || wp plugin install "/first-cache/$slug.$version.zip" >/dev/null
+    wp plugin is-installed "$slug" >/dev/null 2>&1 || wp plugin install "/typedpress-cache/$slug.$version.zip" >/dev/null
     installed=$(wp plugin get "$slug" --field=version)
     php -r 'exit(version_compare($argv[1],$argv[2],">=") ? 0 : 1);' "$installed" "$version" || { echo "$slug $version+ required" >&2; exit 1; }
   done
   local app=null
-  [[ $bare == 1 || $platform == 1 ]] || app=$(python3 -c 'import json,sys; print(json.dumps("first-app-"+json.load(open(sys.argv[1]))["app"]))' "$FIRST_WP_CONTENT/first-manifest.json")
+  [[ $bare == 1 || $platform == 1 ]] || app=$(python3 -c 'import json,sys; print(json.dumps("typedpress-app-"+json.load(open(sys.argv[1]))["app"]))' "$TP_WP_CONTENT/typedpress-manifest.json")
   local -a activation=()
-  [[ $bare == 1 ]] || mapfile -t activation < <(python3 - "$FIRST_WP_CONTENT/first-manifest.json" "$platform" <<'ACTIVATE'
+  [[ $bare == 1 ]] || mapfile -t activation < <(python3 - "$TP_WP_CONTENT/typedpress-manifest.json" "$platform" <<'ACTIVATE'
 import json,sys,os
 manifest=json.load(open(sys.argv[1]))
 for dependency in manifest['dependencies']: print(dependency['slug'])
 if sys.argv[2] == '1': sys.exit()
-print('first-runtime')
-if 'first-identity' in manifest['plugins']: print('first-identity')
-print('first-app-'+manifest['app'])
+print('typedpress-runtime')
+if 'typedpress-identity' in manifest['plugins']: print('typedpress-identity')
+print('typedpress-app-'+manifest['app'])
 # The optional admin registers only once the app has (plugins_loaded order), so it activates last.
-if 'first-admin' in manifest['plugins']: print('first-admin')
+if 'typedpress-admin' in manifest['plugins']: print('typedpress-admin')
 ACTIVATE
   )
   for slug in "${activation[@]}"; do wp plugin activate "$slug" >/dev/null; done
   # Test-only must-use plugins (outgoing mail kept on disk for sign-in codes).
-  wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); foreach (glob("/first-mu-plugins/*.php") as $f) { copy($f, WPMU_PLUGIN_DIR . "/first-harness-" . basename($f)); }' >/dev/null
+  wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); foreach (glob("/typedpress-mu-plugins/*.php") as $f) { copy($f, WPMU_PLUGIN_DIR . "/typedpress-harness-" . basename($f)); }' >/dev/null
 
   local identity=null
-  if wp plugin is-active first-identity >/dev/null 2>&1; then
+  if wp plugin is-active typedpress-identity >/dev/null 2>&1; then
     local application client_id
     origin="${url%%/[^/]*}"; [[ $url == */* ]] && origin="$(printf %s "$url" | sed -E 's#^(https?://[^/]+).*#\1#')"
-    application=$(wp first identity app add --name='First development' --redirect="$url/auth/callback" --origin="$origin" --id=app_zero_dev)
+    application=$(wp typedpress identity app add --name='TypedPress development' --redirect="$url/auth/callback" --origin="$origin" --id=app_zero_dev)
     client_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["id"])' <<< "$application")
     identity=$(python3 -c 'import json,sys; print(json.dumps({"clientId":sys.argv[1]}))' "$client_id")
-    [[ $env == 0 ]] || printf 'export FIRST_IDENTITY_CLIENT_ID=%q\n' "$client_id"
+    [[ $env == 0 ]] || printf 'export TP_IDENTITY_CLIENT_ID=%q\n' "$client_id"
   fi
 
   local users="" sep="" id pass
   for role in admin editor author subscriber; do
     id=$(wp user get "$role" --field=ID)
-    pass=$(wp user application-password create "$role" "first-tests-$(date +%s%N)" --porcelain)
+    pass=$(wp user application-password create "$role" "typedpress-tests-$(date +%s%N)" --porcelain)
     users+="$sep\"$role\":{\"id\":$id,\"appPassword\":\"$pass\"}"
     sep=","
     if [[ $env == 1 ]]; then
-      printf 'export FIRST_WP_%s_ID=%s\nexport FIRST_WP_%s_APP_PASSWORD=%q\n' "${role^^}" "$id" "${role^^}" "$pass"
+      printf 'export TP_WP_%s_ID=%s\nexport TP_WP_%s_APP_PASSWORD=%q\n' "${role^^}" "$id" "${role^^}" "$pass"
     fi
   done
   local version container
   version=$(wp core version)
   container=$(compose ps -q wordpress)
   if [[ $env == 1 ]]; then
-    printf 'export FIRST_WP_URL=%q\nexport FIRST_WP_VERSION=%q\n' "$url" "$version"
+    printf 'export TP_WP_URL=%q\nexport TP_WP_VERSION=%q\n' "$url" "$version"
   else
-    printf '{"url":"%s","wp":"%s","scf":"6.9.7","plugin":%s,"identity":%s,"users":{%s},"container":"first-wp-%s"}\n' \
+    printf '{"url":"%s","wp":"%s","scf":"6.9.7","plugin":%s,"identity":%s,"users":{%s},"container":"typedpress-wp-%s"}\n' \
       "$url" "$version" "$app" "$identity" "$users" "${container:0:12}"
   fi
 }
@@ -200,7 +200,7 @@ case "$cmd" in
   compose) compose "$@" ;;
   s3-setup) s3_setup ;;
   down)
-    if [[ ${FIRST_WP_S3:-0} == 1 ]]; then
+    if [[ ${TP_WP_S3:-0} == 1 ]]; then
       compose --profile replica down -v --remove-orphans >/dev/null 2>&1
     else
       compose down -v --remove-orphans >/dev/null 2>&1

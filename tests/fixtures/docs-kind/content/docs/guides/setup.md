@@ -5,8 +5,8 @@ order: 1
 
 Edit the config.
 
-```ts title="first.config.ts" {2}
-import { defineConfig } from "first";
+```ts title="typedpress.config.ts" {2}
+import { defineConfig } from "typedpress";
 export default defineConfig({ name: "docs" });
 ```
 

@@ -2,28 +2,28 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
 
 use function array_key_exists;
 use function assert;
 use function count;
 use function in_array;
-use First\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
-use First\Identity\Vendor\Webauthn\AuthenticatorSelectionCriteria;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialParameters;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialUserEntity;
+use TypedPress\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\BadMethodCallException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorSelectionCriteria;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialDescriptor;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialParameters;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialRpEntity;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialUserEntity;
 
 final class PublicKeyCredentialOptionsDenormalizer implements DenormalizerInterface, DenormalizerAwareInterface, NormalizerInterface, NormalizerAwareInterface
 {

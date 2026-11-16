@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use First\Identity\Vendor\Cose\Hash;
-use First\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use TypedPress\Identity\Vendor\Cose\Hash;
+use TypedPress\Identity\Vendor\Cose\Key\RsaKeyValidator;
 
 final class PS384 extends PSSRSA
 {

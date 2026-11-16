@@ -4,7 +4,7 @@ import PageLayout from "blume/components/layout/PageLayout.astro";
 import data from "blume:data";
 import Stop from "../../lib/Stop.astro";
 import { example } from "../../lib/examples.ts";
-import { toFirst } from "../../lib/names.ts";
+import { toTypedPress } from "../../lib/names.ts";
 import { resolveTour } from "../../lib/tour.ts";
 import { tours } from "../../lib/stops.ts";
 
@@ -18,7 +18,7 @@ const stops = resolveTour(tour, compiled);
 const files = Object.keys(compiled.files).length;
 const migrations = compiled.output.migrations.length;
 const { config } = data;
-const title = toFirst(tour.title);
+const title = toTypedPress(tour.title);
 ---
 
 <PageLayout
@@ -31,12 +31,12 @@ const title = toFirst(tour.title);
 	searchEnabled={config.search.enabled}
 	siteUrl={config.site}
 	ogEnabled={config.og.enabled}
-	page={{ title: `${title} · First`, description: toFirst(tour.intro[0] ?? title), route: `/tour/${tour.example}` }}
+	page={{ title: `${title} · TypedPress`, description: toTypedPress(tour.intro[0] ?? title), route: `/tour/${tour.example}` }}
 >
 	<main class="tour">
 		<p class="crumbs"><a href="/tour">Tour</a> / {tour.example}</p>
 		<h1>{title}</h1>
-		{tour.intro.map((p) => <p class="lede">{toFirst(p)}</p>)}
+		{tour.intro.map((p) => <p class="lede">{toTypedPress(p)}</p>)}
 		<p class="facts">
 			<code>examples/{tour.example}</code>: {files} source file{files === 1 ? "" : "s"} in.
 			{migrations} migration{migrations === 1 ? "" : "s"}, <code>schema.php</code>, <code>functions.php</code> and the typed client out.

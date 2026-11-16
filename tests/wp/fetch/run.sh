@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # fetch() from handlers on real WordPress/MariaDB against a host-side HTTPS origin.
-#   FIRST_WP_PROJECT=first-wp-fetch FIRST_WP_PORT=8899 tests/wp/fetch/run.sh
+#   TP_WP_PROJECT=typedpress-wp-fetch TP_WP_PORT=8899 tests/wp/fetch/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 wp="$(cd "$here/.." && pwd)"
 repo="$(cd "$wp/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-fetch}"
-export FIRST_WP_PORT="${FIRST_WP_PORT:-8899}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-fetch}"
+export TP_WP_PORT="${TP_WP_PORT:-8899}"
 work="$(mktemp -d)"
 receiver=""
 other=""
@@ -31,12 +31,12 @@ receiver=$!
 for _ in $(seq 50); do [[ -s $work/port ]] && break; sleep 0.1; done
 port="$(cat "$work/port")"
 mkdir "$work/app"
-cp "$here/first.config.ts" "$work/app/"
-"$target/debug/first" build "$work/app" --quiet >/dev/null
-"$wp/harness.sh" up --wp-content "$work/app/first/dist/wp-content" > "$work/harness.json"
+cp "$here/typedpress.config.ts" "$work/app/"
+"$target/debug/typedpress" build "$work/app" --quiet >/dev/null
+"$wp/harness.sh" up --wp-content "$work/app/tp/dist/wp-content" > "$work/harness.json"
 # The CA and the lane's one trusted origin, for the web server only.
-"$wp/harness.sh" compose exec -T wordpress mkdir -p /first-fetch
-"$wp/harness.sh" compose cp "$work/ca.pem" wordpress:/first-fetch/ca.pem >/dev/null 2>&1
-"$wp/harness.sh" compose cp "$(cd "$here" && pwd)/mu-plugin.php" wordpress:/var/www/html/wp-content/mu-plugins/first-fetch-lane.php >/dev/null 2>&1
-FIRST_WP_HARNESS="$work/harness.json" FIRST_FETCH_PORT="$port" FIRST_FETCH_LOG="$work/requests.log" \
+"$wp/harness.sh" compose exec -T wordpress mkdir -p /typedpress-fetch
+"$wp/harness.sh" compose cp "$work/ca.pem" wordpress:/typedpress-fetch/ca.pem >/dev/null 2>&1
+"$wp/harness.sh" compose cp "$(cd "$here" && pwd)/mu-plugin.php" wordpress:/var/www/html/wp-content/mu-plugins/typedpress-fetch-lane.php >/dev/null 2>&1
+TP_WP_HARNESS="$work/harness.json" TP_FETCH_PORT="$port" TP_FETCH_LOG="$work/requests.log" \
   node --test "$here/fetch.test.ts"

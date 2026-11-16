@@ -3,15 +3,15 @@
 declare(strict_types=1);
 
 /*
- * First\Wp\Guard on an in-process WordPress: what "php/wordpress" calls may not touch, whatever name
+ * TypedPress\Wp\Guard on an in-process WordPress: what "php/wordpress" calls may not touch, whatever name
  * the app builds at runtime (the build refuses literal names with F4301), and which tables an
  * `existingTable` may bind.
  */
 
-use First\JsObject;
-use First\Wp\Functions;
-use First\Wp\Guard;
-use First\Wp\Migrator;
+use TypedPress\JsObject;
+use TypedPress\Wp\Functions;
+use TypedPress\Wp\Guard;
+use TypedPress\Wp\Migrator;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -37,7 +37,7 @@ eq('and deleted', $call('delete_option', ['my app settings']), true);
 $plugins = get_option('active_plugins');
 $protected = ['active_plugins', 'active_sitewide_plugins', 'template', 'stylesheet', 'siteurl', 'home', 'admin_email',
     'users_can_register', 'default_role', 'wp_user_roles', 'cron', 'recently_activated', 'upload_path', 'upload_url_path',
-    'uninstall_plugins', 'first_blog_schema', 'first__anything', 'jetpack_active_modules', '_site_transient_update_plugins',
+    'uninstall_plugins', 'tp_blog_schema', 'tp__anything', 'jetpack_active_modules', '_site_transient_update_plugins',
     'new_user_0123abcd', 'adminhash', 'rewrite_rules', 'permalink_structure', 'show_on_front', 'blog_public'];
 foreach ($protected as $name) {
     problem("update_option refuses $name", static fn () => $call('update_option', [$name, 'x']), 403, 'protected_option');
@@ -54,7 +54,7 @@ eq('a protected setting that holds no secret is still readable', $call('get_opti
 update_option('jetpack_private_options', ['blog_token' => 'tok.secret']);
 update_option('jetpack_secrets', ['x' => 'y']);
 update_option('example_api_key', 'k');
-foreach (['jetpack_private_options', 'jetpack_secrets', 'first_runtime_secret', 'first_identity_signing_keys', 'auth_key', 'nonce_salt',
+foreach (['jetpack_private_options', 'jetpack_secrets', 'tp_runtime_secret', 'tp_identity_signing_keys', 'auth_key', 'nonce_salt',
     'secret_key', 'recovery_keys', 'example_api_key', 'mailserver_pass', 'JETPACK_PRIVATE_OPTIONS'] as $name) {
     problem("get_option refuses the secret $name", static fn () => $call('get_option', [$name]), 403, 'protected_option');
 }
@@ -63,7 +63,7 @@ foreach (['jetpack_private_options', 'jetpack_secrets', 'first_runtime_secret', 
 $changeset = ['post_type' => 'customize_changeset', 'post_status' => 'publish', 'post_title' => 'x',
     'post_content' => json_encode(['blogname' => ['value' => 'Owned']])];
 problem('wp_insert_post refuses customize_changeset', static fn () => $call('wp_insert_post', [new JsObject($changeset), true]), 403, 'protected_post_type');
-foreach (['wp_template', 'wp_global_styles', 'nav_menu_item', 'first_posts', 'revision', 'oembed_cache', 'user_request', 'no_such_type'] as $type) {
+foreach (['wp_template', 'wp_global_styles', 'nav_menu_item', 'tp_posts', 'revision', 'oembed_cache', 'user_request', 'no_such_type'] as $type) {
     problem("wp_insert_post refuses post_type $type", static fn () => $call('wp_insert_post', [new JsObject(['post_type' => $type, 'post_title' => 'x']), true]), 403, 'protected_post_type');
 }
 eq('blogname kept', get_option('blogname') !== 'Owned', true);
@@ -71,8 +71,8 @@ $id = $call('wp_insert_post', [new JsObject(['post_title' => 'Plain', 'post_stat
 eq('a plain post is inserted', is_int($id) && $id > 0, true);
 eq('a page is inserted', is_int($call('wp_insert_post', [new JsObject(['post_title' => 'Page', 'post_type' => 'page']), true])), true);
 // A field the catalog's type doesn't declare (JSON.parse keeps it): ID would overwrite that post,
-// a First kind's included, and turn it into a `post`.
-$kind = wp_insert_post(['post_type' => 'first_posts', 'post_status' => 'publish', 'post_title' => 'Kept']);
+// a TypedPress kind's included, and turn it into a `post`.
+$kind = wp_insert_post(['post_type' => 'tp_posts', 'post_status' => 'publish', 'post_title' => 'Kept']);
 foreach (['ID' => $kind, 'import_id' => $kind + 1000, 'meta_input' => ['_edit_lock' => 'x'], 'tax_input' => ['category' => [1]], 'post_date' => '2001-01-01 00:00:00'] as $field => $value) {
     problem("wp_insert_post refuses the field $field", static fn () => $call('wp_insert_post', [new JsObject(['post_title' => 'overwritten', $field => $value]), true]), 403, 'protected_post_field');
 }
@@ -80,14 +80,14 @@ foreach (['ID' => $kind, 'import_id' => $kind + 1000, 'meta_input' => ['_edit_lo
 foreach (['ID=' . $kind . '&post_title=overwritten', 'post_type=customize_changeset&post_status=publish', 42] as $raw) {
     problem('wp_insert_post refuses a non-object ' . json_encode($raw), static fn () => $call('wp_insert_post', [$raw, true]), 403, 'protected_post_field');
 }
-eq('the First post is untouched', [get_post_type($kind), get_the_title($kind)], ['first_posts', 'Kept']);
+eq('the TypedPress post is untouched', [get_post_type($kind), get_the_title($kind)], ['tp_posts', 'Kept']);
 
-// existingTable: this site's prefix (wp_ here), never WordPress's, First's or Action Scheduler's own.
+// existingTable: this site's prefix (wp_ here), never WordPress's, TypedPress's or Action Scheduler's own.
 $refused = static function (string $label, string $table, string $prefix) {
     try {
         Guard::table($table, $prefix);
         check($label, false, 'accepted');
-    } catch (\First\HttpError $e) {
+    } catch (\TypedPress\HttpError $e) {
         check($label, $e->errorCode === 'existing_table_refused', $e->getMessage());
     }
 };
@@ -95,12 +95,12 @@ $allowed = static function (string $label, string $table, string $prefix) {
     try {
         Guard::table($table, $prefix);
         check($label, true);
-    } catch (\First\HttpError $e) {
+    } catch (\TypedPress\HttpError $e) {
         check($label, false, $e->getMessage());
     }
 };
 $allowed('a table under the site prefix', 'wp_legacy_orders', 'wp_');
-foreach (['wp_users', 'wp_usermeta', 'WP_Options', 'wp_posts', 'wp_first_posts', 'wp_first__migrations', 'wp_actionscheduler_actions', 'wp_2_posts'] as $t) {
+foreach (['wp_users', 'wp_usermeta', 'WP_Options', 'wp_posts', 'wp_tp_posts', 'wp_tp__migrations', 'wp_actionscheduler_actions', 'wp_2_posts'] as $t) {
     $refused("$t is refused", $t, 'wp_');
 }
 $refused('another prefix is refused', 'other_orders', 'wp_');
@@ -129,7 +129,7 @@ $refused('in any case', 'WP_Accounts', 'wp_');
 $refused('a renamed usermeta table outside the prefix is refused', 'shared_accountmeta', 'wp_');
 [$wpdb->users, $wpdb->usermeta] = [$users, $usermeta];
 $allowed('the name is an app table again once WordPress no longer uses it', 'wp_accounts', 'wp_');
-foreach (['wp_first_identity_accounts', 'wp_identity_sessions', 'wp_wc_orders', 'wp_woocommerce_sessions'] as $t) {
+foreach (['wp_tp_identity_accounts', 'wp_identity_sessions', 'wp_wc_orders', 'wp_woocommerce_sessions'] as $t) {
     $refused("$t is refused", $t, 'wp_');
 }
 
@@ -138,10 +138,10 @@ $part = static fn (string $s) => substr(trim((string) preg_replace('/[^a-z0-9]+/
 $legacyOf = static fn (string $space, string $t) => substr('sf_' . $part($space) . '_' . $part($t), 0, 53) . '_' . substr(hash('sha256', "$space\0$t"), 0, 10);
 $sfz = static fn (string $space) => 'sfz_' . substr(hash('sha256', $space), 0, 24) . '_';
 eq('the helper matches the converter fixture name', $legacyOf('spc_migrate_test', 'tasks'), 'sf_spc_migrate_test_tasks_3c47092ff0');
-eq('and a camelCase one (first migrate app --space spc_x)', $legacyOf('spc_x', 'myTasks'), 'sf_spc_x_mytasks_a102734393');
+eq('and a camelCase one (typedpress migrate app --space spc_x)', $legacyOf('spc_x', 'myTasks'), 'sf_spc_x_mytasks_a102734393');
 // No Space from the host: no 0.8 table binds, whatever the prefix.
 $refused('a 0.8 table on a host that names no Space is refused', $legacyOf('spc_mine', 'tasks'), $sfz('spc_mine'));
-eq('no FIRST_SPACE_ID in the in-process site', defined('FIRST_SPACE_ID'), false);
+eq('no TP_SPACE_ID in the in-process site', defined('TP_SPACE_ID'), false);
 
 // Spacefast names the Space (spacefast_content_space_id); the digest needs the real id and table.
 $GLOBALS['GUARD_SPACE'] = 'spc_mine';
@@ -149,7 +149,7 @@ eval('function spacefast_content_space_id(): string { return (string) ($GLOBALS[
 $mine = $sfz('spc_mine');
 $allowed("this Space's own 0.8 table", $legacyOf('spc_mine', 'tasks'), $mine);
 $refused("another Space's 0.8 table", $legacyOf('spc_other', 'tasks'), $mine);
-$refused("another Space's v2 table", $sfz('spc_other') . 'first_tasks', $mine);
+$refused("another Space's v2 table", $sfz('spc_other') . 'tp_tasks', $mine);
 $refused("another Space's WordPress users", $sfz('spc_other') . 'users', $mine);
 $refused('a name without the converter digest', 'sf_spc_mine_tasks', $mine);
 $refused('a made-up digest', 'sf_spc_mine_tasks_0123456789', $mine);
@@ -170,7 +170,7 @@ $adopts = static function (string $label, string $table, string $prefix, array $
     try {
         Guard::table($table, $prefix, $names);
         check($label, true);
-    } catch (\First\HttpError $e) {
+    } catch (\TypedPress\HttpError $e) {
         check($label, false, $e->getMessage());
     }
 };
@@ -183,7 +183,7 @@ $spec = ['key' => 'items', 'existingTable' => $myTasks];
 try {
     Guard::table($myTasks, $mine, Guard::names('items', $spec));
     check('a renamed collection without its adopted name does not match the digest', false, 'accepted');
-} catch (\First\HttpError $e) {
+} catch (\TypedPress\HttpError $e) {
     check('a renamed collection without its adopted name does not match the digest', $e->errorCode === 'existing_table_refused');
 }
 $adopts('a collection renamed with was still binds its 0.8 table', $myTasks, $mine, Guard::names('items', $spec + ['adoptedAs' => 'myTasks']));
@@ -212,27 +212,27 @@ $GLOBALS['GUARD_SPACE'] = '';
 // The migrator refuses an unchecked binding before it reads the table or writes the ledger.
 $bad = $schema;
 $bad['collections']['comments']['existingTable'] = 'wp_users';
-$dir = sys_get_temp_dir() . '/first-guard-' . getmypid();
+$dir = sys_get_temp_dir() . '/typedpress-guard-' . getmypid();
 @mkdir($dir);
-file_put_contents("$dir/0001_adopt.sql", "-- first-adopt {\"table\":\"wp_users\",\"indexes\":[],\"foreignKeys\":[],\"integerColumns\":[]}\nSELECT `ID` FROM `wp_users` LIMIT 0;");
-$migrator = new Migrator($wp->connection(), $dir, new \First\Schema($bad));
+file_put_contents("$dir/0001_adopt.sql", "-- typedpress-adopt {\"table\":\"wp_users\",\"indexes\":[],\"foreignKeys\":[],\"integerColumns\":[]}\nSELECT `ID` FROM `wp_users` LIMIT 0;");
+$migrator = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($bad));
 problem('the migrator refuses an existingTable of WordPress users', static fn () => $migrator->migrate(), 409, 'existing_table_refused');
 eq('and records nothing', in_array('0001_adopt', $migrator->pending(), true), true);
 problem('planning the deploy refuses it the same way, before the schema check reads it', static fn () => $migrator->plan(), 409, 'existing_table_refused');
 // A historical adoption record is refused by plan() too, with no collection binding the table.
-$historical = new Migrator($wp->connection(), $dir, new \First\Schema($schema));
+$historical = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($schema));
 problem("planning refuses a historical adoption of WordPress users", static fn () => $historical->plan(), 409, 'existing_table_refused');
 problem('marking a step of it applied is refused before the ledger is touched', static fn () => $historical->markApplied('0001_adopt:1'), 409, 'existing_table_refused');
 eq('and the step is still pending', in_array('0001_adopt', $historical->pending(), true), true);
 // The site's read-only inspection returns the refusal instead of throwing: a copy of the plugin
 // whose app directory holds the historical adoption of wp_users.
-$plugin = (new \ReflectionClass(\First\Wp\Plugin::class))->newInstanceWithoutConstructor();
-$app = sys_get_temp_dir() . '/first-guard-app-' . getmypid();
-@mkdir("$app/first/app", 0777, true);
-@symlink($dir, "$app/first/app/migrations");
+$plugin = (new \ReflectionClass(\TypedPress\Wp\Plugin::class))->newInstanceWithoutConstructor();
+$app = sys_get_temp_dir() . '/typedpress-guard-app-' . getmypid();
+@mkdir("$app/tp/app", 0777, true);
+@symlink($dir, "$app/tp/app/migrations");
 (function () use ($app, $schema) {
     $this->dir = $app;
-    $this->schema = new \First\Schema($schema);
+    $this->schema = new \TypedPress\Schema($schema);
 })->call($plugin);
 try {
     $report = $plugin->inspect();
@@ -240,9 +240,9 @@ try {
 } catch (\Throwable $e) {
     check('inspect reports an existingTable refusal instead of throwing', false, get_class($e) . ': ' . $e->getMessage());
 }
-unlink("$app/first/app/migrations");
-rmdir("$app/first/app");
-rmdir("$app/first");
+unlink("$app/tp/app/migrations");
+rmdir("$app/tp/app");
+rmdir("$app/tp");
 rmdir($app);
 array_map('unlink', glob("$dir/*"));
 
@@ -262,18 +262,18 @@ $under = static function (string $prefix, callable $fn) use ($wpdb) {
         $wpdb->prefix = $was;
     }
 };
-$adoptRecord = static fn (string $table, ?string $name) => '-- first-adopt ' . json_encode(array_filter(['table' => $table, 'name' => $name], static fn ($v) => $v !== null)
+$adoptRecord = static fn (string $table, ?string $name) => '-- typedpress-adopt ' . json_encode(array_filter(['table' => $table, 'name' => $name], static fn ($v) => $v !== null)
     + ['indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']]], 'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]])
     . "\nSELECT `id`, `title` FROM `$table` LIMIT 0;";
 $history = static function (string $adopt, string $table) use ($dir): void {
     array_map('unlink', glob("$dir/*"));
     file_put_contents("$dir/0001_adopt.sql", $adopt);
-    file_put_contents("$dir/0002_update.sql", '-- first-check ' . json_encode(['check' => 'drop', 'name' => 'myTasks', 'table' => $table, 'adopted' => true]) . "\nDROP TABLE `$table`;");
+    file_put_contents("$dir/0002_update.sql", '-- typedpress-check ' . json_encode(['check' => 'drop', 'name' => 'myTasks', 'table' => $table, 'adopted' => true]) . "\nDROP TABLE `$table`;");
 };
 $later = $schema; // the blog schema binds no existingTable: the collection is gone
 $history($adoptRecord($legacy, 'myTasks'), $legacy);
-$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
-$replay = new Migrator($wp->connection(), $dir, new \First\Schema($later), ['myTasks' => 1]);
+$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
+$replay = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['myTasks' => 1]);
 try {
     $under($mine, static fn () => $replay->migrate());
     check('an adoption whose collection a later migration drops replays with the drop confirmed', true);
@@ -284,14 +284,14 @@ eq('and both migrations are recorded', $under($mine, static fn () => array_value
 eq('the drop ran as confirmed', $wp->connection()->run("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", [$legacy]), []);
 // The same historical record is still refused for a table no Space or site may bind.
 foreach (['wp_users' => 'WordPress users', $sfz('spc_other') . 'users' => "another Space's users", $legacyOf('spc_other', 'myTasks') => "another Space's 0.8 table",
-    'wp_first__migrations' => "First's own", 'wp_actionscheduler_actions' => "Action Scheduler's", 'wp_shopusers' => "another install's"] as $table => $what) {
+    'wp_tp__migrations' => "TypedPress's own", 'wp_actionscheduler_actions' => "Action Scheduler's", 'wp_shopusers' => "another install's"] as $table => $what) {
     $history($adoptRecord($table, 'myTasks'), $table);
     $site = $table === 'wp_shopusers' ? 'wp_' : $mine;
-    $wp->connection()->run("DROP TABLE IF EXISTS `{$site}first__migrations`");
-    $replay = new Migrator($wp->connection(), $dir, new \First\Schema($later), ['myTasks' => 0]);
+    $wp->connection()->run("DROP TABLE IF EXISTS `{$site}tp__migrations`");
+    $replay = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['myTasks' => 0]);
     problem("a historical adoption of $what's table is still refused", static fn () => $under($site, static fn () => $replay->migrate()), 409, 'existing_table_refused');
 }
-$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
+$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
 
 // An adoption record from before `name`, whose collection was renamed (myTasks to items) and then
 // removed: the drop check carries the name it was adopted under, so this Space's table still drops.
@@ -299,44 +299,44 @@ $GLOBALS['GUARD_SPACE'] = 'spc_mine';
 $wp->connection()->run("CREATE TABLE IF NOT EXISTS `$legacy` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)");
 array_map('unlink', glob("$dir/*"));
 file_put_contents("$dir/0001_adopt.sql", $adoptRecord($legacy, null));
-file_put_contents("$dir/0002_update.sql", '-- first-check ' . json_encode(['check' => 'drop', 'name' => 'items', 'table' => $legacy, 'adopted' => true, 'adoptedAs' => 'myTasks']) . "\nDROP TABLE `$legacy`;");
-$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
-$renamedAway = new Migrator($wp->connection(), $dir, new \First\Schema($later), ['items' => 0]);
+file_put_contents("$dir/0002_update.sql", '-- typedpress-check ' . json_encode(['check' => 'drop', 'name' => 'items', 'table' => $legacy, 'adopted' => true, 'adoptedAs' => 'myTasks']) . "\nDROP TABLE `$legacy`;");
+$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
+$renamedAway = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['items' => 0]);
 try {
     $under($mine, static fn () => $renamedAway->plan());
     check('a renamed then removed adoption plans with its drop confirmed', true);
 } catch (\Throwable $e) {
     check('a renamed then removed adoption plans with its drop confirmed', false, $e->getMessage());
 }
-$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
+$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
 $wp->connection()->run("DROP TABLE IF EXISTS `$legacy`");
 $GLOBALS['GUARD_SPACE'] = '';
 
 // An adoption an earlier runtime applied, whose collection is gone, is checked again before a later
 // statement drops its table: a ledger that recorded `0001_adopt` of wp_users can't drop wp_users.
-$wp->connection()->run('DROP TABLE IF EXISTS wp_first__migrations');
+$wp->connection()->run('DROP TABLE IF EXISTS wp_tp__migrations');
 $history($adoptRecord('wp_users', 'members'), 'wp_users');
-$migrator = new Migrator($wp->connection(), $dir, new \First\Schema($later), ['myTasks' => (int) $wp->connection()->run('SELECT COUNT(*) AS n FROM wp_users')[0]['n']]);
-$wp->connection()->run('CREATE TABLE wp_first__migrations (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, PRIMARY KEY (`app`, `id`))');
-$wp->connection()->run('INSERT INTO wp_first__migrations (`app`, `id`, `applied_at`) VALUES (?, ?, ?)', [(new \First\Schema($later))->name(), '0001_adopt', '2026-01-01T00:00:00.000Z']);
+$migrator = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['myTasks' => (int) $wp->connection()->run('SELECT COUNT(*) AS n FROM wp_users')[0]['n']]);
+$wp->connection()->run('CREATE TABLE wp_tp__migrations (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, PRIMARY KEY (`app`, `id`))');
+$wp->connection()->run('INSERT INTO wp_tp__migrations (`app`, `id`, `applied_at`) VALUES (?, ?, ?)', [(new \TypedPress\Schema($later))->name(), '0001_adopt', '2026-01-01T00:00:00.000Z']);
 problem('planning a drop of a table adopted earlier re-checks that adoption', static fn () => $migrator->plan(), 409, 'existing_table_refused');
 problem('and so does applying it, with the drop confirmed', static fn () => $migrator->migrate(), 409, 'existing_table_refused');
 eq('wp_users is still there', (int) $wp->connection()->run('SELECT COUNT(*) AS n FROM wp_users')[0]['n'] > 0, true);
-$wp->connection()->run('DROP TABLE IF EXISTS wp_first__migrations');
+$wp->connection()->run('DROP TABLE IF EXISTS wp_tp__migrations');
 
 // plan() checks an adoption against the live table as migrate() does: a declared index the table
 // lacks is a refusal at plan time, not a successful plan that then fails to apply.
 $GLOBALS['GUARD_SPACE'] = 'spc_mine';
 $wp->connection()->run('CREATE TABLE wp_legacy_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)');
 array_map('unlink', glob("$dir/*"));
-file_put_contents("$dir/0001_adopt.sql", '-- first-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
+file_put_contents("$dir/0001_adopt.sql", '-- typedpress-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
     'indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']], ['name' => 'by_title', 'unique' => false, 'columns' => ['title']]],
     'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]]) . "\nSELECT `id`, `title` FROM `wp_legacy_notes` LIMIT 0;");
 $notes = $schema;
 $notes['collections']['comments']['existingTable'] = 'wp_legacy_notes';
-$planner = new Migrator($wp->connection(), $dir, new \First\Schema($notes));
+$planner = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($notes));
 problem('plan() refuses an adoption whose declared index the table lacks', static fn () => $planner->plan(), 409, 'schema_refused');
-file_put_contents("$dir/0001_adopt.sql", '-- first-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
+file_put_contents("$dir/0001_adopt.sql", '-- typedpress-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
     'indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']]], 'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]])
     . "\nSELECT `id`, `missing` FROM `wp_legacy_notes` LIMIT 0;");
 problem('and one whose declared column the table lacks', static fn () => $planner->plan(), 409, 'schema_refused');

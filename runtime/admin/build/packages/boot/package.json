@@ -1,24 +1,24 @@
 {
-	"name": "@first-admin/boot",
+	"name": "@typedpress-admin/boot",
 	"version": "1.0.0",
-	"description": "Main First Admin application",
+	"description": "Main TypedPress Admin application",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
 		".": "./src/index.tsx"
 	},
 	"dependencies": {
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/ai-agent": "workspace:*",
-		"@first-admin/attachment-importer": "workspace:*",
-		"@first-admin/core-data-next": "workspace:*",
-		"@first-admin/dashboard": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/fields-next": "workspace:*",
-		"@first-admin/global-styles-engine": "workspace:*",
-		"@first-admin/lazy-editor": "workspace:*",
+		"@typedpress-admin/admin-toolkit": "workspace:*",
+		"@typedpress-admin/ai-agent": "workspace:*",
+		"@typedpress-admin/attachment-importer": "workspace:*",
+		"@typedpress-admin/core-data-next": "workspace:*",
+		"@typedpress-admin/dashboard": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
+		"@typedpress-admin/fields-next": "workspace:*",
+		"@typedpress-admin/global-styles-engine": "workspace:*",
+		"@typedpress-admin/lazy-editor": "workspace:*",
 		"@wordpress/theme": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@tanstack/history": "^1.120.17",
 		"@wordpress/a11y": "catalog:",
 		"@wordpress/admin-ui": "catalog:",
@@ -54,7 +54,7 @@
 		"fast-deep-equal": "^3.1.3",
 		"react": "catalog:",
 		"react-dom": "catalog:",
-		"@first-admin/schema": "workspace:*"
+		"@typedpress-admin/schema": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

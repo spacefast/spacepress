@@ -1,6 +1,6 @@
 import type { Theme } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
-import type { Action } from '@first-admin/dataviews';
+import type { Action } from '@typedpress-admin/dataviews';
 import { useThemeService } from '../hooks/use-theme-service';
 
 const useAutoUpdatesTheme = (): Action< Theme > => {
@@ -10,8 +10,8 @@ const useAutoUpdatesTheme = (): Action< Theme > => {
 		id: 'auto-updates-theme',
 		label: ( [ item ]: Theme[] ) => {
 			return item.auto_updates.enabled
-				? __( 'Disable auto-updates', 'first-admin' )
-				: __( 'Enable auto-updates', 'first-admin' );
+				? __( 'Disable auto-updates', 'typedpress-admin' )
+				: __( 'Enable auto-updates', 'typedpress-admin' );
 		},
 		isPrimary: false,
 		callback: async ( [ item ]: Theme[] ) => {

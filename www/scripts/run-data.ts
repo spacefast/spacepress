@@ -12,7 +12,7 @@ import { siteExamples } from "../../docs-site/lib/site-examples.ts";
 const here = path.dirname(new URL(import.meta.url).pathname);
 const examples: Record<string, unknown> = {};
 
-// The hero: built once by hand (`first build` in a copy), so its migration ledger and plugin lock
+// The hero: built once by hand (`typedpress build` in a copy), so its migration ledger and plugin lock
 // are committed beside it like any example's.
 {
   const dir = path.join(here, "../examples/_hero");
@@ -20,12 +20,12 @@ const examples: Record<string, unknown> = {};
   delete files["seed.php"];
   const { check, output } = await compileFiles("tasks", files);
   if (!output) throw new Error(`examples/_hero does not compile:\n${check.diagnostics.map((d) => `${d.location?.file}:${d.location?.line}: ${d.message}`).join("\n")}`);
-  const lock = JSON.parse(readFileSync(path.join(dir, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
+  const lock = JSON.parse(readFileSync(path.join(dir, "tp/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
   examples.tasks = {
     title: "Tasks",
     summary: "A whole app in two files: one table, one function and one page.",
     files,
-    shown: ["first.config.ts", "first/app/page.tsx"],
+    shown: ["typedpress.config.ts", "tp/app/page.tsx"],
     run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/", seed: readFileSync(path.join(dir, "seed.php"), "utf8"), syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: ledger(dir) },
   };
 }
@@ -33,7 +33,7 @@ const examples: Record<string, unknown> = {};
 // The committed migrations of a project. (`ledger()` in docs-site/lib also reads public/ as text,
 // which this site's public/ is not: it holds the compiler and the plugin zips.)
 const migrations = (dir: string) => {
-  const folder = path.join(dir, "first/_generated/migrations");
+  const folder = path.join(dir, "tp/_generated/migrations");
   return {
     snapshot: JSON.parse(readFileSync(path.join(folder, "snapshot.json"), "utf8")),
     files: Object.fromEntries(readdirSync(folder).filter((file) => file.endsWith(".sql")).sort().map((file) => [file, readFileSync(path.join(folder, file), "utf8")])),
@@ -45,11 +45,11 @@ const migrations = (dir: string) => {
 // what it compiles to. The docs and the first post go with it as content.
 {
   const dir = path.join(here, "..");
-  const files = Object.fromEntries(Object.entries(sources(dir)).filter(([file]) => /^(first\.config\.ts|tsconfig\.json|first\/)/.test(file)));
+  const files = Object.fromEntries(Object.entries(sources(dir)).filter(([file]) => /^(typedpress\.config\.ts|tsconfig\.json|tp\/)/.test(file)));
   const { check, output } = await compileFiles("typedpress-site", files);
   if (!output) throw new Error(`the site does not compile in the browser compiler:\n${check.diagnostics.map((d) => `${d.location?.file}:${d.location?.line}: ${d.message}`).join("\n")}`);
-  const lock = JSON.parse(readFileSync(path.join(dir, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
-  const shown = Object.keys(files).filter((file) => isWritten(file) && file !== "first/data/sources.ts" && file !== "tsconfig.json");
+  const lock = JSON.parse(readFileSync(path.join(dir, "tp/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
+  const shown = Object.keys(files).filter((file) => isWritten(file) && file !== "tp/data/sources.ts" && file !== "tsconfig.json");
   examples.website = {
     title: "This website",
     summary: "The site you are on: its schema, its server functions and its pages.",
@@ -66,6 +66,6 @@ for (const { name, title, summary } of siteExamples) {
   examples[name] = { title, summary, files, shown, run: await exampleRun(name) };
 }
 const { php, sqlite } = platformVersions();
-// Where WordPress Playground fetches First's shared plugin zips (files/plugins/<slug>.zip).
+// Where WordPress Playground fetches TypedPress's shared plugin zips (files/plugins/<slug>.zip).
 const plugins = process.env.PLUGINS_URL ?? "https://typedpress-guide.space.fast";
 process.stdout.write(JSON.stringify({ platform: { php, sqlite }, plugins, examples }));

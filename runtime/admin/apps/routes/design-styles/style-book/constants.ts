@@ -4,43 +4,43 @@ import type { Category, ColorGroup } from './types';
 export const STYLE_BOOK_COLOR_GROUPS: ColorGroup[] = [
 	{
 		slug: 'theme-colors',
-		title: __( 'Theme Colors', 'first-admin' ),
+		title: __( 'Theme Colors', 'typedpress-admin' ),
 		origin: 'theme',
 		type: 'colors',
 	},
 	{
 		slug: 'theme-gradients',
-		title: __( 'Theme Gradients', 'first-admin' ),
+		title: __( 'Theme Gradients', 'typedpress-admin' ),
 		origin: 'theme',
 		type: 'gradients',
 	},
 	{
 		slug: 'custom-colors',
-		title: __( 'Custom Colors', 'first-admin' ),
+		title: __( 'Custom Colors', 'typedpress-admin' ),
 		origin: 'custom',
 		type: 'colors',
 	},
 	{
 		slug: 'custom-gradients',
-		title: __( 'Custom Gradients', 'first-admin' ),
+		title: __( 'Custom Gradients', 'typedpress-admin' ),
 		origin: 'custom', // User.
 		type: 'gradients',
 	},
 	{
 		slug: 'duotones',
-		title: __( 'Duotones', 'first-admin' ),
+		title: __( 'Duotones', 'typedpress-admin' ),
 		origin: 'theme',
 		type: 'duotones',
 	},
 	{
 		slug: 'default-colors',
-		title: __( 'Default Colors', 'first-admin' ),
+		title: __( 'Default Colors', 'typedpress-admin' ),
 		origin: 'default',
 		type: 'colors',
 	},
 	{
 		slug: 'default-gradients',
-		title: __( 'Default Gradients', 'first-admin' ),
+		title: __( 'Default Gradients', 'typedpress-admin' ),
 		origin: 'default',
 		type: 'gradients',
 	},
@@ -52,18 +52,18 @@ export const STYLE_BOOK_THEME_SUBCATEGORIES: Omit<
 >[] = [
 	{
 		slug: 'site-identity',
-		title: __( 'Site Identity', 'first-admin' ),
+		title: __( 'Site Identity', 'typedpress-admin' ),
 		blocks: [ 'core/site-logo', 'core/site-title', 'core/site-tagline' ],
 	},
 	{
 		slug: 'design',
-		title: __( 'Design', 'first-admin' ),
+		title: __( 'Design', 'typedpress-admin' ),
 		blocks: [ 'core/navigation', 'core/avatar', 'core/post-time-to-read' ],
 		exclude: [ 'core/home-link', 'core/navigation-link' ],
 	},
 	{
 		slug: 'posts',
-		title: __( 'Posts', 'first-admin' ),
+		title: __( 'Posts', 'typedpress-admin' ),
 		blocks: [
 			'core/post-title',
 			'core/post-excerpt',
@@ -81,7 +81,7 @@ export const STYLE_BOOK_THEME_SUBCATEGORIES: Omit<
 	},
 	{
 		slug: 'comments',
-		title: __( 'Comments', 'first-admin' ),
+		title: __( 'Comments', 'typedpress-admin' ),
 		blocks: [
 			'core/comments-title',
 			'core/comments-pagination',
@@ -102,12 +102,12 @@ export const STYLE_BOOK_THEME_SUBCATEGORIES: Omit<
 export const STYLE_BOOK_CATEGORIES: Category[] = [
 	{
 		slug: 'overview',
-		title: __( 'Overview', 'first-admin' ),
+		title: __( 'Overview', 'typedpress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'text',
-		title: __( 'Text', 'first-admin' ),
+		title: __( 'Text', 'typedpress-admin' ),
 		blocks: [
 			'core/post-content',
 			'core/home-link',
@@ -116,27 +116,27 @@ export const STYLE_BOOK_CATEGORIES: Category[] = [
 	},
 	{
 		slug: 'colors',
-		title: __( 'Colors', 'first-admin' ),
+		title: __( 'Colors', 'typedpress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'theme',
-		title: __( 'Theme', 'first-admin' ),
+		title: __( 'Theme', 'typedpress-admin' ),
 		subcategories: STYLE_BOOK_THEME_SUBCATEGORIES,
 	},
 	{
 		slug: 'media',
-		title: __( 'Media', 'first-admin' ),
+		title: __( 'Media', 'typedpress-admin' ),
 		blocks: [ 'core/post-featured-image' ],
 	},
 	{
 		slug: 'widgets',
-		title: __( 'Widgets', 'first-admin' ),
+		title: __( 'Widgets', 'typedpress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'embed',
-		title: __( 'Embeds', 'first-admin' ),
+		title: __( 'Embeds', 'typedpress-admin' ),
 		include: [],
 	},
 ];
@@ -146,17 +146,17 @@ export const STYLE_BOOK_ALL_BLOCKS_SUBCATEGORIES: Category[] = [
 	...STYLE_BOOK_THEME_SUBCATEGORIES,
 	{
 		slug: 'media',
-		title: __( 'Media', 'first-admin' ),
+		title: __( 'Media', 'typedpress-admin' ),
 		blocks: [ 'core/post-featured-image' ],
 	},
 	{
 		slug: 'widgets',
-		title: __( 'Widgets', 'first-admin' ),
+		title: __( 'Widgets', 'typedpress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'embed',
-		title: __( 'Embeds', 'first-admin' ),
+		title: __( 'Embeds', 'typedpress-admin' ),
 		include: [],
 	},
 ];
@@ -165,12 +165,12 @@ export const STYLE_BOOK_ALL_BLOCKS_SUBCATEGORIES: Category[] = [
 export const STYLE_BOOK_PREVIEW_CATEGORIES: Category[] = [
 	{
 		slug: 'overview',
-		title: __( 'Overview', 'first-admin' ),
+		title: __( 'Overview', 'typedpress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'text',
-		title: __( 'Text', 'first-admin' ),
+		title: __( 'Text', 'typedpress-admin' ),
 		blocks: [
 			'core/post-content',
 			'core/home-link',
@@ -179,12 +179,12 @@ export const STYLE_BOOK_PREVIEW_CATEGORIES: Category[] = [
 	},
 	{
 		slug: 'colors',
-		title: __( 'Colors', 'first-admin' ),
+		title: __( 'Colors', 'typedpress-admin' ),
 		blocks: [],
 	},
 	{
 		slug: 'blocks',
-		title: __( 'All Blocks', 'first-admin' ),
+		title: __( 'All Blocks', 'typedpress-admin' ),
 		blocks: [],
 		subcategories: STYLE_BOOK_ALL_BLOCKS_SUBCATEGORIES,
 	},
@@ -212,12 +212,12 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 
 	${ ROOT_CONTAINER }
 
-	.first-admin-style-book__examples {
+	.typedpress-admin-style-book__examples {
 		max-width: 1200px;
 		margin: 0 auto;
 	}
 
-	.first-admin-style-book__example {
+	.typedpress-admin-style-book__example {
 	    max-width: 900px;
 		border-radius: 2px;
 		cursor: pointer;
@@ -232,41 +232,41 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 		margin: 0 auto 40px auto;
 	}
 
-	.first-admin-style-book__example.is-selected {
+	.typedpress-admin-style-book__example.is-selected {
 		box-shadow: 0 0 0 1px var(--wpds-color-stroke-focus);
 	}
 
-	.first-admin-style-book__example.is-disabled-example {
+	.typedpress-admin-style-book__example.is-disabled-example {
 		pointer-events: none;
 	}
 
-	.first-admin-style-book__example:focus:not(:disabled) {
+	.typedpress-admin-style-book__example:focus:not(:disabled) {
 		box-shadow: 0 0 0 var(--wpds-border-width-focus) var(--wpds-color-stroke-focus);
 		outline: 3px solid transparent;
 	}
 
-	.first-admin-style-book__duotone-example > div:first-child {
+	.typedpress-admin-style-book__duotone-example > div:first-child {
 		display: flex;
 		aspect-ratio: 16 / 9;
 		grid-row: span 1;
 		grid-column: span 2;
 	}
-	.first-admin-style-book__duotone-example img {
+	.typedpress-admin-style-book__duotone-example img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
 	}
-	.first-admin-style-book__duotone-example > div:not(:first-child) {
+	.typedpress-admin-style-book__duotone-example > div:not(:first-child) {
 		height: 20px;
 		border: 1px solid color-mix( in srgb, currentColor 10%, transparent );
 	}
 
-	.first-admin-style-book__color-example {
+	.typedpress-admin-style-book__color-example {
 		border: 1px solid color-mix( in srgb, currentColor 10%, transparent );
 	}
 
-	.first-admin-style-book__subcategory-title,
-	.first-admin-style-book__example-title {
+	.typedpress-admin-style-book__subcategory-title,
+	.typedpress-admin-style-book__example-title {
 		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
 		font-size: 13px;
 		font-weight: normal;
@@ -278,18 +278,18 @@ export const STYLE_BOOK_IFRAME_STYLES = `
 		color: color-mix( in srgb, currentColor 60%, transparent );
 	}
 
-	.first-admin-style-book__subcategory-title {
+	.typedpress-admin-style-book__subcategory-title {
 		font-size: 16px;
 		margin-bottom: 40px;
     	padding-bottom: 8px;
 	}
 
-	.first-admin-style-book__example-preview {
+	.typedpress-admin-style-book__example-preview {
 		width: 100%;
 	}
 
-	.first-admin-style-book__example-preview .block-editor-block-list__insertion-point,
-	.first-admin-style-book__example-preview .block-list-appender {
+	.typedpress-admin-style-book__example-preview .block-editor-block-list__insertion-point,
+	.typedpress-admin-style-book__example-preview .block-list-appender {
 		display: none;
 	}
 	:where(.is-root-container > .wp-block:first-child) {

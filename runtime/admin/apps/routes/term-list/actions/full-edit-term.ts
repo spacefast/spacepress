@@ -1,11 +1,11 @@
 import { useNavigate, useParams } from '@wordpress/route';
-import { useViewConfig } from '@first-admin/views';
+import { useViewConfig } from '@typedpress-admin/views';
 import { store as coreStore } from '@wordpress/core-data';
 import { useSelect } from '@wordpress/data';
 import { useMemo } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { pencil } from '@wordpress/icons';
-import type { Action } from '@first-admin/dataviews';
+import type { Action } from '@typedpress-admin/dataviews';
 import type { Term } from '@wordpress/core-data';
 
 /**
@@ -37,7 +37,7 @@ export function useFullEditTermAction(): Action< Term > | null {
 
 		return {
 			id: 'full-edit-term',
-			label: __( 'Edit', 'first-admin' ),
+			label: __( 'Edit', 'typedpress-admin' ),
 			isPrimary: true,
 			icon: pencil,
 			supportsBulk: false,

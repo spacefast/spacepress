@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Request cost of reactive queries on the tests/wp stack (docs/decisions/2026-11-13-reactive-queries.md).
-// Run against a stack that is already up (tests/wp/run.sh with FIRST_WP_KEEP=1):
+// Run against a stack that is already up (tests/wp/run.sh with TP_WP_KEEP=1):
 //   node tests/wp/bench-live.mjs [--requests 200]
 // Prints, per request shape: median and p95 wall time from this process, response bytes, and SQL
 // statements per request (MariaDB's `Questions` counter, less what reading the counter itself costs).
@@ -10,8 +10,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const harness = JSON.parse(readFileSync(process.env.FIRST_WP_HARNESS ?? join(here, ".harness.json"), "utf8"));
-const api = `${harness.url}/__first/api/v1`;
+const harness = JSON.parse(readFileSync(process.env.TP_WP_HARNESS ?? join(here, ".harness.json"), "utf8"));
+const api = `${harness.url}/__tp/api/v1`;
 const requests = Number(process.argv[process.argv.indexOf("--requests") + 1]) || 200;
 const basic = (role) => ({ Authorization: "Basic " + btoa(`${role}:${harness.users[role].appPassword}`) });
 const questions = () => Number(execFileSync(join(here, "harness.sh"), ["sql", "SHOW GLOBAL STATUS LIKE 'Questions'"], { encoding: "utf8" }).trim().split("\n").at(-1).split("\t")[1]);

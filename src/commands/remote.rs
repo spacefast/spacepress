@@ -1,6 +1,6 @@
-//! A WordPress site running the First plugin, over HTTP: finding its REST API, the credential
-//! `first login` stored for it, and its deploy receiver (`/wp-json/first-deploy/v1`, served by
-//! runtime/first-plugin/src/Receiver.php).
+//! A WordPress site running the TypedPress plugin, over HTTP: finding its REST API, the credential
+//! `typedpress login` stored for it, and its deploy receiver (`/wp-json/typedpress-deploy/v1`, served by
+//! runtime/typedpress-plugin/src/Receiver.php).
 use crate::sync::client::base64;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use std::time::Duration;
 
 /// The deploy protocol this command speaks (`Site::PROTOCOL` in the plugin).
 pub(crate) const PROTOCOL: u64 = 1;
-const NAMESPACE: &str = "first-deploy/v1";
+const NAMESPACE: &str = "typedpress-deploy/v1";
 
 /// A site's URL as it is stored and compared: scheme, host, port and path, no trailing slash. An
 /// address that carries a user or password is refused without being repeated: it would land in the
@@ -20,7 +20,7 @@ pub(crate) fn normalize(site: &str) -> Result<String, String> {
     })?;
     if !url.username().is_empty() || url.password().is_some() {
         return Err(format!(
-            "{}://{}: give the site's address without a user or password; first login asks the site for a credential",
+            "{}://{}: give the site's address without a user or password; typedpress login asks the site for a credential",
             url.scheme(),
             url.host_str().unwrap_or("the site")
         ));
@@ -52,7 +52,7 @@ pub(crate) struct Discovered {
     pub(crate) name: String,
     /// Core's Authorize Application screen, when the site accepts application passwords.
     pub(crate) authorize: Option<String>,
-    /// The First plugin is active.
+    /// The TypedPress plugin is active.
     pub(crate) plugin: bool,
 }
 
@@ -101,14 +101,14 @@ pub(crate) fn discover(site: &str) -> Result<Discovered, String> {
     Err(format!("{site} does not look like a WordPress site: {last}"))
 }
 
-/// Where `first login` keeps credentials: `FIRST_CONFIG_DIR`, else `$XDG_CONFIG_HOME/first`, else
-/// `~/.config/first`.
+/// Where `typedpress login` keeps credentials: `TP_CONFIG_DIR`, else `$XDG_CONFIG_HOME/tp`, else
+/// `~/.config/tp`.
 fn config_dir() -> Result<PathBuf, String> {
     let env = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
-    env("FIRST_CONFIG_DIR")
-        .or_else(|| env("XDG_CONFIG_HOME").map(|dir| dir.join("first")))
-        .or_else(|| env("HOME").map(|home| home.join(".config/first")))
-        .ok_or_else(|| "set HOME or FIRST_CONFIG_DIR so first has a place to keep the site's credential".to_string())
+    env("TP_CONFIG_DIR")
+        .or_else(|| env("XDG_CONFIG_HOME").map(|dir| dir.join("tp")))
+        .or_else(|| env("HOME").map(|home| home.join(".config/tp")))
+        .ok_or_else(|| "set HOME or TP_CONFIG_DIR so typedpress has a place to keep the site's credential".to_string())
 }
 
 fn sites_file() -> Result<PathBuf, String> {
@@ -125,7 +125,7 @@ fn read_sites() -> Result<serde_json::Map<String, Value>, String> {
             .and_then(|v| v["sites"].as_object().cloned())
             .ok_or_else(|| {
                 format!(
-                    "{} is not first's credential file; move it away and run first login again",
+                    "{} is not typedpress's credential file; move it away and run typedpress login again",
                     path.display()
                 )
             }),
@@ -173,9 +173,9 @@ pub(crate) fn forget(site: &str) -> Result<bool, String> {
     Ok(had)
 }
 
-/// The site a project deploys to (`.first/site.json`, written by `first login` inside a project).
+/// The site a project deploys to (`.tp/site.json`, written by `typedpress login` inside a project).
 pub(crate) fn linked(project: &Path) -> Option<String> {
-    let bytes = std::fs::read(project.join(".first/site.json")).ok()?;
+    let bytes = std::fs::read(project.join(".tp/site.json")).ok()?;
     serde_json::from_slice::<Value>(&bytes).ok()?["site"]
         .as_str()
         .map(str::to_owned)
@@ -183,7 +183,7 @@ pub(crate) fn linked(project: &Path) -> Option<String> {
 
 pub(crate) fn link(project: &Path, site: &str) -> Result<(), String> {
     crate::sync::write_atomic(
-        &project.join(".first/site.json"),
+        &project.join(".tp/site.json"),
         (serde_json::to_string_pretty(&json!({ "site": site })).expect("JSON") + "\n").as_bytes(),
     )
 }
@@ -221,12 +221,12 @@ impl Api {
         }
     }
 
-    /// The receiver for `site`: the credential in `FIRST_APP_PASSWORD` (`user:application-password`)
-    /// when it is set, else the one `first login` stored.
+    /// The receiver for `site`: the credential in `TP_APP_PASSWORD` (`user:application-password`)
+    /// when it is set, else the one `typedpress login` stored.
     pub(crate) fn connect(site: &str) -> Result<Api, String> {
-        if let Some(credential) = std::env::var("FIRST_APP_PASSWORD").ok().filter(|s| !s.is_empty()) {
+        if let Some(credential) = std::env::var("TP_APP_PASSWORD").ok().filter(|s| !s.is_empty()) {
             if !credential.contains(':') {
-                return Err("FIRST_APP_PASSWORD is user:application-password".into());
+                return Err("TP_APP_PASSWORD is user:application-password".into());
             }
             let found = discover(site)?;
             if !found.plugin {
@@ -236,7 +236,7 @@ impl Api {
         }
         let sites = read_sites()?;
         let Some(entry) = sites.get(site) else {
-            return Err(format!("not signed in to {site}. Run: first login {site}"));
+            return Err(format!("not signed in to {site}. Run: typedpress login {site}"));
         };
         let (Some(rest), Some(user), Some(password)) = (
             entry["rest"].as_str(),
@@ -244,13 +244,13 @@ impl Api {
             entry["password"].as_str(),
         ) else {
             return Err(format!(
-                "the stored credential for {site} is incomplete. Run: first login {site}"
+                "the stored credential for {site} is incomplete. Run: typedpress login {site}"
             ));
         };
         Ok(Api::new(site, rest, &format!("{user}:{password}")))
     }
 
-    /// `<rest>/first-deploy/v1<path>` with query pairs, on either REST root form.
+    /// `<rest>/typedpress-deploy/v1<path>` with query pairs, on either REST root form.
     fn url(&self, path: &str, query: &[(&str, &str)]) -> String {
         let mut url = format!("{}/{NAMESPACE}{path}", self.rest);
         let mut separator = if url.contains('?') { '&' } else { '?' };
@@ -327,8 +327,8 @@ impl Api {
         if status >= 300 {
             let message = match (status, parsed["code"].as_str().unwrap_or("")) {
                 (404, "rest_no_route") => no_plugin(&self.site),
-                (401, _) | (403, "first_forbidden") => format!(
-                    "{} ({}). Sign in again: first login {}",
+                (401, _) | (403, "tp_forbidden") => format!(
+                    "{} ({}). Sign in again: typedpress login {}",
                     parsed["message"].as_str().unwrap_or("the site refused the credential"),
                     self.site,
                     self.site
@@ -349,7 +349,7 @@ impl Api {
 
 pub(crate) fn no_plugin(site: &str) -> String {
     format!(
-        "{site} does not have the First plugin active. Run `first plugin` to write first.zip, then in wp-admin: Plugins, Add Plugin, Upload Plugin, and activate it."
+        "{site} does not have the TypedPress plugin active. Run `typedpress plugin` to write typedpress.zip, then in wp-admin: Plugins, Add Plugin, Upload Plugin, and activate it."
     )
 }
 
@@ -398,17 +398,17 @@ mod tests {
         let pretty = Api::new("https://example.test", "https://example.test/wp-json", "u:p");
         assert_eq!(
             pretty.url("/site", &[]),
-            "https://example.test/wp-json/first-deploy/v1/site"
+            "https://example.test/wp-json/typedpress-deploy/v1/site"
         );
         assert_eq!(
             pretty.url("/plugin", &[("sha256", "ab")]),
-            "https://example.test/wp-json/first-deploy/v1/plugin?sha256=ab"
+            "https://example.test/wp-json/typedpress-deploy/v1/plugin?sha256=ab"
         );
         // Without pretty permalinks the route is itself a query value, so further pairs follow `&`.
         let plain = Api::new("https://example.test", "https://example.test/?rest_route=", "u:p");
         assert_eq!(
             plain.url("/deployments/1/trees/app", &[("index", "0"), ("total", "2")]),
-            "https://example.test/?rest_route=/first-deploy/v1/deployments/1/trees/app&index=0&total=2"
+            "https://example.test/?rest_route=/typedpress-deploy/v1/deployments/1/trees/app&index=0&total=2"
         );
     }
 }

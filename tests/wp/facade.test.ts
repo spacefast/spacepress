@@ -1,12 +1,12 @@
-// /__first/api/v1 (spec §3a): a thin facade over core routes. Every request is dispatched to the core
-// route and only mapped, so it answers what First's rules answer: the same rows, the same denials,
-// problem documents for errors. Each check compares with First's own pipeline (`wp first find`), core
+// /__tp/api/v1 (spec §3a): a thin facade over core routes. Every request is dispatched to the core
+// route and only mapped, so it answers what TypedPress's rules answer: the same rows, the same denials,
+// problem documents for errors. Each check compares with TypedPress's own pipeline (`wp typedpress find`), core
 // directly, or the values themselves.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { auth, core, harness, http, ok, qs, run, sql, wp, first, type Role } from "./env.ts";
 
-const facade = `${harness.url}/__first/api/v1`;
+const facade = `${harness.url}/__tp/api/v1`;
 const f = (method: string, path: string, opts: { as?: Role; body?: unknown } = {}) => http(method, facade + path, opts);
 // The pipeline's row without what differs by design: timestamps, and the API's `_rev` (docs/staged.md).
 const strip = (row: any) => { const { createdAt, updatedAt, _rev, ...rest } = row; return rest; };
@@ -21,7 +21,7 @@ before(async () => {
   ])).map((r: any) => r.id);
 });
 
-test("lists are First rows with { data, cursor }, the same rows First's pipeline returns", async () => {
+test("lists are First rows with { data, cursor }, the same rows TypedPress's pipeline returns", async () => {
   const where = { id: { in: eventIds } };
   const page1 = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2" }));
   assert.equal(page1.status, 200, JSON.stringify(page1.json));
@@ -73,7 +73,7 @@ test("tables, me and the schema", async () => {
   assert.deepEqual((await f("GET", "/me")).json, { data: null });
   const schema = await f("GET", "");
   assert.equal(schema.status, 200);
-  assert.deepEqual([schema.json.data.name, schema.json.data.kinds.events.route, schema.json.data.kinds.field_teams.route], ["blog", "/wp/v2/first_events", "/wp/v2/first_field_teams"]);
+  assert.deepEqual([schema.json.data.name, schema.json.data.kinds.events.route, schema.json.data.kinds.field_teams.route], ["blog", "/wp/v2/tp_events", "/wp/v2/tp_field_teams"]);
   assert.deepEqual([schema.json.data.actions.refsCount.readonly, schema.json.data.actions.refsCount.output.type], [true, "object"]);
 });
 
@@ -114,7 +114,7 @@ test("the facade denies what core denies", async () => {
   }
 });
 
-test("the users kind: rows as First reads them, writes through First's rules, creates and permanent deletes", async () => {
+test("the users kind: rows as TypedPress reads them, writes through TypedPress's rules, creates and permanent deletes", async () => {
   const sub = harness.users.subscriber.id;
   first("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ notes: { private: "admin only" } }));
   // A member reads their own row whole (email, role) without list_users; another's is not theirs.
@@ -125,8 +125,8 @@ test("the users kind: rows as First reads them, writes through First's rules, cr
   assert.deepEqual([own.json.data.email, own.json.data.role, own.json.data.name, own.json.data.notes], [trusted.email, "subscriber", trusted.name, {}]);
   assert.equal((await f("GET", `/members/${harness.users.admin.id}`, { as: "subscriber" })).status, 404);
   assert.deepEqual((await f("GET", "/members", { as: "subscriber" })).json.data.map((m: any) => m.id), [sub], "the list holds what `self` allows");
-  // Signed out, the kind's read rule still decides on First's API: `self` asks a visitor to sign in
-  // (First's own answer, naming the kind), and one user is the same 401 whether the id exists or not.
+  // Signed out, the kind's read rule still decides on TypedPress's API: `self` asks a visitor to sign in
+  // (TypedPress's own answer, naming the kind), and one user is the same 401 whether the id exists or not.
   // Core's own route lists nobody at all.
   const anonymous = await f("GET", "/members");
   assert.deepEqual([anonymous.status, anonymous.json.code, anonymous.json.detail], [401, "unauthenticated", "Sign in to do read members"]);
@@ -138,7 +138,7 @@ test("the users kind: rows as First reads them, writes through First's rules, cr
   // A rule that gives a visitor no user makes nobody a public author: no archive, no sitemap file.
   assert.equal((await fetch(`${harness.url}/author/admin/`)).status, 404);
   assert.equal((await fetch(`${harness.url}/wp-sitemap-users-1.xml`)).status, 404);
-  // A PATCH of only core user fields still runs First's update: validation, field rules, hooks.
+  // A PATCH of only core user fields still runs TypedPress's update: validation, field rules, hooks.
   const name = (await ok("GET", `/members/${sub}`, { as: "subscriber" })).name;
   const long = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { name: "x".repeat(81) } });
   assert.deepEqual([long.status, long.json.code, long.json.pointer], [422, "invalid_input", "/name"]);
@@ -151,7 +151,7 @@ test("the users kind: rows as First reads them, writes through First's rules, cr
   first("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ name }));
   const role = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { role: "admin" } });
   assert.equal(role.status, 403, JSON.stringify(role.json));
-  // Create reaches First's insert (not core's "missing username/password"): the create rule, First's
+  // Create reaches TypedPress's insert (not core's "missing username/password"): the create rule, TypedPress's
   // password rule, and `self` reads keeping even an admin from setting a unique email it can't see
   // (this app's members can only be created by trusted code).
   const address = `facade-${run}@example.test`;
@@ -165,7 +165,7 @@ test("the users kind: rows as First reads them, writes through First's rules, cr
     assert.deepEqual([viaFacade.status, viaFacade.json.code], expected, `${as} ${JSON.stringify(input)}`);
   }
   assert.equal(wp("eval", `echo email_exists('${address}') ? 'created' : 'none';`), "none", "a refused create leaves no user");
-  // A permanent delete (core refuses one without force), with First's delete rule.
+  // A permanent delete (core refuses one without force), with TypedPress's delete rule.
   const id = first("insert", "members", JSON.stringify({ email: address, name: `Created ${run}`, plan: "pro" }))[0].id;
   assert.equal((await f("DELETE", `/members/${id}`, { as: "editor" })).status, 403, "the admin-only delete rule");
   const removed = await f("DELETE", `/members/${id}`, { as: "admin" });
@@ -196,7 +196,7 @@ test("WordPress's own kinds answer through their core routes, in spec §2.1 shap
   assert.equal((await f("DELETE", `/pages/${page}`, { as: "editor" })).status, 200);
   assert.equal((await f("GET", `/pages/${page}`)).status, 404, "deleted for good, not trashed");
 
-  // Comments on a core post: core's moderation and visibility, First's field names.
+  // Comments on a core post: core's moderation and visibility, TypedPress's field names.
   // Terms and media: lists with { data, cursor }, core's rules. (This app's own `comments` and `posts`
   // kinds shadow the built-ins; the hardening lane, which has neither, covers built-in comments.)
   const categories = await f("GET", "/categories");
@@ -220,7 +220,7 @@ test("menus: a menu in a theme location is public; its items are a tree", async 
 
 test("globals run through their Abilities on core's run route: the global's own rules, { data }", async () => {
   const before = await f("GET", "/settings");
-  const ran = JSON.parse(wp("first", "run", "blog/global-settings-get", "--user=admin")).data;
+  const ran = JSON.parse(wp("typedpress", "run", "blog/global-settings-get", "--user=admin")).data;
   assert.deepEqual(before.json.data, ran, "the app's `settings` global answers, as its Ability does, not the built-in");
   const tagline = `Facade global ${run}`;
   assert.equal((await f("PATCH", "/settings", { as: "subscriber", body: { tagline } })).status, 403);
@@ -230,7 +230,7 @@ test("globals run through their Abilities on core's run route: the global's own 
   assert.equal((await f("DELETE", "/settings", { as: "admin" })).status, 405);
 });
 
-test("rows carry First's system fields and every locale, as First's pipeline gives them", async () => {
+test("rows carry TypedPress's system fields and every locale, as TypedPress's pipeline gives them", async () => {
   const tour = first("insert", "tours", JSON.stringify({ title: `Facade tour ${run}`, price: 4 }))[0];
   const viaFacade = await f("GET", `/tours/${tour.id}`, { as: "editor" });
   assert.equal(typeof viaFacade.json.data._rev, "string", "a collection's row carries its _rev");
@@ -239,7 +239,7 @@ test("rows carry First's system fields and every locale, as First's pipeline giv
   assert.deepEqual(both.json.data.map((t: any) => [t.id, t.locale]), [[tour.id, "en"]]);
 });
 
-test("revisions: core's revisions of the post, First's snapshots, and a restore that is an update", async () => {
+test("revisions: core's revisions of the post, TypedPress's snapshots, and a restore that is an update", async () => {
   const post = first("insert", "posts", JSON.stringify({ title: `Rev ${run}`, excerpt: "one" }))[0];
   await f("PATCH", `/posts/${post.id}`, { as: "editor", body: { excerpt: "two" } });
   const list = await f("GET", `/posts/${post.id}/revisions`, { as: "editor" });
@@ -277,11 +277,11 @@ test("the API's writes run core's insert hooks and other plugins' registered RES
   assert.equal(created.status, 201, JSON.stringify(created.json));
   const id = created.json.data.id;
   assert.equal(wp("post", "meta", "get", String(id), "probe_note"), "made", "the field's update callback ran");
-  assert.deepEqual(hooks(id), ["rest_insert_first_events:create", "rest_after_insert_first_events:create"]);
+  assert.deepEqual(hooks(id), ["rest_insert_tp_events:create", "rest_after_insert_tp_events:create"]);
   const patched = await f("PATCH", `/events/${id}`, { as: "editor", body: { seats: 3, probe_note: "changed" } });
   assert.equal(patched.status, 200, JSON.stringify(patched.json));
   assert.equal(wp("post", "meta", "get", String(id), "probe_note"), "changed");
-  assert.deepEqual(hooks(id).slice(2), ["rest_insert_first_events:update", "rest_after_insert_first_events:update"]);
+  assert.deepEqual(hooks(id).slice(2), ["rest_insert_tp_events:update", "rest_after_insert_tp_events:update"]);
   // A field's refusal is the write's: nothing of it is kept.
   const refused = await f("PATCH", `/events/${id}`, { as: "editor", body: { seats: 9, probe_note: "refuse" } });
   assert.equal(refused.status, 400, JSON.stringify(refused.json));
@@ -300,16 +300,16 @@ test("the API runs core's permission checks: a caller core refuses is refused, a
   assert.deepEqual([create.status, create.json.code], [403, "forbidden"], "core's create_posts check refuses");
 });
 
-test("a list page costs the same number of queries for 5 rows as for 20: First's rows are read once per page", async () => {
+test("a list page costs the same number of queries for 5 rows as for 20: TypedPress's rows are read once per page", async () => {
   first("insert", "events", JSON.stringify(Array.from({ length: 20 }, (_, i) => ({ title: `Batch ${run} ${i}`, seats: i }))));
   const where = JSON.stringify({ title: { like: `Batch ${run}%` } });
   const queries = (limit: number) => Number(wp("eval", `
     wp_set_current_user(0);
-    \\First\\Wp\\Runtime::plugin()->app();
+    \\TypedPress\\Wp\\Runtime::plugin()->app();
     global $wpdb;
     wp_cache_flush();
     $before = $wpdb->num_queries;
-    [$status, , $body] = \\First\\Wp\\Facade::route(\\First\\Wp\\Runtime::plugin(), 'GET', '/events', ['where' => '${where.replace(/'/g, "\\'")}', 'limit' => '${limit}'], '');
+    [$status, , $body] = \\TypedPress\\Wp\\Facade::route(\\TypedPress\\Wp\\Runtime::plugin(), 'GET', '/events', ['where' => '${where.replace(/'/g, "\\'")}', 'limit' => '${limit}'], '');
     $count = count(json_decode($body, true)['data'] ?? []);
     if ($status !== 200 || $count !== ${limit}) { echo "-$status-$count"; return; }
     echo $wpdb->num_queries - $before;
@@ -362,15 +362,15 @@ test("a restore puts back the whole revision, fields hidden from the caller incl
   assert.equal((await f("POST", `/payroll/${id}/revisions/${oldest}/restore`)).status, 404, "anonymous: no such row");
 });
 
-test("a core error code the facade doesn't name reaches clients by its status, as First's", async () => {
+test("a core error code the facade doesn't name reaches clients by its status, as TypedPress's", async () => {
   // As a core release that adds or renames a code would answer: a `rest_*` code with only a status.
-  const plugin = "first-test-new-codes";
+  const plugin = "typedpress-test-new-codes";
   // The facade's own dispatch is in-process: the plugin reads the outer request's headers.
-  const php = "<?php\nadd_filter('rest_pre_dispatch', function ($r, $s, $req) { $c = $_SERVER['HTTP_X_FIRST_TEST_CODE'] ?? ''; return $c !== '' && str_starts_with($req->get_route(), '/wp/v2/') ? new WP_Error($c, 'From a newer core', ['status' => (int) ($_SERVER['HTTP_X_FIRST_TEST_STATUS'] ?? 0)]) : $r; }, 10, 3);\n";
+  const php = "<?php\nadd_filter('rest_pre_dispatch', function ($r, $s, $req) { $c = $_SERVER['HTTP_X_TYPEDPRESS_TEST_CODE'] ?? ''; return $c !== '' && str_starts_with($req->get_route(), '/wp/v2/') ? new WP_Error($c, 'From a newer core', ['status' => (int) ($_SERVER['HTTP_X_TYPEDPRESS_TEST_STATUS'] ?? 0)]) : $r; }, 10, 3);\n";
   wp("eval", `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/${plugin}.php', base64_decode('${Buffer.from(php).toString("base64")}'));`);
   try {
     const answer = async (code: string, status: number, as?: Role) => {
-      const res = await fetch(`${facade}/posts`, { headers: { ...(as ? auth(as) : {}), "x-first-test-code": code, "x-first-test-status": String(status) } });
+      const res = await fetch(`${facade}/posts`, { headers: { ...(as ? auth(as) : {}), "x-typedpress-test-code": code, "x-typedpress-test-status": String(status) } });
       return [res.status, (await res.json()).code];
     };
     assert.deepEqual(await answer("rest_cannot_frobnicate", 403), [401, "unauthenticated"]);

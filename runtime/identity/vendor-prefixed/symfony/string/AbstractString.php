@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\String;
+namespace TypedPress\Identity\Vendor\Symfony\Component\String;
 
-use First\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
-use First\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\String\Exception\RuntimeException;
+use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\String\Exception\RuntimeException;
 
 /**
  * Represents a string of abstract characters.
@@ -712,7 +712,7 @@ abstract class AbstractString implements \Stringable, \JsonSerializable
             return ['string' => $this->string];
         }
 
-        first_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Implementing "%s::__sleep()" is deprecated, use "__serialize()" instead.', get_debug_type($this));
+        typedpress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Implementing "%s::__sleep()" is deprecated, use "__serialize()" instead.', get_debug_type($this));
 
         $data = [];
         foreach ($this->__sleep() as $key) {
@@ -733,7 +733,7 @@ abstract class AbstractString implements \Stringable, \JsonSerializable
      */
     public function __sleep(): array
     {
-        first_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Calling "%s::__sleep()" is deprecated, use "__serialize()" instead.', get_debug_type($this));
+        typedpress_identity_vendor_trigger_deprecation('symfony/string', '7.4', 'Calling "%s::__sleep()" is deprecated, use "__serialize()" instead.', get_debug_type($this));
 
         return ['string'];
     }

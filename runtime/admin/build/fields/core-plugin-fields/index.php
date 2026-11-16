@@ -2,7 +2,7 @@
 /**
  * Core plugin fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(

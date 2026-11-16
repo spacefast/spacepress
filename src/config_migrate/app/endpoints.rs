@@ -1,4 +1,4 @@
-//! 0.8 `endpoints` become `first/app/**/route.ts` handlers at the same method and path.
+//! 0.8 `endpoints` become `tp/app/**/route.ts` handlers at the same method and path.
 //!
 //! The request is rewritten call by call (`await req.text()` → `req.body`) in the handler pass, and
 //! every return passes through `__z08EndpointValue`, which applies 0.8's result rules: a
@@ -56,7 +56,7 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
             v2.push("*splat".to_string());
             continue;
         }
-        // A literal is a `first/app/` folder name: lowercase, and not a private (`_`, `.`) folder.
+        // A literal is a `tp/app/` folder name: lowercase, and not a private (`_`, `.`) folder.
         let ok = if let Some(name) = s.strip_prefix(':') {
             ident(name)
         } else {
@@ -73,11 +73,11 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
         }
         v2.push((*s).to_string());
     }
-    if crate::app::RESERVED_FIRST.contains(&segments[0].to_ascii_lowercase().as_str()) {
+    if crate::app::RESERVED_TP.contains(&segments[0].to_ascii_lowercase().as_str()) {
         return Err(fail(
             &pointer(at, "path"),
             format!(
-                "/{} belongs to WordPress or First on v2; move the endpoint and its callers",
+                "/{} belongs to WordPress or TypedPress on v2; move the endpoint and its callers",
                 segments[0]
             ),
         ));

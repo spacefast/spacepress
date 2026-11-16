@@ -6,15 +6,15 @@ fn host_capture_matches_native_bundle_bytes_and_compiles() {
     let work = tempfile::tempdir().unwrap();
     let host = work.path().join("host");
     let native = work.path().join("native");
-    first::host::sources(Path::new("examples/pantry"), &host).unwrap();
-    first::bundle::sources(Path::new("examples/pantry"), &native).unwrap();
-    for name in ["app.first.json", "vendor.first.json", "manifest.json"] {
+    typedpress::host::sources(Path::new("examples/pantry"), &host).unwrap();
+    typedpress::bundle::sources(Path::new("examples/pantry"), &native).unwrap();
+    for name in ["app.typedpress.json", "vendor.typedpress.json", "manifest.json"] {
         assert_eq!(fs::read(host.join(name)).unwrap(), fs::read(native.join(name)).unwrap());
     }
-    let result = first::host::compile_sources(&host, &work.path().join("compiled"), &host, None).unwrap();
-    assert_eq!(result["format"], "first.hosted.v1");
-    // What a host reads without opening First's generated files (docs/host-contract.md).
-    assert_eq!(result["hostContract"], first::host_contract::HOST_CONTRACT);
+    let result = typedpress::host::compile_sources(&host, &work.path().join("compiled"), &host, None).unwrap();
+    assert_eq!(result["format"], "typedpress.hosted.v1");
+    // What a host reads without opening TypedPress's generated files (docs/host-contract.md).
+    assert_eq!(result["hostContract"], typedpress::host_contract::HOST_CONTRACT);
     assert_eq!(result["summary"]["name"], "pantry");
     assert_eq!(
         result["summary"]["tables"],
@@ -30,14 +30,14 @@ fn host_capture_matches_native_bundle_bytes_and_compiles() {
         "{}",
         result["summary"]
     );
-    assert_eq!(result["host"]["mount"], "First\\Loader\\Loader::load");
-    assert_eq!(result["host"]["jobsCommand"], "wp first jobs tick");
+    assert_eq!(result["host"]["mount"], "TypedPress\\Loader\\Loader::load");
+    assert_eq!(result["host"]["jobsCommand"], "wp typedpress jobs tick");
     let written: serde_json::Value =
         serde_json::from_slice(&fs::read(work.path().join("compiled/manifest.json")).unwrap()).unwrap();
     assert_eq!(written, result, "the manifest file is what compile_sources returns");
     assert!(
         work.path()
-            .join("compiled/plugins/first-runtime/first-runtime.php")
+            .join("compiled/plugins/typedpress-runtime/typedpress-runtime.php")
             .is_file()
     );
 }
@@ -46,14 +46,14 @@ fn host_capture_matches_native_bundle_bytes_and_compiles() {
 fn host_capture_refuses_npm_before_resolution() {
     let work = tempfile::tempdir().unwrap();
     fs::write(
-        work.path().join("first.config.ts"),
+        work.path().join("typedpress.config.ts"),
         "import value from 'package-not-installed'; export default value;",
     )
     .unwrap();
-    let error = first::host::sources(work.path(), &work.path().join("source"))
+    let error = typedpress::host::sources(work.path(), &work.path().join("source"))
         .err()
         .unwrap();
-    assert_eq!(error.code, first::diag::Code::SourceNeedsLocalCapture);
+    assert_eq!(error.code, typedpress::diag::Code::SourceNeedsLocalCapture);
     assert!(!work.path().join("source").exists());
 }
 
@@ -63,29 +63,29 @@ fn host_capture_refuses_npm_before_resolution() {
 fn host_capture_carries_markdown_pages() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("app");
-    fs::create_dir_all(project.join("first/app/about")).unwrap();
+    fs::create_dir_all(project.join("tp/app/about")).unwrap();
     fs::write(
-        project.join("first.config.ts"),
-        "import { defineConfig } from 'first'; export default defineConfig({ name: 'mdsite' });",
+        project.join("typedpress.config.ts"),
+        "import { defineConfig } from 'typedpress'; export default defineConfig({ name: 'mdsite' });",
     )
     .unwrap();
     fs::write(
-        project.join("first/app/layout.tsx"),
+        project.join("tp/app/layout.tsx"),
         "export default function Root({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
     )
     .unwrap();
     fs::write(
-        project.join("first/app/about/page.md"),
+        project.join("tp/app/about/page.md"),
         "---\ntitle: About\n---\n\nWho we are.\n",
     )
     .unwrap();
     let source = work.path().join("source");
-    first::host::sources(&project, &source).unwrap();
+    typedpress::host::sources(&project, &source).unwrap();
     // The project is gone: only the bundle is left to compile from.
     fs::remove_dir_all(&project).unwrap();
     let compiled = work.path().join("compiled");
-    first::host::compile_sources(&source, &compiled, &source, None).unwrap();
-    let app = compiled.join("plugins/first-app-mdsite/first/app");
+    typedpress::host::compile_sources(&source, &compiled, &source, None).unwrap();
+    let app = compiled.join("plugins/typedpress-app-mdsite/tp/app");
     let php = |code: &str| {
         let out = std::process::Command::new("php").args(["-r", code]).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -110,7 +110,7 @@ fn host_capture_carries_markdown_pages() {
 fn synced_project(root: &Path) {
     fs::create_dir_all(root.join("content/posts")).unwrap();
     fs::create_dir_all(root.join("content/items")).unwrap();
-    fs::write(root.join("first.config.ts"), "import { defineConfig, collection, table, text, richText } from 'first'; const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); const items = table({ title: text().optional() }, { sync: 'content/items/*.json' }); export { posts }; export { items }; export default defineConfig({});").unwrap();
+    fs::write(root.join("typedpress.config.ts"), "import { defineConfig, collection, table, text, richText } from 'typedpress'; const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); const items = table({ title: text().optional() }, { sync: 'content/items/*.json' }); export { posts }; export { items }; export default defineConfig({});").unwrap();
     fs::write(
         root.join("content/posts/hello.md"),
         "---\ntitle: Hello\n---\nA **seed**.\n",
@@ -130,10 +130,10 @@ fn host_capture_seeds_synced_files_after_the_original_is_removed() {
     let project = work.path().join("app");
     synced_project(&project);
     let source = work.path().join("source");
-    first::host::sources(&project, &source).unwrap();
+    typedpress::host::sources(&project, &source).unwrap();
     fs::remove_dir_all(&project).unwrap();
     let output = work.path().join("compiled");
-    first::host::compile_sources(&source, &output, &source, None).unwrap();
+    typedpress::host::compile_sources(&source, &output, &source, None).unwrap();
     let posts: serde_json::Value = serde_json::from_slice(&fs::read(output.join("seed/posts.json")).unwrap()).unwrap();
     assert_eq!(
         posts,
@@ -159,10 +159,10 @@ fn invalid_synced_front_matter_reports_its_file_and_line_before_emitting() {
     )
     .unwrap();
     let source = work.path().join("source");
-    first::host::sources(&project, &source).unwrap();
+    typedpress::host::sources(&project, &source).unwrap();
     let output = work.path().join("compiled");
-    let error = first::host::compile_sources(&source, &output, &source, None).unwrap_err();
-    let rendered = first::diag::render(&error, &source);
+    let error = typedpress::host::compile_sources(&source, &output, &source, None).unwrap_err();
+    let rendered = typedpress::diag::render(&error, &source);
     assert!(rendered.contains("content/posts/hello.md:3:1"), "{rendered}");
     assert!(rendered.contains("duplicate key `title`"), "{rendered}");
     assert!(!output.exists());
@@ -174,16 +174,16 @@ fn sync_capture_refuses_more_than_eight_mebibytes_and_escaping_files() {
     let project = work.path().join("app");
     synced_project(&project);
     fs::write(project.join("content/posts/large.md"), "x".repeat(8 * 1024 * 1024)).unwrap();
-    let error = first::host::sources(&project, &work.path().join("too-large"))
+    let error = typedpress::host::sources(&project, &work.path().join("too-large"))
         .err()
         .unwrap();
-    assert_eq!(error.code, first::diag::Code::SyncFilesTooLarge);
+    assert_eq!(error.code, typedpress::diag::Code::SyncFilesTooLarge);
     fs::remove_file(project.join("content/posts/large.md")).unwrap();
     #[cfg(unix)]
     {
         fs::write(work.path().join("outside.md"), "private").unwrap();
         std::os::unix::fs::symlink(work.path().join("outside.md"), project.join("content/posts/outside.md")).unwrap();
-        assert!(first::host::sources(&project, &work.path().join("escape")).is_err());
+        assert!(typedpress::host::sources(&project, &work.path().join("escape")).is_err());
     }
 }
 
@@ -192,7 +192,7 @@ fn copy_tree(from: &Path, to: &Path) {
     for entry in fs::read_dir(from).unwrap() {
         let entry = entry.unwrap();
         let name = entry.file_name();
-        if name == ".first" || name == "node_modules" {
+        if name == ".tp" || name == "node_modules" {
             continue;
         }
         if entry.file_type().unwrap().is_dir() {
@@ -222,7 +222,7 @@ fn tree(root: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
     out
 }
 
-/// examples/full-site's `first/app/` pages, components, stylesheets and SVG travel in the app bundle as
+/// examples/full-site's `tp/app/` pages, components, stylesheets and SVG travel in the app bundle as
 /// sources, and the host compiler renders them from the app plugin after the project is gone.
 #[test]
 fn host_capture_of_a_pages_site_matches_native_and_renders_from_the_app_plugin() {
@@ -231,35 +231,35 @@ fn host_capture_of_a_pages_site_matches_native_and_renders_from_the_app_plugin()
     copy_tree(Path::new("examples/full-site"), &project);
     let host = work.path().join("host");
     let native = work.path().join("native");
-    first::host::sources(&project, &host).unwrap();
-    first::bundle::sources(&project, &native).unwrap();
-    for name in ["app.first.json", "vendor.first.json", "manifest.json"] {
+    typedpress::host::sources(&project, &host).unwrap();
+    typedpress::bundle::sources(&project, &native).unwrap();
+    for name in ["app.typedpress.json", "vendor.typedpress.json", "manifest.json"] {
         assert_eq!(
             fs::read(host.join(name)).unwrap(),
             fs::read(native.join(name)).unwrap(),
             "{name}"
         );
     }
-    let app: serde_json::Value = serde_json::from_slice(&fs::read(host.join("app.first.json")).unwrap()).unwrap();
+    let app: serde_json::Value = serde_json::from_slice(&fs::read(host.join("app.typedpress.json")).unwrap()).unwrap();
     for file in [
-        "first/app/layout.tsx",
-        "first/app/notes/[slug]/page.tsx",
-        "first/app/notes/[slug]/note.module.css",
-        "first/app/global.css",
-        "first/app/about/compass.svg",
-        "first/app/applause/page.tsx",
-        "first/components/CheerButton.tsx",
-        "first/components/NoteCard.tsx",
+        "tp/app/layout.tsx",
+        "tp/app/notes/[slug]/page.tsx",
+        "tp/app/notes/[slug]/note.module.css",
+        "tp/app/global.css",
+        "tp/app/about/compass.svg",
+        "tp/app/applause/page.tsx",
+        "tp/components/CheerButton.tsx",
+        "tp/components/NoteCard.tsx",
     ] {
         assert!(app["files"][file].is_string(), "{file} is captured");
     }
     fs::remove_dir_all(&project).unwrap();
     let compiled = work.path().join("compiled");
-    let manifest = first::host::compile_sources(&host, &compiled, &host, None).unwrap();
+    let manifest = typedpress::host::compile_sources(&host, &compiled, &host, None).unwrap();
     assert_eq!(
         manifest.get("pages"),
         None,
-        "no pages plugin: the app plugin renders first/app/"
+        "no pages plugin: the app plugin renders tp/app/"
     );
     // The URLs outside /wp-json the app answers, so the host can hand them to WordPress: each
     // route with its method, and each page (GET and HEAD) in the same path grammar.
@@ -277,10 +277,10 @@ fn host_capture_of_a_pages_site_matches_native_and_renders_from_the_app_plugin()
     let plugins: Vec<String> = fs::read_dir(compiled.join("plugins"))
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-        .filter(|n| n.starts_with("first-pages"))
+        .filter(|n| n.starts_with("typedpress-pages"))
         .collect();
     assert_eq!(plugins, Vec::<String>::new());
-    let app_plugin = tree(&compiled.join("plugins/first-app-fullsite/first/app"));
+    let app_plugin = tree(&compiled.join("plugins/typedpress-app-fullsite/tp/app"));
     let assets: Vec<String> = app_plugin
         .keys()
         .filter_map(|k| k.strip_prefix("assets/"))
@@ -303,23 +303,23 @@ fn host_capture_of_a_pages_site_matches_native_and_renders_from_the_app_plugin()
     );
 }
 
-/// A capture taken before `first/app/`, holding TSX pages for the old renderer (`pages/` and
-/// `first/pages.json`), is refused on the host: compiling the rest would publish a site with no pages.
+/// A capture taken before `tp/app/`, holding TSX pages for the old renderer (`pages/` and
+/// `tp/pages.json`), is refused on the host: compiling the rest would publish a site with no pages.
 #[test]
 fn a_capture_with_old_renderer_pages_is_refused_on_the_host() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("site");
     copy_tree(Path::new("examples/full-site"), &project);
     let captured = work.path().join("captured");
-    first::host::sources(&project, &captured).unwrap();
-    for carried in ["first/pages.json", "pages/page.tsx"] {
+    typedpress::host::sources(&project, &captured).unwrap();
+    for carried in ["tp/pages.json", "pages/page.tsx"] {
         let bundle = work.path().join(carried.replace('/', "-"));
         copy_tree(&captured, &bundle);
         let mut app: serde_json::Value =
-            serde_json::from_slice(&fs::read(bundle.join("app.first.json")).unwrap()).unwrap();
+            serde_json::from_slice(&fs::read(bundle.join("app.typedpress.json")).unwrap()).unwrap();
         app["files"][carried] = "{}".into();
         let bytes = serde_json::to_vec(&app).unwrap();
-        fs::write(bundle.join("app.first.json"), &bytes).unwrap();
+        fs::write(bundle.join("app.typedpress.json"), &bytes).unwrap();
         let mut manifest: serde_json::Value =
             serde_json::from_slice(&fs::read(bundle.join("manifest.json")).unwrap()).unwrap();
         manifest["app_sha256"] = {
@@ -332,40 +332,40 @@ fn a_capture_with_old_renderer_pages_is_refused_on_the_host() {
         };
         fs::write(bundle.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
         let out = work.path().join(format!("{}-out", carried.replace('/', "-")));
-        let error = first::host::compile_sources(&bundle, &out, &bundle, None).unwrap_err();
+        let error = typedpress::host::compile_sources(&bundle, &out, &bundle, None).unwrap_err();
         assert!(
             error.message.contains("old pages renderer"),
             "{carried}: {}",
             error.message
         );
         assert!(
-            error.help.as_deref().is_some_and(|h| h.contains("first/app/")),
+            error.help.as_deref().is_some_and(|h| h.contains("tp/app/")),
             "{carried}"
         );
         assert!(!out.exists(), "{carried}: nothing is written");
     }
 }
 
-/// A `first/app/` route captures from source with no page artifact, and the host compile lists it
+/// A `tp/app/` route captures from source with no page artifact, and the host compile lists it
 /// with its typed `req` (route shapes and refusals are tests/app_router.rs's).
 #[test]
 fn app_routes_capture_and_compile_on_the_host() {
     let work = tempfile::tempdir().unwrap();
-    fs::create_dir_all(work.path().join("first/app/api/[id]/feed.json")).unwrap();
+    fs::create_dir_all(work.path().join("tp/app/api/[id]/feed.json")).unwrap();
     fs::write(
-        work.path().join("first.config.ts"),
-        "import { defineConfig } from 'first'; export default defineConfig({ name: 'r' });",
+        work.path().join("typedpress.config.ts"),
+        "import { defineConfig } from 'typedpress'; export default defineConfig({ name: 'r' });",
     )
     .unwrap();
     fs::write(
-        work.path().join("first/app/api/[id]/feed.json/route.ts"),
-        "import type { RouteRequest } from 'first';\nexport const access = 'anyone';\nexport async function GET(req: RouteRequest) { return { body: req.params['id'] + (req.query.get('k') ?? '') + req.query.getAll('k').join(',') }; }\n",
+        work.path().join("tp/app/api/[id]/feed.json/route.ts"),
+        "import type { RouteRequest } from 'typedpress';\nexport const access = 'anyone';\nexport async function GET(req: RouteRequest) { return { body: req.params['id'] + (req.query.get('k') ?? '') + req.query.getAll('k').join(',') }; }\n",
     )
     .unwrap();
     let out = work.path().join("src");
-    first::host::sources(work.path(), &out).expect("captures");
+    typedpress::host::sources(work.path(), &out).expect("captures");
     let compiled = work.path().join("compiled");
-    let manifest = first::host::compile_sources(&out, &compiled, &out, None).expect("compiles");
+    let manifest = typedpress::host::compile_sources(&out, &compiled, &out, None).expect("compiles");
     assert_eq!(
         manifest["routes"],
         serde_json::json!([{ "method": "GET", "path": "/api/:id/feed.json" }])

@@ -11,11 +11,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Integer;
 
 /** @psalm-immutable */
 final class IntegerValue extends Integer implements PseudoType

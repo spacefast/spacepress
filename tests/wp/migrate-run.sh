@@ -12,7 +12,7 @@ cargo build -q
 "$here/legacy/users-run.sh"
 # Lane M3: generated application handlers over retained Zero 0.8 SQL tables.
 "$here/app-migrate/run.sh"
-# Lane M4: a site that ran a 0.3.0 build (before the rename to First) upgraded to First in place.
+# Lane M4: a site that ran a 0.3.0 build (before the rename to TypedPress) upgraded to TypedPress in place.
 "$here/zero-upgrade/run.sh"
 # Lane M5: the same 0.3.0 site served by a build from the store: booting moves no name, inspection lists
 # the two upgrades, and initialize runs them.

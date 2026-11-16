@@ -1,10 +1,10 @@
-# @first/astro
+# @typedpress/astro
 
-A First site as the content source of an Astro site. The Astro project needs only the site's URL;
-it can live in the same repository as the First app or in another one.
+A TypedPress site as the content source of an Astro site. The Astro project needs only the site's URL;
+it can live in the same repository as the TypedPress app or in another one.
 
 ```sh
-npm install @first/astro
+npm install @typedpress/astro
 ```
 
 Astro 7.4+ (and the Node version it requires, 22.23.4+).
@@ -14,11 +14,11 @@ Astro 7.4+ (and the Node version it requires, 22.23.4+).
 ```ts
 // src/content.config.ts
 import { defineCollection } from "astro:content";
-import { firstLoader } from "@first/astro";
+import { tpLoader } from "@typedpress/astro";
 
 export const collections = {
-  posts: defineCollection({ loader: firstLoader("posts") }),
-  featured: defineCollection({ loader: firstLoader("posts", { where: { featured: true } }) }),
+  posts: defineCollection({ loader: tpLoader("posts") }),
+  featured: defineCollection({ loader: tpLoader("posts", { where: { featured: true } }) }),
 };
 ```
 
@@ -43,10 +43,10 @@ const { Content } = await render(post);
   second request. `media: false` keeps them as ids.
 - **`render(entry)`** renders WordPress's own HTML of the kind's content field: blocks, shortcodes and
   embeds as the site renders them.
-- **The schema** comes from the site (`GET /__first/api/v1`), so `entry.data` is typed in the editor
+- **The schema** comes from the site (`GET /__tp/api/v1`), so `entry.data` is typed in the editor
   with no schema written in the Astro project. A `schema` you pass to `defineCollection` wins.
 - **Each build pulls only what changed.** The collection is read as primary-key ranges of up to 100
-  rows through the site's subscription endpoint (`POST /__first/api/v1/_live`). Each range keeps the
+  rows through the site's subscription endpoint (`POST /__tp/api/v1/_live`). Each range keeps the
   token of its last answer in the content layer's `meta` store; the next build sends the tokens back,
   and a range nobody wrote to answers "not modified" without its rows. A changed range returns its
   rows, and Astro's digest skips the ones that didn't change. Deleted and unpublished rows leave the
@@ -58,13 +58,13 @@ const { Content } = await render(post);
   reusable block, an embed) changes when that entry is next saved, or on a build with
   `astro build --force`.
 
-Options (all of them also on `firstLiveLoader`):
+Options (all of them also on `tpLiveLoader`):
 
 | Option | Default | |
 |---|---|---|
-| `site` | `FIRST_URL` | the First site's URL |
-| `appPassword` | `FIRST_APP_PASSWORD` | `user:application-password`, to read as that user |
-| `token` | `FIRST_TOKEN` | a First Identity bearer token, instead |
+| `site` | `TP_URL` | the TypedPress site's URL |
+| `appPassword` | `TP_APP_PASSWORD` | `user:application-password`, to read as that user |
+| `token` | `TP_TOKEN` | a TypedPress Identity bearer token, instead |
 | `where` | | a filter, as the typed client takes it |
 | `with` | media fields | relations to load into each row: `{ author: true }` |
 | `drafts` | `false` | include drafts (the reader must be allowed to see them) |
@@ -80,10 +80,10 @@ renders fields and drafts an anonymous visitor would not get.
 ```ts
 // src/live.config.ts
 import { defineLiveCollection } from "astro:content";
-import { firstLiveLoader } from "@first/astro";
+import { tpLiveLoader } from "@typedpress/astro";
 
 export const collections = {
-  posts: defineLiveCollection({ loader: firstLiveLoader("posts") }),
+  posts: defineLiveCollection({ loader: tpLiveLoader("posts") }),
 };
 ```
 
@@ -107,12 +107,12 @@ const { Content } = await render(entry);
 - Every entry's `cacheHint.tags` are `<kind>:<id>` for the row and for each related row and media
   item it loaded; a collection's hint adds `<kind>`. The kind is its storage name (`field_notes`),
   as in webhook events; the loaders take either that or the typed client's name (`fieldNotes`).
-- `firstLiveLoader()` without a kind serves every kind; the filter names it:
+- `tpLiveLoader()` without a kind serves every kind; the filter names it:
   `getLiveEntry("first", { kind: "posts", id: "hello" })`.
 
 ## Webhooks: purge or rebuild on write
 
-In `first.config.ts`, send writes to the Astro site:
+In `typedpress.config.ts`, send writes to the Astro site:
 
 ```ts
 webhooks: [{ url: env("ASTRO_HOOK_URL"), secret: env("ASTRO_HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted"] }],
@@ -121,22 +121,22 @@ webhooks: [{ url: env("ASTRO_HOOK_URL"), secret: env("ASTRO_HOOK_SECRET"), event
 In the Astro site, receive them:
 
 ```ts
-// src/pages/api/first.ts
-import { firstWebhook } from "@first/astro";
+// src/pages/api/tp.ts
+import { tpWebhook } from "@typedpress/astro";
 export const prerender = false;
-export const POST = firstWebhook(); // FIRST_WEBHOOK_SECRET holds the same secret
+export const POST = tpWebhook(); // TP_WEBHOOK_SECRET holds the same secret
 ```
 
-The endpoint checks the `First-Signature` header (HMAC-SHA256 over `"<t>.<body>"`, five minutes'
+The endpoint checks the `TypedPress-Signature` header (HMAC-SHA256 over `"<t>.<body>"`, five minutes'
 tolerance) and answers 401 otherwise. It then invalidates the tags `<kind>` and `<kind>:<id>` in
 Astro's route cache when one is configured, and calls `onEvent({ tags, event, context })`, where a
-static site starts a rebuild instead. Deliveries are First jobs, retried with backoff. Webhooks fire
+static site starts a rebuild instead. Deliveries are TypedPress jobs, retried with backoff. Webhooks fire
 for the app's own kinds, so a `media:<id>` tag is not purged by a media edit; it purges with the row
 that shows it.
 
 ## EmDash's official templates
 
-`@first/astro/emdash` runs EmDash's official Astro templates (blank, starter, blog) on a First site
+`@typedpress/astro/emdash` runs EmDash's official Astro templates (blank, starter, blog) on a TypedPress site
 with no code in the template: their `emdash`, `emdash/ui`, `emdash/page` and `emdash/runtime`
 imports resolve to it.
 
@@ -144,14 +144,14 @@ imports resolve to it.
 // astro.config.mjs
 import node from "@astrojs/node";
 import { defineConfig } from "astro/config";
-import { firstEmdash } from "@first/astro/emdash";
+import { tpEmdash } from "@typedpress/astro/emdash";
 
-export default defineConfig({ output: "server", adapter: node({ mode: "standalone" }), integrations: [firstEmdash()] });
+export default defineConfig({ output: "server", adapter: node({ mode: "standalone" }), integrations: [tpEmdash()] });
 ```
 
-It reads the site at `FIRST_URL`, and adds type declarations for the `emdash` modules, so a template type-checks (`astro check`) with its own upstream tsconfig and no EmDash package. The First app declares what the templates show:
+It reads the site at `TP_URL`, and adds type declarations for the `emdash` modules, so a template type-checks (`astro check`) with its own upstream tsconfig and no EmDash package. The TypedPress app declares what the templates show:
 
-| The template reads | The First app declares |
+| The template reads | The TypedPress app declares |
 |---|---|
 | posts and pages (`getEmDashCollection`, `getEmDashEntry`) | `posts` and `pages` collections with `title`, `slug`, `body` (content), and optionally `excerpt`, `cover` (media), `seoTitle`, `seoDescription` |
 | categories, tags, bylines | `category`, `tag` and `credits` taxonomies on `posts` (`credits` with a `role` text field) |
@@ -177,14 +177,14 @@ Not covered:
 
 ## Hosting
 
-First never runs the Astro site. A static build is plain files and goes on any static host; an
-on-demand one runs where Astro's adapter puts it. On Spacefast, the First app and the Astro site are
-two Spaces: see [docs/astro.md](../../docs/astro.md) in the First repository.
+TypedPress never runs the Astro site. A static build is plain files and goes on any static host; an
+on-demand one runs where Astro's adapter puts it. On Spacefast, the TypedPress app and the Astro site are
+two Spaces: see [docs/astro.md](../../docs/astro.md) in the TypedPress repository.
 
 ## Tests
 
-`node --test packages/astro/test/emdash.test.mjs` runs the `emdash` API and an `astro build` of a page written against it on the same kind of site. `node --test packages/astro/test/paging.test.mjs` checks the paging against a stand-in for the subscription endpoint through thousands of random writes. `node --test packages/astro/test/loader.test.mjs` builds `test/fixture` with `first build`, serves it
+`node --test packages/astro/test/emdash.test.mjs` runs the `emdash` API and an `astro build` of a page written against it on the same kind of site. `node --test packages/astro/test/paging.test.mjs` checks the paging against a stand-in for the subscription endpoint through thousands of random writes. `node --test packages/astro/test/loader.test.mjs` builds `test/fixture` with `typedpress build`, serves it
 on WordPress-on-SQLite, and runs both loaders, the webhook endpoint and a real `astro build` against
-it. It needs PHP 8.2+ with `pdo_sqlite`, `target/debug/first` (or `FIRST_BIN`) and `npm ci` here.
+it. It needs PHP 8.2+ with `pdo_sqlite`, `target/debug/typedpress` (or `TP_BIN`) and `npm ci` here.
 
 MIT.

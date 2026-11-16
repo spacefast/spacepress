@@ -1,33 +1,33 @@
 //! The compiler core for a browser: sources in memory, every generated text out, as JSON.
 //!
-//! The site's config builder calls [`compile`] through the exported C ABI (`first_alloc`,
-//! `first_compile`, `first_free`) from a `wasm32-unknown-unknown` build of this library with the
+//! The site's config builder calls [`compile`] through the exported C ABI (`tp_alloc`,
+//! `tp_compile`, `tp_free`) from a `wasm32-unknown-unknown` build of this library with the
 //! `cli` feature off: no file system, no network, no embedded runtime. The envelope is the one
-//! `first check --json` prints, so a config that checks here checks on the command line.
+//! `typedpress check --json` prints, so a config that checks here checks on the command line.
 //!
 //! Request:
 //! ```json
 //! { "name": "pantry",
-//!   "files": { "first.config.ts": "…", "first/lib/fields.ts": "…", "first/_generated/abilities.json": "…",
-//!              "first/_generated/plugins.lock.json": "…" },,
+//!   "files": { "typedpress.config.ts": "…", "tp/lib/fields.ts": "…", "tp/_generated/abilities.json": "…",
+//!              "tp/_generated/plugins.lock.json": "…" },,
 //!   "previous": null, "migrationFiles": [], "frozen": false }
 //! ```
-//! `previous` is the last build's `first/_generated/migrations/snapshot.json` (null for a first build) and
-//! `migrationFiles` the names beside it, which number the next migration like `first build` does.
-//! `files` carries every compiler input, including the committed `first/_generated/abilities.json` lock that
+//! `previous` is the last build's `tp/_generated/migrations/snapshot.json` (null for a first build) and
+//! `migrationFiles` the names beside it, which number the next migration like `typedpress build` does.
+//! `files` carries every compiler input, including the committed `tp/_generated/abilities.json` lock that
 //! types `abilities.call` from "php/wordpress".
-//! `first/_generated/plugins.lock.json` grants plugin packages, and `frozen` refuses grants beyond it, as
-//! `first check --frozen` (or `CI`) does.
+//! `tp/_generated/plugins.lock.json` grants plugin packages, and `frozen` refuses grants beyond it, as
+//! `typedpress check --frozen` (or `CI`) does.
 //! Directories exist as the parents of files: a project in memory has no empty directory, and git
 //! cannot hold one either, so that is the one shape of project the disk can have and this cannot.
 //!
-//! Response: `{ "check": <first-diagnostics envelope>, "output": null }` on a diagnostic, otherwise
+//! Response: `{ "check": <typedpress-diagnostics envelope>, "output": null }` on a diagnostic, otherwise
 //! `output` carries `schemaPhp`, `functionsPhp`, `migrations` (`[name, sql]` pairs), `snapshot`,
 //! `client` (`types.ts` and `schema.ts`), `genTs`, `warnings`, `unsupportedPlugins`, `hints`,
-//! `appPlugin` (every file of the `first-app-<name>` plugin `first build` writes, by path below the
-//! plugins directory: the `.sql` files under `first/_generated/migrations/` in `files` and this
-//! compile's new ones; its `first/app/openapi.json` is what `first build` also writes to
-//! `first/_generated/openapi.json`), `firstPlugins` (First's plugins in activation
+//! `appPlugin` (every file of the `typedpress-app-<name>` plugin `typedpress build` writes, by path below the
+//! plugins directory: the `.sql` files under `tp/_generated/migrations/` in `files` and this
+//! compile's new ones; its `tp/app/openapi.json` is what `typedpress build` also writes to
+//! `tp/_generated/openapi.json`), `tpPlugins` (TypedPress's plugins in activation
 //! order) and `wordpressPlugins` (`{slug, version}`, dependencies first).
 
 use crate::loader::{self, Fs};
@@ -62,10 +62,10 @@ struct Output {
     warnings: Vec<String>,
     unsupported_plugins: Vec<String>,
     hints: Vec<String>,
-    /// The app plugin `first build` writes, file by file, by path below the plugins directory.
+    /// The app plugin `typedpress build` writes, file by file, by path below the plugins directory.
     app_plugin: BTreeMap<String, String>,
-    /// First's plugins for this app, in activation order.
-    first_plugins: Vec<String>,
+    /// TypedPress's plugins for this app, in activation order.
+    tp_plugins: Vec<String>,
     /// The WordPress.org plugins the app needs, dependencies first.
     wordpress_plugins: Vec<WordPressPlugin>,
 }
@@ -212,7 +212,7 @@ pub fn compile(request: &str) -> String {
 
 fn compile_request(request: Request) -> String {
     let project = PathBuf::from("/").join(&request.name);
-    // The project's `public/` and the ledger's SQL go into the app plugin, as `first build` copies them.
+    // The project's `public/` and the ledger's SQL go into the app plugin, as `typedpress build` copies them.
     let under = |prefix: &str| -> Vec<(String, Vec<u8>)> {
         request
             .files
@@ -234,7 +234,7 @@ fn compile_request(request: Request) -> String {
         previous.frozen = frozen;
         Ok(previous)
     };
-    let entry = project.join("first.config.ts");
+    let entry = project.join("typedpress.config.ts");
     let built = match loader::load_from(Rc::new(Memory::new(files)), &entry) {
         Err(diagnostics) => Err(diagnostics),
         Ok(program) => pipeline::build(&project, &program, previous, |_| None).map_err(|d| vec![d]),
@@ -245,7 +245,7 @@ fn compile_request(request: Request) -> String {
         Ok(built) => {
             snapshot = Some(built.snapshot.clone());
             let schema_php = crate::schema_php::render(&built.schema);
-            // The ledger's SQL from the request, then this compile's new files, as `first build`
+            // The ledger's SQL from the request, then this compile's new files, as `typedpress build`
             // writes the new ones into the ledger and packs all of it.
             let migrations = ledger.into_iter().chain(
                 built
@@ -277,7 +277,7 @@ fn compile_request(request: Request) -> String {
                 .map(|(name, bytes)| (name, String::from_utf8_lossy(&bytes).into_owned()))
                 .collect();
             let output = Output {
-                first_plugins: crate::app_plugin::first_plugins(&built.schema),
+                tp_plugins: crate::app_plugin::tp_plugins(&built.schema),
                 app_plugin,
                 wordpress_plugins,
                 schema_php,
@@ -370,7 +370,7 @@ pub fn operation(operation: &str, request: &str) -> String {
                     Ok(
                         match crate::config_migrate::convert(source, &path, &text, &mut entries) {
                             Ok(config) => {
-                                serde_json::json!({"status":"candidate", "entries":entries,"errors":[],"files":{"first.config.ts":config}})
+                                serde_json::json!({"status":"candidate", "entries":entries,"errors":[],"files":{"typedpress.config.ts":config}})
                             }
                             Err(e) => {
                                 serde_json::json!({"status":"refused", "entries":entries,"errors":[e],"files":{}})
@@ -381,7 +381,7 @@ pub fn operation(operation: &str, request: &str) -> String {
                 "check" => {
                     let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
                     let previous = root.join(pipeline::LEDGER).join("snapshot.json");
-                    let built = loader::load_from(fs.clone(), &root.join("first.config.ts")).and_then(|program| {
+                    let built = loader::load_from(fs.clone(), &root.join("typedpress.config.ts")).and_then(|program| {
                         pipeline::build(
                             &root,
                             &program,
@@ -443,30 +443,30 @@ pub fn operation(operation: &str, request: &str) -> String {
 mod abi {
     /// A buffer of `len` bytes for the caller to write the request into.
     #[unsafe(no_mangle)]
-    pub extern "C" fn first_alloc(len: usize) -> *mut u8 {
+    pub extern "C" fn tp_alloc(len: usize) -> *mut u8 {
         let mut buffer = Vec::<u8>::with_capacity(len);
         let ptr = buffer.as_mut_ptr();
         std::mem::forget(buffer);
         ptr
     }
 
-    /// Frees a buffer from `first_alloc` or `first_compile` (`len` is the length it was handed out with).
+    /// Frees a buffer from `tp_alloc` or `tp_compile` (`len` is the length it was handed out with).
     ///
     /// # Safety
     /// `ptr` and `len` must come from one of those two functions and not have been freed already.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn first_free(ptr: *mut u8, len: usize) {
+    pub unsafe extern "C" fn tp_free(ptr: *mut u8, len: usize) {
         drop(unsafe { Vec::from_raw_parts(ptr, 0, len) });
     }
 
     /// Compiles the UTF-8 request at `ptr..ptr+len`, taking ownership of that buffer. Returns a buffer
     /// whose first four bytes are the little-endian length of the JSON response that follows; free it
-    /// with `first_free(ptr, 4 + len)`.
+    /// with `tp_free(ptr, 4 + len)`.
     ///
     /// # Safety
-    /// `ptr..ptr+len` must be a `first_alloc(len)` buffer the caller has filled.
+    /// `ptr..ptr+len` must be a `tp_alloc(len)` buffer the caller has filled.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn first_compile(ptr: *mut u8, len: usize) -> *mut u8 {
+    pub unsafe extern "C" fn tp_compile(ptr: *mut u8, len: usize) -> *mut u8 {
         unsafe { respond(ptr, len, super::compile) }
     }
 
@@ -486,17 +486,17 @@ mod abi {
     macro_rules! operation {
         ($name:ident, $operation:literal) => {
             /// # Safety
-            /// The input must be an owned `first_alloc(len)` buffer.
+            /// The input must be an owned `tp_alloc(len)` buffer.
             #[unsafe(no_mangle)]
             pub unsafe extern "C" fn $name(ptr: *mut u8, len: usize) -> *mut u8 {
                 unsafe { respond(ptr, len, |request| super::operation($operation, request)) }
             }
         };
     }
-    operation!(first_sources, "sources");
-    operation!(first_check, "check");
-    operation!(first_migrate_app, "migrateApp");
-    operation!(first_migrate_config, "migrateConfig");
+    operation!(tp_sources, "sources");
+    operation!(tp_check, "check");
+    operation!(tp_migrate_app, "migrateApp");
+    operation!(tp_migrate_config, "migrateConfig");
 }
 
 #[cfg(test)]
@@ -505,10 +505,14 @@ mod tests {
 
     fn memory() -> Memory {
         Memory::new(
-            [("/p/first.config.ts", ""), ("/p/lib.ts", ""), ("/p/dir/util.ts", "")]
-                .into_iter()
-                .map(|(path, source)| (PathBuf::from(path), source.to_string()))
-                .collect(),
+            [
+                ("/p/typedpress.config.ts", ""),
+                ("/p/lib.ts", ""),
+                ("/p/dir/util.ts", ""),
+            ]
+            .into_iter()
+            .map(|(path, source)| (PathBuf::from(path), source.to_string()))
+            .collect(),
         )
     }
 
@@ -575,14 +579,14 @@ mod tests {
             )
         };
         let expected = rendered();
-        compile(r#"{"name":"p","files":{"first.config.ts":"export default 1;"}}"#);
+        compile(r#"{"name":"p","files":{"typedpress.config.ts":"export default 1;"}}"#);
         assert_eq!(rendered(), expected);
     }
 
     /// The browser types `abilities.call` from the lock it is sent, exactly as the command line does.
     #[test]
     fn a_locked_ability_in_the_request_types_its_call() {
-        let config = r#"import { action, defineConfig } from "first";
+        let config = r#"import { action, defineConfig } from "typedpress";
 import { abilities } from "php/wordpress";
 const __a = action({ input: {}, access: "anyone", handler: () => abilities.call("acme/info", { field: "title" }) }); export { __a as a }; export default defineConfig({});"#;
         let lock = serde_json::json!({"version": 1, "abilities": [{"name": "acme/info",
@@ -597,13 +601,13 @@ const __a = action({ input: {}, access: "anyone", handler: () => abilities.call(
         };
         assert_eq!(
             message(serde_json::Value::Object(serde_json::Map::from_iter([
-                ("first.config.ts".to_string(), config.into()),
+                ("typedpress.config.ts".to_string(), config.into()),
                 (crate::wordpress::abilities::LOCK.to_string(), lock.to_string().into()),
             ]))),
             "`acme/info` takes { field: \"name\" }, not { field: \"title\" }"
         );
         assert_eq!(
-            message(serde_json::json!({"first.config.ts": config})),
+            message(serde_json::json!({"typedpress.config.ts": config})),
             "unknown ability `acme/info`"
         );
     }

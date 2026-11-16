@@ -2,12 +2,12 @@
 /**
  * Name field definition for core theme fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Theme', 'first-admin' ),
+	'label'              => __( 'Theme', 'typedpress-admin' ),
 	'enableHiding'       => false,
 	'enableGlobalSearch' => true,
 	'filterBy'           => false,

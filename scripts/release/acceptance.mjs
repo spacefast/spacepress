@@ -14,9 +14,9 @@ import { stopOwnedDaemon } from './studio-cleanup.mjs';
 
 const exec = promisify(execFile);
 const repo = fileURLToPath(root);
-const compiler = process.env.FIRST_SETUP_BINARY;
-const work = process.env.FIRST_SETUP_EVIDENCE;
-if (!compiler || !work || !resolve(work).startsWith('/tmp/first-framework-setup-')) throw new Error('Set FIRST_SETUP_BINARY to your real built compiler and FIRST_SETUP_EVIDENCE to a NEW /tmp/first-framework-setup-* directory.');
+const compiler = process.env.TP_SETUP_BINARY;
+const work = process.env.TP_SETUP_EVIDENCE;
+if (!compiler || !work || !resolve(work).startsWith('/tmp/typedpress-framework-setup-')) throw new Error('Set TP_SETUP_BINARY to your real built compiler and TP_SETUP_EVIDENCE to a NEW /tmp/typedpress-framework-setup-* directory.');
 await mkdir(work); // Exclusive ownership, never adopt a pre-existing test directory.
 const release = join(work, 'release');
 const cache = join(work, 'cache');
@@ -43,10 +43,10 @@ for (const name of ['npm', 'npx', 'sh', 'bash', 'uname', 'tar', 'gzip', 'unzip',
   }
 }
 const env = {
-  ...process.env, PATH: pathTools, FIRST_BIN: '', FIRST_CACHE_DIR: cache,
-  FIRST_RELEASE_BASE_URL: pathToFileURL(`${release}/`).href,
+  ...process.env, PATH: pathTools, TP_BIN: '', TP_CACHE_DIR: cache,
+  TP_RELEASE_BASE_URL: pathToFileURL(`${release}/`).href,
   XDG_CACHE_HOME: join(work, 'xdg-cache'), TMPDIR: temp,
-  npm_config_cache: process.env.FIRST_SETUP_NPM_CACHE || join(work, 'npm-cache'),
+  npm_config_cache: process.env.TP_SETUP_NPM_CACHE || join(work, 'npm-cache'),
   DEV_CONFIG_DIR: join(work, 'studio-config'), E2E: '', NODE_ENV: 'production', STUDIO_DEBUG_TRACKS: '',
   STUDIO_PROCESS_MANAGER_HOME: join(work, 'studio-daemon'),
 };
@@ -63,17 +63,17 @@ try {
   for (const unavailable of ['cargo', 'rustc', 'docker', 'php']) await assert.rejects(exec(unavailable, ['--version'], { env }), (error) => error.code === 'ENOENT');
   const pack = async (directory) => JSON.parse(await run('npm', ['pack', directory, '--json', '--pack-destination', work], { cwd: repo }))[0].filename;
   const cliPackage = join(work, await pack('./packages/cli'));
-  const createPackage = join(work, await pack('./packages/create-first'));
+  const createPackage = join(work, await pack('./packages/create-typedpress'));
   await run('npm', ['install', '--prefix', tools, '--no-audit', '--no-fund', createPackage], { cwd: work });
-  const scaffold = join(tools, 'node_modules/.bin/create-first');
+  const scaffold = join(tools, 'node_modules/.bin/create-typedpress');
   assert.match(await run(scaffold, ['--help'], { cwd: work }), /npm run dev/);
-  await run(scaffold, [project], { cwd: work, env: { ...env, FIRST_CLI_PACKAGE: cliPackage } });
+  await run(scaffold, [project], { cwd: work, env: { ...env, TP_CLI_PACKAGE: cliPackage } });
   await assert.rejects(run(scaffold, [project, '--no-install']), (error) => /already exists/.test(error.stderr));
-  const first = join(project, 'node_modules/.bin/first');
-  const offline = { ...env, FIRST_OFFLINE: '1', FIRST_RELEASE_BASE_URL: 'http://127.0.0.1:1/' };
+  const first = join(project, 'node_modules/.bin/typedpress');
+  const offline = { ...env, TP_OFFLINE: '1', TP_RELEASE_BASE_URL: 'http://127.0.0.1:1/' };
   await run(first, ['check'], { env: offline });
   await run('npm', ['run', 'typecheck']);
-  const generated = await readdir(join(project, 'first/_generated/client'));
+  const generated = await readdir(join(project, 'tp/_generated/client'));
   assert.ok(generated.includes('index.ts') && generated.includes('types.ts'));
   const server = createServer();
   await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
@@ -98,51 +98,51 @@ try {
   const status = JSON.parse(await run('npm', ['run', '--silent', 'status']));
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
-  const frontend = `${base}/wp-content/plugins/first-app-my-app/public/`;
+  const frontend = `${base}/wp-content/plugins/typedpress-app-my-app/public/`;
   const response = await fetch(`${frontend}index.html`, { signal: AbortSignal.timeout(20000) });
   assert.equal(response.status, 200);
   assert.match(await response.text(), /Make something/);
   for (const asset of ['app.js', 'style.css']) assert.equal((await fetch(`${frontend}${asset}`)).status, 200);
-  const schemaResponse = await fetch(`${base}/__first/api/v1`);
+  const schemaResponse = await fetch(`${base}/__tp/api/v1`);
   assert.equal(schemaResponse.status, 200);
   const { data: schema } = await schemaResponse.json();
   assert.equal(schema.runtime.wp.database.kind, 'sqlite');
   assert.deepEqual(schema.runtime.pendingMigrations, []);
-  assert.equal((await fetch(`${base}/__first/api/v1/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Anonymous write', body: '' }) })).status, 401);
+  assert.equal((await fetch(`${base}/__tp/api/v1/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Anonymous write', body: '' }) })).status, 401);
   // The native WordPress REST seam creates the content read by the public app.
   const password = (await run('npm', ['run', '--silent', 'wp', '--', 'user', 'application-password', 'create', 'admin', 'setup-acceptance', '--porcelain'])).trim();
-  const created = await fetch(`${base}/wp-json/wp/v2/first_notes`, {
+  const created = await fetch(`${base}/wp-json/wp/v2/tp_notes`, {
     method: 'POST', headers: { 'content-type': 'application/json', authorization: `Basic ${Buffer.from(`admin:${password}`).toString('base64')}` },
-    body: JSON.stringify({ title: 'From native WordPress', status: 'publish', acf: { first_body: 'One server, real SQLite.' } }),
+    body: JSON.stringify({ title: 'From native WordPress', status: 'publish', acf: { tp_body: 'One server, real SQLite.' } }),
   });
   assert.equal(created.status, 201, await created.text());
-  const { data: notes } = await (await fetch(`${base}/__first/api/v1/notes`)).json();
+  const { data: notes } = await (await fetch(`${base}/__tp/api/v1/notes`)).json();
   assert.equal(notes.length, 1);
   assert.equal(notes[0].title, 'From native WordPress');
   assert.equal(notes[0].body, 'One server, real SQLite.');
-  const { createClient } = await import(pathToFileURL(join(project, 'first/_generated/client/index.ts')).href);
-  assert.equal((await createClient({ url: `${base}/__first/api/v1` }).notes.list())[0].title, 'From native WordPress');
+  const { createClient } = await import(pathToFileURL(join(project, 'tp/_generated/client/index.ts')).href);
+  assert.equal((await createClient({ url: `${base}/__tp/api/v1` }).notes.list())[0].title, 'From native WordPress');
   // Exercise the actual supplied-compiler escape hatch independently of the cache.
-  await run(first, ['check'], { env: { ...env, FIRST_BIN: compiler, FIRST_OFFLINE: '1', FIRST_CACHE_DIR: join(work, 'unused-cache') } });
+  await run(first, ['check'], { env: { ...env, TP_BIN: compiler, TP_OFFLINE: '1', TP_CACHE_DIR: join(work, 'unused-cache') } });
   await run('npm', ['run', 'stop']);
   await once(session, 'exit', { signal: AbortSignal.timeout(15000) }).catch((error) => { if (session.exitCode === null) throw error; });
   assert.equal(JSON.parse(await run('npm', ['run', '--silent', 'status'])).isOnline, false);
   await writeFile(join(work, 'dev-output.txt'), output.replaceAll(password, '[redacted]'));
-  await writeFile(join(work, 'result.json'), JSON.stringify({ passed: true, sourceHead: head.trim(), target: releaseTarget(), node: process.version, checks: ['no cargo/rustc/docker/host PHP on PATH', 'npm pack/install', 'automatic scaffold install', 'offline cached compiler', 'typecheck generated client', 'npm run dev foreground', 'WordPress serves public assets', 'SQLite schema ready', 'anonymous write rejected', 'native WordPress write visible through typed client', 'FIRST_BIN override', 'site stopped'] }, null, 2) + '\n');
+  await writeFile(join(work, 'result.json'), JSON.stringify({ passed: true, sourceHead: head.trim(), target: releaseTarget(), node: process.version, checks: ['no cargo/rustc/docker/host PHP on PATH', 'npm pack/install', 'automatic scaffold install', 'offline cached compiler', 'typecheck generated client', 'npm run dev foreground', 'WordPress serves public assets', 'SQLite schema ready', 'anonymous write rejected', 'native WordPress write visible through typed client', 'TP_BIN override', 'site stopped'] }, null, 2) + '\n');
 } catch (error) { primary = error; throw error; }
 finally {
   const cleanup = [];
   if (siteCreated) {
-    try { await run('npm', ['run', 'stop']); cleanup.push('Owned First site stopped.'); }
+    try { await run('npm', ['run', 'stop']); cleanup.push('Owned TypedPress site stopped.'); }
     catch (error) { cleanup.push(`Stop: ${error.message}`); }
     try {
-      const site = join(project, '.first/dev/wordpress');
+      const site = join(project, '.tp/dev/wordpress');
       const listed = JSON.parse(await studio(['list', '--format=json']));
       if (listed.some((entry) => resolve(entry.path) === site)) await studio(['delete', '--path', site, '--no-files', '--format=json']);
       assert.equal(JSON.parse(await studio(['list', '--format=json'])).some((entry) => resolve(entry.path) === site), false);
       cleanup.push('Owned WordPress site absent from isolated Studio registry.');
-      await rm(join(project, '.first/dev'), { recursive: true, force: true });
-      await assert.rejects(access(join(project, '.first/dev')), (error) => error.code === 'ENOENT');
+      await rm(join(project, '.tp/dev'), { recursive: true, force: true });
+      await assert.rejects(access(join(project, '.tp/dev')), (error) => error.code === 'ENOENT');
       cleanup.push('Owned WordPress files and SQLite data removed.');
     } catch (error) { cleanup.push(`Cleanup failed: ${error.message}`); if (!primary) primary = error; }
   }

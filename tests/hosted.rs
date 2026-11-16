@@ -14,10 +14,10 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     let project = work.path().join("app");
     write(
         &project,
-        "first.config.ts",
-        "import { defineConfig, action, global, text } from 'first'; import { message } from './first/message'; import { suffix } from 'shared'; const __settings = global({ label: text().default('Ready') }); export { __settings as settings }; const __version = action({ access: 'anyone', handler() { return message + suffix; } }); export { __version as version }; export default defineConfig({});",
+        "typedpress.config.ts",
+        "import { defineConfig, action, global, text } from 'typedpress'; import { message } from './tp/message'; import { suffix } from 'shared'; const __settings = global({ label: text().default('Ready') }); export { __settings as settings }; const __version = action({ access: 'anyone', handler() { return message + suffix; } }); export { __version as version }; export default defineConfig({});",
     );
-    write(&project, "first/message.ts", "export const message = 'v1';");
+    write(&project, "tp/message.ts", "export const message = 'v1';");
     write(
         &project,
         "node_modules/shared/package.json",
@@ -31,34 +31,34 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(&project, "public/logo.svg", "<svg/>");
     write(
         &project,
-        "first/_generated/migrations/0001_adopt.sql",
+        "tp/_generated/migrations/0001_adopt.sql",
         "SELECT 'archived only';",
     );
     write(
         &project,
-        "first/_generated/migrations/snapshot.json",
+        "tp/_generated/migrations/snapshot.json",
         r#"{"version":2,"tables":{}}"#,
     );
     write(&project, "unrelated.ts", "this is not an input");
-    let first = work.path().join("first");
-    let sources = first::bundle::sources(&project, &first).unwrap();
-    let vendor = fs::read(first.join("vendor.first.json")).unwrap();
-    let captured: first::bundle::SourceBundle = serde_json::from_slice(&vendor).unwrap();
+    let first = work.path().join("tp");
+    let sources = typedpress::bundle::sources(&project, &first).unwrap();
+    let vendor = fs::read(first.join("vendor.typedpress.json")).unwrap();
+    let captured: typedpress::bundle::SourceBundle = serde_json::from_slice(&vendor).unwrap();
     assert!(captured.files.contains_key("node_modules/shared/index.js"));
-    let app: first::bundle::SourceBundle =
-        serde_json::from_slice(&fs::read(first.join("app.first.json")).unwrap()).unwrap();
+    let app: typedpress::bundle::SourceBundle =
+        serde_json::from_slice(&fs::read(first.join("app.typedpress.json")).unwrap()).unwrap();
     assert!(!app.files.contains_key("unrelated.ts"));
-    write(&project, "first/message.ts", "export const message = 'v2';");
+    write(&project, "tp/message.ts", "export const message = 'v2';");
     let second = work.path().join("second");
-    let later = first::bundle::sources(&project, &second).unwrap();
+    let later = typedpress::bundle::sources(&project, &second).unwrap();
     assert_eq!(sources.vendor_sha256, later.vendor_sha256);
     assert_ne!(sources.app_sha256, later.app_sha256);
-    assert_eq!(vendor, fs::read(second.join("vendor.first.json")).unwrap());
+    assert_eq!(vendor, fs::read(second.join("vendor.typedpress.json")).unwrap());
     fs::remove_dir_all(&project).unwrap();
     let compiled_first = work.path().join("compiled-first");
     let compiled_second = work.path().join("compiled-second");
-    let manifest = first::bundle::compile(&first, &compiled_first, &first, None).unwrap();
-    assert_eq!(manifest["compiler"], first::bundle::VERSION);
+    let manifest = typedpress::bundle::compile(&first, &compiled_first, &first, None).unwrap();
+    assert_eq!(manifest["compiler"], typedpress::bundle::VERSION);
     assert_eq!(
         fs::read_to_string(compiled_first.join("source-migrations/0001_adopt.sql")).unwrap(),
         "SELECT 'archived only';"
@@ -67,19 +67,24 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
         fs::read_to_string(compiled_first.join("source-migrations/snapshot.json")).unwrap(),
         r#"{"version":2,"tables":{}}"#
     );
-    // A capture taken by an older compiler keeps its ledger under `first/migrations/`; recompiling
+    // A capture taken by an older compiler keeps its ledger under `tp/migrations/`; recompiling
     // it with this one still archives those files.
     let older = work.path().join("older");
     fs::create_dir(&older).unwrap();
-    fs::copy(first.join("vendor.first.json"), older.join("vendor.first.json")).unwrap();
-    let mut app: serde_json::Value = serde_json::from_slice(&fs::read(first.join("app.first.json")).unwrap()).unwrap();
+    fs::copy(
+        first.join("vendor.typedpress.json"),
+        older.join("vendor.typedpress.json"),
+    )
+    .unwrap();
+    let mut app: serde_json::Value =
+        serde_json::from_slice(&fs::read(first.join("app.typedpress.json")).unwrap()).unwrap();
     let files = app["files"].as_object_mut().unwrap();
     for name in ["0001_adopt.sql", "snapshot.json"] {
-        let text = files.remove(&format!("first/_generated/migrations/{name}")).unwrap();
-        files.insert(format!("first/migrations/{name}"), text);
+        let text = files.remove(&format!("tp/_generated/migrations/{name}")).unwrap();
+        files.insert(format!("tp/migrations/{name}"), text);
     }
     let app = serde_json::to_vec(&app).unwrap();
-    fs::write(older.join("app.first.json"), &app).unwrap();
+    fs::write(older.join("app.typedpress.json"), &app).unwrap();
     let mut manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(first.join("manifest.json")).unwrap()).unwrap();
     manifest["app_sha256"] = {
@@ -92,14 +97,14 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     };
     fs::write(older.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
     let compiled_older = work.path().join("compiled-older");
-    first::bundle::compile(&older, &compiled_older, &older, None).unwrap();
+    typedpress::bundle::compile(&older, &compiled_older, &older, None).unwrap();
     assert_eq!(
         fs::read_to_string(compiled_older.join("source-migrations/0001_adopt.sql")).unwrap(),
         "SELECT 'archived only';"
     );
-    let path = "plugins/first-app-app/first/app/functions.php";
+    let path = "plugins/typedpress-app-app/tp/app/functions.php";
     let before = fs::read(compiled_first.join(path)).unwrap();
-    let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_first"))
+    let compiled = std::process::Command::new(env!("CARGO_BIN_EXE_typedpress"))
         .arg("compile-sources")
         .arg(&second)
         .arg(&compiled_second)
@@ -114,7 +119,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     );
     assert_ne!(before, fs::read(compiled_second.join(path)).unwrap());
     assert_eq!(before, fs::read(compiled_first.join(path)).unwrap());
-    assert!(first::bundle::compile(&second, &compiled_first, &second, None).is_err());
+    assert!(typedpress::bundle::compile(&second, &compiled_first, &second, None).is_err());
     let client_before = fs::read(compiled_first.join("client/client.js")).unwrap();
     assert!(client_before.len() > 1000);
     assert!(fs::metadata(compiled_first.join("client/client.d.ts")).unwrap().len() > 1000);
@@ -153,11 +158,11 @@ void label; void version;
         String::from_utf8_lossy(&types.stdout),
         String::from_utf8_lossy(&types.stderr)
     );
-    fs::write(second.join("vendor.first.json"), b"{}").unwrap();
-    let error = first::bundle::compile(&second, &work.path().join("tampered"), &second, None).unwrap_err();
+    fs::write(second.join("vendor.typedpress.json"), b"{}").unwrap();
+    let error = typedpress::bundle::compile(&second, &work.path().join("tampered"), &second, None).unwrap_err();
     assert!(error.message.contains("hash mismatch"));
     assert_eq!(
-        fs::read(compiled_first.join("plugins/first-app-app/public/logo.svg")).unwrap(),
+        fs::read(compiled_first.join("plugins/typedpress-app-app/public/logo.svg")).unwrap(),
         b"<svg/>"
     );
 }
@@ -168,19 +173,19 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
     let project = work.path().join("app");
     write(
         &project,
-        "first.config.ts",
-        "import { defineConfig } from 'first'; export default defineConfig({});",
+        "typedpress.config.ts",
+        "import { defineConfig } from 'typedpress'; export default defineConfig({});",
     );
     write(&project, "public/nested/unsafe.PHP", "<?php echo 'no';");
     let upload = work.path().join("upload");
-    assert!(first::bundle::sources(&project, &upload).is_err());
+    assert!(typedpress::bundle::sources(&project, &upload).is_err());
     assert!(!upload.exists());
     fs::remove_dir_all(project.join("public")).unwrap();
     let bundle = work.path().join("bundle");
-    first::bundle::sources(&project, &bundle).unwrap();
+    typedpress::bundle::sources(&project, &bundle).unwrap();
     write(&bundle, "public/nested/unsafe.PHP", "<?php echo 'no';");
     let output = work.path().join("compiled");
-    assert!(first::bundle::compile(&bundle, &output, &bundle, None).is_err());
+    assert!(typedpress::bundle::compile(&bundle, &output, &bundle, None).is_err());
     assert!(!output.exists());
     fs::remove_dir_all(bundle.join("public")).unwrap();
     #[cfg(unix)]
@@ -188,24 +193,24 @@ fn hosted_sources_refuse_php_and_external_symlinks() {
         fs::create_dir(bundle.join("public")).unwrap();
         write(work.path(), "outside.txt", "private");
         std::os::unix::fs::symlink(work.path().join("outside.txt"), bundle.join("public/linked.txt")).unwrap();
-        assert!(first::bundle::compile(&bundle, &output, &bundle, None).is_err());
+        assert!(typedpress::bundle::compile(&bundle, &output, &bundle, None).is_err());
         assert!(!output.exists());
         fs::remove_dir_all(bundle.join("public")).unwrap();
         std::os::unix::fs::symlink(&project, bundle.join("public")).unwrap();
-        assert!(first::bundle::compile(&bundle, &output, &bundle, None).is_err());
+        assert!(typedpress::bundle::compile(&bundle, &output, &bundle, None).is_err());
         assert!(!output.exists());
         write(work.path(), "outside.ts", "export const value = 1;");
         std::os::unix::fs::symlink(work.path().join("outside.ts"), project.join("outside.ts")).unwrap();
         write(
             &project,
-            "first.config.ts",
-            "import { defineConfig } from 'first'; import { value } from './outside'; export default defineConfig({ name: String(value) });",
+            "typedpress.config.ts",
+            "import { defineConfig } from 'typedpress'; import { value } from './outside'; export default defineConfig({ name: String(value) });",
         );
-        assert!(first::bundle::sources(&project, &work.path().join("escape")).is_err());
+        assert!(typedpress::bundle::sources(&project, &work.path().join("escape")).is_err());
     }
 }
 
-/// A bundle captured before the `first/` import fence keeps its helpers beside `first.config.ts`
+/// A bundle captured before the `tp/` import fence keeps its helpers beside `typedpress.config.ts`
 /// (`./lib/message`). A stored bundle is frozen data, so the host recompiles it as captured; only a
 /// live project is held to the fence.
 #[test]
@@ -214,18 +219,18 @@ fn a_bundle_captured_before_the_import_fence_still_compiles() {
     let project = work.path().join("app");
     write(
         &project,
-        "first.config.ts",
-        "import { defineConfig, action } from 'first'; import { message } from './first/message'; export const hello = action({ access: 'anyone', handler() { return message; } }); export default defineConfig({});",
+        "typedpress.config.ts",
+        "import { defineConfig, action } from 'typedpress'; import { message } from './tp/message'; export const hello = action({ access: 'anyone', handler() { return message; } }); export default defineConfig({});",
     );
-    write(&project, "first/message.ts", "export const message = 'kept';");
+    write(&project, "tp/message.ts", "export const message = 'kept';");
     let bundle = work.path().join("bundle");
-    first::bundle::sources(&project, &bundle).unwrap();
+    typedpress::bundle::sources(&project, &bundle).unwrap();
     // Rewrite the capture to the layout an older compiler took: the helper at the project root.
-    let app = bundle.join(first::bundle::APP_FILE);
+    let app = bundle.join(typedpress::bundle::APP_FILE);
     let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
     let old = |s: &str| {
-        s.replace("first/message.ts", "lib/message.ts")
-            .replace("./first/message", "./lib/message")
+        s.replace("tp/message.ts", "lib/message.ts")
+            .replace("./tp/message", "./lib/message")
     };
     for map in ["files", "canonical"] {
         let entries = captured[map].as_object_mut().unwrap();
@@ -238,7 +243,7 @@ fn a_bundle_captured_before_the_import_fence_still_compiles() {
     assert!(captured["files"].get("lib/message.ts").is_some(), "{captured}");
     let bytes = serde_json::to_vec(&captured).unwrap();
     fs::write(&app, &bytes).unwrap();
-    let manifest_path = bundle.join(first::bundle::MANIFEST_FILE);
+    let manifest_path = bundle.join(typedpress::bundle::MANIFEST_FILE);
     let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     use sha2::Digest as _;
     manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
@@ -249,43 +254,43 @@ fn a_bundle_captured_before_the_import_fence_still_compiles() {
     fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
     fs::remove_dir_all(&project).unwrap();
     let compiled = work.path().join("compiled");
-    if let Err(e) = first::bundle::compile(&bundle, &compiled, &bundle, None) {
+    if let Err(e) = typedpress::bundle::compile(&bundle, &compiled, &bundle, None) {
         panic!("a stored pre-fence bundle must recompile: {}", e.message);
     }
 }
 
-/// A hosted compile types `abilities.call` from the captured `first/_generated/abilities.json`: the bundle's
+/// A hosted compile types `abilities.call` from the captured `tp/_generated/abilities.json`: the bundle's
 /// file system is rooted at its own module directory, not at the app's name.
 #[test]
 fn captured_ability_lock_types_hosted_calls() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("calls");
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/abilities-call");
-    for file in ["first.config.ts", "first/_generated/abilities.json"] {
+    for file in ["typedpress.config.ts", "tp/_generated/abilities.json"] {
         write(&project, file, &fs::read_to_string(fixture.join(file)).unwrap());
     }
     let bundle = work.path().join("bundle");
-    first::bundle::sources(&project, &bundle).unwrap();
+    typedpress::bundle::sources(&project, &bundle).unwrap();
     fs::remove_dir_all(&project).unwrap();
     // Without the lock the call is `unknown ability \`acme/site-info\``, so compiling is the proof.
     let compiled = work.path().join("compiled");
-    if let Err(e) = first::bundle::compile(&bundle, &compiled, &bundle, None) {
+    if let Err(e) = typedpress::bundle::compile(&bundle, &compiled, &bundle, None) {
         panic!("{}", e.message);
     }
-    // A bundle captured before `first/_generated/` names the lock `first/abilities.json`. Hosts keep
+    // A bundle captured before `tp/_generated/` names the lock `tp/abilities.json`. Hosts keep
     // stored bundles and recompile them, so it compiles the same.
-    let app = bundle.join(first::bundle::APP_FILE);
+    let app = bundle.join(typedpress::bundle::APP_FILE);
     let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
     for map in ["files", "canonical"] {
         let entries = captured[map].as_object_mut().unwrap();
         let moved: Vec<(String, serde_json::Value)> = std::mem::take(entries)
             .into_iter()
             .map(|(k, v)| {
-                let k = k.replace("first/_generated/abilities.json", "first/abilities.json");
+                let k = k.replace("tp/_generated/abilities.json", "tp/abilities.json");
                 let v = match v {
-                    serde_json::Value::String(s) => s
-                        .replace("first/_generated/abilities.json", "first/abilities.json")
-                        .into(),
+                    serde_json::Value::String(s) => {
+                        s.replace("tp/_generated/abilities.json", "tp/abilities.json").into()
+                    }
                     v => v,
                 };
                 (k, v)
@@ -293,10 +298,10 @@ fn captured_ability_lock_types_hosted_calls() {
             .collect();
         entries.extend(moved);
     }
-    assert!(captured["files"].get("first/abilities.json").is_some(), "{captured}");
+    assert!(captured["files"].get("tp/abilities.json").is_some(), "{captured}");
     let bytes = serde_json::to_vec(&captured).unwrap();
     fs::write(&app, &bytes).unwrap();
-    let manifest_path = bundle.join(first::bundle::MANIFEST_FILE);
+    let manifest_path = bundle.join(typedpress::bundle::MANIFEST_FILE);
     let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     use sha2::Digest as _;
     manifest["app_sha256"] = sha2::Sha256::digest(&bytes)
@@ -306,7 +311,7 @@ fn captured_ability_lock_types_hosted_calls() {
         .into();
     fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
     let older = work.path().join("compiled-older");
-    if let Err(e) = first::bundle::compile(&bundle, &older, &bundle, None) {
+    if let Err(e) = typedpress::bundle::compile(&bundle, &older, &bundle, None) {
         panic!("{}", e.message);
     }
 }

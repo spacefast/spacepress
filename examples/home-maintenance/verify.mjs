@@ -3,8 +3,8 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const project = fileURLToPath(new URL(".", import.meta.url));
-const first = process.env.FIRST_BIN ?? fileURLToPath(new URL("../../target/debug/first", import.meta.url));
-const site = process.env.FIRST_SITE ?? "http://localhost:8896";
+const first = process.env.TP_BIN ?? fileURLToPath(new URL("../../target/debug/typedpress", import.meta.url));
+const site = process.env.TP_SITE ?? "http://localhost:8896";
 const wp = (...args) => execFileSync(first, ["wp", "--site", project, ...args], { encoding: "utf8" }).trim();
 const password = (user) => wp("user", "application-password", "create", user, "home-maintenance-verification", "--porcelain").split("\n").at(-1);
 const primary = "Basic " + Buffer.from("admin:" + password("admin")).toString("base64");
@@ -14,7 +14,7 @@ catch { otherId = wp("user", "create", "maintenance-neighbor", "neighbor@example
 const secondary = "Basic " + Buffer.from("maintenance-neighbor:" + password("maintenance-neighbor")).toString("base64");
 
 async function request(path, { method = "GET", body, auth = primary, status = 200, headers = {} } = {}) {
-  const response = await fetch(site + "/__first/api/v1/" + path, {
+  const response = await fetch(site + "/__tp/api/v1/" + path, {
     method, headers: { ...(auth ? { authorization: auth } : {}), ...(body ? { "content-type": "application/json" } : {}), ...headers },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -35,7 +35,7 @@ await request("systems/" + scratch.id, { method: "PATCH", body: { name: "CRUD up
 await request("systems/" + scratch.id);
 await request("systems/" + scratch.id, { method: "DELETE", status: 409 });
 const task = await create("tasks", { systemId: system.id, title: "Wash heat pump filters", everyDays: 30, nextDueOn: yesterday, instructions: "<p>Switch off the unit. Rinse filters and dry before replacing.</p>" });
-wp("action-scheduler", "run", "--hooks=first_job", "--force");
+wp("action-scheduler", "run", "--hooks=tp_job", "--force");
 const stamped = await request("tasks/" + task.id);
 assert.ok(stamped.overdueAt, "Action Scheduler must stamp the overdue task");
 const due = await call("dueNext", { days: 30 });
@@ -68,7 +68,7 @@ await create("tasks", { systemId: system.id, title: "Check smoke alarm", everyDa
 async function upload(path, bytes, type, name) {
   const form = new FormData();
   form.set("file", new Blob([bytes], { type }), name);
-  const response = await fetch(site + "/__first/api/v1/" + path, { method: "POST", headers: { authorization: primary }, body: form });
+  const response = await fetch(site + "/__tp/api/v1/" + path, { method: "POST", headers: { authorization: primary }, body: form });
   const value = await response.json();
   if (path === "files/manuals" && response.status === 503 && value.code === "files_unavailable") {
     console.log(JSON.stringify({ method: "POST", path, status: response.status, response: value }));
@@ -81,7 +81,7 @@ async function upload(path, bytes, type, name) {
 const manual = await upload("files/manuals", "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF", "application/pdf", "heat-pump-manual.pdf");
 if (manual) {
   await request("systems/" + system.id, { method: "PATCH", body: { manual: manual.id } });
-  const manualResponse = await fetch(site + "/__first/api/v1/files/manuals/" + manual.id, { headers: { authorization: primary } });
+  const manualResponse = await fetch(site + "/__tp/api/v1/files/manuals/" + manual.id, { headers: { authorization: primary } });
   assert.equal(manualResponse.status, 200);
   const readable = (await manualResponse.json()).data;
   assert.equal((await fetch(readable.url)).status, 200);
@@ -91,7 +91,7 @@ if (manual) {
 }
 const photo = await upload("media", Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64"), "image/png", "clean-filter.png");
 await request("done_logs/" + marked.log.id, { method: "PATCH", body: { photo: photo.id } });
-const mcpUrl = site + "/wp-json/mcp/first-home-maintenance";
+const mcpUrl = site + "/wp-json/mcp/typedpress-home-maintenance";
 let mcpHeaders = { authorization: primary, "content-type": "application/json", accept: "application/json, text/event-stream" };
 const initialize = await fetch(mcpUrl, {
   method: "POST", headers: mcpHeaders,
@@ -111,7 +111,7 @@ const discovered = await mcp.json();
 assert.equal(mcp.status, 200, JSON.stringify(discovered));
 const tools = discovered.result.tools.map((tool) => tool.name);
 for (const name of ["home-maintenance-due-next", "home-maintenance-mark-done", "home-maintenance-year-cost", "home-maintenance-systems-list"]) assert.ok(tools.includes(name), name);
-console.log(JSON.stringify({ method: "tools/list", path: "/wp-json/mcp/first-home-maintenance", tools }));
+console.log(JSON.stringify({ method: "tools/list", path: "/wp-json/mcp/typedpress-home-maintenance", tools }));
 const agentCall = await fetch(mcpUrl, { method: "POST", headers: mcpHeaders,
   body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "home-maintenance-due-next", arguments: { days: 30 } } }),
 });

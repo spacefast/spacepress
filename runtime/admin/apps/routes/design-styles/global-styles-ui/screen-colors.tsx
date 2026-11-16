@@ -5,8 +5,8 @@ import { privateApis as blockEditorPrivateApis } from '@wordpress/block-editor';
 import type {
 	GlobalStylesStyles,
 	GlobalStylesSettings,
-} from '@first-admin/global-styles-engine';
-import { unlock } from '@first-admin/admin-toolkit';
+} from '@typedpress-admin/global-styles-engine';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { ScreenHeader } from './screen-header';
 import Palette from './palette';
 import { useStyle, useSetting } from './hooks';
@@ -37,13 +37,13 @@ function ScreenColors() {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'Colors', 'first-admin' ) }
+				title={ __( 'Colors', 'typedpress-admin' ) }
 				description={ __(
 					'Palette colors and the application of those colors on site elements.',
-					'first-admin'
+					'typedpress-admin'
 				) }
 			/>
-			<div className="first-admin-global-styles-screen">
+			<div className="typedpress-admin-global-styles-screen">
 				<VStack spacing={ 7 }>
 					<Palette />
 					<StylesColorPanel

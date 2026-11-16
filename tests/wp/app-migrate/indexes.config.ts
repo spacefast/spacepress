@@ -1,4 +1,4 @@
-import { boolean, defineConfig, integer, table, text, ref } from "first";
+import { boolean, defineConfig, integer, table, text, ref } from "typedpress";
 
 export const contacts = table({
   email: text().max(191).unique().optional(),

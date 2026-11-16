@@ -1,11 +1,11 @@
 <?php
 // A webhook endpoint for the webhooks suite (php -S router; test stack only). It verifies the
-// `First-Signature: t=…,v1=hmac_sha256(t.body)` header, fails the first delivery of each event with
+// `TypedPress-Signature: t=…,v1=hmac_sha256(t.body)` header, fails the first delivery of each event with
 // 503 and accepts the retry with 204.
 declare(strict_types=1);
 $body = (string) file_get_contents('php://input');
-$signature = (string) ($_SERVER['HTTP_FIRST_SIGNATURE'] ?? '');
-$event = preg_replace('/[^0-9]/', '', (string) ($_SERVER['HTTP_FIRST_EVENT_ID'] ?? ''));
+$signature = (string) ($_SERVER['HTTP_TYPEDPRESS_SIGNATURE'] ?? '');
+$event = preg_replace('/[^0-9]/', '', (string) ($_SERVER['HTTP_TYPEDPRESS_EVENT_ID'] ?? ''));
 if (!preg_match('/^t=(\d+),v1=([0-9a-f]{64})$/D', $signature, $m) || abs(time() - (int) $m[1]) > 60
     || !hash_equals(hash_hmac('sha256', $m[1] . '.' . $body, 'disposable-webhook-contract-secret'), $m[2]) || $event === '') {
     http_response_code(401);

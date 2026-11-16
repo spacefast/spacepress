@@ -1,13 +1,13 @@
 # The 0.3.0 authoring forms
 
 Every authoring form the 0.3.0 compiler (commit `61c22fc2`) accepted, from its `types/zero/index.d.ts`,
-`docs/config-api.md` and `examples/`. `forms/` uses each one. "First project" is what the current
+`docs/config-api.md` and `examples/`. `forms/` uses each one. "TypedPress project" is what the current
 compiler does with the form in a project of its own; "0.3.0 capture" is what it does with the form in
 a stored `zero.source-bundle.v1`, found by capturing a probe app with the 0.3.0 compiler and
 recompiling it (`tests/zero_bundle.rs`). "As 0.3.0" means: compiles, plans no migration, and keeps the
 0.3.0 snapshot and served schema.
 
-| Form | Example | First project | 0.3.0 capture before this table | 0.3.0 capture now |
+| Form | Example | TypedPress project | 0.3.0 capture before this table | 0.3.0 capture now |
 |---|---|---|---|---|
 | `.notNull()` | `text().notNull()` | refused: "`.notNull()` is gone: fields are required by default" | as 0.3.0 (ruling 21) | as 0.3.0 |
 | plain builder is nullable | `text()` | read as required (`.optional()` for nullable) | as 0.3.0 (ruling 21) | as 0.3.0 |
@@ -23,7 +23,7 @@ recompiling it (`tests/zero_bundle.rs`). "As 0.3.0" means: compiles, plans no mi
 | `json().$type<T>()` | `json().$type<string[]>()` | refused: "`json().$type<T>()` is now `json<T>()`" | as 0.3.0 | as 0.3.0 |
 | `.references()` | `integer().references(() => a.id, { onDelete })` | refused: "`.references()` is gone: a reference is a `ref()` field" (#295) | as 0.3.0 (#295 kept it for captures) | as 0.3.0 |
 | `defineRelations` and `relations` | `defineRelations(entities, (r) => …)` | refused: "`defineRelations()` is gone" / "`relations` is gone" (#295) | as 0.3.0 (#295) | as 0.3.0 |
-| `route()` and `routes` | `routes: { feed: route({ method, path, access, handler }) }` | refused: "\"first\" has no export named `route`" / "defineConfig() has no option `routes`" (#304) | **fails**: "\"first\" has no export named `route`" | as 0.3.0, served as the 0.3.0 runtime served it (`routes/served.json`) |
+| `route()` and `routes` | `routes: { feed: route({ method, path, access, handler }) }` | refused: "\"typedpress\" has no export named `route`" / "defineConfig() has no option `routes`" (#304) | **fails**: "\"typedpress\" has no export named `route`" | as 0.3.0, served as the 0.3.0 runtime served it (`routes/served.json`) |
 | `definePlugin({ routes })` | a plugin package's `routes` | refused: "definePlugin has no option `routes`" (#304) | **fails**, as above | as 0.3.0 |
 | signature scheme `"zero"` | `signature: { …, scheme: "zero" }` | refused: "signature.scheme must be first or hmac-sha256" (renamed in #243) | **fails**: "signature.scheme must be zero or hmac-sha256" | as 0.3.0 (reads as `"first"`) |
 | `slug({ source })` | `slug: slug({ source: "title" })` | accepted | as 0.3.0 | as 0.3.0 |
@@ -43,11 +43,11 @@ recompiling it (`tests/zero_bundle.rs`). "As 0.3.0" means: compiles, plans no mi
 | `webhooks`, `files`/`file({ bucket })`, `uploads`, `media.sizes`, `services`, `admin`, `plugins` | `files: { decks: files("decks", { … }) }` | accepted | as 0.3.0 | as 0.3.0 |
 | `use` with `definePlugin({ hooks, actions, jobs })` | `use: [seo({ suffix })]` | accepted | as 0.3.0 | as 0.3.0 |
 | `wp-hooks/`, `"php/wordpress"` functions and `abilities.call` | `wp-hooks/the_content/10-frame.ts` | accepted | as 0.3.0 | as 0.3.0 |
-| exports that no registry lists | `export const spare = table({ … })` | registered by export name (spec §1.1) | as 0.3.0 (sources outside `first/` aren't scanned) | as 0.3.0 |
+| exports that no registry lists | `export const spare = table({ … })` | registered by export name (spec §1.1) | as 0.3.0 (sources outside `tp/` aren't scanned) | as 0.3.0 |
 | `import * as z from "zero"` | `z.table({ id: z.id() })` | `id`, `real`, `route` absent from the namespace | **fails**: "undefined isn't a function" | as 0.3.0 |
-| relative helpers outside `first/` | `import { clamp } from "./lib/util"` | refused: "… is outside first/" | as 0.3.0 | as 0.3.0 |
+| relative helpers outside `tp/` | `import { clamp } from "./lib/util"` | refused: "… is outside tp/" | as 0.3.0 | as 0.3.0 |
 | `public/` files, synced `content/*.md` | `sync: "content/posts/*.md"` | accepted | as 0.3.0 | as 0.3.0 |
-| TSX pages (`pages/`, `zero/pages.json`) | 0.3.0's `examples/full-site` | `first/app/` replaces them | refused with a message | refused: "this bundle has TSX pages (pages/) …", help names `first/app/<path>/page.tsx` and `first sources` |
+| TSX pages (`pages/`, `zero/pages.json`) | 0.3.0's `examples/full-site` | `tp/app/` replaces them | refused with a message | refused: "this bundle has TSX pages (pages/) …", help names `tp/app/<path>/page.tsx` and `typedpress sources` |
 
 Not covered by a fixture: `existingTable` adoption on a live site, and Polylang behaviour for
 `.localized()` at runtime (both compile as 0.3.0; their runtime paths are other suites').

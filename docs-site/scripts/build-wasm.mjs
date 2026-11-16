@@ -1,7 +1,7 @@
 // Builds the compiler core for the browser (src/wasm.rs, wasm32-unknown-unknown) and puts it in
 // public/, where the playground and the tests load it. `cargo build` is incremental.
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,10 +16,9 @@ const build = spawnSync(
 );
 if (build.status !== 0) process.exit(build.status ?? 1);
 
-// The file is named after the crate, so it is found by extension rather than by name.
 const out = path.join(target, "wasm32-unknown-unknown", "wasm");
-const [built] = readdirSync(out).filter((name) => name.endsWith(".wasm"));
-if (!built) throw new Error(`no .wasm under ${out}`);
+const built = "typedpress.wasm";
+if (!existsSync(path.join(out, built))) throw new Error(`${built} is missing under ${out}`);
 const served = path.join(site, "public", "compiler.wasm");
 mkdirSync(path.dirname(served), { recursive: true });
 copyFileSync(path.join(out, built), served);

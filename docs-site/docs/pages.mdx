@@ -65,6 +65,7 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 <RepoFile path="tests/fixtures/forms/tp/app/page.tsx" />
 
 - `<form action={subscribe}>` posts to the action you import from your server code. It works with JavaScript off: the browser sends the form, the action runs as the visitor, and they come back to the same page.
+- With JavaScript on, the same post goes through `fetch` and the page updates in place, as a `<Link>` does: nothing reloads, scroll stays, and the URL stays the page's. Inputs with a server-rendered value are reset to it. While it is in flight the form has `aria-busy="true"` and its submit buttons are disabled. If no page comes back, the form shows an error and nothing is posted again.
 - `useFormState(subscribe)` reads what came back, once: `result` (the action's return value), `error` (`code`, `message`, and `fields.<name>` for the field it is about) and `values` (what was typed, to fill the form again; never a `type="password"` field).
 - Fields read as the action's input says: a number field from its digits, a `boolean()` from a checkbox (unchecked is `false`), and an empty field as absent.
 - The page a form comes back to is never cached for anyone else. A page with a form stays cacheable for signed-out visitors. A signed-in page's form carries the REST nonce. Only your own pages may post.

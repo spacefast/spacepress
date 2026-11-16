@@ -441,6 +441,19 @@ final class AppRouter
     }
 
     /**
+     * A page the app serves at an address WordPress's own query found nothing at (a route with
+     * parameters has no code Page): not WordPress's 404, so neither its title nor `error404`.
+     */
+    private static function found(): void
+    {
+        global $wp_query;
+        if ($wp_query instanceof \WP_Query && $wp_query->is_404()) {
+            $wp_query->is_404 = false;
+            status_header(200);
+        }
+    }
+
+    /**
      * wp-login.php's sign-in view (`action=login`, the default, and `checkemail`), rendered by
      * `login.tsx` inside the root layout. `wp_login_errors` is the last thing wp-login.php does
      * before printing its own page: the sign-in has already run (`wp_signon`, so `authenticate`,
@@ -534,6 +547,9 @@ final class AppRouter
         $this->styles = $route['styles'] ?? [];
         $page = $this->file($route['page']);
         $layouts = $this->layouts($route);
+        if ($status !== 404) {
+            self::found();
+        }
         // The 404 renders in the theme's own `404` template (BlockTemplates), every other page in
         // the template its files chose.
         $this->template = $status === 404 ? BlockTemplates::NOT_FOUND : BlockTemplates::slug(BlockTemplates::choice($route, $this->app['files'] ?? []));
@@ -1021,11 +1037,6 @@ final class AppRouter
             $title = str_replace('%s', $title, (string) $template);
         }
         unset($out['titleIsDefault']);
-        // No file set a title: in a block template WordPress writes its own (the queried Page's,
-        // "Page not found", the site name).
-        if ($title === null) {
-            $out['coreTitle'] = true;
-        }
         $out['title'] = $title ?? get_bloginfo('name');
         return $out;
     }
@@ -1212,6 +1223,7 @@ final class AppRouter
             exit;
         }
         $template = $this->template !== null && self::themed() ? BlockTemplates::resolve($this->template) : null;
+        \TypedPress\Render\Forms::expire($template?->slug ?? 'document');
         if ($template !== null) {
             $this->templated($template, $head, $body);
         }

@@ -1463,6 +1463,13 @@ fn frontend_modes_on_wordpress() {
     // WordPress renders it: the app has no not-found.tsx to put in it.
     assert_eq!(app["note rendered"]["router"], true, "{app}");
     assert_eq!(app["missing rendered"], by_theme(404), "{app}");
+    // A page with parameters and no metadata anywhere is a 200 page titled with the site's name,
+    // never WordPress's 404 title or body class.
+    assert_eq!(
+        app["dynamic"],
+        serde_json::json!({ "status": 200, "title": app["site name"], "error404": false, "page": true }),
+        "{app}"
+    );
     // Its title is WordPress's, as with no app.
     assert_eq!(app["missing title"], theme["missing title"], "{app}");
     assert!(
@@ -2027,6 +2034,242 @@ export const nope = state.result?.nope;
     assert_eq!(
         seen["no nonce"],
         serde_json::json!([303, "Sign in to do run members", null]),
+        "{seen}"
+    );
+}
+
+/// The JavaScript submit (rendering.md §4.2), in Chromium on tests/fixtures/forms: a submit swaps
+/// the page it comes back to into the router region with no page load, the page with the flash is
+/// fetched once, the URL bar ends on the page without `?_flash`, and the form is busy while the post
+/// is in flight. A second submit then, a failure after the post was sent, and a `<Link>` click or a
+/// `<Live>` update during it never post again or undo each other. Only a router module that can't
+/// load falls back to the browser's own post.
+#[test]
+fn forms_submit_in_place_in_the_browser() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("forms", "browser");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .env("TP_WP_SCRIPT_DEBUG", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/forms-submit.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    assert_eq!(
+        seen["directive"],
+        serde_json::json!(["tp/router", "actions.submit"]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["pending"],
+        serde_json::json!({ "busy": "true", "disabled": [true] }),
+        "{seen}"
+    );
+    let success = &seen["success"];
+    assert_eq!(
+        success["done"], "Subscribed ada@example.test for 3 (weekly: true)",
+        "{seen}"
+    );
+    // A second submit while the first was in flight sent nothing.
+    assert_eq!(
+        success["posts"],
+        serde_json::json!(["/__tp/api/v1/actions/subscribe"]),
+        "{seen}"
+    );
+    // The same document: the window marker survives and no navigation entry was added.
+    assert_eq!(
+        (&success["marker"], &success["navigations"]),
+        (&serde_json::json!("same document"), &serde_json::json!(1)),
+        "{seen}"
+    );
+    // The page with the flash is fetched once (fetch following the 303), and the URL bar and the
+    // history entry are the page's, replaced, without the marker.
+    assert_eq!(success["requests"].as_array().map(Vec::len), Some(1), "{seen}");
+    assert!(
+        success["requests"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("GET /?ref=nav&_flash="),
+        "{seen}"
+    );
+    assert_eq!(
+        (&success["url"], &success["historyAdded"]),
+        (&serde_json::json!("/?ref=nav"), &serde_json::json!(0)),
+        "{seen}"
+    );
+    assert_eq!(
+        success["afterPending"],
+        serde_json::json!({ "busy": null, "disabled": [false] }),
+        "{seen}"
+    );
+    assert_eq!(
+        (&success["scrollKept"], &success["focus"]),
+        (&serde_json::json!(true), &serde_json::json!("BUTTON")),
+        "{seen}"
+    );
+    // A refusal: the error and what was typed, in place, the same way.
+    let refused = &seen["refused"];
+    assert_eq!(
+        (
+            &refused["error"],
+            &refused["code"],
+            &refused["done"],
+            &refused["email"],
+            &refused["marker"],
+            &refused["url"]
+        ),
+        (
+            &serde_json::json!("Five seats at most"),
+            &serde_json::json!("too_many"),
+            &serde_json::json!(false),
+            &serde_json::json!("grace@example.test"),
+            &serde_json::json!("same document"),
+            &serde_json::json!("/?ref=nav")
+        ),
+        "{seen}"
+    );
+    assert_eq!(refused["requests"].as_array().map(Vec::len), Some(1), "{seen}");
+    // The pressed button's value is the input, from inside the form and from a `form="vote"` button
+    // outside it, which is disabled and marked while pending; a button the page disabled stays so.
+    assert_eq!(
+        seen["buttons"],
+        serde_json::json!({ "maybe": "Voted maybe", "no": "Voted no", "outsidePending": [true, true], "yesPending": false, "after": [false, false] }),
+        "{seen}"
+    );
+    // A 500 after the action ran, and a dropped connection: an error in the form, one post each.
+    assert_eq!(
+        seen["failed"],
+        serde_json::json!({
+            "posts": ["/__tp/api/v1/actions/subscribe"],
+            "message": ["alert", true],
+            "afterPending": { "busy": null, "disabled": [false] },
+            "marker": "same document",
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["dropped"],
+        serde_json::json!({ "posts": ["/__tp/api/v1/actions/subscribe"], "message": true, "marker": "same document" }),
+        "{seen}"
+    );
+    // A `<Link>` click during a submit: the linked page stays; the late answer isn't rendered.
+    assert_eq!(
+        seen["link"],
+        serde_json::json!({ "url": "/other", "other": true, "voted": false, "marker": "same document" }),
+        "{seen}"
+    );
+    // A `<Live>` update during a submit waits for it: the page that comes back has both entries,
+    // and no pending marker from the copy the update would have used.
+    assert_eq!(
+        seen["live"],
+        serde_json::json!({
+            "write": 201,
+            "whileHeld": [],
+            "heldBusy": "true",
+            "signed": "Signed Mine",
+            "entries": ["Theirs", "Mine"],
+            "afterPending": { "busy": null, "disabled": [false] },
+        }),
+        "{seen}"
+    );
+    assert_eq!(seen["ranOnce"], serde_json::json!({ "posts": 1, "rows": 1 }), "{seen}");
+    // A `<Link>` to a page slower than the post: the post's answer isn't rendered while the link's
+    // page loads, and the navigation the click started finishes.
+    assert_eq!(
+        seen["slowLink"],
+        serde_json::json!({ "beforeLink": { "url": "/?ref=nav", "voted": false }, "url": "/other", "other": true, "marker": "same document" }),
+        "{seen}"
+    );
+    // Two forms at once, the older answer last: the newer page stays, and the older form says so.
+    assert_eq!(
+        seen["overtaken"],
+        serde_json::json!({ "done": "Subscribed two@example.test for 2 (weekly: false)", "voted": false, "message": 1 }),
+        "{seen}"
+    );
+    // A FormData that ignores the submitter: the pressed button's value is sent, once.
+    assert_eq!(
+        seen["oldFormData"],
+        serde_json::json!({ "voted": "Voted maybe", "choices": [["maybe"]] }),
+        "{seen}"
+    );
+    // A button the page it comes back to renders disabled stays disabled; the page's status
+    // message is announced politely, outside the router region.
+    assert_eq!(
+        seen["serverDisabled"],
+        serde_json::json!({ "disabled": true, "marked": false }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["announced"],
+        serde_json::json!(["polite", "The poll is closed.", true]),
+        "{seen}"
+    );
+    // The page the action comes back to is a 404 now: shown in place, with no error message.
+    let gone = &seen["gone"];
+    assert_eq!(
+        (&gone["missing"], &gone["error"], &gone["marker"]),
+        (
+            &serde_json::json!("No such entry"),
+            &serde_json::json!(false),
+            &serde_json::json!("same document")
+        ),
+        "{seen}"
+    );
+    assert!(gone["url"].as_str().unwrap_or("").starts_with("/entries/"), "{seen}");
+    // A `<Live>` update doesn't copy the error message; the next submit removes it.
+    assert_eq!(
+        seen["errorBox"],
+        serde_json::json!({ "afterLive": 1, "afterSubmit": 0 }),
+        "{seen}"
+    );
+    // A region answer newer than the submit's page: after the swap the region still has it.
+    assert_eq!(
+        seen["newerRegion"],
+        serde_json::json!({ "before": true, "newer": true }),
+        "{seen}"
+    );
+    // The router module can't load: the browser posts the form itself, nothing sent before; the
+    // address bar loses `?_flash` when the page's module runs.
+    assert_eq!(
+        seen["fallback"],
+        serde_json::json!({ "done": "Subscribed lin@example.test for 2 (weekly: false)", "marker": null, "url": "/?ref=nav" }),
+        "{seen}"
+    );
+    // An answer in another block template becomes the whole document (its flash read once, the
+    // marker out of the address), never a region swapped into other chrome.
+    assert_eq!(
+        seen["otherTemplate"],
+        serde_json::json!({ "from": "tp-blank", "to": "tp-page", "voted": "Voted bare", "header": 1, "regions": 1, "url": "/" }),
         "{seen}"
     );
 }

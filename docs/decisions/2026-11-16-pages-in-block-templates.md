@@ -93,7 +93,16 @@ Second review:
   renders.
 - Site Editor writes made by a front-end request or a prerender, and auto-drafts, purge nothing.
   This covers core's lazy default navigation menu.
-- WordPress keeps its own title when no file set one (its 404: "Page not found – Site").
+- WordPress keeps its own title on the router's own 404 page ("Page not found – Site"). A page
+  the app serves where WordPress's query found nothing (a route with parameters has no code Page)
+  is not WordPress's 404: the router clears `is_404`, so the page has the site's title and no
+  `error404` body class.
+- A submit whose answer is at another address and renders in another block template loads that
+  page in full. The fetch sends `X-TP-Template` and `X-TP-From`, and the server keeps the read-once
+  flash for that one load.
+- Accepted edge: the dequeue after a failed template render takes back everything enqueued
+  during it. That includes an asset a block in the failed render shares with the fallback, if
+  nothing had enqueued it before. The fallback's own render enqueues it again.
 - A page that turns private after its template rendered logs and keeps its Cache-Control if
   output has already started.
 

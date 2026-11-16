@@ -20,23 +20,29 @@ final class Validator
     }
 
     /**
-     * The ETag of everything left in $handle, read in chunks (no whole-file buffer), with the handle
-     * rewound to its start afterwards; null when the read or the rewind fails, so a failed read never
-     * yields a usable tag.
+     * The ETag of $handle's content, read in chunks (no whole-file buffer), with the handle rewound to
+     * its start afterwards. Null, so a failed read never yields a usable tag, when a read fails or
+     * returns nothing before the end, when the bytes read are not the $size the handle reported, or
+     * when the rewind fails.
      *
      * @param resource $handle
      */
-    public static function stream($handle): ?string
+    public static function stream($handle, int $size): ?string
     {
         $context = hash_init('xxh128');
+        $read = 0;
         while (!feof($handle)) {
             $chunk = fread($handle, 65536);
-            if ($chunk === false) {
+            if ($chunk === false || ($chunk === '' && !feof($handle))) {
+                return null;
+            }
+            $read += strlen($chunk);
+            if ($read > $size) {
                 return null;
             }
             hash_update($context, $chunk);
         }
-        if (!rewind($handle)) {
+        if ($read !== $size || !rewind($handle)) {
             return null;
         }
 

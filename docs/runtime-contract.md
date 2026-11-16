@@ -877,14 +877,16 @@ listens and purges those URLs from Batcache and the edge. With no listener
 - **Prebuilt pages** (`Render\Prebuilt::serve`) open the file once, hash that
   handle in 64 KiB chunks, rewind it and stream it (`fpassthru`), so the `ETag`
   (an xxh128 digest of exactly the bytes sent) and `Content-Length` (from
-  `fstat` on the handle) name one version and the page is never held whole in
-  memory. A matching `If-None-Match` (itself, its weak form, a list, `*`) gets an
+  `fstat` on the handle) name one version. TypedPress itself never reads the page
+  into a string; with PHP output buffering on, the buffer holds the streamed body,
+  as it does for `readfile`. A matching `If-None-Match` (itself, its weak form, a list, `*`) gets an
   empty 304 that keeps the page's `Cache-Control`; it and HEAD read the file only
   for the hash. The validator is checked only after every
   gate that decides the file is this request's answer (no query string,
   signed-in cookie, Markdown negotiation, gated site). A file that can't be
-  opened, hashed, stat'ed or rewound renders as usual, never a 304, and gets no
-  prebuilt header.
+  opened, stat'ed, hashed or rewound, whose read returns nothing before its end,
+  or whose bytes read differ from its stat size renders as usual, never a 304,
+  and gets no prebuilt header.
 - **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
   (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
   or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack

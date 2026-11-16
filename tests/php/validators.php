@@ -31,27 +31,41 @@ $swap = <<<'PHP'
         {
             return ['size' => 8, 'mtime' => time(), 'mode' => 0100644];
         }
+        public static int $reads = 0;
         public function stream_open(string $path, string $mode): bool
         {
             if ($_SERVER['HTTP_X_SWAP'] === 'unreadable') {
                 return false;
+            }
+            if ($_SERVER['HTTP_X_SWAP'] === 'short') {
+                $this->data = 'OLD'; // stat says 8 bytes, the stream ends after 3
+                return true;
             }
             $this->data = self::$opens++ === 0 ? 'OLD-BODY' : 'NEW-BODY';
             return true;
         }
         public function stream_read(int $n): string|false
         {
+            if ($_SERVER['HTTP_X_SWAP'] === 'empty-read') {
+                // Nothing, and never at the end. Capped, so a reader that doesn't stop fails the
+                // request instead of hanging the suite.
+                if (++self::$reads > 1000) {
+                    throw new RuntimeException('the prebuilt reader read an empty stream 1000 times');
+                }
+                return '';
+            }
             $out = substr($this->data, $this->at, $n);
             $this->at += strlen($out);
             return $out;
         }
         public function stream_eof(): bool
         {
-            return $this->at >= strlen($this->data);
+            return $_SERVER['HTTP_X_SWAP'] !== 'empty-read' && $this->at >= strlen($this->data);
         }
         public function stream_stat(): array
         {
-            return ['size' => strlen($this->data), 'mtime' => time(), 'mode' => 0100644];
+            $size = in_array($_SERVER['HTTP_X_SWAP'], ['short', 'empty-read'], true) ? 8 : strlen($this->data);
+            return ['size' => $size, 'mtime' => time(), 'mode' => 0100644];
         }
         public function stream_seek(int $offset, int $whence): bool
         {
@@ -142,6 +156,14 @@ file_put_contents($aboutPath, $large);
 $big = fetch("$url/about", ['X-Swap: large']);
 file_put_contents($aboutPath, $aboutBefore);
 $out['prebuilt larger than memory_limit'] = [$big['status'], $big['prebuilt'], strlen($big['body']) === strlen($large), $big['etag'] === \TypedPress\Validator::bytes($large), strlen($large) > 2 * 1024 * 1024];
+// A stream that ends before the size it reported, and one that reads nothing without ever ending:
+// both render as usual, with no prebuilt header, and never a 304, whatever the client sends.
+foreach (['short', 'empty-read'] as $mode) {
+    $out["prebuilt $mode"] = array_map(static function (?string $match) use ($url, $mode): array {
+        $r = fetch("$url/about", ["X-Swap: $mode", ...($match === null ? [] : ["If-None-Match: $match"])]);
+        return [$r['status'], $r['prebuilt'], $r['etag']];
+    }, [null, '*']);
+}
 $out['prebuilt unreadable'] = array_map(static function (string $match) use ($url): array {
     $r = fetch("$url/about", ['X-Swap: unreadable', "If-None-Match: $match"]);
     return [$r['status'], $r['prebuilt']];

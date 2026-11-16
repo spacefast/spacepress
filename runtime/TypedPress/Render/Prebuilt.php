@@ -565,8 +565,8 @@ final class Prebuilt
             return;
         }
         $stat = @fstat($handle);
-        $etag = \TypedPress\Validator::stream($handle);
-        if (!is_array($stat) || $etag === null) {
+        $etag = is_array($stat) ? \TypedPress\Validator::stream($handle, (int) $stat['size']) : null;
+        if ($etag === null) {
             fclose($handle);
             return;
         }

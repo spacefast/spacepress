@@ -73,6 +73,14 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
         json!([200, true, "OLD-BODY", true])
     );
     assert_eq!(seen["prebuilt unreadable"], json!([[200, false], [200, false]]));
+    // Fewer bytes than the reported size, or empty reads that never end: rendered as usual.
+    for mode in ["prebuilt short", "prebuilt empty-read"] {
+        assert_eq!(
+            seen[mode],
+            json!([[200, false, null], [200, false, null]]),
+            "{mode}"
+        );
+    }
     // 8 MiB with 2 MiB of memory left: streamed, not buffered.
     assert_eq!(
         seen["prebuilt larger than memory_limit"],

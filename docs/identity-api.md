@@ -26,8 +26,9 @@ render ([Pages](pages.md#the-sign-in-page)).
   with `reauth=1` and sets its identity session aside.
 - **One sign-out.** `sign-out` also ends the browser's WordPress session for the same user.
   Signing out of WordPress, or signing in there as someone else, ends the identity session. RP
-  logout with an unexpired `id_token_hint` naming the browser's user ends both; without one it
-  shows a confirmation form first.
+  logout with an unexpired `id_token_hint` naming the browser's user ends both; without one, or
+  with an expired one, it ends nothing and shows a confirmation form first. An application's
+  refresh tokens from such a session work while its WordPress session is alive.
 - **MFA.** An account with Identity MFA signs in on wp-login.php. After the password, Two Factor
   asks for the authenticator or a recovery code (Two Factor provider key `TypedPress_Identity_TwoFactorProvider`),
   and sends no cookie until it checks out. A password alone never signs such an account in

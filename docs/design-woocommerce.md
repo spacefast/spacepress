@@ -11,8 +11,8 @@ standalone distribution milestone, or open-source release plan is not part of th
 
 The proposed v1 store sells simple physical products through an interactive TypedPress
 storefront backed by Woo. Downloadable products are proposed for deferral; confirm that scope
-before implementation. Checkout presentation is an open decision, not a requirement to leave
-the TypedPress experience. Products, inventory, carts, orders and payment processing remain
+before implementation. Checkout uses Woo's native Checkout Block inside a TypedPress page.
+Products, inventory, carts, orders and payment processing remain
 native Woo objects. TypedPress must use Woo's APIs rather than maintain a second commerce
 database or write directly to Woo tables.
 
@@ -210,7 +210,7 @@ for application dashboards. These are proposed boundaries; names below are illus
 | Products | List, get, create, update, trash; seed and sync | The v1 field list above; reads additionally expose native runtime ID, current price, purchasability and availability |
 | Categories and tags | Existing taxonomy/terms API, extended to bind Woo taxonomies and support product relationships | Native term ID, stable source identity, name, slug; categories also have a parent. No separate commerce category/tag CRUD API |
 | Cart | Read current cart, add item, change quantity, remove item, update destination, choose shipping rate | Session-scoped lines, current prices, availability, discounts, shipping choices, taxes, fees and Woo-calculated totals |
-| Checkout | Complete the current cart through Woo; presentation to be selected by a spike | Session continuity, address and shipping validation, supported payment integration, order result and receipt |
+| Checkout | Render Woo's Checkout Block inside a TypedPress page | Session continuity, address and shipping validation, supported payment integration, order result and receipt |
 | Orders | Authorized list/get, including line and refund details | Status, currency, timestamps, historical line items, totals, billing/shipping snapshots, optional customer reference, payment method label and refund summaries |
 | Store information | Read safe configuration and supported capabilities | Currency precision, display conventions, measurement units, supported product types and whether checkout is available; no gateway secrets |
 
@@ -353,22 +353,24 @@ payment-method registration, validation, payment events or gateway browser asset
 and [payment integration contract](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/checkout-payment-methods/payment-method-integration/)
 own behavior beyond rendering reactive fields.
 
-Spike two in-app presentation options: render Woo's native Checkout Block within the TypedPress
-page/layout, or author the form with TypedPress bindings over the Store API and a deliberately
-supported gateway integration. The first is the recommended starting investigation because it
-can preserve existing gateway UI; embedding and asset loading still need verification. A separate
-native checkout page remains a fallback, not a fixed product requirement.
+**Decision:** render Woo's native Checkout Block inside a TypedPress page/layout for v1.
+TypedPress owns the surrounding page and styling; Woo owns the checkout fields, validation,
+shipping/payment UI and submission. Reuse TypedPress's existing block-rendering mechanism if
+it can carry this integration before adding a checkout-specific component. A fully custom
+TypedPress checkout form is deferred.
 
-Compare session continuity, address/shipping recalculation, payment validation, decline/retry,
+Verify embedding and asset loading, session continuity, address/shipping recalculation, payment validation, decline/retry,
 authentication redirects, receipt rendering and navigation/remount behavior. Interactivity API
 bindings alone are not evidence of Checkout Block or arbitrary gateway compatibility. Keep Woo
-authoritative for totals, payment processing and orders whichever presentation is chosen.
+authoritative for totals, payment processing and orders. Use full-page checkout navigation if
+client-side navigation cannot safely initialize its scripts; verify receipt and return routes too.
+A separate Woo checkout page is a contingency if embedding proves unworkable, not a parallel
+v1 deliverable. Revisit the decision with that evidence rather than silently switching approaches.
 Use a dummy gateway for the first proof and a stock gateway for the pilot. Custom managed
 payments are deferred. Use Woo's default emails initially; custom email authoring is follow-up.
 
 ## Decisions still needed
 
-- **Checkout presentation:** choose after the in-app block versus custom-form spike.
 - **V1 product scope:** confirm the proposed physical-only proof and downloadable-product deferral.
 - **Removal:** explicit retirement and reintroduction. Prefer retirement over destructive
   deletion, but settle this separately from
@@ -388,7 +390,7 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 Under the proposed physical-only scope, build one TypedPress example on Spacefast. Prove product
 and taxonomy creation and repeat deployment, live product reads, quantity changes, shipping,
-cart continuity, the selected checkout presentation and a real dummy-gateway Woo order.
+cart continuity, the embedded Woo Checkout Block and a real dummy-gateway Woo order.
 
 Prove file-to-Woo updates, Woo-to-file updates, conflicting edits, preserved stock and orders,
 partial-sync retry, removal behavior and preview isolation. Verify authorized order reads and

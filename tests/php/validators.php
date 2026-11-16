@@ -13,7 +13,51 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('validators', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
+// `X-Swap: replace` / `X-Swap: unreadable` (review 2, R1): the prebuilt directory is a stream wrapper
+// whose file exists with a fresh mtime and whose content changes on every open (OLD on the first,
+// NEW after), or which can't be opened at all. Deterministic: no timing, no real file replaced.
+$swap = <<<'PHP'
+    <?php
+    if (!isset($_SERVER['HTTP_X_SWAP'])) {
+        return;
+    }
+    final class TpSwapStream
+    {
+        public static int $opens = 0;
+        public $context;
+        private string $data = '';
+        private int $at = 0;
+        public function url_stat(string $path, int $flags): array
+        {
+            return ['size' => 8, 'mtime' => time(), 'mode' => 0100644];
+        }
+        public function stream_open(string $path, string $mode): bool
+        {
+            if ($_SERVER['HTTP_X_SWAP'] === 'unreadable') {
+                return false;
+            }
+            $this->data = self::$opens++ === 0 ? 'OLD-BODY' : 'NEW-BODY';
+            return true;
+        }
+        public function stream_read(int $n): string|false
+        {
+            $out = substr($this->data, $this->at, $n);
+            $this->at += strlen($out);
+            return $out;
+        }
+        public function stream_eof(): bool
+        {
+            return $this->at >= strlen($this->data);
+        }
+        public function stream_stat(): array
+        {
+            return ['size' => strlen($this->data), 'mtime' => time(), 'mode' => 0100644];
+        }
+    }
+    stream_wrapper_register('tpswap', TpSwapStream::class);
+    add_filter('tp_prebuilt_dir', static fn (): string => 'tpswap://prebuilt');
+    PHP;
+$site = wpSite('validators', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => ['swap' => $swap]]);
 wp_set_current_user(1);
 \TypedPress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published']);
 $site->actAs(null);
@@ -68,6 +112,14 @@ $out['prebuilt 304 keeps the cache policy'] = fetch("$url/about", ['If-None-Matc
 $out['prebuilt signed in'] = [fetch("$url/about", [$cookie, 'If-None-Match: ' . $about['etag']])['status'], fetch("$url/about", [$cookie])['prebuilt']];
 // A HEAD gets the same validator.
 $out['prebuilt head'] = fetch("$url/about", [], 'HEAD')['etag'] === $about['etag'];
+// Replaced between the tag and the body: whatever body is sent, the tag sent names exactly it.
+$swapped = fetch("$url/about", ['X-Swap: replace']);
+$out['prebuilt replaced between reads'] = [$swapped['status'], $swapped['prebuilt'], $swapped['body'], $swapped['etag'] === \TypedPress\Validator::bytes($swapped['body'])];
+// A file that exists but can't be read: rendered as usual (no prebuilt answer), never a 304.
+$out['prebuilt unreadable'] = array_map(static function (string $match) use ($url): array {
+    $r = fetch("$url/about", ['X-Swap: unreadable', "If-None-Match: $match"]);
+    return [$r['status'], $r['prebuilt']];
+}, ['*', '""']);
 // The validator is the bytes served: another content of the same length, with the same modification
 // time, is a 200 with the new body for a client holding the old tag (review 1, B5).
 $aboutFile = \TypedPress\Render\Prebuilt::dir() . '/about.html';
@@ -107,6 +159,11 @@ touch($built, $builtTime);
 clearstatcache();
 $edited = fetch("$url/__tp/api/v1/openapi.json", ['If-None-Match: ' . $touched['etag']]);
 file_put_contents($built, $bytes);
+// An OpenAPI file that can't be read is no document: never a 304, whatever the client holds.
+chmod($built, 0000);
+clearstatcache();
+$out['openapi unreadable'] = array_map(static fn (string $match): int => fetch("$url/__tp/api/v1/openapi.json", ["If-None-Match: $match"])['status'], ['*', '""']);
+chmod($built, 0644);
 $out['openapi tag follows the bytes'] = [$touched['etag'] === $renamed['etag'], $edited['status'], json_decode($edited['body'], true)['openapi'] ?? null, $edited['etag'] !== $touched['etag']];
 
 // ---- the facade's reads stay private -----------------------------------------------------------------

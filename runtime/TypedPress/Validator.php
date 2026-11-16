@@ -13,21 +13,18 @@ namespace TypedPress;
  */
 final class Validator
 {
-    /** The ETag of $bytes. */
+    /** The ETag of $bytes, the exact body sent (xxh128: 0.011 ms for 100 KB). */
     public static function bytes(string $bytes): string
     {
         return '"' . hash('xxh128', $bytes) . '"';
     }
 
-    /** The ETag of a file's current content (xxh128: 0.011 ms for 100 KB). */
-    public static function file(string $path): string
+    /** Whether the request's `If-None-Match` names $etag; never for a missing tag (nothing read). */
+    public static function matches(?string $etag): bool
     {
-        return '"' . (string) @hash_file('xxh128', $path) . '"';
-    }
-
-    /** Whether the request's `If-None-Match` names $etag. */
-    public static function matches(string $etag): bool
-    {
+        if ($etag === null || $etag === '""') {
+            return false;
+        }
         $header = (string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? '');
         // WordPress slashes $_SERVER (wp_magic_quotes), so an ETag's quotes arrive escaped.
         if (function_exists('wp_unslash')) {

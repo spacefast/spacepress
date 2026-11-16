@@ -7,6 +7,13 @@ namespace TypedPress\Identity;
 final class Plugin
 {
     /** Equal to the typedpress-runtime version built alongside it (`Runtime::identity()` compares them). */
+    /**
+     * Identity's authenticator as a Two Factor method ({@see TwoFactorProvider}). A key without
+     * backslashes: Two Factor stores it in user meta and in the WordPress session, and WordPress's
+     * meta writes unslash what they store. Here, not on the provider, so reading it never loads a
+     * class that extends Two Factor's (a site without Two Factor has none).
+     */
+    public const TWO_FACTOR_KEY = "TypedPress_Identity_TwoFactorProvider";
     public const VERSION = "0.3.0";
     private static ?\WP_Error $authenticationError = null;
     public static DB $db;
@@ -259,9 +266,15 @@ final class Plugin
                         if (!wp_check_password((string) $password, $user->user_pass, $user->ID)) {
                             return new \WP_Error("incorrect_password", __("<strong>Error:</strong> Invalid username, email address or incorrect password."));
                         }
+                        // wp-login.php asks for the factor itself when Two Factor will: it sends no
+                        // cookie until the code checks out ({@see TwoFactorProvider}). Anywhere else
+                        // (XML-RPC, a plugin calling wp_authenticate), a password alone is refused.
+                        if (self::secondStep($user)) {
+                            return $user;
+                        }
                         return new \WP_Error(
                             "identity_mfa_required",
-                            "Use the Identity sign-in page to complete multifactor authentication.",
+                            "This account needs its second factor, which this sign-in can't ask for.",
                         );
                     }
                     return $user;
@@ -272,6 +285,67 @@ final class Plugin
             100,
             2,
         );
+        // Identity's authenticator is a Two Factor method: wp-login.php's second step for an account
+        // with Identity MFA, whatever Two Factor's own settings say about other methods.
+        add_filter("two_factor_provider_classname_" . self::TWO_FACTOR_KEY, static fn () => TwoFactorProvider::class);
+        add_filter("two_factor_providers", static fn ($providers) => is_array($providers)
+            // No path: Two Factor finds the class through identity's autoloader.
+            ? $providers + [self::TWO_FACTOR_KEY => ""]
+            : $providers, 20);
+        // An account with Identity MFA has Identity's factor as its only second step: Two Factor's
+        // other methods (emailed codes, its own TOTP) would be a weaker factor than the one the
+        // account set up, and a WordPress sign-in made with one never opens an identity session
+        // ({@see browserSession}).
+        add_filter("two_factor_enabled_providers_for_user", static function ($enabled, $uid) {
+            try {
+                if ((new Mfa(self::$db, self::$security))->enabled((int) $uid)) {
+                    return [self::TWO_FACTOR_KEY];
+                }
+            } catch (Failure) {
+                // Storage can't say: Two Factor's own methods decide, and the password check
+                // above still refuses an account whose factor can't be asked for.
+            }
+            return $enabled;
+        }, PHP_INT_MAX, 2);
+        // One sign-in: signing in on wp-login.php as someone else sets this browser's identity session
+        // aside, and signing out of WordPress ends it.
+        $identityCookie = static function (?int $keepFor): void {
+            $secret = (string) ($_COOKIE[Sessions::cookieName()] ?? "");
+            if ($secret === "") {
+                return;
+            }
+            try {
+                $session = self::$sessions->find($secret);
+                if ($session && (int) $session["wp_user_id"] === $keepFor) {
+                    return;
+                }
+                if ($session && $keepFor === null) {
+                    self::$sessions->revoke((int) $session["wp_user_id"], (string) $session["id"]);
+                }
+            } catch (Failure) {
+                // The cookie goes either way.
+            }
+            if (!headers_sent()) {
+                Sessions::cookie("", time() - 3600);
+            }
+            unset($_COOKIE[Sessions::cookieName()]);
+        };
+        add_action("wp_login", static fn ($login, $user) => $identityCookie($user instanceof \WP_User ? (int) $user->ID : 0), 10, 2);
+        add_action("wp_logout", static fn () => $identityCookie(null));
+        // On the sign-in form (wp-login.php's, or `<LoginForm />`) when it signs in for Identity (an
+        // application's authorization, the account screens): the ways in that need no WordPress
+        // password, for accounts made with an email code, a passkey or a provider. They sign in to
+        // Identity, not to the WordPress pages, so other sign-ins don't offer them.
+        add_action("login_form", static function (): void {
+            $redirect = is_string($_REQUEST["redirect_to"] ?? null) ? wp_unslash($_REQUEST["redirect_to"]) : "";
+            if ($redirect !== self::url("") && !str_starts_with($redirect, self::url("/")) && !str_starts_with($redirect, self::url("?"))) {
+                return;
+            }
+            $prefix = self::url("/authorize?");
+            $return = str_starts_with($redirect, $prefix) ? Providers::continuation(substr($redirect, strlen(self::url("")))) : "";
+            $url = add_query_arg(array_filter(["methods" => "1", "return_to" => $return !== "" ? rawurlencode($return) : null]), self::url(""));
+            echo '<p class="typedpress-identity-methods"><a href="' . esc_url($url) . '">' . esc_html__("Sign in with an email code, a passkey or another account", "typedpress-identity") . "</a></p>";
+        });
         $rememberPassword = static function ($uid): void {
             $user = get_userdata((int) $uid);
             if ($user instanceof \WP_User) {
@@ -493,6 +567,172 @@ final class Plugin
             });
         }
     }
+    /**
+     * Whether this sign-in is wp-login.php's own and Two Factor will ask $user for Identity's factor
+     * before any cookie is sent: Two Factor is loaded, requires a second step for the user, and
+     * offers Identity's authenticator among the user's methods. Otherwise the password is refused.
+     */
+    private static function secondStep(\WP_User $user): bool
+    {
+        if (($GLOBALS["pagenow"] ?? "") !== "wp-login.php" || !class_exists(\Two_Factor_Core::class, false)
+            || (defined("XMLRPC_REQUEST") && XMLRPC_REQUEST) || (defined("REST_REQUEST") && REST_REQUEST)) {
+            return false;
+        }
+        $available = \Two_Factor_Core::get_available_providers_for_user($user);
+        return !is_wp_error($available) && isset($available[self::TWO_FACTOR_KEY])
+            && \Two_Factor_Core::is_user_using_two_factor($user);
+    }
+    /** A path below the issuer as an absolute URL: `/authorize?…` → `https://site/identity/authorize?…`. */
+    private static function url(string $below): string
+    {
+        return home_url("/identity" . $below);
+    }
+    /**
+     * This browser's identity session: its own (`zi_session`), or one opened now from the
+     * WordPress sign-in it holds, the site's one sign-in page. The new session is never fresher nor
+     * longer-lived than the WordPress session it came from, and is written as this browser's
+     * cookie. Null when the browser is signed in to neither.
+     */
+    public static function browserSession(bool $bridge = true): ?array
+    {
+        $session = self::$sessions->find((string) ($_COOKIE[Sessions::cookieName()] ?? ""));
+        $uid = (int) wp_validate_auth_cookie("", "logged_in");
+        if ($session && ($uid === 0 || (int) $session["wp_user_id"] === $uid)) {
+            return $session;
+        }
+        // The browser is signed in to WordPress as someone else than its identity cookie says (a
+        // planted cookie, a guest handoff, a sign-in elsewhere): WordPress's sign-in wins.
+        if ($session) {
+            Sessions::cookie("", time() - 3600);
+            unset($_COOKIE[Sessions::cookieName()]);
+        }
+        // Until this site's storage has `sessions.wp_token` (a managed build serves requests before
+        // its initialize), a WordPress sign-in opens no identity session: one it couldn't tie to the
+        // WordPress session would outlive it.
+        if (!$bridge || !Schema::linksWordPressSessions()) {
+            return null;
+        }
+        $token = wp_get_session_token();
+        $wp = $uid > 0 && $token !== "" ? \WP_Session_Tokens::get_instance($uid)->get($token) : null;
+        if (!is_array($wp) || in_array(self::$accounts->status($uid), ["suspended", "deletion_requested", "deleted"], true)) {
+            return null;
+        }
+        // An account with Identity MFA counts as signed in only when that WordPress sign-in passed
+        // Identity's factor on wp-login.php (Two Factor records the method on the session). A
+        // session made any other way (another Two Factor method, a plugin that sets the auth cookie
+        // itself) doesn't open an identity session.
+        if ((new Mfa(self::$db, self::$security))->enabled($uid)
+            && (($wp["two-factor-provider"] ?? null) !== self::TWO_FACTOR_KEY || empty($wp["two-factor-login"]))) {
+            return null;
+        }
+        self::$accounts->ensure($uid);
+        $verifier = WordPressSessions::verifier($token);
+        $created = self::$sessions->reopen($uid, $verifier)
+            ?? self::$sessions->create($uid, (int) ($wp["login"] ?? 0), (int) ($wp["expiration"] ?? 0), $verifier);
+        Sessions::cookie($created["secret"], (int) $created["session"]["expires_at"]);
+        $_COOKIE[Sessions::cookieName()] = $created["secret"];
+        return self::$sessions->find($created["secret"]);
+    }
+    /**
+     * This request's URL, absolute: REQUEST_URI already holds a subdirectory install's path, so
+     * `home_url()` would add it twice.
+     */
+    private static function here(): string
+    {
+        $home = wp_parse_url(home_url("/"));
+        $uri = (string) ($_SERVER["REQUEST_URI"] ?? "/identity");
+        return $home["scheme"] . "://" . $home["host"] . (isset($home["port"]) ? ":" . $home["port"] : "")
+            . (str_starts_with($uri, "/") ? $uri : "/");
+    }
+    /**
+     * RP-initiated logout (`/identity/logout`). One sign-in means one sign-out: it ends this
+     * browser's identity session and, for the same user, its WordPress session.
+     *
+     * - With an `id_token_hint` that is still valid and names the browser's WordPress user, the
+     *   application has shown who is signing out: both end and the browser goes back.
+     * - Otherwise (no hint, an expired one, another user's) a link alone must not sign anyone out of
+     *   the site: the browser gets a confirmation page whose form (POST, a nonce bound to the
+     *   WordPress session, this site's Origin) ends both.
+     */
+    private static function logout(): never
+    {
+        $post = $_SERVER["REQUEST_METHOD"] === "POST";
+        $query = $post ? $_POST : $_GET;
+        $oauth = new OAuth(self::$db, self::$accounts);
+        // Checked first, revoked last: nothing ends before the decision below says it may.
+        $request = $oauth->logoutRequest($query);
+        $target = $request["target"];
+        $uid = (int) wp_validate_auth_cookie("", "logged_in");
+        $session = self::$sessions->find((string) ($_COOKIE[Sessions::cookieName()] ?? ""));
+        $hint = is_string($query["id_token_hint"] ?? null) ? Keys::verify($query["id_token_hint"]) : null;
+        $named = is_array($hint) && $uid > 0 && (string) ($hint["sub"] ?? "") === (string) $uid;
+        $confirmed = false;
+        if ($post && isset($_POST["confirm"])) {
+            Api::checkOrigin((string) ($_SERVER["HTTP_ORIGIN"] ?? ""), true, true);
+            $confirmed = $uid > 0 && $uid === get_current_user_id()
+                && wp_verify_nonce(is_string($_POST["csrf"] ?? null) ? $_POST["csrf"] : "", "typedpress-identity-logout") !== false;
+            if (!$confirmed) {
+                throw new Failure("invalid_csrf", "Refresh the page and try again.", 403);
+            }
+        }
+        if ($uid > 0 && !$named && !$confirmed) {
+            status_header(200);
+            echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign out</title></head><body><main class="consent"><h1>'
+                . esc_html(sprintf(__("Sign out of %s?", "typedpress-identity"), get_bloginfo("name")))
+                . '</h1><form method="post">';
+            foreach ($query as $key => $value) {
+                if (is_string($value) && $key !== "csrf" && $key !== "confirm") {
+                    echo '<input type="hidden" name="' . esc_attr($key) . '" value="' . esc_attr($value) . '">';
+                }
+            }
+            echo '<input type="hidden" name="csrf" value="' . esc_attr(wp_create_nonce("typedpress-identity-logout")) . '"><button name="confirm" value="1">'
+                . esc_html__("Sign out", "typedpress-identity") . '</button></form><a href="' . esc_url(home_url("/")) . '">'
+                . esc_html__("Stay signed in", "typedpress-identity") . "</a></main></body></html>";
+            exit();
+        }
+        // Here the sign-out may happen: the hint names this browser's user, the user confirmed, or
+        // the request carries no WordPress session (an application's own client, a cookieless HTTP
+        // call, a cross-site image that drops this site's Lax cookies).
+        if ($named || $confirmed) {
+            $oauth->endLogout($request["claims"]);
+        } elseif (is_array($hint)) {
+            // Nobody here showed who is signing out: a current hint may still end the identity
+            // session it names, an expired one ends nothing, and neither reaches the WordPress
+            // session that identity session came from, which only that browser may end.
+            $oauth->endLogout($hint, false);
+        }
+        if ($session) {
+            self::$sessions->revoke((int) $session["wp_user_id"], (string) $session["id"]);
+        }
+        Sessions::cookie("", time() - 3600);
+        if ($uid > 0) {
+            \WP_Session_Tokens::get_instance($uid)->destroy(wp_get_session_token());
+            wp_clear_auth_cookie();
+        }
+        wp_redirect($target, 303);
+        exit();
+    }
+    /**
+     * Sends a browser with no identity session to the site's one sign-in page, coming back to
+     * `$back`. A browser already signed in to WordPress before this site's storage links WordPress
+     * sessions (a managed build serving before its initialize) would come straight back without one,
+     * and round again: it gets a short "try again" page instead.
+     */
+    private static function toLogin(string $back): never
+    {
+        if (!Schema::linksWordPressSessions() && (int) wp_validate_auth_cookie("", "logged_in") > 0) {
+            status_header(503);
+            header("Retry-After: 30");
+            header("Content-Type: text/html; charset=utf-8");
+            echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'
+                . esc_html__("Try again shortly", "typedpress-identity") . '</title></head><body><main class="consent"><h1>'
+                . esc_html__("Your account is being updated", "typedpress-identity") . "</h1><p>"
+                . esc_html__("This takes a moment. Try again shortly.", "typedpress-identity") . "</p></main></body></html>";
+            exit();
+        }
+        wp_redirect(wp_login_url($back));
+        exit();
+    }
     /** The issuer's URL path (`/identity`, or `/blog/identity` under a subdirectory install). */
     public static function path(): string
     {
@@ -612,11 +852,7 @@ final class Plugin
                 );
             }
             if ($route === "/logout") {
-                $query = $_SERVER["REQUEST_METHOD"] === "POST" ? $_POST : $_GET;
-                $target = (new OAuth(self::$db, self::$accounts))->logout($query);
-                Sessions::cookie("", time() - 3600);
-                wp_redirect($target, 303);
-                exit();
+                self::logout();
             }
             if ($route === "/provider/start") {
                 $name = sanitize_key($_GET["provider"] ?? "");
@@ -666,11 +902,15 @@ final class Plugin
                         "authorize_reauth",
                         $resumeSecret,
                     );
-                    $freshSession = self::$sessions->require();
+                    $freshSession = self::browserSession();
                     if (
+                        $freshSession === null ||
                         $freshSession["id"] ===
                             $resume["payload"]["prior_session"] ||
                         (int) $freshSession["created_at"] <
+                            $resume["payload"]["requested_at"] ||
+                        // A session opened from a WordPress sign-in carries that sign-in's time.
+                        (int) $freshSession["verified_at"] <
                             $resume["payload"]["requested_at"]
                     ) {
                         throw new Failure(
@@ -700,9 +940,7 @@ final class Plugin
                     );
                     exit();
                 }
-                $session = self::$sessions->find(
-                    (string) ($_COOKIE[Sessions::cookieName()] ?? ""),
-                );
+                $session = self::browserSession();
                 if (
                     $_SERVER["REQUEST_METHOD"] === "GET" &&
                     (($query["prompt"] ?? "") === "login" ||
@@ -730,19 +968,15 @@ final class Plugin
                         "httponly" => true,
                         "samesite" => "Lax",
                     ]);
-                    wp_safe_redirect(home_url("/identity?reauth=1"));
+                    // A new sign-in on the site's one sign-in page: WordPress drops its cookies for
+                    // `reauth`, and this browser's identity session is set aside, so only a sign-in
+                    // made after this request resumes the authorization.
+                    Sessions::cookie("", time() - 3600);
+                    wp_redirect(wp_login_url(self::url("/authorize?resume=1"), true));
                     exit();
                 }
                 if (!$session) {
-                    wp_safe_redirect(
-                        home_url(
-                            "/identity?return_to=" .
-                                rawurlencode(
-                                    "/authorize?" . http_build_query($query),
-                                ),
-                        ),
-                    );
-                    exit();
+                    self::toLogin(self::url("/authorize?" . http_build_query($query)));
                 }
                 if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     Api::checkOrigin(
@@ -797,6 +1031,14 @@ final class Plugin
             if (!in_array($route, ["", "/", "/account"], true)) {
                 self::json(["error" => "not_found"], 404);
             }
+            // The site has one sign-in page, wp-login.php. These screens are the account's, for a
+            // browser that is signed in. Two exceptions keep the sign-ins that have no WordPress
+            // password: `methods` (email code, passkey, an external provider), which the sign-in
+            // form links to, and a second factor still owed after an external provider (`factor`).
+            if (!isset($_GET["factor"]) && !isset($_GET["methods"]) && self::browserSession() === null) {
+                $continue = Providers::continuation($_GET["return_to"] ?? "");
+                self::toLogin($continue !== "" ? self::url($continue) : self::here());
+            }
             status_header(200);
             echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>' .
                 esc_html(get_bloginfo("name")) .
@@ -806,6 +1048,8 @@ final class Plugin
                 esc_url(rest_url("typedpress-identity/v1/")) .
                 '" data-issuer="' .
                 esc_url(OAuth::issuer()) .
+                '" data-login="' .
+                esc_url(wp_login_url(self::here())) .
                 '" data-site="' .
                 esc_attr(get_bloginfo("name")) .
                 '"></div><script type="module" src="' .

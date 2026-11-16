@@ -98,23 +98,3 @@ viewport width. Visible buttons, inputs, selects, textareas, summaries and the
 brand link measured at least 44 CSS pixels in width and height. Dark mode was
 checked at 390 pixels. The browser reported no page errors. Safe-area CSS and
 keyboard focus styles are in `web/src/style.css`.
-
-## Publication
-
-The installed `spacefast/0.8.0` CLI refused `sf first check --help` because the
-command is absent. Native preflight succeeded separately. Publication used
-an allowlisted staging tree, with no WordPress database, cache, dependencies or
-credentials among the inputs:
-
-```sh
-sf publish examples/drive-locker/.first/publish \
-	--team team_3f222eb89f634980a2552a38fbdc70ba \
-	--access team --name 'Drive Locker' --slug drive-locker --json --wait
-```
-
-It returned `validation_error`, `Could not find team
-"team_3f222eb89f634980a2552a38fbdc70ba".` before Space creation. A separate
-authenticated `GET /v1/teams/<id>` confirmed the requested team and access.
-No publication to an alternative team or direct host deployment was attempted.
-No live collection read, action or sign-in could be verified. Full diagnostic
-details are in [diagnostics.md](diagnostics.md).

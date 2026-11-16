@@ -214,77 +214,8 @@ SCF saves, and Gutenberg editing remain unverified.
 | SCF marks readable `ownerId` as a required number field and does not render `update: false` as readonly. | The server assigns and preserves ownership, but the generated form still asks for an owner number. A clean server-assigned ownership form needs renderer support; its browser behavior is unverified. |
 | Public WordPress media URLs. | Owner filters on rows do not make uploaded pet or pack photos private. Qualify host media access before uploading sensitive photos. |
 
-## Spacefast attempt
+## Spacefast
 
-Space: <https://pet-food.space.fast/>. Destination team was resolved and checked
-as `spacefast-examples`, ID `team_b65faad473cf46189230addaade3991a`.
-
-The installed `spacefast/0.8.0` CLI rejected the documented `sf typedpress check`
-preflight with this exact message:
-
-```text
-Unknown command `sf typedpress check`. Did you mean `sf zero ls`? Run `sf help zero` for available commands.
-```
-
-From `examples/pet-food`, publication used the requested CLI and team access:
-
-```sh
-sf publish --team team_b65faad473cf46189230addaade3991a \
-	--name 'Pet food' --slug pet-food --access team --json
-```
-
-The receipt activated `ver_43e08afcf4104c9d8466bc5ab6b9ffb7`, but included this
-diagnostic verbatim:
-
-```text
-No HTML files were found in the root of this version, so it serves in files mode with directory listing enabled.
-```
-
-Reading the Space confirms its destination team and `hasRuntime: false`.
-This is a restricted static source publication, not a deployed pet pantry.
-No personal records were uploaded. Anonymous collection and action requests
-returned 403 with `This space is private`.
-
-`sf share list` exposed an additional managed link grant named `Open`. It was
-revoked with `sf share revoke`, then the active grants were checked again.
-The remaining active grants allow the owning team on live and version URLs.
-
-Authenticated platform probes used:
-
-```sh
-sf fetch /wp-json/tp/v1/pets --space spc_429d2abd17024946a1cda69e5322ed2c --status --json
-sf fetch /wp-login.php --space spc_429d2abd17024946a1cda69e5322ed2c --status --json
-sf fetch /wp-admin/ --space spc_429d2abd17024946a1cda69e5322ed2c --status --json
-```
-
-| Probe | Actual response fields | Meaning |
-| --- | --- | --- |
-| Collection | `"status":404,"contentType":"application/json; charset=UTF-8","versionId":null` | App collection route absent after authenticated platform access. |
-| Sign-in page | `"status":200,"contentType":"text/html; charset=UTF-8","versionId":null` | Host page reachable. App WordPress sign-in not verified. |
-| Admin page | `"status":200,"contentType":"text/html; charset=UTF-8","versionId":null` | Host page reachable. App SCF and TypedPress Admin not verified. |
-
-The action attempt was:
-
-```sh
-sf zero call pet-food/restock-list --space spc_429d2abd17024946a1cda69e5322ed2c --input '{}' --json
-```
-
-It returned `validation_error` with this exact message:
-
-```text
-This space has no machine credential to call an Ability with. Create one with `sf share token create`, then pass --credential.
-```
-
-A subsequent Node `fetch` probe used an author handoff from
-`sf open spc_429d2abd17024946a1cda69e5322ed2c --show-secret --json`, keeping
-the handoff and cookies in memory. It made the actual collection read and
-action POST with authenticated Space access. These are its exact responses:
-
-```json
-{"method":"GET","path":"/wp-json/tp/v1/pets","status":404,"body":{"code":"rest_no_route","message":"No route was found matching the URL and request method.","data":{"status":404}}}
-{"method":"POST","path":"/wp-json/tp/v1/actions/restockList","status":404,"body":{"code":"rest_no_route","message":"No route was found matching the URL and request method.","data":{"status":404}}}
-```
-
-Live app reads and actions fail; WordPress sign-in remains unverified. A
-working compiler and a CLI that captures this TypedPress config are required before
-the app can be deployed and its screenshots and behavior verified.
+Hosted deployment of a `typedpress.config.ts` project is not available in a
+released `spacefast` CLI yet; see the [Spacefast deploy guide](../../docs/spacefast-deploy.md). After publishing, verify a collection
+read, an action and WordPress sign-in on the live origin.

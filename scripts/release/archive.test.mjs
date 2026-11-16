@@ -38,7 +38,8 @@ test('release archives reject uncommitted inputs and retain payloads in drive-st
   await rm(join(root, 'scripts/deploy/added.php'));
 
   for (const directory of ['src', 'runtime', 'types/typedpress']) await mkdir(join(root, directory), { recursive: true });
-  for (const name of ['LICENSE', 'LICENSE-MIT', 'LICENSE-GPL']) await copyFile(new URL(`../../${name}`, import.meta.url), join(root, name));
+  await mkdir(join(root, 'licenses'));
+  for (const name of ['LICENSE', 'LICENSING.md', 'licenses/GPL-2.0-or-later.txt']) await copyFile(new URL(`../../${name}`, import.meta.url), join(root, name));
   const version = JSON.parse(await readFile(join(root, 'packages/cli/package.json'), 'utf8')).version;
   await writeFile(join(root, 'Cargo.toml'), `[package]\nname = "archive-fixture"\nversion = "${version}"\nedition = "2021"\n`);
   await writeFile(join(root, 'src/lib.rs'), 'pub fn fixture() {}\n');
@@ -59,6 +60,9 @@ test('release archives reject uncommitted inputs and retain payloads in drive-st
   assert.equal(await readFile(join(extracted, 'typedpress'), 'utf8'), 'Compiler fixture bytes\n');
   assert.equal(await readFile(join(extracted, 'types/index.d.ts'), 'utf8'), 'export interface Fixture {}\n');
   assert.equal(await readFile(join(extracted, 'licenses/runtime/LICENSE'), 'utf8'), 'Retained runtime notice\n');
+  for (const name of ['LICENSE', 'LICENSING.md', 'licenses/GPL-2.0-or-later.txt']) {
+    assert.equal(await readFile(join(extracted, name), 'utf8'), await readFile(new URL(`../../${name}`, import.meta.url), 'utf8'), name);
+  }
   assert.deepEqual(JSON.parse(await readFile(join(extracted, 'licenses/DEPENDENCIES.json'), 'utf8')), []);
   const source = JSON.parse(await readFile(join(extracted, 'SOURCE.json'), 'utf8'));
   assert.equal(source.revision, revision);

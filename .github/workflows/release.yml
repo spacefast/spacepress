@@ -5,7 +5,13 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - 'scripts/release/**'
-      - 'packages/cli/lib/release.mjs'
+      - 'packages/**/package.json'
+      - 'packages/cli/**'
+      - 'packages/create-typedpress/**'
+      - 'packages/blocks/scripts/**'
+      - 'LICENSE'
+      - 'LICENSING.md'
+      - 'licenses/**'
   workflow_dispatch:
     inputs:
       version:
@@ -82,9 +88,12 @@ jobs:
 
   npm:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+        with:
+          package_json_file: packages/blocks/package.json
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .node-version
@@ -92,8 +101,18 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
         run: node scripts/release/version.mjs "$REQUESTED_VERSION"
-      - run: node --test packages/cli/test/*.test.mjs packages/create-typedpress/test/*.test.mjs scripts/release/archive.test.mjs
-      - run: mkdir -p release && npm pack ./packages/cli --pack-destination release && npm pack ./packages/create-typedpress --pack-destination release
+      - run: node --test packages/cli/test/*.test.mjs packages/create-typedpress/test/*.test.mjs scripts/release/archive.test.mjs scripts/release/pack-check.test.mjs
+      - name: Install adapter build dependencies
+        run: |
+          npm ci --prefix packages/astro --ignore-scripts --no-audit --no-fund
+          (cd packages/blocks && pnpm install --frozen-lockfile)
+      # prepack builds each tarball's generated files (types, licenses, dist/, vendor/).
+      - name: Pack all four npm packages
+        run: |
+          mkdir -p release
+          for package in cli create-typedpress astro blocks; do npm pack "./packages/$package" --pack-destination release; done
+      - name: Check packed contents (required files, licenses, no tests, fixtures or secrets)
+        run: node scripts/release/pack-check.mjs release
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: npm-tarballs
@@ -169,10 +188,11 @@ jobs:
           retention-days: 14
 
       # Tagging is a separate maintainer action. PR/manual runs only retain Actions artifacts.
+      # The npm tarballs are attached for the maintainer to publish; this workflow never runs npm publish.
       - name: Attach compiler assets to the tagged GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes "Unsigned compiler assets. See compiler-assets.json for source and checksums."
-          gh release upload "$GITHUB_REF_NAME" release/typedpress-v*.tar.gz release/typedpress-v*.tar.gz.sha256 release/typedpress.wasm release/compiler-assets.json
+          gh release upload "$GITHUB_REF_NAME" release/typedpress-v*.tar.gz release/typedpress-v*.tar.gz.sha256 release/typedpress.wasm release/compiler-assets.json release/typedpress-source.tar.gz release/*.tgz

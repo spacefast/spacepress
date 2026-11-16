@@ -555,7 +555,7 @@ route); the facade maps input and output only. Everything else → 404 problem.
 | `POST /actions/{name}` (`GET` when readonly) | `/wp-abilities/v1/abilities/<app>/<name>/run` | 200 `{data: result}` |
 | `GET /me`, `/settings`, `/menus[/{location}]` | `/wp/v2/users/me`, `/wp/v2/settings`, `/wp/v2/menu-locations` + `/wp/v2/menu-items` | 200 `{data}` |
 | `/auth/*`, `/sync/*`, `/services/*`, `/files/*`, `/media/{id}/file/*` | First's own routes (no core route) | as each documents |
-| `GET /openapi.json` | the app plugin's `first/app/openapi.json` (`First\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` |
+| `GET /openapi.json` | the app plugin's `first/app/openapi.json` (`First\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` and an `ETag` from the file and the server it names; a matching `If-None-Match` is an empty 304 |
 
 Kinds are the app's collections, tables and users kind, plus WordPress's
 own (`posts`, `pages`, `comments`, `media`, `categories`, `tags`, `menus`)
@@ -829,6 +829,12 @@ listens and purges those URLs from Batcache and the edge. With no listener
   The router answers a page with or without its trailing slash, so both
   spellings are purged. More than 200 paths in that call becomes `/*`, a
   whole-host purge. Nothing is recorded or announced without a listener.
+- **Prebuilt pages** (`Render\Prebuilt::serve`) send an `ETag` (the file's
+  size and modification time, as public files spell it) and answer a matching
+  `If-None-Match` (itself, its weak form, a list, `*`) with an empty 304 that
+  keeps the page's `Cache-Control`. The validator is checked only after every
+  gate that decides the file is this request's answer (no query string,
+  signed-in cookie, Markdown negotiation, gated site).
 - **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
   (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
   or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack

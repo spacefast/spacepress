@@ -12,7 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 export IDENTITY_PORT="${IDENTITY_PORT:-8814}"
 export IDENTITY_MAIL_PORT="$((IDENTITY_PORT + 1))"
-export IDENTITY_PROJECT="${IDENTITY_PROJECT:-first-identity-$(id -u)}"
+export IDENTITY_PROJECT="${IDENTITY_PROJECT:-typedpress-identity-$(id -u)}"
 export IDENTITY_UID="$(id -u)" IDENTITY_GID="$(id -g)"
 export IDENTITY_URL="http://127.0.0.1:$IDENTITY_PORT"
 [[ $IDENTITY_PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "IDENTITY_PROJECT must match ^[a-z0-9][a-z0-9_-]*\$" >&2; exit 2; }

@@ -71,7 +71,7 @@ pub fn help() -> String {
         }
     }
     out.push_str(
-        "\ntypedpress help <command> shows its arguments. Credentials come from TP_APP_PASSWORD or TP_TOKEN.\n",
+        "\ntypedpress help <command> shows its arguments. Commands that talk to a site sign in with the credential\ntypedpress login <site-url> stored; in CI, set TP_APP_PASSWORD=user:application-password or TP_TOKEN instead.\n",
     );
     out
 }

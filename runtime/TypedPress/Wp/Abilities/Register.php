@@ -62,7 +62,8 @@ final class Register
     public static function mcp(object $adapter): void
     {
         $schema = self::schema();
-        if ($schema === null) {
+        // Not on TypedPress's API, which never serves `/mcp` (see Module::register).
+        if ($schema === null || \TypedPress\Wp\Facade::path() !== null) {
             return;
         }
         $id = 'typedpress-' . self::kebab($schema->name());

@@ -13,7 +13,7 @@ harness="$here/../harness.sh"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 first="$target/debug/typedpress"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-plugin-ms}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-plugin-ms}"
 export TP_WP_PORT="${TP_WP_PORT:-8907}"
 work="$(mktemp -d)"
 cleanup() {

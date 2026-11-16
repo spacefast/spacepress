@@ -205,8 +205,8 @@ test("once() and Idempotency-Key replay instead of running again", async () => {
   };
   const first = await call();
   const second = await call();
-  assert.equal(first.status, 200, JSON.stringify(typedpress.json));
-  assert.deepEqual(second.json, typedpress.json, "once() returned the stored result");
+  assert.equal(first.status, 200, JSON.stringify(first.json));
+  assert.deepEqual(second.json, first.json, "once() returned the stored result");
   assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_tp_job_notes WHERE title = 'once ${run}'`)[0].n, "1");
 
   const keyed = await call(`k-${run}`);

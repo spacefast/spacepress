@@ -127,6 +127,9 @@ final class Wire
             throw HttpError::invalidInput('fields must be an object', '/fields');
         }
         $allowed = array_flip(self::fieldNames($spec));
+        // A reference the stored row holds to a row a pull can't name (one in WordPress's trash) reads
+        // as null; pushing that null back leaves the reference as it is, so a restore finds it intact.
+        $named = $current === null ? [] : self::targetUids($collection, $spec, [$current]);
         $data = [];
         foreach ($fields as $name => $value) {
             $name = (string) $name;
@@ -142,6 +145,9 @@ final class Wire
                 continue;
             }
             $ref = $spec['columns'][$name]['references'] ?? null;
+            if ($ref !== null && $value === null && ($current[$name] ?? null) !== null && !isset($named[$name][self::key($current[$name])])) {
+                continue;
+            }
             try {
                 $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value, $viewer);
             } catch (HttpError $e) {

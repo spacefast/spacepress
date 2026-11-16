@@ -1,14 +1,16 @@
 //! `typedpress abilities pull [dir] --site <url> [--only vendor/*]...`: list a site's abilities over
-//! `wp-abilities/v1` and write the committed lock `tp/_generated/abilities.json`. Credentials come only from
-//! `TP_APP_PASSWORD` (`user:application-password`), never a flag that lands in shell history.
+//! `wp-abilities/v1` and write the committed lock `tp/_generated/abilities.json`. It signs in as every
+//! remote command does (`remote::sign_in`), never with a flag that lands in shell history; signed out it
+//! lists what the site shows anyone.
 
+use crate::sync::client::Credential;
 use crate::wordpress::abilities::{self, LOCK};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-const USAGE: &str = "usage: typedpress abilities pull [project-dir] --site <url> [--only vendor/*]...\n       credentials: TP_APP_PASSWORD=user:application-password (optional)";
+const USAGE: &str = "usage: typedpress abilities pull [project-dir] --site <url> [--only vendor/*]...";
 
 pub fn cli(args: &[String]) -> ExitCode {
     match run(args) {
@@ -35,8 +37,7 @@ fn run(args: &[String]) -> Result<(), String> {
         }
     }
     let site = site.ok_or(format!("--site is required\n{USAGE}"))?;
-    let credential = std::env::var("TP_APP_PASSWORD").ok().filter(|s| !s.is_empty());
-    let listed = list(&site, credential.as_deref())?;
+    let listed = list(&site, super::remote::sign_in(&site)?.map(|s| s.credential).as_ref())?;
     let kept: Vec<Value> = listed
         .into_iter()
         .filter(|a| only.is_empty() || only.iter().any(|p| matches(p, a["name"].as_str().unwrap_or(""))))
@@ -113,7 +114,7 @@ fn canonical(v: &Value) -> String {
 }
 
 /// Every ability the site lists to this caller, through all pages.
-pub(crate) fn list(site: &str, credential: Option<&str>) -> Result<Vec<Value>, String> {
+pub(crate) fn list(site: &str, credential: Option<&Credential>) -> Result<Vec<Value>, String> {
     let base = endpoint(site)?;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(30)))
@@ -129,10 +130,7 @@ pub(crate) fn list(site: &str, credential: Option<&str>) -> Result<Vec<Value>, S
             .append_pair("page", &page.to_string());
         let mut request = agent.get(url.as_str());
         if let Some(c) = credential {
-            request = request.header(
-                "Authorization",
-                format!("Basic {}", crate::sync::client::base64(c.as_bytes())),
-            );
+            request = request.header("Authorization", c.header());
         }
         let mut response = request.call().map_err(|e| format!("{site}: {e}"))?;
         let status = response.status().as_u16();
@@ -144,7 +142,7 @@ pub(crate) fn list(site: &str, credential: Option<&str>) -> Result<Vec<Value>, S
             200 => {}
             401 | 403 => {
                 return Err(format!(
-                    "{site}: listing abilities needs a signed-in user; set TP_APP_PASSWORD=user:application-password"
+                    "{site}: listing abilities needs a signed-in user. Run: typedpress login {site}   (in CI: TP_APP_PASSWORD=user:application-password)"
                 ));
             }
             404 => {

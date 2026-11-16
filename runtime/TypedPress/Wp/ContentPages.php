@@ -58,7 +58,7 @@ final class ContentPages
         $self = self::$instance = new self($plugin, $pages);
         // After the app's post types (0) and its migrations (1). A managed build stores them from
         // initialize ({@see install()}): booting it writes nothing.
-        if (!Runtime::managed()) {
+        if (Runtime::installs()) {
             add_action('init', [$self, 'store'], 2);
         }
         add_filter('page_link', [$self, 'link'], 10, 2);

@@ -39,7 +39,7 @@ final class Files
         // After before-hooks and persistence, still inside the transaction: hooks can't slip an unchecked id in.
         Extensions::onWritten(self::checkColumns(...));
         Extensions::beforeRead(self::takeWith(...), constraintSafe: true);
-        Extensions::onRead(self::populate(...), constraintSafe: true);
+        Extensions::onRead(self::populate(...), constraintSafe: true, reads: static fn (string $collection): array => self::$wanted[$collection] ?? []);
         Extensions::schemaDescribe(static function (array $description): array {
             if (($description['files'] ?? []) !== []) {
                 try {

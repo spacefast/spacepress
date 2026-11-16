@@ -40,7 +40,7 @@ final class Surfaces
         }
         add_filter('first_ability_operations', [self::class, 'operations'], 10, 2);
         // Installing, not serving: a managed build grants it from initialize (Runtime::initialize).
-        add_action('init', static fn () => Runtime::managed() ? null : self::grant());
+        add_action('init', static fn () => Runtime::installs() ? self::grant() : null);
         add_action('wp_create_application_password', [self::class, 'inheritDeny'], 10, 2);
         add_action('first_admin_screens', [self::class, 'screen']);
         // Outside the app's command transaction: applying takes the schema lock and commits its own.
@@ -64,6 +64,14 @@ final class Surfaces
      * changes runs on the site, and never again: from then on it is an ordinary capability, and
      * `wp cap remove administrator first_apply_schema` (or `wp user remove-cap`) takes it away for good.
      */
+    /** Whether {@see grant()} has nothing left to do. */
+    public static function granted(): bool
+    {
+        $plugin = Runtime::plugin();
+
+        return $plugin === null || SchemaVersions::of($plugin) === null || get_option(self::GRANTED) !== false;
+    }
+
     public static function grant(): void
     {
         $plugin = Runtime::plugin();

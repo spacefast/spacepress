@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 PHP="${PHP:-php}"
 status=0
 suites=("$@")
-[ ${#suites[@]} -eq 0 ] && suites=(js bigint env fetch crypto query deployments db schema runtimeschema sql blog auth jobs mail abilities search webhooks realtime live services images files media locales sync legacy vendor boundary markdown spam harness staged core_shape guard taxonomy trash git_dispatch)
+[ ${#suites[@]} -eq 0 ] && suites=(js bigint env fetch crypto query deployments db schema runtimeschema sql blog auth jobs mail abilities search webhooks realtime live services images files media locales sync legacy vendor boundary markdown spam harness staged core_shape guard taxonomy trash git_dispatch install_marker page_reads columns due mcp_boot)
 for s in "${suites[@]}"; do
   case "$s" in
     js) "$PHP" -d zend.assertions=1 js_parity.php || status=1 ;;
@@ -22,7 +22,7 @@ for s in "${suites[@]}"; do
                    "$PHP" -d zend.assertions=1 -d memory_limit=512M runtimeschema_test.php || status=1 ;;
     realtime) "$PHP" -d zend.assertions=1 -d memory_limit=512M realtime_test.php || status=1
               "$PHP" -d zend.assertions=1 -d memory_limit=512M realtime_comments_test.php || status=1 ;;
-    deployments|db|blog|auth|jobs|mail|abilities|search|webhooks|live|services|files|media|locales|sync|markdown|spam|harness|staged|core_shape|guard|taxonomy|trash|git_dispatch) "$PHP" -d zend.assertions=1 -d memory_limit=512M "${s}_test.php" || status=1 ;;
+    deployments|db|blog|auth|jobs|mail|abilities|search|webhooks|live|services|files|media|locales|sync|markdown|spam|harness|staged|core_shape|guard|taxonomy|trash|git_dispatch|install_marker|page_reads|columns|due|mcp_boot) "$PHP" -d zend.assertions=1 -d memory_limit=512M "${s}_test.php" || status=1 ;;
     vendor)
       "$PHP" -d zend.assertions=1 vendor_drift.php || status=1
       "$PHP" runtime_lint.php || status=1

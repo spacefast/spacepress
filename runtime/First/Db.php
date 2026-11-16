@@ -44,6 +44,18 @@ final class Db
      */
     public static function instance(): self
     {
+        static $booting = false;
+        if (self::$current === null && self::$instance === null && !$booting) {
+            // On WordPress the app boots on first use (a hook that reads through `db()` before any
+            // request handler did), not on every request.
+            $booting = true;
+            try {
+                Wp\Plugin::instance()?->app();
+            } finally {
+                $booting = false;
+            }
+        }
+
         return self::$current ?? self::$instance ?? throw new \LogicException('First\Db is not initialised; call App::boot() first');
     }
 
@@ -132,12 +144,29 @@ final class Db
      *
      * @return array<string, list<int|string>> collection => promoted pks (only non-empty)
      */
-    public function promoteDue(): array
+    public function promoteDue(bool $force = false): array
     {
         $now = Js::iso(Js::now());
         $out = [];
+        // On WordPress only table-backed kinds are scanned (posts are published by core's cron), and
+        // only once the site's recorded next-due time has come (Wp\DueRows); `$force` scans anyway.
+        $wp = $this->store instanceof Wp\CompositeStore ? $this->store : null;
+        $scanned = [];
+        foreach ($this->schema->collections() as $name => $spec) {
+            if ($wp !== null && ($spec['drafts'] ?? false) && !$wp->isPostBacked((string) $name) && !isset($this->schema->taxonomies()[$name])
+                && ($this->schema->auth()['collection'] ?? null) !== $name) {
+                $scanned[] = (string) $name;
+            }
+        }
+        $throttled = $wp !== null && $scanned !== [];
+        if ($throttled && !$force && !Wp\DueRows::due($this->schema->name(), $now)) {
+            return [];
+        }
         foreach ($this->schema->collections() as $name => $spec) {
             if ($spec['drafts'] ?? false) {
+                if ($wp !== null && !in_array((string) $name, $scanned, true)) {
+                    continue;
+                }
                 $pks = $this->store->promoteDue((string) $name, $now);
                 if ($pks !== []) {
                     $out[$name] = $pks;
@@ -147,6 +176,17 @@ final class Db
                     }
                 }
             }
+        }
+        if ($throttled) {
+            $earliest = null;
+            foreach ($scanned as $name) {
+                $next = $wp->tables->nextScheduled($name);
+                $earliest = $next !== null && ($earliest === null || $next < $earliest) ? $next : $earliest;
+            }
+            // After the request's commit: no lock on the option row while a handler runs, and nothing
+            // recorded when the promotions roll back (the rows are then still due).
+            $app = $this->schema->name();
+            $wp->db->afterCommit(static fn () => Wp\DueRows::scanned($wp->db, $app, $now, $earliest));
         }
 
         return $out;
@@ -182,7 +222,7 @@ final class Db
      */
     private function fetch(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null): array
     {
-        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards);
+        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards, prune: true);
         $rows = Extensions::read($decoded, $collection, $viewer);
         if (isset($opts['with']) && $rows !== []) {
             $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with', $viewer, $decoded);
@@ -195,19 +235,75 @@ final class Db
      * Select full storage rows without presentation transforms; write guards remain SQL filters.
      * $filterViewer confines a write selector's relation filters to rows that viewer may read.
      */
-    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null): array
+    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false): array
     {
-        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer): array {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune): array {
             $spec = $this->schema->hasCollection($collection) ? $this->schema->collection($collection) : null;
-            $q = $this->compileRead($collection, $opts, $ptr, $viewer, $partition, $guards, $filterViewer);
+            $only = null;
+            $q = $this->compileRead($collection, $opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, $only);
             if ($partition !== null && $partition[1] === []) {
                 return [];
             }
+            $columns = $only === null ? $spec['columns'] : array_intersect_key($spec['columns'], $only);
+
             return array_map(
-                static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
-                $this->withLinks($collection, $this->store->select($collection, $q)),
+                static fn (array $raw) => Schema::decodeRow($columns, $raw),
+                $this->withLinks($collection, $this->store->select($collection, $q), $only),
             );
         });
+    }
+
+    /**
+     * The columns a read's SQL must select when it asks for some (`columns`), or null for every column:
+     * the ones `columns` keeps, the primary key, what `with` loads and the keys it joins on, the
+     * partition column a relation groups children by, a localized kind's locale and translations, and
+     * what read extensions read. Null whenever any of those can't be known: no or an invalid `columns`
+     * (project() refuses it after the read, as before), a read extension that didn't say what it reads,
+     * or a field read rule written as a function (it sees the whole row).
+     *
+     * @return ?array<string, true>
+     */
+    private function selected(string $collection, array $opts, ?Viewer $viewer, ?array $partition): ?array
+    {
+        $columns = $opts['columns'] ?? null;
+        $spec = $this->schema->collection($collection);
+        $known = $spec['columns'];
+        if (!is_array($columns) || ($columns !== [] && array_is_list($columns)) || array_diff_key($columns, $known) !== []) {
+            return null;
+        }
+        $extra = Extensions::readColumns($collection, $viewer);
+        if ($extra === null) {
+            return null;
+        }
+        if ($viewer !== null) {
+            foreach ($known as $def) {
+                if (isset($def['access']['read']) && !Access::isShorthand($def['access']['read'])) {
+                    return null;
+                }
+            }
+        }
+        $included = array_keys(array_filter($columns, static fn ($on) => $on === true));
+        $keep = $included !== [] ? $included : array_keys(array_diff_key($known, array_filter($columns, static fn ($on) => $on === false)));
+        $keep[] = $spec['primaryKey'];
+        if ($partition !== null) {
+            $keep[] = $partition[0];
+        }
+        $relations = $spec['relations'] ?? [];
+        foreach (is_array($opts['with'] ?? null) ? $opts['with'] : [] as $name => $on) {
+            if ($on === false || $on === null) {
+                continue;
+            }
+            $keep[] = (string) $name;
+            if (isset($relations[$name]) && !isset($relations[$name]['through'])) {
+                $keep[] = (string) $relations[$name]['from'];
+            }
+        }
+        array_push($keep, ...$extra);
+        if ($this->localized($collection)) {
+            array_push($keep, 'locale', 'translations');
+        }
+
+        return array_fill_keys(array_keys(array_intersect_key($known, array_flip(array_map('strval', $keep)))), true);
     }
 
     /**
@@ -246,9 +342,9 @@ final class Db
     }
 
     /** One read compiled: query extensions, option checks, the viewer's read guards. */
-    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null): array
+    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?array &$only = null): array
     {
-        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer): array {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$only): array {
             if (!$this->schema->hasCollection($collection)) {
                 throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
             }
@@ -277,9 +373,11 @@ final class Db
                 }
             }
             unset($opts['searchFields']);
+            // After the query extensions: they may consume options (`with` on a file column) the selection reads.
+            $only = $prune ? $this->selected($collection, $opts, $viewer, $partition) : null;
 
             return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
-                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer));
+                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer), $only);
         });
     }
 
@@ -369,12 +467,12 @@ final class Db
      * @param list<array<string, mixed>> $raw storage rows
      * @return list<array<string, mixed>>
      */
-    private function withLinks(string $collection, array $raw): array
+    private function withLinks(string $collection, array $raw, ?array $only = null): array
     {
         $spec = $this->schema->collection($collection);
         $pk = $spec['primaryKey'];
         foreach ($raw === [] ? [] : $spec['columns'] as $name => $col) {
-            if ($col['type'] !== 'refList') {
+            if ($col['type'] !== 'refList' || ($only !== null && !isset($only[$name]))) {
                 continue;
             }
             $ids = [];

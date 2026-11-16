@@ -398,7 +398,12 @@ function db(): Db;   // namespace First, in Db.php, returns Db::instance()
 - `where`: filter (below).
 - `orderBy`: `['name' => 'asc', 'createdAt' => 'desc']`.
 - `limit`, `offset`: ints.
-- `columns`: `['id' => true, 'name' => true]` → only those keys.
+- `columns`: `['id' => true, 'name' => true]` → only those keys. The SQL selects
+  (and joins) only those, plus the primary key, the fields `with` loads and the
+  keys it joins on, a relation's partition column, a localized kind's `locale`
+  and `translations`, and what read extensions declare they read. It selects
+  every column when a read extension declares nothing, or a field's read rule is
+  a function (it sees the whole row).
 - `with`: `['location' => true, 'items' => ['where' => ..., 'orderBy' => ..., 'limit' => ..., 'with' => ...]]`.
   `one` relations attach a row or null; `many` attach a list. Load with one
   extra query per relation per level (`WHERE fk IN (...)`), never N+1.
@@ -444,8 +449,10 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   and decode. Lookup receives nonempty collection pages, not system-media rows.
   Mutation results (including receipt replay) and revision snapshots also prime
   their page before read transforms; callbacks may run again after write hooks.
-- `onRead(rows, collection, ?viewer)` transforms decoded rows before `with` and
-  projection; also applies to revision reads and returning write responses.
+- `onRead(rows, collection, ?viewer, reads: ?fn(collection, ?viewer): list<string>)`
+  transforms decoded rows before `with` and projection; also applies to revision
+  reads and returning write responses. `reads` names the columns it reads beside
+  the ones the query keeps; without it every read selects every column.
   Revision restore authorizes first, then uses the full stored snapshot; display
   transforms never supply persistence input. Internal mutation selection keeps
   authorization filters and passes full decoded storage rows to normalization,
@@ -503,7 +510,22 @@ or guarded `callable(Store): void` upgrades (a column check against
 `information_schema` before `ADD COLUMN`). `apply(Store)` rejects request
 transactions before running SQL or guards; the runtime applies registrations
 on activation and on the first request after an update, outside request
-transactions. `Store` exposes `afterCommit(callable)` and
+transactions.
+
+On a plugin-installed site, the checks behind "the first request after an
+update" (the stored-name upgrade, the system tables, the app's migration ledger,
+Action Scheduler groups and recurring actions, route and content Pages, Polylang
+languages, the search index shape, the runtime-schema capability) run until one
+request finds them all in place. That request records the autoloaded option
+`first_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
+`schema.php`, the system-tables version, the runtime version and hash, and the
+UTC day. While it matches, requests skip those checks, as a managed build always
+does (`Runtime::installs()`). It is recorded at the end of `wp_loaded` only after
+each check is read again and passes, so a failed, refused or held install never
+records it. A new build, a runtime update or a new day finds no match. Activating,
+deactivating or migrating the app, a change to an option those checks keep, to
+the active plugins or to an app route's Page, and a cancelled Action Scheduler
+action delete it. `Store` exposes `afterCommit(callable)` and
 `applySystemStatements(list<string>)` for these seams.
 
 `Wp\Scf::fieldFilter(fn)` transforms each fully-built field, including nested
@@ -516,12 +538,18 @@ requires handle-based compiled callbacks; schemas from the `0.2` compiler
 cannot load under this runtime. `Schema::version()` and
 `Schema::runtime()` report the loaded contract. New feature metadata passes
 through unchanged; feature modules own its behavior. Lazy scheduled promotion
-remains at the start of requests/commands, so due records are visible in that
-same request.
+remains at the start of requests/commands. On WordPress it scans only
+table-backed kinds with drafts (core's cron publishes post-backed ones), and only
+once the autoloaded `first_<app>_due_at` time has come (`Wp\DueRows`): a row
+scheduled through First lowers that time when its write commits, so it is
+visible from the first request at or after its `publishedAt`; each scan sets the
+time to the earliest row still scheduled or one minute ahead, whichever is
+sooner, so a row scheduled another way (SQL, an import) is published at most a
+minute late. `wp first publish-due` always scans.
 
 `App::dispatch(method, path, query, rawBody, Viewer, headers = [], files = [],
 form = []): Response` is the shared operation entry point for HTTP and Abilities.
-It opens or joins a transaction, promotes due rows, binds the explicit viewer
+It opens or joins a transaction, promotes due rows (throttled as above), binds the explicit viewer
 as hook actor, and restores the previous actor even on failure. It does not
 resolve credentials or convert exceptions to HTTP problems. `App::invoke(method,
 path, query, body, Viewer)` is its data-only convenience for JSON operations;
@@ -565,7 +593,7 @@ route); the facade maps input and output only. Everything else → 404 problem.
 | `POST /actions/{name}` (`GET` when readonly) | `/wp-abilities/v1/abilities/<app>/<name>/run` | 200 `{data: result}` |
 | `GET /me`, `/settings`, `/menus[/{location}]` | `/wp/v2/users/me`, `/wp/v2/settings`, `/wp/v2/menu-locations` + `/wp/v2/menu-items` | 200 `{data}` |
 | `/auth/*`, `/sync/*`, `/services/*`, `/files/*`, `/media/{id}/file/*` | First's own routes (no core route) | as each documents |
-| `GET /openapi.json` | the app plugin's `first/app/openapi.json` (`First\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` |
+| `GET /openapi.json` | the app plugin's `first/app/openapi.json` (`First\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` and an `ETag` from the file and the server it names; a matching `If-None-Match` is an empty 304 |
 
 Kinds are the app's collections, tables and users kind, plus WordPress's
 own (`posts`, `pages`, `comments`, `media`, `categories`, `tags`, `menus`)
@@ -831,12 +859,20 @@ listens and purges those URLs from Batcache and the edge. With no listener
   `batcache_cancel()`. Each cacheable render records the rows it read in
   `first__app_reads` (kind, row id or `*` for a listing, path with query),
   under the address WordPress links the page at (`/notes/a/` for a visit to
-  `/notes/a`). A committed write to a kind adds every recorded path that read
+  `/notes/a`): one read of what the path recorded last, and nothing written
+  when the render read the same rows; otherwise the path's rows are replaced
+  with inserts of 100 rows each. A committed write to a kind adds every recorded path that read
   that row or listed the kind, with its `.md` twin, to the same announcement
   as the paths above: one `first_purge_urls` call per committed transaction.
   The router answers a page with or without its trailing slash, so both
   spellings are purged. More than 200 paths in that call becomes `/*`, a
   whole-host purge. Nothing is recorded or announced without a listener.
+- **Prebuilt pages** (`Render\Prebuilt::serve`) send an `ETag` (the file's
+  size and modification time, as public files spell it) and answer a matching
+  `If-None-Match` (itself, its weak form, a list, `*`) with an empty 304 that
+  keeps the page's `Cache-Control`. The validator is checked only after every
+  gate that decides the file is this request's answer (no query string,
+  signed-in cookie, Markdown negotiation, gated site).
 - **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
   (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
   or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack

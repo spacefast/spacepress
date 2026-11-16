@@ -49,6 +49,19 @@ final class Plugin
         $this->mainFile = $mainFile;
         Hardening::apply($schema);
         Sealed::apply($schema);
+        if (!Runtime::managed()) {
+            InstallMarker::register();
+        }
+        // A table-backed row scheduled through First: promotion looks no later than its time (DueRows).
+        \First\Extensions::onWritten(function (string $op, string $collection, array $row): void {
+            if ($op === 'delete' || ($row['status'] ?? null) !== 'scheduled' || !is_string($row['publishedAt'] ?? null)
+                || !$this->schema->hasCollection($collection) || ($this->schema->collection($collection)['wp'] ?? null) !== null) {
+                return;
+            }
+            $connection = $this->connection();
+            $at = $row['publishedAt'];
+            $connection->beforeCommit(fn () => DueRows::scheduled($connection, $this->schema->name(), $at));
+        });
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
@@ -301,6 +314,7 @@ final class Plugin
 
     public function activate(): void
     {
+        InstallMarker::forget();
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         try {
             $this->migrateLocked();
@@ -333,7 +347,7 @@ final class Plugin
     {
         // Storage from before the rename that hasn't moved yet: migrating now would create empty
         // tables under the names the data is about to take. The runtime reports why (Runtime::boot).
-        if (Runtime::managed() || ZeroNames::pending() || $this->current()) {
+        if (!Runtime::installs() || ZeroNames::pending() || $this->current()) {
             return;
         }
         // A schema refusal holds until someone confirms or changes something: this build, or the
@@ -453,6 +467,7 @@ final class Plugin
 
     private function migrateNow(): array
     {
+        InstallMarker::forget();
         // A build that reads a runtime field's stored values as another type is refused before any
         // table changes, with the rest of the deploy's refusals (spec §2.10).
         $runtime = SchemaVersions::of($this)?->deployCheck();
@@ -486,6 +501,12 @@ final class Plugin
     public function migrated(): bool
     {
         return $this->unavailable() === null && $this->pendingMigrations() === [];
+    }
+
+    /** Storage matches this build, read past the option cache: what the install marker records. */
+    public function installed(): bool
+    {
+        return $this->current(true);
     }
 
     private function current(bool $fresh = false): bool

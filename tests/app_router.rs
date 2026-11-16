@@ -78,8 +78,9 @@ fn app_router_serves_pages_on_wordpress() {
         seen["home cache"][0],
         "public, max-age=0, s-maxage=300, must-revalidate"
     );
-    // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
-    assert!(body.contains(r#"/notes" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
+    // `<Link>` to a path on the site is the router region's navigation, loaded on the page, and
+    // names the template its target renders in (this layout's `template = "blank"`).
+    assert!(body.contains(r#"/notes" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-tp-template="tp-blank" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
     assert_eq!(seen["router module"], true);
     // Reads run as the visitor: the draft is missing for anonymous visitors, masked fields absent.
     assert_eq!(page("note").0, 200);

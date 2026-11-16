@@ -228,8 +228,8 @@ final class Forms
     }
 
     /**
-     * `useFormState(action)`: the state the last no-JavaScript submit of that action's form left for
-     * this page. Without one: not pending, no error, no result, no values.
+     * `useFormState(action)`: the state the last submit of that action's form left for this page
+     * (posted by the browser, or by the JavaScript submit, which follows the same 303). Without one: not pending, no error, no result, no values.
      */
     public static function state(string $action): JsObject
     {

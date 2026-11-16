@@ -68,7 +68,7 @@ impl Compiler<'_, '_> {
         })
     }
 
-    /// `useFormState(subscribe)`: what the last no-JavaScript submit of that action's form left for
+    /// `useFormState(subscribe)`: what the last submit of that action's form left for
     /// this page (docs/spec/rendering.md §4.2), read once.
     fn use_form_state(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
         let help = "pass the action the form posts to: `useFormState(subscribe)`";

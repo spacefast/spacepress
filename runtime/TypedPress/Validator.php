@@ -60,9 +60,13 @@ final class Validator
         if (function_exists('wp_unslash')) {
             $header = (string) wp_unslash($header);
         }
-        foreach (explode(',', $header) as $tag) {
-            $tag = trim($tag);
-            if ($tag === '*' || (str_starts_with($tag, 'W/') ? substr($tag, 2) : $tag) === $etag) {
+        if (trim($header) === '*') {
+            return true;
+        }
+        // Whole entity-tags, not comma-separated pieces: a comma (or a `*`) may be inside the quotes.
+        preg_match_all('/(?:W\/)?"[^"]*"/', $header, $tags);
+        foreach ($tags[0] as $tag) {
+            if ((str_starts_with($tag, 'W/') ? substr($tag, 2) : $tag) === $etag) {
                 return true;
             }
         }

@@ -223,6 +223,16 @@ eq('forget() deletes the row anyway', count($wp->sql("SELECT 1 FROM {prefix}opti
 wp_cache_flush();
 request($url, '/');
 
+// A recurring action whose next run Action Scheduler could not schedule: nothing would schedule it
+// again while the marker matches, so the failure drops the marker.
+request($url, '/');
+wp_cache_flush();
+check('a marker is recorded before the scheduling failure', $marker() !== null, $marker());
+do_action('action_scheduler_failed_to_schedule_next_instance', 0, new \RuntimeException('no next run'), null);
+wp_cache_flush();
+eq('a recurring action that could not be scheduled again drops the marker', $marker(), null);
+request($url, '/');
+
 // ---- the app's own install options drop the marker (tp_<app>_schema, _refused, _route_pages, _content) ---
 foreach (['tp_blog_schema', 'tp_blog_refused', 'tp_blog_route_pages', 'tp_blog_content'] as $option) {
     request($url, '/');

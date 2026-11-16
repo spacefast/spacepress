@@ -175,6 +175,36 @@ steps=$(wp --exec="define('TP_TEST_BUILD', '$plain');" eval "echo json_encode(Ty
 [[ $steps == '[]' ]] || fail "an app without taxonomies, on a digest recorded from kind patterns alone, plans no step: $steps"
 ok "an app without taxonomies keeps the digest recorded from its kind patterns alone"
 
+# A managed build with locales gets its Polylang languages on its first requests, as a
+# plugin-installed site does: initialize() runs before Polylang has loaded its model, so the languages
+# are provisioned on the first request that has it (REST, wp-admin, WP-CLI). The managed build has no
+# install marker, and its languages must not depend on one.
+sed -i.bak 's#  name: "installlane",#  name: "installlane",\n  locales: { default: "en", all: ["en", "de"] },#' "$work/installlane/typedpress.config.ts" && rm "$work/installlane/typedpress.config.ts.bak"
+grep -q 'locales: { default: "en", all: \["en", "de"\] }' "$work/installlane/typedpress.config.ts" || fail "the lane could not add locales to the app"
+"$bin" sources "$work/installlane" --out "$work/sources-locales"
+languages=$("$bin" compile-to-store "$work/sources-locales" "$store" "$work/sources-locales" "$build" | json build)
+# The pinned Polylang, from the harness's cache (tests/fixtures/platform.json); the app had no locales
+# when the stack came up, so the harness did not install it.
+pin=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))["plugins"]["polylang"]; print(p["version"], p["sha256"])' "$here/../fixtures/platform.json")
+read -r pll_version pll_sha <<< "$pin"
+zip="$here/cache/polylang.$pll_version.zip"
+if [[ ! -f $zip ]]; then
+  curl -sSfL -o "$zip.$$" "https://downloads.wordpress.org/plugin/polylang.$pll_version.zip"
+  printf '%s  %s\n' "$pll_sha" "$zip.$$" | sha256sum -c --quiet || { rm -f "$zip.$$"; fail "Polylang's ZIP is not the pinned one"; }
+  mv -f "$zip.$$" "$zip"
+fi
+wp plugin install "/typedpress-cache/polylang.$pll_version.zip" --activate >/dev/null 2>&1 || fail "the lane could not install Polylang"
+wp transient delete pll_activation_redirect >/dev/null 2>&1 || true
+wp --exec="define('TP_TEST_BUILD', '$languages');" eval "TypedPress\\Loader\\Loader::initialize('$root', '$languages');" >/dev/null
+for path in /wp-json/ /__tp/api/v1/kinds/notes; do
+  curl -s -o /dev/null -H "X-TypedPress-Build: $languages" "$url$path" || true
+done
+wp --exec="define('TP_TEST_BUILD', '$languages');" eval "echo 'booted';" >/dev/null
+[[ $(wp option get tp_polylang_languages 2>/dev/null) == "en:en,de" ]] || fail "a managed build's first requests provision its languages: $(wp option get tp_polylang_languages 2>&1)"
+[[ $(wp eval 'echo implode(",", (array) pll_languages_list(["fields" => "slug"]));') == "en,de" ]] || fail "Polylang has the managed build's languages"
+[[ $(wp option get tp_installed 2>/dev/null) == "" ]] || fail "provisioning languages recorded the plugin-mode install marker on a managed site"
+ok "a managed build with locales gets its Polylang languages on its first requests"
+
 # The same app installed as plugins on a fresh site, after its first requests: what initialize
 # installed is what a plugin-installed site installs on boot.
 "$here/harness.sh" down >/dev/null

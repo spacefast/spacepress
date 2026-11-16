@@ -46,6 +46,8 @@ final class InstallMarker
         add_action('deleted_option', static fn (string $option) => self::watches($option) && self::forget(), 10, 1);
         // A recurring action of TypedPress's cancelled (Tools > Scheduled Actions): the next request schedules it again.
         add_action('action_scheduler_canceled_action', static fn () => self::forget(), 10, 0);
+        // So does one whose next run Action Scheduler could not schedule: nothing else would.
+        add_action('action_scheduler_failed_to_schedule_next_instance', static fn () => self::forget(), 10, 0);
         add_action('wp_loaded', [self::class, 'record'], PHP_INT_MAX);
     }
 

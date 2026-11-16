@@ -529,7 +529,9 @@ longer pass or this request dropped it meanwhile. Dropping it always deletes the
 stored row, whatever this request cached about it. A
 new build, a runtime update, a plugin change or a new day finds no match.
 Activating, deactivating or migrating the app, a change to an option those checks
-keep or to an app route's Page, and a cancelled Action Scheduler action delete it.
+keep or to an app route's Page, a cancelled Action Scheduler action, and a recurring
+action whose next run could not be scheduled delete it. A managed build's Polylang
+languages don't depend on it: they are provisioned on its first request that has Polylang.
 
 What it deliberately no longer re-checks on every request, until the marker is
 gone (at the latest the next UTC day): storage changed without WordPress's
@@ -879,7 +881,8 @@ listens and purges those URLs from Batcache and the edge. With no listener
   (an xxh128 digest of exactly the bytes sent) and `Content-Length` (from
   `fstat` on the handle) name one version. TypedPress itself never reads the page
   into a string; with PHP output buffering on, the buffer holds the streamed body,
-  as it does for `readfile`. A matching `If-None-Match` (itself, its weak form, a list, `*`) gets an
+  as it does for `readfile`. A matching `If-None-Match` (itself, its weak form, a list of quoted
+  tags, or `*` alone; a comma or `*` inside a tag's quotes is part of that tag) gets an
   empty 304 that keeps the page's `Cache-Control`; it and HEAD read the file only
   for the hash. The validator is checked only after every
   gate that decides the file is this request's answer (no query string,

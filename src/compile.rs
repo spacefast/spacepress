@@ -14,6 +14,7 @@ mod classes;
 mod client;
 mod effects;
 mod host;
+mod html;
 mod javascript;
 
 use crate::builtins::ERROR_CONSTRUCTORS;
@@ -426,6 +427,9 @@ pub struct Compiler<'a, 'p> {
     /// next unused number so addresses of different kinds never collide.
     data_helpers: HashMap<(usize, u8, usize), String>,
     effects: effects::Effects,
+    /// A folded element with dynamic children (`fold_element`), by the PHP it compiled to: its
+    /// parts, so an enclosing folded element can place them inline.
+    folded_parts: HashMap<String, Vec<String>>,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
     pub output: String,
@@ -537,6 +541,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             helper_types: HashMap::new(),
             data_helpers: HashMap::new(),
             effects: effects::Effects::default(),
+            folded_parts: HashMap::new(),
             used_names: HashSet::new(),
             pending: Vec::new(),
             output: String::new(),
@@ -6856,6 +6861,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             JsxKind::Fragment => {
                 let children = self.jsx_children(&jsx.children)?;
+                // A fragment of static markup is that markup.
+                if let [only] = children.as_slice()
+                    && static_markup(only).is_some()
+                {
+                    return Ok(Out::atom(only.clone(), Ty::Html));
+                }
                 Ok(Out::atom(
                     format!("\\First\\Html::children({})", children.join(", ")),
                     Ty::Html,
@@ -6877,7 +6888,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.jsx_child_type(&v.ty, child.span)?;
             out.push(v.php);
         }
-        Ok(out)
+        Ok(merge_static(out))
     }
 
     /// What React accepts as a child: text, numbers, booleans and nullish (which render nothing),
@@ -7179,10 +7190,68 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (children, None) => args.extend(self.jsx_children(children)?),
         }
         args.extend(form_fields);
+        if let Some(folded) = self.fold_element(&output_tag, jsx, spread || form_action.is_some(), &args[2..]) {
+            return Ok(Out::atom(folded, Ty::Html));
+        }
         Ok(Out::atom(
             format!("\\First\\Html::element({})", args.join(", ")),
             Ty::Html,
         ))
+    }
+
+    /// The element as markup computed now (`html::open_tag`), when everything `Html::element`
+    /// would read is known at build time: a tag it renders from attributes and children alone,
+    /// literal attribute values only, no spread, form action or client directive. `children` are the
+    /// compiled children; static ones are already escaped markup. A fully static element is one
+    /// `Html::raw`; one with dynamic children places them between its static open and close tags.
+    fn fold_element(&mut self, tag: &str, jsx: &Jsx, spread: bool, children: &[String]) -> Option<String> {
+        if spread || self.client.is_some() || !html::foldable_tag(tag) {
+            return None;
+        }
+        let mut attrs = Vec::new();
+        for attr in &jsx.attrs {
+            let JsxAttr::Named { name, value, .. } = attr else {
+                return None;
+            };
+            let literal = match &value.kind {
+                ExprKind::Str(text) => html::Lit::Str(text),
+                ExprKind::Bool(b) => html::Lit::Bool(*b),
+                _ => return None,
+            };
+            attrs.push((name.as_str(), literal));
+        }
+        let open = html::open_tag(tag, &attrs)?;
+        if html::is_void(tag) {
+            return Some(format!("\\First\\Html::raw({})", php_str(&format!("{open}/>"))));
+        }
+        // A single literal string child is passed to `Html::element` unescaped (see above).
+        let children: Vec<String> = match jsx.children.as_slice() {
+            [
+                Expr {
+                    kind: ExprKind::Str(text),
+                    ..
+                },
+            ] => vec![format!("\\First\\Html::raw({})", php_str(&jsx_escape(text)))],
+            _ => children.to_vec(),
+        };
+        let mut parts = vec![format!("\\First\\Html::raw({})", php_str(&format!("{open}>")))];
+        // A folded child element's parts join this element's, so static runs span the boundary.
+        for child in children {
+            match self.folded_parts.remove(&child) {
+                Some(inner) => parts.extend(inner),
+                None => parts.push(child),
+            }
+        }
+        parts.push(format!("\\First\\Html::raw({})", php_str(&format!("</{tag}>"))));
+        let parts = merge_static(parts);
+        Some(match parts.as_slice() {
+            [only] => only.clone(),
+            _ => {
+                let php = format!("\\First\\Html::children({})", parts.join(", "));
+                self.folded_parts.insert(php.clone(), parts);
+                php
+            }
+        })
     }
 
     /// One attribute of an intrinsic element, named in the source or set by a closed spread,
@@ -11956,6 +12025,68 @@ fn literal_position(e: &Expr) -> bool {
 }
 
 /// Text React would escape, escaped the same way (`&`, `<`, `>`, `"`, `'`).
+/// The markup of `\\First\\Html::raw('...')` as the compiler writes it, unquoted; `None` for any
+/// other PHP.
+fn static_markup(php: &str) -> Option<String> {
+    let inner = php.strip_prefix("\\First\\Html::raw(")?.strip_suffix(')')?;
+    unquote_php(inner)
+}
+
+/// The value of a PHP string literal `php_str` wrote; `None` for anything else.
+fn unquote_php(php: &str) -> Option<String> {
+    let mut out = String::new();
+    if let Some(body) = php.strip_prefix('\'').and_then(|p| p.strip_suffix('\'')) {
+        let mut chars = body.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => match chars.next()? {
+                    c @ ('\'' | '\\') => out.push(c),
+                    _ => return None,
+                },
+                '\'' => return None,
+                c => out.push(c),
+            }
+        }
+        return Some(out);
+    }
+    let body = php.strip_prefix('"')?.strip_suffix('"')?;
+    let mut chars = body.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => out.push(match chars.next()? {
+                'n' => '\n',
+                'r' => '\r',
+                c @ ('\\' | '"' | '$') => c,
+                _ => return None,
+            }),
+            '"' | '$' => return None,
+            c => out.push(c),
+        }
+    }
+    Some(out)
+}
+
+/// Adjacent `Html::raw` children joined into one, so static siblings concatenate at build time.
+fn merge_static(parts: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut run: Option<String> = None;
+    for part in parts {
+        match static_markup(&part) {
+            Some(markup) => run.get_or_insert_with(String::new).push_str(&markup),
+            None => {
+                if let Some(markup) = run.take() {
+                    out.push(format!("\\First\\Html::raw({})", php_str(&markup)));
+                }
+                out.push(part);
+            }
+        }
+    }
+    if let Some(markup) = run {
+        out.push(format!("\\First\\Html::raw({})", php_str(&markup)));
+    }
+    out
+}
+
 fn jsx_escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {

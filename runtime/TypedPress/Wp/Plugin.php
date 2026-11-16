@@ -115,6 +115,7 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        BlockTemplates::register($this);
         ThemeStyles::register($this);
         \TypedPress\Render\Prebuilt::boot($this);
         PublicFiles::register($this);

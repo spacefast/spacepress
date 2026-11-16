@@ -719,6 +719,10 @@ export default function Api() {
 - `description` fields are the document's Markdown as HTML: render them with `<Html value>`.
 - `apiReference("partner-api.json")` reads a JSON file in the app's `public/` folder instead, for a
   reference to another API. The path is a literal; one outside `public/` is a build error.
+- In a project with `output: "static"`, the added operation page also lists every operation in
+  `staticParams`, so the static site builds one page per operation. Export it with `typedpress export --site <hosted site>`, so the samples call
+  that site's API; a plain `typedpress export` refuses, because the samples would name the
+  throwaway WordPress the export renders on.
 
 ## Locales
 
@@ -1300,6 +1304,11 @@ plugin, `typedpress-admin`; `admin: false` leaves it out and keeps only classic 
 public site: leave it out for the theme (or `tp/app` when it exists), `false`
 for backend only, or an external site's `https://` address (`http://` only on
 localhost) so links, previews and feeds point there.
+
+There is no option for how `tp/app/` pages render. Each page renders inside the active block
+theme's templates, with the theme's header and footer parts. A page or layout picks another
+template with `export const template` (`"blank"` for none). See [Block
+templates](pages.md#block-templates).
 
 ### Runtime schema changes
 

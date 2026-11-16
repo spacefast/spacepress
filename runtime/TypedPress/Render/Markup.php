@@ -49,6 +49,12 @@ final class Markup
             Navigation::used();
             $props['data-wp-interactive'] = Navigation::NAMESPACE;
             $props['data-wp-on--click'] = 'actions.navigate';
+            // The template the target renders in: the router swaps the region only within one.
+            $path = (string) (wp_parse_url($href, PHP_URL_PATH) ?? '/');
+            $template = \TypedPress\Wp\AppRouter::instance()?->templateFor($path);
+            if ($template !== null) {
+                $props['data-tp-template'] = $template;
+            }
             if ($prefetch === true) {
                 $props['data-wp-on--mouseenter'] = 'actions.prefetch';
             }

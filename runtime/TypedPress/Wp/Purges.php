@@ -37,9 +37,32 @@ final class Purges
     /** @var array<int, true> saves EditorSave::end collected; their wp_after_insert_post callback skips */
     private static array $collected = [];
     private static bool $scheduled = false;
+    /** A write this request changed every page: the announcement is `/*`. */
+    private static bool $everything = false;
+
+    /** Post types whose writes change how every page looks: the Site Editor's. */
+    public const DESIGN_TYPES = ['wp_template', 'wp_template_part', 'wp_global_styles', 'wp_navigation'];
 
     public static function register(Plugin $plugin): void
     {
+        // A save, trash or delete of a template, part, Global Styles or navigation menu changes
+        // every page: prebuilt files go, and the page cache purges the whole host.
+        $design = static function (int $id, mixed $post = null): void {
+            $post = $post instanceof \WP_Post ? $post : get_post($id);
+            // Core creates a default navigation menu lazily while a page renders
+            // (WP_Navigation_Fallback): not an owner's edit, and a render or prebuild must not throw
+            // away the files it is making.
+            if (!$post instanceof \WP_Post || $post->post_status === 'auto-draft' || self::frontEnd()) {
+                return;
+            }
+            if (in_array($post->post_type, self::DESIGN_TYPES, true)) {
+                \TypedPress\Render\Prebuilt::forget();
+                self::everything();
+            }
+        };
+        add_action('save_post', $design, 10, 2);
+        add_action('wp_trash_post', $design, 10, 1);
+        add_action('before_delete_post', $design, 10, 2);
         add_action('pre_post_update', static function (int $id): void {
             if (self::listening()) {
                 self::$before[$id] = self::postUrls(get_post($id));
@@ -163,6 +186,27 @@ final class Purges
         }
     }
 
+    /** A front-end request (a page render or a prerender), not a save an owner made. */
+    private static function frontEnd(): bool
+    {
+        return \TypedPress\Render\Prebuilt::prerendering()
+            || (did_action('template_redirect') > 0 && !is_admin() && !(defined('REST_REQUEST') && REST_REQUEST));
+    }
+
+    /**
+     * A write that changes every page (a Site Editor template, part, Global Styles or navigation
+     * menu): one whole-host purge, `/*`, announced with the request's other writes.
+     */
+    public static function everything(): void
+    {
+        $plugin = Plugin::instance();
+        if ($plugin === null || !self::listening()) {
+            return;
+        }
+        self::$everything = true;
+        self::add($plugin, [home_url('/')], false);
+    }
+
     /**
      * `tp/app/` pages whose recorded reads a write changed (Render\Cache, inside the write's
      * transaction): announced with the rest. `/llms.txt` lists content, not pages, and isn't added.
@@ -198,6 +242,7 @@ final class Purges
             $connection->afterCommit(self::flush(...));
             $connection->onRollback(static function (): void {
                 self::$paths = [];
+                self::$everything = false;
                 self::$scheduled = false;
             });
         } else {
@@ -211,10 +256,12 @@ final class Purges
     public static function flush(): void
     {
         $paths = array_keys(self::$paths);
+        $everything = self::$everything;
         self::$paths = [];
         self::$scheduled = false;
+        self::$everything = false;
         if ($paths !== [] && self::listening()) {
-            $paths = count($paths) > self::PURGE_LIMIT ? ['/*'] : $paths;
+            $paths = $everything || count($paths) > self::PURGE_LIMIT ? ['/*'] : $paths;
             \TypedPress\Render\Prebuilt::stale($paths);
             if (has_action('tp_purge_urls') !== false) {
                 do_action('tp_purge_urls', $paths);

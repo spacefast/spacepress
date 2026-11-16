@@ -364,6 +364,29 @@ try {
     await page.close();
   }
 
+  // A submit whose answer renders in another block template (`<body data-tp-template>`): its page
+  // loads in full, as a <Link> to it would, never a region swapped into other chrome.
+  {
+    const { page } = await open(`${url}/bare`);
+    await page.evaluate(() => {
+      window.tpMarker = "same document";
+      document.querySelector("form.bare-vote [name=_tp_return]").value = "/";
+    });
+    const from = await page.evaluate(() => document.body.dataset.tpTemplate);
+    await page.click("form.bare-vote button");
+    await page.waitForFunction(() => document.body?.dataset.tpTemplate === "tp-page" && document.querySelector(".voted"), null, { timeout: 15000 });
+    out.otherTemplate = {
+      from,
+      to: await page.evaluate(() => document.body.dataset.tpTemplate),
+      voted: await page.textContent(".voted"),
+      // One document, not a region swapped into other chrome: the theme's header and the page.
+      header: await page.$$eval("header.wp-block-template-part", (h) => h.length),
+      regions: await page.$$eval("[data-wp-router-region]", (r) => r.length),
+      url: path(page.url()),
+    };
+    await page.close();
+  }
+
   // The router module can't load: nothing was sent, so the browser posts the form itself, and the
   // page it comes back to shows the result with `?_flash` taken out of the address bar.
   {

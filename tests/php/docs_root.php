@@ -82,5 +82,9 @@ $out['post to a page'] = get("$url/about/", 'POST')['status'];
 // The bare spelling of an item's path redirects to its one address (#462).
 $out['bare'] = $page('/reference/config');
 $out['case'] = [get("$url/Reference/Config")['status'], get("$url/Reference/Config")['location']];
+// <Link> names no template for a path under the root kind's catch-all: WordPress may answer it (a
+// Page), so the router loads it rather than swap a region that isn't there. The app's own pages say theirs.
+$router = \TypedPress\Wp\AppRouter::instance();
+$out['link templates'] = ['/about/' => $router?->templateFor('/about/'), '/reference/config' => $router?->templateFor('/reference/config'), '/playground' => $router?->templateFor('/playground')];
 $site->destroy();
 echo json_encode($out, JSON_UNESCAPED_SLASHES), "\n";

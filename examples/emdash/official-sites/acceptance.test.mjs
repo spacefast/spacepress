@@ -151,7 +151,10 @@ test('pinned official Astro blank, starter and blog run against compiled native 
       const pageTwo = await html(next.getAttribute('href'));
       assert.ok(pageTwo.includes('Native pagination boundary'));
       assert.equal(pageTwo.includes(title),false);
-      const submitted = await fetch(`${frontend}/wp-comments-post.php`, {method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded',origin:frontend,referer:`${frontend}/posts/${first.slug}`},body:new URLSearchParams({comment_post_ID:String(first.id),comment_parent:'0',author:'Official source reader',email:'reader@example.test',comment:'A moderated comment on the original Astro frontend.',redirect_to:`${frontend}/posts/${first.slug}#comments`})});
+      // What a browser sends for the template's own form; Astro refuses form posts it can't tell are same-origin.
+      const crossSite = await fetch(`${frontend}/wp-comments-post.php`, {method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded','sec-fetch-site':'cross-site',origin:'https://elsewhere.example'},body:'comment=x'});
+      assert.equal(crossSite.status,403,'a cross-site comment form post is refused');
+      const submitted = await fetch(`${frontend}/wp-comments-post.php`, {method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded','sec-fetch-site':'same-origin',origin:frontend,referer:`${frontend}/posts/${first.slug}`},body:new URLSearchParams({comment_post_ID:String(first.id),comment_parent:'0',author:'Official source reader',email:'reader@example.test',comment:'A moderated comment on the original Astro frontend.',redirect_to:`${frontend}/posts/${first.slug}#comments`})});
       assert.equal(submitted.status,302,await submitted.text());
       assert.equal((await html(`/posts/${first.slug}`)).includes('A moderated comment on the original Astro frontend.'),false);
       const pending = await rest(`wp/v2/comments?post=${first.id}&status=hold`);

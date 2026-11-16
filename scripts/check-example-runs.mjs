@@ -1,0 +1,118 @@
+// Runs each example's own HTTP verifier against a real WordPress (Studio, through `typedpress dev`),
+// so an example that compiles but no longer works fails CI. scripts/check-examples.sh only compiles them.
+//
+// Each example is copied to a temporary directory first (its tp/dist, .tp and node_modules left
+// out), so a run never reuses or changes a developer's local site, and the site is deleted after.
+// Two users sign in with application passwords: `admin` and a subscriber `other`.
+//
+//   node scripts/check-example-runs.mjs [example ...]       default: every example below
+//   TP_BIN=path/to/typedpress   the compiler (default target/debug/typedpress)
+//   TP_EXAMPLE_PORT=8940        the WordPress port (default 8940); it must be free
+import { execFileSync, spawnSync } from "node:child_process";
+import { cpSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const binary = resolve(process.env.TP_BIN ?? join(root, "target/debug/typedpress"));
+const port = Number(process.env.TP_EXAMPLE_PORT ?? 8940);
+const STUDIO = "wp-studio@2.2.0"; // src/commands/dev.rs
+
+// example -> its verifier, relative to the example.
+const verifiers = {
+  "drive-locker": "verify.mjs",
+  "home-maintenance": "verify.mjs",
+  "pet-food": "verify.mjs",
+  "stuff-drawer": "verify.mjs",
+  subscriptions: "scripts/verify.mjs",
+};
+// Expected to fail until the issue is fixed: owner-scoped deletes of referenced rows answer 409 on
+// main (https://github.com/spacefast/zero/issues/533). Each still runs. Only that failure is
+// accepted: the verifier's assertion must be about a DELETE, and the last DELETE it logged (with its
+// response on the same or the next line) must be a 409 `reference_violation` "may reference this
+// row". Any other failure (startup, a timeout, another request or assertion) fails CI. A pass is
+// reported so the marker can be removed.
+const expectedFail = { "drive-locker": 533, "pet-food": 533, "stuff-drawer": 533, subscriptions: 533 };
+const selected = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(verifiers);
+for (const name of selected) if (!verifiers[name]) throw new Error(`no verifier for ${name}; known: ${Object.keys(verifiers).join(", ")}`);
+
+async function free(at) {
+  const server = createServer();
+  try {
+    await new Promise((done, fail) => { server.once("error", fail); server.listen(at, "127.0.0.1", done); });
+    return true;
+  } catch { return false; } finally { server.close(); }
+}
+
+const failed = [];
+for (const name of selected) {
+  if (!(await free(port))) throw new Error(`port ${port} is in use; set TP_EXAMPLE_PORT to a free one`);
+  const work = mkdtempSync(join(tmpdir(), `tp-example-${name}-`));
+  const project = join(work, "examples", name);
+  cpSync(join(root, "examples", name), project, {
+    recursive: true,
+    filter: (source) => !/[\\/](\.tp|node_modules|tp[\\/]dist)([\\/]|$)/.test(source.slice(root.length)),
+  });
+  symlinkSync(join(root, "target"), join(work, "target")); // verifiers default to ../../target
+  const tp = (...args) => execFileSync(binary, args, { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
+  const wp = (...args) => tp("wp", "--site", project, ...args);
+  console.log(`\n=== ${name}`);
+  let status = 1;
+  let output = "";
+  try {
+    tp("dev", project, "--port", String(port), "--no-watch");
+    const site = JSON.parse(tp("dev", "status", project, "--json")).url.replace(/\/$/, "");
+    if (site !== `http://localhost:${port}`) throw new Error(`Studio started ${name} at ${site}, not port ${port}`);
+    try { wp("user", "get", "other", "--field=ID"); } catch { wp("user", "create", "other", "other@example.test", "--role=subscriber", "--porcelain"); }
+    const password = (user) => wp("user", "application-password", "create", user, "check-example-runs", "--porcelain").split("\n").at(-1);
+    const admin = `admin:${password("admin")}`;
+    const other = `other:${password("other")}`;
+    const run = spawnSync(process.execPath, [join(project, verifiers[name])], {
+      stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60_000,
+      env: { ...process.env, TP_BIN: binary, TP_SITE: site, TP_TEST_URL: site, TP_AUTH: admin, TP_OTHER_AUTH: other, TP_APP_PASSWORD: admin, TP_OTHER_APP_PASSWORD: other },
+    });
+    process.stdout.write(run.stdout ?? "");
+    process.stderr.write(run.stderr ?? "");
+    status = run.status ?? 1;
+    output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
+  } catch (error) {
+    console.error(error.message);
+  } finally {
+    spawnSync(binary, ["dev", "stop", project], { stdio: "ignore" });
+    spawnSync("npx", ["--yes", "--package", STUDIO, "--", "studio", "delete", "--path", join(project, ".tp/dev/wordpress"), "--no-files"], { stdio: "ignore", timeout: 120_000 });
+    rmSync(work, { recursive: true, force: true });
+  }
+  const issue = expectedFail[name];
+  if (issue && status === 0) {
+    console.log(`=== ${name}: passed, but marked expected-fail for #${issue}: remove the marker`);
+    console.log(`::warning::${name} passes; remove its expected-fail marker for #${issue} in scripts/check-example-runs.mjs`);
+    continue;
+  }
+  if (issue && stoppedAtKnownRefusal(output)) {
+    console.log(`=== ${name}: expected failure (#${issue}): a delete of a referenced row answered 409`);
+    continue;
+  }
+  console.log(`=== ${name}: ${status === 0 ? "ok" : "FAILED"}`);
+  if (status !== 0) failed.push(name);
+}
+/** The verifier failed on a delete that #533 refuses: its last DELETE answered that 409, and its assertion names a delete. */
+function stoppedAtKnownRefusal(log) {
+  const lines = log.split("\n");
+  const refusal = /\b409\b.*"code":"reference_violation".*may reference this row/;
+  const at = lines.findIndex((line) => line.startsWith("AssertionError"));
+  // The assertion names the delete, or is that refusal itself.
+  if (at === -1 || !(/DELETE|delete/.test(lines[at]) || refusal.test(lines[at]))) return false;
+  for (let i = at - 1; i >= 0; i--) {
+    if (/DELETE/.test(lines[i]) && !/^Cleanup:/.test(lines[i])) {
+      return refusal.test(lines[i]) || refusal.test(lines[i + 1] ?? "");
+    }
+  }
+  return false;
+}
+
+if (failed.length) {
+  console.error(`\n${failed.length} example(s) failed: ${failed.join(", ")}`);
+  process.exit(1);
+}

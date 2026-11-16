@@ -167,6 +167,33 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
 }
 
 /// `typedpress check --json` lists each SQL index the deploy keeps and why it exists (spec §2.9).
+/// A validator receives the input it checks: a `json<string[]>()` value can be an object, so its
+/// parameter takes no PHP type and the validator's own `Array.isArray` answers (422, not a TypeError).
+#[test]
+fn a_validator_parameter_accepts_any_json_value() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_app(
+        tmp.path().join("typedpress.config.ts"),
+        "import { defineConfig, json, table } from \"typedpress\";\nexport const things = table({ tags: json<string[]>().$default(() => []).validate((tags) => Array.isArray(tags) || \"Tags must be a list.\") });\nexport default defineConfig({ name: \"tags\" });\n",
+    )
+    .unwrap();
+    let wp = build_wp(tmp.path());
+    let functions = std::fs::read_to_string(wp.join("plugins/typedpress-app-tags/tp/app/functions.php")).unwrap();
+    assert!(
+        functions.contains("function things__validate__tags($tags)"),
+        "{functions}"
+    );
+    let out = php(
+        r#"require $argv[1]; require $argv[2];
+        echo json_encode([\TypedPressApp\things__validate__tags(new \TypedPress\JsObject(['a' => true]), new \TypedPress\JsObject())]);"#,
+        &[
+            &root().join("runtime/TypedPress/bootstrap.php"),
+            &wp.join("plugins/typedpress-app-tags/tp/app/functions.php"),
+        ],
+    );
+    assert_eq!(out, json!(["Tags must be a list."]));
+}
+
 /// `.index(fields, { unique? })` (spec §2.9): a compound index the migration creates and `typedpress check
 /// --json` lists with its reason; a field the kind doesn't have is refused where it is written.
 #[test]

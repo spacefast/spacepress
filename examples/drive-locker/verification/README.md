@@ -1,5 +1,13 @@
 # Verification record
 
+> **2026-11-16:** this record is from the `ef0a42e3` baseline, before HTTP drive
+> creation worked. The 403 on `serialKey` it describes is gone: `serialKey`
+> became a compound unique index on `ownerId` and `serial`.
+> `node examples/drive-locker/verify.mjs` (no `--probe-main` mode any more)
+> covers drive CRUD over HTTP. The 409s on deleting drives and places remain on
+> main ([#533](https://github.com/spacefast/zero/issues/533)). The rest of this
+> record is kept as it was run.
+
 Source baseline: `ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1`.
 Environment: local WordPress Studio at `http://localhost:8796`, with the Vite
 frontend at `http://127.0.0.1:5196/`. No staging or production deployment exists.

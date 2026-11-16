@@ -1431,7 +1431,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         f: &Func,
         _name: &str,
         param_tys: &[Ty],
-        _slot: Option<&Slot>,
+        slot: Option<&Slot>,
     ) -> Result<(String, String)> {
         let arguments = self.javascript_arguments(f, 1)?;
         let mut params_php = Vec::new();
@@ -1458,7 +1458,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     // A hidden receiver is whatever the call supplies, undefined for a detached
                     // call, so it takes no PHP type: reading through it throws as in JavaScript.
-                    let hint = if i == 0 && receives_this(f) { "" } else { php_hint(&t) };
+                    // Nor does a validator's value: it is the input it is there to check, and a
+                    // `json<T>()` value can be any JSON, whatever T says.
+                    let unchecked = i == 0 && (receives_this(f) || matches!(slot, Some(Slot::Validate { .. })));
+                    let hint = if unchecked { "" } else { php_hint(&t) };
                     if hint == "\\TypedPress\\JsObject "
                         && matches!(t, Ty::Obj(_) | Ty::Map(_))
                         && p.default.is_none()

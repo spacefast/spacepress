@@ -15,6 +15,8 @@ export async function command(args) {
 }
 export const wp = (project, ...args) => command(['wp', '--site', project, ...args]);
 async function freePort() {
+  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
   const server = createServer();
   await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
   const address = server.address();

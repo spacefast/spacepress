@@ -34,7 +34,7 @@ export function TaskList() {
         <input value={title} onInput={(event) => setTitle(event.target.value)} placeholder="Add a task" aria-label="New task" />
         <button type="submit">Add</button>
       </form>
-      <p>{left} of {rows.length} left, saved in WordPress.</p>
+      <p>{left} of the latest {rows.length} left, saved in WordPress.</p>
     </section>
   );
 }

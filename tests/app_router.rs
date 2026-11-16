@@ -1459,12 +1459,10 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(theme["home"], 200);
 
     // With tp/app/, its page renders the note through the router; a kind URL without a page and
-    // a core post keep the theme.
+    // a core post keep the theme. An address nothing serves is the theme's own 404 template, as
+    // WordPress renders it: the app has no not-found.tsx to put in it.
     assert_eq!(app["note rendered"]["router"], true, "{app}");
-    assert_eq!(
-        app["missing rendered"],
-        serde_json::json!({ "status": 404, "theme": false, "router": true })
-    );
+    assert_eq!(app["missing rendered"], by_theme(404), "{app}");
     assert_eq!(app["post rendered"], by_theme(200), "{app}");
     assert_eq!(
         (&app["note status"], &app["note by app"], &app["note body"]),
@@ -4716,11 +4714,17 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) 
         seen["light"], seen["dark"],
         "the keyword colour follows the colour scheme"
     );
-    // The only scripts are the router's (the layout's links); code and components need none.
+    // The only scripts are the router's (the layout's links); code and components need none. The
+    // draft's 404 is the theme's own 404 template (the app has no not-found.tsx; docs/pages.md
+    // "Block templates"), whose blocks load core's own view scripts there, as on any theme page.
     for script in seen["scripts"].as_array().unwrap() {
         let script = script.as_str().unwrap();
         assert!(
-            script.contains("interactivity") || script.contains("router.js") || script.contains("a11y"),
+            script.contains("interactivity")
+                || script.contains("router.js")
+                || script.contains("a11y")
+                || script.ends_with("/block-editor/utils/fit-text-frontend.min.js")
+                || script.starts_with("/wp-includes/js/dist/script-modules/block-library/"),
             "{script}"
         );
     }

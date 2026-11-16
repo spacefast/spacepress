@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownedState, publishPlugins, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, forward } from './studio.mjs';
+import { ownedState, publishPlugins, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward } from './studio.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { EventEmitter, once } from 'node:events';
@@ -234,7 +234,20 @@ test('the address file is PHP that only holds the address', () => {
   }
 });
 
-test('the address reaches WordPress before it loads, from one line in wp-config.php', () => {
+// wp-config.php patched as typedpress dev patches it, with this machine's `php` in place of Studio's.
+function patch(source) {
+  const dir = mkdtempSync(join(tmpdir(), 'tp-config-'));
+  try {
+    const file = join(dir, 'wp-config.php');
+    writeFileSync(file, source);
+    const php = (code) => execFileSync('php', ['-d', 'short_open_tag=0', '-r', code], { encoding: 'utf8' });
+    return settingsOffset(async (code) => php(code), file).then((offset) => withAddressLine(source, offset));
+  } finally {
+    setTimeout(() => rmSync(dir, { recursive: true, force: true }), 2000);
+  }
+}
+
+test('the address reaches WordPress before it loads, from one line in wp-config.php', async () => {
   const php = addressPhp('https://box.example.ts.net:8443');
   assert.equal(php.split("'https://box.example.ts.net:8443'").length, 2);
   for (const option of ['pre_option_home', 'pre_option_siteurl']) assert.ok(php.includes(`'${option}'`), option);
@@ -242,31 +255,47 @@ test('the address reaches WordPress before it loads, from one line in wp-config.
   assert.match(php, /function_exists\( 'add_filter' \)/);
   assert.match(php, /\$GLOBALS\['wp_filter'\]/);
   const config = "<?php\ndefine( 'WP_DEBUG', false );\n/* That's all, stop editing! Happy publishing. */\n\nif ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n\n/** Sets up WordPress vars and included files. */\nrequire_once ABSPATH . 'wp-settings.php';\n";
-  const patched = withAddressLine(config);
+  const patched = await patch(config);
   const lines = patched.split('\n');
   const at = lines.findIndex((line) => line.includes('tp-dev-address.php'));
   assert.match(lines[at], /^if \( is_file\( ABSPATH \. 'tp-dev-address\.php' \) \) \{ require ABSPATH \. 'tp-dev-address\.php'; \}/);
   assert.equal(lines[at + 1], "require_once ABSPATH . 'wp-settings.php';");
   assert.equal(patched.replace(`${lines[at]}\n`, ''), config);
-  assert.equal(withAddressLine(patched), patched);
-  assert.throws(() => withAddressLine("<?php\ndefine( 'WP_DEBUG', false );\n"), /wp-config\.php does not load wp-settings\.php/);
-  // A require that is the body of an if or else: a line put before it would change what runs, so
-  // nothing is written. A comment between the statements is fine.
-  for (const body of ["if ( $a )\n\trequire_once ABSPATH . 'wp-settings.php';\nelse\n\texit;\n", "if ( $a ) { exit; } else\nrequire_once ABSPATH . 'wp-settings.php';\n", "$x = 1 +\nrequire_once ABSPATH . 'wp-settings.php';\n"]) {
-    assert.throws(() => withAddressLine(`<?php\n${body}`), /in a statement of its own/, body);
+  assert.equal(withAddressLine(patched, -1), patched);
+  await assert.rejects(patch("<?php\ndefine( 'WP_DEBUG', false );\n"), /wp-config\.php does not load wp-settings\.php/);
+  // A require that is the body of an if or else, or part of an expression: a line put before it
+  // would change what runs, so nothing is written.
+  for (const body of ["if ( $a )\n\trequire_once ABSPATH . 'wp-settings.php';\nelse\n\texit;\n", "if ( $a ) { exit; } else\nrequire_once ABSPATH . 'wp-settings.php';\n", "$x = 1 +\nrequire_once ABSPATH . 'wp-settings.php';\n", "function f() {\nrequire_once ABSPATH . 'wp-settings.php';\n}\n"]) {
+    await assert.rejects(patch(`<?php\n${body}`), /in a statement of its own/, body);
   }
-  // The require WordPress runs, not a copy of it in a comment, a heredoc or text outside PHP.
+  // The require PHP runs, not a copy of it in a comment, a string, a heredoc, an attribute or text
+  // outside PHP, as PHP's tokenizer reads them (short_open_tag off, as on Studio).
   const settings = "require_once ABSPATH . 'wp-settings.php';";
-  for (const decoy of [`/* old:\n${settings}\n*/`, `$help = <<<TXT\nx;\n${settings}\nTXT;`, `$help = <<<'TXT'\nx;\n${settings}\nTXT;`, `?>\n<p>x;\n${settings}</p>\n<?php`, `// ${settings}`, `# ${settings}`]) {
+  const decoys = [
+    `/* old:\n${settings}\n*/`,
+    `$help = <<<TXT\nx;\n${settings}\nTXT;`,
+    `$help = <<<'TXT'\nx;\n${settings}\nTXT;`,
+    `$help = <<<TXT\nTXTé;\nx;\n${settings}\nTXT;`,
+    `?>\n<p>x;\n${settings}</p>\n<?php`,
+    `?>\n<? x;\n${settings} ?>\n<?php`,
+    `?>\n<?php_example x;\n${settings}\n<?php`,
+    `$help = 'x;\n${settings.replaceAll("'", "\\'")}\n';`,
+    `$help = "x;\n${settings}\n";`,
+    `#[Example("x;\n${settings}\n")]\nfunction example() {}`,
+    `// ${settings}`,
+    `# ${settings}`,
+  ];
+  for (const decoy of decoys) {
     const source = `<?php\ndefine( 'A', 1 );\n${decoy}\nif ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n${settings}\n`;
-    const lines = withAddressLine(source).split('\n');
+    const lines = (await patch(source)).split('\n');
     const at = lines.findIndex((line) => line.startsWith('if ( is_file( ABSPATH'));
     assert.equal(lines[at + 1], settings, decoy);
     assert.equal(lines[at - 1], '}', decoy);
+    assert.equal(lines.filter((line) => line.startsWith('if ( is_file( ABSPATH')).length, 1, decoy);
   }
   // Only in a decoy: nothing runs it, so nothing is changed.
-  assert.throws(() => withAddressLine(`<?php\n/*\n${settings}\n*/\n`), /in a statement of its own/);
-  const commented = withAddressLine("<?php\ndefine( 'A', 1 ); // one\n/** Sets up WordPress vars and included files. */\nrequire_once( ABSPATH . 'wp-settings.php' );\n");
+  await assert.rejects(patch(`<?php\n/*\n${settings}\n*/\n`), /in a statement of its own/);
+  const commented = await patch("<?php\ndefine( 'A', 1 ); // one\n/** Sets up WordPress vars and included files. */\nrequire_once( ABSPATH . 'wp-settings.php' );\n");
   assert.match(commented, /tp-dev-address\.php/);
 });
 

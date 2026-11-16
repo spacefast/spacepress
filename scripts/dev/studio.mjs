@@ -268,85 +268,71 @@ unset( $tp_dev_url, $tp_dev_address, $tp_dev_option );
 const ADDRESS_FILE = 'tp-dev-address.php';
 const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require ABSPATH . '${ADDRESS_FILE}'; } // typedpress dev --url / --host`;
 
-// PHP source with everything that isn't code blanked to spaces (newlines kept, so offsets match):
-// comments, heredoc and nowdoc bodies, and text outside <?php ... ?>. Quoted strings stay, and are
-// read past so a `//` or `?>` in one is not taken for anything.
-export function phpCode(source) {
-  const out = source.split('');
-  const blank = (from, to) => { for (let i = from; i < to; i++) if (out[i] !== '\n') out[i] = ' '; };
-  let i = 0;
-  let html = true;
-  while (i < source.length) {
-    if (html) {
-      const open = source.indexOf('<?', i);
-      const at = open === -1 ? source.length : open;
-      blank(i, at);
-      if (open === -1) break;
-      i = source.startsWith('<?php', open) ? open + 5 : source.startsWith('<?=', open) ? open + 3 : open + 2;
-      html = false;
-      continue;
-    }
-    const c = source[i];
-    if (source.startsWith('?>', i)) { i += 2; html = true; continue; }
-    if (c === "'" || c === '"' || c === '`') {
-      let j = i + 1;
-      while (j < source.length && source[j] !== c) j += source[j] === '\\' ? 2 : 1;
-      i = j + 1;
-      continue;
-    }
-    if (c === '#' || source.startsWith('//', i)) {
-      // A line comment ends at the line's end or at `?>`.
-      let j = i;
-      while (j < source.length && source[j] !== '\n' && !source.startsWith('?>', j)) j++;
-      blank(i, j);
-      i = j;
-      continue;
-    }
-    if (source.startsWith('/*', i)) {
-      const close = source.indexOf('*/', i + 2);
-      const j = close === -1 ? source.length : close + 2;
-      blank(i, j);
-      i = j;
-      continue;
-    }
-    const doc = /^<<<[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\r?\n/.exec(source.slice(i, i + 200));
-    if (doc) {
-      const close = new RegExp(`\\n[ \\t]*${doc[2]}(?![A-Za-z0-9_])`, 'g');
-      close.lastIndex = i + doc[0].length - 1;
-      const found = close.exec(source);
-      const j = found ? found.index + found[0].length : source.length;
-      blank(i, j);
-      i = j;
-      continue;
-    }
-    i++;
-  }
-  return out.join('');
+// Where in wp-config.php the address line goes, found by PHP's own tokenizer: PHP code that reads
+// the file at the path in $tp_config and prints the byte offset of the
+// `require_once ABSPATH . 'wp-settings.php';` PHP runs, at the top level of the file, after a
+// token that ends a statement or a block. Comments, strings, heredocs, attributes and text
+// outside <?php ?> are tokens of their own there, so a copy of the require in one of them is not
+// taken. -1 when there is no such line.
+export const SETTINGS_OFFSET = String.raw`
+$tokens = token_get_all(file_get_contents($tp_config));
+$code = array();
+$offset = 0;
+foreach ($tokens as $token) {
+  $text = is_array($token) ? $token[1] : $token;
+  $id = is_array($token) ? $token[0] : null;
+  if (!in_array($id, array(T_WHITESPACE, T_COMMENT, T_DOC_COMMENT), true)) $code[] = array($id, $text, $offset);
+  $offset += strlen($text);
 }
+$depth = 0;
+$found = -1;
+foreach ($code as $i => $t) {
+  if ($t[1] === '{' || $t[0] === T_CURLY_OPEN || $t[0] === T_DOLLAR_OPEN_CURLY_BRACES) $depth++;
+  if ($t[1] === '}') $depth--;
+  if ($depth !== 0 || ($t[0] !== T_REQUIRE_ONCE && $t[0] !== T_REQUIRE)) continue;
+  $rest = array_pad(array_map(function ($c) { return $c[1]; }, array_slice($code, $i + 1, 6)), 6, '');
+  $paren = $rest[0] === '(';
+  $args = $paren ? array_slice($rest, 1) : $rest;
+  if ($args[0] !== 'ABSPATH' || $args[1] !== '.' || !in_array($args[2], array("'wp-settings.php'", '"wp-settings.php"'), true)) continue;
+  if (($paren ? $args[3] . $args[4] : $args[3]) !== ($paren ? ');' : ';')) continue;
+  $previous = $i > 0 ? $code[$i - 1] : null;
+  if ($previous !== null && !in_array($previous[1], array(';', '{', '}'), true) && $previous[0] !== T_OPEN_TAG) continue;
+  $found = $t[2];
+  break;
+}
+echo $found;
+`;
 
-// wp-config.php with the one line that reads the address file, placed where WordPress starts loading.
-// Only before `require_once ABSPATH . 'wp-settings.php';` in code (not in a comment, a heredoc or
-// text outside PHP) as a statement of its own: the code before it ends one (`;`, `{`, `}` or the
-// open tag), so the line put before it can't become the body of an `if` or `else`, or split a
-// statement. Anything else is refused before a file is written.
-export function withAddressLine(config) {
+// wp-config.php with the one line that reads the address file, put on its own line before the
+// require_once of wp-settings.php that PHP runs. `offset` is SETTINGS_OFFSET's answer for `config`.
+// Only where that require starts its line (indentation aside), so the line put before it can't
+// split a statement; anything else is refused before a file is written.
+export function withAddressLine(config, offset) {
   if (config.includes(ADDRESS_FILE)) return config;
-  const code = phpCode(config);
-  const settings = /^[ \t]*require(?:_once)?[ (]*ABSPATH *\. *['"]wp-settings\.php['"] *\)? *;/m.exec(code);
-  const before = settings ? code.slice(0, settings.index).trimEnd() : '';
-  if (!settings || !/(;|\{|\}|<\?php)$/.test(before)) {
+  const bytes = Buffer.from(config, 'utf8');
+  const at = offset >= 0 ? bytes.subarray(0, offset).toString('utf8').length : -1;
+  const start = at >= 0 ? config.lastIndexOf('\n', at - 1) + 1 : -1;
+  if (at < 0 || config.slice(start, at).trim() !== '') {
     throw new Error("wp-config.php does not load wp-settings.php in a statement of its own (require_once ABSPATH . 'wp-settings.php';); --url and --host cannot set the address.");
   }
-  return `${config.slice(0, settings.index)}${ADDRESS_LINE}\n${config.slice(settings.index)}`;
+  return `${config.slice(0, start)}${ADDRESS_LINE}\n${config.slice(start)}`;
 }
 
-async function announce(site, url) {
+// `php(code)` runs PHP code and answers what it printed.
+export const settingsOffset = async (php, config) => {
+  const out = (await php(`$tp_config = ${phpString(config)};${SETTINGS_OFFSET}`)).trim();
+  if (!/^-?\d+$/.test(out)) throw new Error(`Could not read wp-config.php with PHP's tokenizer: ${out.slice(0, 200)}`);
+  return Number(out);
+};
+
+async function announce(site, url, php) {
   const file = join(site, ADDRESS_FILE);
   if (!url) return rm(file, { force: true });
   const config = join(site, 'wp-config.php');
   const source = await readFile(config, 'utf8');
+  const patched = source.includes(ADDRESS_FILE) ? source : withAddressLine(source, await settingsOffset(php, config));
   await writeFile(file, addressPhp(url));
-  if (withAddressLine(source) !== source) await writeFile(config, withAddressLine(source));
+  if (patched !== source) await writeFile(config, patched);
 }
 
 // --host: connections to this machine's address, passed to Studio's listener and back unchanged.
@@ -692,7 +678,8 @@ async function main() {
     const url = address.url ?? local;
     // The development identity app stays registered for this machine's own address.
     siteUrl = local;
-    await announce(managed.owner.site, address.url);
+    // Studio's own PHP, through WP-CLI without loading WordPress.
+    await announce(managed.owner.site, address.url, (code) => runStudio(['wp', 'eval', '--skip-wordpress', code], { capture: true }));
     if (address.listen) relay = await forward(address.listen, port, port);
     const mu = join(managed.owner.site, 'wp-content/mu-plugins/typedpress-dev-runtime.php');
     if (!managed.owner.devMu && await exists(mu)) throw new Error('typedpress-dev-runtime.php already exists and is not managed by TypedPress.');

@@ -34,7 +34,7 @@ Every First file starts with `declare(strict_types=1);`. Namespace `First`.
     first/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
     first/app/client/first-client.js   the typed client as a browser module (`@first/client`), minified
     first/app/client-version.php       `return '<12 hex>';`: digest of first-client.js, its script version
-    first/app/client/<stem>.<12 hex>.js  "use client" stores, minified, named by their unminified bytes
+    first/app/client/<stem>.<12 hex>.js  "use client" stores, minified; the hex is SHA-256 of these bytes
     first/app/client/.htaccess         an immutable year-long Cache-Control for those stores only
     public/...                         copied from <project>/public if present
   *.zip                                the same plugins, packaged

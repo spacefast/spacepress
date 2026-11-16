@@ -8,27 +8,35 @@ alone is insufficient: the emitted function signature must enforce `JsObject`,
 the parameter must have no default initializer, and the completed effects analysis
 must show no assignment to its binding, including from captured closures.
 
-Reads also take the native-first form when the receiver is any local or parameter that the
-effects analysis shows no assignment replaces, read as a plain PHP variable, and every shape its
-type allows is a plain object: `$x->p['k'] ?? Js::dataGet($x, 'k')`. No PHP entry type is needed
-for this: when `$x` is null, undefined or a primitive, `??` reads the missing property without a
-diagnostic and falls to the checked read, which then throws or answers exactly as before. Only a
-`JsObject`, `JsArray` or `JsArguments` has a public `p`, and an array-typed receiver keeps the
-checked read (its `length` and indexes live outside `p`). The left side is evaluated once even
-when it is null (PHP 8.2 and 8.5).
+That proof (a `JsObject` entry type, no default, no reassignment) covers **writes** and the
+original reads. Since the performance work of 2026-11-15, **reads** take the native-first form in
+a wider case: the receiver is any local or parameter that the effects analysis shows no
+assignment replaces (captures included), it is emitted as a plain PHP variable, and every member
+of its non-null type is a plain object shape (`Ty::Obj` or `Ty::Map`). That includes `const`
+locals, `as` assertions to an object type and nullable parameters, and required, optional and
+map fields alike. No PHP entry type is needed for this: when `$x` is null, undefined or a
+primitive at run time, `??` reads the missing property without a diagnostic and falls to the
+checked read, which then throws or answers exactly as before. Only a `JsObject`, `JsArray` or
+`JsArguments` has a public `p`, and an array-typed receiver keeps the checked read (its `length`
+and indexes live outside `p`). The left side of `??` is evaluated once even when it is null
+(PHP 8.2 and 8.5).
 
-The compiler records this proof on the binding, independently of its inferred
-field types. It recognizes direct identifier receivers, including their use in
-captured closures. Other locals, assertions, nullable parameters, dynamic reads,
-optional fields, computed reads and class statics retain the checked helpers.
-Rebinding a parameter through a closure disables the optimization for its whole
-body. Destructuring retains its existing emission. No wrapper or alternate
-runtime representation is introduced.
+Still on the checked helpers: a receiver that is reassigned anywhere (a closure rebinding it
+disables the native read for the whole body), one that is not a plain variable (a call or an
+intermediate value in a property chain; the temporary that optional chaining reads through is a
+plain variable and does qualify), dynamic (`unknown`/imported JavaScript) receivers, computed
+keys, arrays, class statics, and destructuring, which keeps its existing emission. No wrapper or alternate runtime
+representation is introduced.
 
-The native read keeps the helper's null-coalescing behavior for a missing own
-property. It cannot encounter a nullish receiver because PHP enforces the entry
-type and the binding cannot be replaced. PHP object handles preserve aliases;
-this does not introduce PHP array copy-on-write semantics for authored objects.
+The native read keeps the helper's result for a missing own property and for a nullish or
+primitive receiver, as above. PHP object handles preserve aliases; this does not introduce PHP
+array copy-on-write semantics for authored objects.
+
+Comparisons follow the same rule of a native fast path behind a run-time check
+(`docs/design-js-references.md` §5): `<`, `<=`, `>`, `>=` and `===` on operands typed `number`
+compile to `(is_int|is_float) ? native : Js helper`. The check is skipped only for an operand
+whose emitted PHP is a number literal; a value that merely has a literal *type*
+(`JSON.parse(s) as 0`) is checked like any other, and a call operand keeps `Js::strictEq`.
 
 Writes retain receiver-before-key-before-value evaluation, including expression
 position through the existing sequencing array. The internal write target uses

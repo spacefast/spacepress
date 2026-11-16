@@ -1684,6 +1684,22 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("stringEquality")
     );
     assert!(body("localRead").contains("->p['title'] ??"), "{}", body("localRead"));
+    // A literal-typed value that may hold anything is still checked; a call stays on the helper.
+    assert!(
+        body("literalTypedNull").contains("(\\is_int($n) || \\is_float($n)) ? $n == 0"),
+        "{}",
+        body("literalTypedNull")
+    );
+    assert!(
+        body("literalTypedMissing").contains("\\is_float($__t"),
+        "{}",
+        body("literalTypedMissing")
+    );
+    assert!(
+        body("literalTypedCall").contains("\\First\\Js::strictEq($a, "),
+        "{}",
+        body("literalTypedCall")
+    );
 
     // Only a function that names `arguments`, itself or in one of its arrows, builds the object.
     for (name, uses) in [
@@ -1920,6 +1936,79 @@ fn compiled_tsx_renders_the_html_react_renders() {
         rendered["0"]["html"],
         "<div>a<br/>b<svg><foreignObject></foreignObject></svg></div>"
     );
+    // A void element's children are evaluated even though they don't render (React refuses them,
+    // so there is no React case): folding `<br>` must not drop their effects or errors.
+    let cases = serde_json::json!([
+        { "component": "components/static.tsx#VoidChildren", "props": {} },
+        { "component": "components/static.tsx#VoidThrows", "props": {} },
+    ]);
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let out = Command::new("php")
+        .arg(dir.join("render-php.php"))
+        .arg(plugins.join("first-runtime"))
+        .arg(&app)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(rendered["0"]["html"], "<p>1<br/></p>", "{rendered}");
+    assert_eq!(rendered["1"]["error"], "a void element's child ran", "{rendered}");
+    // Literal JSX is folded into markup at build time; what folding leaves to the runtime still
+    // calls `Html::element` (src/compile/html.rs).
+    let functions = std::fs::read_to_string(app.join("first/app/functions.php")).unwrap();
+    let body = |name: &str| {
+        functions
+            .split(&format!("function component__components_{name}("))
+            .nth(1)
+            .and_then(|rest| rest.split("\n}\n").next())
+            .unwrap_or_else(|| panic!("no {name} in functions.php"))
+            .to_string()
+    };
+    let folded = body("static__Static");
+    for element in [
+        "'main'",
+        "'header'",
+        "'h1'",
+        "'nav'",
+        "'a'",
+        "'svg'",
+        "'table'",
+        "'details'",
+        "'br'",
+        "'img'",
+    ] {
+        assert!(
+            !folded.contains(&format!("\\First\\Html::element({element}")),
+            "{element} not folded:\n{folded}"
+        );
+    }
+    assert!(folded.contains("<main class=\"page\" id=\"top\""), "{folded}");
+    // Left to the runtime: a custom element, a list item with a dynamic key, a void element with children.
+    assert!(folded.contains("\\First\\Html::element('link-like'"), "{folded}");
+    assert!(
+        folded.contains("\\First\\Html::element('li', ['className' => 'item', 'key' => $item]"),
+        "{folded}"
+    );
+    assert!(
+        body("static__VoidChildren").contains("\\First\\Html::element('br', [], "),
+        "{}",
+        body("static__VoidChildren")
+    );
+    let attributes = body("attributes__Attributes");
+    for element in [
+        "'input'",
+        "'textarea'",
+        "'select'",
+        "'option'",
+        "'pre'",
+        "'form'",
+        "'my-widget'",
+    ] {
+        assert!(
+            attributes.contains(&format!("\\First\\Html::element({element}")),
+            "{element} folded:\n{attributes}"
+        );
+    }
     // Extra keys in decoded JSON never reach `style` or a spread's attributes.
     let evil = "url(//evil.example/t)";
     let cases = serde_json::json!([{

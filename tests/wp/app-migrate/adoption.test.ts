@@ -103,6 +103,10 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   // Legacy prefix indexes exceed MyISAM's key limit; restore them after the engine probe.
   sql(`ALTER TABLE ${table} DROP INDEX by_owner, DROP INDEX by_done, ENGINE=MyISAM`);
   sql(`UPDATE wp_options SET option_value = 'pending-storage-upgrade' WHERE option_name = '${schemaOption}'`);
+  // An option edited with SQL fires no WordPress hook, so the install marker (docs/runtime-contract.md)
+  // still says storage is in place; drop it, as the contract says to, so the next request checks again.
+  sql("DELETE FROM wp_options WHERE option_name = 'tp_installed'");
+  wp("cache", "flush");
   try {
     const refused = await fetch(`${api}/actions/list`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const problem: unknown = await refused.json();

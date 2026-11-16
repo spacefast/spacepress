@@ -33,7 +33,9 @@ final class Markup
     /**
      * `<Link href prefetch?>children</Link>`: an `<a>` with React's attribute rules. A same-site
      * path gets `data-wp-on--click` for the router region's navigation once the router store is
-     * on the page; without JavaScript it is an ordinary link.
+     * on the page; without JavaScript it is an ordinary link. A path a `tp/app/` page serves is
+     * written as that page's one address (`/docs/intro/` under `/%postname%/`, AppRouter::canonical),
+     * so following it is never a redirect.
      *
      * @param array<string, mixed> $props
      */
@@ -43,7 +45,9 @@ final class Markup
         unset($props['prefetch']);
         $href = $props['href'] ?? null;
         if (is_string($href) && str_starts_with($href, '/') && !str_starts_with($href, '//')) {
-            $props['href'] = home_url($href);
+            $path = (string) strtok($href, '?#');
+            $router = \TypedPress\Wp\AppRouter::instance();
+            $props['href'] = home_url(($router?->canonical($path) ?? $path) . substr($href, strlen($path)));
             Navigation::used();
             $props['data-wp-interactive'] = Navigation::NAMESPACE;
             $props['data-wp-on--click'] = 'actions.navigate';

@@ -63,10 +63,8 @@ final class AppRouter
         }
         // After the frontend-mode gate (-1) and a kind URL's old-slug redirect (0).
         add_action('template_redirect', [self::$instance, 'claim'], 1);
-        add_filter('redirect_canonical', static fn (string|false $redirect): string|false => self::$instance?->serving ? false : $redirect, 10, 1);
     }
 
-    private bool $serving = false;
     /** @var list<string> the stylesheets of the route being rendered, linked by document() */
     private array $styles = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
@@ -298,7 +296,17 @@ final class AppRouter
             }
             return;
         }
-        $this->serving = true;
+        // One address per page (#462): the spelling the permalink structure gives (`/docs/intro/` under
+        // `/%postname%/`), as WordPress's redirect_canonical() spells a post's, with the query string
+        // as sent. Core's function itself never runs on an app page: it would read an app's own query
+        // parameters that share core's names (`?page=2`, `?name=`) as its own and move them into the path.
+        // A prerender (the prebuild, `typedpress export`) asks for the bare path and gets the page.
+        $canonical = $this->canonical($path);
+        if ($canonical !== $path && !\TypedPress\Render\Prebuilt::prerendering()) {
+            $query = (string) ($_SERVER['QUERY_STRING'] ?? '');
+            wp_safe_redirect(home_url($canonical) . ($query !== '' ? '?' . $query : ''), 301);
+            exit;
+        }
         // A static route's code Page ({@see RoutePages}) is the queried object while it renders,
         // as WordPress's own page template would have it: menus, SEO plugins and `the_ID()` see it.
         $id = RoutePages::instance()?->pages()[(string) $match['route']['id']] ?? null;
@@ -314,6 +322,23 @@ final class AppRouter
             $this->notFound();
         }
         $this->serve($match['route'], $match['params'], $viewer, 200);
+    }
+
+    /**
+     * The one spelling of a path below the home URL that a `tp/app/` page serves: with or without a
+     * trailing slash as the permalink structure says (`user_trailingslashit`), the way WordPress links
+     * a post. The front page, a `.md` twin, a `route.ts` and any path no page serves keep their spelling.
+     */
+    public function canonical(string $path): string
+    {
+        if ($path === '/' || str_ends_with($path, '.md') || $this->reserved($path)) {
+            return $path;
+        }
+        $match = self::match($this->app['routes'], $path);
+        if ($match === null || ($match['route']['page'] ?? null) === null) {
+            return $path;
+        }
+        return user_trailingslashit(rtrim($path, '/'));
     }
 
     /** @param array<string, mixed> $route whether the route serves a kind whose url is the site root, `/:path` */

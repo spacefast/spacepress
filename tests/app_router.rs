@@ -3449,6 +3449,95 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             "roadmap": ["guides", 2, "draft"], "space": ["deploy", 0, "publish"],
         })
     );
+    // What the rest of WordPress is told a doc's URL is (an SEO or breadcrumb plugin, `is_singular()`,
+    // `get_queried_object()`): the doc, a singular item of the kind's post type, at the top of the tree
+    // or below it. Core prints `single single-<post type> postid-<id>` for it, and sends none of the
+    // no-cache headers it sends with a 404.
+    let wordpress = &seen["wordpress"];
+    assert_eq!(wordpress["type"], "tp_docs");
+    let is_doc = |page: &serde_json::Value, what: &str| {
+        let id = page["expected id"].as_u64().unwrap();
+        assert!(id > 0, "{what}");
+        let query = serde_json::json!({ "id": id, "type": "tp_docs", "is_404": false, "is_singular": true });
+        assert_eq!(page["status"], 200, "{what}");
+        assert_eq!(page["resolved"], query, "{what}: what WordPress resolved the URL to");
+        assert_eq!(page["query"], query, "{what}: what a plugin is told while the page renders");
+        assert_eq!(
+            page["body"],
+            serde_json::json!([
+                "wp-singular",
+                "tp_docs-template-default",
+                "single",
+                "single-tp_docs",
+                format!("postid-{id}"),
+                "wp-embed-responsive",
+                "typedpress-app"
+            ]),
+            "{what}"
+        );
+        assert_eq!(page["expires"], serde_json::Value::Null, "{what}: no `Expires: … 1984`");
+        assert_eq!(
+            page["cache"], "public, max-age=0, s-maxage=300, must-revalidate",
+            "{what}"
+        );
+    };
+    is_doc(&wordpress["install"], "/docs/guides/install");
+    is_doc(&wordpress["introduction"], "/docs/introduction");
+    is_doc(&wordpress["space"], "/docs/guides/deploy/space");
+    // A path with no item is the app's 404, and WordPress's.
+    let missing = &wordpress["missing"];
+    let not_found = serde_json::json!({ "id": 0, "type": null, "is_404": true, "is_singular": false });
+    assert_eq!(missing["status"], 404);
+    assert_eq!(missing["resolved"], not_found);
+    assert_eq!(missing["query"], not_found);
+    assert_eq!(
+        missing["body"],
+        serde_json::json!(["error404", "wp-embed-responsive", "typedpress-app"])
+    );
+    assert_eq!(missing["cache"], "private, no-store, max-age=0");
+    // Another case of the path is the same item: it redirects to the item's one URL.
+    assert_eq!(
+        wordpress["case"],
+        serde_json::json!({ "status": 301, "location": "/docs/guides/install/" })
+    );
+    // WordPress's sitemap lists the published docs at the kind's URLs.
+    assert!(
+        seen["sitemap"][0]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("/wp-sitemap-tp-docs-1.xml")),
+        "{}",
+        seen["sitemap"][0]
+    );
+    assert_eq!(
+        seen["sitemap"][1],
+        serde_json::json!([
+            "/docs/guides/",
+            "/docs/guides/deploy/",
+            "/docs/guides/deploy/space/",
+            "/docs/guides/install/",
+            "/docs/guides/setup/",
+            "/docs/introduction/",
+            "/docs/reference/"
+        ])
+    );
+    // A site built before the `:path` rule was TypedPress's own holds a rule that hands the path to core's
+    // `pagename`, which core skips unless a Page is at that path. It gets the new rule without anyone
+    // flushing: a managed build's deploy sees the stored rules are behind and rebuilds them, and a
+    // plugin-installed site rebuilds on its next request, which is already answered right.
+    let old_rule = "index.php?post_type=tp_docs&tp_kind=docs&pagename=$matches[1]";
+    let new_rule = "index.php?post_type=tp_docs&tp_kind=docs&tp_kind_path=$matches[1]";
+    let deploy = &seen["stale site"]["deploy"];
+    assert_eq!(deploy["rule before"], old_rule);
+    assert_eq!(deploy["recorded before"], false);
+    assert_eq!(deploy["rebuilt"], true);
+    assert_eq!(deploy["rule after"], new_rule);
+    assert_eq!(deploy["recorded after"], true);
+    let request = &seen["stale site"]["request"];
+    assert_eq!(request["rule before"], old_rule);
+    is_doc(&request["first request"], "the first request of a site with the old rule");
+    assert_eq!(request["rule after"], new_rule);
+    assert_eq!(request["recorded after"], true);
     // nav(): the published tree, siblings by order, the current item and its ancestors marked.
     let tree = |current: &str, open: &[&str]| {
         let mark = |name: &str, path: &str| {
@@ -3585,8 +3674,17 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(seen["moved old"], serde_json::json!([404]));
     // A published page under a draft is as hidden as the draft: its path names an unpublished page.
     assert_eq!(seen["under a draft"], serde_json::json!([404, 404]));
+    assert_eq!(seen["under a draft resolved"], not_found);
     // A WordPress Page with a doc's slug doesn't take over the doc's URL.
     assert_eq!(seen["page with a doc slug"], serde_json::json!([200, ["Introduction"]]));
+    // Nor do Pages at a nested doc's whole path: the doc is served, with no redirect, and is still
+    // what WordPress says the URL is. The Pages keep their own addresses.
+    let pages = &seen["pages at a doc path"];
+    is_doc(&pages["top"], "/docs/introduction beside a Page `introduction`");
+    is_doc(&pages["nested"], "/docs/guides/install beside a Page at `guides/install`");
+    assert_eq!(pages["nested"]["h1"], serde_json::json!(["Install"]));
+    assert_eq!(pages["nested"]["location"], serde_json::Value::Null);
+    assert_eq!(pages["the page itself"], serde_json::json!([200, true]));
     // Slugs are unique among siblings: two pages named `install` under different parents each serve.
     assert_eq!(
         seen["same slug elsewhere"],

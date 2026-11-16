@@ -12,7 +12,26 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('docs-kind', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
+// Test-only must-use plugin: what WordPress's main query says a page is. `X-Test-Resolved` is what
+// WordPress resolved the URL to, before TypedPress's router runs; the HTML comment is what a plugin is
+// told while the page renders (an SEO or breadcrumb plugin, in the footer).
+$site = wpSite('docs-kind', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => ['query' => <<<'PHP'
+    <?php
+    function tp_test_query(): string
+    {
+        $object = get_queried_object();
+        return (string) wp_json_encode([
+            'id' => get_queried_object_id(),
+            'type' => $object instanceof WP_Post ? $object->post_type : null,
+            'is_404' => is_404(),
+            'is_singular' => is_singular(),
+        ]);
+    }
+    add_action('template_redirect', static fn () => header('X-Test-Resolved: ' . tp_test_query()), PHP_INT_MIN);
+    add_action('wp_footer', static function (): void {
+        echo '<!-- wp-query ' . tp_test_query() . ' -->';
+    });
+    PHP]]);
 $out = [];
 $out['seed'] = \TypedPress\Sync\Seed::run(\TypedPress\Wp\Runtime::plugin(), $argv[2]);
 $site->startServer();
@@ -72,6 +91,23 @@ function doc(array $r): array
     ];
 }
 
+/** What WordPress itself says a response is: its main query, the body's classes, the headers a 404 gets. */
+function wordpress(array $r): array
+{
+    preg_match('#<!-- wp-query (.*?) -->#', $r['body'], $query);
+    preg_match('#<body class="([^"]*)"#', $r['body'], $body);
+    return [
+        'status' => $r['status'],
+        'query' => isset($query[1]) ? json_decode($query[1], true) : null,
+        'resolved' => isset($r['headers']['x-test-resolved'][0]) ? json_decode($r['headers']['x-test-resolved'][0], true) : null,
+        // The theme's own class (`wp-theme-…`) follows the WordPress version's default theme.
+        'body' => array_values(array_filter(explode(' ', $body[1] ?? ''), static fn (string $c): bool => !str_starts_with($c, 'wp-theme-'))),
+        'expires' => $r['headers']['expires'][0] ?? null,
+        'cache' => $r['headers']['cache-control'][0] ?? null,
+        'location' => $r['headers']['location'][0] ?? null,
+    ];
+}
+
 $cookie = static function (string $user) use ($site): string {
     $id = $site->userId($user);
     return 'Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode(wp_generate_auth_cookie($id, time() + 3600, 'logged_in'));
@@ -86,6 +122,48 @@ foreach ($rows as $row) {
     $out['stored'][$row['post_name']] = [($byId[$row['post_parent']] ?? null), (int) $row['menu_order'], $row['post_status']];
 }
 $out['type hierarchical'] = is_post_type_hierarchical($type);
+
+// A site built before the rule for `:path` was TypedPress's own: its stored rule hands the path to core's
+// `pagename`, and the recorded fingerprint is the patterns alone.
+$docRule = static fn (): string => (string) (maybe_unserialize($wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'rewrite_rules'"))['^docs/(.+?)/?$'] ?? '');
+$stale = static function (): void {
+    update_option('rewrite_rules', array_map(static fn (string $query): string => str_replace('tp_kind_path=', 'pagename=', $query), (array) get_option('rewrite_rules')));
+    update_option('tp_kind_urls', md5((string) json_encode(['/docs/:path'])), true);
+};
+$fresh = static function (): void {
+    foreach (['tp_kind_urls', 'rewrite_rules', 'alloptions', 'notoptions'] as $key) {
+        wp_cache_delete($key, 'options');
+    }
+};
+$doc = static fn (string $path): int => (int) get_page_by_path($path, OBJECT, $type)?->ID;
+// A managed build never flushes on a request: its deploy asks whether the stored rules are behind
+// (Runtime::rewritesBehind reads KindUrls::recorded) and rebuilds them once (Runtime::installRewrites).
+$stale();
+$out['stale site']['deploy'] = ['rule before' => $docRule(), 'recorded before' => \TypedPress\Wp\KindUrls::recorded(), 'rebuilt' => \TypedPress\Wp\Runtime::installRewrites()['rules']];
+$fresh();
+$out['stale site']['deploy'] += ['rule after' => $docRule(), 'recorded after' => \TypedPress\Wp\KindUrls::recorded()];
+// A plugin-installed site rebuilds on the first request, which is already answered from the new rule.
+$stale();
+$out['stale site']['request'] = ['rule before' => $docRule(), 'first request' => wordpress(fetch("$url/docs/guides/install")) + ['expected id' => $doc('guides/install')]];
+$fresh();
+$out['stale site']['request'] += ['rule after' => $docRule(), 'recorded after' => \TypedPress\Wp\KindUrls::recorded()];
+
+// What the rest of WordPress sees at a doc's URL: the doc, as a singular item of its post type, nested
+// or at the top; a path with no item is the app's 404, and WordPress's too.
+foreach (['install' => 'guides/install', 'introduction' => 'introduction', 'space' => 'guides/deploy/space'] as $key => $path) {
+    $out['wordpress'][$key] = wordpress(fetch("$url/docs/$path")) + ['expected id' => $doc($path)];
+}
+$out['wordpress']['missing'] = wordpress(fetch("$url/docs/no-such-doc"));
+$out['wordpress']['type'] = $type;
+// Another case of a path is the same item: one URL per item, so it redirects to the item's own.
+$out['wordpress']['case'] = array_intersect_key(wordpress(fetch("$url/docs/Guides/Install")), ['status' => 1, 'location' => 1]);
+$out['wordpress']['case']['location'] = parse_url((string) $out['wordpress']['case']['location'], PHP_URL_PATH);
+// WordPress's sitemap lists the published items at the kind's URLs (sorted here: core lists by id).
+preg_match_all('#<loc>([^<]+)</loc>#', fetch("$url/wp-sitemap.xml")['body'], $index);
+preg_match_all('#<loc>([^<]+)</loc>#', fetch("$url/wp-sitemap-tp-docs-1.xml")['body'], $locs);
+$paths = array_map(static fn (string $u): ?string => parse_url($u, PHP_URL_PATH), $locs[1]);
+sort($paths);
+$out['sitemap'] = [array_map(static fn (string $u): ?string => parse_url($u, PHP_URL_PATH), $index[1]), $paths];
 
 $out['introduction'] = doc(fetch("$url/docs/introduction"));
 $out['install'] = doc(fetch("$url/docs/guides/install"));
@@ -123,10 +201,23 @@ wp_set_current_user($site->userId('chief'));
 $under = wp_insert_post(['post_type' => $type, 'post_status' => 'publish', 'post_title' => 'Later', 'post_name' => 'later', 'post_parent' => $roadmap]);
 wp_set_current_user(0);
 $out['under a draft'] = [fetch("$url/docs/guides/roadmap/later")['status'], fetch("$url/docs/guides/roadmap/later.md")['status']];
+// WordPress doesn't resolve it either, so a theme or plugin that renders what WordPress resolved shows nothing.
+$out['under a draft resolved'] = wordpress(fetch("$url/docs/guides/roadmap/later"))['resolved'];
 wp_delete_post($under, true);
 // A WordPress Page with a doc's slug: the doc's URL is still the doc, not a redirect loop.
 $page = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Introduction', 'post_name' => 'introduction']);
 $out['page with a doc slug'] = [fetch("$url/docs/introduction")['status'], doc(fetch("$url/docs/introduction"))['h1']];
+// Nor do Pages at a nested doc's whole path (`guides/install`): WordPress's queried object is the doc.
+$above = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Guides page', 'post_name' => 'guides']);
+$below = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Install page', 'post_name' => 'install', 'post_parent' => $above]);
+$out['pages at a doc path'] = [
+    'top' => wordpress(fetch("$url/docs/introduction")) + ['expected id' => $doc('introduction')],
+    'nested' => wordpress(fetch("$url/docs/guides/install")) + ['expected id' => $doc('guides/install'), 'h1' => doc(fetch("$url/docs/guides/install"))['h1']],
+    // The Pages keep their own addresses.
+    'the page itself' => [fetch("$url/guides/install/")['status'], str_contains(fetch("$url/guides/install/")['body'], 'Install page')],
+];
+wp_delete_post($below, true);
+wp_delete_post($above, true);
 wp_delete_post($page, true);
 // A published page with a slug a sibling elsewhere has: both are served, each at its own path.
 wp_set_current_user($site->userId('chief'));

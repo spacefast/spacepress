@@ -2955,6 +2955,12 @@ fn one_write_announces_its_purges_once() {
 /// in import order (the root layout's first), from the app plugin, with content-hashed names; a CSS
 /// module's classes are renamed `<stem>_<class>` on the element and in the served file, and an SVG
 /// import is its URL.
+///
+/// The app is the only author of a page's styles (docs/pages.md, "Stylesheets and images"): under a
+/// block theme that styles `body`, links and headings and enqueues a stylesheet of its own
+/// (tests/fixtures/theme-loud), a page the app renders has none of the theme's styles and links
+/// the app's stylesheets after every other one, while WordPress's block styles and the theme's
+/// presets are there for block content. A post the theme renders keeps the theme's styles.
 #[test]
 fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     let project = fixture("app-assets", "serve");
@@ -3018,6 +3024,59 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["type"].as_str().unwrap().starts_with("image/svg+xml"), "{image}");
     assert!(image["src"].as_str().unwrap().starts_with("compass-"), "{image}");
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
+
+    // Each stylesheet of a page's head, in order: a `<style>` or `<link>` by its id.
+    let ids = |page: &str| -> Vec<String> {
+        seen[page]["head"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap().to_string()).collect()
+    };
+    let global = |page: &str| -> String {
+        let head = seen[page]["head"].as_array().unwrap();
+        head.iter().filter(|s| s["id"] == "global-styles-inline-css").map(|s| s["css"].as_str().unwrap()).collect()
+    };
+    for page in ["about", "plain", "colophon", "blocks"] {
+        let ids = ids(page);
+        // The app's stylesheets are the last of the document: nothing of WordPress's, the theme's
+        // or a plugin's follows them, in the head or in the body.
+        let first = ids.iter().position(|id| id.starts_with("first-app-")).unwrap();
+        assert!(ids[first..].iter().all(|id| id.starts_with("first-app-")), "{page}: {ids:?}");
+        assert_eq!(seen[page]["body"], serde_json::json!([]), "{page}");
+        // None of the theme's styles: not its stylesheet, not its theme.json `styles` (the page's
+        // colours, links, headings, a block's, its custom CSS).
+        assert!(!ids.iter().any(|id| id.starts_with("loud-style")), "{page}: {ids:?}");
+        let global = global(page);
+        for theme in ["#ff00aa", "#00ffaa", "#aa00ff", "77px", "3.21", "loud-theme-css"] {
+            assert!(!global.contains(theme), "{page}: the theme's {theme} is in {global}");
+        }
+        // The theme's settings are there (its palette as variables and classes, its content
+        // width), and so are WordPress's own styles: layouts, the default button, the block library.
+        for kept in [
+            "--wp--preset--color--accent: #1f4d3a",
+            ".has-accent-color",
+            "--wp--style--global--content-size: 40rem",
+            ".is-layout-flex",
+            ".wp-element-button",
+        ] {
+            assert!(global.contains(kept), "{page}: no {kept} in {global}");
+        }
+        assert!(ids.iter().any(|id| id == "wp-block-library-inline-css"), "{page}: {ids:?}");
+    }
+    // Block content (`<Content>`) gets each block's styles, and First's for a code block, before the app's.
+    let blocks = ids("blocks");
+    for block in ["wp-block-paragraph-inline-css", "wp-block-group-inline-css", "wp-block-code-inline-css", "first-code-css"] {
+        assert!(blocks.iter().any(|id| id == block), "{block}: {blocks:?}");
+    }
+    assert_eq!(files("blocks"), ["site"], "{seen}");
+    // A post no route serves is the theme's: its template, its styles, and nothing of the app's.
+    let post = ids("hello-world/");
+    assert_eq!(seen["hello-world/"]["status"], 200, "{seen}");
+    assert!(post.iter().any(|id| id == "loud-style-inline-css"), "{post:?}");
+    assert!(!post.iter().any(|id| id.starts_with("first-app-")), "{post:?}");
+    assert!(global("hello-world/").contains("#ff00aa"), "{}", global("hello-world/"));
+    // With First's own theme active (no installed theme), the page has the same stylesheets, and
+    // none of that theme's styles either.
+    assert_eq!(seen["fallback"]["status"], 200, "{seen}");
+    assert_eq!(ids("fallback"), ids("plain"));
+    assert!(!global("fallback").contains("line-height: 1.6"), "{}", global("fallback"));
 }
 
 /// `first doctor --site <url> --links` on a served First site: every link and `#anchor` the docs

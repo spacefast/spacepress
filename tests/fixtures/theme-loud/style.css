@@ -1,0 +1,10 @@
+/*
+Theme Name: Loud
+Description: A test theme (tests/php/app_assets.php): a block theme that styles elements in theme.json and enqueues its own stylesheet, as WordPress's default themes do.
+Version: 1.0.0
+Requires at least: 7.2-beta5
+Requires PHP: 8.2
+License: GPL-2.0-or-later
+Text Domain: loud
+*/
+a { text-decoration-style: dotted !important; }

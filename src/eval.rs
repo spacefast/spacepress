@@ -7,7 +7,7 @@
 
 use crate::diag::{Diag, Span, suggest};
 use crate::ir::*;
-use crate::loader::{Program, WORDPRESS_MODULE, ZERO_MODULE};
+use crate::loader::{CLIENT_MODULE, Program, WORDPRESS_MODULE, ZERO_MODULE};
 use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;
@@ -799,6 +799,16 @@ impl<'p> Evaluator<'p> {
         }
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
+        }
+        if source == CLIENT_MODULE {
+            return match name {
+                "useState" => Ok(Value::Builtin(Builtin::UseState)),
+                _ => err_help(
+                    span,
+                    format!("\"zero/client\" has no `{name}` yet"),
+                    "the first Interactivity slice has `useState`; effects, refs and shared state come later",
+                ),
+            };
         }
         let target = self.program.resolved[&(from, source.to_string())];
         match self.exports[target].get(name) {
@@ -2520,6 +2530,11 @@ impl<'p> Evaluator<'p> {
                 "`db` only works inside hooks and actions, which run in PHP at request time",
             ),
             Builtin::HttpError => err(span, "use `new HttpError(status, code, message)`"),
+            Builtin::UseState => err_help(
+                span,
+                "`useState` can't run while the config is evaluated",
+                "call it inside a \"use client\" component",
+            ),
             Builtin::Global(g) => call_global(g, &args, span),
             Builtin::Static(g, m) => self.call_static(g, m, args, span),
             Builtin::Require(from) => self.require(*from, &args, span),

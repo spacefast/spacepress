@@ -174,6 +174,8 @@ pub enum Builtin {
     Static(&'static str, Rc<str>),
     /// `require` in the CommonJS module with this id; it only runs while the config is built.
     Require(usize),
+    /// `useState` from "zero/client": compiled by generator B, never run at build time.
+    UseState,
 }
 
 #[derive(Debug, Clone)]

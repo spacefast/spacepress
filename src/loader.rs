@@ -14,11 +14,13 @@ use std::rc::Rc;
 pub const ZERO_MODULE: &str = "zero";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
+/// Hooks for `"use client"` components (docs/decisions/2026-11-08-tsx-to-php.md, generator B).
+pub const CLIENT_MODULE: &str = "zero/client";
 
 /// Modules the compiler provides itself; nothing is loaded for them. Node built-ins come from the
 /// one lookup, `builtins::module`.
 pub fn builtin_module(spec: &str) -> bool {
-    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || crate::builtins::module(spec).is_some()
+    spec == ZERO_MODULE || spec == WORDPRESS_MODULE || spec == CLIENT_MODULE || crate::builtins::module(spec).is_some()
 }
 
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths

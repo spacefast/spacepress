@@ -274,7 +274,7 @@ function tp_admin_get_menu_to_from_slug( $slug, $parent_slug = 'admin.php' ) {
 	$final_slug = str_replace( '&amp;', '&', $final_slug );
 
 	// Do not wrap external URLs.
-	return empty( $parts['host'] ) ? '/classic/' . rawurlencode( $final_slug ) : $final_slug;
+	return empty( $parts['host'] ) ? tp_admin_classic_route( $final_slug ) : $final_slug;
 }
 
 /**

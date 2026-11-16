@@ -42,16 +42,16 @@ export const logs = collection({ title: text() }, { staged: false });
 All of these need the item's `update` rule. A caller it doesn't cover gets the `404` a missing item
 gets, whether or not anything is staged.
 
-| Operation                 | API (`/__tp/api/v1`)                                                   | Client                            | Ability `<app>/<kind>-…` | `wp typedpress staged …`                          |
-|---------------------------|------------------------------------------------------------------------|-----------------------------------|----------------------------|-----------------------------------------------------|
-| Stage                     | `PATCH /<kind>/<id>/staged` with the fields                            | `client.posts.stage(id, patch)`   | `stage`                    | `stage <kind> <id> <json>`                          |
-| Read                      | `GET /<kind>/<id>/staged`                                              | `client.posts.staged(id)`         | `staged-get`               | `show <kind> <id>`                                  |
-| Compare                   | `GET /<kind>/<id>/staged/compare`                                      | `client.posts.compare(id)`        | `staged-compare`           | `compare <kind> <id>`                               |
-| Promote                   | `POST /<kind>/<id>/staged/promote`                                     | `client.posts.promote(id)`        | `staged-promote`           | `promote <kind> <id>`                               |
+| Operation                 | API (`/__tp/api/v1`)                                                   | Client                             | Ability `<app>/<kind>-…` | `wp typedpress staged …`                          |
+|---------------------------|------------------------------------------------------------------------|------------------------------------|----------------------------|-----------------------------------------------------|
+| Stage                     | `PATCH /<kind>/<id>/staged` with the fields                            | `client.posts.stage(id, patch)`    | `stage`                    | `stage <kind> <id> <json>`                          |
+| Read                      | `GET /<kind>/<id>/staged`                                              | `client.posts.staged(id)`          | `staged-get`               | `show <kind> <id>`                                  |
+| Compare                   | `GET /<kind>/<id>/staged/compare`                                      | `client.posts.compare(id)`         | `staged-compare`           | `compare <kind> <id>`                               |
+| Promote                   | `POST /<kind>/<id>/staged/promote`                                     | `client.posts.promote(id)`         | `staged-promote`           | `promote <kind> <id>`                               |
 | Schedule a promote        | the same route with `{ "at": "<ISO time>" }`; `{ "at": null }` cancels | `client.posts.promote(id, { at })` | `staged-promote` with `at` | `promote <kind> <id> --at=<ISO time>` or `--cancel` |
-| Discard                   | `DELETE /<kind>/<id>/staged`                                           | `client.posts.discard(id)`        | `staged-discard`           | `discard <kind> <id>`                               |
-| Preview link              | `POST /<kind>/<id>/staged/preview` with optional `{ "ttl": seconds }`  | `client.posts.previewLink(id)`    | `staged-preview`           |                                                     |
-| List every staged version |                                                                        |                                   |                            | `list [<kind>]`                                     |
+| Discard                   | `DELETE /<kind>/<id>/staged`                                           | `client.posts.discard(id)`         | `staged-discard`           | `discard <kind> <id>`                               |
+| Preview link              | `POST /<kind>/<id>/staged/preview` with optional `{ "ttl": seconds }`  | `client.posts.previewLink(id)`     | `staged-preview`           |                                                     |
+| List every staged version |                                                                        |                                    |                            | `list [<kind>]`                                     |
 
 `wp typedpress staged` is the trusted CLI: it applies no access rule and no field mask.
 

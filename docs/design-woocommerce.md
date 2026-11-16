@@ -340,8 +340,9 @@ Map existing identities to Woo capabilities without a separate commerce login or
 not a new `merchant` role shorthand in the current TypedPress API.
 
 The [existing access syntax](config-api.md#access) supports per-operation booleans, audience/role
-shorthands and context functions returning booleans or row filters. Whether v1 commerce exposes
-author-customizable product/order rules beyond the agreed defaults remains open.
+shorthands and context functions returning booleans or row filters. V1 commerce uses the agreed
+permission defaults. Author-customizable product/order rules are deferred for a later decision;
+they are not required for v1.
 
 Expose these operations through TypedPress's existing action, permission and client mechanisms
 where possible. Native Woo CRUD should run in-process on the server; a loopback REST request
@@ -434,8 +435,6 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **Access customization:** whether app authors can customize product/order access with normal
-  TypedPress rules beyond the agreed defaults. Identity/capability mapping is implementation work.
 - **API scope:** confirm the proposed resource table, especially inventory
   mutations, order detail depth and the first dashboard's reporting needs.
 - **Download declaration:** finalize the nested file-reference shape and how new stable download

@@ -173,7 +173,7 @@ final class Routes
             if (!Lock::fresh($collection, $trashed)) {
                 return self::stale($collection, $spec, $viewer, false, "$collection $uid changed while this request ran; read it again");
             }
-            Trash::restore($trashed);
+            Trash::restore($collection, $trashed);
             $current = self::current($collection, $uid, $viewer);
             // Decode again against the restored row, so a body it already holds isn't rewritten (and a
             // read-only one doesn't refuse the restore).

@@ -320,6 +320,24 @@ final class Site
     }
 
     /**
+     * Whether TypedPress Identity holds the user's account as anything but active (suspended, or
+     * being deleted). Identity refuses such an account on every sign-in, but only once the build
+     * that ships it is mounted; {@see Mount} decides which build to mount before that, so it reads
+     * the account here, from the table identity keeps it in. A site without identity has none.
+     */
+    public static function suspended(int $user): bool
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'tp_identity_accounts';
+        if ($user <= 0 || $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))) !== $table) {
+            return false;
+        }
+        $status = $wpdb->get_var($wpdb->prepare("SELECT status FROM `$table` WHERE wp_user_id = %d", $user));
+
+        return $status !== null && $status !== 'active';
+    }
+
+    /**
      * Whether the user is granted `install_plugins`: by their role, as changed by any `user_has_cap`
      * filter (a plugin that takes the capability away, or grants it, is honored). It does not go
      * through `map_meta_cap`: a live TypedPress app refuses `install_plugins` to everyone there (its
@@ -380,6 +398,38 @@ final class Site
         }
 
         return null;
+    }
+
+    /**
+     * Before the first deployment: what the site already holds besides what WordPress's installer
+     * wrote (the "Hello world!" post, the sample page, the privacy policy draft), or null. A deployed
+     * app keeps it, and changes how WordPress serves it, so the owner is told before installing one.
+     */
+    public static function existing(): ?string
+    {
+        if (self::live() !== null) {
+            return null;
+        }
+        global $wpdb;
+        $privacy = (int) get_option('wp_page_for_privacy_policy');
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT post_type, COUNT(*) AS n FROM {$wpdb->posts} WHERE post_type IN ('post', 'page')"
+            . " AND post_status IN ('publish', 'future', 'draft', 'pending', 'private')"
+            . " AND post_name NOT IN ('hello-world', 'sample-page') AND ID <> %d GROUP BY post_type ORDER BY post_type DESC",
+            $privacy,
+        ), ARRAY_A);
+        $found = [];
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            $n = (int) $row['n'];
+            $found[] = $n . ' ' . ($row['post_type'] === 'post' ? ($n === 1 ? 'post' : 'posts') : ($n === 1 ? 'page' : 'pages'));
+        }
+        if ($found === []) {
+            return null;
+        }
+
+        return 'This site already has content (' . implode(', ', $found) . '). Deploying an app keeps it, and changes how WordPress serves it:'
+            . ' comments close, author archives go away, permalinks become /%postname%/, and an app with a home page takes over the front page.'
+            . ' Try the app on a copy of this site first.';
     }
 
     /** Core accepts application passwords over HTTPS, or on a site whose environment type is `local`. */

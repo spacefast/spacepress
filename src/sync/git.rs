@@ -40,10 +40,19 @@ pub fn commit(project: &Path, paths: &[PathBuf], message: &str) -> Result<bool, 
             .output()
             .map_err(|e| e.to_string())
     };
-    // `-A` stages deletions and renames too; ignored paths (the conflict files) are skipped by git.
-    let added = git(&["add", "-A"], paths)?;
-    if !added.status.success() {
-        return Err(format!("git add: {}", String::from_utf8_lossy(&added.stderr).trim()));
+    // `-A` stages deletions and renames too. The base lives under `.tp/`, which an ignore file of the
+    // repository around the project (`.tp/` at its root, say) may hide whatever the project's own
+    // `.gitignore` re-includes: it is the one path added with `-f`, as `--pr` adds it.
+    let base = project.join(".tp/sync-base.json");
+    let (forced, plain): (Vec<PathBuf>, Vec<PathBuf>) = paths.iter().cloned().partition(|p| *p == base);
+    for (args, paths) in [(&["add", "-A"][..], &plain), (&["add", "-A", "-f"][..], &forced)] {
+        if paths.is_empty() {
+            continue;
+        }
+        let added = git(args, paths)?;
+        if !added.status.success() {
+            return Err(format!("git add: {}", String::from_utf8_lossy(&added.stderr).trim()));
+        }
     }
     let staged = git(&["diff", "--cached", "--quiet"], paths)?;
     if staged.status.success() {

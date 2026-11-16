@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace TypedPress\Sync;
 
+use TypedPress\Wp\CompositeStore;
 use TypedPress\Wp\Plugin;
 
 use function TypedPress\db;
@@ -12,6 +13,11 @@ use function TypedPress\db;
  * WordPress trash for post-backed collections (§5.3): sync moves posts to the trash instead of deleting
  * them, lists trashed posts as `trashed: true`, and restores one when a record with its uid is pushed
  * again. Every other store has no trash: deletes go through the pipeline and revisions keep the row.
+ *
+ * A trash is what wp-admin's "Move to Trash" is (docs/decisions/2026-11-14-trash-is-unpublish.md): the
+ * item leaving the published set, and nothing else. Rows that point at it, its links and its revisions
+ * stay, so a restore brings back exactly what was there. The delete lifecycle (beforeDelete, onDelete
+ * actions, afterDelete) runs only when someone deletes the post from the trash for good.
  */
 final class Trash
 {
@@ -39,9 +45,10 @@ final class Trash
     }
 
     /**
-     * Move a post to the trash with the pipeline's delete lifecycle around it (delete extensions,
-     * beforeDelete, FK actions, afterDelete), in the request transaction; false when the collection has
-     * no trash. $row is the full stored row and the caller has authorized the delete.
+     * Move a post to the trash, in the request transaction; false when the collection has no trash.
+     * A published item is unpublished: afterUpdate with the published row before and the trashed one
+     * after, and the update notice. A draft leaving is nothing to visitors. $row is the full stored row
+     * and the caller has authorized the trash.
      */
     public static function trash(string $collection, array $spec, array $row): bool
     {
@@ -50,13 +57,13 @@ final class Trash
         }
         $pk = (int) $row[$spec['primaryKey']];
         $connection = Plugin::instance()->connection();
-        $user = db()->actor();
-        db()->beforeEditorDelete($collection, $row, $user);
         $connection->touchPost($pk);
         if (!$connection->core(static fn () => wp_trash_post($pk))) {
             throw new \RuntimeException("Could not move post $pk to the trash");
         }
-        db()->afterEditorDelete($collection, $row, $user);
+        if (($row['status'] ?? null) === 'published') {
+            self::changed($collection, $pk, $row);
+        }
 
         return true;
     }
@@ -78,10 +85,14 @@ final class Trash
         return $id === null ? null : (int) $id;
     }
 
-    /** Bring a trashed post back to the status it had, so the push updates it in place. */
-    public static function restore(int $id): void
+    /**
+     * Bring a trashed post back to the status it had, so the push updates it in place. Back to
+     * published is a publish (afterUpdate, afterPublish, the notice), as wp-admin's untrash is.
+     */
+    public static function restore(string $collection, int $id): void
     {
         $connection = Plugin::instance()->connection();
+        $trashed = db()->editorRowIncludingTrash($collection, $id);
         $previous = static fn ($status, $postId, $before) => $before;
         add_filter('wp_untrash_post_status', $previous, 10, 3);
         try {
@@ -92,5 +103,16 @@ final class Trash
         } finally {
             remove_filter('wp_untrash_post_status', $previous, 10);
         }
+        if ($trashed !== null && get_post_status($id) === 'publish') {
+            self::changed($collection, $id, $trashed);
+        }
+    }
+
+    /** The update lifecycle of a move into or out of the trash, with trashed posts readable. */
+    private static function changed(string $collection, int $id, array $before): void
+    {
+        $store = db()->store();
+        $run = static fn () => db()->afterEditorSave($collection, $id, $before, db()->actor());
+        $store instanceof CompositeStore ? $store->posts->withTrash($run) : $run();
     }
 }

@@ -1,7 +1,7 @@
 //! A WordPress site running the TypedPress plugin, over HTTP: finding its REST API, the credential
-//! `typedpress login` stored for it, and its deploy receiver (`/wp-json/typedpress-deploy/v1`, served by
-//! runtime/typedpress-plugin/src/Receiver.php).
-use crate::sync::client::base64;
+//! every remote command signs in with ([`sign_in`]), and its deploy receiver
+//! (`/wp-json/typedpress-deploy/v1`, served by runtime/typedpress-plugin/src/Receiver.php).
+use crate::sync::client::Credential;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -173,6 +173,65 @@ pub(crate) fn forget(site: &str) -> Result<bool, String> {
     Ok(had)
 }
 
+const PASSWORD_ENV: &str = "TP_APP_PASSWORD";
+const TOKEN_ENV: &str = "TP_TOKEN";
+
+/// The usage line of every command that talks to a site and takes either credential.
+pub(crate) const SIGN_IN: &str = "       sign in first with: typedpress login <site-url>   (in CI: TP_APP_PASSWORD=user:application-password or TP_TOKEN=<bearer token>)";
+
+/// A credential for one site, and where it came from.
+pub(crate) struct SignIn {
+    pub(crate) credential: Credential,
+    /// The REST root that answered `typedpress login`, when this is the credential it stored.
+    pub(crate) rest: Option<String>,
+}
+
+/// The one way every remote command (push, sync, pull, export, abilities pull, doctor) gets its
+/// credential for `site`. `TP_APP_PASSWORD` (`user:application-password`) or `TP_TOKEN` (a bearer
+/// token from the identity plugin) in the environment is an explicit override, for CI and scripts
+/// where nobody runs `typedpress login`; setting both is an error. Otherwise the credential
+/// `typedpress login` stored for this site. `Ok(None)` when there is neither.
+pub(crate) fn sign_in(site: &str) -> Result<Option<SignIn>, String> {
+    let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
+    match (env(PASSWORD_ENV), env(TOKEN_ENV)) {
+        (Some(_), Some(_)) => return Err(format!("set {PASSWORD_ENV} or {TOKEN_ENV}, not both")),
+        (Some(password), None) if !password.contains(':') => {
+            return Err(format!("{PASSWORD_ENV} is user:application-password"));
+        }
+        (Some(password), None) => {
+            return Ok(Some(SignIn { credential: Credential::AppPassword(password), rest: None }));
+        }
+        (None, Some(token)) => return Ok(Some(SignIn { credential: Credential::Bearer(token), rest: None })),
+        (None, None) => {}
+    }
+    // Stored under the address `typedpress login` was given; an address it would refuse has none.
+    let Ok(key) = normalize(site) else {
+        return Ok(None);
+    };
+    let sites = read_sites()?;
+    let Some(entry) = sites.get(&key) else {
+        return Ok(None);
+    };
+    let (Some(rest), Some(user), Some(password)) = (
+        entry["rest"].as_str(),
+        entry["user"].as_str(),
+        entry["password"].as_str(),
+    ) else {
+        return Err(format!(
+            "the stored credential for {key} is incomplete. Run: typedpress login {key}"
+        ));
+    };
+    Ok(Some(SignIn {
+        credential: Credential::AppPassword(format!("{user}:{password}")),
+        rest: Some(rest.to_string()),
+    }))
+}
+
+/// [`sign_in`], for a command that can't work signed out.
+pub(crate) fn require(site: &str) -> Result<SignIn, String> {
+    sign_in(site)?.ok_or_else(|| format!("not signed in to {site}. Run: typedpress login {site}"))
+}
+
 /// The site a project deploys to (`.tp/site.json`, written by `typedpress login` inside a project).
 pub(crate) fn linked(project: &Path) -> Option<String> {
     let bytes = std::fs::read(project.join(".tp/site.json")).ok()?;
@@ -216,38 +275,31 @@ impl Api {
         Api {
             agent: agent(600),
             rest: rest.to_string(),
-            auth: format!("Basic {}", base64(credential.as_bytes())),
+            auth: Credential::AppPassword(credential.to_string()).header(),
             site: site.to_string(),
         }
     }
 
-    /// The receiver for `site`: the credential in `TP_APP_PASSWORD` (`user:application-password`)
-    /// when it is set, else the one `typedpress login` stored.
+    /// The receiver for `site`, signed in as [`sign_in`] says. Deploying takes an application
+    /// password: the plugin loads a deployment's code only for a request that signed in with one.
     pub(crate) fn connect(site: &str) -> Result<Api, String> {
-        if let Some(credential) = std::env::var("TP_APP_PASSWORD").ok().filter(|s| !s.is_empty()) {
-            if !credential.contains(':') {
-                return Err("TP_APP_PASSWORD is user:application-password".into());
-            }
-            let found = discover(site)?;
-            if !found.plugin {
-                return Err(no_plugin(site));
-            }
-            return Ok(Api::new(site, &found.rest, &credential));
-        }
-        let sites = read_sites()?;
-        let Some(entry) = sites.get(site) else {
-            return Err(format!("not signed in to {site}. Run: typedpress login {site}"));
-        };
-        let (Some(rest), Some(user), Some(password)) = (
-            entry["rest"].as_str(),
-            entry["user"].as_str(),
-            entry["password"].as_str(),
-        ) else {
+        let signed = require(site)?;
+        let Credential::AppPassword(password) = &signed.credential else {
             return Err(format!(
-                "the stored credential for {site} is incomplete. Run: typedpress login {site}"
+                "deploying needs an application password, not TP_TOKEN. Run: typedpress login {site}, or set {PASSWORD_ENV}=user:application-password"
             ));
         };
-        Ok(Api::new(site, rest, &format!("{user}:{password}")))
+        let rest = match signed.rest {
+            Some(rest) => rest,
+            None => {
+                let found = discover(site)?;
+                if !found.plugin {
+                    return Err(no_plugin(site));
+                }
+                found.rest
+            }
+        };
+        Ok(Api::new(site, &rest, password))
     }
 
     /// `<rest>/typedpress-deploy/v1<path>` with query pairs, on either REST root form.

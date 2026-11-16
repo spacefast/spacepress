@@ -1,4 +1,5 @@
 use crate::cli::Args;
+use crate::sync::client::Credential;
 use crate::{platform, wp_plugins::version};
 use serde_json::{Value, json};
 use std::{process::ExitCode, time::Duration};
@@ -53,17 +54,24 @@ pub(super) fn run(args: &Args) -> ExitCode {
             ),
         }
     }
+    // Signed in as every remote command is (`remote::sign_in`), or signed out without a credential.
+    let credential = match args.site.as_deref().map(super::remote::sign_in) {
+        Some(Err(error)) => {
+            check(&mut checks, "site", false, error);
+            None
+        }
+        Some(Ok(signed)) => signed.map(|s| s.credential),
+        None => None,
+    };
     if let Some(site) = &args.site
-        && let Err(error) = remote(site, token().as_deref(), &manifest, &mut checks)
+        && let Err(error) = remote(site, credential.as_ref(), &manifest, &mut checks)
     {
         check(&mut checks, "site", false, error);
     }
     if let Some(site) = &args.site
         && project.join(crate::wordpress::abilities::LOCK).is_file()
     {
-        // Abilities are listed with the application password `typedpress abilities pull` uses.
-        let credential = std::env::var("TP_APP_PASSWORD").ok().filter(|s| !s.is_empty());
-        match super::abilities::list(site, credential.as_deref())
+        match super::abilities::list(site, credential.as_ref())
             .and_then(|listed| super::abilities::drift(&project, &listed))
         {
             Ok(drift) => check(
@@ -138,12 +146,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
     if ok { ExitCode::SUCCESS } else { ExitCode::from(1) }
 }
 
-/// A bearer token for the site's schema, from the environment (never a flag value).
-fn token() -> Option<String> {
-    std::env::var("TP_TOKEN").ok().filter(|t| !t.is_empty())
-}
-
-fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Value>) -> Result<(), String> {
+fn remote(site: &str, credential: Option<&Credential>, manifest: &Value, checks: &mut Vec<Value>) -> Result<(), String> {
     let mut url = url::Url::parse(site).map_err(|error| error.to_string())?;
     if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() || url.password().is_some() {
         return Err("site must be an HTTP(S) URL without credentials".into());
@@ -168,15 +171,8 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
         .build()
         .into();
     let mut request = agent.get(url.as_str());
-    if let Some(token) = token {
-        request = request.header("Authorization", format!("Bearer {token}"));
-    } else if let Some(password) = std::env::var("TP_APP_PASSWORD").ok().filter(|p| !p.is_empty()) {
-        // As the other site commands take it: `user:application-password`. `TP_TOKEN` wins when
-        // both are set, as it did before this was accepted.
-        request = request.header(
-            "Authorization",
-            format!("Basic {}", crate::sync::client::base64(password.as_bytes())),
-        );
+    if let Some(credential) = credential {
+        request = request.header("Authorization", credential.header());
     }
     let mut response = request
         .call()
@@ -289,7 +285,7 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
                 checks,
                 "sealed",
                 false,
-                "sign in as an administrator (TP_TOKEN or TP_APP_PASSWORD) to see what the site loads",
+                "sign in as an administrator (typedpress login, or TP_APP_PASSWORD / TP_TOKEN) to see what the site loads",
             ),
             _ if manifest["sealed"].is_array() => check(
                 checks,

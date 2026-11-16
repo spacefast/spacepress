@@ -72,6 +72,15 @@ active=$(wp plugin list --status=active --field=name | sort | tr '\n' ' ')
 screen=$(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress')
 [[ $screen == *"TypedPress installed and activated the plugins it needs: Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, Two Factor 0.17.0."* ]] || fail "the TypedPress screen says what activation installed: $screen"
 [[ $screen == *"No TypedPress app is deployed to this site yet."* && $screen != *"Not installed"* && $screen == *"typedpress login $url"* ]] || fail "the TypedPress screen is ready and shows the commands: $screen"
+# What WordPress's installer wrote (Hello world, the sample page, the privacy draft) is not the
+# owner's content. Something the owner wrote is, and the screen says so before an app is deployed.
+[[ $screen != *"already has content"* ]] || fail "a fresh install is not a site with content: $screen"
+wp post create --post_type=post --post_status=publish --post_title='Written by the owner' --porcelain > "$work/owner-post"
+wp post create --post_type=page --post_status=draft --post_title='A draft page' --porcelain > "$work/owner-page"
+screen=$(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress')
+[[ $screen == *"This site already has content (1 post, 1 page). Deploying an app keeps it, and changes how WordPress serves it"*"Try the app on a copy of this site first."* ]] || fail "the TypedPress screen warns about the site's own content: $screen"
+wp post delete "$(cat "$work/owner-post")" "$(cat "$work/owner-page")" --force >/dev/null
+[[ $(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress') != *"already has content"* ]] || fail "without it the warning is gone"
 [[ $(status "$url/") == 200 && $(status "$url/__tp/api/v1") == 404 ]] || fail "before a deployment WordPress serves and TypedPress's API doesn't"
 # A dependency that goes missing later is named on the screen and on other wp-admin screens, and the
 # screen's button brings it back.
@@ -446,6 +455,20 @@ nonce=$(browser nonce)
 [[ $(browser rest GET "$api/site" "$nonce" "" | sed -n 1p) == 200 ]] || fail "the same session may read the receiver"
 if ran; then fail "a deployment's uploaded code ran for a request that may not deploy, or on a route that isn't its own"; fi
 # The administrator's plan mounts it to inspect: the schema is read, so the marker is there now.
+# A suspended account is refused on every sign-in by TypedPress Identity, which a build loads. The
+# deployment's code is chosen before that, so the plugin reads the account itself: suspended, the
+# administrator's token loads nothing, and the routes refuse the request. This app has no users kind,
+# so identity's accounts table stands in here, with the columns the plugin reads.
+accounts=wp_tp_identity_accounts
+admin_id=$(wp user get admin --field=ID)
+"$harness" sql "CREATE TABLE IF NOT EXISTS $accounts (wp_user_id bigint unsigned NOT NULL, status varchar(20) NOT NULL DEFAULT 'active', created_at bigint NOT NULL, PRIMARY KEY (wp_user_id))" >/dev/null
+"$harness" sql "REPLACE INTO $accounts (wp_user_id, status, created_at) VALUES ($admin_id, 'suspended', 0)" >/dev/null
+[[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/plan") == 409 ]] || fail "a suspended administrator's token mounts nothing"
+if ran; then fail "a suspended account got a deployment's uploaded code loaded"; fi
+"$harness" sql "UPDATE $accounts SET status = 'active' WHERE wp_user_id = $admin_id" >/dev/null
+[[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/plan") == 200 ]] || fail "an active account in identity's table may inspect"
+"$harness" compose exec -T wordpress rm -f "$marker"
+"$harness" sql "DROP TABLE $accounts" >/dev/null
 [[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/plan") == 200 ]] || fail "the administrator reads the plan"
 ran || fail "the marker shows the candidate's code is read when an administrator inspects it"
 "$harness" compose exec -T wordpress rm -f "$marker"

@@ -12,7 +12,33 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('public-root', ['wpContent' => $argv[1]]);
+$site = wpSite('public-root', ['wpContent' => $argv[1], 'muPlugins' => [
+    // Says on the response that WordPress reached `init`: an answer without it was sent before.
+    'reached-init' => <<<'PHP'
+        <?php
+        add_action('init', static function (): void {
+            header('X-Test-Init: 1');
+        }, PHP_INT_MIN);
+        PHP,
+    // Stands in for the engine's `Accept: text/markdown` lane (docs/runtime-contract.md): after
+    // wp-load.php it calls negotiate() and sends what it returns.
+    'engine-accept-lane' => <<<'PHP'
+        <?php
+        add_action('wp_loaded', static function (): void {
+            if (str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'text/markdown') && isset($_SERVER['HTTP_X_TEST_ENGINE'])) {
+                $answer = \First\Wp\MarkdownTwins::negotiate((string) $_SERVER['REQUEST_URI']);
+                if ($answer !== null) {
+                    status_header($answer['status']);
+                    foreach ($answer['headers'] as $name => $value) {
+                        header("$name: $value");
+                    }
+                    echo $answer['body'];
+                    exit;
+                }
+            }
+        });
+        PHP,
+]]);
 $site->startServer();
 $url = $site->url();
 
@@ -57,7 +83,7 @@ foreach (['/robots.txt', '/llms.txt', '/feed/x.txt', '/.well-known/openid-config
 $out['beside a dynamic route'] = fetch("$url/logo.svg")['status'];
 $about = fetch("$url/about");
 $out['about'] = [$about['status'], str_contains($about['body'], '<h1>About</h1>'), str_contains($about['body'], 'named like a page')];
-foreach (['/.env', '/nested/run.php', '/wp-json/index.json', '/wp-login.php.txt', '/files/../.env', '/files/%2e%2e/.env', '/files/..%2f.env', '/nested/', '/missing.png', '/nested/run.php.', '/nested/run.php%20', '/nested/run.php::$DATA', '/files%5c..%5c.env', '/linked.txt', '/NESTED/RUN.PHP'] as $path) {
+foreach (['/.env', '/nested/run.php', '/wp-json/index.json', '/wp-login.php.txt', '/files/../.env', '/files/%2e%2e/.env', '/files/..%2f.env', '/nested/', '/missing.png', '/nested/run.php.', '/nested/run.php%20', '/nested/run.php::$DATA', '/files%5c..%5c.env', '/linked.txt', '/NESTED/RUN.PHP', '/lo\\go.svg'] as $path) {
     $r = fetch("$url$path");
     // Never the file's bytes: the dotfile's text, the PHP source, or what running it prints.
     $out['refused'][$path] = [$r['status'] === 404, str_contains($r['body'], 'secret') || str_contains($r['body'], 'echo "ran"') || $r['body'] === 'ran' || $r['body'] === '{}' || $r['body'] === 'shadow' || str_contains($r['body'], 'namespace First')];
@@ -74,13 +100,45 @@ $out['not modified'] = [
 ];
 $out['svg policy'] = str_contains(fetch("$url/logo.svg")['headers']['content-security-policy'] ?? '', 'sandbox');
 $out['cache'] = fetch("$url/compiler.wasm")['headers']['cache-control'] ?? null;
-// Another site's page may read a public file, as it sends it (an Origin header), and a 304 says so too.
-$out['other origins'] = [
-    fetch("$url/files/blog.json", 'GET', ['Origin: https://playground.wordpress.net'])['headers']['access-control-allow-origin'] ?? null,
-    fetch("$url/logo.svg", 'GET', ["If-None-Match: $etag"])['headers']['access-control-allow-origin'] ?? null,
-    // Not the app's pages: only files.
-    fetch("$url/about")['headers']['access-control-allow-origin'] ?? null,
+// A file is answered before WordPress initializes (no `init`), on a 200, a 304 and a HEAD alike; a
+// page is not.
+$reached = static fn (array $r): ?string => $r['headers']['x-test-init'] ?? null;
+$out['before init'] = [
+    $reached(fetch("$url/logo.svg")),
+    $reached(fetch("$url/logo.svg", 'GET', ["If-None-Match: $etag"])),
+    $reached(fetch("$url/files/blog.json", 'HEAD')),
+    $reached(fetch("$url/files/")),
+    $reached(fetch("$url/about")),
 ];
+// A request that asks for Markdown waits for the request to be parsed, where an engine's
+// negotiation is known: without one the file answers as before, and a negotiation is never
+// answered with the file.
+$asked = fetch("$url/notes.md", 'GET', ['Accept: text/markdown']);
+$negotiated = fetch("$url/notes.md", 'GET', ['Accept: text/markdown', 'X-Test-Engine: 1']);
+$out['asks for markdown'] = [$asked['status'], $asked['type'], $asked['body'], $reached($asked)];
+$out['negotiated'] = [$negotiated['status'], $negotiated['body'] === $asked['body'], $negotiated['headers']['cache-control'] ?? null];
+// Any origin may read any public file, whatever its type, and the answer says so the same way
+// whether or not the request names an origin (so a shared cache's copy serves both), on a 200, a
+// 304 and a HEAD. Nothing varies on the origin. A page says nothing of the kind.
+$allow = static fn (array $r): ?string => $r['headers']['access-control-allow-origin'] ?? null;
+$origin = 'Origin: https://playground.wordpress.net';
+$out['other origins'] = [
+    'named' => $allow(fetch("$url/files/blog.json", 'GET', [$origin])),
+    'unnamed' => $allow(fetch("$url/files/blog.json")),
+    'not modified' => $allow(fetch("$url/logo.svg", 'GET', [$origin, "If-None-Match: $etag"])),
+    'head' => $allow(fetch("$url/compiler.wasm", 'HEAD', [$origin])),
+    'html' => $allow(fetch("$url/files/", 'GET', [$origin])),
+    'markdown' => $allow(fetch("$url/notes.md", 'GET', [$origin])),
+    'svg' => $allow(fetch("$url/logo.svg", 'GET', [$origin])),
+    'asks for markdown' => $allow($asked),
+    'vary' => fetch("$url/files/blog.json", 'GET', [$origin])['headers']['vary'] ?? null,
+    'page' => $allow(fetch("$url/about", 'GET', [$origin])),
+    // No preflight is answered: every read a public file is for is a plain GET.
+    'preflight' => $allow(fetch("$url/files/blog.json", 'OPTIONS', [$origin, 'Access-Control-Request-Method: GET', 'Access-Control-Request-Headers: if-none-match'])),
+];
+// A Range request gets the whole file, as HTTP allows a server without ranges to answer.
+$range = fetch("$url/files/blog.json", 'GET', [$origin, 'Range: bytes=0-3']);
+$out['range'] = [$range['status'], strlen($range['body']), $allow($range), $range['headers']['content-range'] ?? null];
 $out['post'] = fetch("$url/logo.svg", 'POST')['status'];
 
 $site->destroy();

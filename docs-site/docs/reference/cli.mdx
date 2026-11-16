@@ -17,20 +17,20 @@ These commands run on your machine, on the project's files.
 | `typedpress dev stop [dir]` | Stop the local site, keeping its data. |
 | `typedpress dev status [dir] [--json]` | Report the local site. |
 | `typedpress build [dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]` | Write the WordPress plugins to tp/dist/wp-content. |
-| `typedpress export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]` | Write tp/app/ as a static site to tp/dist/static (output: "static"); --site renders a hosted site's content (TP_APP_PASSWORD or TP_TOKEN) |
+| `typedpress export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]` | Write tp/app/ as a static site to tp/dist/static (output: "static"); --site renders a hosted site's content, signed in as an editor. |
 | `typedpress check [dir] [--json] [--frozen]` | Compile and report problems; write nothing. |
 | `typedpress add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: db (SQL tables), api-reference (pages at /api documenting the HTTP API) |
-| `typedpress doctor [dir] [--out dir] [--site url [--links]] [--json]` | Check a build, and a running site (TP_TOKEN or TP_APP_PASSWORD); --links follows every link and #anchor its pages make. |
+| `typedpress doctor [dir] [--out dir] [--site url [--links]] [--json]` | Check a build, and a running site (signed in as an administrator to see what it loads); --links follows every link and #anchor its pages make. |
 | `typedpress init [dir] [--check] [--github]` | Write AGENTS.md, .mcp.json and the agent skills for this project; --github adds the content sync workflow; --check exits 1 when they are out of date. |
 | `typedpress mcp [dir] [--allow-remote-read] [--allow-writes]` | Serve the project to a coding agent as an MCP server on stdio. |
-| `typedpress sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--pr [--repo owner/name] [--base branch]] [--json]` | Content files \<-\> site records (TP_APP_PASSWORD or TP_TOKEN) |
-| `typedpress pull [dir] [--site url] [--check]` | Write a site's runtime schema versions to tp/_generated/runtime-schema.json (TP_APP_PASSWORD or TP_TOKEN) |
+| `typedpress sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--pr [--repo owner/name] [--base branch]] [--json]` | Content files \<-\> site records. |
+| `typedpress pull [dir] [--site url] [--check]` | Write a site's runtime schema versions to tp/_generated/runtime-schema.json, signed in as an administrator. |
 | `typedpress styles pull [dir] [--site dir\|@alias] [--check]` | Write a site's Global Styles (the Styles screen, the Site Editor) over tp/theme.json; the build ships it and generates tp/_generated/theme.css. |
-| `typedpress abilities pull [dir] --site url [--only vendor/*]` | Lock a site's abilities into tp/_generated/abilities.json (TP_APP_PASSWORD) |
+| `typedpress abilities pull [dir] --site url [--only vendor/*]` | Lock a site's abilities into tp/_generated/abilities.json. |
 | `typedpress plugin [--out file.zip]` | Write the TypedPress WordPress plugin (typedpress.zip) to upload and activate in wp-admin. |
-| `typedpress login <site-url> [dir] [--no-browser]` | Sign in to a WordPress site that runs the TypedPress plugin; the site's owner approves an application password in the browser. |
+| `typedpress login <site-url> [dir] [--no-browser]` | Sign in to a WordPress site that runs the TypedPress plugin; the site's owner approves an application password in the browser, and every command that talks to the site uses it. |
 | `typedpress logout <site-url>` | Forget a site's credential on this machine. |
-| `typedpress push [dir] [--site url] [--dry-run]` | Compile the project and deploy it to the site: install the plugins it needs, upload the build, show what it changes, make it live (typedpress login, or TP_APP_PASSWORD) |
+| `typedpress push [dir] [--site url] [--dry-run]` | Compile the project and deploy it to the site: install the plugins it needs, upload the build, show what it changes, make it live. |
 | `typedpress deploy <inspect\|publish\|init\|status\|backup\|restore> <options>` | Artifact preflight and offline workspaces ([docs/deployment.md](https://github.com/spacefast/zero/blob/main/docs/deployment.md)) |
 
 ## Site commands

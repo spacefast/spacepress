@@ -83,7 +83,7 @@ versions, `scf`, `actionScheduler`, `mcpAdapter`, `twoFactor`, `polylang`, `iden
 Jetpack, and whether it has a key; never required), and `incompatibleTables`. `runtime.pendingMigrations` and
 `runtime.languages` report app migration and localization state. Identity is
 true only for a compatible implementation; the A3 placeholder does not enable it.
-`typedpress doctor [--site URL]` (bearer token in `TP_TOKEN`, or `TP_APP_PASSWORD`) checks this data against the same
+`typedpress doctor [--site URL]` (signed in with `typedpress login`, or `TP_TOKEN` / `TP_APP_PASSWORD`) checks this data against the same
 platform policy used by runtime activation.
 
 ## schema.php

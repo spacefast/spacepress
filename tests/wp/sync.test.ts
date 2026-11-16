@@ -145,21 +145,94 @@ test("sync on WordPress", async (t) => {
     assert.deepEqual((await pull("guides")).get(guideUid).record, record);
   });
 
-  await t.test("trash runs the delete lifecycle: a beforeDelete veto keeps the post", async () => {
-    const kept = { uid: uidOf(4), fields: { ...record.fields, title: `Kept ${run}`, slug: `kept-${run}`, summary: "keep" }, body: null };
-    const { digest: keptDigest } = (await push(kept, "absent")).json.data;
-    await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: kept.uid, expect: keptDigest } }, { status: 409, code: "kept", pointer: undefined });
-    const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_tp_uid' AND u.meta_value = '${kept.uid}'`);
-    assert.equal(post.post_status, "draft");
+  await t.test("trash is reversible: no delete hook, dependent rows kept, a restore brings back what was there", async () => {
+    // `summary: "keep"` makes beforeDelete refuse: a trash never asks it.
+    const kept = { uid: uidOf(4), fields: { ...record.fields, title: `Kept ${run}`, slug: `kept-${run}`, summary: "keep", status: "published" }, body: null };
+    await push(kept, "absent");
+    // Publishing stamps publishedAt: the stored record is what a pull shows.
+    const stored = (await pull("guides")).get(kept.uid);
+    const keptDigest = stored.digest;
+    const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_tp_uid' AND meta_value = '${kept.uid}'`);
+    const id = Number(ID);
+    // Rows that depend on it (onDelete: cascade), a revision, and a published row's update hook.
+    first("insert", "guide_notes", JSON.stringify({ guideId: id, note: `depends on ${run}` }));
+    const notes = () => first("find", "guide_notes", JSON.stringify({ where: { guideId: id } })).map((n: any) => n.note);
+    const revisions = () => sql(`SELECT ID FROM wp_posts WHERE post_parent = ${id} AND post_type = 'revision'`).map((r: any) => r.ID);
+    const before = revisions();
+    assert.ok(before.length > 0, "the published guide has revisions");
+
+    const trashed = await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: kept.uid, expect: keptDigest } });
+    assert.equal(trashed.status, "applied", "a beforeDelete veto does not stop a trash: no delete lifecycle ran");
+    assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${id}`)[0].post_status, "trash");
+    assert.deepEqual(notes(), [`depends on ${run}`], "the cascade did not run: the dependent row is still there");
+    assert.deepEqual(revisions().filter((r: string) => before.includes(r)), before, "every revision it had is kept");
+
+    // Pushing the file back restores it in place, published, with everything that pointed at it.
+    const restored = await push(stored.record, "absent");
+    assert.equal(restored.status, 200, JSON.stringify(restored.json));
+    assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${id}`)[0].post_status, "publish", "restored as it was");
+    assert.deepEqual(notes(), [`depends on ${run}`], "the dependent row is still there after the restore");
+    assert.deepEqual((await pull("guides")).get(kept.uid), stored, "the restored record is the one that was trashed");
+
+    // Only a person deleting it from the trash for good runs the delete lifecycle: here its veto.
+    await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: kept.uid, expect: keptDigest } });
+    wpTry("eval", `wp_set_current_user(get_user_by('login', 'admin')->ID); wp_delete_post(${id}, true);`);
+    assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${id}`)[0]?.post_status, "trash", "the permanent delete asked beforeDelete, which refused it");
+    assert.deepEqual(notes(), [`depends on ${run}`], "the refused delete kept the dependent row");
+  });
+
+  await t.test("a reference to a trashed row is kept: a pull shows null, and pushing that null back changes nothing", async () => {
+    const gone = first("insert", "writers", JSON.stringify({ name: `Trashed writer ${run}` }))[0];
+    const citing = { uid: uidOf(7), fields: { ...record.fields, title: `Citing ${run}`, slug: `citing-${run}`, writerId: gone.uid }, body: null };
+    await push(citing, "absent");
+    const stored = () => first("find", "guides", JSON.stringify({ where: { uid: citing.uid } }))[0].writerId;
+    assert.equal(stored(), gone.id);
+    wp("eval", `wp_set_current_user(get_user_by('login', 'editor')->ID); wp_trash_post(${gone.id});`);
+    const seen = (await pull("guides")).get(citing.uid);
+    assert.equal(seen.record.fields.writerId, null, "a pull can't name a row in the trash");
+    // The file is edited and pushed back with the null it was pulled with.
+    const edited = { ...seen.record, fields: { ...seen.record.fields, summary: "edited while the writer is in the trash" } };
+    assert.equal((await ok("POST", "/sync/guides", { as: "editor", body: { record: edited, expect: seen.digest } })).status, "applied");
+    assert.equal(stored(), gone.id, "the stored reference is untouched");
+    wp("eval", `wp_untrash_post(${gone.id});`);
+    assert.equal((await pull("guides")).get(citing.uid).record.fields.writerId, gone.uid, "restoring the writer brings the reference back into view");
+    // Clearing a reference the pull can name still clears it.
+    const named = (await pull("guides")).get(citing.uid);
+    await ok("POST", "/sync/guides", { as: "editor", body: { record: { ...named.record, fields: { ...named.record.fields, writerId: null } }, expect: named.digest } });
+    assert.equal(stored(), null, "a visible reference set to null is cleared");
+  });
+
+  await t.test("trash and restore run each hook once, with the final values", async () => {
+    const hooks = (title: string) => first("find", "guide_hooks", JSON.stringify({ where: { title: { in: [title, `${title} edited`] } }, orderBy: { id: "asc" } }))
+      .map((h: any) => `${h.hook}:${h.title}:${h.status}`);
+    for (const [label, status, edited] of [["back-published", "published", true], ["back-draft", "draft", false]] as const) {
+      const title = `Logged ${label} ${run}`;
+      const logged = { uid: uidOf(label === "back-draft" ? 9 : 8), fields: { ...record.fields, title, slug: `logged-${label}-${run}`, summary: "logged", status: "published" }, body: null };
+      await push(logged, "absent");
+      const seen = (await pull("guides")).get(logged.uid);
+      first("delete", "guide_hooks", JSON.stringify({ title: { in: [title, `${title} edited`] } }));
+      await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: logged.uid, expect: seen.digest } });
+      assert.deepEqual(hooks(title), [`afterUpdate:${title}:draft`], `${label}: the trash is one unpublish`);
+      first("delete", "guide_hooks", JSON.stringify({ title: { in: [title, `${title} edited`] } }));
+      // The file comes back, edited, and published or as a draft.
+      const back = { ...seen.record, fields: { ...seen.record.fields, title: edited ? `${title} edited` : title, status } };
+      assert.equal((await push(back, "absent")).status, 200);
+      const final = edited ? `${title} edited` : title;
+      assert.deepEqual(hooks(title), status === "published"
+        ? [`afterUpdate:${final}:published`, `afterPublish:${final}:published`]
+        : [`afterUpdate:${final}:draft`], `${label}: one update to the pushed values, and a publish only when it ends published`);
+    }
   });
 
   await t.test("a failure after the post is trashed rolls the trash back", async () => {
-    const regret = { uid: uidOf(6), fields: { ...record.fields, title: `Regret ${run}`, slug: `regret-${run}`, summary: "regret" }, body: null };
-    const { digest: regretDigest } = (await push(regret, "absent")).json.data;
-    await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: regret.uid, expect: regretDigest } }, { status: 409, code: "regretted", pointer: undefined });
+    const regret = { uid: uidOf(6), fields: { ...record.fields, title: `Regret ${run}`, slug: `regret-${run}`, summary: "regret", status: "published" }, body: null };
+    await push(regret, "absent");
+    // Publishing stamps publishedAt: the record as stored is what a pull shows.
+    const published = (await pull("guides")).get(regret.uid);
+    await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: regret.uid, expect: published.digest } }, { status: 409, code: "regretted", pointer: undefined });
     const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_tp_uid' AND u.meta_value = '${regret.uid}'`);
-    assert.equal(post.post_status, "draft");
-    assert.deepEqual((await pull("guides")).get(regret.uid), { record: regret, digest: regretDigest, trashed: false }, "the cached read is the restored post too");
+    assert.equal(post.post_status, "publish");
+    assert.deepEqual((await pull("guides")).get(regret.uid), published, "the cached read is the restored post too");
   });
 
   await t.test("a trashed post keeps its uid: nobody else can take it", async () => {

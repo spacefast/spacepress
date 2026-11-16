@@ -37,7 +37,7 @@ const refused = (answer: Answer, what: string) => {
 // letter case), and the site's own objects attached to a TypedPress kind or to a global's options page.
 const DRIFT: [what: string, ability: string, input: Record<string, unknown>][] = [
   ["a field group on a TypedPress kind", "scf/create-field-group", group(`group_drift_a${run}`, { location: onKind("tp_notes") })],
-  ["a field group on a kind's post type, in another letter case", "scf/create-field-group", group(`group_drift_b${run}`, { location: onKind("TypedPress_Notes") })],
+  ["a field group on a kind's post type, in another letter case", "scf/create-field-group", group(`group_drift_b${run}`, { location: onKind("TP_Notes") })],
   ["a field group on a global's options page", "scf/create-field-group", group(`group_drift_c${run}`, { location: [[{ param: "options_page", operator: "==", value: "typedpress-global-banner" }]] })],
   ["a field group named as one of TypedPress's", "scf/create-field-group", group(`group_tp_drift${run}`)],
   ["a field group named as one of TypedPress's, in another letter case", "scf/create-field-group", group(`group_TP_drift${run}`)],
@@ -154,7 +154,7 @@ test("wp-admin's field group screen and SCF's import tool are refused with a pag
   const hijack = new FormData();
   hijack.set("_acf_nonce", hidden(importForm, "_acf_nonce"));
   hijack.set("import_type", "json");
-  hijack.set("acf_import_file", new Blob([JSON.stringify([{ key: `post_type_drift_k${run}`, title: "Hijack", post_type: ".TypedPress_Notes", labels: { name: "Hijack" }, public: true }])], { type: "application/json" }), "drift.json");
+  hijack.set("acf_import_file", new Blob([JSON.stringify([{ key: `post_type_drift_k${run}`, title: "Hijack", post_type: ".TP_Notes", labels: { name: "Hijack" }, public: true }])], { type: "application/json" }), "drift.json");
   const imported2 = await fetch(`${site}/wp-admin/edit.php?post_type=acf-field-group&page=acf-tools`, { method: "POST", redirect: "manual", headers: { cookie }, body: hijack });
   assert.equal(imported2.status, 403);
   assert.equal(stored(`post_type_drift_k${run}`), 0);
@@ -227,7 +227,7 @@ test("registered meta: a TypedPress field is written through TypedPress's valida
   await box(`plain_${run}`);
   assert.equal(wp("post", "meta", "get", String(note), `plain_${run}`), "boxed");
   // TypedPress's keys, in every form the database matches them by: letter case and accents.
-  for (const key of ["tp_mood", "TypedPress_Mood", "TP_MOOD", "fírst_mood", "tp_undeclared"]) {
+  for (const key of ["tp_mood", "Tp_Mood", "TP_MOOD", "ţp_mood", "tp_undeclared"]) {
     await box(key);
   }
   // `_tp_mood` is SCF's reference to TypedPress's field, written by TypedPress's own save.

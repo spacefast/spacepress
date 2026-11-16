@@ -5,7 +5,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 : "${ZERO_ORIGINAL:?set ZERO_ORIGINAL to the original monorepo checkout}"
-compose() { docker compose -p "${TP_WP_PROJECT:-first-wp-test}" "$@"; }
+compose() { docker compose -p "${TP_WP_PROJECT:-typedpress-wp-test}" "$@"; }
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 git -C "$ZERO_ORIGINAL" archive --format=tar HEAD runtime/engine/wordpress runtime/engine/shared | tar -x -C "$work"

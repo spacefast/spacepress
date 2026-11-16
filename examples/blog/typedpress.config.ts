@@ -85,7 +85,7 @@ export const comments = table({
   },
 });
 
-// Readers who sign in (§6.2): the first-identity screens on WordPress.
+// Readers who sign in (§6.2): the typedpress-identity screens on WordPress.
 export const members = userProjection({
   email: email().unique().max(191),
   name: text().max(80),

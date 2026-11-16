@@ -1403,7 +1403,7 @@ fn frontend_modes_on_wordpress() {
                 "signedOut": { "at": "/wp-login.php", "redirectTo": true },
                 "loginForm": 1,
                 "signedIn": "first admin",
-                "withoutDeveloperMode": { "dashboard": "/", "pages": "/classic/edit.php?post_type=page" },
+                "withoutDeveloperMode": { "dashboard": "/", "pages": "/classic/edit.php?post_type=page", "framed": "/wp-admin/edit.php?post_type=page" },
                 "developerMode": true,
                 "classic": { "at": "/wp-admin/index.php", "adminBar": 1, "menu": 1, "dashboard": 1 },
                 "pages": { "title": "Pages", "table": 1 },

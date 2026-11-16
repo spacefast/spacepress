@@ -108,14 +108,21 @@ test('media remembers columns and sends its saved page size to WordPress after r
 	await newSession(browser, path, 'Alt text', true);
 });
 
-test('custom screens share saved columns between TypedPress and classic admin', async ({ page, browser }) => {
+test('custom screens share saved columns between TypedPress and classic admin', async ({ page, browser, request }) => {
 	await signIn(page);
 	await page.goto(`${site}/wp-admin/new/screens/test-comments`);
 	await resetView(page);
 	await hideColumn(page, 'Approved');
-	const classic = '/wp-admin/admin.php?page=typedpress-screen-test-comments';
-	await page.goto(`${site}${classic}`);
-	await expect(page.getByRole('button', { name: 'View options', exact: true })).toBeVisible();
-	await expect(page.getByRole('columnheader', { name: 'Approved', exact: true })).toHaveCount(0);
-	await newSession(browser, classic, 'Approved', true);
+	// Classic wp-admin opens on its own only in developer mode; otherwise it is framed in TypedPress Admin.
+	const developerMode = (on: boolean) => request.post(`${site}/wp-json/wp/v2/users/me`, { headers, data: { tp_admin_developer_mode: on } });
+	expect((await developerMode(true)).status()).toBe(200);
+	try {
+		const classic = '/wp-admin/admin.php?page=typedpress-screen-test-comments';
+		await page.goto(`${site}${classic}`);
+		await expect(page.getByRole('button', { name: 'View options', exact: true })).toBeVisible();
+		await expect(page.getByRole('columnheader', { name: 'Approved', exact: true })).toHaveCount(0);
+		await newSession(browser, classic, 'Approved', true);
+	} finally {
+		await developerMode(false);
+	}
 });

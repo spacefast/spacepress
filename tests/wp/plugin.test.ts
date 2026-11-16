@@ -308,7 +308,7 @@ describe("while an app update has failed half way", () => {
 
   test("the trusted CLI refuses every command but migrate, with the reason", () => {
     for (const args of [["find", "posts"], ["migrate-legacy", "--dry-run"]]) {
-      const out = JSON.parse(wpTry("first", ...args));
+      const out = JSON.parse(wpTry("typedpress", ...args));
       assert.deepEqual([out.error.status, out.error.code], [503, "unavailable"], args.join(" "));
       assert.match(out.error.detail, /Migration 9999_upgrade_probe failed at statement 2/);
     }
@@ -417,7 +417,7 @@ describe("while an app update has failed half way", () => {
   });
 
   test("`wp typedpress migrate --mark-applied` only accepts the next pending statement", () => {
-    const wrong = JSON.parse(wpTry("first", "migrate", "--mark-applied=9999_upgrade_probe:1"));
+    const wrong = JSON.parse(wpTry("typedpress", "migrate", "--mark-applied=9999_upgrade_probe:1"));
     assert.match(wrong.error.detail, /next pending statement of 9999_upgrade_probe is 2 of 2/);
     assert.deepEqual(sql("SELECT id FROM wp_tp__migrations WHERE id LIKE '9999%'").map((r) => r.id), ["9999_upgrade_probe:1"]);
   });
@@ -629,7 +629,7 @@ test("a runtime update whose system tables fail refuses TypedPress until they ap
   const refused = await fetch(`${api}/posts?limit=1`);
   assert.deepEqual([refused.status, (await refused.json()).code], [503, "unavailable"]);
   assert.equal(wp("option", "get", "tp_runtime_tables"), "0.1", "the version is only recorded once every table applies");
-  assert.deepEqual(JSON.parse(wpTry("first", "find", "posts")).error.status, 503);
+  assert.deepEqual(JSON.parse(wpTry("typedpress", "find", "posts")).error.status, 503);
   // The cause goes away; the next request completes the runtime upgrade and TypedPress serves again.
   sql("CREATE TABLE wp_tp__probe_missing (id BIGINT PRIMARY KEY) ENGINE=InnoDB");
   assert.equal((await fetch(`${api}/posts?limit=1`)).status, 200);

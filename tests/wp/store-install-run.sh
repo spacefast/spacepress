@@ -195,7 +195,9 @@ def names(lines):
         parts=l.split('\t')
         out.add(parts[0] if len(parts)>1 else l)
     return out
-missing=sorted(n for n in names(plugins)-names(managed) if not n.startswith(('_site_transient','active_plugins','recently_activated','first-','missing:')))
+# first_installed: a plugin-installed site's marker that its install checks passed (Wp\InstallMarker);
+# a managed build installs from initialize and never checks on requests, so it records none.
+missing=sorted(n for n in names(plugins)-names(managed) if not n.startswith(('_site_transient','active_plugins','recently_activated','first-','missing:')) and n != 'first_installed')
 assert not missing, missing
 PY
 ok "initialize installs what a plugin-installed site installs on its first requests"

@@ -279,7 +279,8 @@ const ADDRESS_LINE = `if ( is_file( ABSPATH . '${ADDRESS_FILE}' ) ) { require AB
 // braced block is followed by that block's `}`; one that is an unbraced if/else/while body
 // follows `)` or `else`. Files
 // with alternative control syntax (`if (…): … endif;`), which can leave a block open at the end of
-// a file, are refused.
+// a file, are refused, and so are files that name wp-settings.php more than once or use return,
+// exit, die, goto or __halt_compiler anywhere: the last require might then never run.
 export const SETTINGS_OFFSET = String.raw`
 $code = array();
 $offset = 0;
@@ -293,7 +294,14 @@ foreach (token_get_all(file_get_contents($tp_config)) as $token) {
 $found = -1;
 $ends = array(T_ENDIF, T_ENDWHILE, T_ENDFOR, T_ENDFOREACH, T_ENDSWITCH, T_ENDDECLARE);
 $alternative = false;
-foreach ($code as $t) $alternative = $alternative || in_array($t[0], $ends, true);
+$settings = 0;
+foreach ($code as $t) {
+  $alternative = $alternative || in_array($t[0], $ends, true);
+  // A config that loads wp-settings.php twice, or stops early: the last require might never run.
+  if ($t[0] === T_CONSTANT_ENCAPSED_STRING && ($t[1] === "'wp-settings.php'" || $t[1] === '"wp-settings.php"')) $settings++;
+  if ($t[0] === T_RETURN || $t[0] === T_EXIT || $t[0] === T_HALT_COMPILER || $t[0] === T_GOTO) $alternative = true;
+}
+if ($settings !== 1) $alternative = true;
 $is = function ($t, $want) {
   if ($want === 'require') return $t[0] === T_REQUIRE_ONCE || $t[0] === T_REQUIRE;
   if ($want === 'ABSPATH') return $t[0] === T_STRING && $t[1] === 'ABSPATH';

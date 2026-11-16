@@ -305,9 +305,9 @@ test('the address reaches WordPress before it loads, from one line in wp-config.
     assert.equal(lines[at - 1], '}', decoy);
     assert.equal(lines.filter((line) => line.startsWith('if ( is_file( ABSPATH')).length, 1, decoy);
   }
-  // Braces in strings are no tokens of their own, so they open and close nothing; a dormant require
-  // in a function body is not the last statement. The bootstrap at the end is the one patched.
-  for (const lead of ['$help = "$x}";\nfunction f() {\n' + settings + '\n}', '$help = "$x{";', '$help = "${x}";\n$y = "{$z}";']) {
+  // Braces in strings are no tokens of their own, so they open and close nothing. The bootstrap at
+  // the end is the one patched.
+  for (const lead of ['$help = "$x}";\nfunction f() {\n$a = 1;\n}', '$help = "$x{";', '$help = "${x}";\n$y = "{$z}";']) {
     const source = `<?php\n${lead}\n${settings}\n`;
     const lines = (await patch(source)).split('\n');
     assert.equal(lines.at(-3), ADDRESS, lead);
@@ -315,6 +315,13 @@ test('the address reaches WordPress before it loads, from one line in wp-config.
   }
   // Alternative control syntax can leave a block open at the end of a file: refused, not guessed.
   await assert.rejects(patch(`<?php\nif (false):\n$a = 1;\n${settings}\nendif;\n${settings}\n`), /in a statement of its own/);
+  // A second require of wp-settings.php, here dormant in a function, and a last require that may
+  // never run, after an earlier bootstrap and an early stop: refused.
+  await assert.rejects(patch(`<?php\n$help = "$x}";\nfunction f() {\n${settings}\n}\n${settings}\n`), /in a statement of its own/);
+  for (const stop of ['return;', 'exit;', 'die();', 'goto done;\ndone:']) {
+    await assert.rejects(patch(`<?php\n${settings}\n${stop}\n${settings}\n`), /in a statement of its own/, stop);
+  }
+  await assert.rejects(patch(`<?php\nif ( $a ) { return; }\n${settings}\n`), /in a statement of its own/);
   // Code after the require: it isn't the last statement, so refused.
   await assert.rejects(patch(`<?php\n${settings}\ndefine( 'LATE', 1 );\n`), /in a statement of its own/);
   // The require must start its line: another statement before it on the line is refused.

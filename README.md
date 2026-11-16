@@ -1,6 +1,6 @@
 # TypedPress
 
-**TypedPress is a TypeScript framework for building backends, fast.** (formerly Zero v2)
+**TypedPress is a TypeScript framework for building backends, fast.**
 
 You write one `typedpress.config.ts`. `typedpress build` turns it into
 database migrations, REST endpoints, user authentication, a dashboard and a
@@ -10,8 +10,8 @@ works with Next.js, Astro, TanStack Start, or anything else that can call
 
 TypedPress is built on top of WordPress and runs alongside a traditional WordPress
 setup. It needs WordPress 7.2 (7.2-beta5 or later), PHP 8.2+ and a small set of plugins that
-`typedpress build` pins for you. TypedPress apps can be deployed to
-[Spacefast](https://spacefast.com) natively.
+`typedpress build` pins for you. One plugin installs TypedPress on any
+WordPress site, and `typedpress push` deploys your app to it.
 
 It's a new, experimental way of building backends for content and personal
 software. The API will move. Read [Status](#status) before you build on it.
@@ -103,7 +103,7 @@ built 2 collections, 0 globals, 1 hooks, 1 actions -> tp/dist/wp-content in 6s
 | You get | Where |
 |---|---|
 | MySQL migrations, diffed against the last build | `tp/_generated/migrations/0001_init.sql` |
-| A typed client: `first.posts.list({ with: { writer: true } })` and friends | `tp/_generated/client/` |
+| A typed client: `client.posts.list({ with: { writer: true } })` and friends | `tp/_generated/client/` |
 | Editor types, so `db` in your hooks knows your schema | `tp/_generated/db.d.ts` |
 | The API as an OpenAPI 3.1 document, also served by the site | `tp/_generated/openapi.json`, `/__tp/api/v1/openapi.json` |
 | An HTTP API for every collection, global and action, with relations loaded through `with`, over WordPress's REST routes | `/__tp/api/v1/...` |
@@ -131,11 +131,10 @@ Composer.
 
 ## Quick start
 
-The [installation guide](docs/installation.md) covers the npm creator, compiler
-installer and unsigned Homebrew release tooling, including a local packed-install
-test. Public packages and release downloads still need maintainer publication.
-
-Build the compiler from source
+Once the npm packages are published, `npm create typedpress@latest my-app` creates
+an app and installs a prebuilt compiler; the [installation guide](docs/installation.md)
+covers it, the standalone `typedpress` package and the release tooling. Until then,
+or to work on TypedPress itself, build the compiler from source
 with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
 npm; it needs neither Docker nor a host PHP installation. TypedPress automatically
 runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)
@@ -234,23 +233,23 @@ application password from that command:
 ```ts
 import { createClient } from "./tp/_generated/client/index.ts";
 
-const first = createClient({
+const client = createClient({
   url: "http://localhost:8787/__tp/api/v1",
   headers: { Authorization: "Basic " + btoa("admin:<application password>") },
 });
 
-const author = await first.authors.create({ name: "Alice" });
-const post = await first.posts.create({ title: "  Hello, TypedPress  ", writer: author.id });
+const author = await client.authors.create({ name: "Alice" });
+const post = await client.posts.create({ title: "  Hello, TypedPress  ", writer: author.id });
 console.log(post.slug, post.status);                       // hello-typedpress published
-const posts = await first.posts.list({ with: { writer: true }, orderBy: { updatedAt: "desc" } });
+const posts = await client.posts.list({ with: { writer: true }, orderBy: { updatedAt: "desc" } });
 console.log(posts[0]?.writer?.name);                       // Alice
-console.log(await first.actions.publishedCount({}));        // { count: 1 }
+console.log(await client.actions.publishedCount({}));        // { count: 1 }
 ```
 
 Every argument and result is typed from your schema: `with` keys, filters,
 `orderBy`, action inputs and outputs. The post is a real WordPress post, so it
 is also in `wp-admin` under Posts. Browser apps sign members in with
-`typedpress.auth.signIn()`, which goes through the first-identity screens given a
+`client.auth.signIn()`, which goes through the typedpress-identity screens given a
 `clientId` and `redirectUri`; see the client's generated README for sessions,
 guests and server-to-server auth.
 
@@ -347,7 +346,7 @@ compared, previewed, promoted or discarded.
 Use `table(fields, options?)` for app data in its own SQL table. Both kinds
 support references and one/many relations to either kind, with typed client
 queries and target access rules. The export name supplies the name once:
-`export const shoppingList = table(...)` is `first.shoppingList` in the client and stores in
+`export const shoppingList = table(...)` is `client.shoppingList` in the client and stores in
 `wp_tp_shopping_list`, whichever file under `tp/` (or `typedpress.config.ts`) exports it.
 An exported `userProjection()` projects existing WordPress users for auth; it creates no second user table. Core `/wp/v2` routes and
 admin screens for TypedPress's post types follow TypedPress's access rules. Need other
@@ -356,14 +355,7 @@ and the build pins and ships them too.
 
 ## Deploy
 
-Deploy to [Spacefast](https://spacefast.com) with `sf publish` from a project
-containing `typedpress.config.ts`, or use the hosted MCP publish tool. Spacefast captures
-and compiles source on the host. REST endpoints, actions, [HTTP routes](docs/config-api.md#http-routes)
-and [TSX pages](docs/pages.md) work on the Space hostname. Realtime is not supported.
-See the [Spacefast deploy guide](docs/spacefast-deploy.md) and, for an existing
-Space, the [migration procedure](docs/migrating-from-zero.md#migrate-a-spacefast-app).
-
-On any other WordPress, install one plugin and push from your project:
+Install one plugin on any WordPress site, then push from your project:
 
 ```sh
 typedpress plugin                      # writes typedpress.zip: upload and activate it in wp-admin
@@ -378,6 +370,9 @@ Without the plugin, the build is `tp/dist/wp-content/plugins/*.zip`, which you u
 or copy like any plugin, and `tp/dist/wp-content/typedpress-manifest.json` records the
 versions and the activation order. Either way, jobs run through Action Scheduler, so make
 sure WP-Cron or a real cron reaches the site.
+
+Hosting on [Spacefast](https://spacefast.com) is in progress; the
+[Spacefast deploy guide](docs/spacefast-deploy.md) says what works today.
 
 ## Examples
 
@@ -417,8 +412,9 @@ See [migrating from Zero](docs/migrating-from-zero.md).
 
 TypedPress is new and experimental. The examples build and run end to end on
 WordPress, and CI proves it on every change, but the config API, the wire
-format and the plugin layout will change before a first release. There are no
-binary releases yet; you build the compiler from source.
+format and the plugin layout will change before a 1.0. The release workflow
+builds prebuilt compilers for every tagged version; until the first one is
+published, build the compiler from source.
 
 Every build ships TypedPress Admin, the default admin, at `/wp-admin/new/`; classic
 `/wp-admin/` stays complete beside it, and `defineConfig({ admin: false })`
@@ -432,23 +428,21 @@ routes, compiled to PHP and rendered by WordPress as the visitor.
 [`examples/full-site`](examples/full-site) is a complete site; see
 [`docs/pages.md`](docs/pages.md) for the supported subset.
 
-What's next, none of it shipped:
-
-- A website with an interactive config builder that loads your config into
-  WordPress Playground, and one-click publish to Spacefast.
-- TypedPress Blocks: an optional add-on for authoring Gutenberg content and full
-  block themes in TSX.
+[`@typedpress/blocks`](packages/blocks/README.md) is an optional add-on for
+authoring Gutenberg content and full block themes in TSX.
 
 ## License
 
-TypedPress is licensed by component, and [`LICENSE`](LICENSE) maps every path.
-Everything that runs inside WordPress is GPL-2.0-or-later: the PHP runtime,
-the `typedpress-identity` and `typedpress-admin` plugins and the plugins `typedpress build`
-emits. Everything else is MIT: the Rust compiler, the TypeScript client, the
-`"first"` types, the examples, the docs and the tests. Bundled third-party
-code keeps its own license; see the `THIRD-PARTY-LICENSES.txt` files under
-`runtime/`.
+TypedPress is MIT ([`LICENSE`](LICENSE)), except what runs inside WordPress,
+which is GPL-2.0-or-later ([`licenses/GPL-2.0-or-later.txt`](licenses/GPL-2.0-or-later.txt)):
+the PHP runtime, the `typedpress-identity` and `typedpress-admin` plugins and the plugins
+`typedpress build` emits. [`LICENSING.md`](LICENSING.md) maps every path and npm package.
+Bundled third-party code keeps its own license; see the `THIRD-PARTY-LICENSES.txt` files
+under `runtime/`.
 
-The framework website is a TypedPress app in [`www/`](www/README.md). Build and deployment
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) explains how the compiler works, how to run the
+suites and where things live. The framework website is a TypedPress app in [`www/`](www/README.md). Build and deployment
 instructions live with the app. The older `docs-site/` also supplies its browser compiler
 and shared playground assets.

@@ -55,7 +55,7 @@ ${asset(targets['linux-x64'], '      ')}
 
   def install
     bin.install "typedpress"
-    pkgshare.install "LICENSE", "LICENSE-MIT", "LICENSE-GPL", "Cargo.lock", "SOURCE.json", "licenses"
+    pkgshare.install "LICENSE", "LICENSING.md", "Cargo.lock", "SOURCE.json", "licenses"
   end
 
   test do

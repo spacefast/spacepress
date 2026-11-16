@@ -6,4 +6,4 @@ After installing, it runs `typedpress init` in the new project: `AGENTS.md`, `.m
 
 Use `-- --no-install` to write files without installing packages. Existing destinations, including empty directories and symbolic links, are refused. Failed dependency installation preserves the new project so you can fix the error and retry.
 
-Maintainers testing an unpublished compiler tarball can set `TP_CLI_PACKAGE=/absolute/path/to/spacefast-typedpress-cli-0.3.0.tgz`. `TP_BIN` and the compiler's release mirror/cache settings flow through npm installation. These package names and the matching binary release must be published before the public command is usable.
+Maintainers testing an unpublished compiler tarball can set `TP_CLI_PACKAGE=/absolute/path/to/typedpress-0.3.0.tgz`. `TP_BIN` and the compiler's release mirror/cache settings flow through npm installation. These package names and the matching binary release must be published before the public command is usable.

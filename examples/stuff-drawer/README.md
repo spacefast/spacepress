@@ -145,61 +145,8 @@ examples/stuff-drawer/typedpress.config.ts(204,46): error TS2339: Property 'find
 examples/stuff-drawer/typedpress.config.ts(206,46): error TS2339: Property 'findMany' does not exist on type '"Schema not registered: add tp/_generated/db.d.ts (run `typedpress build`) so `db.query` knows your collections"'.
 ```
 
-## Spacefast verification
+## Spacefast
 
-Space URL: <https://stuff-drawer-inventory.space.fast/>. Access: owning team only. The automatically created link grant was revoked. The final grant check filters `status === "active"` and finds only the owning-team live and version grants.
-
-`sf typedpress check` is required by the deployment guide, but the installed CLI refused it:
-
-```text
-Command zero:check not found.
-Run with --help to see the supported usage.
-```
-
-A later invocation of `sf typedpress check examples/stuff-drawer` returned:
-
-```text
-Unknown command `sf typedpress check examples/stuff-drawer`. Did you mean `sf zero ls`? Run `sf help zero` for available commands.
-```
-
-The native check above was used to inspect main. Publication used only `sf publish`, including a remote-detection attempt:
-
-```sh
-sf publish examples/stuff-drawer --space spc_3e541c524ec04b1386bd9df3ac8a9e24 --remote --json --wait-timeout 120
-```
-
-The receipt reports version `ver_7074e2290eac46c3b68d90d2d93c9e81` ready, but the actual owning API reports `hasRuntime: false` and `runtimeCodeDetected: false`. Its recorded source revision is `06db7711eb50373c85c93e231f1140d3b7e398de`, before the documentation and source refinements in this PR, rather than current main `b66e98b3866037061198c51ebef9534609a5e301`. This is a source snapshot, not deployment of the inventory app. The host diagnostic is verbatim:
-
-```text
-No HTML files were found in the root of this version, so it serves in files mode with directory listing enabled.
-```
-
-Real anonymous HTTP requests returned:
-
-```text
-GET /wp-json/tp/v1/things -> HTTP 403, HTML title "This space is private"
-POST /wp-json/tp/v1/actions/find {"query":"USB-C Lightning"} -> HTTP 403, HTML title "This space is private"
-GET /wp-login.php -> HTTP 403, HTML title "This space is private"
-```
-
-The commands used `curl -sS --max-time 20`; the action request supplied `Content-Type: application/json` and the JSON body above. Authenticated Spacefast reads used:
-
-```sh
-sf fetch /wp-json/tp/v1/things --space spc_3e541c524ec04b1386bd9df3ac8a9e24 --status --headers --json
-sf fetch /wp-login.php --space spc_3e541c524ec04b1386bd9df3ac8a9e24 --status --headers --json
-```
-
-Observed responses:
-
-```text
-/wp-json/tp/v1/things -> status 404, contentType "application/json; charset=UTF-8", runtime "1", versionId null
-/wp-login.php -> status 200, contentType "text/html; charset=UTF-8", runtime "1", versionId null
-```
-
-Fetching the collection or action path with `sf fetch --output` returned:
-
-```json
-{"error":{"code":"private_fetch_failed","message":"Private fetch returned HTTP 404.","retryable":false}}
-```
-
-The native WordPress login page is reachable after Spacefast authentication. A completed WordPress sign-in, inventory collection read, action execution, and scheduler stamp have not been verified. Local startup never reached WordPress; `verify.mjs` passes `node --check` but has not passed a live run. The requested wp-admin, edit, and TypedPress Admin screenshots remain unavailable.
+Hosted deployment of a `typedpress.config.ts` project is not available in a
+released `spacefast` CLI yet; see the [Spacefast deploy guide](../../docs/spacefast-deploy.md). After publishing, verify a collection
+read, an action and WordPress sign-in on the live origin.

@@ -41,7 +41,7 @@ site that deployed such a collection keeps its rows where they are: see
 | Read about | In |
 |---|---|
 | fields, options and access rules both halves share | [Columns](#columns), [Collections, tables and user projections](#collections-tables-and-user-projections) |
-| the HTTP API, locales and sync, which work on both | [The `/__tp/api/v1` API](#the-__firstapiv1-api), [Locales](#locales), [Sync](#sync) |
+| the HTTP API, locales and sync, which work on both | [The `/__tp/api/v1` API](#the-__tpapiv1-api), [Locales](#locales), [Sync](#sync) |
 | globals, media and files, sign-in | [Content](#content) |
 | relations, tables TypedPress didn't create, schema changes at deploy, transactions, queries | [Database](#database) |
 

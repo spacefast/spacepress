@@ -6,12 +6,12 @@ any frontend or import it by path. Don't edit it: `typedpress build` rewrites it
 ```ts
 import { createClient, TypedPressError } from "./tp/_generated/client/index.ts";
 
-const first = createClient({ url: "https://example.test/__tp/api/v1" });
+const client = createClient({ url: "https://example.test/__tp/api/v1" });
 
-const posts = await first.posts.list({ where: { tags: { has: "news" } }, orderBy: { createdAt: "desc" }, with: { author: true } });
-const post = await first.posts.create({ title: "Hello" });
+const posts = await client.posts.list({ where: { tags: { has: "news" } }, orderBy: { createdAt: "desc" }, with: { author: true } });
+const post = await client.posts.create({ title: "Hello" });
 try {
-  await first.posts.update(post.id, { title: "" });
+  await client.posts.update(post.id, { title: "" });
 } catch (e) {
   if (e instanceof TypedPressError) console.log(e.status, e.code, e.pointer); // 422 invalid_input /title
 }
@@ -24,16 +24,16 @@ every request. An expired access token is refreshed once and the request retried
 Tokens live in memory, or in `sessionStorage` with `auth: { storage: "session" }`.
 
 ```ts
-// Redirect to the first-identity screens (PKCE), back on redirectUri.
-const first = createClient({ auth: { clientId: "app_...", redirectUri: location.origin + "/callback", storage: "session" } });
-await first.auth.signIn();                  // leaves the page
-const user = await first.auth.handleCallback(); // on /callback
+// Redirect to the typedpress-identity screens (PKCE), back on redirectUri.
+const client = createClient({ auth: { clientId: "app_...", redirectUri: location.origin + "/callback", storage: "session" } });
+await client.auth.signIn();                  // leaves the page
+const user = await client.auth.handleCallback(); // on /callback
 
 // Anonymous visitors write as guests, and keep their rows when they sign up.
 // With `guests: true`, a write that is refused as unauthenticated starts a guest session and is
 // retried; a write a collection allows anonymously (create: "anyone") never needs one, so start the
 // session yourself when you want the rows kept. `comments` below stands for a collection of yours
-// whose create rule admits guests. The upgrade happens on the first-identity screens, so the client
+// whose create rule admits guests. The upgrade happens on the typedpress-identity screens, so the client
 // needs the same clientId and redirectUri as signIn(); upgrade() redirects and handleCallback()
 // finishes it.
 const guest = createClient({ auth: { guests: true, clientId: "app_...", redirectUri: location.origin + "/callback" } });
@@ -41,7 +41,7 @@ await guest.auth.guest();                                                 // rol
 await guest.comments.create({ postId: 1, name: "A reader", body: "Hi" }); // written by the guest
 await guest.auth.upgrade();
 
-await first.auth.signOut();
+await client.auth.signOut();
 ```
 
 ## Live updates
@@ -49,11 +49,11 @@ await first.auth.signOut();
 Every read is a `Query`: `await` it for one answer, or subscribe to keep it current.
 
 ```ts
-const stop = first.posts.list({ where: { status: "published" }, limit: 10 }).subscribe(
+const stop = client.posts.list({ where: { status: "published" }, limit: 10 }).subscribe(
   (posts) => render(posts),   // now, and again whenever the result changes
   (error) => report(error),   // a refused read or a network failure; the subscription continues
 );
-first.posts.count().subscribe((n) => badge(n));
+client.posts.count().subscribe((n) => badge(n));
 ```
 
 All subscriptions of a client travel in one request, which the server answers with "not modified"

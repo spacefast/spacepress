@@ -1,55 +1,21 @@
-First is licensed by component. The rule: anything that runs inside WordPress
-is GPL-2.0-or-later, because WordPress plugins are derivative works of
-WordPress. Everything else is MIT.
+MIT License
 
-GPL-2.0-or-later (full text in LICENSE-GPL)
+Copyright (c) 2026 Spacefast
 
-  runtime/First/          the PHP runtime, shipped as the first-runtime plugin
-  runtime/identity/      the first-identity plugin and its screens
-  runtime/admin/         the first-admin plugin and its screens, emitted
-                         with `admin: true`
-  runtime/wp-plugin/     the first-runtime and first-app plugin templates
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-  and every plugin that `first build` emits from them.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-MIT (full text in LICENSE-MIT)
-
-  src/, build.rs, Cargo.toml, Cargo.lock   the Rust compiler and CLI
-  runtime/client/                          the typed TypeScript client
-  types/                                   the "first" type declarations
-  examples/, docs/, scripts/, tests/       examples, documentation, tooling, tests
-  everything else not listed above
-
-How the two meet. The compiler binary embeds the GPL runtime files as opaque
-bytes and writes them into the plugins it emits, the runtime unchanged and the
-plugin headers with their version placeholders filled in. It never links
-against or derives from them; where a command needs the runtime, it runs
-it as a separate PHP process. The runtime is to the compiler what
-an installer's payload is to the installer: distributed together, but
-separate works. The compiler's sources stay MIT, and because the packaged
-crate carries the embedded runtime, Cargo.toml declares the package as
-MIT AND GPL-2.0-or-later. The plugins written under
-first/dist/wp-content/plugins (first-runtime, first-identity, first-app-<name>) are
-GPL-2.0-or-later and each carries the license text. Files the compiler
-generates from your first.config.ts (schema.php, functions.php, migrations,
-first/_generated/db.d.ts, first/_generated/openapi.json, first/_generated/client/types.ts and
-schema.ts) are yours. The client's
-index.ts and README.md are copied from runtime/client/ and stay MIT; the
-copy ships with its LICENSE.
-
-Third-party code keeps its own license and is not relicensed by this file:
-
-  runtime/First/vendor-prefixed/            WordPress PHP toolkit (GPL-2.0-or-later)
-                                           and the libraries it bundles
-  runtime/identity/vendor-prefixed/        passkey, JWT and TOTP libraries
-  runtime/identity/build/                  the bundled identity screens
-  runtime/admin/build/                     the bundled admin screens
-
-  Each of those directories carries a THIRD-PARTY-LICENSES.txt listing every
-  package and its license. Rust dependencies are under their own permissive
-  licenses, recorded in each crate's metadata and license files (Cargo.lock
-  names the crates and versions).
-
-  tests/fixtures/openapi-3.1.schema.json is the OpenAPI Initiative's JSON
-  Schema for OpenAPI 3.1 documents (Apache-2.0), unmodified. A test validates
-  the generated openapi.json with it; no build ships it.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

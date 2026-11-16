@@ -16,7 +16,7 @@ export async function archive({ binary, target, output, revision, workingTree = 
   if (!/^[0-9a-f]{40}$/.test(revision)) throw new Error('Supply the exact 40-character Git source revision.');
   const observed = (await exec('git', ['rev-parse', 'HEAD'], { cwd: fileURLToPath(root) })).stdout.trim();
   if (observed !== revision) throw new Error('Source revision differs from the observed checkout HEAD.');
-  const sourceInputs = ['types', 'src', 'runtime', 'scripts', 'build.rs', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL'];
+  const sourceInputs = ['types', 'src', 'runtime', 'scripts', 'build.rs', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain', 'LICENSE', 'LICENSING.md', 'licenses'];
   const untracked = (await exec('git', ['ls-files', '--others', '--exclude-standard', '--', ...sourceInputs], { cwd: fileURLToPath(root) })).stdout.trim();
   if (untracked && !workingTree) throw new Error('Uncommitted compiler/runtime source files exist; commit the release sources or use --working-tree only for a local test archive.');
   try { await exec('git', ['diff', '--quiet', 'HEAD', '--', ...sourceInputs], { cwd: fileURLToPath(root) }); }
@@ -33,7 +33,8 @@ export async function archive({ binary, target, output, revision, workingTree = 
   try {
     await copyFile(binary, join(stage, 'typedpress'));
     await cp(new URL('types/typedpress/', root), join(stage, 'types'), { recursive: true });
-    for (const name of ['LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock']) await copyFile(new URL(name, root), join(stage, name));
+    await mkdir(join(stage, 'licenses'));
+    for (const name of ['LICENSE', 'LICENSING.md', 'licenses/GPL-2.0-or-later.txt', 'Cargo.lock']) await copyFile(new URL(name, root), join(stage, name));
     async function notices(directory, prefix = '') {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
         if (['node_modules', '.git', 'vendor', 'apps'].includes(entry.name)) continue;
@@ -104,10 +105,10 @@ export async function archive({ binary, target, output, revision, workingTree = 
     await writeFile(join(stage, 'licenses/DEPENDENCIES.json'), JSON.stringify(dependencies.sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`)), null, 2) + '\n');
     await writeFile(join(stage, 'SOURCE.json'), JSON.stringify({
       version, target, revision, sourceKind: workingTree ? 'local-working-tree-test' : 'git-commit', source: `https://github.com/spacefast/zero/tree/${revision}`,
-      signed: false, licenses: 'See LICENSE for component ownership; runtime notices retain their original paths under licenses/runtime/. Rust notices and metadata are under licenses/rust/ and licenses/DEPENDENCIES.json; exact versions and registry checksums are recorded in Cargo.lock.',
+      signed: false, licenses: 'LICENSE is MIT, licenses/GPL-2.0-or-later.txt is the GPL, and LICENSING.md maps every component to one of them; runtime notices retain their original paths under licenses/runtime/. Rust notices and metadata are under licenses/rust/ and licenses/DEPENDENCIES.json; exact versions and registry checksums are recorded in Cargo.lock.',
     }, null, 2) + '\n');
     // GNU tar treats a drive letter in the archive argument as a remote host.
-    await exec('tar', ['-czf', name, '-C', stage, 'typedpress', 'LICENSE', 'LICENSE-MIT', 'LICENSE-GPL', 'Cargo.lock', 'SOURCE.json', 'licenses', 'types'], { cwd: output });
+    await exec('tar', ['-czf', name, '-C', stage, 'typedpress', 'LICENSE', 'LICENSING.md', 'Cargo.lock', 'SOURCE.json', 'licenses', 'types'], { cwd: output });
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(destination)) hash.update(chunk);
     const sha256 = hash.digest('hex');

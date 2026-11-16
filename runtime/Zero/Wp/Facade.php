@@ -30,6 +30,12 @@ use Zero\Js;
 final class Facade
 {
     public const PREFIX = '/__zero/api/v1';
+
+    /** The absolute URL of a facade path (`/media/42`), below the site's home URL. */
+    public static function url(string $path = ''): string
+    {
+        return home_url(self::PREFIX . $path);
+    }
     private const LIMIT = 50;
     private const MAX_LIMIT = 100;
 
@@ -75,7 +81,7 @@ final class Facade
 
     /**
      * @param array<string, mixed> $query
-     * @return array{int, array<string, string>, string}
+     * @return array{int, array<string, string>, string|\Closure}
      */
     public static function route(Plugin $plugin, string $method, string $path, array $query, string $body): array
     {
@@ -100,6 +106,14 @@ final class Facade
         }
         if ($name === 'actions' && count($segments) === 2) {
             return self::action($plugin, $method, $segments[1], $query, $body);
+        }
+        if (\Zero\Extensions::routeHandler($name) !== null) {
+            // Zero's own features with no core route (sync, sign-in, services, private files,
+            // media uploads and their files): their one implementation, under the facade's prefix.
+            return $plugin->app()->handle($method, '/' . implode('/', array_map('rawurlencode', $segments)), $query, $body, self::headers(), $_FILES, $_POST);
+        }
+        if (isset($plugin->schema->globals()[$name]) && count($segments) === 1) {
+            return self::global($plugin, $method, $name, $body);
         }
         $kind = $kinds[$name] ?? throw HttpError::notFound("Unknown kind '$name'");
         $base = $kind['route'];
@@ -194,6 +208,45 @@ final class Facade
         }
 
         return self::json(200, ['data' => $result]);
+    }
+
+    /** `GET`/`PATCH /<global>`: the global's own Abilities (read and update), `{ data }` back. */
+    private static function global(Plugin $plugin, string $method, string $name, string $body): array
+    {
+        \Zero\App::allow($method, ['GET', 'HEAD', 'PATCH']);
+        $op = $method === 'PATCH' ? 'update' : 'get';
+        $ability = wp_get_ability(\Zero\Wp\Abilities\Register::kebab($plugin->schema->name()) . '/global-' . \Zero\Wp\Abilities\Register::kebab($name) . '-' . $op)
+            ?? throw HttpError::notFound("Unknown global '$name'");
+        $input = $op === 'update' ? $body : '{}';
+        $decoded = self::body($input);
+        $result = \Zero\Wp\Abilities\Register::withSentInput($ability->get_name(), $input, static function () use ($ability, $decoded) {
+            $allowed = $ability->check_permissions($decoded);
+
+            return $allowed instanceof \WP_Error ? $allowed : $ability->execute($decoded);
+        });
+        if ($result instanceof \WP_Error) {
+            throw self::fromWpError($result, 403);
+        }
+
+        return self::json(200, ['data' => $result]);
+    }
+
+    /** @return array<string, string> lower-cased request headers, as Zero's handlers read them */
+    private static function headers(): array
+    {
+        $headers = [];
+        foreach ($_SERVER as $key => $value) {
+            if (is_string($value) && str_starts_with((string) $key, 'HTTP_')) {
+                $headers[strtolower(str_replace('_', '-', substr((string) $key, 5)))] = $value;
+            }
+        }
+        foreach (['CONTENT_TYPE' => 'content-type', 'CONTENT_LENGTH' => 'content-length'] as $key => $name) {
+            if (isset($_SERVER[$key]) && is_string($_SERVER[$key])) {
+                $headers[$name] = $_SERVER[$key];
+            }
+        }
+
+        return $headers;
     }
 
     // ================================================================ dispatch
@@ -380,14 +433,14 @@ final class Facade
     }
 
     /** @param array<string, string> $headers */
-    private static function emit(int $status, array $headers, string $body): never
+    private static function emit(int $status, array $headers, string|\Closure $body): never
     {
         status_header($status);
         foreach ($headers as $name => $value) {
             header($name . ': ' . $value, true);
         }
         if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'HEAD') {
-            echo $body;
+            \Zero\Response::emit($body); // a file download streams through its closure
         }
         exit;
     }

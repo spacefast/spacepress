@@ -520,7 +520,7 @@ final class Plugin
         wp_enqueue_script_module($handle);
         $actions = [];
         foreach ($island['actions'] as $action) {
-            $actions[$action] = rest_url('zero/v1/actions/' . rawurlencode((string) $action));
+            $actions[$action] = home_url('/__zero/api/v1/actions/' . rawurlencode((string) $action));
         }
         // A REST nonce lets the island call actions as the signed-in visitor; anonymous visitors call as anonymous.
         wp_interactivity_config($namespace, ['actions' => $actions, 'nonce' => wp_create_nonce('wp_rest')]);

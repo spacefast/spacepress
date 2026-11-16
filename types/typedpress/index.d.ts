@@ -1011,7 +1011,7 @@ export declare const db: Database;
 /** The role ladder, lowest first. A role rule admits that role and every role above it. */
 export type Role = "guest" | "subscriber" | "author" | "editor" | "admin";
 
-/** Who is calling: the WordPress user (or the first-identity session's user). */
+/** Who is calling: the WordPress user (or the typedpress-identity session's user). */
 export interface User {
   id: number;
   name: string;

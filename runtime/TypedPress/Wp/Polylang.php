@@ -73,7 +73,8 @@ final class Polylang
             $locales = $plugin?->schema->locales();
             // Not while storage lags the build (the schema's locales may not be the stored ones yet).
             // The marker only says provisioning is done; assign() checks each write's language itself.
-            if ($plugin === null || $locales === null || !function_exists('PLL') || $plugin->unavailable() !== null || self::provisioned($locales)) {
+            // Nor on a build mounted to inspect, which writes nothing.
+            if ($plugin === null || $locales === null || !function_exists('PLL') || $plugin->unavailable() !== null || Runtime::inspecting() || self::provisioned($locales)) {
                 return;
             }
             // Until every language exists a localized write would store no language, so a failure

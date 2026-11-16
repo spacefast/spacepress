@@ -19,11 +19,11 @@ for (const input of inputs) await rejectSymlinks(path.join(root, input));
 await mkdir(destination, { recursive: true });
 // Preserve the CLI's Space selection across later builds.
 for (const entry of await readdir(destination)) {
-  if (!["typedpress.config.ts", "lib", "first", "public", ".spacefast"].includes(entry)) {
+  if (!["typedpress.config.ts", "lib", "tp", "public", ".spacefast"].includes(entry)) {
     throw new Error(`Unexpected publish input: ${entry}`);
   }
 }
-for (const directory of ["lib", "first", "public"]) {
+for (const directory of ["lib", "tp", "public"]) {
   await rm(path.join(destination, directory), { recursive: true, force: true });
 }
 for (const input of inputs) {

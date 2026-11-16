@@ -86,8 +86,6 @@ test("the fixture payload's facts drive artifact features, and client rows are u
 
 test("internal team rules and the support threshold", () => {
   const rule = (team, space = {}) => INTERNAL.find(([, t]) => t(team, space))?.[0] ?? null;
-  assert.equal(rule({ slug: "suat-s-team", name: "Suat's Team" }), "Suat's Team (contractor)");
-  assert.equal(rule({ slug: "batuhan", name: "batuhan" }), "batuhan team");
   assert.equal(rule({ slug: "x", name: "y", systemKey: "platform" }), "system team (system_key set)");
   assert.equal(rule({ slug: "uptime", name: "Ops" }, { slug: "checkly-probe" }), "Checkly monitoring");
   assert.equal(rule({ slug: "acme", name: "Acme Studio" }), null);
@@ -95,7 +93,7 @@ test("internal team rules and the support threshold", () => {
   facts.server.ctx.add("env");
   const spaces = ["a", "b", "c", "c", "x"].map((team) => ({
     team,
-    internal: team === "x" ? "batuhan team" : null,
+    internal: team === "x" ? "listed internal team" : null,
     traffic: team === "a" ? 5 : 0,
     facts,
   }));
@@ -126,6 +124,13 @@ test("the command reads a scratch export and prints counts only", () => {
     assert.deepEqual([env.spaces, env.teams, env.externalTeams, env.activeSpaces, env.decision], [3, 3, 3, 2, "Support"]);
     const text = r.stdout + fs.readFileSync(out, "utf8");
     for (const secret of ["SECRET_NAME", "Acme", "acme-", "secret-space", "spc_", "ver_"]) assert.ok(!text.includes(secret), secret);
+    // Teams listed beside the data count as internal under their label, and the label is all that is reported.
+    fs.writeFileSync(path.join(dir, "internal-teams.tsv"), "team_slug\tlabel\nACME-0\tstaff personal team\n");
+    const listed = spawnSync(process.execPath, [path.join(root, "scripts/census-08/usage.mjs"), "--data", dir, "--json", out], { encoding: "utf8" });
+    assert.equal(listed.status, 0, listed.stderr);
+    const relisted = JSON.parse(fs.readFileSync(out, "utf8"));
+    assert.equal(relisted.features.find((f) => f.id === "ctx-env").externalTeams, 2);
+    assert.deepEqual(relisted.internalByRule, { "staff personal team": 1 });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

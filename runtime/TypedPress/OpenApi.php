@@ -29,12 +29,23 @@ final class OpenApi
             throw HttpError::notFound('No such route');
         }
         App::allow($method, ['GET', 'HEAD']);
+        // The representation is built once, from one read of the built file and one server, encoded
+        // once: the ETag is that string's digest and the body is that string.
         $document = self::document() ?? throw HttpError::notFound('This build has no OpenAPI document; build the app again with this TypedPress version');
+        $body = (string) json_encode($document, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $etag = \TypedPress\Validator::bytes($body);
+        $headers = ['Content-Type' => 'application/json; charset=utf-8', 'Cache-Control' => 'public, max-age=300', 'ETag' => $etag];
+        if (\TypedPress\Validator::matches($etag)) {
+            return Response::raw('', 304, $headers);
+        }
 
-        return Response::raw((string) json_encode($document, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), 200, [
-            'Content-Type' => 'application/json; charset=utf-8',
-            'Cache-Control' => 'public, max-age=300',
-        ]);
+        return Response::raw($method === 'HEAD' ? '' : $body, 200, $headers);
+    }
+
+    /** @return array{string, string} the document's server: the API's address and the site's name */
+    private static function server(): array
+    {
+        return [Wp\Facade::url(), (string) get_bloginfo('name')];
     }
 
     /** The built document with this site as its server, or null when the build carries none. */
@@ -42,15 +53,17 @@ final class OpenApi
     {
         $plugin = Wp\Plugin::instance();
         $file = $plugin === null ? null : $plugin->dir . '/tp/app/openapi.json';
-        if ($file === null || !is_file($file)) {
+        $bytes = $file === null ? false : @file_get_contents($file);
+        if (!is_string($bytes)) {
             return null;
         }
         // Decoded to objects, so an empty schema `{}` stays an object when it is encoded again.
-        $document = json_decode((string) file_get_contents($file), false);
+        $document = json_decode($bytes, false);
         if (!$document instanceof \stdClass) {
             return null;
         }
-        $document->servers = [['url' => Wp\Facade::url(), 'description' => (string) get_bloginfo('name')]];
+        [$url, $name] = self::server();
+        $document->servers = [['url' => $url, 'description' => $name]];
 
         return $document;
     }

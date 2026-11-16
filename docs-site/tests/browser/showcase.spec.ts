@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { pick } from "../tree.ts";
+
 const plugins = "tp/dist/wp-content/plugins";
 // A row of the file tree, by its full path. Rows live in the tree's shadow root, and a row's text is
 // split for truncation, so they are found by path rather than by text.
@@ -24,14 +26,14 @@ test("any file opens, the npm package compiled to PHP and the runtime alike", as
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("./");
-	await row(page, `${plugins}/typedpress-app-reading-list/tp/app/functions.php`).click();
+	await pick(page, `${plugins}/typedpress-app-reading-list/tp/app/functions.php`);
 	await expect(viewer(page)).toContainText("function escapeHtml(");
 	await expect(page).toHaveURL(/#file=tp%2Fdist%2Fwp-content%2Fplugins%2Ftypedpress-app-reading-list%2Ftp%2Fapp%2Ffunctions.php$/);
 	// A runtime file, three closed folders down. The tree only renders the rows in view, so it is
 	// reached by search, as a visitor would.
 	await page.locator(".explorer file-tree-container").click();
 	await page.keyboard.type("Db.php");
-	await row(page, `${plugins}/typedpress-runtime/tp/Db.php`).click();
+	await pick(page, `${plugins}/typedpress-runtime/tp/Db.php`);
 	await expect(viewer(page)).toContainText("namespace TypedPress;");
 	expect(errors).toEqual([]);
 });
@@ -47,7 +49,7 @@ test("every example page has the explorer and its own app plugin", async ({ page
 		const schema = `${plugins}/typedpress-app-${app}/tp/app/schema.php`;
 		await page.goto(`./examples/${name}#file=${encodeURIComponent(schema)}`);
 		await expect(page.locator(".explorer-config")).toContainText("defineConfig");
-		await row(page, schema).click();
+		await pick(page, schema);
 		await expect(viewer(page)).toContainText("<?php");
 	}
 });
@@ -56,12 +58,16 @@ test("the explorer follows the site's dark theme", async ({ page }) => {
 	await page.emulateMedia({ colorScheme: "dark" });
 	await page.goto("./");
 	await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+	// Polled: the tree and the viewers are custom elements, styled once their scripts have run.
 	const scheme = (selector: string) => page.locator(selector).first().evaluate((el) => getComputedStyle(el).colorScheme);
-	expect(await scheme(".explorer file-tree-container")).toBe("dark");
-	expect(await scheme(".explorer-config diffs-container")).toBe("dark");
-	await row(page, `${plugins}/typedpress-app-reading-list/tp/app/schema.php`).click();
+	await expect.poll(() => scheme(".explorer file-tree-container")).toBe("dark");
+	await expect.poll(() => scheme(".explorer-config diffs-container")).toBe("dark");
+	// The explorer opens the app's functions.php itself. Wait for it, so its selection doesn't
+	// replace the one made below.
+	await expect(viewer(page)).toContainText("function escapeHtml(");
+	await pick(page, `${plugins}/typedpress-app-reading-list/tp/app/schema.php`);
 	await expect(viewer(page)).toContainText("<?php");
-	expect(await scheme(".explorer-loaded diffs-container")).toBe("dark");
+	await expect.poll(() => scheme(".explorer-loaded diffs-container")).toBe("dark");
 });
 
 test("each example has a WordPress Playground blueprint with its own built plugins", async ({ request }) => {

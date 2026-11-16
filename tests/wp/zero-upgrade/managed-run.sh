@@ -12,7 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 wp="$(cd "$here/.." && pwd)"
 repo="$(cd "$wp/../.." && pwd)"
 cd "$repo"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-zero-managed}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-zero-managed}"
 export TP_WP_PORT="${TP_WP_PORT:-8905}"
 work="$(mktemp -d)"
 cleanup() { [[ ${TP_WP_KEEP:-0} == 1 ]] || "$wp/harness.sh" down >/dev/null; rm -rf -- "$work"; }
@@ -42,7 +42,7 @@ root=/var/www/html/wp-content/plugins/typedpress-store
 "$wp/harness.sh" down >/dev/null
 "$wp/harness.sh" up --wp-content "$work/content" --platform > "$work/harness.json"
 url=$(json url < "$work/harness.json")
-"$wp/harness.sh" compose exec -T db mariadb -uroot -pfirst-test-root wordpress < "$here/fixture/site.sql"
+"$wp/harness.sh" compose exec -T db mariadb -uroot -ptypedpress-test-root wordpress < "$here/fixture/site.sql"
 "$wp/harness.sh" wp option update home "$url" >/dev/null
 "$wp/harness.sh" wp option update siteurl "$url" >/dev/null
 # The dump's plugin list names 0.3's plugins; this site serves the build from the store only.

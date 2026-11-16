@@ -5,8 +5,8 @@
 //! The project must say `output: "static"`. Pages are rendered by a WordPress running the build:
 //! - without `--site`, a throwaway WordPress on SQLite (the Studio runner `typedpress dev` uses), with the
 //!   build's plugins and `tp/content/` seeded as a publish seeds a Space; it is removed after;
-//! - with `--site`, the hosted site, which must run this checkout's build, with an editor's
-//!   `TP_APP_PASSWORD` or `TP_TOKEN`.
+//! - with `--site`, the hosted site, which must run this checkout's build, signed in as an editor
+//!   (`remote::sign_in`: the credential `typedpress login` stored, or `TP_APP_PASSWORD` / `TP_TOKEN`).
 //!
 //! Each URL the site lists (`GET /__tp/api/v1/prerender`) is fetched as a signed-out visitor with
 //! its prerender token, with its Markdown twin. The export writes `<path>.html` and `<path>.md`,
@@ -58,7 +58,7 @@ static JS_IMPORT: LazyLock<regex::Regex> =
 static NOINDEX: LazyLock<regex::Regex> =
     LazyLock::new(|| pattern(r#"(?i)<meta name=['"]robots['"] content=['"][^'"]*noindex"#));
 
-const USAGE: &str = "usage: typedpress export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]\n       with --site: TP_APP_PASSWORD=<user:application-password> or TP_TOKEN=<bearer token> (an editor's)";
+const USAGE: &str = "usage: typedpress export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]   (--site: as an editor)";
 
 /// WordPress endpoints a page may link or post to that stay on the hosted site with `--site`.
 const HOSTED: &[&str] = &["/wp-login.php", "/wp-comments-post.php", "/wp-admin", "/identity"];
@@ -157,18 +157,11 @@ fn run(flags: Flags) -> Result<(), String> {
     // The build the pages render from. Local: this checkout's, written as `typedpress build` writes it.
     let (site, credential, _local) = match &flags.site {
         Some(site) => {
-            let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
-            let credential = match (env("TP_APP_PASSWORD"), env("TP_TOKEN")) {
-                (Some(_), Some(_)) => return Err("set TP_APP_PASSWORD or TP_TOKEN, not both".into()),
-                (Some(p), None) => Credential::AppPassword(p),
-                (None, Some(t)) => Credential::Bearer(t),
-                (None, None) => {
-                    return Err(format!(
-                        "typedpress export --site needs an editor's credential\n{USAGE}"
-                    ));
-                }
-            };
-            (site.trim_end_matches('/').to_string(), credential, None)
+            let site = site.trim_end_matches('/').to_string();
+            let credential = super::remote::require(&site)
+                .map_err(|e| format!("{e}\n{USAGE}\n{}", super::remote::SIGN_IN))?
+                .credential;
+            (site, credential, None)
         }
         None => {
             super::build::emit_project(&project, &built).map_err(|e| format!("couldn't write tp/_generated: {e}"))?;

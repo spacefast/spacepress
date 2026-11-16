@@ -6,7 +6,7 @@ wp="$(cd "$here/.." && pwd)"
 repo="$(cd "$wp/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-spacefast}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-spacefast}"
 export TP_WP_PORT="${TP_WP_PORT:-8892}"
 app="$(mktemp -d)"
 cleanup() { "$wp/harness.sh" down; rm -rf "$app"; }

@@ -42,7 +42,10 @@ try {
   await page.goto(`${url}/wp-admin/index.php`);
   out.withoutDeveloperMode = { dashboard: route() };
   await page.goto(`${url}/wp-admin/edit.php?post_type=page`);
-  out.withoutDeveloperMode.pages = decodeURIComponent(route() ?? "");
+  // The slug is encoded twice in the route (lib/classic-route.php), and the frame opens it with its query.
+  out.withoutDeveloperMode.pages = decodeURIComponent(decodeURIComponent(route() ?? ""));
+  await page.waitForFunction(() => document.querySelector("iframe")?.getAttribute("src")?.includes("post_type=page"));
+  out.withoutDeveloperMode.framed = new URL(await page.locator("iframe").getAttribute("src"), url).pathname + new URL(await page.locator("iframe").getAttribute("src"), url).search;
   // Developer mode on (the user's own setting, saved through core's user route): classic wp-admin opens as itself.
   out.developerMode = await page.evaluate(async () => {
     const nonce = await (await fetch("/wp-admin/admin-ajax.php?action=rest-nonce", { credentials: "same-origin" })).text();

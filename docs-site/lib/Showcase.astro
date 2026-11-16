@@ -135,7 +135,7 @@ const count = (n: number) => n.toLocaleString("en-US");
 			const fromHash = (initial = false) => {
 				const match = /^#file=(.+)$/.exec(location.hash);
 				if (!match && !initial) return;
-				const path = match ? decodeURIComponent(match[1]!) : section.dataset.firstOpen!;
+				const path = match ? decodeURIComponent(match[1]!) : section.dataset.tpOpen!;
 				if (!byPath.has(path) || path === current) return;
 				const parts = path.split("/");
 				for (let i = 1; i < parts.length; i++) {

@@ -9,7 +9,7 @@ repo="$(cd "$wp/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 first="$target/debug/typedpress"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-wordpress}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-wordpress}"
 export TP_WP_PORT="${TP_WP_PORT:-8898}"
 work="$(mktemp -d)"
 cleanup() { "$wp/harness.sh" down >/dev/null; rm -rf "$work"; }

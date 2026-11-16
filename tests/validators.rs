@@ -55,9 +55,10 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
             [304, true, true],
             [304, true, true],
             [304, true, true],
+            [304, true, true],
             [304, true, true]
         ],
-        [200, 200, 200]
+        [200, 200, 200, 200, 200, 200]
     ]);
     assert_eq!(seen["prebuilt"], json!([200, true, true]));
     assert_eq!(seen["prebuilt validators"], validated);

@@ -882,7 +882,8 @@ listens and purges those URLs from Batcache and the edge. With no listener
   `fstat` on the handle) name one version. TypedPress itself never reads the page
   into a string; with PHP output buffering on, the buffer holds the streamed body,
   as it does for `readfile`. A matching `If-None-Match` (itself, its weak form, a list of quoted
-  tags, or `*` alone; a comma or `*` inside a tag's quotes is part of that tag) gets an
+  tags, or `*` alone; a comma or `*` inside a tag's quotes is part of that tag, and a field that
+  is not such a list names nothing) gets an
   empty 304 that keeps the page's `Cache-Control`; it and HEAD read the file only
   for the hash. The validator is checked only after every
   gate that decides the file is this request's answer (no query string,

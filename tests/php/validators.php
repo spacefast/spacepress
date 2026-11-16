@@ -118,9 +118,11 @@ function fetch(string $url, array $headers = [], string $method = 'GET'): array
 }
 $cookie = 'Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode(wp_generate_auth_cookie($site->userId('chief'), time() + 3600, 'logged_in'));
 /**
- * One URL's validator: [ETag well formed, its 304s (itself, weak, in a list, `*`) as [status, body
- * empty], the status for tags that don't name it: another tag, and one quoted tag holding a comma,
- * a `*` and this ETag's own text between commas (a comma inside the quotes separates nothing)].
+ * One URL's validator: [ETag well formed, its 304s (itself, weak, in a list, a list with an empty
+ * element, `*`) as [status, body empty], the status for headers that don't name it: another tag; one
+ * quoted tag holding a comma and a `*` (a comma inside the quotes separates nothing); and fields that
+ * are not a list of tags although this ETag is in them (a lowercase `w/`, two tags with no comma,
+ * text after the tag, `*` beside a tag)].
  */
 $validated = static function (string $page, array $first) use ($url): array {
     $etag = (string) $first['etag'];
@@ -128,8 +130,8 @@ $validated = static function (string $page, array $first) use ($url): array {
 
     return [
         preg_match('/^"[0-9a-f]+-[0-9a-f]+"$|^"[0-9a-f]{16,}"$/', $etag) === 1,
-        array_map(static fn (array $r): array => [$r['status'], $r['body'] === '', $r['etag'] === $etag], [$again($etag), $again("W/$etag"), $again("\"x\", $etag"), $again('*')]),
-        [$again('"other"')['status'], $again('"a,*,b"')['status'], $again('"a,' . trim($etag, '"') . ',b"')['status']],
+        array_map(static fn (array $r): array => [$r['status'], $r['body'] === '', $r['etag'] === $etag], [$again($etag), $again("W/$etag"), $again("\"x\", $etag"), $again("\"x\",, $etag ,"), $again('*')]),
+        array_map(static fn (string $match): int => $again($match)['status'], ['"other"', '"a,*,b"', "w/$etag", "\"x\" $etag", "{$etag}x", "*, $etag"]),
     ];
 };
 

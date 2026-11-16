@@ -8,8 +8,9 @@ namespace TypedPress;
  * HTTP validators for what TypedPress serves as is (prebuilt pages, the OpenAPI document): a strong ETag
  * derived from the bytes served, and whether `If-None-Match` names it.
  *
- * matches() repeats the matcher in `Wp\PublicFiles::matches()` (`*`, a comma-separated list, weak
- * `W/"…"` forms) because that file belongs to the public-file serving branch and is not edited here.
+ * matches() reads `If-None-Match` as RFC 9110 defines it: `*` alone, or a list of entity-tags, weak
+ * `W/"…"` forms included. `Wp\PublicFiles::matches()` is an older, looser copy that splits on every
+ * comma; that file belongs to the public-file serving work and is not edited here.
  */
 final class Validator
 {
@@ -60,13 +61,21 @@ final class Validator
         if (function_exists('wp_unslash')) {
             $header = (string) wp_unslash($header);
         }
-        if (trim($header) === '*') {
+        $header = trim($header, " \t");
+        if ($header === '*') {
             return true;
         }
-        // Whole entity-tags, not comma-separated pieces: a comma (or a `*`) may be inside the quotes.
-        preg_match_all('/(?:W\/)?"[^"]*"/', $header, $tags);
-        foreach ($tags[0] as $tag) {
-            if ((str_starts_with($tag, 'W/') ? substr($tag, 2) : $tag) === $etag) {
+        // The whole field must be a list of entity-tags (RFC 9110 §8.8.3, §13.1.2): `W/` or nothing,
+        // then a quoted tag, separated by commas, empty elements allowed. Anything else names no tag
+        // (a lowercase `w/`, two tags with no comma, text after a tag, `*` beside a tag), and the
+        // request gets the full response. A comma inside a tag's quotes is part of that tag.
+        $tag = '(?:W\/)?"[\x21\x23-\x7E\x80-\xFF]*"';
+        if (preg_match('/^(?:,[ \t]*)*' . $tag . '(?:[ \t]*,(?:[ \t]*' . $tag . ')?)*$/', $header) !== 1) {
+            return false;
+        }
+        preg_match_all('/' . $tag . '/', $header, $tags);
+        foreach ($tags[0] as $found) {
+            if ((str_starts_with($found, 'W/') ? substr($found, 2) : $found) === $etag) {
                 return true;
             }
         }

@@ -471,3 +471,28 @@ Variations, subscriptions, bookings, customer-account flows, a new commerce dash
 payment infrastructure are deferred. Additional download-file protection outside Woo and custom
 email templates are follow-up scope. Reuse native product operations and existing checkout integration where they fit the
 selected presentation; no catalog-wide source ownership restriction is needed.
+
+## Prior work and inspirations
+
+The following work informed this design. It provides context and implementation candidates,
+not additional requirements: decisions in this TypedPress document supersede conflicting older
+plans. Historical progress reports do not establish current deployment readiness.
+
+- [Agent-native WooCommerce PRD](https://github.com/spacefast/batuhan-notes/blob/main/internal-docs/agent-native-woocommerce-prd.md)
+  ([PR #2](https://github.com/spacefast/batuhan-notes/pull/2)): agent-created stores, native Woo
+  commerce ownership, product synchronization and the first-purchase experience. Its separate
+  Astro and standalone release milestones are outside this TypedPress effort.
+- [Milestone 1 implementation plan](https://github.com/spacefast/batuhan-notes/blob/main/internal-docs/agent-native-woocommerce-m1-plan-2026-10-23.md)
+  ([PR #3](https://github.com/spacefast/batuhan-notes/pull/3)): prior decisions about PHP integration,
+  catalog synchronization, checkout, administration and deployment. Reuse suitable mechanisms;
+  this design instead follows TypedPress seed/sync and per-preview SQLite databases.
+- [WooCommerce replacement plan](https://github.com/spacefast/batuhan-notes/blob/main/internal-docs/sell-woocommerce-replacement-plan-2026-10-07.md)
+  ([PR #4](https://github.com/spacefast/batuhan-notes/pull/4)): earlier managed-commerce architecture,
+  native Woo orders and downloads, and the boundary between Woo and the hosting platform.
+  Its custom payment bridge and broader replacement scope are not v1 requirements here.
+- [Managed-Woo implementation progress](https://github.com/spacefast/batuhan-notes/blob/main/internal-docs/sell-managed-woo-implementation-progress-2026-10-08.md)
+  (also PR #4): historical implementation evidence, reusable components and unresolved provider
+  integration gaps. Reverify candidate code and its behavior before adopting it.
+- [Woo Store SDK](https://github.com/spacefast/woo-store-sdk): existing commerce types, browser
+  integrations and the `woo-storefront` checkout/session integration. Evaluate reuse against
+  TypedPress's native pages and the selected embedded Woo Checkout Block.

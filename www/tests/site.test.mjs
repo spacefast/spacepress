@@ -91,7 +91,7 @@ test("playground: an edit builds a migration, and a shared edit opens for someon
 
   const other = await open(new URL(link).pathname + new URL(link).search);
   await built(other.page);
-  assert.equal(await other.page.evaluate(() => document.querySelector("tp-play").files["typedpress.config.ts"].includes("priority: integer().default(0)")), true);
+  assert.equal(await other.page.evaluate(() => document.querySelector("tp-play").files["tp/schema.ts"].includes("priority: integer().default(0)")), true);
   await other.close();
 });
 
@@ -105,7 +105,7 @@ test("playground: a syntax error is announced with its place", async () => {
   await page.keyboard.type(" ((", { delay: 15 });
   await page.waitForSelector(".tp-problems li", { timeout: 15_000 });
   assert.equal(await page.locator(".tp-problems").getAttribute("role"), "alert");
-  assert.match(await page.locator(".tp-problems li").first().textContent(), /^typedpress\.config\.ts:\d+:\d+ /);
+  assert.match(await page.locator(".tp-problems li").first().textContent(), /^tp\/schema\.ts:\d+:\d+ /);
   await close();
 });
 

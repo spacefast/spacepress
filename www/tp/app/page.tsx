@@ -45,7 +45,7 @@ export default function Home() {
       <section className="hero">
       <h1>TypeScript in. A WordPress plugin out.</h1>
       <p className="lede">You describe your data and your pages in TypeScript. TypedPress compiles them into a WordPress plugin. WordPress then gives you the database, the editor, sign-in, the API and an admin, and no JavaScript runs on the server.</p>
-      <p className="cap">This is a whole app. Change it and it is built again here, in your browser, by the real compiler. The right side shows every file the build writes and what your change did to them. <b>Run in WordPress</b> starts a WordPress in this tab with your version installed.</p>
+      <p className="cap">This is a whole app. Change it and it is built again here, in your browser, by the real compiler. The right side shows every file the build writes and what your change did to them. <b>Run in WordPress</b> starts a WordPress in this tab with your version installed. Its list is live: tick a task in one tab and it shows in another.</p>
       <tp-play example="tasks" open="" />
       </section>
       <div className="note"><b>Read this first.</b> TypedPress is experimental and has no npm release yet. The compiler, CLI and app folder now use the TypedPress names. The guide marks proposed APIs separately from features you can build and run today.</div>

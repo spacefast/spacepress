@@ -45,6 +45,7 @@ const FORBIDDEN = [
   [/\.(pem|key|p12|pfx|sqlite|sqlite3|db|sql|log|tgz)$/, 'a key, database, log or tarball'],
   [/(^|\/)(id_rsa|id_ed25519|credentials|secrets?)(\.|$)/i, 'a credential file'],
   [/(^|\/)wp-entry\.mjs$/, 'a build-only bundle entry'],
+  [/^scripts\//, 'a build script'],
   [/\.(rs|php)$/, 'compiler or runtime source'],
 ];
 

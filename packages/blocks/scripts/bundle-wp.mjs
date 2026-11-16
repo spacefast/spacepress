@@ -64,6 +64,8 @@ async function owner(file) {
   return { dir, manifest };
 }
 
+// Notices for packages whose npm tarball ships no license file, with where each came from.
+const supplied = JSON.parse(await readFile(path.join(root, "scripts/notices/SOURCES.json"), "utf8"));
 const packages = new Map();
 for (const file of Object.keys(result.metafile.inputs)) {
   if (file === "wp-entry.mjs") continue;
@@ -74,13 +76,19 @@ for (const file of Object.keys(result.metafile.inputs)) {
     : [manifest.licenses ?? []].flat().map((entry) => entry.type ?? entry).join(" OR ");
   if (!license) throw new Error(`${id} declares no license; add it to the notice by hand before shipping.`);
   const repository = typeof manifest.repository === "string" ? manifest.repository : manifest.repository?.url;
-  const notices = (await readdir(dir)).filter((name) => /^(licen[cs]e|copying|notice)/i.test(name)).sort();
+  let notices = (await readdir(dir)).filter((name) => /^(licen[cs]e|copying|notice)/i.test(name)).sort();
+  let from = dir, provenance;
+  if (!notices.length) {
+    if (!supplied[id]) throw new Error(`${id} ships no license file. Add its original notice under scripts/notices/${id}/ and record its source in scripts/notices/SOURCES.json.`);
+    ({ files: notices, source: provenance } = supplied[id]);
+    from = path.join(root, "scripts/notices", id);
+  }
   for (const name of notices) {
     const destination = path.join(outdir, "licenses", manifest.name, manifest.version, name);
     await mkdir(path.dirname(destination), { recursive: true });
-    await copyFile(path.join(dir, name), destination);
+    await copyFile(path.join(from, name), destination);
   }
-  packages.set(id, { name: manifest.name, version: manifest.version, license, repository, notices });
+  packages.set(id, { name: manifest.name, version: manifest.version, license, repository, notices, provenance });
 }
 
 const rows = [...packages.values()].sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`));
@@ -98,14 +106,19 @@ await writeFile(
     "Corresponding source: each package below, at the exact version listed, from the npm",
     "registry or its repository; `scripts/bundle-wp.mjs` in https://github.com/spacefast/zero",
     "(`packages/blocks/`) rebuilds the bundle from them. Each package's own license file is",
-    "under `licenses/<name>/<version>/`. `wp.cjs.LEGAL.txt` keeps the license comments esbuild",
-    "found in the bundled sources.",
+    "under `licenses/<name>/<version>/`; where the package's tarball ships none, the notice was",
+    "recovered from its upstream repository or README, listed under the table with its source.",
+    "`wp.cjs.LEGAL.txt` keeps the license comments esbuild found in the bundled sources.",
     "",
     `${rows.length} packages:`,
     "",
     "| Package | Version | License | Source | License files |",
     "|---|---|---|---|---|",
-    ...rows.map((row) => `| ${cell(row.name)} | ${cell(row.version)} | ${cell(row.license)} | ${cell(row.repository ?? `https://www.npmjs.com/package/${row.name}/v/${row.version}`)} | ${row.notices.length ? row.notices.map((name) => `licenses/${row.name}/${row.version}/${name}`).join(", ") : "none shipped by the package"} |`),
+    ...rows.map((row) => `| ${cell(row.name)} | ${cell(row.version)} | ${cell(row.license)} | ${cell(row.repository ?? `https://www.npmjs.com/package/${row.name}/v/${row.version}`)} | ${row.notices.map((name) => `licenses/${row.name}/${row.version}/${name}`).join(", ")}${row.provenance ? " (recovered, see below)" : ""} |`),
+    "",
+    "Recovered notices:",
+    "",
+    ...rows.filter((row) => row.provenance).map((row) => `- ${row.name}@${row.version}: ${row.provenance}`),
     "",
   ].join("\n"),
 );

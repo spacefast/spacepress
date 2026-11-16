@@ -5,6 +5,11 @@ These are the diagnostic texts emitted while building and exercising this
 example. The final source is rechecked on `ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1`; the runtime and CLI
 failures remain open.
 
+This record was captured before the rename from First to TypedPress. Commands and
+output below are verbatim from that run: `first` is today's `typedpress`,
+`first/` and `.first/` are `tp/` and `.tp/`, and `/wp-json/first/v1` is
+`/__tp/api/v1`.
+
 ## Resolved authoring and compiler diagnostics
 
 | Diagnostic, verbatim | Triggering source expression during implementation | Final source |

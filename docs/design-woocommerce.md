@@ -83,7 +83,7 @@ for application dashboards. These are proposed boundaries; names below are illus
 | Resource | Initial operations | Data contract |
 | --- | --- | --- |
 | Products | List, get, create, update, trash; seed and sync | Stable source identity and Woo ID, SKU, slug, name, descriptions, status, visibility, simple product type, virtual/downloadable flags, prices, images, stock configuration and availability, shipping dimensions, protected download declarations |
-| Categories and tags | List/get and resolve or create terms used by product sync | Native term ID, stable source identity, name, slug; categories also have a parent. Full taxonomy management UI/API can follow |
+| Categories and tags | Existing taxonomy/terms API, extended to bind Woo taxonomies and support product relationships | Native term ID, stable source identity, name, slug; categories also have a parent. No separate commerce category/tag CRUD API |
 | Cart | Read current cart, add item, change quantity, remove item, update destination, choose shipping rate | Session-scoped lines, current prices, availability, discounts, shipping choices, taxes, fees and Woo-calculated totals |
 | Checkout | Obtain a native checkout handoff for the current cart | Hosted URL and session continuity; Woo collects payment and creates the order |
 | Orders | Authorized list/get, including line and refund details | Status, currency, timestamps, historical line items, totals, billing/shipping snapshots, optional customer reference, payment method label and refund summaries |
@@ -93,6 +93,31 @@ Use simple products initially. Virtual and downloadable are independent Woo flag
 exclusive product types. Reject unsupported variable, grouped, external or extension-defined
 product writes explicitly. Read projections should identify unsupported types without pretending
 they are simple products. Variation authoring and sync are deferred.
+
+### Categories and tags reuse taxonomies
+
+TypedPress already exposes `taxonomy()` kinds and `terms(taxonomy)` fields on collections.
+Reuse that model for Woo product categories and tags rather than introduce parallel commerce
+CRUD. Terms are not ordinary post-backed collections: they have their own store and access
+rules, but participate in the shared query and relationship machinery.
+
+Bind the native Woo `product_cat` and `product_tag` taxonomies; do not create replacement
+`tp_*` taxonomies or take over Woo's registration. Woo remains the owner of their registration,
+capabilities and callbacks. Product assignments must go through the Woo product writer so its
+normal save behavior runs. Term edits can reuse the native WordPress term APIs and TypedPress
+authorization, with Woo capabilities respected. Category-specific metadata such as images
+needs an explicit mapping rather than assuming TypedPress's `tp_*` term-meta convention.
+
+This requires extending current support: taxonomies presently create TypedPress-owned names,
+`terms()` attaches to supported collections, and taxonomy `sync` is not implemented. Product
+sync must resolve stable term references and report missing or conflicting terms; it must not
+silently create terms from names. Decide whether first-release term definitions use shared
+taxonomy seed/sync or an explicit term-creation step before product sync. A collection may
+share a product taxonomy only through an explicit attachment, not automatically for every
+collection. Preserve WordPress's aggregate term-count semantics across attached kinds.
+
+See [the current taxonomy contract](config-api.md#taxonomies) and
+[the term store](../runtime/TypedPress/Wp/WpTermStore.php).
 
 ### Nested data rather than extra CRUD resources
 

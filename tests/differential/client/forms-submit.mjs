@@ -6,26 +6,9 @@
 // busy while the post is in flight, and a network failure falls back to the browser's own submit.
 // Prints JSON.
 import { createRequire } from "node:module";
-import { existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { chromiumPath } from "./chromium.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright-core");
-
-// Playwright's cache is ~/.cache/ms-playwright on Linux and ~/Library/Caches/ms-playwright on macOS.
-function chromiumPath() {
-  if (process.env.FIRST_CHROMIUM) return process.env.FIRST_CHROMIUM;
-  for (const cache of [join(homedir(), ".cache/ms-playwright"), join(homedir(), "Library/Caches/ms-playwright")]) {
-    if (!existsSync(cache)) continue;
-    for (const shell of readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()) {
-      for (const dir of ["chrome-headless-shell-linux64", "chrome-headless-shell-mac-arm64", "chrome-headless-shell-mac-x64"]) {
-        const bin = join(cache, shell, dir, "chrome-headless-shell");
-        if (existsSync(bin)) return bin;
-      }
-    }
-  }
-  throw new Error("no chromium-headless-shell: run npx --prefix tests/differential/client playwright-core install chromium-headless-shell");
-}
 
 const [url] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath: chromiumPath() });

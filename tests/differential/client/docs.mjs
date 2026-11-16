@@ -4,14 +4,10 @@
 // block, a code group's tabs (switched with no script on the page), colours in light and dark, a
 // draft doc, the Markdown page, and every page's Markdown twin. Prints JSON.
 import { createRequire } from "node:module";
-import { readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { chromiumPath } from "./chromium.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright-core");
-const cache = join(homedir(), ".cache/ms-playwright");
-const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()[0];
-const executablePath = join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell");
+const executablePath = chromiumPath();
 const [site] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath });
 const out = { errors: [] };

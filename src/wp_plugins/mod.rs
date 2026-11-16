@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[cfg(feature = "cli")]
-pub use assembly::{Prepared, copy_output};
+pub use assembly::Prepared;
 pub type Result<T> = io::Result<T>;
 
 fn invalid(message: impl Into<String>) -> io::Error {

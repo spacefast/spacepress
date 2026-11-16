@@ -13,6 +13,7 @@ repository = "https://github.com/spacefast/zero"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
+crc32fast = { version = "1.5.3", optional = true }
 indexmap = "2.14.2"
 oxc_allocator = "=0.152.0"
 oxc_ast = "=0.152.0"
@@ -40,7 +41,7 @@ tempfile = "3.27.0"
 default = ["cli"]
 # The commands: project I/O, plugin downloads, the embedded PHP runtime (build.rs).
 host = ["dep:oxc_codegen", "dep:oxc_isolated_declarations", "dep:oxc_semantic", "dep:oxc_transformer"]
-cli = ["host", "dep:tempfile", "dep:ureq", "dep:zip"]
+cli = ["host", "dep:crc32fast", "dep:tempfile", "dep:ureq", "dep:zip"]
 
 [[bin]]
 name = "zero"

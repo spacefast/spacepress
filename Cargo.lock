@@ -1731,6 +1731,7 @@ dependencies = [
 name = "zero"
 version = "0.3.0"
 dependencies = [
+ "crc32fast",
  "indexmap",
  "oxc_allocator",
  "oxc_ast",

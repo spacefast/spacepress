@@ -2,7 +2,7 @@ use super::{Plugin, Result, digest, invalid};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const MAX_FILES: usize = 20_000;
 const MAX_EXPANDED: u64 = 256 * 1024 * 1024;
@@ -206,21 +206,4 @@ pub(super) fn tree_digest(root: &Path) -> Result<String> {
     let mut hash = Sha256::new();
     walk(root, Path::new(""), &mut hash)?;
     Ok(super::hex(&hash.finalize()))
-}
-
-pub(super) fn copy_tree(from: &Path, to: &Path) -> Result<()> {
-    std::fs::create_dir_all(to)?;
-    for entry in std::fs::read_dir(from)? {
-        let entry = entry?;
-        let kind = entry.file_type()?;
-        let target: PathBuf = to.join(entry.file_name());
-        if kind.is_dir() {
-            copy_tree(&entry.path(), &target)?;
-        } else if kind.is_file() {
-            std::fs::copy(entry.path(), target)?;
-        } else {
-            return Err(invalid("assembly input contains symlink or special file"));
-        }
-    }
-    Ok(())
 }

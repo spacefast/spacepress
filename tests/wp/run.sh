@@ -49,6 +49,9 @@ node --test --test-concurrency=1 "$here"/*.test.ts
 "$here/admin/browser-run.sh"
 # Lane A: the admin plugin on a WordPress installed below the origin root.
 "$here/admin/subdir-run.sh"
-# The migration lanes boot their own apps on fresh stacks; CI runs them as a separate job
-# (tests/wp/migrate-run.sh). ZERO_WP_SKIP_MIGRATE=1 leaves them to that job.
-[[ ${ZERO_WP_SKIP_MIGRATE:-0} == 1 ]] || "$here/migrate-run.sh"
+# Lane M: an original Zero 0.8 site migrated in place, on a fresh stack running the migrated app.
+"$here/legacy/run.sh"
+# Lane M2: its app users into an user projection.
+"$here/legacy/users-run.sh"
+# Lane M3: generated application handlers over retained Zero 0.8 SQL tables.
+"$here/app-migrate/run.sh"

@@ -634,12 +634,6 @@ export interface CollectionClient<K extends CollectionKey> {
 	create(data: Collections[K]["insert"]): Promise<Row<K>>;
 	update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
 	delete(id: IdOf<K>): Promise<Row<K>>;
-	/**
-	* Runs `list(q)` now and again whenever this collection (or a collection loaded through `with`)
-	* changes. Every refresh is the normal access-checked read; change notices carry no rows.
-	* Returns a function that stops watching.
-	*/
-	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q: ListQuery<K, ExactWith<K, W>> | undefined, onRows: (rows: RowWith<K, W>[]) => void, onError?: (error: ZeroError) => void): () => void;
 	revisions: {
 		/** Newest first. Needs `update` access on the row. */
 		list(id: IdOf<K>): Promise<RevisionSummary[]>;
@@ -723,38 +717,6 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
 	/** `GET /_schema`: the app's public schema description. */
 	schema(): Promise<unknown>;
 };
-/** One committed transaction's changes, as the runtime's `zero_realtime_changes` hook sends them. */
-export interface ChangeNotice {
-	id: string;
-	at: string;
-	/** `ids: null` means "some rows changed": too many to list, or ids withheld from a shared room. */
-	changes: {
-		collection: string;
-		ops: ("create" | "update" | "delete")[];
-		ids: (string | number)[] | null;
-	}[];
-}
-/**
-* Delivers change notices from the host (Cast, a WebSocket relay, Pusher, ...). Zero ships none.
-* `connect` starts delivery and returns a stop function; call `status("live")` once notices flow
-* and `status("down")` when they stop, so the client polls meanwhile.
-*/
-export interface RealtimeTransport {
-	connect(deliver: (notice: ChangeNotice) => void, status: (state: "live" | "down") => void): () => void;
-}
-export interface RealtimeOptions {
-	/** The transport. Default: the one a host registered with `registerRealtimeTransport`; `false` = polling only. */
-	transport?: RealtimeTransport | false;
-	/** Refresh watched reads this often while no transport is live. Default 30000; `false` turns polling off. */
-	pollMs?: number | false;
-	/**
-	* A slow safety refresh while the transport is live, covering a notice the transport lost.
-	* Default 60000 with up to ±20% jitter per refresh; `false` turns it off.
-	*/
-	livePollMs?: number | false;
-}
-/** For host scripts: every client on this page, created before or after, uses this transport by default. */
-export declare function registerRealtimeTransport(transport: RealtimeTransport): void;
 export interface ClientOptions {
 	/** Base URL including the REST prefix: "https://x.test/wp-json/zero/v1". Default: `/wp-json/zero/v1` on the page's origin. */
 	url?: string;
@@ -765,8 +727,6 @@ export interface ClientOptions {
 	headers?: Record<string, string>;
 	/** Frontend sign-in (design §6.2). */
 	auth?: AuthOptions;
-	/** Live updates for `watch`. */
-	realtime?: RealtimeOptions;
 }
 export interface AuthOptions {
 	/** The zero-identity OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
@@ -800,10 +760,4 @@ export declare class ZeroError extends Error {
 	constructor(problem: Problem);
 }
 export declare function createClient(options?: ClientOptions): Client;
-/**
-* Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
-* transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
-* express: an action's result, a `get`, a global. Returns a function that stops watching.
-*/
-export declare function watch<T>(client: Client, collections: readonly CollectionKey[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: ZeroError) => void): () => void;
 export {};

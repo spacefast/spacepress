@@ -47,10 +47,6 @@ job regenerates the tree on PHP 8.2 with pinned Composer 2.10.3 and checks for
 tracked changes and new untracked bundle files.
 Generation normalizes the build helper's inferred Composer branch and commit so
 the bundle stays identical across checkouts.
-The unused merge terminal diagnostic (`merge/functions.php`) is removed during
-generation. It shells out to `tput`; the merger classes have no dependency on it.
-`tests/php/run.sh boundary` checks the shipped PHP for process calls, with the
-offline CLI deployment adapter as the only exception.
 
 Identity's OAuth server and OIDC client are not libraries: the authorization-code grant, PKCE,
 refresh rotation and the relying-party transport are ~600 lines in `runtime/identity/src`

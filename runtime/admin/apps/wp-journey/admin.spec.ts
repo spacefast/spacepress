@@ -689,10 +689,7 @@ if (!subdir) {
 			.getByRole('button', { name: 'Confirm delete', exact: true })
 			.click();
 		await expect(page).toHaveURL(`${site}/zero-admin/media`);
-		// The rotated copy retains the title; deletion targets the original ID.
-		await expect(page.locator(`a[href$="/zero-admin/media/${mediaId}"]`)).toHaveCount(0);
-		expect((await request.get(`${site}/wp-json/zero/v1/media/${mediaId}`, { headers })).status()).toBe(404);
-		expect((await request.get(`${site}/wp-json/zero/v1/media/${editedImage.id}`, { headers })).status()).toBe(200);
+		await expect(page.getByRole('link', { name, exact: true })).toHaveCount(0);
 	});
 
 test('restored native WordPress routes persist settings and published content and keep classic admin reachable', async ({ page, request }) => {

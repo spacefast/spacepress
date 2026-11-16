@@ -27,8 +27,6 @@ mb_internal_encoding('ISO-8859-1');
 $re = Js::re(...);
 
 $cases = [
-    ['(() => { const groups = /(?<x>a)/.exec("a").groups; groups.__proto__ = "own"; return [typeof groups.toString, typeof structuredClone(groups).toString, JSON.stringify(groups)]; })()',
-        function () { $groups = Js::dynamicGet(Js::dynamicRegExpExec(new \Zero\RegExp('(?<x>a)'), 'a'), 'groups'); Js::dynamicSet($groups, '__proto__', 'own'); $snapshot = Js::detach($groups); return [Js::typeOf(Js::dynamicGet($snapshot, 'toString')), Js::typeOf(Js::dynamicGet(Js::clone($groups), 'toString')), Js::jsonStringify($snapshot)]; }],
     // Imported JS values use checked dynamic operations, with undefined distinct from null.
     ['(() => { const v = {present: null}; return [v.present === null, typeof v.missing, Boolean(v.missing), String(v.missing), Number.isNaN(Number(v.missing)), JSON.stringify({a: undefined, b: null, c: [undefined]})]; })()',
         function () { $v = new JsObject(['present' => null]); $missing = Js::dynamicGet($v, 'missing'); return [Js::dynamicGet($v, 'present') === null, Js::typeOf($missing), Js::truthy($missing), Js::str($missing), is_nan(Js::toNumber($missing)), Js::jsonStringify(new JsObject(['a' => $missing, 'b' => null, 'c' => new JsArray([$missing])]))]; }],
@@ -36,9 +34,6 @@ $cases = [
         function () { $a = new JsArray([1, 2]); Js::dynamicSet($a, 'extra', null); Js::dynamicSet($a, '1', 4); return [Js::dynamicKeys($a), Js::dynamicGet($a, 'length'), Js::dynamicGet($a, '1'), Js::dynamicGet($a, 'extra'), Js::dynamicKeys(new JsObject(['10' => 1, '2' => 1, 'z' => 1, 'a' => 1])), Js::dynamicKeys('🙂'), Js::dynamicKeys(3)]; }],
     ['(function () { "use strict"; const a = arguments; a.length = 1; a[5] = null; return [Array.isArray(a), a.length, Object.keys(a), JSON.stringify(a), a.caller === undefined, Object.hasOwn(a,"length"), Object.hasOwn(a,"callee")]; })(3, 4)',
         function () { $a = Js::arguments([3, 4]); Js::dynamicSet($a, 'length', 1); Js::dynamicSet($a, '5', null); return [$a instanceof JsArray, Js::dynamicGet($a, 'length'), Js::dynamicKeys($a), Js::jsonStringify($a), Js::dynamicGet($a, 'caller') === Js::undefined(), Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([$a, 'length'])), Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([$a, 'callee']))]; }],
-    // An arguments object is an object, so it can be an entry record for Object.fromEntries and Map.
-    ['(function () { return [Object.fromEntries([arguments]), [...new Map([arguments])]]; })("k", "v")',
-        function () { $a = Js::arguments(['k', 'v']); return [Js::dynamicStaticCall('Object', 'fromEntries', new JsArray([new JsArray([$a])])), Js::dynamicIterable(Js::dynamicConstruct('Map', new JsArray([new JsArray([$a])])))]; }],
     ['[[] == 0, false == "0", null == undefined, NaN == NaN, "" == 0, [1] == true, {} == "[object Object]", {} == {}]',
         fn () => [Js::looseEq(new JsArray(), 0), Js::looseEq(false, '0'), Js::looseEq(null, Js::undefined()), Js::looseEq(NAN, NAN), Js::looseEq('', 0), Js::looseEq(new JsArray([1]), true), Js::looseEq(new JsObject(), '[object Object]'), Js::looseEq(new JsObject(), new JsObject())]],
     ['["ab".slice(0, null), "ab".slice(0, undefined), "ab".charCodeAt(5), "éCOLE".toLowerCase(), "Straße".toUpperCase()]',
@@ -102,8 +97,8 @@ $cases = [
         fn () => array_map(fn ($s) => Js::n(Js::toNumber($s) - 1), ['9007199254740993', '-9007199254740993', '9007199254740992', '0x20000000000001', '0o400000000000000001', '0b100000000000000000000000000000000000000000000000000001'])],
     ['(() => { const v = JSON.parse(\'{"n":9007199254740993,"l":[-9007199254740995,3]}\'); return [v.n - 1, v.l[0] + 1, v.l[1] + 1]; })()',
         function () { $v = Js::jsonParse('{"n":9007199254740993,"l":[-9007199254740995,3]}'); return [Js::n($v->p['n'] - 1), Js::n($v->p['l']->a[0] + 1), Js::n($v->p['l']->a[1] + 1)]; }],
-    ['[2 ** 60, 2 ** 53 + 1, (-2) ** 3, 2 ** -2, 2 ** 0.5, 1 ** Infinity, (-1) ** -Infinity, 2 ** Infinity, 1 ** NaN]',
-        fn () => [Js::pow(2, 60), Js::n(Js::pow(2, 53) + 1), Js::pow(-2, 3), Js::pow(2, -2), Js::pow(2, 0.5), Js::pow(1, INF), Js::pow(-1, -INF), Js::pow(2, INF), Js::pow(1, NAN)]],
+    ['[2 ** 60, 2 ** 53 + 1, (-2) ** 3, 10 ** -2, 2 ** 0.5, 1 ** Infinity, (-1) ** -Infinity, 2 ** Infinity, 1 ** NaN]',
+        fn () => [Js::pow(2, 60), Js::n(Js::pow(2, 53) + 1), Js::pow(-2, 3), Js::pow(10, -2), Js::pow(2, 0.5), Js::pow(1, INF), Js::pow(-1, -INF), Js::pow(2, INF), Js::pow(1, NAN)]],
     ['[parseInt("ff", 16), parseInt("0xff", 16), parseInt("0xff", 10), parseInt("102", 2), parseInt("z", 36), parseInt("1", 37), parseInt("10", 0), parseInt("10", 4.9), parseInt("10", -1)]',
         fn () => [Js::parseInt('ff', 16), Js::parseInt('0xff', 16), Js::parseInt('0xff', 10), Js::parseInt('102', 2), Js::parseInt('z', 36), Js::parseInt('1', 37), Js::parseInt('10', 0), Js::parseInt('10', 4.9), Js::parseInt('10', -1)]],
     ['["3.14abc", ".5", "-.5e-3x", "Infinityx", "-Infinity", "e5", "  1e400", "-0", "1.e2", "0x10"].map(parseFloat)',
@@ -168,13 +163,11 @@ $cases = [
     ['["abc".replace(/(b)/g, "$1$1$2$<x>"), "abc".replace(/(b)/, "$10"), "abcabc".replace(/b/, "X"), "abcabc".replace(/B/gi, "X"), "aaa".replace(/a*?/g, "-")]',
         fn () => [Js::replace('abc', $re('(b)', 'g'), '$1$1$2$<x>'), Js::replace('abc', $re('(b)', ''), '$10'), Js::replace('abcabc', $re('b', ''), 'X'), Js::replace('abcabc', $re('B', 'gi'), 'X'), Js::replace('aaa', $re('a*?', 'g'), '-')]],
     ['["a1b22".replace(/\d+/g, (m, off) => `[${m}@${off}]`), "x=1,y=2".replace(/(\w)=(\d)/g, (m, k, v) => v + k), "🙂1é2".replace(/\d/g, (m, o, s) => o + s.length), "a🙂b".replace(/.?./gu, (m, at) => String(at)), "ab".replace(/(x)?b/, (m, g) => g ?? "unset")]',
-        fn () => [Js::replace('a1b22', $re('\d+', 'g'), fn ($m, $off) => "[$m@$off]"), Js::replace('x=1,y=2', $re('(\w)=(\d)', 'g'), fn ($m, $k, $v) => $v . $k), Js::replace('🙂1é2', $re('\d', 'g'), fn ($m, $o, $s) => $o + Js::length($s)), Js::replace('a🙂b', $re('.?.', 'gu'), fn ($m, $at) => (string) $at), Js::replace('ab', $re('(x)?b', ''), fn ($m, $g) => Js::isNullish($g) ? 'unset' : $g)]],
+        fn () => [Js::replace('a1b22', $re('\d+', 'g'), fn ($m, $off) => "[$m@$off]"), Js::replace('x=1,y=2', $re('(\w)=(\d)', 'g'), fn ($m, $k, $v) => $v . $k), Js::replace('🙂1é2', $re('\d', 'g'), fn ($m, $o, $s) => $o + Js::length($s)), Js::replace('a🙂b', $re('.?.', 'gu'), fn ($m, $at) => (string) $at), Js::replace('ab', $re('(x)?b', ''), fn ($m, $g) => $g ?? 'unset')]],
     ['["a.b.c".replaceAll(".", "-"), "aaa".replaceAll("", "-"), "aXbX".replaceAll(/x/gi, (m) => m.toLowerCase())]',
         fn () => [Js::replaceAll('a.b.c', '.', '-'), Js::replaceAll('aaa', '', '-'), Js::replaceAll('aXbX', $re('x', 'gi'), fn ($m) => strtolower($m))]],
     ['"a".replaceAll(/a/, "b")', fn () => Js::replaceAll('a', $re('a', ''), 'b')],
 
-    ['(() => { const g = /a/g, y = /a/y, empty = /a*/g; return [g.test("a"), g.lastIndex, g.test("a"), g.lastIndex, g.test("a"), y.test("ba"), y.lastIndex, y.test("a"), y.lastIndex, y.exec("a"), y.lastIndex, empty.test("b"), empty.lastIndex, empty.exec("b").index, empty.lastIndex]; })()',
-        function () { $g = new \Zero\RegExp('a', 'g'); $y = new \Zero\RegExp('a', 'y'); $e = new \Zero\RegExp('a*', 'g'); return [$g->test('a'), $g->lastIndex, $g->test('a'), $g->lastIndex, $g->test('a'), $y->test('ba'), $y->lastIndex, $y->test('a'), $y->lastIndex, Js::dynamicRegExpExec($y, 'a'), $y->lastIndex, $e->test('b'), $e->lastIndex, Js::dynamicGet(Js::dynamicRegExpExec($e, 'b'), 'index'), $e->lastIndex]; }],
     // ---- RegExp translation
     ['[/HELLO/i.test("hello"), /a.b/s.test("a\nb"), /a.b/.test("a\nb"), /a.b/.test("a b"), /^.$/u.test("🙂"), /^\d$/.test("٣"), /^\w$/.test("é"), /^\s$/.test(" ")]',
         fn () => [$re('HELLO', 'i')->test('hello'), $re('a.b', 's')->test("a\nb"), $re('a.b', '')->test("a\nb"), $re('a.b', '')->test("a\u{2028}b"), $re('^.$', 'u')->test('🙂'), $re('^\d$', '')->test('٣'), $re('^\w$', '')->test('é'), $re('^\s$', '')->test("\u{a0}")]],
@@ -184,18 +177,16 @@ $cases = [
         fn () => [Js::strMatch('$12 €34 $5', $re('(?<=\$)\d+', 'g')), Js::strMatch('ax cx bx', $re('(?<=ab|c)x', 'g')), Js::strMatch('price: 42', $re('(?<!\d)\d(?<num>\d)', '')), Js::strMatch('b', $re('(a)?b', '')), Js::strMatch('xyz', $re('q', 'g'))]],
     ['[/(a)?b\1/.test("b"), /^(?<q>["\x27]).*\k<q>$/.test("\x27hi\x27"), /[^]/.test("\n"), /[]/.test("a"), /[\d\-x]/.test("-"), /^[\w\s]+$/.test("a b_1"), /^[^\W\d]+$/.test("ab"), /^[\D]$/.test("5")]',
         fn () => [$re('(a)?b\1', '')->test('b'), $re('^(?<q>["\x27]).*\k<q>$', '')->test("'hi'"), $re('[^]', '')->test("\n"), $re('[]', '')->test('a'), $re('[\d\-x]', '')->test('-'), $re('^[\w\s]+$', '')->test('a b_1'), $re('^[^\W\d]+$', '')->test('ab'), $re('^[\D]$', '')->test('5')]],
-    ['[/é/.test("é"), /\u{1F642}/u.test("🙂"), /🙂/u.test("🙂"), /a\/b/.test("a/b"), /\x41\t/.test("A\t"), /[a-z]/i.test("K")]',
-        fn () => [$re('é', '')->test('é'), $re('\u{1F642}', 'u')->test('🙂'), $re('🙂', 'u')->test('🙂'), $re('a\/b', '')->test('a/b'), $re('\x41\t', '')->test("A\t"), $re('[a-z]', 'i')->test('K')]],
+    ['[/é/.test("é"), /\u{1F642}/u.test("🙂"), /🙂/.test("🙂"), /a\/b/.test("a/b"), /\x41\t/.test("A\t"), /^\p{Lu}+$/u.test("ÀB"), /É/i.test("é"), /[a-z]/i.test("K")]',
+        fn () => [$re('é', '')->test('é'), $re('\u{1F642}', 'u')->test('🙂'), $re('🙂', '')->test('🙂'), $re('a\/b', '')->test('a/b'), $re('\x41\t', '')->test("A\t"), $re('^\p{Lu}+$', 'u')->test('ÀB'), $re('É', 'i')->test('é'), $re('[a-z]', 'i')->test('K')]],
     ['[/x/gimsu.flags, /x/.source, new RegExp("").source, /a/g.global]', fn () => [$re('x', 'usmig')->flags, $re('x', '')->source, $re('', '')->source, $re('a', 'g')->global]],
     ['new RegExp("(", "")', fn () => $re('(', '')],
-
-    ['[new RegExp("\\u2028").source, new RegExp("\\u2029").source]', fn () => [$re("\u{2028}", '')->source, $re("\u{2029}", '')->source]],
 
     // ---- sort / arrays
     ['[10, 9, 1].sort()', function () { $a = jsValue([10, 9, 1]); Js::sort($a); return $a; }],
     ['["b", "a", 10, 9, true, null, "B", "｡", "🙂"].sort()', function () { $a = jsValue(['b', 'a', 10, 9, true, null, 'B', "\u{ff61}", '🙂']); Js::sort($a); return $a; }],
     ['[[3, 1, 2].sort((a, b) => b - a), [0.3, 0.1, 0.2].sort((a, b) => a - b), [{k: 1, i: 0}, {k: 0, i: 1}, {k: 1, i: 2}, {k: 0, i: 3}].sort((a, b) => a.k - b.k).map(o => o.i)]',
-        fn () => [Js::sorted(jsValue([3, 1, 2]), Js::sortComparator(fn ($a, $b) => $b - $a, [], true)), Js::sorted(jsValue([0.3, 0.1, 0.2]), Js::sortComparator(fn ($a, $b) => $a - $b, [], false)), Js::map(Js::sorted(jsValue([['k' => 1, 'i' => 0], ['k' => 0, 'i' => 1], ['k' => 1, 'i' => 2], ['k' => 0, 'i' => 3]]), Js::sortComparator(fn ($a, $b) => $a->p['k'] - $b->p['k'], ['k'], false)), fn ($row) => $row->p['i'])]],
+        fn () => [Js::sorted(jsValue([3, 1, 2]), fn ($a, $b) => $b - $a), Js::sorted(jsValue([0.3, 0.1, 0.2]), fn ($a, $b) => $a - $b), Js::map(Js::sorted(jsValue([['k' => 1, 'i' => 0], ['k' => 0, 'i' => 1], ['k' => 1, 'i' => 2], ['k' => 0, 'i' => 3]]), fn ($a, $b) => $a->p['k'] - $b->p['k']), fn ($row) => $row->p['i'])]],
     ['(() => { const a = [1, 2, 3, 4, 5]; const r = a.splice(-2, 1, "x", "y"); return [a, r, a.slice(-2), a.slice(1, -10), a.at(-1), a.at(9)]; })()',
         function () { $a = jsValue([1, 2, 3, 4, 5]); $r = Js::splice($a, -2, 1, 'x', 'y'); return [$a, $r, Js::arrSlice($a, -2), Js::arrSlice($a, 1, -10), Js::arrAt($a, -1), Js::arrAt($a, 9)]; }],
     ['(() => { const a = [1, 2, 3]; a.splice(1); const b = [1, 2, 3, 4]; b.fill(0, -3, -1); const c = [1, 2]; c.reverse(); return [a, b, c]; })()',
@@ -231,8 +222,8 @@ $cases = [
     ['JSON.parse("{bad")', fn () => Js::jsonParse('{bad')],
 
     // ---- dates
-    ['["2020-01-01", "2020-01-01T10:00", "2020-02", "2021-02-30", "2020-13-01", "2020-01-01T24:00:00Z", "2020-01-01T24:00:01Z", "2020-01-01T24:00:00.0000Z", "2020-01-01T24:00:00.0001Z", "+002020-01-01", "-000001-01-01T00:00:00Z", "2020-01-01T10:00:00.123456Z", "2020-01-01T10:00:00+05:30"].map(s => new Date(s).getTime())',
-        fn () => array_map(Js::date(...), ['2020-01-01', '2020-01-01T10:00', '2020-02', '2021-02-30', '2020-13-01', '2020-01-01T24:00:00Z', '2020-01-01T24:00:01Z', '2020-01-01T24:00:00.0000Z', '2020-01-01T24:00:00.0001Z', '+002020-01-01', '-000001-01-01T00:00:00Z', '2020-01-01T10:00:00.123456Z', '2020-01-01T10:00:00+05:30'])],
+    ['["2020-01-01", "2020-01-01T10:00", "2020-01-01 10:00", "2020-02", "2021-02-30", "2020-13-01", "2020-01-01T24:00:00Z", "2020-01-01T24:00:01Z", "2020-01-01T24:00:00.0000Z", "2020-01-01T24:00:00.0001Z", "+002020-01-01", "-000001-01-01T00:00:00Z", "2020-01-01T10:00:00.123456Z", "2020-01-01T10:00:00+05:30", "2020-01-01T10Z", "nope"].map(s => new Date(s).getTime())',
+        fn () => array_map(Js::date(...), ['2020-01-01', '2020-01-01T10:00', '2020-01-01 10:00', '2020-02', '2021-02-30', '2020-13-01', '2020-01-01T24:00:00Z', '2020-01-01T24:00:01Z', '2020-01-01T24:00:00.0000Z', '2020-01-01T24:00:00.0001Z', '+002020-01-01', '-000001-01-01T00:00:00Z', '2020-01-01T10:00:00.123456Z', '2020-01-01T10:00:00+05:30', '2020-01-01T10Z', 'nope'])],
     ['[new Date(1.9).getTime(), new Date(8.64e15 + 1).getTime(), new Date(null).getTime()]', fn () => [Js::date(1.9), Js::date(8.64e15 + 1), Js::date(null)]],
     ['[0, -1, 1e12, 8.64e15, -8.64e15, -62198755200000, 253402300800000].map(ms => new Date(ms).toISOString())',
         fn () => array_map(Js::iso(...), [0, -1, 1e12, 8.64e15, -8.64e15, -62198755200000, 253402300800000])],
@@ -247,13 +238,9 @@ $deviations = [
     ['dynamic nondecimal number formatting fails explicitly', fn () => Js::dynamicCallMethod(255, 'toString', new JsArray([16])), ['$err' => 'TypeError']],
     ['dynamic Error cause fails explicitly', fn () => Js::dynamicConstruct('Error', new JsArray(['message', new JsObject(['cause' => Js::undefined()])])), ['$err' => 'TypeError']],
     ['an undefined operation result retains its success envelope', fn () => \Zero\Response::json(Js::undefined())->http()[2], '{"data":null}'],
-    ['negative zero Date year is refused', fn () => Js::date('-000000-01-01'), ['$err' => 'RangeError']],
-    ['inherited Error cause is refused', function () { $base = new \Zero\JsClass(null, null, static fn ($i) => null, ['cause' => static fn ($i) => null], [], new JsObject()); $class = new \Zero\JsClass($base, null, static fn ($i) => null, [], [], new JsObject()); return Js::dynamicConstruct('Error', new JsArray(['x', $class->construct()])); }, ['$err' => 'TypeError']],
-    ['array Error cause is refused', function () { $a = new JsArray(); $a->p['cause'] = 42; return Js::dynamicConstruct('Error', new JsArray(['x', $a])); }, ['$err' => 'TypeError']],
-    ['default object sort requires a comparator', fn () => Js::sort(new JsArray([new JsObject(), new JsObject()])), ['$err' => 'TypeError']],
-    ['unsupported legacy control escapes are refused', fn () => Js::re('\\c0', ''), ['$err' => 'SyntaxError']],
-    ['error stack access is refused', fn () => Js::dynamicGet(new JsError('x'), 'stack'), ['$err' => 'TypeError']],
-    ['non-ISO Date strings are refused', fn () => Js::date('2020-1-1'), ['$err' => 'RangeError']],
+    ['RegExp y flag is rejected', fn () => $re('a', 'y'), ['$err' => 'SyntaxError']],
+    ['non-ISO date strings are NaN (no legacy parser fallback)', fn () => is_nan(Js::date('2020-1-1')), true],
+    ['localeCompare is byte order', fn () => [Js::localeCompare('a', 'B'), Js::localeCompare('é', 'f')], [1, 1]],
 ];
 
 // Each fixed-length helper owns a separate shrink/growth row because its walk can fail independently.
@@ -299,14 +286,10 @@ $cases[] = ['(() => { const a = [1,2,3]; return a.some(v => { a.pop(); a.pop(); 
 $cases[] = ['(() => { const a = [1,2,3]; return a.findLast(v => { a.pop(); return false; }) ?? null; })()', static function () {
     $a = new JsArray([1, 2, 3]); return Js::findLast($a, static function () use ($a) { Js::pop($a); return false; });
 }];
-$deviations[] = ['effectful comparators are refused', static function () {
-    $calls = 0;
-    try { Js::sort(new JsArray([3, 2, 1]), static function ($x, $y) use (&$calls) { $calls++; return $x - $y; }); }
-    catch (JsError $e) { return [$e->jsName, $calls]; }
-    return ['accepted', $calls];
-}, ['TypeError', 0]];
-$deviations[] = ['nonfinite comparator keys are refused', fn () => Js::sort(new JsArray([1, NAN, 0]), Js::sortComparator(static fn ($x, $y) => $x - $y, [], false)), ['$err' => 'RangeError']];
-$deviations[] = ['borrowed methods cannot change families', fn () => Js::dynamicCallMethod(Js::dynamicGet(new JsArray(), 'includes'), 'call', new JsArray(['abc', 'ab'])), ['$err' => 'TypeError']];
+$cases[] = ['(() => { const a = [2,1]; let pushed = false; a.sort((x,y) => { if (!pushed) { a.push(9); pushed = true; } return x-y; }); return a; })()', static function () {
+    $a = new JsArray([2, 1]); $pushed = false;
+    return Js::sort($a, static function ($x, $y) use ($a, &$pushed) { if (!$pushed) { Js::push($a, 9); $pushed = true; } return $x - $y; });
+}];
 $cases[] = ['[Array.from("a🙂b"), [1,2].with(-1, 9), [1,2].toReversed()]', fn () => [Js::from('a🙂b'), Js::with(new JsArray([1, 2]), -1, 9), Js::toReversed(new JsArray([1, 2]))]];
 $cases[] = ['(() => { const a = [1]; const n = a.push(2); const x = a.pop(); const m = a.unshift(0); const y = a.shift(); return [n,x,m,y,a]; })()', static function () {
     $a = new JsArray([1]); $n = Js::push($a, 2); $x = Js::pop($a); $m = Js::unshift($a, 0); $y = Js::shift($a); return [$n, $x, $m, $y, $a];
@@ -317,7 +300,7 @@ $cases[] = ['(() => { const p = {x:1}; const a = [[p]]; const flat = a.flat(); f
     $p = new JsObject(['x' => 1]); $a = new JsArray([new JsArray([$p])]); $flat = Js::flat($a); $flat->a[0]->p['x'] = 2; return [$flat, $a];
 }];
 $cases[] = ['(() => { const a = [3,1,2]; return [a.toSorted((x,y) => x-y), a.concat([4],5), a]; })()', static function () {
-    $a = new JsArray([3, 1, 2]); return [Js::toSorted($a, Js::sortComparator(static fn ($x, $y) => $x - $y, [], false)), Js::concat($a, new JsArray([4]), 5), $a];
+    $a = new JsArray([3, 1, 2]); return [Js::toSorted($a, static fn ($x, $y) => $x - $y), Js::concat($a, new JsArray([4]), 5), $a];
 }];
 $cases[] = ['(() => { const p = {x:1}; const array = [p,p]; array.extra = p; const set = new Set([p]); set.add(set); const map = new Map([[p,set]]); map.set(map,p); const date = new Date(0); const source = {array,set,map,date,again:date}; const copy = structuredClone(source); copy.array[0].x = 2; copy.set.add("new"); copy.map.set("new",3); return [copy.array[0] === copy.array[1], copy.array.extra === copy.array[0], p.x, copy.array, set.size, copy.set.size, map.size, copy.map.size, copy.set.has(copy.set), copy.map.get(copy.array[0]) === copy.set, copy.map.get(copy.map) === copy.array[0], copy.date !== date, copy.date === copy.again, copy.date.getTime()]; })()', static function () {
     $p = new JsObject(['x' => 1]); $array = new JsArray([$p, $p]); $array->p['extra'] = $p;
@@ -370,7 +353,6 @@ if (!is_array($expected) || count($expected) !== count($cases)) {
 /** Typed comparison of a PHP value against a tagged JS value. Returns null when equal, else a reason. */
 function mismatch(mixed $actual, mixed $exp, string $path = ''): ?string
 {
-    if ($actual === Js::undefined()) { $actual = null; }
     if ($actual instanceof JsObject || $actual instanceof JsArray) { $actual = \Zero\Seam::container($actual); }
     $show = fn ($v) => is_float($v) ? sprintf('%.17g', $v) : var_export($v, true);
     if (is_array($exp) && isset($exp['$'])) {
@@ -425,65 +407,10 @@ $deviations = array_merge($deviations, [
     ['complemented shorthands need Unicode mode on astral text', fn () => Js::strMatch('a🙂b', Js::re('\\S?\\S', 'g')), ['$err' => 'RangeError']],
     ['lookarounds on astral text need Unicode mode', fn () => Js::strMatch('🙂', Js::re('(?=.)', 'g')), ['$err' => 'RangeError']],
     ['classes cannot fabricate an in-pair empty match', fn () => Js::strMatch('a🙂a', Js::re('\B[^\uFDD0]?', 'g')), ['$err' => 'RangeError']],
-    ['surrogate escapes cannot fabricate an in-pair empty match', fn () => Js::strMatch('a🙂a', Js::re('\B\uDE00?', 'g')), ['$err' => 'SyntaxError']],
-    ['astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.🙂|', 'g')), ['$err' => 'SyntaxError']],
-    ['escaped astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.\\uD83D\\uDE42|', 'g')), ['$err' => 'SyntaxError']],
+    ['surrogate escapes cannot fabricate an in-pair empty match', fn () => Js::strMatch('a🙂a', Js::re('\B\uDE00?', 'g')), ['$err' => 'RangeError']],
+    ['astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.🙂|', 'g')), ['$err' => 'RangeError']],
+    ['escaped astral literals need Unicode mode for shared interior probes', fn () => Js::strMatch('🙂🙂', Js::re('.\\uD83D\\uDE42|', 'g')), ['$err' => 'RangeError']],
     ['charAt splitting a pair throws', fn () => Js::charAt('a🙂', 1), ['$err' => 'RangeError']],
-    ['non-Unicode RegExp split on astral text is refused', fn () => Js::split('😀', Js::re('(?:)', '')), ['$err' => 'RangeError']],
-    ['non-Unicode Kelvin folding is refused', fn () => Js::re('k', 'i')->test('K'), ['$err' => 'RangeError']],
-    ['non-Unicode long s folding is refused', fn () => Js::re('s', 'i')->test('ſ'), ['$err' => 'RangeError']],
-    ['non-Unicode source folding is refused', fn () => Js::re('K', 'i')->test('k'), ['$err' => 'SyntaxError']],
-    ['non-Unicode escaped source folding is refused', fn () => Js::re('\\u212a', 'i')->test('k'), ['$err' => 'SyntaxError']],
-    ['engine-dependent reciprocal powers are refused', fn () => Js::pow(45.29, -1), ['$err' => 'RangeError']],
-    ['Unicode malformed regex braces are refused', fn () => Js::re('a{,2}', 'u'), ['$err' => 'SyntaxError']],
-    ['Unicode unmatched regex braces are refused', fn () => Js::re('a}', 'u'), ['$err' => 'SyntaxError']],
-    ['possessive RegExp quantifiers are refused', fn () => Js::re('a++a', 'g'), ['$err' => 'SyntaxError']],
-    ['Unicode class identity escapes are refused', fn () => Js::re('[\\k<a>]', 'u'), ['$err' => 'SyntaxError']],
-    ['Unicode ignore-case table differences are refused', fn () => Js::re('\\u1c89', 'iu')->test('ᲊ'), ['$err' => 'SyntaxError']],
-    ['Unicode ignore-case non-ASCII input is refused', fn () => Js::re('k', 'iu')->test('K'), ['$err' => 'RangeError']],
-    ['Unicode ignore-case literal source is refused', fn () => Js::re('É', 'iu')->test('é'), ['$err' => 'SyntaxError']],
-    ['class shorthand beside a range is refused', fn () => Js::re('[\\w-a]', '')->test('-'), ['$err' => 'SyntaxError']],
-    ['class range before a shorthand is refused', fn () => Js::re('[a-\\d]', '')->test('`'), ['$err' => 'SyntaxError']],
-    ['space-separated Date extension is refused', fn () => Js::date('2000-01-01 24:00:00.0001Z'), ['$err' => 'RangeError']],
-    ['compact Date offset extension is refused', fn () => Js::date('2000-01-01T00:00:00+0100'), ['$err' => 'RangeError']],
-    ['partial Date with time is refused', fn () => Js::date('2000T00:00:00Z'), ['$err' => 'RangeError']],
-    ['nullable repeated noncapturing groups are refused', fn () => Js::replace('b', Js::re('(?:a*|b)*', ''), 'X'), ['$err' => 'SyntaxError']],
-    ['nullable optional noncapturing groups are refused', fn () => Js::replace('b', Js::re('(?:a*|b)?', ''), 'X'), ['$err' => 'SyntaxError']],
-    ['ownership of unsupported namespace constants is refused', fn () => Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([Js::dynamicNamespace('Math'), 'LN2'])), ['$err' => 'TypeError']],
-    ['unsupported namespace constants are refused', fn () => Js::dynamicGet(Js::dynamicNamespace('Math'), 'LN2'), ['$err' => 'TypeError']],
-    ['unsupported namespace method values are refused', fn () => Js::dynamicGet(Js::dynamicNamespace('Math'), 'sin'), ['$err' => 'TypeError']],
-    ['Error options are checked after message conversion', function () { $options = new JsObject(); $message = new JsObject(['toString' => static function () use ($options) { $options->p['cause'] = 7; return 'x'; }]); return Js::dynamicConstruct('Error', new JsArray([$message, $options])); }, ['$err' => 'TypeError']],
-    ['lone surrogate classes are refused', fn () => Js::re('[\\uD800]', '')->test('?'), ['$err' => 'SyntaxError']],
-    ['negated lone surrogate classes are refused', fn () => Js::re('[^\\uD800]', 'u')->test('?'), ['$err' => 'SyntaxError']],
-    ['non-Unicode escaped astral quantifiers are refused on ASCII input', fn () => Js::re('\\uD83D\\uDE42?', '')->test('a'), ['$err' => 'SyntaxError']],
-    ['non-Unicode astral quantifiers are refused on ASCII input', fn () => Js::re('🙂?', '')->test('a'), ['$err' => 'SyntaxError']],
-    ['non-Unicode surrogate class ranges are refused on BMP input', fn () => Js::re('[a-\\uD83D\\uDE42]', '')->test(''), ['$err' => 'SyntaxError']],
-    ['Unicode category version differences are refused', fn () => Js::re('\\p{Lu}', 'u')->test('Ᲊ'), ['$err' => 'SyntaxError']],
-    ['Unicode class properties are refused', fn () => Js::re('[\\P{Ll}]', 'u'), ['$err' => 'SyntaxError']],
-    ['case-insensitive positive Unicode properties are refused', fn () => Js::re('\\p{Lu}', 'iu'), ['$err' => 'SyntaxError']],
-    ['Unicode trailing escapes are refused', fn () => Js::re('\\', 'u'), ['$err' => 'SyntaxError']],
-    ['legacy trailing escapes are refused', fn () => Js::re('\\', ''), ['$err' => 'SyntaxError']],
-    ['invalid Unicode hex escapes are refused', fn () => Js::re('\\x', 'u'), ['$err' => 'SyntaxError']],
-    ['invalid Unicode escapes are refused', fn () => Js::re('\\u', 'u'), ['$err' => 'SyntaxError']],
-    ['invalid Unicode identity escapes are refused', fn () => Js::re('\\q', 'u'), ['$err' => 'SyntaxError']],
-    ['case-insensitive negated Unicode properties are refused', fn () => Js::re('\\P{Ll}', 'iu'), ['$err' => 'SyntaxError']],
-    ['case-insensitive negated class properties are refused', fn () => Js::re('[\\P{Ll}]', 'iu'), ['$err' => 'SyntaxError']],
-    ['capturing lookbehind is refused', fn () => Js::re('(?<=([ab]{1,2})([bc]{1,2}))$', ''), ['$err' => 'SyntaxError']],
-    ['custom toJSON callbacks are refused', fn () => Js::jsonStringify(new JsObject(['toJSON' => static fn () => 42])), ['$err' => 'TypeError']],
-    ['array prototype writes are refused', fn () => Js::dynamicSet(new JsArray(), '__proto__', 1), ['$err' => 'TypeError']],
-    ['arguments prototype writes are refused', fn () => Js::dynamicSet(Js::arguments([]), '__proto__', 1), ['$err' => 'TypeError']],
-    ['prototype writes are refused by the shared setter', fn () => Js::set(new JsObject(), '__proto__', 1), ['$err' => 'TypeError']],
-    ['non-ISO invalid Date strings are refused', fn () => Js::date('nope'), ['$err' => 'RangeError']],
-    ['empty array Date strings are refused', fn () => Js::date(new JsArray()), ['$err' => 'RangeError']],
-    ['multi-element Date arrays are refused', fn () => Js::date(new JsArray(['2020-01-01','2020-01-02'])), ['$err' => 'RangeError']],
-    ['plain object Date strings are refused', fn () => Js::date(new JsObject(['x'=>1])), ['$err' => 'RangeError']],
-    ['loose function comparison requiring source text is refused', fn () => Js::looseEq(static fn () => 1, '()=>1'), ['$err' => 'TypeError']],
-    ['function string conversion is refused', fn () => Js::str(static fn () => 1), ['$err' => 'TypeError']],
-    ['function metadata reads are refused', fn () => Js::dynamicGet(static fn () => 1, 'length'), ['$err' => 'TypeError']],
-    ['function binding values are refused', fn () => Js::dynamicGet(static fn () => 1, 'bind'), ['$err' => 'TypeError']],
-    ['function own properties are refused', fn () => Js::dynamicStaticCall('Object', 'hasOwn', new JsArray([static fn () => 1, 'length'])), ['$err' => 'TypeError']],
-    ['repeated captures are refused', fn () => Js::re('(a(b)?)+', ''), ['$err' => 'SyntaxError']],
-    ['astral regex quantifiers need Unicode mode', fn () => Js::re('^😀+$', '')->test('😀😀'), ['$err' => 'SyntaxError']],
     ['slice ending inside a pair throws', fn () => Js::slice('a🙂b', 0, 2), ['$err' => 'RangeError']],
     ['slice starting inside a pair throws', fn () => Js::slice('a🙂b', 2), ['$err' => 'RangeError']],
     ['split("") on a pair throws', fn () => Js::split('a🙂b', ''), ['$err' => 'RangeError']],

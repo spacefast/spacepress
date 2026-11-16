@@ -153,7 +153,7 @@ function defaultArgument(value: string = "fallback") {
 
 function argumentSemantics(first: string, ...tail: string[]) {
   const read = () => arguments[0];
-  const initial = { array: Array.isArray(arguments), string: String(arguments) };
+  const initial = { array: Array.isArray(arguments), string: String(arguments), json: JSON.stringify(arguments) };
   arguments[0] = "changed";
   arguments[3] = "extra";
   arguments.length = 1;
@@ -163,10 +163,6 @@ function argumentSemantics(first: string, ...tail: string[]) {
 }
 
 const BUILD_TIME_ARGUMENT_SEMANTICS = argumentSemantics("original", "tail");
-
-function argumentSerialization(...values: string[]) {
-  return JSON.stringify(arguments);
-}
 const ITEMS: Item[] = [
   { name: "Oat Milk", qty: 2, tags: ["dairy-free"] },
   { name: "eggs", qty: 0, tags: [] },
@@ -275,6 +271,9 @@ const laneRefs = {
   refsDateArrayCoercion: run(() => [
     new Date(["2020-01-01"]).getTime(),
     new Date([["2020-01-01"]]).getTime(),
+    isNaN(new Date([]).getTime()),
+    isNaN(new Date(["2020-01-01", "2020-01-02"]).getTime()),
+    isNaN(new Date({ x: 1 }).getTime()),
   ]),
   refsContainerCoercion: run(() => {
     const nested = [1, null, [2, null], { x: 3 }];
@@ -314,9 +313,10 @@ const laneRefs = {
   refsMissingElementCompound: run(() => {
     const numbers: number[] = []; numbers[0] += 1; numbers[1] -= 1;
     const strings: string[] = []; strings[0] += "x";
+    const numericText: string[] = []; numericText[0] += 1;
     const props: Record<string, number> = {}; props.x += 1; props.y++;
     const nulls: (number | null)[] = [null]; nulls[0]!++;
-    return [numbers.map(n => isNaN(n)), strings, isNaN(props.x!), isNaN(props.y!), nulls];
+    return [numbers.map(n => isNaN(n)), strings, isNaN(Number(numericText[0])), isNaN(props.x!), isNaN(props.y!), nulls];
   }),
   refsMissingPresenceSnapshot: run(() => {
     const a: number[] = [];
@@ -383,10 +383,12 @@ const laneRefs = {
   refs26: run(() => { const a = [{ x: 0 }]; const b = a.map((e) => e); a[0]!.x = 1; return b[0]!.x === 1; }),
   refs27: run(() => { const both = (a: { x: number }, b: { x: number }) => { a.x = 1; return b.x; }; const o = { x: 0 }; return both(o, o) === 1; }),
   refs28: run(() => { const a = [{ x: 0 }]; Array.from(a, (e) => { e.x = 1; return 0; }); return a[0]!.x === 1; }),
+  refs29: run(() => { const a = [{ x: 0 }, { x: 0 }]; a.sort((x, y) => { y.x = 1; return 0; }); return a[0]!.x === 1; }),
   refs30: run(() => { const identity = (p: { x: number }) => p; const forward = (p: { x: number }) => identity(p); const o = { x: 0 }; const r = forward(o); o.x = 1; return r.x === 1; }),
   refs31: run(() => { const reader = (p: { x: number }) => () => p.x; const o = { x: 0 }; const r = reader(o); o.x = 1; return r() === 1; }),
   refs32: run(() => { const a = [{ x: 0 }]; const r = a.map((e) => { a[0]!.x = 1; return e.x; }); return r[0] === 1; }),
   refs33: run(() => { const a = [{ x: 0 }]; const b = a.map((e) => ({ e })); b[0]!.e.x = 1; return a[0]!.x === 1; }),
+  refs34: run(() => { const cmp = (x: { x: number }, y: { x: number }) => { y.x = 1; return 0; }; const a = [{ x: 0 }, { x: 0 }]; a.sort(cmp); return a[1]!.x === 1; }),
   refs35: run(() => { const acc = (a: { x: number }, e: number) => { a.x += e; return a; }; const init = { x: 0 }; [1, 2].reduce(acc, init); return init.x === 3; }),
   refs36: run(() => { const reader = (p: { x: number }) => { const q = p; return () => q.x; }; const o = { x: 0 }; const r = reader(o); o.x = 1; return r() === 1; }),
   refs37: run(() => { const a = [1, 2]; (a.length > 0 ? a : a).reverse(); return a[0] === 2; }),
@@ -426,7 +428,6 @@ export default defineConfig({
     ...laneRefs,
     varSemantics: run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, runtime: varSemantics(5) })),
     argumentSemantics: run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemantics("original", "tail") })),
-    argumentSerialization: run(() => argumentSerialization("original", "tail")),
     languageTypes: run(() => {
       const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];
       const guard = isNamed;
@@ -585,7 +586,7 @@ export default defineConfig({
       p **= 60;
       const parsed = Number(JSON.parse("9007199254740993"));
       return [2 ** 53 + 1, 9007199254740993 + 0, 2 ** 53 * 3 + 1, before, after, i, j, Number("9007199254740993"), 7 - 10,
-        pre, a, k, 2 ** 60 + 1, p, Math.pow(2, 60) - 1, 2 ** 0.5, 2 ** -2, parsed - 1];
+        pre, a, k, 2 ** 60 + 1, p, Math.pow(2, 60) - 1, 2 ** 0.5, 10 ** -2, parsed - 1];
     }),
     numberFormatting: run(() => [String(1e21), String(1e-7), String(123.456), String(-0), (1.005).toFixed(2), (2.5).toFixed(0)]),
     truthiness: run(() => ["", "0", 0, -0, null, [], {}].map((v) => (v ? "t" : "f")).join("")),
@@ -604,7 +605,7 @@ export default defineConfig({
       "\r\n  $literal ${value} \"quote\" \\path\n",
       "aba".replaceAll("a", replacementOffset),
       "ab".replace(/b/, (match: string, offset: number, source: string) => `${match}:${offset}:${source}`),
-      "ab".replace(/(a)?b/, (_match, capture: string | undefined, offset: number) => `${capture ?? "missing"}:${offset}`),
+      "ab".replace(/(a)?b/, (_match, capture: string | null, offset: number) => `${capture ?? "missing"}:${offset}`),
       "Oat Milk".includes("Milk"),
       "Oat Milk".indexOf("Milk"),
     ]),

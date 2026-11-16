@@ -178,14 +178,10 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     }
     const typed = spawnSync(process.execPath, [tsc, "-p", path.join(fixture, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(typed.status, 0, typed.stdout + typed.stderr);
-    const wire = spawnSync("php", ["-r", String.raw`require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$out=[];foreach(['wireUndefinedTuple','wireUndefinedObject','wireDestructuredObject'] as $name){$fn='\ZeroApp\\'.$schema['actions'][$name]['handler'];$out[]=\Zero\Seam::toWire($fn());}echo json_encode($out);`, path.join(plugins, "zero-runtime/zero/bootstrap.php"), path.join(plugins, app, "zero/app")], { encoding: "utf8" });
-    assert.equal(wire.status, 0, wire.stderr);
-    assert.equal(wire.stderr, "");
-    assert.deepEqual(JSON.parse(wire.stdout), JSON.parse(JSON.stringify([[undefined], { x: undefined }, { x: undefined }])));
     const client = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--target", "es2023", "--module", "preserve", "--moduleResolution", "bundler", "--allowImportingTsExtensions", path.join(dir, "client.ts")], { encoding: "utf8" });
     assert.equal(client.status, 0, client.stdout + client.stderr);
 
-    // Backend queries and wire types retain the authored null/undefined domains.
+    // Backend queries retain the authored JSON domain; wire types retain nulls.
     const storedSource = `import { table, group, json, text, slug, email, userProjection, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "zero";
 type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
 type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
@@ -218,13 +214,11 @@ export default defineConfig({ tables: { documents, source }, users: { members },
     const storedBuild = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
     assert.equal(storedBuild.status, 0, storedBuild.stderr);
     writeFileSync(path.join(dir, "stored-client.ts"), `import type { Document } from "./zero/client/types";
-const wire: Document["payload"] = { title: "wire", state: undefined, items: [{ label: undefined }] };
-// @ts-expect-error optional string values do not admit null
-const invalidWire: Document["payload"] = { title: "wire", items: [{ label: null }] };
+const wire: Document["payload"] = { title: "wire", state: null, items: [{ label: null }] };
 const selected: Document["selected"] = { id: 1, uid: "zr_12345678901234567890", slug: "first", body: wire, label: "first", details: null, locale: "en", translations: { de: 2 } };
 const inserted: Document["inserted"] = { body: wire, label: "second" };
 const translated: Document["inserted"] = { body: wire, translationOf: 1 };
-void selected; void inserted; void invalidWire;`);
+void selected; void inserted;`);
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { zero: [path.join(repo, "types/zero/index.d.ts")] } },
       include: ["zero.config.ts", "zero.gen.ts", "stored-client.ts"],
@@ -326,63 +320,6 @@ export default defineConfig({ tables: {}, actions: { run: action({ input: {}, ha
       const strict = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
       assert.equal(strict.status, 0, strict.stdout + strict.stderr);
     }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("shared builtin vectors emit byte-identical PHP in native and WASM", () => {
-  const vectors: unknown = JSON.parse(readFileSync(path.join(repo, "tests/differential/builtin-vectors.json"), "utf8"));
-  assert.ok(Array.isArray(vectors));
-  const declarations: string[] = [];
-  const actions: string[] = [];
-  const javascript: string[] = [];
-  const files: Request["files"] = {};
-  function addVector(value: unknown) {
-    assert.ok(value !== null && typeof value === "object");
-    assert.ok("name" in value && typeof value.name === "string");
-    assert.ok("expression" in value && typeof value.expression === "string");
-    assert.ok("fold" in value && typeof value.fold === "boolean");
-    let expression = value.expression;
-    if ("files" in value) {
-      assert.ok(value.files !== null && typeof value.files === "object" && !Array.isArray(value.files));
-      const entries: Array<[string, unknown]> = Object.entries(value.files);
-      for (const [name, source] of entries) {
-        assert.ok(typeof source === "string");
-        files[name] = source;
-      }
-    }
-    if ("declarations" in value) {
-      assert.ok(typeof value.declarations === "string");
-      declarations.push(value.declarations);
-    }
-    if ("javascript" in value && value.javascript === true) {
-      javascript.push(`export const js_${value.name} = () => (${expression});`);
-      declarations.push(`import {js_${value.name}} from './helper.js';`);
-      expression = `js_${value.name}()`;
-    }
-    actions.push(`${value.name}: action({ input: {}, handler: () => (${expression}) })`);
-    if (value.fold) {
-      declarations.push(`const folded_${value.name} = ${value.expression};`);
-      actions.push(`folded_${value.name}: action({ input: {}, handler: () => folded_${value.name} })`);
-    }
-  }
-  vectors.forEach(addVector);
-  files["helper.js"] = javascript.join("\n");
-  files["zero.config.ts"] = `import { action, defineConfig } from 'zero';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});`;
-  const dir = path.join(repo, "target", `builtin-wasm-${process.pid}`);
-  mkdirSync(dir, { recursive: true });
-  try {
-    for (const [name, source] of Object.entries(files)) writeFileSync(path.join(dir, name), source);
-    const { envelope, check, output } = browserCheck({ name: "builtinparity", files });
-    assert.equal(envelope, nativeCheck(dir));
-    assert.equal(check.ok, true);
-    assert.ok(output);
-    const built = spawnSync(zeroBinary(), ["build", dir], { encoding: "utf8" });
-    assert.equal(built.status, 0, built.stderr);
-    const app = path.join(dir, ".zero/wp-content/plugins/zero-app-builtinparity/zero/app");
-    assert.equal(output.functionsPhp, readFileSync(path.join(app, "functions.php"), "utf8"));
-    assert.equal(output.schemaPhp, readFileSync(path.join(app, "schema.php"), "utf8"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

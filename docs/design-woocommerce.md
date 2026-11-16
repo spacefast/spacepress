@@ -50,7 +50,7 @@ not just the fields shown in a minimal example:
 | `status` | `draft`, `pending`, `private` or `publish`; new products default to draft |
 | Markdown body | Full product description |
 | `shortDescription` | Optional short description |
-| `regularPrice` | Exact decimal price in the store currency |
+| `price` | Exact decimal price in the store currency; maps to Woo's regular price internally |
 | `images` | Ordered project-relative image paths with optional alt text; first image is primary |
 | `categories` | Product category UIDs |
 | `tags` | Product tag UIDs |
@@ -136,7 +136,7 @@ name: Ceramic mug
 slug: ceramic-mug
 sku: MUG-BLUE
 status: publish
-regularPrice: "24.00"
+price: "24.00"
 categories:
   - zr_15a702bc4d8e6390fa12
 tags:
@@ -178,7 +178,7 @@ Taxonomy Markdown bodies map to term descriptions; parent references, when prese
 UIDs. One `typedpress sync` processes the declared taxonomies and product references in dependency
 order. First deployment seeds missing terms and products. After that:
 
-- Changing `regularPrice` in the file and syncing updates that Woo product.
+- Changing `price` in the file and syncing updates that Woo product's regular price.
 - Editing its description in Woo and syncing brings the description into the Markdown body.
 - Changing the same field differently in both places reports a conflict through existing sync.
 - Removing a file does not delete its Woo record.

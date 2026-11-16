@@ -59,6 +59,14 @@ Fields and actions map onto WordPress 7.2's server registries
 registry. Actions stay bound to Abilities, which core's action schema carries as
 extra properties, so a screen keeps working as core's action API grows in 7.3.
 
+2026-11-15: an app declares screens in TypeScript with `adminScreen()`,
+exported like an action. The compiler checks it against the actions it names
+and writes the same declaration into the generated `schema.php`, with each
+action replaced by its Ability name. The app plugin passes each one to
+`first_admin_register_screen()` on `first_admin_screens`. TypeScript and PHP
+screens share that one registry, so there is still no second one, and the
+reasons above for server-side declarations hold.
+
 ## View config and field collections against core
 
 - **View config.** WordPress 7.1 serves `GET /wp/v2/view-config` and runs
@@ -81,3 +89,48 @@ extra properties, so a screen keeps working as core's action API grows in 7.3.
   with core when it has the API. When First's floor moves to 7.2, the field
   collections register through core too, and `lib/api/field-collections.php`
   and its controller are deleted.
+
+## Classic wp-admin behind developer mode (follow-up, 2026-11-15)
+
+First Admin is the only admin people see; classic wp-admin is for developers.
+
+1. **Developer mode** is a per-user setting, the user meta `first_admin_developer_mode`, off unless
+   set. The user turns it on under Admin on their profile in First Admin (`/profile`), which saves
+   it through core's user route (`first_admin_developer_mode` on `/wp/v2/users/<id>`; a user may set
+   it where they may edit that user).
+2. **Off (the default)**, First Admin's sidebar and command palette have no `Classic admin`, and a
+   classic page that the browser opens as a page of its own (`Sec-Fetch-Dest: document`, a GET)
+   answers with a redirect to the same page framed in First Admin: the classic dashboard
+   (`/wp-admin/`, `index.php`) to `/wp-admin/new/`, the rest to `/wp-admin/new/classic/<slug>`. The
+   frame's own request (`Sec-Fetch-Dest: iframe`) and any request that doesn't say it is a page
+   (scripts, WP-CLI, REST, a browser without Fetch Metadata) are served as before. Only an allowlist
+   of pages redirects (`first_admin_framed_pages`, filterable): the dashboard, Comments, Settings,
+   Tools and its pages, Profile, Users, Plugins, Themes, Media, list screens and plugin pages
+   (`admin.php?page=…`). Editing (`post.php`, `post-new.php`), uploads (`media-new.php`,
+   `async-upload.php`), `admin-ajax.php`, `admin-post.php` and wp-login.php are not on it. First's
+   own pages (`admin.php?page=first-admin…`, the app's menu entry) decide for themselves.
+3. **On**, classic wp-admin is as before: `Classic admin` in the sidebar and command palette, and its
+   pages open on their own.
+4. **The frame route is `/classic/<slug>`** (it was `/legacy/<slug>`; the route package is
+   `routes/classic-admin`, the PHP `lib/classic-route.php`, the menu filters
+   `first_admin_classic_menu_items_exclude` and `first_admin_classic_meta_menu_items_exclude`).
+   `/legacy/<slug>` answers with a 301 to `/classic/<slug>`, in the pretty and the query form.
+5. **Classic-only screens are in the sidebar**, framed: Settings → Writing, Discussion, Media,
+   Permalinks, Privacy and plugin settings pages; Tools (with Site Health, Import, Export, the
+   personal-data tools and plugin pages); Comments. Each entry is read from wp-admin's own menu for
+   the signed-in user, so a page the user may not open is not listed. Plugin top-level pages were
+   already in the sidebar through `/classic/`.
+6. **Only what the app uses is shown**, from runtime state rather than a per-app list: Comments
+   appears while a collection takes comments (`comments: true`, the only kinds the `comments`
+   hardening switch leaves open) or the site has comments to moderate. Plugin and theme installs,
+   the file editors and the Customizer are refused by the hardening switches through capabilities
+   (`install_plugins`, `edit_themes`, `customize`, …), and every entry that leads to them is gated on
+   those capabilities, so none appears.
+7. **The app's own wp-admin entry** (`first-<app>`, parent of its globals and table screens) opens
+   `/wp-admin/new/collections` instead of an empty page. With `admin: false` it lists the pages
+   under it. The table screens and globals under it are unchanged.
+
+Why the redirect keys on `Sec-Fetch-Dest`: the frame and the page ask for the same URL, and the
+header is the only thing a browser sends that tells them apart without changing the URL the frame
+loads (a query argument would leak into every link and form inside the frame). A browser that sends
+no Fetch Metadata gets classic wp-admin unframed, as before; nothing breaks.

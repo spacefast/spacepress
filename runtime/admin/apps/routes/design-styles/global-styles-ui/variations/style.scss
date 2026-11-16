@@ -36,7 +36,7 @@
 	&.is-active .first-admin-global-styles-variations_item-preview,
 	&:focus-visible .first-admin-global-styles-variations_item-preview,
 	&:focus-visible {
-		outline-color: var( --wpds-color-stroke-focus-brand );
+		outline-color: var( --wpds-color-stroke-focus );
 		outline-offset: variables.$border-width;
 		outline-width: var( --wpds-border-width-focus );
 	}

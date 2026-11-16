@@ -1033,6 +1033,8 @@
 				"action",
 				"global",
 				"defineconfig",
+				"item",
+				"adminscreen",
 				"defineplugin",
 				"errors",
 				"job",

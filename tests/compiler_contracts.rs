@@ -4241,6 +4241,12 @@ fn language_construct_type_rules() {
             "g({ title: 't' })",
             None,
         ),
+        // The built-in error subclasses are types, as `Error` is.
+        (
+            "function named(e: TypeError | RangeError | SyntaxError): string { return e.name; } function made(): RangeError { return new RangeError('r'); }",
+            "{ const t: TypeError = new TypeError('t'); return [named(t), named(made()), made().message]; }",
+            None,
+        ),
         // A constructor return value stays refused when a label wraps it.
         (
             "class C { n = 1; constructor() { result: { if (this.n) return { n: 2 } as unknown as C; } } }",

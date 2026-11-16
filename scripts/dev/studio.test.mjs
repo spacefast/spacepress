@@ -145,17 +145,36 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
   const nestedChange = await sourceDigest(project);
   assert.notEqual(nestedChange, newDirectory);
   await waitForDigest(nestedChange);
+  // A stylesheet or an image a page imports is a build input: its bytes name the file the page links.
+  await mkdir(join(project, 'first/app'), { recursive: true });
+  await writeFile(join(project, 'first/app/site.css'), 'body { margin: 0 }');
+  const stylesheet = await sourceDigest(project);
+  assert.notEqual(stylesheet, nestedChange);
+  await waitForDigest(stylesheet);
+  await writeFile(join(project, 'first/app/site.css'), 'body { margin: 1px }');
+  const restyled = await sourceDigest(project);
+  assert.notEqual(restyled, stylesheet);
+  await waitForDigest(restyled);
+  await writeFile(join(project, 'first/app/logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const image = await sourceDigest(project);
+  assert.notEqual(image, restyled);
+  await waitForDigest(image);
   // A Markdown page is a build input; Markdown elsewhere (a README, notes) is not.
   await mkdir(join(project, 'first/app/about'), { recursive: true });
   await writeFile(join(project, 'first/app/about/page.md'), '# About');
   const markdownPage = await sourceDigest(project);
-  assert.notEqual(markdownPage, nestedChange);
+  assert.notEqual(markdownPage, image);
   await waitForDigest(markdownPage);
   await writeFile(join(project, 'first/app/about/page.md'), '# About us');
   const markdownEdit = await sourceDigest(project);
   assert.notEqual(markdownEdit, markdownPage);
   await waitForDigest(markdownEdit);
+  // The project's styles are a build input too.
+  await writeFile(join(project, 'first/theme.json'), '{"version":3}');
+  const styles = await sourceDigest(project);
+  assert.notEqual(styles, markdownEdit);
+  await waitForDigest(styles);
   await writeFile(join(project, 'README.md'), 'notes');
   await writeFile(join(project, 'first/app/about/notes.md'), 'notes');
-  assert.equal(await sourceDigest(project), markdownEdit);
+  assert.equal(await sourceDigest(project), styles);
 });

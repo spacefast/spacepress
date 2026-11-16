@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 
 pub fn for_file(collection: &str, basename: &str) -> String {
     let hash = Sha256::digest(format!("zero-sync-file\0{collection}\0{basename}"));
-    let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+    let hex = crate::hex(hash);
     format!("zr_{}", &hex[..20])
 }
 

@@ -14,7 +14,7 @@
 		width: var( --wp-ui-radio-input-size );
 		height: var( --wp-ui-radio-input-size );
 		padding: 0;
-		background-color: var( --wpds-color-bg-interactive-neutral-weak );
+		background-color: var( --wpds-color-background-interactive-neutral-weak );
 
 		&:hover {
 			border-color: var( --wpds-color-stroke-interactive-neutral-active );
@@ -22,12 +22,12 @@
 
 		&[data-checked] {
 			border-color: transparent;
-			background-color: var( --wpds-color-bg-interactive-brand-strong );
+			background-color: var( --wpds-color-background-interactive-brand-strong );
 		}
 
 		&[data-disabled] {
 			background-color: var(
-				--wpds-color-bg-interactive-neutral-weak-disabled
+				--wpds-color-background-interactive-neutral-weak-disabled
 			);
 			border-color: var(
 				--wpds-color-stroke-interactive-neutral-disabled
@@ -43,7 +43,7 @@
 		width: calc( var( --wp-ui-radio-input-size ) / 2 );
 		aspect-ratio: 1;
 		border-radius: 50%;
-		background-color: var( --wpds-color-fg-interactive-brand-strong );
+		background-color: var( --wpds-color-foreground-interactive-brand-strong );
 		opacity: 0;
 
 		&[data-checked] {
@@ -60,7 +60,7 @@
 
 		&[data-disabled] {
 			background-color: var(
-				--wpds-color-fg-interactive-neutral-disabled
+				--wpds-color-foreground-interactive-neutral-disabled
 			);
 		}
 	}

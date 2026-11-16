@@ -44,6 +44,14 @@ pub(crate) fn files(
         at("first/app/openapi.json"),
         crate::openapi::render(&built.openapi).into_bytes(),
     ));
+    // The project's styles (`first/theme.json`), which the runtime merges over the active theme's
+    // theme.json, below the site owner's Global Styles (First\Wp\ThemeStyles).
+    if let Some(theme) = &built.theme {
+        files.push((
+            at(crate::theme::SHIPPED),
+            (serde_json::to_string_pretty(theme).expect("JSON") + "\n").into_bytes(),
+        ));
+    }
     // Each `page.md`'s Markdown, which the site stores as a WordPress Page on its first request.
     if let Some(bodies) = crate::content_page::bodies_php(&built.schema) {
         files.push((at("first/app/content.php"), bodies.into_bytes()));

@@ -363,9 +363,20 @@ and [TSX pages](docs/pages.md) work on the Space hostname. Realtime is not suppo
 See the [Spacefast deploy guide](docs/spacefast-deploy.md) and, for an existing
 Space, the [migration procedure](docs/migrating-from-zero.md#migrate-a-spacefast-app).
 
-Anywhere else: the build is `first/dist/wp-content/plugins/*.zip`, which you upload
+On any other WordPress, install one plugin and push from your project:
+
+```sh
+first plugin                      # writes first.zip: upload and activate it in wp-admin
+first login https://example.com   # approve the command line in the browser
+first push                        # compile, upload, show what changes, go live
+```
+
+Activating the plugin installs the plugins First needs, and its screen in wp-admin
+lists every deployment. See [Deploy to any WordPress](docs/plugin.md).
+
+Without the plugin, the build is `first/dist/wp-content/plugins/*.zip`, which you upload
 or copy like any plugin, and `first/dist/wp-content/first-manifest.json` records the
-versions and the activation order. Jobs run through Action Scheduler, so make
+versions and the activation order. Either way, jobs run through Action Scheduler, so make
 sure WP-Cron or a real cron reaches the site.
 
 ## Examples
@@ -437,3 +448,7 @@ emits. Everything else is MIT: the Rust compiler, the TypeScript client, the
 `"first"` types, the examples, the docs and the tests. Bundled third-party
 code keeps its own license; see the `THIRD-PARTY-LICENSES.txt` files under
 `runtime/`.
+
+The framework website is a First app in [`www/`](www/README.md). Build and deployment
+instructions live with the app. The older `docs-site/` also supplies its browser compiler
+and shared playground assets.

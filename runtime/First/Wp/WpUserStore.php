@@ -26,6 +26,22 @@ final class WpUserStore implements Store
         return [];
     }
 
+    /**
+     * WordPress's Users screen shows every user's email to whoever may list users, so for them a
+     * taken email is nothing new. Only `email`: usermeta columns are not on that screen. Not on a
+     * network, where the screen lists one site's users and the email is unique across all of them
+     * (a super admin sees them all). Not for a scoped application password, which can't create
+     * users or change its own email ({@see AgentScope}).
+     */
+    public function showsUnique(string $collection, string $column, \First\Viewer $viewer): bool
+    {
+        $id = (int) ($viewer->user['id'] ?? 0);
+
+        return $column === 'email' && $id > 0 && user_can($id, 'list_users')
+            && (!is_multisite() || is_super_admin($id))
+            && AgentScope::current() === null;
+    }
+
     public const META = 'first_';
     private const ROLES = ['guest' => 'first_guest', 'subscriber' => 'subscriber', 'author' => 'author', 'editor' => 'editor', 'admin' => 'administrator'];
     /** @var array<string, Source> */

@@ -3,13 +3,13 @@
 @layer wp-ui-components {
 	.input-wrapper {
 		padding-top: calc(
-			2 * var( --wpds-dimension-base )
+			2 * var( --wpds-dimension-gap-xs )
 		); /* TODO: Use or create new control/interactive padding token */
 		padding-inline: calc(
-			2 * var( --wpds-dimension-base )
+			2 * var( --wpds-dimension-gap-xs )
 		); /* TODO: Use or create new control/interactive padding token */
 		padding-bottom: var(
-			--wpds-dimension-base
+			--wpds-dimension-gap-xs
 		); /* TODO: Use or create new control/interactive padding token */
 	}
 }

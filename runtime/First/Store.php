@@ -78,6 +78,13 @@ interface Store
     /** @return list<array|SqlPredicate> Storage-native visibility filters for this explicit viewer, applied before pagination and relation matching. */
     public function readGuards(string $collection, Viewer $viewer): array;
 
+    /**
+     * True when the storage itself already shows $viewer every value of this unique column, whatever
+     * the collection's read rule filters out. A unique write on it then answers as it would to a
+     * trusted caller (taken: 409). False everywhere else: the write is refused before any lookup.
+     */
+    public function showsUnique(string $collection, string $column, Viewer $viewer): bool;
+
     /** Encoded values keyed by field, null if never written. */
     public function globalRead(string $name): ?array;
 

@@ -285,6 +285,8 @@ pub const FIRST_EXPORTS: &[&str] = &[
     "jobs",
     "mail",
     "definePlugin",
+    "adminScreen",
+    "item",
 ];
 /// Type-only exports of `"first"`: importable, erased.
 const FIRST_TYPES: &[&str] = &[
@@ -311,6 +313,11 @@ const FIRST_TYPES: &[&str] = &[
     "AccessShorthand",
     "Job",
     "AnyJob",
+    "AdminScreen",
+    "AdminScreenDefinition",
+    "ScreenField",
+    "ScreenAction",
+    "ItemRef",
     "JobCtx",
     "JobsApi",
     "JobHandle",
@@ -2778,6 +2785,8 @@ impl<'p> Evaluator<'p> {
             Builtin::Action => Some("action"),
             Builtin::Job => Some("job"),
             Builtin::Route => Some("route"),
+            Builtin::AdminScreen => Some("adminScreen"),
+            Builtin::Item => Some("item"),
             Builtin::RelFn(..) => Some("relation"),
             _ => None,
         };
@@ -2985,6 +2994,34 @@ impl<'p> Evaluator<'p> {
                 Ok(Value::object(out))
             }
             Builtin::DefineConfig => Ok(arg(0)),
+            Builtin::AdminScreen => match arg(0) {
+                config @ Value::Object(_) => {
+                    let value = Value::Screen(Rc::new(ActionVal { config, span }));
+                    self.built.push(value.clone());
+                    Ok(value)
+                }
+                _ => err_help(
+                    span,
+                    "adminScreen() needs `{ title, view | form, ... }`",
+                    "pass the screen as an object literal: `export const orders = adminScreen({ title: \"Orders\", view: { ... } })`",
+                ),
+            },
+            // The placeholder First Admin fills from the item (runtime/admin/apps/packages/screens).
+            Builtin::Item => match arg(0) {
+                Value::Str(path)
+                    if !path.is_empty()
+                        && path
+                            .split('.')
+                            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')) =>
+                {
+                    Ok(Value::Str(Rc::from(format!("{{item.{path}}}"))))
+                }
+                other => err_help(
+                    span,
+                    format!("item() takes a field name or dot path, not {}", other.describe()),
+                    "write `item(\"id\")`: the field of the row the action runs on",
+                ),
+            },
             Builtin::DefinePlugin => match arg(0) {
                 config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal { config, span }))),
                 _ => err_help(
@@ -2997,7 +3034,10 @@ impl<'p> Evaluator<'p> {
                 Value::Str(n) if crate::compile::reserved_env_name(&n) => {
                     crate::compile::reserved_env_error(span, &n).map_err(Ctl::Err)
                 }
-                Value::Str(n) if regex::Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap().is_match(&n) => {
+                Value::Str(n)
+                    if n.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+                        && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') =>
+                {
                     Ok(Value::Env(n))
                 }
                 _ => err_help(
@@ -4256,6 +4296,8 @@ fn first_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "ref" => Builtin::Ref,
         "defineConfig" => Builtin::DefineConfig,
         "definePlugin" => Builtin::DefinePlugin,
+        "adminScreen" => Builtin::AdminScreen,
+        "item" => Builtin::Item,
         "action" => Builtin::Action,
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
@@ -5848,6 +5890,32 @@ pub fn to_json(v: &Value) -> Option<serde_json::Value> {
 
 #[cfg(test)]
 mod tests {
+    /// env() takes a name of letters, digits and `_` that doesn't start with a digit.
+    #[test]
+    fn env_takes_an_identifier_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entry = tmp.path().join("first.config.ts");
+        for (name, ok) in [
+            ("HOOK_SECRET", true),
+            ("_x9", true),
+            ("a", true),
+            ("", false),
+            ("9A", false),
+            ("A-B", false),
+            ("Ä", false),
+            ("A B", false),
+        ] {
+            std::fs::write(
+                &entry,
+                format!("import {{ env }} from 'first';\nexport default env({name:?});"),
+            )
+            .unwrap();
+            let program = crate::loader::load(&entry).unwrap();
+            let result = super::Evaluator::new(&program).run();
+            assert_eq!(result.is_ok(), ok, "{name:?}: {result:?}");
+        }
+    }
+
     #[test]
     fn object_enumeration_reads_string_elements() {
         let tmp = tempfile::tempdir().unwrap();

@@ -251,11 +251,7 @@ pub fn register(program: &loader::Program, ext: &mut extract::Extracted) -> Resu
         let stem = format!(
             "{}_{}",
             stem(&route.file),
-            Sha256::digest(route.file.as_bytes())
-                .iter()
-                .take(4)
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>()
+            crate::hex(&Sha256::digest(route.file.as_bytes())[..4])
         );
         // Keyed by URL, or by its `id`: the Page stands for the address, so moving the file between
         // route groups (`(site)/guide` → `(docs)/guide`) keeps its Page, and an `id` keeps it when
@@ -297,13 +293,10 @@ pub fn register(program: &loader::Program, ext: &mut extract::Extracted) -> Resu
         page.guarded = layouts
             .iter()
             .any(|l| app.files.get(l).is_some_and(|f| f.guard.is_some()));
-        page.digest = Sha256::digest(
+        page.digest = crate::hex(Sha256::digest(
             serde_json::to_vec(&json!([page.title, page.description, page.status(), page.body]))
                 .expect("JSON of strings"),
-        )
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+        ));
         app.files.insert(
             page.file.clone(),
             AppFile {

@@ -38,7 +38,7 @@ pub struct Manifest {
 
 fn hash(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    crate::hex(Sha256::digest(bytes))
 }
 
 fn failure(message: impl Into<String>) -> Diag {
@@ -922,8 +922,10 @@ pub(crate) fn sealed_plugins(
     let mut slugs: Vec<String> = first
         .into_iter()
         // First's admin is First's own plugin: listed whether or not this build ships it
-        // (`admin: true`), so a sealed site never refuses it however it is installed.
-        .chain(["first-admin".to_string()])
+        // (`admin: true`), so a sealed site never refuses it however it is installed. So is the
+        // First plugin (`first`, runtime/first-plugin), which a site deployed to with `first push`
+        // runs its builds through.
+        .chain(["first".to_string(), "first-admin".to_string()])
         .chain(
             crate::platform::plugins(schema.locales.is_some())
                 .into_iter()

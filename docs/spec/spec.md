@@ -21,7 +21,8 @@ my-project/                  # the project root: your app, if you have one
     ├── wp-hooks/            # WordPress actions/filters, one per hook name
     ├── content/             # markdown/JSON synced into kinds
     ├── public/              # static files, served as-is
-    ├── _generated/          # written by First, committed: db.d.ts, routes.d.ts, client, schema ledger, plugins.lock.json, runtime-schema.json (§2.10)
+    ├── theme.json           # optional: theme.json settings and styles over the active theme (pages.md, Styles)
+    ├── _generated/          # written by First, committed: db.d.ts, routes.d.ts, client, schema ledger, plugins.lock.json, runtime-schema.json (§2.10), theme.css
     └── dist/                # written by `first build`, gitignored: the deployable output (§7)
 ```
 
@@ -497,8 +498,11 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
   - Two Factor (enforced per `mfa`);
   - First's own plugins;
   - Polylang when `locales` is set.
+- **As WordPress ships them, unless the config turns them off:** XML-RPC
+  (`xmlrpc: false`) and pingbacks and trackbacks (`pings: false`). Left on,
+  the site's own Discussion settings decide pings.
 - **Always disabled:**
-  - XML-RPC, pingbacks and trackbacks, emoji scripts;
+  - emoji scripts;
   - the file editors, and installing or updating plugins and themes from wp-admin;
   - core auto-updates;
   - the Customizer;

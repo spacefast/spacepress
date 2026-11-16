@@ -1,6 +1,6 @@
 // Lane fragment for the WP test app; only this lane edits this file. Every kind, action and job it
 // exports registers under its export name, and a name another lane or the app uses fails the build.
-import { action, db, group, integer, json, repeater, text } from "first";
+import { action, adminScreen, db, group, integer, item, json, repeater, text } from "first";
 import { comments } from "../blog/first.config.ts";
 function refsHelper() { return 1; }
 const refsSaved: { f?: () => number } = {};
@@ -60,5 +60,36 @@ export const agentNote = action({
     return { note, seen: rows.length };
   },
 });
+/** The rows a screen lists: readonly, so core runs it over GET. */
+export const refsRows = action({
+  input: {},
+  access: "editor",
+  readonly: true,
+  async handler() {
+    const rows = await db.query.comments.findMany({ columns: { id: true, body: true }, limit: 100 });
+    return { rows };
+  },
+});
+
+/**
+ * A screen declared in TypeScript (docs/admin-screens.md): compiled into schema.php and registered
+ * on `first_admin_screens` by the app plugin. admin.test.ts reads its declaration back.
+ */
+export const refsReview = adminScreen({
+  title: "Comment bodies",
+  description: "Every comment's body, from a TypeScript declaration.",
+  access: "editor",
+  classic: { parent: "tools.php" },
+  menu: { icon: "dashicons-admin-comments" },
+  view: {
+    action: refsRows,
+    items: "rows",
+    fields: { id: { label: "ID", type: "integer" }, body: { label: "Body" } },
+    layout: { type: "table", titleField: "body", fields: ["id"] },
+  },
+  actions: [{ id: "purge", label: "Purge", action: refsPurge, input: { body: item("body") }, confirm: "Delete every comment with this body?" }],
+  data: ["Purging deletes every comment with the same body."],
+});
+
 /** Top-level options this lane owns (e.g. webhooks, media, locales). */
 export const config = {};

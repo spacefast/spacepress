@@ -93,10 +93,7 @@ fn lock(site: &str, fetched_at: &str, listed: &[Value], warnings: &mut Vec<Strin
 pub(crate) fn schema_hash(ability: &Value) -> String {
     use sha2::{Digest, Sha256};
     let canonical = canonical(&json!([ability["input_schema"], ability["output_schema"]]));
-    Sha256::digest(canonical.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    crate::hex(Sha256::digest(canonical.as_bytes()))
 }
 
 fn canonical(v: &Value) -> String {

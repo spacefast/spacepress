@@ -71,7 +71,7 @@ allowed, and an installed package's own relative imports are its business.
 First loads `first.config.ts` and every `.ts` file under `first/`, except
 `app/`, `components/`, `wp-hooks/`, `content/`, `public/`, `_generated/` and
 `dist/`. Each exported `collection()`, `table()`, `userProjection()`,
-`global()`, `files()`, `action()` and `job()` registers under its export name,
+`global()`, `files()`, `action()`, `job()` and `adminScreen()` registers under its export name,
 so no file name is required. `defineConfig` doesn't list them: its
 `collections`, `tables`, `users`, `globals`, `files`, `actions`, `jobs` and
 `hooks` keys are refused at the key, with the export that replaces it.
@@ -154,25 +154,37 @@ describes. The app plugin applies every switch below at runtime
 (`runtime/First/Wp/Hardening.php`). Nothing is written to `wp-config.php`,
 mu-plugins or the site's stored settings. Deactivate the app and WordPress
 behaves as it ships again. A site with the runtime plugin but no active app
-isn't changed either. None of these switches can be turned off in
-`first.config.ts`.
+isn't changed either.
+
+XML-RPC, pingbacks and trackbacks stay as WordPress ships them: `xmlrpc.php`
+answers, and the site's Discussion settings (`default_ping_status`,
+`default_pingback_flag`, open and on in a new WordPress) decide whether new
+posts accept pings and whether publishing sends them (WordPress 7.1 and later
+also hold them on a site whose environment type isn't `production`). The `xmlrpc` and `pings`
+switches below apply only when the config turns them off:
+
+```ts
+export default defineConfig({ xmlrpc: false, pings: false });
+```
+
+No other switch can be turned off in `first.config.ts`.
 
 | switch | effect |
 |---|---|
-| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
-| `pings` | pingbacks and trackbacks closed in and out; outgoing pings never sent |
+| `xmlrpc` | only with `xmlrpc: false`. `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
+| `pings` | only with `pings: false`. Pingbacks and trackbacks closed in and out, whatever the Discussion settings say; outgoing pings never sent; no `pingback.ping` method on XML-RPC |
 | `emoji` | no emoji detection script or styles on the front end, wp-admin or embeds; no emoji images in feeds or mail |
 | `fileEditors` | the plugin and theme file editors are refused to everyone |
 | `pluginAndThemeInstalls` | installing, uploading, updating and deleting plugins, themes and core are refused in wp-admin and REST; activation and translations stay |
 | `autoUpdates` | no automatic core, plugin or theme updates |
-| `customizer` | `customize` is refused, so `customize.php` and its links are gone |
-| `comments` | comments closed on every post type except collections with `comments: true` |
+| `customizer` | `customize` is refused, so `customize.php` and its links are gone. Block themes don't need it: site identity is in Settings → General and the Site Editor, Additional CSS in the Site Editor's Styles, and both print on First pages ([styles](pages.md#styles-from-wordpress)) |
+| `comments` | comments closed on every post type except collections with `comments: true`; pingbacks and trackbacks aren't comments here, they follow `pings` |
 | `authors` | the site's users aren't listed to the public: core's user routes, author archives, `?author=N`, the users sitemap and oEmbed's author fields (see [Authors](#authors)) |
 | `schemaLock` | the app's schema is changed in `first.config.ts` and nowhere on the site (see [Schema lock](#schema-lock)) |
 | `loginErrors` | signing in doesn't tell a visitor which accounts exist: an unknown username or email answers as a wrong password (`wp-login.php` shows one message and keeps the typed username either way), lost password answers "check your email" either way, an unknown user costs the same password hash as a wrong password, and a REST application password for an unknown user or a guest gets the wrong-password error. An imported account whose password hash is older than the site's (MD5, phpass) can still be told apart by timing on `wp-login.php` until it signs in once; First Identity's own sign-in times every stored hash type alike. With `first-identity`, an account with a second factor says so only once the password is right. Adapted from VIP's `security/login-error.php` (GPL-2.0-or-later) |
 | `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
-| `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
+| `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`). The project's `first/theme.json` is merged over its `theme.json`, under the owner's Global Styles ([styles](pages.md#styles-from-wordpress)) |
 
 With `sealed: true` the only code that runs as a plugin is First's own plugins,
 the platform pins, the `plugins` the config declares and `use` plugin packages:
@@ -181,7 +193,8 @@ from wp-admin or REST, and unlisted active plugins are reported. See
 [sealed mode](sealed.md) for what that guarantees on a plain WordPress host and
 on a host that mounts the build store.
 
-`GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
+`GET /__first/api/v1` lists the switches the app applies in `runtime.wp.hardening`
+(`xmlrpc` and `pings` only when the config turns them off). The object cache
 is whatever the host's `object-cache.php` drop-in provides. A plugin can't
 install a drop-in, so the host supplies it (on Spacefast, the box image does).
 
@@ -722,7 +735,10 @@ on its own. Create a translation with
 `{ locale: "de", translationOf: <id> }`; rows carry `locale` and
 `translations` (locale → id). Reads take `?locale=de`, which returns German
 rows and, with `fallback`, the default-locale row of any group without one;
-`locale=*` returns every row. On WordPress, Polylang owns languages and
+`locale=*` returns every row. A kind with a `url` gives every translation its
+URL from the same pattern and its own slug (`/drives/wd-red-plus-4tb-tr`), with
+no language prefix: the page for it receives that translation as `item`, and
+`get_permalink()` and the sitemap give the same address. On WordPress, Polylang owns languages and
 translation groups, and the app plugin ships a `wpml-config.xml` saying which
 fields translate.
 
@@ -1274,7 +1290,7 @@ These are build errors with the same message the runtime returns.
 ## defineConfig
 
 `defineConfig({ name?, webhooks?, services?, media?, uploads?, locales?, plugins?, use?, admin?,
-publicAuthors?, sealed?, frontend?, output?, runtimeSchema? })`. None of its keys registers a named
+publicAuthors?, xmlrpc?, pings?, sealed?, frontend?, output?, runtimeSchema? })`. None of its keys registers a named
 thing: kinds, globals, file buckets, actions and jobs register by their exports
 ([Exports register by name](#exports-register-by-name)). `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
@@ -1340,14 +1356,21 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   version it was made against; when another was applied first it is refused with 409
   `schema_conflict`.
 - **What the site trusts.** The version table is the record. Each row's hash covers it and its
-  parent's hash, and every read of the versions checks the chain; a row changed outside First
-  refuses further changes (409 `schema_chain_broken`) and `first pull`, the site keeps serving the
-  last state that checked out, and `GET /__first/api/v1` and `first doctor` report the problem.
-  The option is sealed by apply; an option written any other way is not served until a read of
-  the versions rebuilds it. When it is served, it is read as the operations a change can make: an
-  added kind is rebuilt from its stored definition, and a field, label or presentation is served
-  only in the form the rules accept, so the option can't give a kind access rules, hooks or
-  functions.
+  parent's hash, and the option names the newest version and its hash, so a row changed, inserted
+  or removed outside First (the newest ones included) breaks the chain. A broken chain refuses
+  further changes (409 `schema_chain_broken`) and `first pull`; the site keeps serving the last
+  state that checked out; `GET /__first/api/v1` and `first doctor` report the problem from the
+  next request on, and the wp-admin screen shows it. A deploy is refused with the same error and
+  writes nothing. The option is sealed by apply with an HMAC keyed by the site's own salts
+  (wp-config's keys), so only code running on the site can seal one; an option written any other
+  way, at any version, is not served (the site serves version 0 and says why) until a read of the
+  versions rebuilds it. Even a sealed option is read as the operations a change can make, under
+  the same rules: an added kind is rebuilt from its stored definition and is never a kind every
+  site has; a field is served only with a name, definition and storage keys a change could give
+  it; a label or presentation only on a collection or global and only on fields a change can
+  present. So the option can't give a kind access rules, hooks or functions, or take over
+  First's own records. A `table()` label or presentation stored before that was refused is still
+  served, can be taken off (`setLabel`/`setFieldUi` with `null`), and is left out of the lock.
 - **Loading.** The active version's additions are in one autoloaded option,
   `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
   A kind, field or relation the build declares itself is never replaced; only a label and a
@@ -1590,6 +1613,19 @@ runs anonymously. Core picks the method from the annotations: `GET` for
 `readonly`, `DELETE` for `destructive` with `idempotent`, `POST` otherwise.
 Errors are core's `WP_Error` JSON, with First's code (`first_<code>`), status
 and `data.pointer`.
+
+## Admin screens
+
+`adminScreen({ title, view | form, actions?, access? | capability?, menu?, classic?, description?, data? })`
+declares a page in First Admin (`/wp-admin/new/screens/<id>`) and in classic
+wp-admin. Its id is the export name in kebab case (`pendingOrders` →
+`pending-orders`). `view` is a DataViews list over a `readonly` action, and
+`form` is a DataForm. `actions` run First actions as their Abilities, and
+`item("field")` in an action's `input` passes the row's value. `access` takes a
+First role (`"editor"` reads as WordPress's `edit_others_posts`), and
+`capability` takes a WordPress capability. The default is administrators. The
+build checks each action reference, its input keys and the layout's field ids.
+See [admin-screens.md](admin-screens.md).
 
 ## HTTP routes
 

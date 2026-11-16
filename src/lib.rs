@@ -5,6 +5,7 @@
 //! ([`pipeline`]). The `cli` feature adds the commands, which read and write the project, download
 //! plugin dependencies and carry the embedded PHP runtime. [`wasm`] exports the core to a browser.
 
+pub mod admin_screen;
 pub mod app;
 mod app_plugin;
 pub mod assets;
@@ -59,6 +60,7 @@ pub mod host_contract;
 pub mod store;
 // The front matter reader is part of the core: `page.md` routes parse with it in every build.
 pub mod sync;
+pub mod theme;
 #[cfg(target_arch = "wasm32")]
 mod wasm_host_fs;
 #[cfg(feature = "host")]
@@ -70,6 +72,25 @@ mod runtime_files {
 mod docs_files {
     include!(concat!(env!("OUT_DIR"), "/docs_files.rs"));
     include!(concat!(env!("OUT_DIR"), "/skills_files.rs"));
+}
+
+/// Lowercase hexadecimal of `bytes`.
+pub(crate) fn hex(bytes: impl AsRef<[u8]>) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let bytes = bytes.as_ref();
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(DIGITS[usize::from(b >> 4)] as char);
+        out.push(DIGITS[usize::from(b & 15)] as char);
+    }
+    out
+}
+
+#[cfg(test)]
+#[test]
+fn hex_is_lowercase_two_digits_a_byte() {
+    assert_eq!(hex([0x00, 0x0f, 0xa0, 0xff]), "000fa0ff");
+    assert_eq!(hex(b""), "");
 }
 
 pub mod bundle;

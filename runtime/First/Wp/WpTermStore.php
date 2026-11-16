@@ -135,6 +135,11 @@ final class WpTermStore implements Store, Links
         return $rows;
     }
 
+    public function showsUnique(string $collection, string $column, \First\Viewer $viewer): bool
+    {
+        return false;
+    }
+
     public function readGuards(string $collection, \First\Viewer $viewer): array
     {
         return [];

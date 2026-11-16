@@ -200,6 +200,17 @@ pub fn main() -> ExitCode {
             );
             ExitCode::from(2)
         }
+        "styles" if rest.first().is_some_and(|sub| sub == "pull") => crate::commands::styles::cli(&rest),
+        "styles" => {
+            eprintln!(
+                "{}",
+                usage_error(
+                    "styles",
+                    format!("no command styles {}", rest.first().map_or("", String::as_str))
+                )
+            );
+            ExitCode::from(2)
+        }
         "migrate" if rest.first().is_some_and(|sub| sub == "app") => crate::config_migrate::app::cli(&rest[1..]),
         "migrate" if rest.first().is_some_and(|sub| sub == "config") => crate::config_migrate::cli(),
         "migrate" if rest.first().is_some_and(|sub| !sub.starts_with('-')) => {
@@ -208,6 +219,9 @@ pub fn main() -> ExitCode {
         }
         "sync" => crate::commands::sync(&rest),
         "pull" => crate::commands::pull::cli(&rest),
+        "plugin" => crate::commands::plugin::cli(&rest),
+        "login" | "logout" => crate::commands::login::cli(&command, &rest),
+        "push" => crate::commands::push::cli(&rest),
         "export" => crate::commands::export::cli(&rest),
         "mcp" => crate::commands::mcp::cli(&rest),
         "init" => crate::commands::init::cli(&rest),

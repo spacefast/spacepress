@@ -26,10 +26,10 @@
 	}
 
 	&:hover {
-		background: var( --wpds-color-bg-interactive-neutral-weak-active );
+		background: var( --wpds-color-background-interactive-neutral-weak-active );
 
 		.first-admin-global-styles-screen-revisions__date {
-			color: var( --wpds-color-fg-interactive-neutral-active );
+			color: var( --wpds-color-foreground-interactive-neutral-active );
 		}
 	}
 
@@ -41,7 +41,7 @@
 	}
 
 	&::before {
-		background: var( --wpds-color-fg-content-neutral );
+		background: var( --wpds-color-foreground-content-neutral );
 		border-radius: 50%;
 		height: variables.$grid-unit-10;
 		width: variables.$grid-unit-10;
@@ -61,21 +61,21 @@
 		outline: 3px solid transparent;
 		outline-offset: -2px;
 
-		color: var( --wpds-color-fg-interactive-neutral-active );
-		background: var( --wpds-color-bg-interactive-neutral-weak-active );
+		color: var( --wpds-color-foreground-interactive-neutral-active );
+		background: var( --wpds-color-background-interactive-neutral-weak-active );
 
 		.first-admin-global-styles-screen-revisions__date {
-			color: var( --wpds-color-fg-interactive-neutral-active );
+			color: var( --wpds-color-foreground-interactive-neutral-active );
 		}
 
 		&::before {
-			background: var( --wpds-color-bg-interactive-brand-strong );
+			background: var( --wpds-color-background-interactive-brand-strong );
 		}
 
 		.first-admin-global-styles-screen-revisions__changes > li,
 		.first-admin-global-styles-screen-revisions__meta,
 		.first-admin-global-styles-screen-revisions__applied-text {
-			color: var( --wpds-color-fg-content-neutral );
+			color: var( --wpds-color-foreground-content-neutral );
 		}
 	}
 
@@ -113,7 +113,7 @@
 .first-admin-global-styles-screen-revisions__changes,
 .first-admin-global-styles-screen-revisions__meta,
 .first-admin-global-styles-screen-revisions__applied-text {
-	color: var( --wpds-color-fg-content-neutral-weak );
+	color: var( --wpds-color-foreground-content-neutral-weak );
 	font-size: 12px;
 }
 
@@ -181,12 +181,12 @@
 	}
 
 	.components-button.is-tertiary {
-		color: var( --wpds-color-fg-content-neutral );
+		color: var( --wpds-color-foreground-content-neutral );
 	}
 
 	.components-button.is-tertiary:disabled,
 	.components-button.is-tertiary[aria-disabled="true"] {
-		color: var( --wpds-color-fg-content-neutral-weak );
+		color: var( --wpds-color-foreground-content-neutral-weak );
 	}
 }
 
@@ -196,7 +196,7 @@
 	position: sticky;
 	min-width: 100%;
 	bottom: 0;
-	background: var( --wpds-color-bg-surface-neutral-weak );
+	background: var( --wpds-color-background-surface-neutral-weak );
 	padding: variables.$grid-unit-15;
 	border-top: variables.$border-width solid
 		var( --wpds-color-stroke-surface-neutral );

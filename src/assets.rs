@@ -77,11 +77,7 @@ fn stem(source: &str, kind: Kind) -> String {
 }
 
 fn hash(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .take(8)
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    crate::hex(&Sha256::digest(bytes)[..8])
 }
 
 impl Asset {

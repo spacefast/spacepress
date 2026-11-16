@@ -116,7 +116,7 @@ struct File {
 
 fn bytes_digest(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    crate::hex(Sha256::digest(bytes))
 }
 
 /// The file still holds what this run read (or, with None, there is still no file).

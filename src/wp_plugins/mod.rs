@@ -329,7 +329,7 @@ pub fn unsupported(config: &Config) -> Vec<String> {
 }
 
 pub fn digest(bytes: &[u8]) -> String {
-    hex(&Sha256::digest(bytes))
+    hex(Sha256::digest(bytes))
 }
 
 #[cfg(feature = "cli")]
@@ -377,9 +377,7 @@ fn acquire(plugin: &Plugin, pin: Option<&str>, cache: &Path, url: &str) -> Resul
     Ok((path, sha))
 }
 
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
+use crate::hex;
 
 #[cfg(test)]
 mod tests {

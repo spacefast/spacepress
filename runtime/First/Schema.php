@@ -126,6 +126,16 @@ final class Schema
         return $this->raw['actions'] ?? [];
     }
 
+    /**
+     * `adminScreen()` exports by screen id, each the declaration first_admin_register_screen() takes.
+     *
+     * @return array<string, array>
+     */
+    public function screens(): array
+    {
+        return $this->raw['screens'] ?? [];
+    }
+
     public function site(): array
     {
         return $this->raw['site'] ?? ['uidPrefix' => 'zr_'];
@@ -163,6 +173,18 @@ final class Schema
     public function publicAuthors(): bool
     {
         return ($this->raw['publicAuthors'] ?? false) === true;
+    }
+
+    /** `xmlrpc`: XML-RPC as WordPress ships it, unless the config turns it off (spec §6). */
+    public function xmlrpc(): bool
+    {
+        return ($this->raw['xmlrpc'] ?? true) !== false;
+    }
+
+    /** `pings`: pingbacks and trackbacks as WordPress ships them, unless the config turns them off (spec §6). */
+    public function pings(): bool
+    {
+        return ($this->raw['pings'] ?? true) !== false;
     }
 
     public function auth(): array

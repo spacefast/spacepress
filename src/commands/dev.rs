@@ -58,7 +58,7 @@ pub(super) fn wp_command(project: &Path) -> Result<Command, String> {
 
 /// `first dev` has created this project's site: its marker (scripts/dev/studio.mjs) says Studio
 /// finished creating it.
-pub(super) fn created(project: &Path) -> bool {
+pub(crate) fn created(project: &Path) -> bool {
     std::fs::read(project.join(".first/dev/owner.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())

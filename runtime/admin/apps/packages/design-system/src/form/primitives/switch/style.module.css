@@ -10,7 +10,7 @@
 		height: var( --wp-ui-switch-height );
 		border: 1px solid var( --wpds-color-stroke-interactive-neutral );
 		border-radius: 999px;
-		background-color: var( --wpds-color-bg-interactive-neutral-weak );
+		background-color: var( --wpds-color-background-interactive-neutral-weak );
 
 		@media not ( prefers-reduced-motion ) {
 			&:not( :hover ):not( :active ) {
@@ -26,7 +26,7 @@
 		}
 
 		&[data-checked] {
-			background-color: var( --wpds-color-bg-interactive-brand-strong );
+			background-color: var( --wpds-color-background-interactive-brand-strong );
 			border-color: transparent;
 
 			@media ( forced-colors: active ) {
@@ -35,7 +35,7 @@
 
 			&[data-disabled] {
 				background-color: var(
-					--wpds-color-bg-interactive-neutral-strong-disabled
+					--wpds-color-background-interactive-neutral-strong-disabled
 				);
 
 				@media ( forced-colors: active ) {
@@ -49,9 +49,9 @@
 		display: block;
 		height: calc( var( --wp-ui-switch-height ) - 4px );
 		aspect-ratio: 1;
-		background-color: var( --wpds-color-fg-interactive-neutral );
+		background-color: var( --wpds-color-foreground-interactive-neutral );
 		border-radius: 50%;
-		box-shadow: var( --wpds-elevation-xs );
+		box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02), 0 3px 3px rgba(0, 0, 0, 0.02), 0 4px 4px rgba(0, 0, 0, 0.01);
 
 		@media not ( prefers-reduced-motion ) {
 			transition:
@@ -66,7 +66,7 @@
 		}
 
 		&[data-checked] {
-			background-color: var( --wpds-color-fg-interactive-brand-strong );
+			background-color: var( --wpds-color-foreground-interactive-brand-strong );
 			transform: translateX( var( --wp-ui-switch-height ) );
 
 			@media ( forced-colors: active ) {
@@ -76,7 +76,7 @@
 
 		&[data-disabled]:not( [data-checked] ) {
 			background-color: var(
-				--wpds-color-fg-interactive-neutral-disabled
+				--wpds-color-foreground-interactive-neutral-disabled
 			);
 
 			@media ( forced-colors: active ) {

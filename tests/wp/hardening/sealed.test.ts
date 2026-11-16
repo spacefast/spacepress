@@ -13,11 +13,12 @@ const active = () => JSON.parse(wp("plugin", "list", "--status=active", "--field
 const json = (headers: Record<string, string>, method: string, path: string, body?: unknown) =>
   fetch(`${site}${path}`, { method, headers: { ...headers, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
 
-const LISTED = ["action-scheduler", "first-admin", `first-app-${harness.plugin.replace(/^first-app-/, "")}`, "first-identity", "first-runtime", "hello-dolly", "mcp-adapter", "secure-custom-fields", "two-factor"];
+const LISTED = ["action-scheduler", "first", "first-admin", `first-app-${harness.plugin.replace(/^first-app-/, "")}`, "first-identity", "first-runtime", "hello-dolly", "mcp-adapter", "secure-custom-fields", "two-factor"];
 
 test("the build's manifest and the running app hold the same list, exactly; the site reports it is sealed", async () => {
   const listed = JSON.parse(wp("eval", "echo file_get_contents(WP_CONTENT_DIR . '/first-manifest.json') ?: '{}';") || "{}").sealed;
-  // No locales, so no Polylang. First's admin is listed though this build doesn't ship it.
+  // No locales, so no Polylang. First's admin and the First plugin (`first`, which takes deployments)
+  // are listed though this build ships neither.
   assert.deepEqual(listed, LISTED);
   assert.deepEqual(JSON.parse(wp("eval", "echo wp_json_encode(First\\Wp\\Runtime::plugin()->schema->sealed());")), LISTED, "schema.php carries the same list");
   // Which plugin files count as listed: a listed directory's main file, and nothing shaped otherwise.

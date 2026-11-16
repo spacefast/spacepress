@@ -149,6 +149,41 @@ fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
 }
 
 #[test]
+fn styles_pull_reads_the_site_through_wp_cli_and_refuses_a_url() {
+    // The site answers through WP-CLI: an alias runs `wp @alias first styles export`.
+    let wp = fake_wp();
+    let project = tempfile::tempdir().unwrap();
+    let mut command = first();
+    command
+        .args(["styles", "pull"])
+        .arg(project.path())
+        .args(["--site", "@prod"]);
+    with_path(&mut command, wp.path());
+    let out = command.output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    // The stand-in prints its arguments, which is no answer: nothing is written.
+    assert!(
+        text(&out.stderr).contains("\"args\":[\"@prod\",\"first\",\"styles\",\"export\"]"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!project.path().join("first/theme.json").exists());
+    let out = first()
+        .args(["styles", "pull", "--site", "https://example.test"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("@alias"), "{}", text(&out.stderr));
+    let out = first().args(["styles", "push"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        text(&out.stderr).starts_with("no command styles push\nusage: first styles pull"),
+        "{}",
+        text(&out.stderr)
+    );
+}
+
+#[test]
 fn a_site_url_is_refused_for_wp_cli_commands() {
     let out = first()
         .args(["jobs", "list", "--site", "https://example.test"])
@@ -192,6 +227,85 @@ fn sync_takes_its_credential_from_the_environment_only() {
         .unwrap();
     assert_eq!(out.status.code(), Some(3));
     assert!(text(&out.stderr).starts_with("set FIRST_APP_PASSWORD or FIRST_TOKEN, not both"));
+}
+
+#[test]
+fn push_and_login_say_what_they_need_before_they_reach_a_site() {
+    let work = tempfile::tempdir().unwrap();
+    let config = work.path().join("config");
+    let project = work.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let run = |args: &[&str]| {
+        first()
+            .args(args)
+            .current_dir(&project)
+            .env("FIRST_CONFIG_DIR", &config)
+            .env_remove("FIRST_APP_PASSWORD")
+            .output()
+            .unwrap()
+    };
+    // Not a project.
+    let out = run(&["push"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        text(&out.stderr).starts_with("no first.config.ts in "),
+        "{}",
+        text(&out.stderr)
+    );
+    std::fs::write(project.join("first.config.ts"), CONFIG).unwrap();
+    // A project nobody ran `first login` in.
+    let out = run(&["push"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).starts_with("this project has no site to deploy to. Run first login <site-url> here"));
+    // A site with no stored credential: nothing is compiled or sent.
+    let out = run(&["push", "--site", "http://127.0.0.1:9/"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        text(&out.stderr),
+        "not signed in to http://127.0.0.1:9. Run: first login http://127.0.0.1:9\n"
+    );
+    assert!(!project.join(".first").exists(), "nothing was written to the project");
+    let out = run(&["push", "--force"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).starts_with("unknown option --force\nusage: first push"));
+    // `first login` takes a site's address and nothing that could carry a credential.
+    for site in [
+        "example.test",
+        "https://user:secret@example.test",
+        "https://example.test/?a=1",
+    ] {
+        let out = run(&["login", site]);
+        assert_eq!(out.status.code(), Some(1), "{site}");
+        assert!(!text(&out.stderr).contains("secret"), "{}", text(&out.stderr));
+    }
+    let out = run(&["login"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).starts_with("usage: first login <site-url>"));
+    // Forgetting a site nobody signed in to is not an error, and creates nothing.
+    let out = run(&["logout", "https://example.test/"]);
+    assert!(out.status.success());
+    assert_eq!(
+        text(&out.stdout),
+        "no credential for https://example.test is stored on this machine\n"
+    );
+    assert!(!config.exists());
+}
+
+#[test]
+fn plugin_writes_the_archive_where_it_is_told() {
+    let work = tempfile::tempdir().unwrap();
+    let out = first().arg("plugin").current_dir(work.path()).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let default = std::fs::read(work.path().join("first.zip")).unwrap();
+    // A ZIP archive: the local file header's signature.
+    assert_eq!(&default[..4], b"PK\x03\x04");
+    let named = work.path().join("out/first-plugin.zip");
+    let out = first().args(["plugin", "--out"]).arg(&named).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(named.is_file());
+    let out = first().args(["plugin", "--to", "x"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(text(&out.stderr), "usage: first plugin [--out <file.zip>]\n");
 }
 
 /// The served WordPress, stopped (and its directory removed) on drop.
@@ -349,6 +463,51 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         "{unknown}"
     );
     mcp.finish();
+    // `first styles pull`: the owner's Global Styles on the site become the project's first/theme.json
+    // and first/_generated/theme.css; a second pull with --check finds nothing to change.
+    let mut command = Command::new(&wp);
+    command.args([
+        "@lane",
+        "eval",
+        "--user=admin",
+        // As the Styles screen saves it: the user origin's palette, unkeyed.
+        "$p = WP_Theme_JSON_Resolver::get_user_data_from_wp_global_styles(wp_get_theme(), true); \
+         wp_update_post(['ID' => $p['ID'], 'post_content' => wp_slash(wp_json_encode(['version' => 3, 'isGlobalStylesUserThemeJSON' => true, \
+         'settings' => ['color' => ['palette' => [['slug' => 'brand', 'color' => '#123456', 'name' => 'Brand']]]]]))]);",
+    ]);
+    env(&mut command);
+    let saved = command.output().unwrap();
+    assert!(saved.status.success(), "{}", text(&saved.stderr));
+    let pull = |extra: &[&str]| {
+        let mut command = first();
+        command
+            .args(["styles", "pull"])
+            .arg(project.path())
+            .args(["--site", "@lane"])
+            .args(extra);
+        env(&mut command);
+        command.output().unwrap()
+    };
+    let pulled = pull(&[]);
+    assert!(
+        pulled.status.success(),
+        "{}{}",
+        text(&pulled.stdout),
+        text(&pulled.stderr)
+    );
+    let theme: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(project.path().join("first/theme.json")).unwrap()).unwrap();
+    assert_eq!(
+        theme["settings"]["color"]["palette"],
+        serde_json::json!([{ "slug": "brand", "color": "#123456", "name": "Brand" }])
+    );
+    let tokens = std::fs::read_to_string(project.path().join("first/_generated/theme.css")).unwrap();
+    assert!(
+        tokens.contains("  --color-brand: var(--wp--preset--color--brand);\n"),
+        "{tokens}"
+    );
+    let again = pull(&["--check"]);
+    assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
     // `first wp` reaches plain WordPress commands.
     let mut command = first();
     command.args(["wp", "--site", "@lane", "option", "get", "blogname"]);

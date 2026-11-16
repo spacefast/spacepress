@@ -1,8 +1,8 @@
 use crate::app_plugin::plugin_vars;
 use crate::diag::{Diag, Span};
-use crate::emit::{emit_generated, runtime_file, write};
+use crate::emit::{app_files, emit_runtime, runtime_file, runtime_tree, write};
 use crate::pipeline::{self, Built};
-use crate::{diag, layout, loader, platform, schema_php, wp_plugins};
+use crate::{diag, layout, loader, platform, wp_plugins};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -132,7 +132,9 @@ pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()>
     }
     write(&project.join(layout::DB_TYPES), &built.gen_ts)?;
     match &built.routes_ts {
-        Some(routes) => write(&project.join(layout::ROUTES_TYPES), routes)?,
+        Some(routes) => {
+            write(&project.join(layout::ROUTES_TYPES), routes)?;
+        }
         None => {
             let _ = std::fs::remove_file(project.join(layout::ROUTES_TYPES));
         }
@@ -144,6 +146,14 @@ pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()>
         )?;
     }
     write(&project.join(layout::OPENAPI), crate::openapi::render(&built.openapi))?;
+    match &built.theme_css {
+        Some(css) => {
+            write(&project.join(crate::theme::TOKENS), css)?;
+        }
+        None => {
+            let _ = std::fs::remove_file(project.join(crate::theme::TOKENS));
+        }
+    }
     let client_dir = project.join(layout::CLIENT);
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;
@@ -153,31 +163,28 @@ pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()>
 
 fn zip_plugin(directory: &Path) -> std::io::Result<()> {
     use std::io::Write;
-    fn append(writer: &mut zip::ZipWriter<std::fs::File>, root: &Path, dir: &Path) -> std::io::Result<()> {
-        let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
-        entries.sort_by_key(|entry| entry.file_name());
-        for entry in entries {
-            let path = entry.path();
-            if entry.file_type()?.is_dir() {
-                append(writer, root, &path)?;
-            } else if entry.file_type()?.is_file() {
-                writer
-                    .start_file(
-                        path.strip_prefix(root).unwrap().to_string_lossy(),
-                        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated),
-                    )
-                    .map_err(std::io::Error::other)?;
-                writer.write_all(&std::fs::read(&path)?)?;
-            } else {
-                return Err(std::io::Error::other(
-                    "plugin trees cannot contain symlinks or special files",
-                ));
-            }
-        }
-        Ok(())
+    let root = directory.parent().unwrap();
+    let name = directory.file_name().unwrap().to_string_lossy();
+    let mut files = Vec::new();
+    listing(directory, directory, &mut files)?;
+    // Each directory's entries by name, a directory's contents where its name sorts: `a/b` before
+    // `a.txt`, as the archive has always listed them.
+    files.sort_by(|a, b| a.0.split('/').cmp(b.0.split('/')));
+    // A new file, never one truncated in place: the stage's old ZIP may be a link to the published one.
+    let archive = directory.with_extension("zip");
+    if std::fs::symlink_metadata(&archive).is_ok() {
+        std::fs::remove_file(&archive)?;
     }
-    let mut writer = zip::ZipWriter::new(std::fs::File::create(directory.with_extension("zip"))?);
-    append(&mut writer, directory.parent().unwrap(), directory)?;
+    let mut writer = zip::ZipWriter::new(std::fs::File::create(archive)?);
+    for (rel, _) in files {
+        writer
+            .start_file(
+                format!("{name}/{rel}"),
+                zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated),
+            )
+            .map_err(std::io::Error::other)?;
+        writer.write_all(&std::fs::read(root.join(&*name).join(&rel))?)?;
+    }
     writer.finish().map_err(std::io::Error::other)?;
     Ok(())
 }
@@ -231,9 +238,12 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
         ".{}.first-build.lock",
         root.file_name().unwrap().to_string_lossy()
     )))?;
-    let prepared = wp_plugins::Prepared::acquire(&plan, &lock, &platform::cache(project))?;
+    let mut prepared = wp_plugins::Prepared::acquire(&plan, &lock, &platform::cache(project))?;
     let temp = tempfile::tempdir_in(&parent)?;
     let stage = temp.path().join("wp-content");
+    // The stage starts as the published output, its files hard links to the published ones (copies
+    // where links aren't possible). Every write below replaces a file rather than writing into it,
+    // so the published output is unchanged until the stage takes its place.
     if std::fs::symlink_metadata(&root).is_ok() {
         if !std::fs::symlink_metadata(&root)?.is_dir() {
             return Err(std::io::Error::other("output root must be a real directory"));
@@ -245,46 +255,46 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
     prepared.install_into(&stage.join("plugins"))?;
     let plugins = stage.join("plugins");
     let generated = crate::app_plugin::first_plugins(&built.schema);
+    let revision = crate::store::runtime_revision();
+    let previous_revision = std::fs::read(stage.join("first-manifest.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|manifest| manifest["runtimeRevision"].as_str().map(str::to_string));
     // Admin is also owned here when its opt-in is removed.
-    for slug in generated
-        .iter()
-        .map(String::as_str)
-        .chain((!built.schema.admin).then_some("first-admin"))
-    {
-        let directory = plugins.join(slug);
-        if directory.exists() {
-            std::fs::remove_dir_all(&directory)?;
-        }
-        let archive = directory.with_extension("zip");
-        if archive.exists() {
-            std::fs::remove_file(archive)?;
-        }
+    if !built.schema.admin {
+        remove_plugin(&plugins.join("first-admin"))?;
     }
-    emit_generated(project, &migrations_dir(project), &plugins, built, true)?;
+    let (schema_php, app) = app_files(project, &migrations_dir(project), built)?;
     let mut versions = serde_json::Map::new();
     for slug in generated {
         let directory = plugins.join(&slug);
-        // The app plugin is generated from the project: lint it every build. First's own plugins are
-        // the same bytes for every app (embedded from runtime/); tests/php/runtime_lint.php lints
-        // those once, so a build doesn't run `php -l` on hundreds of unchanged files.
         if slug.starts_with("first-app-") {
-            php_lint_tree(&directory)?;
-        }
-        zip_plugin(&directory)?;
-        let version = if slug.starts_with("first-app-") {
-            format!(
-                "{}+{}",
-                env!("CARGO_PKG_VERSION"),
-                plugin_vars(&built.schema, &schema_php::render(&built.schema))
-                    .into_iter()
-                    .find(|(key, _)| *key == "schemaHash")
-                    .unwrap()
-                    .1
-            )
+            let changed = write_app_plugin(&plugins, &directory, &app)?;
+            // The app plugin is generated from the project: its changed PHP files are linted. First's
+            // own plugins are the same bytes for every app (embedded from runtime/);
+            // tests/php/runtime_lint.php lints those once, so a build doesn't run `php -l` on
+            // hundreds of unchanged files.
+            php_lint(&changed).map_err(std::io::Error::other)?;
+            if !changed.is_empty() || !directory.with_extension("zip").is_file() {
+                zip_plugin(&directory)?;
+            }
+            let hash = plugin_vars(&built.schema, &schema_php)
+                .into_iter()
+                .find(|(key, _)| *key == "schemaHash")
+                .unwrap()
+                .1;
+            versions.insert(slug, format!("{}+{hash}", env!("CARGO_PKG_VERSION")).into());
         } else {
-            env!("CARGO_PKG_VERSION").to_string()
-        };
-        versions.insert(slug, version.into());
+            // A runtime plugin is the same for every build of this compiler: the previous one is kept
+            // when it was written by a compiler with the same runtime revision and still holds the
+            // files it wrote (docs/runtime-contract.md, "Build output reuse").
+            if previous_revision.as_deref() != Some(revision.as_str()) || !runtime_plugin_intact(&directory, &slug)? {
+                remove_plugin(&directory)?;
+                emit_runtime(&plugins, &[&slug])?;
+                zip_plugin(&directory)?;
+            }
+            versions.insert(slug, env!("CARGO_PKG_VERSION").into());
+        }
     }
     for dependency in prepared.dependencies() {
         versions.insert(dependency.slug.clone(), dependency.version.clone().into());
@@ -293,7 +303,7 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
         .into_iter()
         .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
         .collect();
-    let mut manifest = serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
+    let mut manifest = serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"runtimeRevision":revision,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
     // Sealed mode (docs/sealed.md): the plugin slugs this site runs, for a host to enforce. No key
     // when the app isn't sealed.
     if let Some(sealed) = crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::first_plugins(&built.schema))
@@ -335,22 +345,152 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
     Ok(root)
 }
 
+/// `php -l` on each PHP file, a few processes at a time. PHP before 8.3 lints only the first file
+/// it is given, so each file gets its own process.
 fn php_lint(files: &[PathBuf]) -> Result<(), String> {
-    for path in files {
-        let result = std::process::Command::new("php").arg("-l").arg(path).output();
-        match result {
-            Ok(o) if o.status.success() => {}
-            Ok(o) => {
-                return Err(format!(
+    let php: Vec<&PathBuf> = files
+        .iter()
+        .filter(|path| path.extension().is_some_and(|e| e == "php"))
+        .collect();
+    let width = std::thread::available_parallelism().map_or(4, |n| n.get().min(8));
+    for batch in php.chunks(width) {
+        let mut children = Vec::new();
+        for path in batch {
+            let child = std::process::Command::new("php")
+                .arg("-l")
+                .arg(path)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn();
+            match child {
+                Ok(child) => children.push(child),
+                Err(_) => return Ok(()), // no PHP on this machine: skip the lint
+            }
+        }
+        let mut failure = None;
+        for child in children {
+            let o = child.wait_with_output().map_err(|e| e.to_string())?;
+            if !o.status.success() && failure.is_none() {
+                failure = Some(format!(
                     "{}{}",
                     String::from_utf8_lossy(&o.stdout),
                     String::from_utf8_lossy(&o.stderr)
                 ));
             }
-            Err(_) => return Ok(()), // no PHP on this machine: skip the lint
+        }
+        if let Some(failure) = failure {
+            return Err(failure);
         }
     }
     Ok(())
+}
+
+/// Removes a generated plugin's folder and ZIP, if there.
+fn remove_plugin(directory: &Path) -> std::io::Result<()> {
+    if directory.exists() {
+        std::fs::remove_dir_all(directory)?;
+    }
+    let archive = directory.with_extension("zip");
+    if archive.exists() {
+        std::fs::remove_file(archive)?;
+    }
+    Ok(())
+}
+
+/// Whether a runtime plugin's folder holds exactly the paths, and the sizes, this compiler writes,
+/// and its ZIP is there. A cheap check: an edit that keeps a file's size is not seen.
+fn runtime_plugin_intact(directory: &Path, slug: &str) -> std::io::Result<bool> {
+    if !directory.is_dir() || !directory.with_extension("zip").is_file() {
+        return Ok(false);
+    }
+    let prefix = format!("{slug}/");
+    let mut expected: Vec<(String, u64)> = runtime_tree()
+        .into_iter()
+        .filter_map(|(rel, bytes)| {
+            rel.strip_prefix(&prefix)
+                .map(|rest| (rest.to_string(), bytes.len() as u64))
+        })
+        .collect();
+    expected.sort();
+    let mut found = Vec::new();
+    if listing(directory, directory, &mut found).is_err() {
+        return Ok(false);
+    }
+    found.sort();
+    Ok(found == expected)
+}
+
+/// Every regular file below `dir` as (`/`-separated path below `root`, size). A symlink or special
+/// file is an error.
+fn listing(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        let path = entry.path();
+        if kind.is_dir() {
+            listing(root, &path, out)?;
+        } else if kind.is_file() {
+            let rel = path
+                .strip_prefix(root)
+                .expect("under root")
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push((rel, entry.metadata()?.len()));
+        } else {
+            return Err(std::io::Error::other(format!(
+                "{} is not a regular file",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Brings the app plugin's folder to exactly `files` (paths below the plugins directory): a file
+/// with the same bytes stays, a changed one is written, one no longer generated is removed. Returns
+/// the files written; any removal also counts as a change (an empty entry), so the ZIP is redone.
+fn write_app_plugin(plugins: &Path, directory: &Path, files: &[(String, Vec<u8>)]) -> std::io::Result<Vec<PathBuf>> {
+    let wanted: std::collections::BTreeSet<PathBuf> = files.iter().map(|(rel, _)| plugins.join(rel)).collect();
+    let mut changed = Vec::new();
+    if directory.exists() {
+        let mut existing = Vec::new();
+        if listing(directory, directory, &mut existing).is_err() {
+            // Not a tree First wrote: start it again.
+            std::fs::remove_dir_all(directory)?;
+        } else {
+            for (rel, _) in existing {
+                let path = directory.join(&rel);
+                if !wanted.contains(&path) {
+                    std::fs::remove_file(&path)?;
+                    changed.push(PathBuf::new());
+                }
+            }
+            remove_empty_dirs(directory)?;
+        }
+    }
+    // The migrations directory exists even when the ledger has no SQL yet, as it always has.
+    std::fs::create_dir_all(directory.join("first/app/migrations"))?;
+    for (rel, bytes) in files {
+        let path = plugins.join(rel);
+        if write(&path, bytes)? {
+            changed.push(path);
+        }
+    }
+    Ok(changed)
+}
+
+fn remove_empty_dirs(dir: &Path) -> std::io::Result<bool> {
+    let mut empty = true;
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() && remove_empty_dirs(&entry.path())? {
+            std::fs::remove_dir(entry.path())?;
+        } else {
+            empty = false;
+        }
+    }
+    Ok(empty)
 }
 
 /// What `first check --json` answers: the `first-diagnostics` envelope, and the build when it has
@@ -490,23 +630,6 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn php_lint_tree(directory: &Path) -> std::io::Result<()> {
-    let mut php = Vec::new();
-    fn collect(directory: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
-        for entry in std::fs::read_dir(directory)? {
-            let entry = entry?;
-            if entry.file_type()?.is_dir() && entry.file_name() != "vendor-prefixed" {
-                collect(&entry.path(), files)?;
-            } else if entry.path().extension().is_some_and(|extension| extension == "php") {
-                files.push(entry.path());
-            }
-        }
-        Ok(())
-    }
-    collect(directory, &mut php)?;
-    php_lint(&php).map_err(std::io::Error::other)
-}
-
 #[cfg(test)]
 mod tests {
     use super::read_previous;
@@ -555,6 +678,26 @@ mod tests {
         std::fs::write(project.path().join("first/migrations/snapshot.json"), "{}").unwrap();
         let error = read_previous(project.path()).unwrap_err();
         assert_eq!(error.message, "first/migrations/ moved to first/_generated/migrations/");
+    }
+
+    /// Every changed file is linted, not only the first: a syntax error anywhere fails the build.
+    #[test]
+    fn php_lint_reports_a_syntax_error_in_any_file() {
+        if std::process::Command::new("php").arg("-v").output().is_err() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let mut files = Vec::new();
+        for i in 0..20 {
+            let path = dir.path().join(format!("f{i}.php"));
+            std::fs::write(&path, if i == 13 { "<?php echo ;\n" } else { "<?php echo 1;\n" }).unwrap();
+            files.push(path);
+        }
+        files.push(dir.path().join("readme.txt"));
+        let error = super::php_lint(&files).unwrap_err();
+        assert!(error.contains("f13.php"), "{error}");
+        files.remove(13);
+        super::php_lint(&files).unwrap();
     }
 
     #[test]

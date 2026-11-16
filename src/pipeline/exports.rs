@@ -1,10 +1,10 @@
 //! Registers what the app exports (docs/spec/spec.md §1.1). Every exported kind, global, file
-//! bucket, action and job in `first.config.ts` or a module under `first/` registers under its export
+//! bucket, action, job and admin screen in `first.config.ts` or a module under `first/` registers under its export
 //! name, whatever the file is called and whether or not anything imports it. Other exports are
 //! ignored, so helper modules need no special place.
 //!
 //! Registration fills the config's internal registries (`collections`, `tables`, `users`, `taxonomies`,
-//! `globals`, `files`, `actions`, `jobs`), so everything after it reads one shape. `defineConfig`
+//! `globals`, `files`, `actions`, `jobs`, `screens`), so everything after it reads one shape. `defineConfig`
 //! itself no longer takes those keys (docs/decisions/2026-11-11-authoring-surface.md, ruling 36);
 //! only a 0.3.0 capture still writes them (ruling 41), and its registration is the one it had.
 
@@ -35,6 +35,7 @@ fn registry(value: &Value) -> Option<&'static str> {
         Value::FileBucket(_) => "files",
         Value::Action(_) => "actions",
         Value::Job(_) => "jobs",
+        Value::Screen(_) => "screens",
         _ => return None,
     })
 }
@@ -45,7 +46,9 @@ fn same(a: &Value, b: &Value) -> bool {
         (Value::Collection(a), Value::Collection(b)) => Rc::ptr_eq(a, b),
         (Value::Global(a), Value::Global(b)) => Rc::ptr_eq(a, b),
         (Value::FileBucket(a), Value::FileBucket(b)) => Rc::ptr_eq(a, b),
-        (Value::Action(a), Value::Action(b)) | (Value::Job(a), Value::Job(b)) => Rc::ptr_eq(a, b),
+        (Value::Action(a), Value::Action(b))
+        | (Value::Job(a), Value::Job(b))
+        | (Value::Screen(a), Value::Screen(b)) => Rc::ptr_eq(a, b),
         _ => false,
     }
 }
@@ -55,7 +58,7 @@ fn span_of(value: &Value) -> Span {
         Value::Collection(c) => c.span,
         Value::Global(g) => g.span,
         Value::FileBucket(b) => b.span,
-        Value::Action(a) | Value::Job(a) => a.span,
+        Value::Action(a) | Value::Job(a) | Value::Screen(a) => a.span,
         _ => Span::NONE,
     }
 }
@@ -181,6 +184,7 @@ fn noun(value: &Value) -> &'static str {
         Value::Global(_) => "a global",
         Value::FileBucket(_) => "a file bucket",
         Value::Action(_) => "an action",
+        Value::Screen(_) => "an admin screen",
         _ => "a job",
     }
 }
@@ -192,6 +196,7 @@ fn builder(value: &Value) -> &'static str {
         Value::Global(_) => "global",
         Value::FileBucket(_) => "files",
         Value::Action(_) => "action",
+        Value::Screen(_) => "adminScreen",
         _ => "job",
     }
 }
@@ -206,6 +211,19 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
         for key in cfg.borrow().keys() {
             if let Some(d) = removed_key(ev, program, config, key) {
                 return Err(d);
+            }
+            // `screens` is the registry exports fill, never a config option.
+            if key == "screens" {
+                let span = ev.key_span(config, key).map_or(
+                    Span {
+                        file: program.modules[program.entry].file,
+                        start: 0,
+                        end: 0,
+                    },
+                    |value| crate::diag::key_of(value, key),
+                );
+                return Err(Diag::new(span, "defineConfig() has no option `screens`: a screen registers by its export")
+                    .help("write `export const pendingOrders = adminScreen({ ... })` in first.config.ts or any file under first/; the export name is its id"));
             }
         }
     }
@@ -326,6 +344,7 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             "files",
             "actions",
             "jobs",
+            "screens",
         ] {
             let Some(Value::Object(entries)) = cfg.borrow().get(registry).cloned() else {
                 continue;

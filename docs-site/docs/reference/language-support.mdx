@@ -167,7 +167,7 @@ These fail the build at the line that uses them. Each row is the advice the comp
 | `jsx-dangerously-set-inner-html` | Render the value as a child, which is escaped. Trusted markup will use `<Html>`. |
 | `jsx-object-child` | React throws on an object child; render one of its fields, or map a list to elements. |
 | `jsx-component-props` | Props are type-checked against the component's annotation like any call; pass values of the declared types. |
-| `jsx-head-elements` | React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` into the document head, which a server component can't reproduce. Set titles and meta tags with `export const metadata`, and import styles and scripts as modules. |
+| `jsx-head-elements` | React hoists `<title>`, `<meta>`, `<link>`, `<script>`, `<style>` and `<base>` into the document head, which a server component can't reproduce. Set titles and meta tags with `export const metadata`, import a stylesheet from TSX (`import "./site.css"`), and load a script module with `scripts` in `metadata` (`scripts: ["/app.js"]` is `public/app.js`). |
 | `jsx-in-config` | JSX compiles in `first/components/`, pages and "use client" files; modules the config imports stay plain TypeScript. |
 | `jsx-in-action-result` | Rendered JSX exists only while a page renders, so the config (and the actions it defines) can't import a component; return data from actions and render it in a component. |
 | `jsx-textarea-children` | Set a textarea's text with `defaultValue` (or `value`), as React asks. |

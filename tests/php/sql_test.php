@@ -95,6 +95,8 @@ final class CompileOnlyStore implements Store
 {
     public function readGuards(string $collection, \First\Viewer $viewer): array { return []; }
 
+    public function showsUnique(string $collection, string $column, \First\Viewer $viewer): bool { return false; }
+
     public function __construct(private readonly Dialect $d, private readonly array $sources)
     {
     }

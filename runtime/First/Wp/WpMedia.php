@@ -429,6 +429,7 @@ final class WpMedia implements Media
 final class MediaView implements Store
 {
     public function readGuards(string $collection, \First\Viewer $viewer): array { return []; }
+    public function showsUnique(string $collection, string $column, \First\Viewer $viewer): bool { return false; }
 
     public function __construct(private readonly Dialect $d, private readonly Source $source)
     {

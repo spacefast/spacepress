@@ -620,7 +620,9 @@ fn local(site: &Url, url: &Url) -> String {
     }
 }
 
-fn percent_decode(text: &str) -> String {
+/// `%XX` escapes to bytes, read as UTF-8 (the text unchanged when they aren't); every other
+/// character, `+` included, is itself, as in a URL path or fragment.
+pub(super) fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

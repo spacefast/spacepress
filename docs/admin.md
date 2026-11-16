@@ -33,8 +33,10 @@ REST nonces, users, settings, plugins, themes, media and the block editor.
 |---|---|
 | `/wp-admin/new/<route>` | First Admin. Apache rewrites it to `wp-admin/admin.php?page=first-admin`; the route stays in the path. |
 | `/wp-admin/admin.php?page=first-admin&p=<route>` | The same page on any server. A server that does not read `.htaccess` (nginx, and WordPress Studio's server behind `first dev`) redirects `/wp-admin/new/<route>` here. |
-| `/wp-admin/` | Classic wp-admin, unchanged. Its `First` menu entry opens First Admin. |
+| `/wp-admin/new/classic/<slug>` | A classic wp-admin page (`options-permalink.php`, `edit-comments.php`, `admin.php?page=<plugin>`) framed inside First Admin, without wp-admin's menu and toolbar. |
+| `/wp-admin/` | Classic wp-admin. Without developer mode its pages open framed in First Admin (below). Its `First` menu entry opens First Admin. |
 | `/first-admin/<route>` | The earlier address: a permanent redirect to `/wp-admin/new/<route>`. |
+| `/wp-admin/new/legacy/<slug>` | The frame route's earlier address: a permanent redirect to `/wp-admin/new/classic/<slug>`. |
 
 The page is a wp-admin page: `admin.php` signs the visitor in (`auth_redirect`)
 and builds wp-admin's menus, so plugin menu entries appear in First Admin's
@@ -43,9 +45,36 @@ after it is activated or updated (WP-CLI never writes that file).
 
 After signing in, WordPress's default destination (`/wp-admin/`) becomes
 `/wp-admin/new/`. A page the visitor asked for (`redirect_to`) is kept.
-`Classic admin` in First Admin's sidebar and command palette opens
-`/wp-admin/`; `First` in wp-admin's menu returns. Existing plugin settings and
-classic plugin screens remain accessible in both.
+
+### Developer mode
+
+First Admin is the only admin people see. Classic wp-admin is behind
+**developer mode**, a per-user setting (user meta `first_admin_developer_mode`,
+off by default) on the user's profile in First Admin, under Admin.
+
+- **Off**: the sidebar and command palette have no `Classic admin`. A classic
+  page opened in the browser as a page of its own goes to the same page framed
+  in First Admin: `/wp-admin/` to `/wp-admin/new/`, `options-permalink.php` to
+  `/wp-admin/new/classic/options-permalink.php`. Only an allowlist of pages
+  redirects (`first_admin_framed_pages` filter). The block editor
+  (`post.php`, `post-new.php`), uploads, `admin-ajax.php`, `admin-post.php`,
+  REST, WP-CLI and wp-login.php are untouched, and so is the frame's own
+  request (the browser marks it `Sec-Fetch-Dest: iframe`).
+- **On**: `Classic admin` in the sidebar and command palette opens
+  `/wp-admin/`, classic pages open as themselves, and `First` in wp-admin's menu
+  returns.
+
+Classic screens First Admin has no screen for are in its sidebar either way,
+framed at `/classic/<slug>`: Settings → Writing, Discussion, Media,
+Permalinks, Privacy and plugin settings; Tools (Site Health, Import, Export,
+personal data); Comments; and every plugin's own menu. Entries come from
+wp-admin's menu for the signed-in user, so pages the user may not open, and
+pages the app's hardening switches refuse (plugin and theme installs, the file
+editors, the Customizer), are not listed. Comments is listed only while a
+collection takes comments (`comments: true`) or the site has comments.
+
+The app's own wp-admin menu entry (`first-<app>`, the parent of its globals and
+table screens) opens its collections in First Admin.
 
 `admin: false` in `defineConfig` leaves the plugin out of the build, and a build
 that adds it removes the plugin from the output. Classic wp-admin is then the

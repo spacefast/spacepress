@@ -58,7 +58,7 @@
 }
 
 .first-admin-global-styles-screen-typography__font-variants-count {
-	color: var( --wpds-color-fg-content-neutral-weak );
+	color: var( --wpds-color-foreground-content-neutral-weak );
 }
 
 .first-admin-global-styles-font-families__manage-fonts {
@@ -96,7 +96,7 @@
 }
 
 .first-admin-global-styles-section-title {
-	color: var( --wpds-color-fg-content-neutral );
+	color: var( --wpds-color-foreground-content-neutral );
 	font-weight: 600;
 	line-height: 1.2;
 	padding: 16px 16px 0;
@@ -184,8 +184,8 @@
 	border-radius: inherit;
 
 	&.is-open {
-		background: var( --wpds-color-bg-interactive-brand-strong );
-		color: var( --wpds-color-fg-interactive-brand-strong );
+		background: var( --wpds-color-background-interactive-brand-strong );
+		color: var( --wpds-color-foreground-interactive-brand-strong );
 	}
 }
 

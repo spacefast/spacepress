@@ -546,6 +546,17 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
         "a component can't render `<sCript>`",
         "first/components/Search.tsx:2:15",
     );
+    // The fix a `<script>` gets is the one that loads a script, not the one for a title.
+    rejects(
+        "reject-jsx-script-case",
+        "load a script module with `scripts` in `export const metadata`",
+        "first/components/Search.tsx:2:15",
+    );
+    rejects(
+        "reject-jsx-head",
+        "set the title, description and other head tags with `export const metadata`",
+        "first/components/Head.tsx:2:10",
+    );
     rejects(
         "reject-jsx-iframe-child",
         "`<iframe>` takes only literal text",
@@ -2926,6 +2937,24 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
 "#,
     );
     assert_eq!(built["publicAuthors"], true);
+    // `xmlrpc` and `pings` are WordPress's own unless the config turns them off (spec.md §6): schema.php
+    // carries them only as `false`.
+    assert!(built.get("xmlrpc").is_none() && built.get("pings").is_none(), "{built}");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", xmlrpc: true, pings: true });
+"#,
+    );
+    assert!(built.get("xmlrpc").is_none() && built.get("pings").is_none(), "{built}");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", xmlrpc: false, pings: false });
+"#,
+    );
+    assert_eq!(
+        (&built["xmlrpc"], &built["pings"]),
+        (&serde_json::json!(false), &serde_json::json!(false))
+    );
     let refused = tmp.path().join("app-public-authors");
     std::fs::create_dir_all(&refused).unwrap();
     std::fs::write(
@@ -2940,6 +2969,18 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
+    std::fs::write(
+        refused.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"kindurls\", xmlrpc: \"off\" });\n",
+    )
+    .unwrap();
+    let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("xmlrpc must be true or false"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     // `sealed: true` carries the declared plugins' slugs into schema.php (docs/sealed.md); absent
     // when it's off, as in the builds above.
     assert!(built.get("sealed").is_none(), "{built}");
@@ -2948,12 +2989,12 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
 export default defineConfig({ name: "kindurls", sealed: true });
 "#,
     );
-    // The complete list for a plain WordPress build of this app: First's own plugins (its admin
-    // always, whether or not this build ships it) and the platform pins (Polylang only with
+    // The complete list for a plain WordPress build of this app: First's own plugins (the First
+    // plugin and its admin always, whether or not this build ships them) and the platform pins (Polylang only with
     // `locales`).
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
+        serde_json::json!({"plugins": ["action-scheduler", "first", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
     );
     let built = schema(
         r#"import { defineConfig } from "first";
@@ -2962,7 +3003,7 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
     );
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
+        serde_json::json!({"plugins": ["action-scheduler", "first", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
     );
     // A sealed site can't declare a plugin that hands content out around First's read rules.
     for slug in ["vip-block-data-api", "vip-decoupled-bundle"] {

@@ -14,7 +14,7 @@ import styles from './style.module.css';
  */
 export const getNormalizedGap = ( gap: number | CSSProperties[ 'gap' ] ) =>
 	typeof gap === 'number'
-		? `calc( ${ gap } * var( --wpds-dimension-base ) )`
+		? `calc( ${ gap } * var( --wpds-dimension-gap-xs ) )`
 		: gap;
 
 /**

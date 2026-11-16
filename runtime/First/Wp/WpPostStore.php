@@ -89,6 +89,11 @@ final class WpPostStore implements Store
         }
     }
 
+    public function showsUnique(string $collection, string $column, \First\Viewer $viewer): bool
+    {
+        return false;
+    }
+
     public function readGuards(string $collection, \First\Viewer $viewer): array
     {
         if ($this->visibilityGeneration !== CoreAccess::generation()) {

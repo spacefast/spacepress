@@ -261,6 +261,9 @@ things that would remove its own limits:
   scope off), site settings, creating or promoting users, and any other plugin's
   route that asks one of those capabilities.
 
+The last two hold on every way in: core's users route, First's API and the
+abilities of an app's users kind.
+
 An agent that has to do one of these needs an unscoped credential, which is a
 choice its owner makes on purpose. A credential limited to named abilities also
 sees only those in core's abilities list and in the MCP tool list.

@@ -231,10 +231,14 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
     const refused = await call("PATCH", `/members/${dupe.id}`, { token: dupeToken, body: { handle } });
     assert.deepEqual([refused.status, refused.json.code, refused.json.pointer], [403, "forbidden", "/handle"], "self-read never reveals a competing handle");
   }
-  for (const email of [cy.email, `free-${run}@example.test`]) {
-    const refused = await http("POST", `${api}/members`, { as: "admin", body: { email, name: "Probe", password: "probe password 1" } });
-    assert.deepEqual([refused.status, refused.json.code, refused.json.pointer], [403, "forbidden", "/email"], "self-read applies even to admin collection writes");
-  }
+  // An administrator already sees every user in WordPress, so creating a member answers plainly:
+  // a taken email is a conflict, a free one is created.
+  const clash = await http("POST", `${api}/members`, { as: "admin", body: { email: cy.email, name: "Probe", password: "probe password 1" } });
+  assert.deepEqual([clash.status, clash.json.code, clash.json.pointer], [409, "unique_violation", "/email"], "an administrator is told the email is taken");
+  const made = await http("POST", `${api}/members`, { as: "admin", body: { email: `free-${run}@example.test`, name: "Probe", password: "probe password 1" } });
+  // The read rule is "self", so the answer carries no row: the member is in wp_users.
+  assert.deepEqual([made.status, made.json.data], [201, null], "an administrator creates a member with an email");
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_users WHERE user_email = 'free-${run}@example.test'`)[0].n, "1");
   const taken = JSON.parse(wpTry("first", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ handle: `cy-${run}` })));
   assert.deepEqual([taken.error.status, taken.error.code, taken.error.pointer], [409, "unique_violation", "/handle"], "trusted writes still enforce unique usermeta");
   // Uniqueness compares the stored (SCF) form: a date is kept as Ymd.

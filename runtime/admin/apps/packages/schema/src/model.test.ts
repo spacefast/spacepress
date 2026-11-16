@@ -45,6 +45,18 @@ test('schema metadata describes labels, help, explicit kind and defaults indepen
 		collection: 'roots', column: 'code',
 	});
 });
+test('a field labels and explains itself from `.ui()` when the schema gives no label of its own', () => {
+	const c = columns({
+		buyerEmail: { type: 'email', ui: { label: 'Email', help: 'Where the receipt goes' } },
+		code: { type: 'text', label: 'Order code', ui: { label: 'Ignored' } },
+		unitPrice: { type: 'number' },
+		items: { type: 'repeater', fields: { sku: { type: 'text', ui: { label: 'SKU' } } } },
+	});
+	expect(c.buyerEmail).toMatchObject({ label: 'Email', help: 'Where the receipt goes' });
+	expect(c.code.label).toBe('Order code');
+	expect(c.unitPrice.label).toBe('Unit Price');
+	expect(c.items.fields.sku.label).toBe('SKU');
+});
 test('native mapping retains only returned fields and round-trips SCF values without core-field duplication', () => {
 	window.firstAdmin = {
 		native: {

@@ -20,6 +20,8 @@ A First app starts at `first.config.ts`. It imports its building blocks from `"f
 | `plugins` | Build-only WordPress plugin dependencies. |
 | `admin` | Ship First Admin (`first-admin`), the default admin at `/wp-admin/new/`, with the build. Default `true`; `false` leaves only classic wp-admin. |
 | `publicAuthors` | Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users sitemap, author names in oEmbed and unauthenticated `/wp/v2/users`. Default `false`: closed, unless the users kind's read rule lets anyone read users. |
+| `xmlrpc` | XML-RPC (`xmlrpc.php`, its RSD link and the pingback endpoint) as WordPress ships it. Default `true`. `false` turns it off: every call answers 403 and nothing advertises it, except Jetpack's own `jetpack.*` methods while its connection is loaded. |
+| `pings` | Pingbacks and trackbacks as WordPress ships them: the site's Discussion settings decide whether new posts accept them and whether publishing notifies the sites a post links to. Default `true`. `false` closes them in and out, whatever those settings say. |
 | `sealed` | Sealed mode: the only code that runs as a plugin is First's own plugins, the platform plugins, the `plugins` declared here (exact versions, checksums in the committed lock) and `use` plugin packages. Activating anything else is refused; anything else already loaded is reported. A host that mounts First through the build store can enforce the list before any plugin loads. Default `false`. See docs/sealed.md for what is and isn't guaranteed. |
 | `runtimeSchema` | Let the running site add collections, globals and fields, each change stored there as a numbered schema version. The build declares the changes listed in `first/_generated/runtime-schema.json`. Default `false`. |
 | `frontend` | Who renders the public site. Leave it out for the theme (or `first/app` when it exists); `false` for backend only; an external site's `https://` address to point links, previews and feeds there. |
@@ -279,6 +281,25 @@ export declare function global<TFields extends FieldsConfig>(
 export declare function defineConfig<const TLocales extends LocalesConfig = LocalesConfig>(
   config: ConfigInput<TLocales>,
 ): FirstConfig<TLocales>;
+```
+
+### `item`
+
+```ts
+export declare function item<const P extends string>(path: P): ItemRef<P>;
+```
+
+### `adminScreen`
+
+A First Admin screen, named by its export: `export const pendingOrders = adminScreen({ ... })` is `/wp-admin/new/screens/pending-orders` and a wp-admin page. One React component draws it in both admins; its actions run as Abilities, which check each action's own `access` (docs/admin-screens.md).
+
+```ts
+export declare function adminScreen<
+  F extends string,
+  TSource extends AnyAction,
+  const TActions extends readonly AnyAction[] = [],
+  TSubmit extends AnyAction = AnyAction,
+>(definition: AdminScreenDefinition<F, TSource, TActions, TSubmit>): AdminScreen;
 ```
 
 ### `definePlugin`

@@ -97,7 +97,7 @@
 			height: var( --active-tab-height );
 			translate: -50% var( --active-tab-top );
 			background-color: var(
-				--wpds-color-bg-interactive-neutral-weak-active
+				--wpds-color-background-interactive-neutral-weak-active
 			);
 		}
 
@@ -105,7 +105,7 @@
 			&[data-orientation="vertical"] {
 			box-sizing: border-box;
 			border: var( --wpds-border-width-focus ) solid
-				var( --wpds-color-stroke-focus-brand );
+				var( --wpds-color-stroke-focus );
 		}
 	}
 
@@ -129,19 +129,19 @@
 		cursor: pointer;
 
 		/* Typography */
-		font-family: var( --wpds-font-family-body );
-		font-size: var( --wpds-font-size-md );
+		font-family: var( --wpds-typography-font-family-body );
+		font-size: var( --wpds-typography-font-size-md );
 		white-space: nowrap;
 
 		/* Characters in some languages (e.g. Japanese) may have a native higher line-height. */
 
 		line-height: 1.2;
 		font-weight: 400;
-		color: var( --wpds-color-fg-interactive-neutral );
+		color: var( --wpds-color-foreground-interactive-neutral );
 
 		&[data-disabled] {
 			cursor: default;
-			color: var( --wpds-color-fg-interactive-neutral-disabled );
+			color: var( --wpds-color-foreground-interactive-neutral-disabled );
 
 			@media ( forced-colors: active ) {
 				color: GrayText;
@@ -149,7 +149,7 @@
 		}
 
 		&:not( [data-disabled] ):is( :hover, :focus-visible ) {
-			color: var( --wpds-color-fg-interactive-neutral-active );
+			color: var( --wpds-color-foreground-interactive-neutral-active );
 		}
 
 		/* Focus indicator. */
@@ -160,7 +160,7 @@
 
 			/* Outline works for Windows high contrast mode as well. */
 			outline: var( --wpds-border-width-focus ) solid
-				var( --wpds-color-stroke-focus-brand );
+				var( --wpds-color-stroke-focus );
 			border-radius: var( --wpds-border-radius-sm );
 
 			/* Animation */
@@ -177,17 +177,17 @@
 
 		[data-orientation="horizontal"] & {
 			padding-inline: calc(
-				4 * var( --wpds-dimension-base )
+				4 * var( --wpds-dimension-gap-xs )
 			); /* TODO: Use or create new control/interactive padding token */
 			height: calc(
-				12 * var( --wpds-dimension-base )
+				12 * var( --wpds-dimension-gap-xs )
 			); /* TODO: Can we eliminate or hard-code? */
 			scroll-margin: 24px;
 
 			&::after {
 				content: "";
 				inset: calc(
-					3 * var( --wpds-dimension-base )
+					3 * var( --wpds-dimension-gap-xs )
 				); /* TODO: Use or create new control/interactive padding token */
 			}
 		}
@@ -205,10 +205,10 @@
 		}
 
 		[data-orientation="vertical"] & {
-			padding: calc( 2 * var( --wpds-dimension-base ) )
-				calc( 3 * var( --wpds-dimension-base ) ); /* TODO: Use or create new control/interactive padding token */
+			padding: calc( 2 * var( --wpds-dimension-gap-xs ) )
+				calc( 3 * var( --wpds-dimension-gap-xs ) ); /* TODO: Use or create new control/interactive padding token */
 			min-height: calc(
-				10 * var( --wpds-dimension-base )
+				10 * var( --wpds-dimension-gap-xs )
 			); /* TODO: Can we eliminate or hard-code? */
 		}
 
@@ -240,7 +240,7 @@
 		height: 24px;
 		flex-shrink: 0;
 		margin-inline-end: calc(
-			var( --wpds-dimension-base ) * -1
+			var( --wpds-dimension-gap-xs ) * -1
 		); /* TODO: Use or create new control/interactive padding token */
 
 		[data-orientation="horizontal"] & {
@@ -278,7 +278,7 @@
 
 		&:focus-visible {
 			box-shadow: 0 0 0 var( --wpds-border-width-focus )
-				var( --wpds-color-stroke-focus-brand );
+				var( --wpds-color-stroke-focus );
 
 			/* Windows high contrast mode. */
 			outline: 2px solid transparent;

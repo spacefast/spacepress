@@ -1311,7 +1311,7 @@ final class Db
                     $readable = false;
                 }
             }
-            if (!$readable || FieldAccess::mayHide($col, $viewer)) {
+            if ((!$readable && !$this->store->showsUnique($collection, (string) $name, $viewer)) || FieldAccess::mayHide($col, $viewer)) {
                 throw $viewer->user === null
                     ? new HttpError(401, 'unauthenticated', "Sign in to set $name", HttpError::seg((string) $name))
                     : new HttpError(403, 'forbidden', "You can't set $name", HttpError::seg((string) $name));

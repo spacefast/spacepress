@@ -1,8 +1,8 @@
 # Admin screens: declare once, show in both admins
 
 A First app has two admins: First Admin at `/wp-admin/new/` and classic
-wp-admin at `/wp-admin/`. A screen declared with `first_admin_register_screen()`
-appears natively in both. There is one implementation, the React component in
+wp-admin at `/wp-admin/`. A screen declared with `adminScreen()` in TypeScript,
+or with `first_admin_register_screen()` in PHP, appears natively in both. There is one implementation, the React component in
 `runtime/admin/apps/packages/screens`, and two hosts:
 
 | | First Admin | Classic wp-admin |
@@ -19,7 +19,90 @@ the screen's `capability` gates its page and its declaration, and each ability
 checks its own permission when it runs. A user who may open the screen but not
 run an action gets the ability's refusal, shown as an error, in either admin.
 
-## Declaring a screen
+## From TypeScript
+
+Export `adminScreen()` from `first.config.ts` or any file under `first/`, as
+you would an action. The export name in kebab case is the screen's id, so
+`pendingOrders` is `/wp-admin/new/screens/pending-orders` and
+`admin.php?page=first-screen-pending-orders`.
+
+```ts
+import { action, adminScreen, item, integer } from "first";
+
+export const listPending = action({
+  input: {},
+  access: "editor",
+  readonly: true,                        // a screen reads through readonly actions only
+  async handler() {
+    return { rows: await db.query.orders.findMany({ where: { shipped: false }, limit: 100 }) };
+  },
+});
+
+export const markShipped = action({
+  input: { id: integer() },
+  access: "editor",
+  async handler({ id }) { /* … */ },
+});
+
+export const pendingOrders = adminScreen({
+  title: "Pending orders",
+  description: "Orders waiting to ship.",
+  access: "editor",                      // or capability: "edit_others_posts"
+  view: {
+    action: listPending,
+    items: "rows",                        // where the list is in the output
+    fields: {
+      id: { label: "Order", type: "integer" },
+      total: { label: "Total", type: "number" },
+      shipped: { label: "Shipped", type: "boolean" },
+    },
+    layout: { type: "table", titleField: "id", fields: ["total", "shipped"] },
+  },
+  actions: [
+    { id: "ship", label: "Mark shipped", action: markShipped, input: { id: item("id") } },
+  ],
+  menu: { icon: "dashicons-cart" },     // false: not in First Admin's sidebar
+  classic: { parent: "tools.php" },     // false: not in wp-admin
+  data: ["Shipping runs at 4pm."],
+});
+```
+
+It is the PHP declaration below, typed, with action references in place of
+ability names:
+
+| TypeScript | PHP declaration |
+|---|---|
+| `view.action: listPending` | `view.ability: '<app>/list-pending'` |
+| `fields: { id: { label } }` | `fields: [ ['id' => 'id', 'label' => …] ]` |
+| `item("id")` | `'{item.id}'` |
+| `access: "editor"` | `capability: 'edit_others_posts'` (`admin` → `manage_options`, `author` → `edit_posts`, `subscriber` and `authenticated` → `read`) |
+| `capability: "…"` | `capability: '…'` |
+| `actions[].destructive` left out | the action's own `destructive` |
+
+The build refuses, at the line and column, with a suggested fix:
+
+- an action reference that isn't an exported action, or an action with
+  `agents: false` (it has no Ability) or a `signature`;
+- a `view.action` or `form.action` that isn't `readonly: true`;
+- a field id in `layout` (`fields`, `titleField`, `mediaField`,
+  `descriptionField`, `sort.field`) that `fields` doesn't declare, and a field
+  `type` DataViews doesn't have;
+- an action `input` key the action doesn't take, a required input left out,
+  and `item("x")` where `x` isn't a field of the screen (or the item key), or in
+  the list's own `input`, which runs before there are rows;
+- both `view` and `form`, neither, both `access` and `capability`, an unknown
+  option, an id First uses itself (`table-*`, `schema-versions`), and an
+  `adminScreen()` that isn't exported.
+
+The build writes the declarations into `schema.php` (`screens`). The app
+plugin passes each one to `first_admin_register_screen()` on
+`first_admin_screens`. With `admin: false` there is no First Admin, so the
+build keeps them and nothing registers them. A TypeScript screen and a PHP
+screen share the one registry and the same REST route. `data` is fixed
+strings here; a value computed per request needs a PHP screen. A plugin
+package (`definePlugin`) can't declare screens yet.
+
+## From PHP
 
 Register on the `first_admin_screens` action, from a plugin, the runtime or a
 must-use plugin:
@@ -72,6 +155,38 @@ add_action( 'first_admin_screens', static function () {
   otherwise POST), as core's run route requires.
 - `data` is shown above the body: a string, a list of strings, or a callable
   that returns either, evaluated per request for the signed-in user.
+
+## A route module of your own
+
+A plugin whose page isn't a list or a form can ship its own React route module
+and register it in First Admin from PHP. `first_admin_register_admin_route()`
+(`runtime/admin/lib/api/routes.php`) adds a route to the admin's router, and
+`first_admin_register_menu_item()` adds its sidebar entry. Call both on
+`first_admin_init`, which runs only when First Admin draws its page; it
+registers its own routes there too:
+
+```php
+add_action( 'first_admin_init', static function () {
+    // The page: a script module that exports `stage` (the component) and, optionally, `inspector`,
+    // as First Admin's own built routes do (runtime/admin/build/routes/*/content.js).
+    wp_register_script_module( 'acme-shipping/board', plugins_url( 'build/board.js', __FILE__ ), array( '@wordpress/element' ), '1.0.0' );
+    first_admin_register_admin_route( '/shipping/board', 'acme-shipping/board' );
+    if ( current_user_can( 'edit_others_posts' ) ) {
+        first_admin_register_menu_item( 'acme-shipping', array(
+            'to'    => '/shipping/board',
+            'label' => 'Shipping board',
+            'icon'  => 'dashicons-car',
+        ) );
+    }
+} );
+```
+
+`first_admin_register_admin_route( $path, $content_module, $route_module, $before_load, $static_data, $gc_time )`
+takes the route's content module, an optional route module (its `loader` and
+`beforeLoad`) or both. The page appears only in First Admin, and access is up
+to the plugin: gate the menu item, and check permissions in every REST route
+or ability the module calls. A screen is the better fit whenever the page is a
+list or a form.
 
 ## Screens First declares
 

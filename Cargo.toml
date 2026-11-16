@@ -60,6 +60,13 @@ oxc-browserslist = { path = "crates/oxc-browserslist" }
 name = "first"
 required-features = ["cli"]
 
+# `strip` drops debug symbols from the release binary: 51.3 MB -> 47.4 MB. Thin LTO and one codegen
+# unit were measured too (first check and first build on three examples, median of five): neither
+# changed the times beyond run-to-run noise, and one codegen unit saved 1.8 MB for a release build
+# more than twice as long, so neither is set.
+[profile.release]
+strip = true
+
 # The browser build of the compiler core (src/wasm.rs; docs-site/scripts/build-wasm.mjs runs this):
 # `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown`
 [profile.wasm]

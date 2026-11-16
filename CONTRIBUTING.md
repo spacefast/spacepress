@@ -11,7 +11,7 @@ the SQLite Database Integration plugin; `first build` also lints with `php -l`
 when a host PHP executable is available),
 Node 22.18+, npm, and TypeScript 5.9
 (`npm install --global typescript@5.9.3`). `cargo build --release` produces
-`target/release/first`.
+`target/release/first`, stripped of debug symbols (`[profile.release]` in `Cargo.toml`).
 
 `first dev` uses pinned WordPress Studio CLI 2.2.0 through npm and needs no
 Docker or host PHP. It supplies WordPress 7.2-beta5, PHP 8.4 and SQLite Database
@@ -67,9 +67,10 @@ files under `runtime/` are picked up without code changes.
 ## The commands
 
 `first help` prints every command, grouped. **Build** commands (`dev`, `build`,
-`check`, `add`, `doctor`, `init`, `mcp`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `first`
+`check`, `add`, `doctor`, `init`, `mcp`, `sync`, `abilities pull`, `styles pull`, `migrate app|config`, `deploy`) run in the `first`
 binary against the project's files (`abilities pull` reads a site's abilities
-into the committed `first/_generated/abilities.json`). **Site** commands (`migrate`, `seed`,
+into the committed `first/_generated/abilities.json`; `styles pull` reads a site's Global Styles
+into `first/theme.json`). **Site** commands (`migrate`, `seed`,
 `jobs`, `run`, `identity`, …) are implemented once, as `wp first <command>` in
 the `first-runtime` plugin; `first <command>` forwards to it unchanged, and
 `first wp <args>` forwards any WP-CLI command. `--site` picks the site: absent,
@@ -263,3 +264,7 @@ Changes under `runtime/First`, `runtime/identity`, `runtime/admin` and
 is MIT, and bundled third-party code keeps its own license. [`LICENSE`](LICENSE) has the map.
 Don't add a dependency to the runtime whose license is incompatible with
 GPL-2.0-or-later, and don't copy GPL code into the MIT side.
+
+Use the Node version in `.node-version` for verification. The differential sort
+tests compare the runtime with that V8 version, including comparator call order;
+updating Node requires checking that oracle explicitly.

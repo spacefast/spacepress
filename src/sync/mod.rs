@@ -141,7 +141,7 @@ pub fn uid_mint() -> String {
     let mut seed = [0u8; 16];
     getrandom(&mut seed);
     let hash = Sha256::digest(seed);
-    let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+    let hex = crate::hex(hash);
     format!("zr_{}", &hex[..20])
 }
 

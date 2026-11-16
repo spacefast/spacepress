@@ -604,3 +604,96 @@ fn admin_must_be_a_boolean() {
     p.rejects("check", "admin must be true or false");
     assert!(!p.root.join(".first").exists());
 }
+
+/// A build over existing output keeps the runtime plugins and their ZIPs when the manifest's
+/// `runtimeRevision` matches and the folders still hold the files the compiler writes; the app
+/// plugin's files and ZIP are rewritten only when their bytes change.
+#[cfg(unix)]
+#[test]
+fn a_build_over_existing_output_keeps_what_did_not_change() {
+    use std::os::unix::fs::MetadataExt;
+    let routes = routes();
+    let server = Server::new(routes.clone());
+    let p = Project::new();
+    let plugins = platform(&server, &routes);
+    let inode = |rel: &str| std::fs::metadata(p.out.join(rel)).unwrap().ino();
+    p.config(&plugins);
+    p.build();
+    let manifest: Value = serde_json::from_slice(&std::fs::read(p.out.join("first-manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["runtimeRevision"], first::store::runtime_revision());
+    let kept = [
+        "plugins/first-runtime/first/bootstrap.php",
+        "plugins/first-runtime.zip",
+        "plugins/first-identity.zip",
+        "plugins/first-admin.zip",
+        "plugins/first-app-fixtures.zip",
+        "plugins/first-app-fixtures/first/app/schema.php",
+        "plugins/secure-custom-fields/secure-custom-fields.php",
+    ];
+    let before: Vec<u64> = kept.iter().map(|rel| inode(rel)).collect();
+    let tree_before = tree(&p.out);
+    p.build();
+    assert_eq!(tree_before, tree(&p.out));
+    for (rel, ino) in kept.iter().zip(&before) {
+        assert_eq!(inode(rel), *ino, "{rel} was written again");
+    }
+
+    // A changed app rewrites the app plugin and its ZIP only.
+    std::fs::create_dir_all(p.root.join("public/a")).unwrap();
+    std::fs::write(p.root.join("public/a/robots.txt"), "User-agent: *\n").unwrap();
+    p.build();
+    assert_ne!(inode("plugins/first-app-fixtures.zip"), before[4]);
+    assert_eq!(inode("plugins/first-runtime.zip"), before[1]);
+    assert!(p.out.join("plugins/first-app-fixtures/public/a/robots.txt").is_file());
+    // A public file that goes away goes from the plugin and its ZIP, as on a fresh build.
+    std::fs::remove_dir_all(p.root.join("public")).unwrap();
+    p.build();
+    assert!(!p.out.join("plugins/first-app-fixtures/public").exists());
+    let fresh = Project::new();
+    std::fs::copy(p.root.join("first.config.ts"), fresh.root.join("first.config.ts")).unwrap();
+    std::fs::create_dir_all(fresh.root.join("first/_generated")).unwrap();
+    std::fs::copy(
+        p.root.join("first/_generated/wp-plugins.lock.json"),
+        fresh.root.join("first/_generated/wp-plugins.lock.json"),
+    )
+    .unwrap();
+    fresh.build();
+    let app = |out: &Path| tree(&out.join("plugins/first-app-fixtures"));
+    assert_eq!(
+        app(&p.out),
+        app(&fresh.out),
+        "the kept app plugin is the one a fresh build writes"
+    );
+    assert_eq!(
+        std::fs::read(p.out.join("plugins/first-app-fixtures.zip")).unwrap(),
+        std::fs::read(fresh.out.join("plugins/first-app-fixtures.zip")).unwrap()
+    );
+
+    // A runtime folder someone edited, or a missing file or ZIP, is written again.
+    std::fs::write(
+        p.out.join("plugins/first-runtime/first/bootstrap.php"),
+        "<?php // edited\n",
+    )
+    .unwrap();
+    std::fs::remove_file(p.out.join("plugins/first-identity/first-identity.php")).unwrap();
+    std::fs::remove_file(p.out.join("plugins/first-admin.zip")).unwrap();
+    p.build();
+    assert_eq!(
+        std::fs::read(p.out.join("plugins/first-runtime/first/bootstrap.php")).unwrap(),
+        std::fs::read(fresh.out.join("plugins/first-runtime/first/bootstrap.php")).unwrap()
+    );
+    assert!(p.out.join("plugins/first-identity/first-identity.php").is_file());
+    assert_eq!(
+        std::fs::read(p.out.join("plugins/first-admin.zip")).unwrap(),
+        std::fs::read(fresh.out.join("plugins/first-admin.zip")).unwrap()
+    );
+    // An output from another compiler (no or another revision) is written again.
+    let mut manifest: Value =
+        serde_json::from_slice(&std::fs::read(p.out.join("first-manifest.json")).unwrap()).unwrap();
+    manifest["runtimeRevision"] = "0".repeat(64).into();
+    std::fs::write(p.out.join("first-manifest.json"), manifest.to_string()).unwrap();
+    let zip = inode("plugins/first-runtime.zip");
+    p.build();
+    assert_ne!(inode("plugins/first-runtime.zip"), zip);
+    assert_eq!(tree(&p.out.join("plugins")), tree(&fresh.out.join("plugins")));
+}

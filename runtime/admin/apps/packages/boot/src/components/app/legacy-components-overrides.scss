@@ -26,21 +26,21 @@
 
 // Tertiary Button
 .components-button.is-tertiary.is-tertiary {
-	color: var( --wpds-color-fg-interactive-neutral );
+	color: var( --wpds-color-foreground-interactive-neutral );
 	background: transparent;
 
 	/* States */
 	&:hover,
 	&:active:not( :disabled, [aria-disabled="true"] ),
 	&:focus {
-		background: var( --wpds-color-bg-interactive-neutral-weak );
-		color: var( --wpds-color-fg-interactive-neutral-active );
+		background: var( --wpds-color-background-interactive-neutral-weak );
+		color: var( --wpds-color-foreground-interactive-neutral-active );
 	}
 
 	&:disabled,
 	&[aria-disabled="true"] {
-		background: var( --wpds-color-bg-interactive-neutral-weak-disabled );
-		color: var( --wpds-color-fg-interactive-neutral-disabled );
+		background: var( --wpds-color-background-interactive-neutral-weak-disabled );
+		color: var( --wpds-color-foreground-interactive-neutral-disabled );
 	}
 }
 
@@ -59,25 +59,25 @@
 // BaseControl label color (RadioControl, CheckboxControl group headers)
 //
 // @wordpress/components BaseControl renders group labels (e.g. "Size", "Shape")
-// with a hardcoded grey color. Figma specifies --wpds-color-fg-content-neutral
+// with a hardcoded grey color. Figma specifies --wpds-color-foreground-content-neutral
 // (same as InputControl labels) for all form field labels.
 //
 // TODO: Remove once @wordpress/components BaseControl adopts WPDS color tokens.
 .components-base-control__label.components-base-control__label {
-	color: var( --wpds-color-fg-content-neutral );
+	color: var( --wpds-color-foreground-content-neutral );
 }
 
 // InputControl label color
 //
 // @wordpress/components InputControl renders its label with a hardcoded
 // grey color (#757575). The design specifies gray-900 (#1e1e1e) for input
-// labels, which maps to --wpds-color-fg-content-neutral.
+// labels, which maps to --wpds-color-foreground-content-neutral.
 //
 // TODO: Remove once @wordpress/components InputControl adopts WPDS color tokens.
 // Double class to override the more-specific DataForms rule
 // (.dataforms-layouts-regular__field .components-input-control__label).
 .components-input-control__label.components-input-control__label {
-	color: var( --wpds-color-fg-content-neutral );
+	color: var( --wpds-color-foreground-content-neutral );
 }
 
 // SearchControl

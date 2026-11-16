@@ -89,6 +89,7 @@ const GUIDES: &[&str] = &[
     "migrating-from-zero.md",
     "npm-compatibility.md",
     "pages.md",
+    "plugin.md",
     "realtime.md",
     "sealed.md",
     "services.md",

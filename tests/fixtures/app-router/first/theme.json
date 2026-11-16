@@ -1,0 +1,11 @@
+{
+	"version": 3,
+	"settings": {
+		"color": {
+			"palette": [
+				{ "slug": "brand", "color": "#000001", "name": "Brand" },
+				{ "slug": "code", "color": "#0000aa", "name": "Code" }
+			]
+		}
+	}
+}

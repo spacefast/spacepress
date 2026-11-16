@@ -73,6 +73,11 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
         json!([200, true, "OLD-BODY", true])
     );
     assert_eq!(seen["prebuilt unreadable"], json!([[200, false], [200, false]]));
+    // 8 MiB with 2 MiB of memory left: streamed, not buffered.
+    assert_eq!(
+        seen["prebuilt larger than memory_limit"],
+        json!([200, true, true, true, true])
+    );
     // Same size and modification time, other bytes: the old tag no longer matches.
     assert_eq!(
         seen["prebuilt same size and mtime"],

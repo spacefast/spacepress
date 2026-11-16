@@ -557,10 +557,17 @@ final class Prebuilt
         if (!apply_filters('tp_prebuilt_serve', $public, $html)) {
             return;
         }
-        // One read: its bytes are tagged, measured and sent, so the ETag names exactly the body, even
-        // when a rebuild replaces the file meanwhile. A file that can't be read renders as usual.
-        $bytes = @file_get_contents($file);
-        if (!is_string($bytes)) {
+        // One open: the handle's content is tagged, measured and sent, so the ETag names exactly the
+        // body even when a rebuild renames a new file into place meanwhile, and the page is streamed,
+        // never held whole in memory. Any failure here renders as usual, before a prebuilt header.
+        $handle = @fopen($file, 'rb');
+        if ($handle === false) {
+            return;
+        }
+        $stat = @fstat($handle);
+        $etag = \TypedPress\Validator::stream($handle);
+        if (!is_array($stat) || $etag === null) {
+            fclose($handle);
             return;
         }
         [$control] = Cache::policy(200, true, false);
@@ -578,18 +585,19 @@ final class Prebuilt
         if ($signal !== '') {
             header('Content-Signal: ' . $signal);
         }
-        // The bytes' own validator: a client (or edge) that holds them gets an empty 304. The gates
+        // The content's own validator: a client (or edge) that holds it gets an empty 304. The gates
         // above already decided the file is what this request would get.
-        $etag = \TypedPress\Validator::bytes($bytes);
         header('ETag: ' . $etag);
         if (\TypedPress\Validator::matches($etag)) {
+            fclose($handle);
             http_response_code(304);
             exit;
         }
-        header('Content-Length: ' . (string) strlen($bytes));
+        header('Content-Length: ' . (string) $stat['size']);
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
-            echo $bytes;
+            fpassthru($handle);
         }
+        fclose($handle);
         exit;
     }
 

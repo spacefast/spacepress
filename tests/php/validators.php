@@ -53,6 +53,24 @@ $swap = <<<'PHP'
         {
             return ['size' => strlen($this->data), 'mtime' => time(), 'mode' => 0100644];
         }
+        public function stream_seek(int $offset, int $whence): bool
+        {
+            $this->at = $offset;
+            return true;
+        }
+        public function stream_tell(): int
+        {
+            return $this->at;
+        }
+    }
+    if ($_SERVER['HTTP_X_SWAP'] === 'large') {
+        // A page larger than what this request has left: just before the file is read, the limit is
+        // set to the memory in use plus 2 MiB, less than the 8 MiB page, so holding it whole is fatal.
+        add_filter('tp_prebuilt_serve', static function (bool $serve): bool {
+            ini_set('memory_limit', (string) (memory_get_usage(true) + 2 * 1024 * 1024));
+            return $serve;
+        }, PHP_INT_MAX);
+        return;
     }
     stream_wrapper_register('tpswap', TpSwapStream::class);
     add_filter('tp_prebuilt_dir', static fn (): string => 'tpswap://prebuilt');
@@ -116,6 +134,14 @@ $out['prebuilt head'] = fetch("$url/about", [], 'HEAD')['etag'] === $about['etag
 $swapped = fetch("$url/about", ['X-Swap: replace']);
 $out['prebuilt replaced between reads'] = [$swapped['status'], $swapped['prebuilt'], $swapped['body'], $swapped['etag'] === \TypedPress\Validator::bytes($swapped['body'])];
 // A file that exists but can't be read: rendered as usual (no prebuilt answer), never a 304.
+// A page of 8 MiB served with 2 MiB of memory left in the request: streamed whole, with the tag of its bytes.
+$large = str_repeat("<p>prebuilt page text</p>\n", intdiv(8 * 1024 * 1024, 26));
+$aboutPath = \TypedPress\Render\Prebuilt::dir() . '/about.html';
+$aboutBefore = (string) file_get_contents($aboutPath);
+file_put_contents($aboutPath, $large);
+$big = fetch("$url/about", ['X-Swap: large']);
+file_put_contents($aboutPath, $aboutBefore);
+$out['prebuilt larger than memory_limit'] = [$big['status'], $big['prebuilt'], strlen($big['body']) === strlen($large), $big['etag'] === \TypedPress\Validator::bytes($large), strlen($large) > 2 * 1024 * 1024];
 $out['prebuilt unreadable'] = array_map(static function (string $match) use ($url): array {
     $r = fetch("$url/about", ['X-Swap: unreadable', "If-None-Match: $match"]);
     return [$r['status'], $r['prebuilt']];

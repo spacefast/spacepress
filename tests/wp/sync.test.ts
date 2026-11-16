@@ -202,6 +202,28 @@ test("sync on WordPress", async (t) => {
     assert.equal(stored(), null, "a visible reference set to null is cleared");
   });
 
+  await t.test("trash and restore run each hook once, with the final values", async () => {
+    const hooks = (title: string) => first("find", "guide_hooks", JSON.stringify({ where: { title: { in: [title, `${title} edited`] } }, orderBy: { id: "asc" } }))
+      .map((h: any) => `${h.hook}:${h.title}:${h.status}`);
+    for (const [label, status, edited] of [["back-published", "published", true], ["back-draft", "draft", false]] as const) {
+      const title = `Logged ${label} ${run}`;
+      const logged = { uid: uidOf(label === "back-draft" ? 9 : 8), fields: { ...record.fields, title, slug: `logged-${label}-${run}`, summary: "logged", status: "published" }, body: null };
+      await push(logged, "absent");
+      const seen = (await pull("guides")).get(logged.uid);
+      first("delete", "guide_hooks", JSON.stringify({ title: { in: [title, `${title} edited`] } }));
+      await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: logged.uid, expect: seen.digest } });
+      assert.deepEqual(hooks(title), [`afterUpdate:${title}:draft`], `${label}: the trash is one unpublish`);
+      first("delete", "guide_hooks", JSON.stringify({ title: { in: [title, `${title} edited`] } }));
+      // The file comes back, edited, and published or as a draft.
+      const back = { ...seen.record, fields: { ...seen.record.fields, title: edited ? `${title} edited` : title, status } };
+      assert.equal((await push(back, "absent")).status, 200);
+      const final = edited ? `${title} edited` : title;
+      assert.deepEqual(hooks(title), status === "published"
+        ? [`afterUpdate:${final}:published`, `afterPublish:${final}:published`]
+        : [`afterUpdate:${final}:draft`], `${label}: one update to the pushed values, and a publish only when it ends published`);
+    }
+  });
+
   await t.test("a failure after the post is trashed rolls the trash back", async () => {
     const regret = { uid: uidOf(6), fields: { ...record.fields, title: `Regret ${run}`, slug: `regret-${run}`, summary: "regret", status: "published" }, body: null };
     await push(regret, "absent");

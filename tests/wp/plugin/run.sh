@@ -81,6 +81,11 @@ screen=$(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1
 [[ $screen == *"This site already has content (1 post, 1 page). Deploying an app keeps it, and changes how WordPress serves it"*"Try the app on a copy of this site first."* ]] || fail "the TypedPress screen warns about the site's own content: $screen"
 wp post delete "$(cat "$work/owner-post")" "$(cat "$work/owner-page")" --force >/dev/null
 [[ $(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress') != *"already has content"* ]] || fail "without it the warning is gone"
+# The sample page, rewritten by its owner, is the owner's content.
+sample=$(wp post list --post_type=page --name=sample-page --field=ID)
+"$harness" sql "UPDATE wp_posts SET post_title = 'About us', post_modified_gmt = post_date_gmt + INTERVAL 1 DAY WHERE ID = $sample" >/dev/null
+[[ $(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress') == *"already has content (1 page)"* ]] || fail "an edited sample page counts as the site's content"
+"$harness" sql "UPDATE wp_posts SET post_title = 'Sample Page', post_modified_gmt = post_date_gmt WHERE ID = $sample" >/dev/null
 [[ $(status "$url/") == 200 && $(status "$url/__tp/api/v1") == 404 ]] || fail "before a deployment WordPress serves and TypedPress's API doesn't"
 # A dependency that goes missing later is named on the screen and on other wp-admin screens, and the
 # screen's button brings it back.

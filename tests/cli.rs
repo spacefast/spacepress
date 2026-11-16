@@ -241,6 +241,19 @@ fn remote_commands_sign_in_one_way() {
         );
         assert!(text(&out.stderr).contains("in CI: TP_APP_PASSWORD"), "{}", text(&out.stderr));
     }
+    // A credential written into the address is refused and never printed, signed in or not.
+    for args in [
+        &["sync", "--site", "https://demo:SENTINEL@example.test"][..],
+        &["pull", "--site", "https://demo:SENTINEL@example.test"][..],
+        &["export", "--site", "https://SENTINEL@example.test"][..],
+        &["abilities", "pull", "--site", "https://demo:SENTINEL@example.test"][..],
+    ] {
+        for env in [&[][..], &[("TP_APP_PASSWORD", "a:b")][..]] {
+            let out = run(args, env);
+            assert!(!out.status.success(), "{args:?}");
+            assert!(!text(&out.stderr).contains("SENTINEL") && !text(&out.stdout).contains("SENTINEL"), "{args:?}: {}", text(&out.stderr));
+        }
+    }
     // Both variables at once is refused, by every command alike.
     for args in [&["sync", "--site", site][..], &["pull", "--site", site][..]] {
         let out = run(args, &[("TP_APP_PASSWORD", "a:b"), ("TP_TOKEN", "t")]);

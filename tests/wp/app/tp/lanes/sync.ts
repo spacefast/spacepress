@@ -4,7 +4,7 @@
 // Content sync (design §5): `guides` is a post-backed collection synced with Markdown files, and
 // `writers` gives it a uid'd reference target, so tests/wp/sync.test.ts covers bodies, references,
 // drafts and trash against real WordPress.
-import { collection, integer, richText, select, slug, table, text, HttpError, ref } from "typedpress";
+import { collection, db, integer, richText, select, slug, table, text, HttpError, ref } from "typedpress";
 
 export const writers = collection({
   name: text().max(80),
@@ -35,7 +35,18 @@ export const guides = collection({
     if (previous.summary === "regret" && previous.status === "published" && row.status !== "published") {
       throw new HttpError(409, "regretted", "this guide came back");
     }
+    if (row.summary === "logged") await db.insert(guideHooks).values({ hook: "afterUpdate", title: row.title, status: row.status });
   },
+  // Guides with `summary: "logged"` record each hook with the row it saw.
+  async afterPublish(row) {
+    if (row.summary === "logged") await db.insert(guideHooks).values({ hook: "afterPublish", title: row.title, status: row.status });
+  },
+});
+
+export const guideHooks = table({
+  hook: text(),
+  title: text(),
+  status: text(),
 });
 
 // Rows that depend on a guide: `cascade` removes them when the guide is deleted for good, and a

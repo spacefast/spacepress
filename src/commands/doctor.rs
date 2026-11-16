@@ -55,20 +55,21 @@ pub(super) fn run(args: &Args) -> ExitCode {
         }
     }
     // Signed in as every remote command is (`remote::sign_in`), or signed out without a credential.
-    let credential = match args.site.as_deref().map(super::remote::sign_in) {
-        Some(Err(error)) => {
+    // A refused address or credential is the site check's answer; nothing is sent to it.
+    let (site, credential) = match args.site.as_deref().map(|site| (site, super::remote::sign_in(site))) {
+        Some((_, Err(error))) => {
             check(&mut checks, "site", false, error);
-            None
+            (None, None)
         }
-        Some(Ok(signed)) => signed.map(|s| s.credential),
-        None => None,
+        Some((site, Ok(signed))) => (Some(site.to_string()), signed.map(|s| s.credential)),
+        None => (None, None),
     };
-    if let Some(site) = &args.site
+    if let Some(site) = &site
         && let Err(error) = remote(site, credential.as_ref(), &manifest, &mut checks)
     {
         check(&mut checks, "site", false, error);
     }
-    if let Some(site) = &args.site
+    if let Some(site) = &site
         && project.join(crate::wordpress::abilities::LOCK).is_file()
     {
         match super::abilities::list(site, credential.as_ref())

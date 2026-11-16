@@ -192,6 +192,9 @@ pub(crate) struct SignIn {
 /// where nobody runs `typedpress login`; setting both is an error. Otherwise the credential
 /// `typedpress login` stored for this site. `Ok(None)` when there is neither.
 pub(crate) fn sign_in(site: &str) -> Result<Option<SignIn>, String> {
+    // An address that carries a user or password is refused here, without repeating it, before any
+    // message could name it.
+    let key = normalize(site)?;
     let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
     match (env(PASSWORD_ENV), env(TOKEN_ENV)) {
         (Some(_), Some(_)) => return Err(format!("set {PASSWORD_ENV} or {TOKEN_ENV}, not both")),
@@ -204,10 +207,7 @@ pub(crate) fn sign_in(site: &str) -> Result<Option<SignIn>, String> {
         (None, Some(token)) => return Ok(Some(SignIn { credential: Credential::Bearer(token), rest: None })),
         (None, None) => {}
     }
-    // Stored under the address `typedpress login` was given; an address it would refuse has none.
-    let Ok(key) = normalize(site) else {
-        return Ok(None);
-    };
+    // Stored under the address `typedpress login` was given, normalized the same way.
     let sites = read_sites()?;
     let Some(entry) = sites.get(&key) else {
         return Ok(None);
@@ -229,7 +229,8 @@ pub(crate) fn sign_in(site: &str) -> Result<Option<SignIn>, String> {
 
 /// [`sign_in`], for a command that can't work signed out.
 pub(crate) fn require(site: &str) -> Result<SignIn, String> {
-    sign_in(site)?.ok_or_else(|| format!("not signed in to {site}. Run: typedpress login {site}"))
+    let site = normalize(site)?;
+    sign_in(&site)?.ok_or_else(|| format!("not signed in to {site}. Run: typedpress login {site}"))
 }
 
 /// The site a project deploys to (`.tp/site.json`, written by `typedpress login` inside a project).

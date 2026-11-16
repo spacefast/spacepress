@@ -404,6 +404,8 @@ final class Site
      * Before the first deployment: what the site already holds besides what WordPress's installer
      * wrote (the "Hello world!" post, the sample page, the privacy policy draft), or null. A deployed
      * app keeps it, and changes how WordPress serves it, so the owner is told before installing one.
+     * Installer content counts too once someone edited it: it was saved after it was made, or has
+     * a revision.
      */
     public static function existing(): ?string
     {
@@ -413,9 +415,11 @@ final class Site
         global $wpdb;
         $privacy = (int) get_option('wp_page_for_privacy_policy');
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT post_type, COUNT(*) AS n FROM {$wpdb->posts} WHERE post_type IN ('post', 'page')"
-            . " AND post_status IN ('publish', 'future', 'draft', 'pending', 'private')"
-            . " AND post_name NOT IN ('hello-world', 'sample-page') AND ID <> %d GROUP BY post_type ORDER BY post_type DESC",
+            "SELECT p.post_type, COUNT(*) AS n FROM {$wpdb->posts} p WHERE p.post_type IN ('post', 'page')"
+            . " AND p.post_status IN ('publish', 'future', 'draft', 'pending', 'private')"
+            . " AND NOT ((p.post_name IN ('hello-world', 'sample-page') OR p.ID = %d) AND p.post_modified_gmt = p.post_date_gmt"
+            . " AND NOT EXISTS (SELECT 1 FROM {$wpdb->posts} r WHERE r.post_parent = p.ID AND r.post_type = 'revision'))"
+            . " GROUP BY p.post_type ORDER BY p.post_type DESC",
             $privacy,
         ), ARRAY_A);
         $found = [];

@@ -51,7 +51,6 @@ not just the fields shown in a minimal example:
 | Markdown body | Full product description |
 | `shortDescription` | Optional short description |
 | `regularPrice` | Exact decimal price in the store currency |
-| `salePrice` | Optional immediate sale price; no scheduling in v1 |
 | `images` | Ordered project-relative image paths with optional alt text; first image is primary |
 | `categories` | Product category UIDs |
 | `tags` | Product tag UIDs |
@@ -62,8 +61,9 @@ for unpublished drafts follows Woo. Reuse existing sync omission/clearing semant
 than invent an independent field-ownership mode.
 
 Defer `backorders`, `manageStock`, stock quantity, initial stock, `soldIndividually`, weight,
-dimensions, shipping class, tax class, catalog visibility controls, featured products and sale
-schedules from the writable/synced API. Keep those settings available in Woo administration and
+dimensions, shipping class, tax class, catalog visibility controls and featured products from
+the writable/synced API. Sale pricing is also deferred: no `salePrice`, sale schedules or
+sale-specific storefront features in v1. Keep those settings available in Woo administration and
 preserve them on sync. Newly created products use Woo's normal defaults for omitted settings.
 Read projections still expose current price, purchasability and availability so the storefront
 reflects Woo's actual state. Cart quantities, shipping rates and totals continue to be validated

@@ -1,74 +1,74 @@
 //! Where a project's files live (docs/spec/spec.md §1). Paths are relative to the directory that
-//! holds `first.config.ts`; every reader and writer takes them from here.
+//! holds `typedpress.config.ts`; every reader and writer takes them from here.
 //!
-//! - `first/_generated/` is written by First and committed: the migration ledger, the type
+//! - `tp/_generated/` is written by TypedPress and committed: the migration ledger, the type
 //!   declarations, the typed client and the locks.
-//! - `first/dist/` is written by `first build` and ignored by git: the deployable output.
+//! - `tp/dist/` is written by `typedpress build` and ignored by git: the deployable output.
 
 /// The config at the project root.
-pub const CONFIG: &str = "first.config.ts";
-/// The First root.
-pub const ROOT: &str = "first";
-/// Written by First, committed.
-pub const GENERATED: &str = "first/_generated";
+pub const CONFIG: &str = "typedpress.config.ts";
+/// The TypedPress root.
+pub const ROOT: &str = "tp";
+/// Written by TypedPress, committed.
+pub const GENERATED: &str = "tp/_generated";
 /// The migration ledger lives at [`crate::pipeline::LEDGER`], beside these.
-/// The type declarations that register the app's schema with `"first"`.
-pub const DB_TYPES: &str = "first/_generated/db.d.ts";
-/// Typed links and params for `first/app/` routes.
-pub const ROUTES_TYPES: &str = "first/_generated/routes.d.ts";
+/// The type declarations that register the app's schema with `"typedpress"`.
+pub const DB_TYPES: &str = "tp/_generated/db.d.ts";
+/// Typed links and params for `tp/app/` routes.
+pub const ROUTES_TYPES: &str = "tp/_generated/routes.d.ts";
 /// The typed client.
-pub const CLIENT: &str = "first/_generated/client";
+pub const CLIENT: &str = "tp/_generated/client";
 /// The app's HTTP API as an OpenAPI 3.1 document.
-pub const OPENAPI: &str = "first/_generated/openapi.json";
-/// The pinned WordPress plugin dependencies `first build` installs.
-pub const WP_PLUGINS_LOCK: &str = "first/_generated/wp-plugins.lock.json";
-/// Written by `first build`, ignored by git.
-pub const DIST: &str = "first/dist";
-/// `first build`'s default output: a `wp-content` directory.
-pub const WP_CONTENT: &str = "first/dist/wp-content";
+pub const OPENAPI: &str = "tp/_generated/openapi.json";
+/// The pinned WordPress plugin dependencies `typedpress build` installs.
+pub const WP_PLUGINS_LOCK: &str = "tp/_generated/wp-plugins.lock.json";
+/// Written by `typedpress build`, ignored by git.
+pub const DIST: &str = "tp/dist";
+/// `typedpress build`'s default output: a `wp-content` directory.
+pub const WP_CONTENT: &str = "tp/dist/wp-content";
 
-/// Committed inputs that moved (into `first/_generated/`, or app code into `first/`): (old, new). A source bundle
+/// Committed inputs that moved (into `tp/_generated/`, or app code into `tp/`): (old, new). A source bundle
 /// captured before the move names the old paths, and a host recompiles stored bundles, so the
 /// hosted compile reads them through [`current`]. (The hosted compile reads the ledger's old path
 /// itself; see `bundle::compile_tree`.)
 const MOVED: &[(&str, &str)] = &[
-    ("first/abilities.json", "first/_generated/abilities.json"),
-    ("first/plugins.lock.json", "first/_generated/plugins.lock.json"),
-    ("wp-hooks/", "first/wp-hooks/"),
+    ("tp/abilities.json", "tp/_generated/abilities.json"),
+    ("tp/plugins.lock.json", "tp/_generated/plugins.lock.json"),
+    ("wp-hooks/", "tp/wp-hooks/"),
 ];
 
-/// Committed files a live checkout may still have at their place before `first/_generated/`: (old,
+/// Committed files a live checkout may still have at their place before `tp/_generated/`: (old,
 /// new, what goes wrong if it is left there). A stored source bundle is frozen data and reads its
 /// old paths through [`current`]; a checkout is refused, so nothing is silently ignored or loaded.
 const OLD_IN_CHECKOUT: &[(&str, &str, &str)] = &[
     (
-        "first/plugins.lock.json",
-        "first/_generated/plugins.lock.json",
+        "tp/plugins.lock.json",
+        "tp/_generated/plugins.lock.json",
         "its grants would be ignored and a new lock written that grants everything the plugins use",
     ),
     (
-        "first/wp-plugins.lock.json",
-        "first/_generated/wp-plugins.lock.json",
+        "tp/wp-plugins.lock.json",
+        "tp/_generated/wp-plugins.lock.json",
         "the plugins it pins would be resolved again",
     ),
     (
-        "first/abilities.json",
-        "first/_generated/abilities.json",
+        "tp/abilities.json",
+        "tp/_generated/abilities.json",
         "the abilities it locks would be unknown",
     ),
     (
-        "first/client",
-        "first/_generated/client",
-        "its files would load as app code from first/",
+        "tp/client",
+        "tp/_generated/client",
+        "its files would load as app code from tp/",
     ),
     (
-        "first.gen.ts",
-        "first/_generated/db.d.ts",
+        "typedpress.gen.ts",
+        "tp/_generated/db.d.ts",
         "editors would read the old registration",
     ),
 ];
 
-/// Every committed file a checkout still keeps at its place from before `first/_generated/`, in one
+/// Every committed file a checkout still keeps at its place from before `tp/_generated/`, in one
 /// (message, help): the message names each file and what goes wrong if it stays, and the help is
 /// one command that moves them all. Callers refuse to build: see [`OLD_IN_CHECKOUT`].
 pub fn old_in_checkout(
@@ -89,7 +89,7 @@ pub fn old_in_checkout(
     let message = match lines.as_slice() {
         [one] => one.clone(),
         many => format!(
-            "{} files are from before first/_generated/:\n  - {}",
+            "{} files are from before tp/_generated/:\n  - {}",
             many.len(),
             many.join("\n  - ")
         ),
@@ -99,7 +99,7 @@ pub fn old_in_checkout(
         .map(|(_, new, _)| {
             std::path::Path::new(new)
                 .parent()
-                .expect("under first/_generated")
+                .expect("under tp/_generated")
                 .display()
                 .to_string()
         })
@@ -118,7 +118,7 @@ pub fn old_in_checkout(
     Some((message, help))
 }
 
-/// A captured project path on this layout: an input that moved into `first/_generated/` is renamed,
+/// A captured project path on this layout: an input that moved into `tp/_generated/` is renamed,
 /// everything else is unchanged.
 pub fn current(path: &str) -> String {
     for (old, new) in MOVED {
@@ -134,15 +134,15 @@ mod tests {
     #[test]
     fn captured_paths_from_before_generated_read_on_this_layout() {
         for (old, new) in [
-            ("first/abilities.json", "first/_generated/abilities.json"),
-            ("first/plugins.lock.json", "first/_generated/plugins.lock.json"),
-            ("wp-hooks/save_post.ts", "first/wp-hooks/save_post.ts"),
-            ("wp-hooks/the_content/a.ts", "first/wp-hooks/the_content/a.ts"),
+            ("tp/abilities.json", "tp/_generated/abilities.json"),
+            ("tp/plugins.lock.json", "tp/_generated/plugins.lock.json"),
+            ("wp-hooks/save_post.ts", "tp/wp-hooks/save_post.ts"),
+            ("wp-hooks/the_content/a.ts", "tp/wp-hooks/the_content/a.ts"),
             // Already current, and unrelated paths, are unchanged.
-            ("first/_generated/abilities.json", "first/_generated/abilities.json"),
-            ("first/lib/fields.ts", "first/lib/fields.ts"),
-            ("first/migrations-notes.md", "first/migrations-notes.md"),
-            ("first.config.ts", "first.config.ts"),
+            ("tp/_generated/abilities.json", "tp/_generated/abilities.json"),
+            ("tp/lib/fields.ts", "tp/lib/fields.ts"),
+            ("tp/migrations-notes.md", "tp/migrations-notes.md"),
+            ("typedpress.config.ts", "typedpress.config.ts"),
         ] {
             assert_eq!(super::current(old), new, "{old}");
         }

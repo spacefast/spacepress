@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
 
 use RuntimeException;
 use function sprintf;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInfoExtractor;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UidNormalizer;
-use First\Identity\Vendor\Symfony\Component\Serializer\Serializer;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInfoExtractor;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UidNormalizer;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Serializer;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
 
 final readonly class WebauthnSerializerFactory
 {

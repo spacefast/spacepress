@@ -1,6 +1,6 @@
-//! `"first/app"` in compiled code (docs/spec/rendering.md §2–§4): `notFound()`, `redirect()`, and
+//! `"typedpress/app"` in compiled code (docs/spec/rendering.md §2–§4): `notFound()`, `redirect()`, and
 //! the components `<Content>`, `<Html>` and `<Link>`. Pages call them; the app router
-//! (`runtime/First/Wp/AppRouter.php`) catches what `notFound()` and `redirect()` throw.
+//! (`runtime/TypedPress/Wp/AppRouter.php`) catches what `notFound()` and `redirect()` throw.
 use super::*;
 
 impl Compiler<'_, '_> {
@@ -25,7 +25,7 @@ impl Compiler<'_, '_> {
         if file.ends_with("layout.tsx") {
             props.insert("children".to_string(), (Ty::Html, false));
         }
-        // `login.tsx`: what wp-login.php's sign-in view knows (First\Render\LoginView::props).
+        // `login.tsx`: what wp-login.php's sign-in view knows (TypedPress\Render\LoginView::props).
         if file == "app/login.tsx" {
             let strings = Ty::Array(Box::new(Ty::Str));
             props.insert("errors".to_string(), (strings.clone(), false));
@@ -49,7 +49,7 @@ impl Compiler<'_, '_> {
         Ty::Obj(props)
     }
 
-    /// Whether `ann` names a props type `"first/app"` exports.
+    /// Whether `ann` names a props type `"typedpress/app"` exports.
     pub(super) fn app_props_annotation(&self, ann: &TyAnn, module: usize) -> bool {
         let TyAnn::Ref(name, _, _) = ann else { return false };
         self.ev_program().modules[module].body.iter().any(|stmt| match stmt {
@@ -61,7 +61,7 @@ impl Compiler<'_, '_> {
         })
     }
 
-    /// The `"first/app"` export an identifier names, if it does.
+    /// The `"typedpress/app"` export an identifier names, if it does.
     pub(super) fn app_builtin(&mut self, e: &Expr) -> Result<Option<&'static str>> {
         let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
         Ok(match self.resolve(n, e.span)? {
@@ -70,7 +70,7 @@ impl Compiler<'_, '_> {
         })
     }
 
-    /// The registered name of the action `e` names (`subscribe` imported from `first/server.ts`), if
+    /// The registered name of the action `e` names (`subscribe` imported from `tp/server.ts`), if
     /// it names one.
     pub(super) fn action_named(&mut self, e: &Expr) -> Result<Option<String>> {
         let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
@@ -105,7 +105,7 @@ impl Compiler<'_, '_> {
         state.insert("result".to_string(), (Ty::union([result, Ty::Null]), false));
         state.insert("values".to_string(), (Ty::Map(Box::new(Ty::Str)), false));
         Ok(Out::atom(
-            format!("\\First\\Render\\Forms::state({})", php_str(&action)),
+            format!("\\TypedPress\\Render\\Forms::state({})", php_str(&action)),
             Ty::Obj(state),
         ))
     }
@@ -162,7 +162,7 @@ impl Compiler<'_, '_> {
         };
         Ok(Out::atom(
             format!(
-                "\\First\\Render\\CommentsView::render({}, {}, {class})",
+                "\\TypedPress\\Render\\CommentsView::render({}, {}, {class})",
                 php_str(&kind),
                 v.php
             ),
@@ -220,7 +220,7 @@ impl Compiler<'_, '_> {
             let placeholder = value(self, "placeholder", &optional_string)?;
             let class = value(self, "className", &optional_string)?;
             return Ok(Out::atom(
-                format!("\\First\\Render\\SearchView::form({action}, {label}, {placeholder}, {class})"),
+                format!("\\TypedPress\\Render\\SearchView::form({action}, {label}, {placeholder}, {class})"),
                 Ty::Html,
             ));
         }
@@ -267,7 +267,7 @@ impl Compiler<'_, '_> {
         let per_page = value(self, "perPage", &number)?;
         let class = value(self, "className", &optional_string)?;
         Ok(Out::atom(
-            format!("\\First\\Render\\SearchView::results({kind}, {q}, {page}, {per_page}, {class})"),
+            format!("\\TypedPress\\Render\\SearchView::results({kind}, {q}, {page}, {per_page}, {class})"),
             Ty::Html,
         ))
     }
@@ -280,7 +280,7 @@ impl Compiler<'_, '_> {
                 if !args.is_empty() {
                     return err_help(span, "`notFound()` takes no arguments", "call `notFound()`");
                 }
-                Ok(Out::atom("\\First\\Render\\Halt::notFound()", Ty::Never))
+                Ok(Out::atom("\\TypedPress\\Render\\Halt::notFound()", Ty::Never))
             }
             "redirect" => {
                 if args.is_empty() || args.len() > 2 {
@@ -326,7 +326,7 @@ impl Compiler<'_, '_> {
                     Some(ArrEl::Spread(x)) => return err(x.span, "spread arguments aren't supported here"),
                 };
                 Ok(Out::atom(
-                    format!("\\First\\Render\\Halt::redirect({}, {status})", u.php),
+                    format!("\\TypedPress\\Render\\Halt::redirect({}, {status})", u.php),
                     Ty::Never,
                 ))
             }
@@ -429,7 +429,10 @@ impl Compiler<'_, '_> {
                 // The children render inside the region's closure, so the endpoint can render the
                 // region alone and record only its reads.
                 Ok(Out::atom(
-                    format!("\\First\\Render\\Live::region({}, fn () => {children})", php_str(&id)),
+                    format!(
+                        "\\TypedPress\\Render\\Live::region({}, fn () => {children})",
+                        php_str(&id)
+                    ),
                     Ty::Html,
                 ))
             }
@@ -465,7 +468,7 @@ impl Compiler<'_, '_> {
                 let class = arg("className", optional.clone(), Some("null"))?;
                 let label = arg("aria-label", optional, Some("null"))?;
                 Ok(Out::atom(
-                    format!("\\First\\Render\\Pagination::render({page}, {pages}, {param}, {class}, {label})"),
+                    format!("\\TypedPress\\Render\\Pagination::render({page}, {pages}, {param}, {class}, {label})"),
                     Ty::Html,
                 ))
             }
@@ -494,7 +497,7 @@ impl Compiler<'_, '_> {
                 let notices = arg("notices", flag.clone())?;
                 let links = arg("links", flag)?;
                 Ok(Out::atom(
-                    format!("\\First\\Render\\LoginView::form({class}, {submit}, {notices}, {links})"),
+                    format!("\\TypedPress\\Render\\LoginView::form({class}, {submit}, {notices}, {links})"),
                     Ty::Html,
                 ))
             }
@@ -521,7 +524,10 @@ impl Compiler<'_, '_> {
                     (_, true) => "trusted",
                     _ => "kses",
                 };
-                Ok(Out::atom(format!("\\First\\Render\\Markup::{f}({})", v.php), Ty::Html))
+                Ok(Out::atom(
+                    format!("\\TypedPress\\Render\\Markup::{f}({})", v.php),
+                    Ty::Html,
+                ))
             }
             "Link" => {
                 let Some(href) = get("href") else {
@@ -570,7 +576,7 @@ impl Compiler<'_, '_> {
                     None => "null".into(),
                 };
                 Ok(Out::atom(
-                    format!("\\First\\Render\\Markup::link([{}], {children})", attrs.join(", ")),
+                    format!("\\TypedPress\\Render\\Markup::link([{}], {children})", attrs.join(", ")),
                     Ty::Html,
                 ))
             }

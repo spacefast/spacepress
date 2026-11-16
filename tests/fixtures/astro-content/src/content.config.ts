@@ -1,7 +1,7 @@
-// The content collections of an Astro blog, kept as they are; First reads the glob ones as kinds.
+// The content collections of an Astro blog, kept as they are; TypedPress reads the glob ones as kinds.
 import { defineCollection, z } from "astro:content";
 import { glob } from "astro/loaders";
-import { firstLoader } from "@first/astro";
+import { tpLoader } from "@typedpress/astro";
 
 const blog = defineCollection({
   loader: glob({ base: "./src/content/blog", pattern: "**/*.md" }),
@@ -26,6 +26,6 @@ export const collections = {
     loader: glob({ pattern: "*.md", base: "src/content/authors" }),
     schema: z.object({ name: z.string(), email: z.string().email().optional() }),
   }),
-  // Read from another site: Astro's own, not a First kind.
-  remote: defineCollection({ loader: firstLoader("posts") }),
+  // Read from another site: Astro's own, not a TypedPress kind.
+  remote: defineCollection({ loader: tpLoader("posts") }),
 };

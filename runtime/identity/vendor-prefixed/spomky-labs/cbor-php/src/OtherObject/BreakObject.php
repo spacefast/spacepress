@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\OtherObject;
+namespace TypedPress\Identity\Vendor\CBOR\OtherObject;
 
-use First\Identity\Vendor\CBOR\OtherObject as Base;
+use TypedPress\Identity\Vendor\CBOR\OtherObject as Base;
 
 final class BreakObject extends Base
 {

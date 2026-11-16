@@ -56,7 +56,7 @@ const DashboardActions = ( {
 						onOpenWidgetsModal();
 					} }
 				>
-					{ __( 'Add widgets', 'first-admin' ) }
+					{ __( 'Add widgets', 'typedpress-admin' ) }
 				</Button>
 			</Stack>
 		);
@@ -79,7 +79,7 @@ const DashboardActions = ( {
 							onOpenWidgetsModal();
 						} }
 					>
-						{ __( 'Add widget', 'first-admin' ) }
+						{ __( 'Add widget', 'typedpress-admin' ) }
 					</Button>
 					<Button
 						variant="minimal"
@@ -89,7 +89,7 @@ const DashboardActions = ( {
 							onCancel();
 						} }
 					>
-						{ __( 'Cancel', 'first-admin' ) }
+						{ __( 'Cancel', 'typedpress-admin' ) }
 					</Button>
 				</>
 			) }
@@ -104,8 +104,8 @@ const DashboardActions = ( {
 				} }
 			>
 				{ editMode
-					? __( 'Done', 'first-admin' )
-					: __( 'Customize', 'first-admin' ) }
+					? __( 'Done', 'typedpress-admin' )
+					: __( 'Customize', 'typedpress-admin' ) }
 			</Button>
 		</Stack>
 	);

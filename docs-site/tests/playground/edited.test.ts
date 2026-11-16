@@ -4,7 +4,7 @@
 // with the same functions the page uses (lib/blueprint.ts `runRequest` and `editedBlueprint`), boots
 // it with @wp-playground/cli, and checks WordPress stores and answers the new field.
 //
-// First's shared plugin zips are served from public/files/ on a local port; WordPress, PHP and the
+// TypedPress's shared plugin zips are served from public/files/ on a local port; WordPress, PHP and the
 // WordPress.org plugins come over the network as they do for a visitor. Run `pnpm showcase` first.
 import { runCLI, type RunCLIServer } from "@wp-playground/cli";
 import assert from "node:assert/strict";
@@ -29,12 +29,12 @@ const files = path.join(site, "public/files");
 const create = `<?php
 require_once '/wordpress/wp-load.php';
 wp_set_current_user(1);
-echo \\First\\Wp\\Facade::route(\\First\\Wp\\Runtime::plugin(), 'POST', '/items', [], wp_json_encode(['name' => 'Oat milk', 'quantity' => 3, 'unit' => 'l', 'lowStockAt' => 1, 'note' => 'top shelf']))[0];
+echo \\TypedPress\\Wp\\Facade::route(\\TypedPress\\Wp\\Runtime::plugin(), 'POST', '/items', [], wp_json_encode(['name' => 'Oat milk', 'quantity' => 3, 'unit' => 'l', 'lowStockAt' => 1, 'note' => 'top shelf']))[0];
 `;
 
 /** The items the API lists, over HTTP, as the signed-in visitor. */
 async function items(): Promise<Record<string, unknown>[]> {
-	const response = await get("/__first/api/v1/items");
+	const response = await get("/__tp/api/v1/items");
 	assert.equal(response.status, 200, response.body);
 	const json = JSON.parse(response.body) as { data?: Record<string, unknown>[] } | Record<string, unknown>[];
 	const rows = Array.isArray(json) ? json : json.data;
@@ -48,17 +48,17 @@ let seeded: boolean;
 let get: ReturnType<typeof browser>;
 
 before(async () => {
-	if (!existsSync(path.join(files, "plugins/first-runtime.zip"))) throw new Error("public/files/plugins/first-runtime.zip is missing; run pnpm showcase");
+	if (!existsSync(path.join(files, "plugins/typedpress-runtime.zip"))) throw new Error("public/files/plugins/typedpress-runtime.zip is missing; run pnpm showcase");
 	zips = await serveFiles();
 	const { port } = zips.address() as AddressInfo;
 
 	// The editor holds First names; the page hands the compiler the names it reads.
 	const shown = firstFiles(sources(path.join(repo, "examples/pantry")));
-	const config = shown["first.config.ts"]!;
+	const config = shown["typedpress.config.ts"]!;
 	const edited = config.replace("  opened: boolean().default(false),", "  opened: boolean().default(false),\n  note: text().optional(),");
 	assert.notEqual(edited, config, "the edit did not apply; examples/pantry changed");
 	const run = await exampleRun("pantry");
-	const { check, output } = (await loadCompiler()).compile(runRequest("pantry", compilerFiles({ ...shown, "first.config.ts": edited }), run.ledger));
+	const { check, output } = (await loadCompiler()).compile(runRequest("pantry", compilerFiles({ ...shown, "typedpress.config.ts": edited }), run.ledger));
 	assert.ok(output, JSON.stringify(check.diagnostics));
 	const built = editedBlueprint({ output, example: run, site: `http://127.0.0.1:${port}`, platform: platformVersions() });
 	assert.ok(!("refused" in built), "refused" in built ? built.refused : "");

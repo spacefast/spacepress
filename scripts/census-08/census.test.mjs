@@ -3,7 +3,7 @@
 // the shape 0.8's esbuild step emits (whitespace removed, identifiers kept, `var x=capsule(...)`
 // plus `export{x as default}`).
 //
-//   FIRST_BIN=target/debug/first node --test scripts/census-08/census.test.mjs
+//   TP_BIN=target/debug/typedpress node --test scripts/census-08/census.test.mjs
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -17,7 +17,7 @@ import { converterReport, outcome, payloadCensus, summarize, verifySource } from
 import { ERASED, pageStub, PAGE_MARKER, serverSource, writeCapsule } from "./reconstruct.mjs";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
-const zero = path.resolve(process.env.FIRST_BIN ?? path.join(root, "target/debug/first"));
+const zero = path.resolve(process.env.TP_BIN ?? path.join(root, "target/debug/typedpress"));
 const fixture = JSON.parse(fs.readFileSync(path.join(root, "tests/fixtures/app-migrate/manifest/finalize.json"), "utf8"));
 
 function typescript() {
@@ -158,8 +158,8 @@ test("source verification uses the recorded hashes", () => {
   }
 });
 
-// With FIRST_BIN set (as in CI) a missing binary fails the test instead of skipping it.
-const skipConverter = !process.env.FIRST_BIN && !fs.existsSync(zero) && "no zero binary; run cargo build";
+// With TP_BIN set (as in CI) a missing binary fails the test instead of skipping it.
+const skipConverter = !process.env.TP_BIN && !fs.existsSync(zero) && "no zero binary; run cargo build";
 test("the converter's refusals on a rebuilt capsule keep their reasons", { skip: skipConverter }, () => {
   // A blocker the bundle shows: a context service the converter does not map.
   const services = convert(payload('var app_default=capsule({name:"t",schema:{notes:table({body:string()})},mutations:{add:mutation(async(ctx,body)=>{await ctx.jwt.sign({sub:body});return ctx.db.notes.insert({body})})}});', { pages: [] }));

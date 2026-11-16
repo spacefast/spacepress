@@ -2,12 +2,12 @@
 // feature usage. Nothing here keeps a name, path or value from the Space beyond the call.
 import { readPayload, serverImports } from "./reconstruct.mjs";
 
-// First path segments the converter treats as owned by WordPress or First
+// TypedPress path segments the converter treats as owned by WordPress or TypedPress
 // (`RESERVED` in src/config_migrate/app/endpoints.rs), plus every `wp-*`.
 export const RESERVED_SEGMENTS = new Set([
   "wp-admin", "wp-json", "wp-content", "wp-includes", "wp-login.php", "wp-signup.php", "wp-cron.php",
   "xmlrpc.php", "wp-sitemap.xml", "feed", "comments", "search", "author", "category", "tag", "page",
-  "embed", "trackback", "robots.txt", "favicon.ico", "first-admin", "auth", ".well-known",
+  "embed", "trackback", "robots.txt", "favicon.ico", "typedpress-admin", "auth", ".well-known",
   "__spacefast", "__zero", "identity", "index.php", "wp-config.php",
 ]);
 

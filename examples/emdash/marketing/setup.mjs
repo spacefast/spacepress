@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const exec = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
-export const first = resolve(process.env.FIRST_BIN ?? "target/debug/first");
+export const first = resolve(process.env.TP_BIN ?? "target/debug/typedpress");
 export const command = async (args) =>
   (
     await exec(first, args, { timeout: 600000, maxBuffer: 8 * 1024 * 1024 })
@@ -16,17 +16,17 @@ export const command = async (args) =>
 export const wp = (project, ...args) =>
   command(['wp', '--site', project, ...args]);
 export async function installFrontend(project) {
-  const site = join(project, ".first/dev/wordpress");
+  const site = join(project, ".tp/dev/wordpress");
   await cp(
-    join(here, "wordpress/first-marketing-frontend"),
-    join(site, "wp-content/plugins/first-marketing-frontend"),
+    join(here, "wordpress/typedpress-marketing-frontend"),
+    join(site, "wp-content/plugins/typedpress-marketing-frontend"),
     { recursive: true },
   );
-  await wp(project, "plugin", "activate", "first-marketing-frontend");
+  await wp(project, "plugin", "activate", "typedpress-marketing-frontend");
 }
 export async function connect(project) {
   const status = JSON.parse(await command(["dev", "status", project]));
-  assert.equal(status.isOnline, true, "Start first dev before setup");
+  assert.equal(status.isOnline, true, "Start typedpress dev before setup");
   const base = status.siteUrl.replace(/\/$/, "");
   const credentialName = `marketing-local-${randomUUID()}`;
   const password = await wp(
@@ -67,7 +67,7 @@ export async function connect(project) {
     base,
     authorization,
     request,
-    api: (path, options) => request("/__first/api/v1" + path, options),
+    api: (path, options) => request("/__tp/api/v1" + path, options),
     dispose: async () => {
       const list = JSON.parse(
         await wp(
@@ -164,14 +164,14 @@ async function seed(client, seedFile) {
       continue;
     }
     const page = await materialize(source);
-    const saved = await client.request("/wp-json/wp/v2/first_pages", {
+    const saved = await client.request("/wp-json/wp/v2/tp_pages", {
       method: "POST",
       body: {
         title: page.title,
         slug: page.slug,
         status: "publish",
         acf: {
-          first_sections: page.sections.map(({ layout, ...fields }) => ({
+          tp_sections: page.sections.map(({ layout, ...fields }) => ({
             acf_fc_layout: layout,
             ...fields,
           })),

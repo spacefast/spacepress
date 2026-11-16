@@ -8,7 +8,7 @@ publishedAt: 2026-11-15T20:00:00.000Z
 ---
 The site you are reading is built with the framework it describes. Its pages are TSX files, its docs are Markdown files stored as WordPress content, and this post is a WordPress item you can edit in the WordPress editor.
 
-```ts title="first/schema.ts"
+```ts title="tp/schema.ts"
 export const posts = collection({
   title: text().min(1).max(140),
   slug: slug({ source: "title" }),

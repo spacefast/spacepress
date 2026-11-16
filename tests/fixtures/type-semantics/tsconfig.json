@@ -5,9 +5,9 @@
     "target": "ES2023",
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "paths": { "first": ["../../../types/first/index.d.ts"] },
+    "paths": { "typedpress": ["../../../types/typedpress/index.d.ts"] },
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["first.config.ts", "shapes.ts"]
+  "include": ["typedpress.config.ts", "shapes.ts"]
 }

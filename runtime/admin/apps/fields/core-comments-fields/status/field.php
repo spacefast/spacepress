@@ -2,32 +2,32 @@
 /**
  * Status field definition for core comments fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
-$first_admin_comment_statuses = array(
+$tp_admin_comment_statuses = array(
 	array(
 		'value' => 'approved',
-		'label' => __( 'Approved', 'first-admin' ),
+		'label' => __( 'Approved', 'typedpress-admin' ),
 	),
 	array(
 		'value' => 'hold',
-		'label' => __( 'Unapproved', 'first-admin' ),
+		'label' => __( 'Unapproved', 'typedpress-admin' ),
 	),
 	array(
 		'value' => 'spam',
-		'label' => __( 'Spam', 'first-admin' ),
+		'label' => __( 'Spam', 'typedpress-admin' ),
 	),
 	array(
 		'value' => 'trash',
-		'label' => __( 'Trash', 'first-admin' ),
+		'label' => __( 'Trash', 'typedpress-admin' ),
 	),
 );
 
 return array(
 	'type'          => 'select',
-	'label'         => __( 'Status', 'first-admin' ),
+	'label'         => __( 'Status', 'typedpress-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
-	'elements'      => $first_admin_comment_statuses,
+	'elements'      => $tp_admin_comment_statuses,
 );

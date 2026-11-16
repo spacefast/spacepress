@@ -16,7 +16,7 @@ export default function SaveButton( {
 	isDisabled: isDisabledFromProp = false,
 	onSave = () => {},
 	onError = () => {},
-	label = __( 'Save', 'first-admin' ),
+	label = __( 'Save', 'typedpress-admin' ),
 }: SaveButtonProps ) {
 	const registry = useRegistry();
 	const [ isPendingSave, setIsPendingSave ] = useState( false );
@@ -40,10 +40,10 @@ export default function SaveButton( {
 		! hasChanges || isDisabledFromProp || isPendingSave || isSaving;
 	return (
 		<Button
-			className="first-admin-save-button"
+			className="typedpress-admin-save-button"
 			loading={ isPendingSave || isSaving }
 			disabled={ isSaveButtonDisabled }
-			loadingAnnouncement={ __( 'Saving', 'first-admin' ) }
+			loadingAnnouncement={ __( 'Saving', 'typedpress-admin' ) }
 			size="compact"
 			onClick={ () => {
 				if ( isSaveButtonDisabled || isPendingSaveRef.current ) {

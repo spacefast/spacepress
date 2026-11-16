@@ -2,12 +2,12 @@
 /**
  * Post field definition for core user fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'          => 'integer',
-	'label'         => __( 'Posts', 'first-admin' ),
+	'label'         => __( 'Posts', 'typedpress-admin' ),
 	'defaultValue'  => 0,
 	'enableSorting' => true,
 	'filterBy'      => array(

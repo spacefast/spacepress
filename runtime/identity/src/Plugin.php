@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity;
+namespace TypedPress\Identity;
 
 final class Plugin
 {
-    /** Equal to the first-runtime version built alongside it (`Runtime::identity()` compares them). */
+    /** Equal to the typedpress-runtime version built alongside it (`Runtime::identity()` compares them). */
     public const VERSION = "0.3.0";
     private static ?\WP_Error $authenticationError = null;
     public static DB $db;
@@ -30,12 +30,12 @@ final class Plugin
         return new \WP_Error($error->kind, $error->getMessage(), ["status" => $error->status]);
     }
     /**
-     * Whether a build from the store mounted identity (`First\Loader\Loader::load`): then booting
+     * Whether a build from the store mounted identity (`TypedPress\Loader\Loader::load`): then booting
      * installs nothing, and {@see install()} runs when the host initializes the build.
      */
     public static function managed(): bool
     {
-        return class_exists(\First\Loader\Loader::class, false) && \First\Loader\Loader::loaded() !== null;
+        return class_exists(\TypedPress\Loader\Loader::class, false) && \TypedPress\Loader\Loader::loaded() !== null;
     }
 
     /**
@@ -53,9 +53,9 @@ final class Plugin
 
     private static function installStorage(): void
     {
-        // A site that ran zero-identity (before the rename to First) keeps its accounts and sessions.
+        // A site that ran zero-identity (before the rename to TypedPress) keeps its accounts and sessions.
         Legacy\ZeroNames::upgrade(self::$db);
-        if ((int) get_option("first_identity_schema_version", 0) < Schema::VERSION) {
+        if ((int) get_option("tp_identity_schema_version", 0) < Schema::VERSION) {
             Schema::migrate(self::$db);
         }
     }
@@ -66,16 +66,16 @@ final class Plugin
         self::$db = new DB($wpdb);
         self::$security = new Security(self::$db);
         self::$accounts = new Accounts(self::$db, self::$security);
-        // A site that installs First as plugins installs identity on boot; a build mounted from the
+        // A site that installs TypedPress as plugins installs identity on boot; a build mounted from the
         // store installs nothing until the host initializes it (install()).
         if (!self::managed()) {
             add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
         }
         add_filter('cron_schedules', static function (array $schedules): array {
-            $schedules['first_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
+            $schedules['tp_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
             return $schedules;
         });
-        add_action('first_identity_password_inventory', [Accounts::class, 'inventoryPasswordHashes']);
+        add_action('tp_identity_password_inventory', [Accounts::class, 'inventoryPasswordHashes']);
         self::$sessions = new Sessions(self::$db, self::$security);
         self::$api = new Api(
             self::$db,
@@ -94,7 +94,7 @@ final class Plugin
                 if (
                     str_starts_with(
                         $request->get_route(),
-                        "/first-identity/v1/",
+                        "/typedpress-identity/v1/",
                     )
                 ) {
                     header_remove("Access-Control-Allow-Origin");
@@ -111,7 +111,7 @@ final class Plugin
         add_filter(
             "admin_body_class",
             static fn($classes) => $classes .
-                (($_GET["page"] ?? "") === "first-identity"
+                (($_GET["page"] ?? "") === "typedpress-identity"
                     ? " zi-admin-screen"
                     : ""),
         );
@@ -120,7 +120,7 @@ final class Plugin
                 "Identity",
                 "Identity",
                 "manage_options",
-                "first-identity",
+                "typedpress-identity",
                 fn() => self::adminPage($file),
                 "dashicons-admin-users",
                 3,
@@ -332,7 +332,7 @@ final class Plugin
             $prefix = self::url("/authorize?");
             $return = str_starts_with($redirect, $prefix) ? Providers::continuation(substr($redirect, strlen(self::url("")))) : "";
             $url = add_query_arg(array_filter(["methods" => "1", "return_to" => $return !== "" ? rawurlencode($return) : null]), self::url(""));
-            echo '<p class="first-identity-methods"><a href="' . esc_url($url) . '">' . esc_html__("Sign in with an email code, a passkey or another account", "first-identity") . "</a></p>";
+            echo '<p class="typedpress-identity-methods"><a href="' . esc_url($url) . '">' . esc_html__("Sign in with an email code, a passkey or another account", "typedpress-identity") . "</a></p>";
         });
         $rememberPassword = static function ($uid): void {
             $user = get_userdata((int) $uid);
@@ -379,7 +379,7 @@ final class Plugin
         }, 10, 2);
         // Guests can't plant WordPress credentials (password, application passwords) a former
         // holder of the guest could keep after an upgrade: those belong to saved accounts.
-        add_filter("wp_is_application_passwords_available_for_user", static fn ($available, $user) => $available && !($user instanceof \WP_User && in_array("first_guest", (array) $user->roles, true)), 10, 2);
+        add_filter("wp_is_application_passwords_available_for_user", static fn ($available, $user) => $available && !($user instanceof \WP_User && in_array("tp_guest", (array) $user->roles, true)), 10, 2);
         // Application passwords skip the `authenticate` filter; refuse inactive accounts here too.
         add_action("wp_authenticate_application_password_errors", static function ($error, $user) {
             try {
@@ -436,13 +436,13 @@ final class Plugin
         }, PHP_INT_MAX);
         add_filter("rest_authentication_errors", static fn ($error) => self::authenticationError() ?? $error, 99);
         add_action(
-            "first_identity_maintenance",
+            "tp_identity_maintenance",
             fn() => (new Maintenance(self::$db, self::$security))->run(),
         );
         add_filter("wp_privacy_personal_data_exporters", static function (
             $exporters,
         ) {
-            $exporters["first-identity"] = [
+            $exporters["typedpress-identity"] = [
                 "exporter_friendly_name" => "Identity",
                 "callback" => static function ($email) {
                     $uid = self::$accounts->owner($email);
@@ -476,7 +476,7 @@ final class Plugin
         add_filter("wp_privacy_personal_data_erasers", static function (
             $erasers,
         ) {
-            $erasers["first-identity"] = [
+            $erasers["typedpress-identity"] = [
                 "eraser_friendly_name" => "Identity",
                 "callback" => static function ($email) {
                     $uid = self::$accounts->owner($email);
@@ -512,7 +512,7 @@ final class Plugin
         });
         add_action("wp_abilities_api_init", static function () {
             if (function_exists("wp_register_ability")) {
-                wp_register_ability("first-identity/account", [
+                wp_register_ability("typedpress-identity/account", [
                     "label" => "Get identity account",
                     "description" => "Read a WordPress identity account.",
                     "input_schema" => [
@@ -530,23 +530,23 @@ final class Plugin
             }
         });
         if (defined("WP_CLI") && WP_CLI) {
-            // `wp first identity …`: one `first` namespace, owned by the runtime's dispatcher.
-            $register = static fn() => \First\Wp\Runtime::command(
+            // `wp typedpress identity …`: one `typedpress` namespace, owned by the runtime's dispatcher.
+            $register = static fn() => \TypedPress\Wp\Runtime::command(
                 "identity",
                 Cli::run(...),
             );
-            did_action("first_runtime_loaded")
+            did_action("tp_runtime_loaded")
                 ? $register()
-                : add_action("first_runtime_loaded", $register);
-            // Without the runtime (identity on its own), `wp first` serves `identity` only.
+                : add_action("tp_runtime_loaded", $register);
+            // Without the runtime (identity on its own), `wp typedpress` serves `identity` only.
             add_action("plugins_loaded", static function () {
-                if (did_action("first_runtime_loaded")) {
+                if (did_action("tp_runtime_loaded")) {
                     return;
                 }
-                \WP_CLI::add_command("first", static function (array $args, array $flags) {
+                \WP_CLI::add_command("typedpress", static function (array $args, array $flags) {
                     if (($args[0] ?? "") !== "identity") {
                         \WP_CLI::error(
-                            "Only wp first identity is available without the first-runtime plugin.",
+                            "Only wp typedpress identity is available without the typedpress-runtime plugin.",
                         );
                     }
                     $code = Cli::run(array_slice($args, 1), $flags);
@@ -655,8 +655,8 @@ final class Plugin
         if (
             !is_ssl() &&
             !(
-                defined("FIRST_IDENTITY_DEV_HTTP") &&
-                FIRST_IDENTITY_DEV_HTTP &&
+                defined("TP_IDENTITY_DEV_HTTP") &&
+                TP_IDENTITY_DEV_HTTP &&
                 wp_get_environment_type() === "local"
             )
         ) {
@@ -928,7 +928,7 @@ final class Plugin
                 '</title><link rel="stylesheet" href="' .
                 esc_url(plugins_url("build/hosted.css", $file)) .
                 '"></head><body><div id="identity-root" data-api="' .
-                esc_url(rest_url("first-identity/v1/")) .
+                esc_url(rest_url("typedpress-identity/v1/")) .
                 '" data-issuer="' .
                 esc_url(OAuth::issuer()) .
                 '" data-login="' .
@@ -956,20 +956,20 @@ final class Plugin
     private static function adminPage(string $file): void
     {
         echo '<div id="identity-admin" data-api="' .
-            esc_url(rest_url("first-identity/v1/admin/")) .
+            esc_url(rest_url("typedpress-identity/v1/admin/")) .
             '" data-nonce="' .
             esc_attr(wp_create_nonce("wp_rest")) .
             '" data-site="' .
             esc_attr(get_bloginfo("name")) .
             '"></div>';
         wp_enqueue_style(
-            "first-identity-admin",
+            "typedpress-identity-admin",
             plugins_url("build/admin.css", $file),
             [],
             self::VERSION,
         );
         wp_enqueue_script(
-            "first-identity-admin",
+            "typedpress-identity-admin",
             plugins_url("build/admin.js", $file),
             [],
             self::VERSION,

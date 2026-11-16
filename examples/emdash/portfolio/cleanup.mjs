@@ -6,11 +6,11 @@ import { promisify } from 'node:util';
 
 const execute = promisify(execFile);
 const file = resolve(process.argv[2] ?? '');
-assert.notEqual(process.argv[2], undefined, 'Usage: node cleanup.mjs /tmp/first-portfolio-evidence-.../studio.json');
+assert.notEqual(process.argv[2], undefined, 'Usage: node cleanup.mjs /tmp/typedpress-portfolio-evidence-.../studio.json');
 const receipt = JSON.parse(await readFile(file, 'utf8'));
-assert.match(receipt.root, /^\/tmp\/first-portfolio-studio-[A-Za-z0-9]+$/);
+assert.match(receipt.root, /^\/tmp\/typedpress-portfolio-studio-[A-Za-z0-9]+$/);
 assert.equal(receipt.project, join(receipt.root, 'app'));
-assert.equal(receipt.site, join(receipt.project, '.first/dev/wordpress'));
+assert.equal(receipt.site, join(receipt.project, '.tp/dev/wordpress'));
 if (receipt.state === 'deleted') {
   await rm(receipt.root, { recursive: true, force: true });
   console.log(`Already deleted: ${receipt.site}`);

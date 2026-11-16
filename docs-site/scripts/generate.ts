@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { Compiler } from "../lib/compiler.ts";
 import { sources } from "../lib/examples.ts";
 import { siteExamples } from "../lib/site-examples.ts";
-import { toFirst } from "../lib/names.ts";
+import { toTypedPress } from "../lib/names.ts";
 
 const site = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repo = path.dirname(site);
@@ -84,7 +84,7 @@ function readme(dir: string): { body: string } | null {
 function prose(markdown: string, from: string): string {
 	const urls: string[] = [];
 	const held = repoLinks(markdown, from).replace(/\]\((https:\/\/github\.com\/[^)\s]+)\)/g, (_, url: string) => `](\u0000${urls.push(url) - 1}\u0000)`);
-	return toFirst(held).replace(/\u0000(\d+)\u0000/g, (_, i: string) => urls[Number(i)]!);
+	return toTypedPress(held).replace(/\u0000(\d+)\u0000/g, (_, i: string) => urls[Number(i)]!);
 }
 
 /**
@@ -110,13 +110,13 @@ function compileSummary(name: string, dir: string): { ok: boolean; text: string;
 	if (!result.output) {
 		const first = result.check.diagnostics[0];
 		const where = first?.location ? `${first.location.file}:${first.location.line}:${first.location.column}` : "";
-		return { ok: false, text: toFirst(`${first?.code ?? ""} ${where} ${first?.message ?? ""}`.trim()) };
+		return { ok: false, text: toTypedPress(`${first?.code ?? ""} ${where} ${first?.message ?? ""}`.trim()) };
 	}
 	return { ok: true, text: `${result.output.migrations.map(([file]) => file).join(", ")}` };
 }
 
 // The examples the site shows (lib/site-examples.ts). Each page holds the example's README, if it
-// has one, and a file browser with every file the developer writes and every file `first build`
+// has one, and a file browser with every file the developer writes and every file `typedpress build`
 // writes for them. The other directories under examples/ stay in the repository.
 for (const { name } of siteExamples) {
 	const dir = path.join(repo, "examples", name);
@@ -141,10 +141,10 @@ for (const { name, title, summary } of siteExamples) {
 
 page(
 	"docs/examples/index.mdx",
-	{ title: "Examples", description: "Small First apps, each with every file it is built from and every file first build writes for it." },
+	{ title: "Examples", description: "Small TypedPress apps, each with every file it is built from and every file typedpress build writes for it." },
 	"lib/site-examples.ts",
 	[
-		"Each example below is a directory in [`examples/`](" + tree + "/examples). Its page shows the files you write and every file `first build` writes for them, built when this site was built.",
+		"Each example below is a directory in [`examples/`](" + tree + "/examples). Its page shows the files you write and every file `typedpress build` writes for them, built when this site was built.",
 		["| Example | What it shows |", "| --- | --- |", ...siteExamples.map((e) => `| [${e.title}](/examples/${e.name}) | ${cell(e.summary)} |`)].join("\n"),
 		"The repository has more examples. Some are tests, some are unfinished.",
 	].join("\n\n"),
@@ -173,14 +173,14 @@ const pluginRows = Object.entries(supported)
 
 page(
 	"docs/reference/wordpress-plugins.mdx",
-	{ title: "WordPress plugins", description: "The WordPress plugins First installs, and the plugins it supports." },
+	{ title: "WordPress plugins", description: "The WordPress plugins TypedPress installs, and the plugins it supports." },
 	"src/wp_plugins/supported.json, src/platform.rs and tests/fixtures/platform.json",
 	`
-First runs on WordPress ${platform.wordpress} or later and PHP ${platform.php} or later. The database is MySQL ${platform.mysql}, MariaDB ${platform.mariadb}, or SQLite through the SQLite Database Integration plugin ${platform.sqlite}.
+TypedPress runs on WordPress ${platform.wordpress} or later and PHP ${platform.php} or later. The database is MySQL ${platform.mysql}, MariaDB ${platform.mariadb}, or SQLite through the SQLite Database Integration plugin ${platform.sqlite}.
 
-## Plugins First supports
+## Plugins TypedPress supports
 
-\`first build\` installs the plugins marked "Always installed" in every app. You don't list them in your config. Every plugin in this table is tested by the First team.
+\`typedpress build\` installs the plugins marked "Always installed" in every app. You don't list them in your config. Every plugin in this table is tested by the TypedPress team.
 
 | Plugin | When | Pinned version | Supported versions |
 | --- | --- | --- | --- |
@@ -190,13 +190,13 @@ The supported versions come from [\`src/wp_plugins/supported.json\`](${github}/s
 
 ## Add another plugin
 
-To add a plugin, name its WordPress.org slug and version under \`plugins\` in \`first.config.ts\`. This is \`examples/wp-plugins\`:
+To add a plugin, name its WordPress.org slug and version under \`plugins\` in \`typedpress.config.ts\`. This is \`examples/wp-plugins\`:
 
 <ExampleConfig name="wp-plugins" />
 
-The first build downloads the plugin and records its SHA-256 in \`first/wp-plugins.lock.json\`. Commit that file. Later builds refuse an archive whose checksum differs.
+The typedpress build downloads the plugin and records its SHA-256 in \`tp/wp-plugins.lock.json\`. Commit that file. Later builds refuse an archive whose checksum differs.
 
-A plugin that is not in the table above still installs. \`first check\` and \`first build\` print a warning for it. To ask for a plugin to be supported, [open an issue](https://github.com/spacefast/zero/issues) with its slug, the version you need, and what you use it for.
+A plugin that is not in the table above still installs. \`typedpress check\` and \`typedpress build\` print a warning for it. To ask for a plugin to be supported, [open an issue](https://github.com/spacefast/zero/issues) with its slug, the version you need, and what you use it for.
 
 ## Pinned checksums
 
@@ -207,19 +207,19 @@ ${Object.entries(platform.plugins).map(([slug, p]) => `| \`${slug}\` | \`${p.ver
 );
 
 // ---------------------------------------------------------------------------------------------
-// Agents: docs/agents.md, the one description of `first init`, `first mcp` and the site's MCP
+// Agents: docs/agents.md, the one description of `typedpress init`, `typedpress mcp` and the site's MCP
 // endpoint. The page here is that file, so the two never say different things.
 // ---------------------------------------------------------------------------------------------
 
 page(
 	"docs/agents.mdx",
-	{ title: "Agents", description: "Set a project up for coding agents with first init and first mcp, and connect an agent to a running app's MCP endpoint.", sidebar: { order: 5 } },
+	{ title: "Agents", description: "Set a project up for coding agents with typedpress init and typedpress mcp, and connect an agent to a running app's MCP endpoint.", sidebar: { order: 5 } },
 	"docs/agents.md",
 	mdx(prose(read("docs/agents.md").replace(/^#\s+.+\n+/, ""), "docs/agents.md")),
 );
 
 // ---------------------------------------------------------------------------------------------
-// CLI: runtime/First/Cli/commands.json, the table the binary prints for `--help` and the one WP-CLI
+// CLI: runtime/TypedPress/Cli/commands.json, the table the binary prints for `--help` and the one WP-CLI
 // registers. One row per command.
 // ---------------------------------------------------------------------------------------------
 
@@ -229,14 +229,14 @@ interface Command {
 	summary: string;
 	via?: string;
 }
-const commands = json<{ build: Command[]; site: Command[] }>("runtime/First/Cli/commands.json");
+const commands = json<{ build: Command[]; site: Command[] }>("runtime/TypedPress/Cli/commands.json");
 const sentence = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}${/[.)]$/.test(s) ? "" : "."}`;
 const usage = (prefix: string, c: Command) => `${prefix} ${c.name}${c.args ? ` ${c.args}` : ""}`;
 // A summary may point at a repository doc, `(docs/deployment.md)`, for the terminal. On the site
 // that becomes a link to the file on GitHub.
 const docLinks = (text: string) => text.replace(/\((docs\/[\w./-]+\.md)\)/g, (_, file: string) => `([${file}](${github}/${file}))`);
 const commandRows = (prefix: string, rows: Command[]) =>
-	rows.map((c) => `| \`${cell(toFirst(usage(prefix, c)))}\` | ${cell(docLinks(mdx(sentence(toFirst(c.summary)))))} |`).join("\n");
+	rows.map((c) => `| \`${cell(toTypedPress(usage(prefix, c)))}\` | ${cell(docLinks(mdx(sentence(toTypedPress(c.summary)))))} |`).join("\n");
 // Commands that move an app or its data from another system. Migrations are experimental, so the
 // reference leaves them out and says so. `migrate` (apply database migrations) is not one of them.
 const experimental = new Set(["migrate app", "migrate config", "migrate-legacy", "migrate-legacy-users", "migrate-spacefast"]);
@@ -245,15 +245,15 @@ for (const name of experimental) {
 }
 const buildRows = commands.build.filter((c) => !experimental.has(c.name));
 const siteRows = commands.site.filter((c) => c.via !== "wp" && !experimental.has(c.name));
-const createHelp = read("packages/create-first/bin/create-first.mjs");
+const createHelp = read("packages/create-typedpress/bin/create-typedpress.mjs");
 const noInstall = createHelp.includes("--no-install");
 
 page(
 	"docs/reference/cli.mdx",
-	{ title: "CLI", description: "Every first command and every wp first command, with its arguments." },
-	"runtime/First/Cli/commands.json",
+	{ title: "CLI", description: "Every typedpress command and every wp typedpress command, with its arguments." },
+	"runtime/TypedPress/Cli/commands.json",
 	`
-The \`first\` command comes from the \`@spacefast/first-cli\` npm package. Run \`first help <command>\` to print one command's arguments.
+The \`typedpress\` command comes from the \`typedpress\` npm package. Run \`typedpress help <command>\` to print one command's arguments.
 
 ## Build commands
 
@@ -261,27 +261,27 @@ These commands run on your machine, on the project's files.
 
 | Command | What it does |
 | --- | --- |
-${commandRows("first", buildRows)}
+${commandRows("typedpress", buildRows)}
 
 ## Site commands
 
-These commands run inside WordPress. On a local site, run them as \`first <command>\`. On a WordPress server, run them as \`wp first <command>\`. Add \`--site <dir | workspace | @alias>\` to pick the site. Without it, the command uses the project's local dev site.
+These commands run inside WordPress. On a local site, run them as \`typedpress <command>\`. On a WordPress server, run them as \`wp typedpress <command>\`. Add \`--site <dir | workspace | @alias>\` to pick the site. Without it, the command uses the project's local dev site.
 
 | Command | What it does |
 | --- | --- |
-${commandRows("wp first", siteRows)}
+${commandRows("wp typedpress", siteRows)}
 
-\`first wp <WP-CLI arguments>\` runs any WP-CLI command on the local site. For example, \`first wp plugin list\`.
+\`typedpress wp <WP-CLI arguments>\` runs any WP-CLI command on the local site. For example, \`typedpress wp plugin list\`.
 
-Site commands sign in with \`FIRST_APP_PASSWORD\` or \`FIRST_TOKEN\`.
+Site commands sign in with \`TP_APP_PASSWORD\` or \`TP_TOKEN\`.
 
 The commands that move an app or its content from another system are experimental and are not listed here.
 
 ## Create an app
 
-\`npm create @spacefast/first <directory>\` copies a starter app into a new directory and installs its dependencies.${noInstall ? " Add `-- --no-install` to skip the install." : ""} The directory must not exist yet.
+\`npm create typedpress <directory>\` copies a starter app into a new directory and installs its dependencies.${noInstall ? " Add `-- --no-install` to skip the install." : ""} The directory must not exist yet.
 
-The table on this page is read from [\`runtime/First/Cli/commands.json\`](${github}/runtime/First/Cli/commands.json). The binary prints the same table for \`first --help\`, and WordPress registers the same site commands.
+The table on this page is read from [\`runtime/TypedPress/Cli/commands.json\`](${github}/runtime/TypedPress/Cli/commands.json). The binary prints the same table for \`typedpress --help\`, and WordPress registers the same site commands.
 `,
 );
 
@@ -334,7 +334,7 @@ const variantNames: Record<string, string> = {
 	ProtectedWordPress: "App code changes or reads a protected WordPress option",
 	SyncFilesTooLarge: "The content files to sync are too large",
 	SourceNeedsLocalCapture: "The host can't capture this source; publish from your machine",
-	ImportFence: "App code imports a file outside `first/`",
+	ImportFence: "App code imports a file outside `tp/`",
 	DuplicateExport: "Two exports register the same name",
 	Unexported: "A kind, global, bucket, action or job is built but not exported, so it has no name",
 };
@@ -342,16 +342,16 @@ for (const { variant } of codes) if (!variantNames[variant]) throw new Error(`sr
 
 page(
 	"docs/reference/diagnostics.mdx",
-	{ title: "Diagnostic codes", description: "Every code first check can report, and the refusals the test suite runs for each one." },
+	{ title: "Diagnostic codes", description: "Every code typedpress check can report, and the refusals the test suite runs for each one." },
 	"src/diag.rs and tests/compatibility/registry.json",
 	`
-\`first check --json\` prints one JSON object. Each problem in it has a \`code\`, a \`category\`, a \`message\`, an optional \`help\`, and a \`location\` with the file, line and column. The playground shows the same object, because it runs the same compiler.
+\`typedpress check --json\` prints one JSON object. Each problem in it has a \`code\`, a \`category\`, a \`message\`, an optional \`help\`, and a \`location\` with the file, line and column. The playground shows the same object, because it runs the same compiler.
 
 ## Codes
 
 | Code | Category | Meaning |
 | --- | --- | --- |
-${codes.map((c) => `| \`${toFirst(c.code)}\` | \`${categoryOf(c.variant)}\` | ${cell(mdx(variantNames[c.variant]!))} |`).join("\n")}
+${codes.map((c) => `| \`${toTypedPress(c.code)}\` | \`${categoryOf(c.variant)}\` | ${cell(mdx(variantNames[c.variant]!))} |`).join("\n")}
 
 ## Tested refusals
 
@@ -361,7 +361,7 @@ Each row is a fixture under [\`tests/fixtures\`](${tree}/tests/fixtures) that th
 | --- | --- | --- |
 ${refusals
 	.sort((a, b) => (a.code ?? "").localeCompare(b.code ?? "") || a.id.localeCompare(b.id))
-	.map((e) => `| \`${toFirst(e.code ?? "")}\` | ${cell(mdx(toFirst(e.message ?? "")))} | [\`${path.basename(e.fixture ?? "")}\`](${tree}/${e.fixture}) |`)
+	.map((e) => `| \`${toTypedPress(e.code ?? "")}\` | ${cell(mdx(toTypedPress(e.message ?? "")))} | [\`${path.basename(e.fixture ?? "")}\`](${tree}/${e.fixture}) |`)
 	.join("\n")}
 
 The codes come from the \`Code\` enum in [\`src/diag.rs\`](${github}/src/diag.rs). The refusals come from [\`tests/compatibility/registry.json\`](${github}/tests/compatibility/registry.json).
@@ -410,11 +410,11 @@ page(
 );
 
 // ---------------------------------------------------------------------------------------------
-// Config API: the declarations every config imports, types/first/index.d.ts. Each exported function
+// Config API: the declarations every config imports, types/typedpress/index.d.ts. Each exported function
 // with its doc comment and signature, by the sections the file is divided into.
 // ---------------------------------------------------------------------------------------------
 
-const dts = read("types/first/index.d.ts");
+const dts = read("types/typedpress/index.d.ts");
 const sections: { title: string; items: { name: string; doc: string; signature: string }[] }[] = [];
 {
 	const lines = dts.split("\n");
@@ -497,22 +497,22 @@ for (const k of configKeys) if (!k.doc && !defaultDocs[k.key]) throw new Error(`
 
 page(
 	"docs/reference/config.mdx",
-	{ title: "Config API", description: "Every option of defineConfig and every function first.config.ts can import from \"first\"." },
-	"types/first/index.d.ts",
+	{ title: "Config API", description: "Every option of defineConfig and every function typedpress.config.ts can import from \"typedpress\"." },
+	"types/typedpress/index.d.ts",
 	`
-A First app starts at \`first.config.ts\`. It imports its building blocks from \`"first"\` and exports \`defineConfig({ ... })\` as the default export. Kinds, globals, file buckets, actions and jobs aren't options: each registers by its export, from \`first.config.ts\` or any file under \`first/\` (\`export const posts = collection({ ... })\`).
+A TypedPress app starts at \`typedpress.config.ts\`. It imports its building blocks from \`"typedpress"\` and exports \`defineConfig({ ... })\` as the default export. Kinds, globals, file buckets, actions and jobs aren't options: each registers by its export, from \`typedpress.config.ts\` or any file under \`tp/\` (\`export const posts = collection({ ... })\`).
 
 ## \`defineConfig\` options
 
 | Option | What it sets |
 | --- | --- |
-${configKeys.map((k) => `| \`${k.key}\` | ${cell(mdx(toFirst(defaultDocs[k.key] || k.doc)))} |`).join("\n")}
+${configKeys.map((k) => `| \`${k.key}\` | ${cell(mdx(toTypedPress(defaultDocs[k.key] || k.doc)))} |`).join("\n")}
 
 ${sections
 	.filter((s) => s.items.some((item) => item.signature))
 	.map((s) => `## ${s.title}\n\n${s.items
 		.filter((item) => item.signature)
-		.map((item) => `### \`${item.name}\`\n\n${item.doc ? `${mdx(toFirst(item.doc))}\n\n` : ""}${fence("ts", toFirst(item.signature))}`)
+		.map((item) => `### \`${item.name}\`\n\n${item.doc ? `${mdx(toTypedPress(item.doc))}\n\n` : ""}${fence("ts", toTypedPress(item.signature))}`)
 		.join("\n\n")}`)
 	.join("\n\n")}
 
@@ -520,16 +520,16 @@ ${sections
 
 The config is ordinary TypeScript, so a set of fields can live in a function in another file and be spread into any collection or table. This is \`examples/recipes\`:
 
-<ExampleConfig name="recipes" file="first/seo.ts" />
+<ExampleConfig name="recipes" file="tp/seo.ts" />
 
 <ExampleConfig name="recipes" />
 
-This page is read from [\`types/first/index.d.ts\`](${github}/types/first/index.d.ts), the declarations your editor uses for \`first.config.ts\`.
+This page is read from [\`types/typedpress/index.d.ts\`](${github}/types/typedpress/index.d.ts), the declarations your editor uses for \`typedpress.config.ts\`.
 `,
 );
 
 // ---------------------------------------------------------------------------------------------
-// REST API: the OpenAPI document `first build` writes for an app (src/openapi.rs), here for the
+// REST API: the OpenAPI document `typedpress build` writes for an app (src/openapi.rs), here for the
 // blog example, compiled by the same build of the compiler the examples above were checked with.
 // Nothing about a route is written in this file. Blume renders the document at /rest.
 // ---------------------------------------------------------------------------------------------
@@ -537,10 +537,10 @@ This page is read from [\`types/first/index.d.ts\`](${github}/types/first/index.
 const restExample = "blog";
 const restCompiled = compiler.compile({ name: restExample, files: sources(path.join(repo, "examples", restExample)), previous: null });
 if (!restCompiled.output) throw new Error(`examples/${restExample} does not compile, so the site has no REST reference`);
-// The app plugin carries the document the site serves; `first build` writes the same bytes to
-// first/_generated/openapi.json.
-const restFile = Object.entries(restCompiled.output.appPlugin).find(([file]) => file.endsWith("/first/app/openapi.json"))?.[1];
-if (!restFile) throw new Error("the compiler wrote no first/app/openapi.json into the app plugin");
+// The app plugin carries the document the site serves; `typedpress build` writes the same bytes to
+// tp/_generated/openapi.json.
+const restFile = Object.entries(restCompiled.output.appPlugin).find(([file]) => file.endsWith("/tp/app/openapi.json"))?.[1];
+if (!restFile) throw new Error("the compiler wrote no tp/app/openapi.json into the app plugin");
 const rest = JSON.parse(restFile) as { info: { description: string; [key: string]: unknown }; servers: { url: string }[]; [key: string]: unknown };
 const restPrefix = rest.servers[0]?.url;
 if (!restPrefix?.startsWith("/")) throw new Error("the compiler's OpenAPI document names no API path in `servers`");
@@ -548,20 +548,20 @@ const openapi = {
 	...rest,
 	info: {
 		...rest.info,
-		title: "First REST API",
+		title: "TypedPress REST API",
 		description: [
-			`This is the API of the [\`${restExample}\` example](${tree}/examples/${restExample}), as \`first build\` describes it. Every First app gets the same routes for its own kinds, globals, actions and file buckets, and for WordPress's own content.`,
-			`\`first build\` writes your app's document to \`first/_generated/openapi.json\`, from the schema that also produces the typed client and the app's WordPress Abilities. Your site serves it at \`${restPrefix}/openapi.json\`.`,
+			`This is the API of the [\`${restExample}\` example](${tree}/examples/${restExample}), as \`typedpress build\` describes it. Every TypedPress app gets the same routes for its own kinds, globals, actions and file buckets, and for WordPress's own content.`,
+			`\`typedpress build\` writes your app's document to \`tp/_generated/openapi.json\`, from the schema that also produces the typed client and the app's WordPress Abilities. Your site serves it at \`${restPrefix}/openapi.json\`.`,
 			rest.info.description,
 		].join("\n\n"),
 	},
 	// A site's own document names the site. This page has no site, so it shows a placeholder address.
 	servers: [{ url: `https://example.space.fast${restPrefix}`, description: "Your app's WordPress site" }],
 };
-out.set("openapi/first.json", `${JSON.stringify(openapi, null, "\t")}\n`);
+out.set("openapi/typedpress.json", `${JSON.stringify(openapi, null, "\t")}\n`);
 
 // ---------------------------------------------------------------------------------------------
-// The generated client: runtime/client/index.ts is the code every app's first/_generated/client/ wraps.
+// The generated client: runtime/client/index.ts is the code every app's tp/_generated/client/ wraps.
 // ---------------------------------------------------------------------------------------------
 
 const clientTs = read("runtime/client/index.ts");
@@ -576,22 +576,22 @@ const interfaceBody = (name: string) => {
 const memberBlock = (name: string) => {
 	const { head, body } = interfaceBody(name);
 	const declared = body.replace(/^[ \t]*\/\*\*[\s\S]*?\*\/\n/gm, "").replace(/^[ \t]*\/\/.*\n/gm, "");
-	return fence("ts", toFirst(`interface ${head} {${declared}\n}`));
+	return fence("ts", toTypedPress(`interface ${head} {${declared}\n}`));
 };
-const pantryClient = read("examples/pantry/first/_generated/client/README.md");
+const pantryClient = read("examples/pantry/tp/_generated/client/README.md");
 
 page(
 	"docs/reference/client.mdx",
-	{ title: "JavaScript client", description: "The typed client first build writes to first/_generated/client/, and every function it exports." },
+	{ title: "JavaScript client", description: "The typed client typedpress build writes to tp/_generated/client/, and every function it exports." },
 	"runtime/client/index.ts",
 	`
-\`first build\` writes a typed client for your app to \`first/_generated/client/\`. It calls the [REST API](/rest) with \`fetch\`, so it works in any browser and any frontend framework. Its types come from your config: a renamed column fails your frontend's type check.
+\`typedpress build\` writes a typed client for your app to \`tp/_generated/client/\`. It calls the [REST API](/rest) with \`fetch\`, so it works in any browser and any frontend framework. Its types come from your config: a renamed column fails your frontend's type check.
 
-On Spacefast, every First Space also serves the client at \`/__first/client.js\`, with its types at \`/__first/client.d.ts\`.
+On Spacefast, every TypedPress Space also serves the client at \`/__tp/client.js\`, with its types at \`/__tp/client.d.ts\`.
 
 ## Use it
 
-${fence("ts", `import { createClient } from "./first/_generated/client/index.ts";\n\nconst first = createClient();\nconst notes = await first.notes.list({ where: { title: "Hello" } });`)}
+${fence("ts", `import { createClient } from "./tp/_generated/client/index.ts";\n\nconst client = createClient();\nconst notes = await client.notes.list({ where: { title: "Hello" } });`)}
 
 The client unwraps \`data\`, so \`list()\` returns the rows themselves.
 
@@ -599,7 +599,7 @@ The client unwraps \`data\`, so \`list()\` returns the rows themselves.
 
 | Name | Kind |
 | --- | --- |
-${clientExports.map((e) => `| \`${toFirst(e.name)}\` | ${e.kind} |`).join("\n")}
+${clientExports.map((e) => `| \`${toTypedPress(e.name)}\` | ${e.kind} |`).join("\n")}
 
 ## A collection
 
@@ -621,37 +621,37 @@ ${memberBlock("ClientOptions")}
 
 ## The README that build writes
 
-${mdx(toFirst(pantryClient.replace(/^#\s+.+\n+/, "")))}
+${mdx(toTypedPress(pantryClient.replace(/^#\s+.+\n+/, "")))}
 
 This page is read from [\`runtime/client/index.ts\`](${github}/runtime/client/index.ts).
 `,
 );
 
 // ---------------------------------------------------------------------------------------------
-// Changelogs: the CHANGELOG.md of each package First publishes.
+// Changelogs: the CHANGELOG.md of each package TypedPress publishes.
 // ---------------------------------------------------------------------------------------------
 
 const packagesDir = path.join(repo, "packages");
 const changelogs = readdirSync(packagesDir)
 	.filter((dir) => existsSync(path.join(packagesDir, dir, "CHANGELOG.md")))
-	.map((dir) => ({ dir, name: toFirst(json<{ name: string }>(`packages/${dir}/package.json`).name), text: read(`packages/${dir}/CHANGELOG.md`) }));
+	.map((dir) => ({ dir, name: toTypedPress(json<{ name: string }>(`packages/${dir}/package.json`).name), text: read(`packages/${dir}/CHANGELOG.md`) }));
 for (const { dir, name, text } of changelogs) {
 	page(
 		`docs/changelog/${dir}.mdx`,
 		{ title: name, description: `Changes to ${name}, from its CHANGELOG.md.` },
 		`packages/${dir}/CHANGELOG.md`,
-		`${mdx(toFirst(text.replace(/^#\s+Changelog\s*\n+/i, "")))}\n\nRead from [\`packages/${dir}/CHANGELOG.md\`](${github}/packages/${dir}/CHANGELOG.md).`,
+		`${mdx(toTypedPress(text.replace(/^#\s+Changelog\s*\n+/i, "")))}\n\nRead from [\`packages/${dir}/CHANGELOG.md\`](${github}/packages/${dir}/CHANGELOG.md).`,
 	);
 }
 const withoutChangelog = readdirSync(packagesDir).filter((dir) => existsSync(path.join(packagesDir, dir, "package.json")) && !changelogs.some((c) => c.dir === dir));
 page(
 	"docs/changelog/index.mdx",
-	{ title: "Changelogs", description: "The changes in each First package." },
+	{ title: "Changelogs", description: "The changes in each TypedPress package." },
 	"packages/*/CHANGELOG.md",
 	[
-		"Each package First publishes keeps its own changelog.",
+		"Each package TypedPress publishes keeps its own changelog.",
 		changelogs.map((c) => `- [\`${c.name}\`](/changelog/${c.dir})`).join("\n"),
-		withoutChangelog.length ? `These packages have no changelog yet: ${withoutChangelog.map((dir) => `\`${toFirst(json<{ name: string }>(`packages/${dir}/package.json`).name)}\``).join(", ")}.` : "",
+		withoutChangelog.length ? `These packages have no changelog yet: ${withoutChangelog.map((dir) => `\`${toTypedPress(json<{ name: string }>(`packages/${dir}/package.json`).name)}\``).join(", ")}.` : "",
 	].join("\n\n"),
 );
 

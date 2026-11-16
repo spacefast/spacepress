@@ -21,7 +21,7 @@ import {
 } from '@wordpress/block-editor';
 import { useDebounce } from '@wordpress/compose';
 import { speak } from '@wordpress/a11y';
-import { unlock } from '@first-admin/admin-toolkit';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { useBlockVariations } from './variations/variations-panel';
 import { ScreenHeader } from './screen-header';
 import { NavigationButtonAsItem } from './navigation-button';
@@ -130,7 +130,7 @@ function BlockList( { filterValue }: BlockListProps ) {
 		const count = blockTypesListRef.current?.childElementCount || 0;
 		const resultsFoundMessage = sprintf(
 			/* translators: %d: number of results. */
-			_n( '%d result found.', '%d results found.', count, 'first-admin' ),
+			_n( '%d result found.', '%d results found.', count, 'typedpress-admin' ),
 			count
 		);
 		debouncedSpeak( resultsFoundMessage, 'polite' );
@@ -139,13 +139,13 @@ function BlockList( { filterValue }: BlockListProps ) {
 	return (
 		<div
 			ref={ blockTypesListRef }
-			className="first-admin-block-types-item-list"
+			className="typedpress-admin-block-types-item-list"
 			// By default, BlockMenuItem has a role=listitem so this div must have a list role.
 			role="list"
 		>
 			{ filteredBlockTypes.length === 0 ? (
 				<Text align="center" as="p">
-					{ __( 'No blocks found.', 'first-admin' ) }
+					{ __( 'No blocks found.', 'typedpress-admin' ) }
 				</Text>
 			) : (
 				filteredBlockTypes.map( ( block ) => (
@@ -168,19 +168,19 @@ function ScreenBlockList() {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'Blocks', 'first-admin' ) }
+				title={ __( 'Blocks', 'typedpress-admin' ) }
 				description={ __(
 					'Customize the appearance of specific blocks and for the whole site.',
-					'first-admin'
+					'typedpress-admin'
 				) }
 			/>
 			<SearchControl
 				__nextHasNoMarginBottom
-				className="first-admin-block-types-search"
+				className="typedpress-admin-block-types-search"
 				onChange={ setFilterValue }
 				value={ filterValue }
-				label={ __( 'Search', 'first-admin' ) }
-				placeholder={ __( 'Search', 'first-admin' ) }
+				label={ __( 'Search', 'typedpress-admin' ) }
+				placeholder={ __( 'Search', 'typedpress-admin' ) }
 			/>
 			<MemoizedBlockList filterValue={ deferredFilterValue } />
 		</>

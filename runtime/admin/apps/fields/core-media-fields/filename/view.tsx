@@ -5,7 +5,7 @@ import {
 import { useMemo } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { getFilename } from '@wordpress/url';
-import type { DataViewRenderFieldProps } from '@first-admin/dataviews';
+import type { DataViewRenderFieldProps } from '@typedpress-admin/dataviews';
 import type { MediaItem } from '../types';
 
 // Hard-coded truncate length to match the available area in the media sidebar.

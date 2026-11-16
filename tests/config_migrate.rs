@@ -1,13 +1,13 @@
 //! Config importer owner: run the CLI, compile the result, load emitted PHP metadata.
 
-// Runs the `first` binary: only with the cli feature (the browser build of the core has none).
+// Runs the `typedpress` binary: only with the cli feature (the browser build of the core has none).
 #![cfg(feature = "cli")]
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_first"))
+    Command::new(env!("CARGO_BIN_EXE_typedpress"))
 }
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -36,7 +36,7 @@ fn schema(path: &Path) -> Value {
 /// Migrate a fixture into a fresh directory; returns (dir, report).
 fn migrate_fixture(from: &str, file: &str) -> (tempfile::TempDir, Value) {
     let dir = tempfile::tempdir().unwrap();
-    let out = migrate(from, &fixture(file), &dir.path().join("first.config.ts"));
+    let out = migrate(from, &fixture(file), &dir.path().join("typedpress.config.ts"));
     assert!(
         out.status.success(),
         "{from}: {}\n{}",
@@ -56,17 +56,17 @@ fn build_fixture(dir: &Path) -> PathBuf {
 #[test]
 fn each_source_compiles_with_its_storage_and_access() {
     for (from, file, plugin, public) in [
-        ("emdash", "emdash.json", "first-app-imported", false),
-        ("payload", "payload.ts", "first-app-imported", true),
-        ("sanity", "sanity.ts", "first-app-imported", false),
-        ("zero", "legacy-zero.ts", "first-app-notes", true),
+        ("emdash", "emdash.json", "typedpress-app-imported", false),
+        ("payload", "payload.ts", "typedpress-app-imported", true),
+        ("sanity", "sanity.ts", "typedpress-app-imported", false),
+        ("zero", "legacy-zero.ts", "typedpress-app-notes", true),
     ] {
         let (dir, report) = migrate_fixture(from, file);
         assert_eq!(report["status"], "written");
         // Each kind registers by its export (spec §1.1): the config lists none of them.
-        let config = std::fs::read_to_string(dir.path().join("first.config.ts")).unwrap();
+        let config = std::fs::read_to_string(dir.path().join("typedpress.config.ts")).unwrap();
         assert!(config.contains(" as notes"), "{from}: {config}");
-        let built = Command::new(env!("CARGO_BIN_EXE_first"))
+        let built = Command::new(env!("CARGO_BIN_EXE_typedpress"))
             .args(["check"])
             .arg(dir.path())
             .output()
@@ -84,7 +84,7 @@ fn each_source_compiles_with_its_storage_and_access() {
                 .any(|e| e["outcome"] == "review")
         );
         {
-            let data = schema(&build_fixture(dir.path()).join(format!("plugins/{plugin}/first/app/schema.php")));
+            let data = schema(&build_fixture(dir.path()).join(format!("plugins/{plugin}/tp/app/schema.php")));
             let notes = &data["collections"]["notes"];
             assert_eq!(notes["editor"], true, "{from}");
             assert_eq!(notes["columns"]["title"]["notNull"], true);
@@ -99,7 +99,7 @@ fn publication_never_overwrites_the_source_or_an_existing_config() {
     let input = fixture("payload.ts");
     let original = std::fs::read(&input).unwrap();
     let (dir, _) = migrate_fixture("payload", "payload.ts");
-    let config = dir.path().join("first.config.ts");
+    let config = dir.path().join("typedpress.config.ts");
     let before = std::fs::read(&config).unwrap();
     let collision = migrate("payload", &input, &config);
     assert_eq!(collision.status.code(), Some(1));
@@ -144,7 +144,7 @@ fn payload_app() -> (tempfile::TempDir, PathBuf, Value) {
 }
 
 /// Run PHP on a fresh WordPress-on-SQLite site with the built plugins active (`$app` is the booted
-/// First\App, `$arg` the decoded argument); returns its JSON output. See tests/php/wp.php `eval`.
+/// TypedPress\App, `$arg` the decoded argument); returns its JSON output. See tests/php/wp.php `eval`.
 fn run_php(app: &Path, body: &str, arg: &Value) -> Value {
     let out = wp_eval(app, body, arg);
     assert!(
@@ -175,7 +175,7 @@ fn payload_default_row() -> Value {
     let (_dir, app, base) = payload_app();
     run_php(
         &app,
-        "echo \\First\\Js::jsonStringify($app->db->insert('notes', $arg, true)[0]);",
+        "echo \\TypedPress\\Js::jsonStringify($app->db->insert('notes', $arg, true)[0]);",
         &base,
     )
 }
@@ -293,7 +293,7 @@ fn payload_default_max_text_length_bounds_unbounded_text() {
 fn refuses_unsupported_constructs_at_their_pointer_without_output() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("source.ts");
-    let out = dir.path().join("migrated/first.config.ts");
+    let out = dir.path().join("migrated/typedpress.config.ts");
     for (from, source, pointer) in [
         (
             "zero",
@@ -382,7 +382,7 @@ fn refused(from: &str, file: &str, source: &str) -> Value {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join(file);
     std::fs::write(&input, source).unwrap();
-    let out = dir.path().join("migrated/first.config.ts");
+    let out = dir.path().join("migrated/typedpress.config.ts");
     let result = migrate(from, &input, &out);
     assert_eq!(
         result.status.code(),
@@ -440,7 +440,7 @@ fn migrated_app(from: &str, file: &str, source: &str) -> (tempfile::TempDir, Pat
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join(file);
     std::fs::write(&input, source).unwrap();
-    let out = migrate(from, &input, &dir.path().join("app/first.config.ts"));
+    let out = migrate(from, &input, &dir.path().join("app/typedpress.config.ts"));
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
     let app = dir.path().join("wp-content");
     let build = first()
@@ -467,7 +467,7 @@ fn accepts(app: &Path, base: Value, cases: Value) -> Value {
                         $app->db->insert('notes', [$field => $value] + $base);
                         throw new \RuntimeException('accepted');
                     });
-                } catch (\First\HttpError $e) { $out[] = $e->pointer; continue; }
+                } catch (\TypedPress\HttpError $e) { $out[] = $e->pointer; continue; }
                 catch (\RuntimeException $e) { if ($e->getMessage() !== 'accepted') throw $e; }
                 $out[] = true;
             }
@@ -534,7 +534,7 @@ fn field_review(from: &str, file: &str, source: &str, field_pointer: &str) -> St
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join(file);
     std::fs::write(&input, source).unwrap();
-    let out = migrate(from, &input, &dir.path().join("app/first.config.ts"));
+    let out = migrate(from, &input, &dir.path().join("app/typedpress.config.ts"));
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
     report["entries"]
         .as_array()
@@ -555,14 +555,14 @@ fn imported_datetimes_are_timestamp_columns() {
         let input = dir.path().join(file);
         std::fs::write(&input, source).unwrap();
         assert!(
-            migrate(from, &input, &dir.path().join("app/first.config.ts"))
+            migrate(from, &input, &dir.path().join("app/typedpress.config.ts"))
                 .status
                 .success()
         );
         let built = build_fixture(&dir.path().join("app"));
         assert_eq!(
-            schema(&built.join("plugins/first-app-imported/first/app/schema.php"))["collections"]["notes"]["columns"]["at"]
-                ["type"],
+            schema(&built.join("plugins/typedpress-app-imported/tp/app/schema.php"))["collections"]["notes"]["columns"]
+                ["at"]["type"],
             "timestamp",
             "{from}"
         );
@@ -691,7 +691,7 @@ fn emdash_booleans_report_that_numeric_flags_are_refused() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("emdash.json");
     std::fs::write(&input, source).unwrap();
-    let out = migrate("emdash", &input, &dir.path().join("report/first.config.ts"));
+    let out = migrate("emdash", &input, &dir.path().join("report/typedpress.config.ts"));
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(
         report["entries"]
@@ -739,7 +739,7 @@ fn json_defaults_keep_numeric_keyed_objects() {
     );
     let value = run_php(
         &app,
-        "echo \\First\\Js::jsonStringify($app->db->insert('notes', ['title' => 't'], true)[0]['data']);",
+        "echo \\TypedPress\\Js::jsonStringify($app->db->insert('notes', ['title' => 't'], true)[0]['data']);",
         &Value::Null,
     );
     assert_eq!(value, json!({"nested": {"0": "a", "1": "b"}}));
@@ -777,12 +777,12 @@ export default capsule({ collections: {
 } });"#,
     )
     .unwrap();
-    let config = dir.path().join("app/first.config.ts");
+    let config = dir.path().join("app/typedpress.config.ts");
     assert!(migrate("zero", &input, &config).status.success());
-    let types = Path::new(env!("CARGO_MANIFEST_DIR")).join("types/first/index.d.ts");
+    let types = Path::new(env!("CARGO_MANIFEST_DIR")).join("types/typedpress/index.d.ts");
     std::fs::write(
         dir.path().join("app/tsconfig.json"),
-        json!({"compilerOptions": {"target": "ES2022", "lib": ["ES2022"], "module": "ESNext", "moduleResolution": "bundler", "strict": true, "noEmit": true, "types": [], "paths": {"first": [types]}}, "include": ["first.config.ts"]}).to_string(),
+        json!({"compilerOptions": {"target": "ES2022", "lib": ["ES2022"], "module": "ESNext", "moduleResolution": "bundler", "strict": true, "noEmit": true, "types": [], "paths": {"typedpress": [types]}}, "include": ["typedpress.config.ts"]}).to_string(),
     )
     .unwrap();
     let out = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
@@ -817,7 +817,7 @@ fn original_zero_required_references_block_deleting_their_target() {
     let error = run_php(
         &app,
         &format!(
-            "{REFERENCE_SEED} try {{ $app->db->delete('projects', ['id' => $p['id']]); echo 'null'; }} catch (\\First\\HttpError $e) {{ echo json_encode([$e->status, $e->errorCode]); }}"
+            "{REFERENCE_SEED} try {{ $app->db->delete('projects', ['id' => $p['id']]); echo 'null'; }} catch (\\TypedPress\\HttpError $e) {{ echo json_encode([$e->status, $e->errorCode]); }}"
         ),
         &Value::Null,
     );
@@ -846,7 +846,7 @@ fn original_zero_media_fields_keep_their_cardinality() {
 export default capsule({ collections: { notes: { fields: { title: { kind: "text", required: true }, cover: { kind: "media" }, gallery: { kind: "media", multiple: true, required: true } } } } });"#,
     );
     let columns =
-        &schema(&app.join("plugins/first-app-imported/first/app/schema.php"))["collections"]["notes"]["columns"];
+        &schema(&app.join("plugins/typedpress-app-imported/tp/app/schema.php"))["collections"]["notes"]["columns"];
     assert_eq!(columns["cover"], json!({"type": "media", "accept": "any"}));
     assert_eq!(
         columns["gallery"],
@@ -875,7 +875,7 @@ fn payload_presentation_metadata_is_preserved_and_unknown_admin_behavior_is_refu
     }]}]});
     std::fs::write(&input, document.to_string()).unwrap();
     let project = tmp.path().join("imported");
-    let out = migrate("payload", &input, &project.join("first.config.ts"));
+    let out = migrate("payload", &input, &project.join("typedpress.config.ts"));
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(
@@ -886,7 +886,7 @@ fn payload_presentation_metadata_is_preserved_and_unknown_admin_behavior_is_refu
             .any(|e| { e["pointer"] == "/collections/0/fields/0/admin/width" && e["outcome"] == "mapped" })
     );
     let built = build_fixture(&project);
-    let schema = schema(&built.join("plugins/first-app-imported/first/app/schema.php"));
+    let schema = schema(&built.join("plugins/typedpress-app-imported/tp/app/schema.php"));
     assert_eq!(
         schema["collections"]["notes"]["columns"]["title"]["ui"],
         json!({"label": "Headline", "help": "Shown in search", "placeholder": "Write a title", "width": 50})
@@ -901,8 +901,8 @@ fn payload_presentation_metadata_is_preserved_and_unknown_admin_behavior_is_refu
         let mut invalid = document.clone();
         invalid["collections"][0]["fields"][0]["admin"] = admin;
         std::fs::write(&input, invalid.to_string()).unwrap();
-        let out = migrate("payload", &input, &tmp.path().join("refused/first.config.ts"));
+        let out = migrate("payload", &input, &tmp.path().join("refused/typedpress.config.ts"));
         assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
-        assert!(!tmp.path().join("refused/first.config.ts").exists());
+        assert!(!tmp.path().join("refused/typedpress.config.ts").exists());
     }
 }

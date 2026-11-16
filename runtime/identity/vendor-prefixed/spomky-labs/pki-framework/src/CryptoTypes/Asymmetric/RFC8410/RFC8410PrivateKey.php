@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RFC8410;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\RFC8410;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\Attribute\OneAsymmetricKeyAttributes;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\OneAsymmetricKey;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKey;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding\PEM;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\Attribute\OneAsymmetricKeyAttributes;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\OneAsymmetricKey;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKey;
 
 /**
  * Implements an intermediary object to store a private key using Curve25519 or Curve448 as defined by RFC 8410.

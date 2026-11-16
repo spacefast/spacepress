@@ -19,7 +19,7 @@ pub enum Ty {
     Num,
     NumLit(f64),
     FreshNumLit(f64),
-    /// A JavaScript BigInt (`First\JsBigInt` at runtime).
+    /// A JavaScript BigInt (`TypedPress\JsBigInt` at runtime).
     BigInt,
     Str,
     /// A finite string discriminant, retained for switch exhaustiveness.
@@ -56,19 +56,19 @@ pub enum Ty {
     Obj(IndexMap<String, (Ty, bool)>),
     /// `Record<string, T>`
     Map(Box<Ty>),
-    /// A JavaScript `Map<K, V>` (`First\JsMap`): SameValueZero keys, insertion order, object keys by identity.
+    /// A JavaScript `Map<K, V>` (`TypedPress\JsMap`): SameValueZero keys, insertion order, object keys by identity.
     MapOf(Box<Ty>, Box<Ty>),
-    /// A JavaScript `Set<T>` (`First\JsSet`).
+    /// A JavaScript `Set<T>` (`TypedPress\JsSet`).
     SetOf(Box<Ty>),
     /// A built-in iterator (`map.keys()`, `array.entries()`, ...) yielding T, consumed once.
     Iter(Box<Ty>),
-    /// DOM `AbortController` (`First\JsAbortController`).
+    /// DOM `AbortController` (`TypedPress\JsAbortController`).
     AbortController,
-    /// DOM `AbortSignal` (`First\JsAbortSignal`).
+    /// DOM `AbortSignal` (`TypedPress\JsAbortSignal`).
     AbortSignal,
-    /// A WHATWG `URL` (`First\JsUrl`).
+    /// A WHATWG `URL` (`TypedPress\JsUrl`).
     Url,
-    /// A WHATWG `URLSearchParams` (`First\JsUrlSearchParams`).
+    /// A WHATWG `URLSearchParams` (`TypedPress\JsUrlSearchParams`).
     UrlParams,
     Union(Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),
@@ -84,14 +84,14 @@ pub enum Ty {
     Host(HostTy),
     /// A caught exception.
     Error,
-    /// Rendered, already escaped HTML from JSX (`\First\Html`).
+    /// Rendered, already escaped HTML from JSX (`\TypedPress\Html`).
     Html,
-    // First runtime values
+    // TypedPress runtime values
     Collection(String),
     Db,
     DbQuery,
     QueryColl(String),
-    /// `posts.system`: a `"first:db"` kind's trusted calls (spec §3).
+    /// `posts.system`: a `"typedpress:db"` kind's trusted calls (spec §3).
     KindSystem(String),
     /// `db.globals` and `db.globals.<key>`.
     DbGlobals,
@@ -141,16 +141,16 @@ impl Builder {
         let r = if self.returning { ", true" } else { "" };
         match self.kind {
             BuilderKind::Insert => format!(
-                "\\First\\Seam::insert({t}, {}{r})",
+                "\\TypedPress\\Seam::insert({t}, {}{r})",
                 self.values.as_deref().unwrap_or("[]")
             ),
             BuilderKind::Update => format!(
-                "\\First\\Seam::update({t}, {}, {}{r})",
+                "\\TypedPress\\Seam::update({t}, {}, {}{r})",
                 self.set.as_deref().unwrap_or("[]"),
                 self.filter.as_deref().unwrap_or("[]")
             ),
             BuilderKind::Delete => format!(
-                "\\First\\Seam::delete({t}, {}{r})",
+                "\\TypedPress\\Seam::delete({t}, {}{r})",
                 self.filter.as_deref().unwrap_or("[]")
             ),
         }
@@ -761,7 +761,7 @@ pub fn route_request() -> Ty {
 }
 
 /// `req.query`: URLSearchParams' read methods over the raw query string, names byte-exact and every
-/// value kept in order (runtime/First/QueryString.php).
+/// value kept in order (runtime/TypedPress/QueryString.php).
 pub fn route_query() -> Ty {
     obj(&[
         ("get", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str.nullable()))),

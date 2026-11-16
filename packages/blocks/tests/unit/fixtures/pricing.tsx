@@ -1,4 +1,4 @@
-import { Block } from "@spacefast/first-blocks";
+import { Block } from "@typedpress/blocks";
 import { plans } from "./plans.ts";
 
 /** Imports, a loop and a component, all run at build time. */
@@ -34,7 +34,7 @@ export default function Pricing() {
       </figure>
       <ol>
         <li>
-          First
+          TypedPress
           <ul>
             <li>Nested</li>
           </ul>

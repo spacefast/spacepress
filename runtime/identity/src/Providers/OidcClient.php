@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Providers;
+namespace TypedPress\Identity\Providers;
 
-use First\Identity\Failure;
-use First\Identity\Vendor\Firebase\JWT\JWK;
-use First\Identity\Vendor\Firebase\JWT\JWT;
+use TypedPress\Identity\Failure;
+use TypedPress\Identity\Vendor\Firebase\JWT\JWK;
+use TypedPress\Identity\Vendor\Firebase\JWT\JWT;
 
 /**
  * An OpenID Connect relying party for one external provider: discovery, an authorization request

@@ -7,8 +7,8 @@ record is [`docs/decisions/2026-11-07-files-sdk-harness.md`](../../docs/decision
 ```sh
 cd examples/files-sdk
 npm ci --ignore-scripts --no-audit --no-fund
-FIRST_BIN=/absolute/path/to/first node table.mjs     # diagnostic table, both variants
-FIRST_BIN=/absolute/path/to/first node verify.mjs    # table, then Node vs PHP per action
+TP_BIN=/absolute/path/to/typedpress node table.mjs     # diagnostic table, both variants
+TP_BIN=/absolute/path/to/typedpress node verify.mjs    # table, then Node vs PHP per action
 ```
 
 ## Variants
@@ -27,9 +27,9 @@ Both use the same `app/` and the same locked dependencies (`picomatch`,
 
 | File | Purpose |
 | --- | --- |
-| `app/first.config.ts` | `probe` (the baseline action from the brief) plus one action per scenario |
-| `app/first/scenarios.mjs` | upload/download/exists/head/list/delete/copy, `file()` handles, `FilesError` codes. Node imports it directly; First compiles it |
-| `table.mjs` | `first check --json` on both variants, counted by code and message, as a Markdown table (`--json` for raw data) |
+| `app/typedpress.config.ts` | `probe` (the baseline action from the brief) plus one action per scenario |
+| `app/tp/scenarios.mjs` | upload/download/exists/head/list/delete/copy, `file()` handles, `FilesError` codes. Node imports it directly; TypedPress compiles it |
+| `table.mjs` | `typedpress check --json` on both variants, counted by code and message, as a Markdown table (`--json` for raw data) |
 | `verify.mjs` | checks installed hashes, prints the table, then runs each action under Node and through `run-php.php` and compares the JSON strings byte for byte |
 | `run-php.php` | loads the generated runtime and calls one action handler; no WordPress, database or network |
 | `probes.mjs` | one small app per host API (Symbol, Promise, streams, Blob, …), in typed TS and imported JS; `table.mjs --probes` adds it as a second section |

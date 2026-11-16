@@ -1,5 +1,5 @@
 import type { Post } from '@wordpress/core-data';
-import type { Field } from '@first-admin/dataviews';
+import type { Field } from '@typedpress-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< Post > > = {
 	getValue: ( post: any ) => {

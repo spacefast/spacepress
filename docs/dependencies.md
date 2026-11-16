@@ -1,8 +1,8 @@
 # Bundled PHP dependencies
 
 End-user builds need neither Composer nor Strauss. The binary embeds the committed
-`runtime/First/vendor-prefixed` tree and copies it into the `first-runtime` plugin, and
-`runtime/identity/vendor-prefixed` into the `first-identity` plugin.
+`runtime/TypedPress/vendor-prefixed` tree and copies it into the `typedpress-runtime` plugin, and
+`runtime/identity/vendor-prefixed` into the `typedpress-identity` plugin.
 
 | Root | Package | Locked version | Purpose | Why not WordPress core | Transitive packages |
 |---|---|---|---|---|---|
@@ -25,7 +25,7 @@ aggregated license file and original license files ship with the runtime.
 
 ### What WordPress core provides instead
 
-First runs only inside WordPress 7.2-beta5 or later, so the runtime uses core's own
+TypedPress runs only inside WordPress 7.2-beta5 or later, so the runtime uses core's own
 copies wherever core ships the code
 ([decision](decisions/2026-11-07-wp-core-apis.md)):
 
@@ -33,8 +33,8 @@ copies wherever core ships the code
 |---|---|---|
 | `wp-php-toolkit/html` | `WP_HTML_Tag_Processor`, `WP_HTML_Processor` | `replace`d in `composer.json`; the toolkit's references stay unprefixed and resolve to core |
 | `wp-php-toolkit/blockparser` | `parse_blocks()`, `serialize_blocks()` | `replace`d; `Sync\Blocks` calls core |
-| `wp-php-toolkit/encoding` | nothing; First never reaches it (core 7.1 has its own UTF-8 helpers) | `replace`d; only data-liberation's CSS processor used it |
-| `wp-php-toolkit/bytestream`, `filesystem`, `http-client`, `xml` | nothing; First never reaches them | `replace`d; only data-liberation's importers, entity readers/writers and URL rewriting used them |
+| `wp-php-toolkit/encoding` | nothing; TypedPress never reaches it (core 7.1 has its own UTF-8 helpers) | `replace`d; only data-liberation's CSS processor used it |
+| `wp-php-toolkit/bytestream`, `filesystem`, `http-client`, `xml` | nothing; TypedPress never reaches them | `replace`d; only data-liberation's importers, entity readers/writers and URL rewriting used them |
 
 Those data-liberation directories (`CSS`, `EntityReader`, `EntityWriter`,
 `URL`, `vendor-patched`, the importers other than `ImportUtils`) and the
@@ -43,10 +43,10 @@ toolkit code outside the shipped set needs that list revisited, and the
 `vendor` suite fails if the bundle starts defining the WordPress HTML API or
 block parser again.
 
-All bundled runtime classes, functions and constants use `First\\Vendor`, `First_Vendor_`
-and `FIRST_VENDOR_` prefixes; identity's use `First\\Identity\\Vendor`, `First_Identity_Vendor_`
-and `FIRST_IDENTITY_VENDOR_`. Each bundle has its own Composer loader class and files registry. Composer's autoload-files registry has a separate
-First key so another plugin's unprefixed library cannot suppress its loading.
+All bundled runtime classes, functions and constants use `TypedPress\\Vendor`, `TypedPress_Vendor_`
+and `TP_VENDOR_` prefixes; identity's use `TypedPress\\Identity\\Vendor`, `TypedPress_Identity_Vendor_`
+and `TP_IDENTITY_VENDOR_`. Each bundle has its own Composer loader class and files registry. Composer's autoload-files registry has a separate
+TypedPress key so another plugin's unprefixed library cannot suppress its loading.
 The `override_autoload` entries normalize the toolkit's `./` classmaps to `.`
 for Strauss while retaining the upstream file/exclusion metadata.
 
@@ -101,13 +101,13 @@ cd runtime/identity/apps && pnpm install --frozen-lockfile && node build.mjs
 ```
 
 The bundled Markdown code runs on WordPress's HTML API and calls core
-functions (`parse_blocks`, `serialize_block`, `esc_*`, `__`); First has no
+functions (`parse_blocks`, `serialize_block`, `esc_*`, `__`); TypedPress has no
 target without WordPress loaded.
 
 ## Considered and not bundled: html-to-md
 
 `Sync\HtmlMarkdown` (the reader's HTML to Markdown converter behind
-`Markdown::renderPost()`, the `.md` twins and `/llms.txt`) stays First's own.
+`Markdown::renderPost()`, the `.md` twins and `/llms.txt`) stays TypedPress's own.
 [dmsnell/html-to-md](https://github.com/dmsnell/html-to-md) (GPL-2.0, also on
 core's HTML API, no release; `trunk` at `d525102b`, the commit WordPress/ai 1.5.0
 vendors under `includes/Vendor/Html_To_Markdown/`) was run against the markdown
@@ -126,7 +126,7 @@ mostly where its output is wrong rather than formatted differently:
 - `<br>` is dropped (no hard break), `<del>`/`<s>` lose their strikethrough,
   an image's `]` in `alt` breaks the image;
 - unsupported markup (`<font>` around a `<p>`) aborts the whole document to `''`,
-  where First keeps its text.
+  where TypedPress keeps its text.
 
 Its other differences (`_em_` for `*em*`, ` * ` bullets, `javascript` for a
 `language-js` fence) are equally correct.
@@ -135,11 +135,11 @@ Its other differences (`_em_` for `*em*`, ` * ` bullets, `javascript` for a
 
 | file | source | licence |
 |---|---|---|
-| `runtime/First/Wp/Hardening.php` (`loginErrors`) | Automattic/vip-go-mu-plugins `security/login-error.php` at `4e65ee711017637ac54a9c74657117c985ccd115` | GPL-2.0-or-later |
+| `runtime/TypedPress/Wp/Hardening.php` (`loginErrors`) | Automattic/vip-go-mu-plugins `security/login-error.php` at `4e65ee711017637ac54a9c74657117c985ccd115` | GPL-2.0-or-later |
 
 ## URI helper provenance
 
-`First\Js::encodeURI` adapts ts2php's MIT reserved-character restoration table
+`TypedPress\Js::encodeURI` adapts ts2php's MIT reserved-character restoration table
 at revision `104b497d558d112c5b80cd370b7bcc0f43a29d51`. The component helper
 corrects JavaScript punctuation escaping and both require valid UTF-8. The
 runtime carries `URI-ENCODING-NOTICE.txt`; four copied test inputs carry their

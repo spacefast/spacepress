@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
 
 /**
  * Extract a property's doc block.

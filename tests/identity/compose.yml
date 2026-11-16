@@ -46,7 +46,7 @@ services:
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
-        define('FIRST_IDENTITY_DEV_HTTP', true);
+        define('TP_IDENTITY_DEV_HTTP', true);
     healthcheck:
       test: ["CMD", "php", "-r", "exit(is_file('/var/www/html/wp-includes/version.php') && @fsockopen('127.0.0.1',80) ? 0 : 1);"]
       interval: 1s
@@ -55,7 +55,7 @@ services:
       - "${IDENTITY_PORT:-8814}:80"
     volumes: &wordpress-volumes
       - wordpress:/var/www/html
-      - ${IDENTITY_PLUGIN_DIR:?run tests/identity/run.sh}:/var/www/html/wp-content/plugins/first-identity:ro
+      - ${IDENTITY_PLUGIN_DIR:?run tests/identity/run.sh}:/var/www/html/wp-content/plugins/typedpress-identity:ro
       - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
       - ./:/opt/identity-tests:ro
   cli:

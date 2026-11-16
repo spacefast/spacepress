@@ -2,12 +2,12 @@
 /**
  * Description field definition for core plugins fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'         => 'text',
-	'label'        => __( 'Version', 'first-admin' ),
+	'label'        => __( 'Version', 'typedpress-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => false,
 );

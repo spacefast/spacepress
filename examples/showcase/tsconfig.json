@@ -6,7 +6,7 @@
     "strict": true,
     "noEmit": true,
     "types": [],
-    "paths": { "first": ["../../types/first/index.d.ts"] }
+    "paths": { "typedpress": ["../../types/typedpress/index.d.ts"] }
   },
-  "include": ["first.config.ts", "first/pantry.ts", "first/stories.ts", "first/_generated/db.d.ts"]
+  "include": ["typedpress.config.ts", "tp/pantry.ts", "tp/stories.ts", "tp/_generated/db.d.ts"]
 }

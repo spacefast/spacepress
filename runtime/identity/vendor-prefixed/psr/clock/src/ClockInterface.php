@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Identity\Vendor\Psr\Clock;
+namespace TypedPress\Identity\Vendor\Psr\Clock;
 
 use DateTimeImmutable;
 

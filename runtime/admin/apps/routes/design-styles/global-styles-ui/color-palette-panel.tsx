@@ -1,4 +1,4 @@
-import type { Color } from '@first-admin/global-styles-engine';
+import type { Color } from '@typedpress-admin/global-styles-engine';
 import { useViewportMatch } from '@wordpress/compose';
 import {
 	__experimentalPaletteEdit as PaletteEdit,
@@ -52,7 +52,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 
 	return (
 		<VStack
-			className="first-admin-global-styles-color-palette-panel"
+			className="typedpress-admin-global-styles-color-palette-panel"
 			spacing={ 8 }
 		>
 			<VStack spacing={ 4 }>
@@ -62,7 +62,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 						canOnlyChangeValues
 						colors={ themeColors }
 						onChange={ setThemeColors }
-						paletteLabel={ __( 'Theme', 'first-admin' ) }
+						paletteLabel={ __( 'Theme', 'typedpress-admin' ) }
 						paletteLabelHeadingLevel={ 3 }
 						popoverProps={ popoverProps }
 					/>
@@ -76,7 +76,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 							icon={ shuffle }
 							onClick={ randomizeThemeColors }
 						>
-							{ __( 'Randomize colors', 'first-admin' ) }
+							{ __( 'Randomize colors', 'typedpress-admin' ) }
 						</Button>
 					) }
 			</VStack>
@@ -88,7 +88,7 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 						canOnlyChangeValues
 						colors={ defaultColors }
 						onChange={ setDefaultColors }
-						paletteLabel={ __( 'Default', 'first-admin' ) }
+						paletteLabel={ __( 'Default', 'typedpress-admin' ) }
 						paletteLabelHeadingLevel={ 3 }
 						popoverProps={ popoverProps }
 					/>
@@ -96,12 +96,12 @@ export default function ColorPalettePanel( { name }: ColorPalettePanelProps ) {
 			<PaletteEdit
 				colors={ customColors }
 				onChange={ setCustomColors }
-				paletteLabel={ __( 'Custom', 'first-admin' ) }
+				paletteLabel={ __( 'Custom', 'typedpress-admin' ) }
 				paletteLabelHeadingLevel={ 3 }
 				slugPrefix="custom-"
 				popoverProps={ popoverProps }
 			/>
-			<ColorVariations title={ __( 'Palettes', 'first-admin' ) } />
+			<ColorVariations title={ __( 'Palettes', 'typedpress-admin' ) } />
 		</VStack>
 	);
 }

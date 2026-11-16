@@ -1,5 +1,5 @@
 import { useSelect } from '@wordpress/data';
-import { store as firstAdminStore } from '../../store';
+import { store as tpAdminStore } from '../../store';
 
 /**
  * Renders the first registered modal from the store.
@@ -9,7 +9,7 @@ import { store as firstAdminStore } from '../../store';
  */
 export function ModalRenderer() {
 	const modals = useSelect(
-		( select ) => select( firstAdminStore ).getModals(),
+		( select ) => select( tpAdminStore ).getModals(),
 		[]
 	);
 

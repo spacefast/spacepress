@@ -1,6 +1,6 @@
 import { notFound } from '@wordpress/route';
-import { viewToQuery } from '@first-admin/admin-toolkit';
-import { preloadFieldCollections } from '@first-admin/core-data-next';
+import { viewToQuery } from '@typedpress-admin/admin-toolkit';
+import { preloadFieldCollections } from '@typedpress-admin/core-data-next';
 import { resolveSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
 import { MediaEditor } from '../attachment/media-editor';

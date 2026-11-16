@@ -1,5 +1,5 @@
 // spec.md §6, "the opinionated WordPress": every hardening switch against real WordPress/MariaDB while the
-// First app is active, then the same checks with the app deactivated, where WordPress behaves as shipped.
+// TypedPress app is active, then the same checks with the app deactivated, where WordPress behaves as shipped.
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
@@ -30,7 +30,7 @@ const FILE_CAPS = ["edit_files", "edit_plugins", "edit_themes"];
 const INSTALL_CAPS = ["install_plugins", "upload_plugins", "update_plugins", "delete_plugins", "install_themes", "upload_themes", "update_themes", "delete_themes", "update_core"];
 
 test("the active app lists every switch it applies", async () => {
-  const schema = (await (await fetch(`${harness.url}/__first/api/v1`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
+  const schema = (await (await fetch(`${harness.url}/__tp/api/v1`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
   assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
 });
 
@@ -81,7 +81,7 @@ test("xmlrpc: Jetpack's connection still answers WordPress.com, on both of its e
 });
 
 // A connected site, without WordPress.com: a throwaway blog token in Jetpack's options, and requests signed
-// by Jetpack's own Jetpack_Signature, the code that verifies them. Jetpack checks the signature; First only
+// by Jetpack's own Jetpack_Signature, the code that verifies them. Jetpack checks the signature; TypedPress only
 // keeps core's methods out.
 test("xmlrpc: a Jetpack request signed with the blog token reaches Jetpack's signed methods; a forged one gets only setup", async () => {
   const blogToken = `zerotest.${randomBytes(16).toString("hex")}`;
@@ -129,7 +129,7 @@ test("pings: pingbacks and trackbacks are closed, and none go out", () => {
 
 /** This app's schema.php without `xmlrpc: false` and `pings: false`, as a config that leaves them out builds it; restored after. */
 async function withWordPressDefaults(run: () => Promise<void>) {
-  const schema = wp("eval", "echo First\\Wp\\Runtime::plugin()->dir . '/first/app/schema.php';");
+  const schema = wp("eval", "echo TypedPress\\Wp\\Runtime::plugin()->dir . '/tp/app/schema.php';");
   const original = wp("eval", `echo base64_encode(file_get_contents('${schema}'));`);
   wp("eval", `$s = file_get_contents('${schema}'); $d = str_replace(["    'xmlrpc' => false,\\n", "    'pings' => false,\\n"], '', $s); if (substr_count($s, '=> false,') - substr_count($d, '=> false,') !== 2) { exit(1); } file_put_contents('${schema}', $d);`);
   try {
@@ -141,7 +141,7 @@ async function withWordPressDefaults(run: () => Promise<void>) {
 
 test("xmlrpc and pings left out of the config: WordPress's own, the site's Discussion settings included", async () => {
   await withWordPressDefaults(async () => {
-    const listing = (await (await fetch(`${site}/__first/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
+    const listing = (await (await fetch(`${site}/__tp/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
     assert.deepEqual(listing, ["emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
     // XML-RPC answers, signed-in methods included (an unscoped application password, as WordPress allows).
     const listed = await xmlrpc("system.listMethods");
@@ -153,18 +153,18 @@ test("xmlrpc and pings left out of the config: WordPress's own, the site's Discu
     assert.match(answer, /<name>isAdmin<\/name><value><boolean>1<\/boolean>/, answer);
     assert.match(await (await page("/")).text(), /EditURI|xmlrpc\.php\?rsd/);
     // A scoped agent password still signs in only where its scope is enforced: never over XML-RPC.
-    const agent = JSON.parse(wp("first", "identity", "agent", "add", "admin", `--name=xmlrpc-${Date.now()}`, "--write")).data;
+    const agent = JSON.parse(wp("typedpress", "identity", "agent", "add", "admin", `--name=xmlrpc-${Date.now()}`, "--write")).data;
     try {
       const scoped = await (await xmlrpc("wp.getUsersBlogs", "/xmlrpc.php", call("wp.getUsersBlogs", `<param><value><string>admin</string></value></param><param><value><string>${agent.password}</string></value></param>`))).text();
       assert.match(scoped, /<name>faultCode<\/name>/, scoped);
       assert.doesNotMatch(scoped, /isAdmin/, scoped);
     } finally {
-      wp("first", "identity", "agent", "revoke", "admin", agent.id);
+      wp("typedpress", "identity", "agent", "revoke", "admin", agent.id);
     }
     // Pings: what the site's own Discussion settings say, here as a new WordPress ships them (open, notify).
     assert.deepEqual(evalJson("echo wp_json_encode([get_option('default_ping_status'), get_option('default_pingback_flag'), has_action('do_pings', 'do_all_pings')]);"), ["open", "1", 10]);
     const open = post("post", "Pingable");
-    assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${open}), get_default_comment_status('post', 'pingback'), get_default_comment_status('post')]);`), [true, "open", "closed"], "pings follow WordPress, comments stay First's");
+    assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${open}), get_default_comment_status('post', 'pingback'), get_default_comment_status('post')]);`), [true, "open", "closed"], "pings follow WordPress, comments stay TypedPress's");
     const single = await page(`/?p=${open}`);
     const permalink = single.headers.get("location") ?? `/?p=${open}`;
     assert.ok((await fetch(new URL(permalink, site))).headers.get("x-pingback")?.endsWith("/xmlrpc.php"));
@@ -182,7 +182,7 @@ test("xmlrpc and pings left out of the config: WordPress's own, the site's Discu
 });
 
 test("the facade's built-in settings: public fields for everyone, writes for admins, as core decides", async () => {
-  const settings = `${site}/__first/api/v1/settings`;
+  const settings = `${site}/__tp/api/v1/settings`;
   const patch = (who: "editor" | "admin", body: unknown) =>
     fetch(settings, { method: "PATCH", headers: { "content-type": "application/json", ...auth(who) }, body: JSON.stringify(body) });
   const anon = await (await fetch(settings)).json();
@@ -230,13 +230,13 @@ test("customizer: customize.php and its links are gone for the administrator", a
 });
 
 test("comments: closed on core posts, pages and kinds without `comments`; open where the kind turns them on", async () => {
-  const ids = { post: post("post", "Core post"), page: post("page", "Core page"), memo: post("first_memos", "Memo"), note: post("first_notes", "Note") };
+  const ids = { post: post("post", "Core post"), page: post("page", "Core page"), memo: post("tp_memos", "Memo"), note: post("tp_notes", "Note") };
   assert.deepEqual([await comment(ids.post), await comment(ids.page), await comment(ids.memo)].map((r) => r.status), [403, 403, 403]);
   assert.equal((await comment(ids.note)).status, 201);
-  assert.deepEqual(evalJson("echo wp_json_encode([get_default_comment_status('post'), get_default_comment_status('first_memos'), get_default_comment_status('first_notes')]);"), ["closed", "closed", "open"]);
+  assert.deepEqual(evalJson("echo wp_json_encode([get_default_comment_status('post'), get_default_comment_status('tp_memos'), get_default_comment_status('tp_notes')]);"), ["closed", "closed", "open"]);
   // The facade's built-in `comments` kind (spec §2.1, this app declares none): core's route and rules,
-  // First's field names, and the same refusal on a closed item.
-  const facade = `${site}/__first/api/v1/comments`;
+  // TypedPress's field names, and the same refusal on a closed item.
+  const facade = `${site}/__tp/api/v1/comments`;
   const write = (on: number) => fetch(facade, { method: "POST", headers: { "content-type": "application/json", ...auth("editor") }, body: JSON.stringify({ on, content: `facade on ${on}` }) });
   const closed = await write(ids.memo);
   assert.equal(closed.status, 403, await closed.text());
@@ -296,26 +296,26 @@ test("permalinks: pretty URLs route even when the stored structure is plain", as
   assert.equal(wp("db", "query", "SELECT option_value FROM wp_options WHERE option_name = 'permalink_structure'", "--skip-column-names"), "", "the stored structure stays the owner's");
 });
 
-test("timezone: the Space's timezone from FIRST_SITE_TIMEZONE; the owner's setting without it", () => {
+test("timezone: the Space's timezone from TP_SITE_TIMEZONE; the owner's setting without it", () => {
   wp("option", "update", "timezone_string", "America/New_York");
   assert.equal(wp("eval", "echo wp_timezone_string();"), "America/New_York");
-  wp("config", "set", "FIRST_SITE_TIMEZONE", "Europe/Berlin", "--type=constant");
+  wp("config", "set", "TP_SITE_TIMEZONE", "Europe/Berlin", "--type=constant");
   try {
     assert.equal(wp("eval", "echo wp_timezone_string();"), "Europe/Berlin");
     assert.equal(wp("option", "get", "timezone_string", "--skip-plugins"), "America/New_York", "the stored option stays the owner's");
   } finally {
-    wp("config", "delete", "FIRST_SITE_TIMEZONE");
+    wp("config", "delete", "TP_SITE_TIMEZONE");
   }
 });
 
-test("blockTheme: First's minimal block theme renders when no installed theme is active", async () => {
+test("blockTheme: TypedPress's minimal block theme renders when no installed theme is active", async () => {
   const stored = wp("option", "get", "stylesheet", "--skip-plugins");
   // --skip-themes: between the two writes the template and stylesheet name different themes, and
   // WordPress 7.2's default theme requires files from the template's directory when it loads.
   wp("option", "update", "template", "gone-theme", "--skip-plugins", "--skip-themes");
   wp("option", "update", "stylesheet", "gone-theme", "--skip-plugins", "--skip-themes");
   try {
-    assert.deepEqual(evalJson("echo wp_json_encode([get_stylesheet(), wp_is_block_theme()]);"), ["first-default", true]);
+    assert.deepEqual(evalJson("echo wp_json_encode([get_stylesheet(), wp_is_block_theme()]);"), ["typedpress-default", true]);
     const response = await page("/");
     assert.equal(response.status, 200);
     assert.match(await response.text(), /wp-block-site-title/);
@@ -328,13 +328,13 @@ test("blockTheme: First's minimal block theme renders when no installed theme is
 
 // Last: everything above must be the active app's doing. With the runtime still active but no app,
 // WordPress behaves as it ships.
-test("without an active First app, WordPress keeps XML-RPC, comments, the Customizer and the rest as shipped", async () => {
+test("without an active TypedPress app, WordPress keeps XML-RPC, comments, the Customizer and the rest as shipped", async () => {
   const id = post("post", "Stock post");
   // The stored structure is still the plain one the permalinks test left.
   wp("plugin", "deactivate", app);
   wp("rewrite", "flush");
   const active = JSON.parse(wp("plugin", "list", "--status=active", "--field=name", "--format=json")) as string[];
-  assert.deepEqual([active.includes("first-runtime"), active.some((n) => n.startsWith("first-app-"))], [true, false], "the runtime alone, no app");
+  assert.deepEqual([active.includes("typedpress-runtime"), active.some((n) => n.startsWith("typedpress-app-"))], [true, false], "the runtime alone, no app");
   const listed = await xmlrpc("system.listMethods");
   assert.equal(listed.status, 200);
   assert.match(await listed.text(), /system\.listMethods/);
@@ -345,7 +345,7 @@ test("without an active First app, WordPress keeps XML-RPC, comments, the Custom
   const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
   assert.equal((await page("/wp-admin/customize.php", cookie)).status, 200);
   assert.match(await (await page("/", cookie)).text(), /wp-emoji|_wpemojiSettings/);
-  assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('permalink_structure'), get_option('first_rewrite_rules', null)]);`), [true, "", null]);
+  assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('permalink_structure'), get_option('tp_rewrite_rules', null)]);`), [true, "", null]);
   assert.equal((await page(`/?p=${id}`)).status, 200, "plain permalinks route again");
   assert.match((await signIn("nobody-here", "guess"))[2], /is not registered on this site/, "wp-login.php's own errors again");
   assert.equal((await lostPassword("nobody-here"))[0], 200, "lost password reports the unknown account again");

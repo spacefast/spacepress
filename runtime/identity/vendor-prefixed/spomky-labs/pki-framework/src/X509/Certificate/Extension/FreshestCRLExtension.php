@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint\DistributionPoint;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint\DistributionPoint;
 
 /**
  * Implements 'Freshest CRL' certificate extension.

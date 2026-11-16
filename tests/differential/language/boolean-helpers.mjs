@@ -1,6 +1,6 @@
 // Untyped JavaScript for tests/differential/language/boolean.ts: the global `Boolean` called and
 // passed as a value, as picomatch 4.0.7 (a files-sdk dependency) does in lib/parse.js and
-// lib/picomatch.js, run through First's checked JavaScript dispatch.
+// lib/picomatch.js, run through TypedPress's checked JavaScript dispatch.
 
 export function falsyAndTruthy() {
   return [0, -0, NaN, '', null, undefined, false, 0n, '0', 'false', [], {}, 1, -1, 'a', true, 1n, Infinity, () => 0];

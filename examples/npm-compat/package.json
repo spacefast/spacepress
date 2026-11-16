@@ -1,5 +1,5 @@
 {
-  "name": "first-npm-compat",
+  "name": "typedpress-npm-compat",
   "private": true,
   "type": "module",
   "scripts": {

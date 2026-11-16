@@ -2,11 +2,11 @@
 /**
  * Display name field definition for core user fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Display Name', 'first-admin' ),
+	'label'         => __( 'Display Name', 'typedpress-admin' ),
 	'enableSorting' => true,
 );

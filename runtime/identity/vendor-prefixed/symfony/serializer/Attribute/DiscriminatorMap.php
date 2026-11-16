@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Attribute;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
 
 /**
  * @author Samuel Roze <samuel.roze@gmail.com>
@@ -63,6 +63,6 @@ class DiscriminatorMap
     }
 }
 
-if (!class_exists(\First\Identity\Vendor\Symfony\Component\Serializer\Annotation\DiscriminatorMap::class, false)) {
-    class_alias(DiscriminatorMap::class, \First\Identity\Vendor\Symfony\Component\Serializer\Annotation\DiscriminatorMap::class);
+if (!class_exists(\TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\DiscriminatorMap::class, false)) {
+    class_alias(DiscriminatorMap::class, \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\DiscriminatorMap::class);
 }

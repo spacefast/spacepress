@@ -21,7 +21,7 @@ fn success(output: Output) -> Output {
 #[test]
 fn invalid_service_definitions_report_the_authored_property() {
     let project = tempfile::Builder::new()
-        .prefix("first-services-errors-")
+        .prefix("typedpress-services-errors-")
         .tempdir()
         .unwrap();
     let cases = [
@@ -114,15 +114,15 @@ fn invalid_service_definitions_report_the_authored_property() {
     ];
     for (services, message, property) in cases {
         let source = format!(
-            "import {{ collection, defineConfig, env, table, text, ServicesConfig }} from 'first';\nconst articles = collection({{ title: text() }}, {{ title: 'title', drafts: true }});\nconst unpublished = table({{ title: text() }});\nexport {{ articles }}; export {{ unpublished }}; export default defineConfig({{ services: {{ {services} }} satisfies ServicesConfig }});\n"
+            "import {{ collection, defineConfig, env, table, text, ServicesConfig }} from 'typedpress';\nconst articles = collection({{ title: text() }}, {{ title: 'title', drafts: true }});\nconst unpublished = table({{ title: text() }});\nexport {{ articles }}; export {{ unpublished }}; export default defineConfig({{ services: {{ {services} }} satisfies ServicesConfig }});\n"
         );
-        let entry = project.path().join("first.config.ts");
+        let entry = project.path().join("typedpress.config.ts");
         std::fs::write(&entry, &source).unwrap();
-        let program = first::loader::load(&entry).unwrap();
-        let error = match first::pipeline::build(
+        let program = typedpress::loader::load(&entry).unwrap();
+        let error = match typedpress::pipeline::build(
             project.path(),
             &program,
-            || Ok(first::pipeline::Previous::none()),
+            || Ok(typedpress::pipeline::Previous::none()),
             |_| None,
         ) {
             Err(error) => error,
@@ -144,15 +144,15 @@ fn write_types_project(project: &Path) {
         serde_json::json!({
             "compilerOptions": {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
-                "paths": { "first": [root().join("types/first/index.d.ts")] }
+                "paths": { "typedpress": [root().join("types/typedpress/index.d.ts")] }
             },
-            "files": ["first.config.ts", "types-test.ts"]
+            "files": ["typedpress.config.ts", "types-test.ts"]
         })
         .to_string(),
     )
     .unwrap();
     std::fs::write(project.join("types-test.ts"), r#"
-import { env, type ServicesConfig, type ServiceFormField } from "first";
+import { env, type ServicesConfig, type ServiceFormField } from "typedpress";
 const field: ServiceFormField = { type: "integer", rules: { min: -10, max: 10 } };
 const config: ServicesConfig = { forms: { contact: { fields: { age: field }, recipient: env("TO"), sender: env("FROM") } } };
 // @ts-expect-error addresses must be runtime env references
@@ -168,12 +168,12 @@ void config; void literal; void boolean; void checkout;
 #[test]
 fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
     let project = tempfile::Builder::new()
-        .prefix("first-ts-services-app-")
+        .prefix("typedpress-ts-services-app-")
         .tempdir()
         .unwrap();
     std::fs::write(
-        project.path().join("first.config.ts"),
-        include_str!("../examples/app-services-ts/first.config.ts"),
+        project.path().join("typedpress.config.ts"),
+        include_str!("../examples/app-services-ts/typedpress.config.ts"),
     )
     .unwrap();
     write_types_project(project.path());
@@ -185,7 +185,7 @@ fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
             .unwrap(),
     );
     success(
-        Command::new(env!("CARGO_BIN_EXE_first"))
+        Command::new(env!("CARGO_BIN_EXE_typedpress"))
             .arg("build")
             .arg(project.path())
             .env("APP_SERVICES_RECIPIENT", "build-only-value@example.test")
@@ -199,7 +199,7 @@ fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
                 "--experimental-strip-types",
                 "--input-type=module",
                 "--eval",
-                "import { SCHEMA } from './first/_generated/client/schema.ts'; console.log(JSON.stringify(SCHEMA));",
+                "import { SCHEMA } from './tp/_generated/client/schema.ts'; console.log(JSON.stringify(SCHEMA));",
             ])
             .current_dir(project.path())
             .output()
@@ -211,19 +211,19 @@ fn ts_config_emits_a_private_plugin_that_uses_the_native_services_runtime() {
         None,
         "private services must not become client descriptors"
     );
-    let evidence = std::env::var_os("FIRST_SERVICES_TS_EVIDENCE")
+    let evidence = std::env::var_os("TP_SERVICES_TS_EVIDENCE")
         .map(PathBuf::from)
         .unwrap_or_else(|| project.path().join("evidence"));
     let output = success(
         Command::new("php")
             .arg(root().join("examples/app-services-ts/journey.php"))
-            .arg(project.path().join("first/dist/wp-content"))
+            .arg(project.path().join("tp/dist/wp-content"))
             .arg(&evidence)
             .env(
-                "FIRST_WP_CACHE",
-                std::env::var_os("FIRST_WP_CACHE").unwrap_or_else(|| project.path().join("wp-cache").into_os_string()),
+                "TP_WP_CACHE",
+                std::env::var_os("TP_WP_CACHE").unwrap_or_else(|| project.path().join("wp-cache").into_os_string()),
             )
-            .env_remove("FIRST_WP_KEEP")
+            .env_remove("TP_WP_KEEP")
             .output()
             .unwrap(),
     );

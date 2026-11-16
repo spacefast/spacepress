@@ -1,5 +1,5 @@
 import { useNavigate } from '@wordpress/route';
-import type { Action } from '@first-admin/dataviews';
+import type { Action } from '@typedpress-admin/dataviews';
 import { useMemo } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { pencil } from '@wordpress/icons';
@@ -14,7 +14,7 @@ export function useQuickEditAction(): Action< Post > {
 	return useMemo(
 		() => ( {
 			id: 'quick-edit-post',
-			label: __( 'Quick Edit', 'first-admin' ),
+			label: __( 'Quick Edit', 'typedpress-admin' ),
 			isPrimary: true,
 			icon: pencil,
 			supportsBulk: true,

@@ -8,7 +8,7 @@ declare(strict_types=1);
  *
  *   php -d opcache.enable_cli=1 -d opcache.file_update_protection=0 docs/spikes/runtime-schema-load.php [--json]
  *
- * The compiled schema is tests/fixtures/phase2.schema.json written the way `first build` writes
+ * The compiled schema is tests/fixtures/phase2.schema.json written the way `typedpress build` writes
  * schema.php (one PHP array literal). An overlay of N fields is spread over the schema's
  * post-backed collections. Every variant ends with the same array, checked before timing.
  *
@@ -24,7 +24,7 @@ declare(strict_types=1);
 
 $repo = dirname(__DIR__, 2);
 $compiled = json_decode((string) file_get_contents("$repo/tests/fixtures/phase2.schema.json"), true, 512, JSON_THROW_ON_ERROR);
-$dir = sys_get_temp_dir() . '/first-rtschema-' . bin2hex(random_bytes(4));
+$dir = sys_get_temp_dir() . '/typedpress-rtschema-' . bin2hex(random_bytes(4));
 mkdir($dir);
 register_shutdown_function(static function () use ($dir): void {
     array_map('unlink', glob("$dir/*") ?: []);

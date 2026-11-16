@@ -1,7 +1,7 @@
 import { useSelect } from '@wordpress/data';
 import { useMemo, useState, useEffect } from '@wordpress/element';
 import { useEvent } from '@wordpress/compose';
-import type { Field } from '@first-admin/dataviews';
+import type { Field } from '@typedpress-admin/dataviews';
 import { store } from '../store';
 import type { FieldCollection } from '../store/types';
 

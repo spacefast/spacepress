@@ -1,7 +1,7 @@
-import { loadView } from '@first-admin/views';
+import { loadView } from '@typedpress-admin/views';
 import { resolveSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
-import type { View } from '@first-admin/dataviews';
+import type { View } from '@typedpress-admin/dataviews';
 import type { Type } from '@wordpress/core-data';
 
 const DEFAULT_VIEW: View = {

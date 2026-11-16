@@ -1,4 +1,4 @@
-CREATE TABLE `{prefix}first_cheers` (
+CREATE TABLE `{prefix}tp_cheers` (
 	`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 	`noteId` BIGINT UNSIGNED NOT NULL,
 	`count` BIGINT DEFAULT 0 NOT NULL,

@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
+namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
-use First\Identity\Vendor\Psr\Container\ContainerInterface;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
+use TypedPress\Identity\Vendor\Psr\Container\ContainerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
 
 /**
  * Resolves type for a given subject by delegating resolving to nested type resolvers.

@@ -1,4 +1,4 @@
-import { blockComponent } from "@spacefast/first-blocks";
+import { blockComponent } from "@typedpress/blocks";
 
 const Heading = blockComponent<{ level?: number; fmt?: string }>("core/heading");
 

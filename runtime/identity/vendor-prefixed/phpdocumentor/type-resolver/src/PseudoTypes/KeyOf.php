@@ -11,10 +11,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoTypes;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\PseudoType;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 /**
  * Value Object representing the `key-of` type.

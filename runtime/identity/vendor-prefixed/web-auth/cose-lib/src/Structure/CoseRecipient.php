@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Structure;
+namespace TypedPress\Identity\Vendor\Cose\Structure;
 
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthListObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
-use First\Identity\Vendor\CBOR\ListObject;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\CBOR\OtherObject\NullObject;
+use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
+use TypedPress\Identity\Vendor\CBOR\CBORObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthListObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
+use TypedPress\Identity\Vendor\CBOR\ListObject;
+use TypedPress\Identity\Vendor\CBOR\MapObject;
+use TypedPress\Identity\Vendor\CBOR\OtherObject\NullObject;
 use InvalidArgumentException;
 use LogicException;
 

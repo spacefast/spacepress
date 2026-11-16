@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\Flags;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\Flags;
 
 /**
  * Implements *ReasonFlags* ASN.1 type used by 'CRL Distribution Points' certificate extension.

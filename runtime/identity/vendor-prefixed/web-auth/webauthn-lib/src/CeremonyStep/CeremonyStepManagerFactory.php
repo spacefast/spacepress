@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\CeremonyStep;
+namespace TypedPress\Identity\Vendor\Webauthn\CeremonyStep;
 
-use First\Identity\Vendor\Cose\Algorithm\Manager;
-use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
-use First\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS256;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
-use First\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport;
-use First\Identity\Vendor\Webauthn\AuthenticationExtensions\ExtensionOutputCheckerHandler;
-use First\Identity\Vendor\Webauthn\Counter\CounterChecker;
-use First\Identity\Vendor\Webauthn\Counter\ThrowExceptionIfInvalid;
-use First\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateChainValidator;
-use First\Identity\Vendor\Webauthn\MetadataService\MetadataStatementRepository;
-use First\Identity\Vendor\Webauthn\MetadataService\StatusReportRepository;
+use TypedPress\Identity\Vendor\Cose\Algorithm\Manager;
+use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
+use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS256;
+use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\ExtensionOutputCheckerHandler;
+use TypedPress\Identity\Vendor\Webauthn\Counter\CounterChecker;
+use TypedPress\Identity\Vendor\Webauthn\Counter\ThrowExceptionIfInvalid;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateChainValidator;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\MetadataStatementRepository;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\StatusReportRepository;
 
 final class CeremonyStepManagerFactory
 {

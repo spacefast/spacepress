@@ -1,7 +1,7 @@
 // Usage: node serve-static.mjs <dir>
 // A plain static file server, as GitHub Pages answers: `/x` is x.html, `/x/` x/index.html,
 // a missing file the site's 404.html with a 404, nothing else. Prints one JSON line ({url}) once it
-// listens, then serves until killed. For browser tests of `first export` output.
+// listens, then serves until killed. For browser tests of `typedpress export` output.
 import { createReadStream, existsSync, statSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";

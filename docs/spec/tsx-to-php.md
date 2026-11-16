@@ -14,10 +14,10 @@ interactive in the browser?
 Yes, for a checked subset. Nobody ships TSX → PHP today (the closest are PHPX
 and xph, which don't compile TS expressions). Languages that render without JS
 at request time all compile templates into the server language (Go's Templ,
-Elixir's HEEx, Marko's string concatenation). That is what First's compiler
+Elixir's HEEx, Marko's string concatenation). That is what TypedPress's compiler
 already does for handlers.
 
-What First has at de46201a:
+What TypedPress has at de46201a:
 
 - OXC parsing, a typed TS subset lowered to PHP with JS semantics (`Js::truthy`,
   `Js::map`), classes, npm TS erasure, Node-vs-PHP contract tests, `file:line:col`

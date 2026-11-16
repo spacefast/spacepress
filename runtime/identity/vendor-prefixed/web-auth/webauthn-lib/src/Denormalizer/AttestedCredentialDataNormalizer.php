@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
 
 use function assert;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use First\Identity\Vendor\Webauthn\AttestedCredentialData;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use TypedPress\Identity\Vendor\Webauthn\AttestedCredentialData;
 
 final class AttestedCredentialDataNormalizer implements NormalizerInterface, NormalizerAwareInterface
 {

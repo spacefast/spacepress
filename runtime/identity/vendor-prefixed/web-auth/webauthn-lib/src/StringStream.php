@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace TypedPress\Identity\Vendor\Webauthn;
 
 use function assert;
-use First\Identity\Vendor\CBOR\Stream;
+use TypedPress\Identity\Vendor\CBOR\Stream;
 use function fclose;
 use function fopen;
 use function fread;
@@ -13,7 +13,7 @@ use function fwrite;
 use function rewind;
 use function sprintf;
 use function strlen;
-use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 final class StringStream implements Stream
 {

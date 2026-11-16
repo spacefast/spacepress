@@ -71,10 +71,10 @@ test("a details block keeps its summary attribute and its body blocks", async ()
 });
 
 test("a nested list rides inside its list item beside the item's text", async () => {
-  const tree = block("core/list", { ordered: true }, [block("core/list-item", {}, [text("First"), block("core/list", {}, [block("core/list-item", {}, [text("Nested")])])])]);
+  const tree = block("core/list", { ordered: true }, [block("core/list-item", {}, [text("TypedPress"), block("core/list", {}, [block("core/list-item", {}, [text("Nested")])])])]);
   const [l] = await reparse((await serializeBlocks([tree])).markup);
   const item = l!.inner[0]!;
-  assert.deepEqual([l!.isValid, item.isValid, item.attributes.content, item.inner.map((i) => [i.name, i.inner[0]!.attributes.content])], [true, true, "First", [["core/list", "Nested"]]]);
+  assert.deepEqual([l!.isValid, item.isValid, item.attributes.content, item.inner.map((i) => [i.name, i.inner[0]!.attributes.content])], [true, true, "TypedPress", [["core/list", "Nested"]]]);
 });
 
 test("rich text given to a block with no body becomes a paragraph inside it", async () => {
@@ -311,7 +311,7 @@ test("every problem in a tree is reported in one pass, and nothing is written", 
 
 test("a save() that throws is a located error instead of silent empty markup", async () => {
   await withBlockApi((api) =>
-    api.registerBlockType("first-test/explodes", {
+    api.registerBlockType("typedpress-test/explodes", {
       apiVersion: 3,
       title: "Explodes",
       category: "widgets",
@@ -321,7 +321,7 @@ test("a save() that throws is a located error instead of silent empty markup", a
       },
     }),
   );
-  const { markup, diagnostics } = await serializeBlocks([at(block("first-test/explodes", { n: 1 }), 9)]);
+  const { markup, diagnostics } = await serializeBlocks([at(block("typedpress-test/explodes", { n: 1 }), 9)]);
   assert.equal(markup, "");
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error").map(brief), [{ code: "save_failed", severity: "error", file: "/t/page.tsx", line: 9, column: 5 }]);
   assert.match(diagnostics.find((d) => d.code === "save_failed")!.message, /no save for you/);
@@ -342,7 +342,7 @@ test("a third-party block is written as authored at any depth, reported once as 
 });
 
 test("the attribute the passthrough keeps its body in cannot be authored", async () => {
-  const { diagnostics } = await serializeBlocks([at(block("acme/x", { "first-blocks:inner-html": "AUTHORED" }, [text("BODY")]), 2)]);
+  const { diagnostics } = await serializeBlocks([at(block("acme/x", { "typedpress-blocks:inner-html": "AUTHORED" }, [text("BODY")]), 2)]);
   assert.deepEqual(diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.loc?.line]), [["unknown_attribute", 2]]);
 });
 

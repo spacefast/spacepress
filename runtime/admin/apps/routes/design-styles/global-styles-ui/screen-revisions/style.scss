@@ -1,7 +1,7 @@
 @use "@wordpress/base-styles/variables";
 @use "@wordpress/base-styles/mixins";
 
-.first-admin-global-styles-screen-revisions__revisions-list {
+.typedpress-admin-global-styles-screen-revisions__revisions-list {
 	list-style: none;
 	margin: 0 variables.$grid-unit-20 variables.$grid-unit-20
 		variables.$grid-unit-20;
@@ -14,7 +14,7 @@
 }
 
 // Could this use a `tertiary` `Button` and remove most of the custom styles?
-.first-admin-global-styles-screen-revisions__revision-item {
+.typedpress-admin-global-styles-screen-revisions__revision-item {
 	position: relative;
 	cursor: pointer;
 	display: flex;
@@ -28,7 +28,7 @@
 	&:hover {
 		background: var( --wpds-color-background-interactive-neutral-weak-active );
 
-		.first-admin-global-styles-screen-revisions__date {
+		.typedpress-admin-global-styles-screen-revisions__date {
 			color: var( --wpds-color-foreground-interactive-neutral-active );
 		}
 	}
@@ -64,7 +64,7 @@
 		color: var( --wpds-color-foreground-interactive-neutral-active );
 		background: var( --wpds-color-background-interactive-neutral-weak-active );
 
-		.first-admin-global-styles-screen-revisions__date {
+		.typedpress-admin-global-styles-screen-revisions__date {
 			color: var( --wpds-color-foreground-interactive-neutral-active );
 		}
 
@@ -72,9 +72,9 @@
 			background: var( --wpds-color-background-interactive-brand-strong );
 		}
 
-		.first-admin-global-styles-screen-revisions__changes > li,
-		.first-admin-global-styles-screen-revisions__meta,
-		.first-admin-global-styles-screen-revisions__applied-text {
+		.typedpress-admin-global-styles-screen-revisions__changes > li,
+		.typedpress-admin-global-styles-screen-revisions__meta,
+		.typedpress-admin-global-styles-screen-revisions__applied-text {
 			color: var( --wpds-color-foreground-content-neutral );
 		}
 	}
@@ -96,41 +96,41 @@
 	}
 }
 
-.first-admin-global-styles-screen-revisions__revision-item-wrapper {
+.typedpress-admin-global-styles-screen-revisions__revision-item-wrapper {
 	display: block;
 	padding: variables.$grid-unit-15 variables.$grid-unit-15
 		variables.$grid-unit-05 variables.$grid-unit-50;
 }
 
-.first-admin-global-styles-screen-revisions__apply-button.is-primary,
-.first-admin-global-styles-screen-revisions__applied-text {
+.typedpress-admin-global-styles-screen-revisions__apply-button.is-primary,
+.typedpress-admin-global-styles-screen-revisions__applied-text {
 	align-self: flex-start;
-	// Left margin = left padding of .first-admin-global-styles-screen-revisions__revision-item-wrapper.
+	// Left margin = left padding of .typedpress-admin-global-styles-screen-revisions__revision-item-wrapper.
 	margin: variables.$grid-unit-05 variables.$grid-unit-15
 		variables.$grid-unit-15 variables.$grid-unit-50;
 }
 
-.first-admin-global-styles-screen-revisions__changes,
-.first-admin-global-styles-screen-revisions__meta,
-.first-admin-global-styles-screen-revisions__applied-text {
+.typedpress-admin-global-styles-screen-revisions__changes,
+.typedpress-admin-global-styles-screen-revisions__meta,
+.typedpress-admin-global-styles-screen-revisions__applied-text {
 	color: var( --wpds-color-foreground-content-neutral-weak );
 	font-size: 12px;
 }
 
-.first-admin-global-styles-screen-revisions__description {
+.typedpress-admin-global-styles-screen-revisions__description {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
 	gap: variables.$grid-unit-10;
 
-	.first-admin-global-styles-screen-revisions__date {
+	.typedpress-admin-global-styles-screen-revisions__date {
 		text-transform: uppercase;
 		font-weight: 600;
 		font-size: 12px;
 	}
 }
 
-.first-admin-global-styles-screen-revisions__meta {
+.typedpress-admin-global-styles-screen-revisions__meta {
 	display: flex;
 	justify-content: start;
 	width: 100%;
@@ -146,11 +146,11 @@
 	}
 }
 
-.first-admin-global-styles-screen-revisions__loading {
+.typedpress-admin-global-styles-screen-revisions__loading {
 	margin: variables.$grid-unit-30 auto !important;
 }
 
-.first-admin-global-styles-screen-revisions__changes {
+.typedpress-admin-global-styles-screen-revisions__changes {
 	text-align: left;
 	line-height: variables.$default-line-height;
 	margin-left: variables.$grid-unit-15;
@@ -161,11 +161,11 @@
 	}
 }
 
-.first-admin-global-styles-screen-revisions__pagination.first-admin-global-styles-screen-revisions__pagination {
+.typedpress-admin-global-styles-screen-revisions__pagination.typedpress-admin-global-styles-screen-revisions__pagination {
 	justify-content: space-between;
 	gap: 2px;
 
-	.first-admin-pagination__total {
+	.typedpress-admin-pagination__total {
 		position: absolute;
 		left: -1000px;
 		height: 1px;
@@ -190,7 +190,7 @@
 	}
 }
 
-.first-admin-global-styles-screen-revisions__footer {
+.typedpress-admin-global-styles-screen-revisions__footer {
 	height: variables.$grid-unit-70;
 	z-index: 1;
 	position: sticky;

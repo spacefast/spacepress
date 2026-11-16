@@ -4,9 +4,9 @@ import {
 	privateApis as routePrivateApis,
 } from '@wordpress/route';
 import { useEffect, useRef, useState } from 'react';
-import { unlock } from '@first-admin/admin-toolkit';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { useRefEffect, useMergeRefs } from '@wordpress/compose';
-import { siteConfig } from '@first-admin/boot';
+import { siteConfig } from '@typedpress-admin/boot';
 import { isUnderAdmin, resolveAdminUrl, slugOf } from './admin-url';
 
 const { useRouter } = unlock( routePrivateApis );
@@ -105,7 +105,7 @@ function ClassicAdmin() {
 
 	const iframeRefEffect = useRefEffect( ( iframe: HTMLIFrameElement ) => {
 		// @ts-expect-error - Custom property added to iframe element
-		iframe._firstAdminLoad = () => {
+		iframe._tpAdminLoad = () => {
 			const iframeDoc = iframe.contentDocument;
 			if ( iframeDoc ) {
 				const style = iframeDoc.createElement( 'style' );

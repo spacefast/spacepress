@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
 use Symfony\Component\ErrorHandler\Exception\FlattenException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\Messenger\Exception\ValidationFailedException as MessageValidationFailedException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\PartialDenormalizationException;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\PartialDenormalizationException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Contracts\Translation\TranslatorInterface;
 

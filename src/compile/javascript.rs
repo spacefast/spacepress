@@ -6,7 +6,7 @@ impl Compiler<'_, '_> {
     pub(super) fn error_constructor(&mut self, name: &str, args: &[ArrEl]) -> Result<Out> {
         let argv = self.javascript_args(args)?;
         Ok(Out::atom(
-            format!("\\First\\Js::dynamicConstruct({}, {argv})", php_str(name)),
+            format!("\\TypedPress\\Js::dynamicConstruct({}, {argv})", php_str(name)),
             Ty::Error,
         ))
     }
@@ -91,7 +91,7 @@ impl Compiler<'_, '_> {
         };
         Ok(Out::atom(
             format!(
-                "\\First\\Js::dynamicBinary({}, {}, {})",
+                "\\TypedPress\\Js::dynamicBinary({}, {}, {})",
                 php_str(operator),
                 a.php,
                 b.php
@@ -104,11 +104,11 @@ impl Compiler<'_, '_> {
         let source = if optional {
             let tmp = self.tmp_var();
             format!(
-                "(\\First\\Js::isNullish({tmp} = {}) ? \\First\\Js::undefined() : \\First\\Js::dynamicGet({tmp}, {}))",
+                "(\\TypedPress\\Js::isNullish({tmp} = {}) ? \\TypedPress\\Js::undefined() : \\TypedPress\\Js::dynamicGet({tmp}, {}))",
                 receiver.php, key.php
             )
         } else {
-            format!("\\First\\Js::dynamicGet({}, {})", receiver.php, key.php)
+            format!("\\TypedPress\\Js::dynamicGet({}, {})", receiver.php, key.php)
         };
         Out::atom(source, Ty::Dynamic)
     }
@@ -116,7 +116,7 @@ impl Compiler<'_, '_> {
     pub(super) fn javascript_place(&self, receiver: Out, key: Out) -> AssignmentPlace {
         AssignmentPlace {
             read: Out::atom(
-                format!("\\First\\Js::dynamicGet({}, {})", receiver.php, key.php),
+                format!("\\TypedPress\\Js::dynamicGet({}, {})", receiver.php, key.php),
                 Ty::Dynamic,
             ),
             constraint: Ty::Dynamic,
@@ -154,10 +154,10 @@ impl Compiler<'_, '_> {
                 Prop::NullPrototype => {}
             }
         }
-        let object = format!("\\First\\Js::dynamicObject({})", parts.join(", "));
+        let object = format!("\\TypedPress\\Js::dynamicObject({})", parts.join(", "));
         Ok(Out::atom(
             if props.iter().any(|p| matches!(p, Prop::NullPrototype)) {
-                format!("\\First\\Js::nullPrototype({object})")
+                format!("\\TypedPress\\Js::nullPrototype({object})")
             } else {
                 object
             },
@@ -171,7 +171,7 @@ impl Compiler<'_, '_> {
             match arg {
                 ArrEl::Item(expr) => {
                     let value = if matches!(expr.kind, ExprKind::Undefined) {
-                        Out::atom("\\First\\Js::undefined()", Ty::Dynamic)
+                        Out::atom("\\TypedPress\\Js::undefined()", Ty::Dynamic)
                     } else {
                         self.expr(expr)?
                     };
@@ -180,11 +180,11 @@ impl Compiler<'_, '_> {
                 }
                 ArrEl::Spread(expr) => {
                     let value = self.expr(expr)?;
-                    parts.push(format!("...(\\First\\Js::dynamicIterable({}))->a", value.php));
+                    parts.push(format!("...(\\TypedPress\\Js::dynamicIterable({}))->a", value.php));
                 }
             }
         }
-        Ok(format!("new \\First\\JsArray([{}])", parts.join(", ")))
+        Ok(format!("new \\TypedPress\\JsArray([{}])", parts.join(", ")))
     }
 
     pub(super) fn javascript_arguments(&mut self, f: &Func, indent: usize) -> Result<String> {
@@ -212,7 +212,7 @@ impl Compiler<'_, '_> {
             } else {
                 "func_get_args()"
             };
-            let _ = writeln!(source, "{}{php} = \\First\\Js::arguments({args});", pad(indent));
+            let _ = writeln!(source, "{}{php} = \\TypedPress\\Js::arguments({args});", pad(indent));
         }
         Ok(source)
     }
@@ -242,7 +242,7 @@ impl Compiler<'_, '_> {
                     Ty::Unknown
                 };
                 let php = self.declare_local(name, constraint, true, span);
-                let value = "\\First\\Js::undefined()";
+                let value = "\\TypedPress\\Js::undefined()";
                 let _ = writeln!(source, "{}{php} = {value};", pad(indent));
                 if !dynamic {
                     self.set_local_ty(name, Ty::Undefined);
@@ -270,9 +270,9 @@ impl Compiler<'_, '_> {
     fn suspending_kind(&mut self, f: &Func) -> &'static str {
         self.uses_jobs |= f.is_async;
         match (f.is_async, f.is_generator) {
-            (true, true) => "\\First\\JsAsyncGenerator",
-            (false, true) => "\\First\\JsGenerator",
-            _ => "\\First\\JsJobs",
+            (true, true) => "\\TypedPress\\JsAsyncGenerator",
+            (false, true) => "\\TypedPress\\JsGenerator",
+            _ => "\\TypedPress\\JsJobs",
         }
     }
 
@@ -280,7 +280,7 @@ impl Compiler<'_, '_> {
     pub(super) fn suspending_wrapper(&mut self, f: &Func, body: &str) -> String {
         let callee = format!("\\Closure::fromCallable({})", php_str(body));
         match self.suspending_kind(f) {
-            "\\First\\JsJobs" => format!("\\First\\JsJobs::async({callee}, $args)"),
+            "\\TypedPress\\JsJobs" => format!("\\TypedPress\\JsJobs::async({callee}, $args)"),
             kind => format!("new {kind}({callee}(...$args))"),
         }
     }
@@ -288,7 +288,7 @@ impl Compiler<'_, '_> {
     /// An async/generator closure value: each call starts a new body.
     pub(super) fn suspending_closure(&mut self, f: &Func, closure: String) -> String {
         match self.suspending_kind(f) {
-            "\\First\\JsJobs" => format!("\\First\\JsJobs::asyncFunction({closure})"),
+            "\\TypedPress\\JsJobs" => format!("\\TypedPress\\JsJobs::asyncFunction({closure})"),
             kind => format!("{kind}::function({closure})"),
         }
     }
@@ -302,15 +302,15 @@ impl Compiler<'_, '_> {
                 let v = self.expr(arg)?;
                 self.finish_value(v, arg.span)?.php
             }
-            None => "\\First\\Js::undefined()".into(),
+            None => "\\TypedPress\\Js::undefined()".into(),
         };
         let is_async = self.fx().is_async;
         let php = match (delegate, is_async) {
-            (true, false) => format!("(yield from \\First\\JsIter::delegate({value}))"),
-            (true, true) => format!("(yield from \\First\\JsIter::asyncDelegate({value}))"),
+            (true, false) => format!("(yield from \\TypedPress\\JsIter::delegate({value}))"),
+            (true, true) => format!("(yield from \\TypedPress\\JsIter::asyncDelegate({value}))"),
             // An async generator awaits the operand before yielding it, and a received value is undefined
             // until the next call supplies one.
-            (false, true) => format!("(yield \\First\\JsJobs::await({value}))"),
+            (false, true) => format!("(yield \\TypedPress\\JsJobs::await({value}))"),
             (false, false) => format!("(yield {value})"),
         };
         Ok(Out::atom(php, Ty::Dynamic))
@@ -327,8 +327,8 @@ impl Compiler<'_, '_> {
             self.output.replace_range(start..start + header.len(), &renamed);
             let _ = writeln!(
                 self.output,
-                "function {name}(mixed ...$args)\n{{\n    return \\First\\JsJobs::run(\\Closure::fromCallable({}), $args);\n}}\n",
-                php_str(&format!("\\FirstApp\\{name}__root"))
+                "function {name}(mixed ...$args)\n{{\n    return \\TypedPress\\JsJobs::run(\\Closure::fromCallable({}), $args);\n}}\n",
+                php_str(&format!("\\TypedPressApp\\{name}__root"))
             );
         }
     }

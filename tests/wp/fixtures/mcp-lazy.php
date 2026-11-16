@@ -4,17 +4,17 @@ $check = static function (bool $ok, string $message): void {
     if (!$ok) { throw new RuntimeException($message); }
 };
 $adapter = \WP\MCP\Core\McpAdapter::instance();
-$server = $adapter->get_server('first-blog');
+$server = $adapter->get_server('typedpress-blog');
 $check($server !== null, 'server registered on the ordinary lifecycle');
 $tool = $server->get_mcp_tool('blog-posts-list');
 $check($tool !== null, 'collection tool is registered');
 $records = new ReflectionProperty($tool, 'protocol_records');
 $check($records->getValue($tool) === [], 'registration must not project tools');
 $routes = rest_get_server()->get_routes();
-$check(isset($routes['/mcp/first-blog']), 'route discovery includes MCP');
+$check(isset($routes['/mcp/typedpress-blog']), 'route discovery includes MCP');
 $check($records->getValue($tool) === [], 'route discovery must not project tools');
 wp_set_current_user(get_user_by('login', 'admin')->ID);
-$request = new WP_REST_Request('POST', '/mcp/first-blog');
+$request = new WP_REST_Request('POST', '/mcp/typedpress-blog');
 $request->set_header('Content-Type', 'application/json');
 $request->set_header('Accept', 'application/json, text/event-stream');
 $request->set_body(json_encode(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => [

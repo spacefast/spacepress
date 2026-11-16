@@ -58,7 +58,7 @@ pub struct Report {
 }
 
 #[cfg(feature = "cli")]
-const USAGE: &str = "usage: first migrate app --from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--users] [--zero-css <zero.css>] [--dry-run] [--json]";
+const USAGE: &str = "usage: typedpress migrate app --from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--users] [--zero-css <zero.css>] [--dry-run] [--json]";
 
 #[cfg(feature = "cli")]
 struct Args {
@@ -420,7 +420,7 @@ fn convert(
         }
         None => BTreeMap::new(),
     };
-    if sources.contains_key(Path::new("first.config.ts"))
+    if sources.contains_key(Path::new("typedpress.config.ts"))
         || sources.contains_key(Path::new("server/__z08-content.ts"))
         || sources.keys().any(|p| p.starts_with(crate::layout::ROOT))
     {
@@ -452,8 +452,8 @@ fn convert(
     if let Some(content) = transformed.content_config {
         sources.insert(PathBuf::from("server/__z08-content.ts"), content);
     }
-    // The candidate's app code lives under the First root (docs/spec/spec.md §1), and what 0.8 kept
-    // under `pages/` (the pages and the data modules beside them) under `first/app/`. Both move
+    // The candidate's app code lives under the TypedPress root (docs/spec/spec.md §1), and what 0.8 kept
+    // under `pages/` (the pages and the data modules beside them) under `tp/app/`. Both move
     // down by the same one folder, so every relative import between them still resolves.
     let mut sources: BTreeMap<PathBuf, String> = sources
         .into_iter()
@@ -463,8 +463,8 @@ fn convert(
         })
         .collect();
     sources.insert(
-        PathBuf::from("first.config.ts"),
-        "export { default } from \"./first/server/index\";\n".into(),
+        PathBuf::from("typedpress.config.ts"),
+        "export { default } from \"./tp/server/index\";\n".into(),
     );
     let page_files: BTreeMap<String, String> = converted;
     // Fail closed: whatever 0.8 served that the candidate does not reproduce is an error, so a
@@ -565,7 +565,7 @@ fn convert(
             .map(|(path, text)| (checked_root.join(path), text.clone()))
             .collect(),
     );
-    let program = loader::load_from(Rc::new(memory), &checked_root.join("first.config.ts"))
+    let program = loader::load_from(Rc::new(memory), &checked_root.join("typedpress.config.ts"))
         .map_err(|d| fail("", diag::render(&d[0], &checked_root)).spanned(d[0].span, &checked_root))?;
     let built = pipeline::build(&checked_root, &program, || Ok(pipeline::Previous::none()), |_| None).map_err(|d| {
         fail(
@@ -697,7 +697,7 @@ fn connector_config(
         entries.push(super::entry(
             &super::pointer("/connectors", role),
             "mapped",
-            format!("carried into sf.jsonc `connectors` as a `{kind}` role with every tool and the default cache, as Spacefast served it; the Space's binding for `{role}` keeps serving it. Pages call it with @spacefast/client; server code can't call connectors on First yet"),
+            format!("carried into sf.jsonc `connectors` as a `{kind}` role with every tool and the default cache, as Spacefast served it; the Space's binding for `{role}` keeps serving it. Pages call it with @spacefast/client; server code can't call connectors on TypedPress yet"),
         ));
     }
     (out.len() == roles.len()).then_some(serde_json::Value::Object(out))
@@ -1010,7 +1010,7 @@ fn convert_pages(
                 report.entries.push(super::entry(
                     "/client/index.tsx",
                     "mapped",
-                    "Layout becomes first/app/layout.tsx",
+                    "Layout becomes tp/app/layout.tsx",
                 ));
                 out.insert(format!("{}/layout.tsx", pages::APP), layout);
             }

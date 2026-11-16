@@ -7,7 +7,7 @@ import { getFiletypeFromFileName, getSharedHighlighter, hastToHtml, renderTokenL
 /** The light theme is the default; the playground passes dark when the site is dark. */
 const themeFor = (dark: boolean) => (dark ? "pierre-dark" : "pierre-light");
 
-/** The Shiki language for a file name: `first.config.ts` is TypeScript, `schema.php` is PHP. */
+/** The Shiki language for a file name: `typedpress.config.ts` is TypeScript, `schema.php` is PHP. */
 export function languageOf(file: string): string {
   return getFiletypeFromFileName(file);
 }

@@ -11,9 +11,9 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\Types;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 /**
  * Value Object representing an unknown, or mixed, type.

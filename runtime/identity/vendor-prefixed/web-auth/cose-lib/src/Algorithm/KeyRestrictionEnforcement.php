@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm;
+namespace TypedPress\Identity\Vendor\Cose\Algorithm;
 
-use First\Identity\Vendor\Cose\Key\Key;
+use TypedPress\Identity\Vendor\Cose\Key\Key;
 use InvalidArgumentException;
 
 /**

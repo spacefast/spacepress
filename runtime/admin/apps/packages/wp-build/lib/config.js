@@ -26,19 +26,19 @@ async function exists( pathToCheck ) {
 
 // Packages that should be bundled instead of externalized
 const bundledPackages = [
-	// First: not a WordPress 7.1 script handle (core has no `wp-views`), so it ships in the bundle.
+	// TypedPress: not a WordPress 7.1 script handle (core has no `wp-views`), so it ships in the bundle.
 	'@wordpress/views',
 	'@wordpress/icons',
 	'@wordpress/fields',
 	'@wordpress/interface',
 	'@wordpress/global-styles-engine',
-	'@first-admin/design-system',
+	'@typedpress-admin/design-system',
 	'@wordpress/ui',
 ];
 
 const packageSpecificBundles = new Map(
 	Object.entries( {
-		'@first-admin/dataviews': new Set( [
+		'@typedpress-admin/dataviews': new Set( [
 			'@wordpress/dataviews',
 			'@wordpress/dataviews/wp',
 		] ),
@@ -82,7 +82,7 @@ async function isWpModule( importPath, resolvePath ) {
 			const packageJson = JSON.parse(
 				await readFile( packageJsonPath, 'utf8' )
 			);
-			// Check for wpModule flag (used by local packages like @first-admin/boot)
+			// Check for wpModule flag (used by local packages like @typedpress-admin/boot)
 			// or wpScriptModuleExports (used by @wordpress/* packages that are script modules)
 			resolve(
 				packageJson?.wpModule ?? hasWpScriptModuleExports( packageJson )

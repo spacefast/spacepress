@@ -2,8 +2,8 @@
 // point, and React from the app's own bundle. tests/wp/hooks.test.ts bundles and drives it.
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import { createClient } from "../app/first/_generated/client/index.ts";
-import { createHooks } from "../app/first/_generated/client/react.ts";
+import { createClient } from "../app/tp/_generated/client/index.ts";
+import { createHooks } from "../app/tp/_generated/client/react.ts";
 
 const config = (window as unknown as { __hooks: { api: string; authorization: string; run: string; pollMs: number } }).__hooks;
 const first = createClient({ url: config.api, headers: { Authorization: config.authorization }, realtime: { transport: false, pollMs: config.pollMs } });

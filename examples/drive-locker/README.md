@@ -16,42 +16,42 @@ From the repository root, build the compiler and app, then build the frontend:
 
 ```sh
 cargo build --release
-./target/release/first build examples/drive-locker
+./target/release/typedpress build examples/drive-locker
 npm --prefix examples/drive-locker/web ci
 npm --prefix examples/drive-locker/web run build
-./target/release/first dev examples/drive-locker --port 8796 --no-watch
-./target/release/first identity app add --site examples/drive-locker \
+./target/release/typedpress dev examples/drive-locker --port 8796 --no-watch
+./target/release/typedpress identity app add --site examples/drive-locker \
 	--name='Drive Locker' --id=app_drive_locker \
 	--redirect=http://127.0.0.1:5196/ --origin=http://127.0.0.1:5196
 npm --prefix examples/drive-locker/web run dev
 ```
 
 Open `http://127.0.0.1:5196/`. Sign in with the disposable Studio account
-`admin` / `first-test-admin`, choose password sign-in, and approve the application.
+`admin` / `typedpress-test-admin`, choose password sign-in, and approve the application.
 Do not use these credentials outside local development. Sessions stay in
 session storage, and the callback removes the authorization code from the URL.
 
 For the watched development loop, run these commands in separate terminals:
 
 ```sh
-./target/release/first dev examples/drive-locker --port 8796
+./target/release/typedpress dev examples/drive-locker --port 8796
 npm --prefix examples/drive-locker/web run dev
 ```
 
 Vite proxies `/wp-json`, `/identity` and `/.well-known` to
-`http://localhost:8796`. Set `FIRST_DEV_URL` when Studio uses another port.
+`http://localhost:8796`. Set `TP_DEV_URL` when Studio uses another port.
 Register the exact Vite URL and origin if you change its address. Studio keeps an
 existing site's original port. To stop this example's backend:
 
 ```sh
-./target/release/first dev stop examples/drive-locker
+./target/release/typedpress dev stop examples/drive-locker
 ```
 
 Vite builds into `public/` with relative asset paths. `public/` is ignored because
 the [deploy guide](../../docs/spacefast-deploy.md) publishes built static files
 as they are and does not require committing this SPA's bundle. Build it before
-publishing. `first dev` rebuilds the plugin and copies the current bundle into
-`/wp-content/plugins/first-app-drive-locker/public/`; the sign-in registration above
+publishing. `typedpress dev` rebuilds the plugin and copies the current bundle into
+`/wp-content/plugins/typedpress-app-drive-locker/public/`; the sign-in registration above
 is for the Vite URL. A separately served bundle needs its own registered callback.
 
 ## Data and actions
@@ -59,7 +59,7 @@ is for the Vite URL. A separately served bundle needs its own registered callbac
 All inventory rows use an owner read, update and delete filter. `beforeCreate`
 sets `ownerId` from the signed-in WordPress user. Clients cannot set or change
 it. Related places and drives must have the same owner, including on updates.
-The member projection uses existing WordPress accounts and first-identity.
+The member projection uses existing WordPress accounts and typedpress-identity.
 
 Serials are trimmed and uppercased. A protected, unique `serialKey` stores
 `ownerId + ':' + serial`, so separate owners can record the same serial without
@@ -102,7 +102,7 @@ an Unassigned group. Kind rows group by `kind`. Empty places and kinds have zero
 totals. Content writes reject a sum above their drive's capacity, and capacity
 edits reject values below recorded usage.
 
-The SPA uses the generated client in `first/_generated/client/`. React, React DOM and Vite
+The SPA uses the generated client in `tp/_generated/client/`. React, React DOM and Vite
 have exact versions in `web/package.json` and `web/package-lock.json`. The layout
 uses safe-area insets, labelled forms, a skip link, visible keyboard focus, light
 and dark themes, and controls at least 44 CSS pixels in both dimensions.
@@ -112,7 +112,7 @@ and dark themes, and controls at least 44 CSS pixels in both dimensions.
 The required MCP Adapter serves this app at:
 
 ```text
-https://YOUR-SITE/wp-json/mcp/first-drive-locker
+https://YOUR-SITE/wp-json/mcp/typedpress-drive-locker
 ```
 
 Authenticate with HTTP Basic using your WordPress username and an application
@@ -121,7 +121,7 @@ owner rules apply. Do not put that password in a prompt or source file. To
 create a disposable application password on the local Studio site:
 
 ```sh
-./target/release/first wp --site examples/drive-locker \
+./target/release/typedpress wp --site examples/drive-locker \
 	user application-password create admin drive-locker-agent --porcelain
 ```
 
@@ -138,8 +138,8 @@ Every table's CRUD operations and all five actions are abilities. For example,
 `drive-locker/drives-list` lists accessible drives and
 `drive-locker/drives-create` uses the same guarded creation path as REST.
 The endpoint and names come from
-[`Register.php`](../../runtime/First/Wp/Abilities/Register.php), the emitted
-`schema.php`, and the local `first abilities --site examples/drive-locker` output. The real MCP initialize
+[`Register.php`](../../runtime/TypedPress/Wp/Abilities/Register.php), the emitted
+`schema.php`, and the local `typedpress abilities --site examples/drive-locker` output. The real MCP initialize
 request is in [the local transcript](verification/local-http.txt).
 
 ## Verify
@@ -147,8 +147,8 @@ request is in [the local transcript](verification/local-http.txt).
 From the repository root:
 
 ```sh
-./target/release/first check examples/drive-locker --json
-./target/release/first build examples/drive-locker --frozen
+./target/release/typedpress check examples/drive-locker --json
+./target/release/typedpress build examples/drive-locker --frozen
 tsc -p examples/drive-locker
 npm --prefix examples/drive-locker/web run build
 node examples/drive-locker/verify.mjs
@@ -176,24 +176,19 @@ publication evidence.
 
 ## Publish to Spacefast
 
-Use the documented preflight and publish commands once the installed CLI supports
-them. Prepare only the intended source and public assets, excluding local
-WordPress data, credentials, dependencies and caches:
+Hosted deployment of a `typedpress.config.ts` project is not available in a
+released `spacefast` CLI yet; see the [Spacefast deploy guide](../../docs/spacefast-deploy.md). Stage only the intended source and
+public assets, excluding local WordPress data, credentials, dependencies and
+caches:
 
 ```sh
-sf first check examples/drive-locker
 npm --prefix examples/drive-locker/web ci
 npm --prefix examples/drive-locker/web run build
 node examples/drive-locker/prepare-publish.mjs
-sf publish examples/drive-locker/.first/publish --team spacefast-examples \
-	--name 'Drive Locker' --slug drive-locker --access team --json --wait
 ```
 
-The staging script preserves the CLI's `.spacefast/` selection for later
-updates. Reuse that Space instead of creating another. Verify the receipt's
-team, live revision and team-only access. Register the live frontend callback
-with first-identity, then verify sign-in, a collection read and an action on
-that hostname. No live URL exists for this attempt.
+After publishing, register the live frontend callback with typedpress-identity,
+then verify sign-in, a collection read and an action on that hostname.
 
 ## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
 
@@ -203,20 +198,13 @@ The final source has no compiler diagnostics. The compiler diagnostic count is
 
 | Gap | Exact observed diagnostic | Trigger in this example |
 | --- | --- | --- |
-| Owner-filtered unique writes | HTTP 403, `forbidden`, `You can't set serialKey`, pointer `/serialKey` | `serialKey.unique()` with the owner-filtered `access` in `first.config.ts`; `POST /__first/api/v1/drives` |
+| Owner-filtered unique writes | HTTP 403, `forbidden`, `You can't set serialKey`, pointer `/serialKey` | `serialKey.unique()` with the owner-filtered `access` in `typedpress.config.ts`; `POST /__tp/api/v1/drives` |
 | Owner-filtered referential deletes | HTTP 409, `reference_violation`, `Rows in health_readings may reference this row` | Drive references from `healthReadings.driveId` and deleting a drive |
 | Owner-filtered referential deletes | HTTP 409, `reference_violation`, `Rows in drives may reference this row` | `drives.placeId` and deleting an empty place |
-| Missing CLI preflight | `Command zero:check not found.` | `sf first check --help` using installed `spacefast/0.8.0` |
-| Publishing team resolution | `validation_error`, `Could not find team "team_3f222eb89f634980a2552a38fbdc70ba".` | `sf publish ... --team <resolved team ID> --access team` |
 
 The constraint refusals follow main's
 [write pipeline contract](../../docs/runtime-contract.md#write-pipeline-dbinsertupdatedelete-rest-and-cli-all-go-through-it).
 The app preserves its owner filters, database uniqueness and references. It
 does not make reads public or replace constraints with a race-prone lookup.
 
-The CLI's first-page team lookup omits the target team even though a direct
-authenticated team read confirms access. Publication stopped before Space
-creation. Its dry run also classifies this raw-source input as static with
-`runtime: null`; host compilation remains unproven. No compiler, runtime or
-shared CLI changes are included here. Resolved build diagnostics and the failed
-initial publication plan are preserved [separately](verification/diagnostics.md).
+Resolved build diagnostics are preserved [separately](verification/diagnostics.md).

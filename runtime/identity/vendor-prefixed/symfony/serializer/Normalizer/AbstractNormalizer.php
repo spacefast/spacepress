@@ -9,19 +9,19 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\CircularReferenceException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\CircularReferenceException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
 
 /**
  * Normalizer implementation.

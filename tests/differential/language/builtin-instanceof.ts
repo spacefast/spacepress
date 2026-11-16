@@ -1,7 +1,7 @@
 // `value instanceof RegExp` (and Map, Set, WeakMap, WeakSet, Date, URL, URLSearchParams,
 // AbortController, AbortSignal) in imported JavaScript, which picomatch and files-sdk branch on.
 // Every action runs under Node and as compiled PHP; the JSON results must be byte-identical.
-import { action, defineConfig } from "first";
+import { action, defineConfig } from "typedpress";
 import { instances as instancesImpl } from "./builtin-instanceof-helpers.mjs";
 
 export const instances = action({ input: {}, handler: () => instancesImpl() });

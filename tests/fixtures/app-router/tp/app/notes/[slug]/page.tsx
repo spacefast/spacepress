@@ -1,0 +1,28 @@
+import { db } from "typedpress";
+import { notFound, type PageProps, type RouteRequest } from "typedpress/app";
+
+export const metadata = ({ params }: PageProps<"notes/[slug]">) => ({
+  title: `Note ${params.slug}`,
+  canonical: `/notes/${params.slug}`,
+  openGraph: { image: `/og/${params.slug}.png` },
+  links: [{ rel: "alternate", href: `/notes/${params.slug}.md`, type: "text/markdown" }],
+  scripts: ["/note.js", "https://cdn.example/a.js"],
+});
+
+export default async function Note({ params }: PageProps<"notes/[slug]">) {
+  const note = await db.query.notes.findFirst({ where: { slug: params.slug } });
+  if (!note) notFound();
+  return (
+    <article>
+      <h1>{note.title}</h1>
+      {note.secret && <aside className="secret">{note.secret}</aside>}
+    </article>
+  );
+}
+
+// The page's own form handler: POST to the page URL, for signed-in readers.
+export const access = "subscriber";
+
+export async function POST(req: RouteRequest) {
+  return { status: 303, headers: { location: `/notes/${req.params.slug}?sent=1` }, body: "" };
+}

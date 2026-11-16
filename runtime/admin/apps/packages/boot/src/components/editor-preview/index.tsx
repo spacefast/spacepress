@@ -1,6 +1,6 @@
 import { useRef } from 'react';
-import { unlock } from '@first-admin/admin-toolkit';
-import { withEditor, withStylesId } from '@first-admin/lazy-editor';
+import { unlock } from '@typedpress-admin/admin-toolkit';
+import { withEditor, withStylesId } from '@typedpress-admin/lazy-editor';
 import { Disabled } from '@wordpress/components';
 import {
 	privateApis as blockEditorPrivateApis,
@@ -45,7 +45,7 @@ function EditorPreview( {
 	const iframeBodyRef = useRef< HTMLElement >();
 
 	return (
-		<div className="first-admin-site-editor">
+		<div className="typedpress-admin-site-editor">
 			<BlockContextProvider value={ { postId, postType } }>
 				<ExperimentalBlockEditorProvider
 					value={ template }

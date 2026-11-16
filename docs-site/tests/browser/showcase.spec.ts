@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-const plugins = "first/dist/wp-content/plugins";
+const plugins = "tp/dist/wp-content/plugins";
 // A row of the file tree, by its full path. Rows live in the tree's shadow root, and a row's text is
 // split for truncation, so they are found by path rather than by text.
 const row = (page: Page, path: string) => page.locator(`.explorer [role="treeitem"][data-item-path="${path}"]`);
@@ -12,10 +12,10 @@ test("the landing page opens on the config, written out when the site was built"
 	await page.goto("./");
 	const config = page.locator(".explorer-config");
 	await expect(config).toBeVisible();
-	await expect(config).toContainText('import { mine, ownerId, signedIn } from "./first/lib/owner"');
+	await expect(config).toContainText('import { mine, ownerId, signedIn } from "./tp/lib/owner"');
 	// The whole config is on the page: its last line is there without scrolling inside a box.
 	await expect(config).toContainText("await db.update(books).set({ minutesRead })");
-	// first.config.ts, first/lib/owner.ts, first/app/shelf.html/route.ts and package.json.
+	// typedpress.config.ts, tp/lib/owner.ts, tp/app/shelf.html/route.ts and package.json.
 	await expect(page.locator(".explorer-bar")).toContainText("4 you write");
 	expect(errors).toEqual([]);
 });
@@ -24,15 +24,15 @@ test("any file opens, the npm package compiled to PHP and the runtime alike", as
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("./");
-	await row(page, `${plugins}/first-app-reading-list/first/app/functions.php`).click();
+	await row(page, `${plugins}/typedpress-app-reading-list/tp/app/functions.php`).click();
 	await expect(viewer(page)).toContainText("function escapeHtml(");
-	await expect(page).toHaveURL(/#file=first%2Fdist%2Fwp-content%2Fplugins%2Ffirst-app-reading-list%2Ffirst%2Fapp%2Ffunctions.php$/);
+	await expect(page).toHaveURL(/#file=tp%2Fdist%2Fwp-content%2Fplugins%2Ftypedpress-app-reading-list%2Ftp%2Fapp%2Ffunctions.php$/);
 	// A runtime file, three closed folders down. The tree only renders the rows in view, so it is
 	// reached by search, as a visitor would.
 	await page.locator(".explorer file-tree-container").click();
 	await page.keyboard.type("Db.php");
-	await row(page, `${plugins}/first-runtime/first/Db.php`).click();
-	await expect(viewer(page)).toContainText("namespace First;");
+	await row(page, `${plugins}/typedpress-runtime/tp/Db.php`).click();
+	await expect(viewer(page)).toContainText("namespace TypedPress;");
 	expect(errors).toEqual([]);
 });
 
@@ -44,9 +44,10 @@ test("a link to a file opens it, with the folders above it", async ({ page }) =>
 
 test("every example page has the explorer and its own app plugin", async ({ page }) => {
 	for (const [name, app] of [["pantry", "pantry"], ["blog", "blog"], ["full-site", "fullsite"]]) {
-		await page.goto(`./examples/${name}`);
+		const schema = `${plugins}/typedpress-app-${app}/tp/app/schema.php`;
+		await page.goto(`./examples/${name}#file=${encodeURIComponent(schema)}`);
 		await expect(page.locator(".explorer-config")).toContainText("defineConfig");
-		await row(page, `${plugins}/first-app-${app}/first/app/schema.php`).click();
+		await row(page, schema).click();
 		await expect(viewer(page)).toContainText("<?php");
 	}
 });
@@ -58,7 +59,7 @@ test("the explorer follows the site's dark theme", async ({ page }) => {
 	const scheme = (selector: string) => page.locator(selector).first().evaluate((el) => getComputedStyle(el).colorScheme);
 	expect(await scheme(".explorer file-tree-container")).toBe("dark");
 	expect(await scheme(".explorer-config diffs-container")).toBe("dark");
-	await row(page, `${plugins}/first-app-reading-list/first/app/schema.php`).click();
+	await row(page, `${plugins}/typedpress-app-reading-list/tp/app/schema.php`).click();
 	await expect(viewer(page)).toContainText("<?php");
 	expect(await scheme(".explorer-loaded diffs-container")).toBe("dark");
 });

@@ -5,10 +5,10 @@ declare(strict_types=1);
 /*
  * Imported stylesheets and images on WordPress over HTTP (tests/app_router.rs
  * `imported_stylesheets_and_images_serve_from_the_app_plugin`): the fixture tests/fixtures/app-assets,
- * built by `first build` and served by php -S. Prints one JSON object of what each page linked and
+ * built by `typedpress build` and served by php -S. Prints one JSON object of what each page linked and
  * what each linked file holds.
  *
- *   FIRST_WP_THEMES=1 php tests/php/app_assets.php <wp-content dir>
+ *   TP_WP_THEMES=1 php tests/php/app_assets.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -32,7 +32,7 @@ foreach (['about', 'plain', 'colophon'] as $path) {
     @$html->loadHTML($page['body']);
     $xpath = new DOMXPath($html);
     $links = [];
-    foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "first-app-")]') as $link) {
+    foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")]') as $link) {
         $href = (string) $link->getAttribute('href');
         $file = get($href);
         $links[] = ['file' => basename((string) parse_url($href, PHP_URL_PATH)), 'status' => $file['status'], 'type' => $file['type'], 'css' => $file['body']];

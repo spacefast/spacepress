@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { DataViewsPicker, filterSortAndPaginate } from '@first-admin/dataviews';
-import type { View, Field } from '@first-admin/dataviews';
+import { DataViewsPicker, filterSortAndPaginate } from '@typedpress-admin/dataviews';
+import type { View, Field } from '@typedpress-admin/dataviews';
 import { __ } from '@wordpress/i18n';
 import './style.scss';
 import WidgetRender from '../widget-render';
@@ -42,7 +42,7 @@ function WidgetPreview( { item }: { item: DashboardWidgetType< unknown > } ) {
 	return (
 		<div
 			inert="true"
-			className="first-admin-dashboard-widget-picker__preview"
+			className="typedpress-admin-dashboard-widget-picker__preview"
 		>
 			<WidgetRender widget={ exampleWidget } widgetType={ item } />
 		</div>
@@ -53,7 +53,7 @@ const fields: Field< DashboardWidgetType< unknown > >[] = [
 	{
 		id: 'title',
 		type: 'text',
-		label: __( 'Title', 'first-admin' ),
+		label: __( 'Title', 'typedpress-admin' ),
 		filterBy: false,
 	},
 	{
@@ -77,7 +77,7 @@ const fields: Field< DashboardWidgetType< unknown > >[] = [
 
 export default function WidgetPicker( {
 	onSelect,
-	itemListLabel = __( 'Widget list', 'first-admin' ),
+	itemListLabel = __( 'Widget list', 'typedpress-admin' ),
 }: WidgetPickerProps ) {
 	const { widgetTypes: allWidgetTypes } = useDashboardContext();
 	const [ selection, setSelection ] = useState< string[] >( [] );
@@ -93,7 +93,7 @@ export default function WidgetPicker( {
 		() => [
 			{
 				id: 'select',
-				label: __( 'Select', 'first-admin' ),
+				label: __( 'Select', 'typedpress-admin' ),
 				isPrimary: true,
 				callback: onSelect,
 				supportsBulk: true,

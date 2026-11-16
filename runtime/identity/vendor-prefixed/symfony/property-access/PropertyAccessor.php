@@ -9,25 +9,25 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess;
 
 use Psr\Cache\CacheItemPoolInterface;
-use First\Identity\Vendor\Psr\Log\LoggerInterface;
-use First\Identity\Vendor\Psr\Log\NullLogger;
+use TypedPress\Identity\Vendor\Psr\Log\LoggerInterface;
+use TypedPress\Identity\Vendor\Psr\Log\NullLogger;
 use Symfony\Component\Cache\Adapter\AdapterInterface;
 use Symfony\Component\Cache\Adapter\ApcuAdapter;
 use Symfony\Component\Cache\Adapter\NullAdapter;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\AccessException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidTypeException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchIndexException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UnexpectedTypeException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfo;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\AccessException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidTypeException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchIndexException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UnexpectedTypeException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfo;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
 
 /**
  * Default implementation of {@link PropertyAccessorInterface}.

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Polyfill\Intl\Grapheme;
+namespace TypedPress\Identity\Vendor\Symfony\Polyfill\Intl\Grapheme;
 
 \define('SYMFONY_GRAPHEME_CLUSTER_RX', ((float) \PCRE_VERSION >= 10.44) ? '\X' : Grapheme::GRAPHEME_CLUSTER_RX);
 
@@ -48,7 +48,7 @@ final class Grapheme
     // indexed by the $mode argument of grapheme_position()
     private const POSITION_FUNCTIONS = ['grapheme_strpos', 'grapheme_stripos', 'grapheme_strrpos', 'grapheme_strripos'];
 
-    public static function grapheme_extract($s, $size, $type = \FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT, $start = 0, &$next = 0)
+    public static function grapheme_extract($s, $size, $type = \TP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT, $start = 0, &$next = 0)
     {
         if (0 > $start) {
             $start = \strlen($s) + $start;
@@ -72,7 +72,7 @@ final class Grapheme
         $type = (int) $type;
         $start = (int) $start;
 
-        if (\FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT !== $type && \FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES !== $type && \FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS !== $type) {
+        if (\TP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT !== $type && \TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES !== $type && \TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS !== $type) {
             if (80000 > \PHP_VERSION_ID) {
                 return false;
             }
@@ -99,9 +99,9 @@ final class Grapheme
         $ret = '';
 
         do {
-            if (\FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT === $type) {
+            if (\TP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT === $type) {
                 --$size;
-            } elseif (\FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES === $type) {
+            } elseif (\TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES === $type) {
                 $size -= \strlen($s[$i]);
             } else {
                 $size -= iconv_strlen($s[$i], 'UTF-8//IGNORE');
@@ -315,7 +315,7 @@ final class Grapheme
             // Use the same case folding mode as mbstring does for mb_stripos().
             // Stick to SIMPLE case folding to avoid changing the length of the string, which
             // might result in offsets being shifted.
-            $mode = \defined('MB_CASE_FOLD_SIMPLE') ? \MB_CASE_FOLD_SIMPLE : \FIRST_IDENTITY_VENDOR_MB_CASE_LOWER;
+            $mode = \defined('MB_CASE_FOLD_SIMPLE') ? \MB_CASE_FOLD_SIMPLE : \TP_IDENTITY_VENDOR_MB_CASE_LOWER;
             $s = mb_convert_case($s, $mode, 'UTF-8');
             $needle = mb_convert_case($needle, $mode, 'UTF-8');
 

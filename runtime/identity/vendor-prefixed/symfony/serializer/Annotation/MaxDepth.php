@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Annotation;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation;
 
-class_exists(\First\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth::class);
+class_exists(\TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth::class);
 
 if (false) {
     /**
-     * @deprecated since Symfony 7.4, use {@see \First\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth} instead
+     * @deprecated since Symfony 7.4, use {@see \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth} instead
      */
     #[\Attribute(\Attribute::TARGET_METHOD | \Attribute::TARGET_PROPERTY)]
-    class MaxDepth extends \First\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth
+    class MaxDepth extends \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth
     {
     }
 }

@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
 
 /**
  * Encodes CSV data.
@@ -57,7 +57,7 @@ class CsvEncoder implements EncoderInterface, DecoderInterface
     public function __construct(array $defaultContext = [])
     {
         if (\array_key_exists(self::ESCAPE_CHAR_KEY, $defaultContext)) {
-            first_identity_vendor_trigger_deprecation('symfony/serializer', '7.2', 'Setting the "csv_escape_char" option is deprecated. The option will be removed in 8.0.');
+            typedpress_identity_vendor_trigger_deprecation('symfony/serializer', '7.2', 'Setting the "csv_escape_char" option is deprecated. The option will be removed in 8.0.');
         }
 
         $this->defaultContext = array_merge($this->defaultContext, $defaultContext);

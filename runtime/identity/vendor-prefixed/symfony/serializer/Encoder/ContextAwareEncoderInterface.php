@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
 /**
  * Adds the support of an extra $context parameter for the supportsEncoding method.

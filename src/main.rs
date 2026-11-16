@@ -1,5 +1,5 @@
-//! `first` — compiles `first.config.ts` into WordPress plugins. The command line lives in `first::cli`.
+//! `typedpress` — compiles `typedpress.config.ts` into WordPress plugins. The command line lives in `typedpress::cli`.
 
 fn main() -> std::process::ExitCode {
-    first::cli::main()
+    typedpress::cli::main()
 }

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\MetadataService\Statement;
+namespace TypedPress\Identity\Vendor\Webauthn\MetadataService\Statement;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName;
-use First\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName;
+use TypedPress\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
 
 readonly class ExtensionDescriptor
 {

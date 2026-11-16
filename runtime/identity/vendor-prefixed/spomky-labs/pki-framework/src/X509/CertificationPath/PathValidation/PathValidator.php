@@ -2,25 +2,25 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation;
 
 use function array_values;
 use function count;
 use function in_array;
 use LogicException;
 use RuntimeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraints\GeneralSubtrees;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\TBSCertificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\DirectoryName;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\RFC822Name;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy\PolicyInformation;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\NameConstraints\GeneralSubtrees;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\TBSCertificate;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\DirectoryName;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\RFC822Name;
 use function sprintf;
 
 /**

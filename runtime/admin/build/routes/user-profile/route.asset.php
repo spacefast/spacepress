@@ -1,1 +1,1 @@
-<?php return array('name' => 'user-profile', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@first-admin/core-data-next'), 'version' => 'fedb505f9bca82c86a0d');
+<?php return array('name' => 'user-profile', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@typedpress-admin/core-data-next'), 'version' => '240a88ab363289216d8b');

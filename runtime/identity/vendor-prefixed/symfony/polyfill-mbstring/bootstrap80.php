@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-use First\Identity\Vendor\Symfony\Polyfill\Mbstring as p;
+use TypedPress\Identity\Vendor\Symfony\Polyfill\Mbstring as p;
 
 if (!function_exists('mb_convert_encoding')) {
     function mb_convert_encoding(array|string|null $string, ?string $to_encoding, array|string|null $from_encoding = null): array|string|false { return p\Mbstring::mb_convert_encoding($string ?? '', (string) $to_encoding, $from_encoding); }
@@ -156,12 +156,12 @@ if (extension_loaded('mbstring')) {
     return;
 }
 
-if (!defined('FIRST_IDENTITY_VENDOR_MB_CASE_UPPER')) {
-    define('FIRST_IDENTITY_VENDOR_MB_CASE_UPPER', 0);
+if (!defined('TP_IDENTITY_VENDOR_MB_CASE_UPPER')) {
+    define('TP_IDENTITY_VENDOR_MB_CASE_UPPER', 0);
 }
-if (!defined('FIRST_IDENTITY_VENDOR_MB_CASE_LOWER')) {
-    define('FIRST_IDENTITY_VENDOR_MB_CASE_LOWER', 1);
+if (!defined('TP_IDENTITY_VENDOR_MB_CASE_LOWER')) {
+    define('TP_IDENTITY_VENDOR_MB_CASE_LOWER', 1);
 }
-if (!defined('FIRST_IDENTITY_VENDOR_MB_CASE_TITLE')) {
-    define('FIRST_IDENTITY_VENDOR_MB_CASE_TITLE', 2);
+if (!defined('TP_IDENTITY_VENDOR_MB_CASE_TITLE')) {
+    define('TP_IDENTITY_VENDOR_MB_CASE_TITLE', 2);
 }

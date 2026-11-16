@@ -1,4 +1,4 @@
-# @first-admin/image-cropper
+# @typedpress-admin/image-cropper
 
 An implementation of [react-easy-crop](https://www.npmjs.com/package/react-easy-crop) for the media editor.
 
@@ -40,7 +40,7 @@ interface ImageCropperProps {
 -   `useImageCropper` - Provides access to all cropper state and methods.
 
 ```tsx
-import { useImageCropper } from '@first-admin/image-cropper';
+import { useImageCropper } from '@typedpress-admin/image-cropper';
 
 const {
 	// Unified state object
@@ -71,7 +71,7 @@ const {
 -   `normalizeRotation` - Utility function to normalize rotation values to 0-360 degrees
 
 ```tsx
-import { normalizeRotation } from '@first-admin/image-cropper';
+import { normalizeRotation } from '@typedpress-admin/image-cropper';
 
 const normalized = normalizeRotation( -90 ); // Returns 270
 const normalized2 = normalizeRotation( 450 ); // Returns 90
@@ -88,7 +88,7 @@ import {
 	ImageCropper,
 	ImageCropperProvider,
 	useImageCropper,
-} from '@first-admin/image-cropper';
+} from '@typedpress-admin/image-cropper';
 
 function ImageEditor() {
 	return (

@@ -9,13 +9,13 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
+namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
 
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
 
 /**
  * Resolves type for a given type reflection.

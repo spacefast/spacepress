@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AttestationStatement;
+namespace TypedPress\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function count;
 use function is_array;
 use function is_string;
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use First\Identity\Vendor\Webauthn\AuthenticatorData;
-use First\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
-use First\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
+use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorData;
+use TypedPress\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
+use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use TypedPress\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
+use TypedPress\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
 
 final class NoneAttestationStatementSupport implements AttestationStatementSupport, CanDispatchEvents
 {

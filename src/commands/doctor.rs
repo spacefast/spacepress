@@ -9,10 +9,7 @@ fn check(checks: &mut Vec<Value>, name: &str, ok: bool, detail: impl Into<String
 
 pub(super) fn run(args: &Args) -> ExitCode {
     let project = args.project.canonicalize().unwrap_or(args.project.clone());
-    let out = args
-        .out
-        .clone()
-        .unwrap_or_else(|| project.join("first/dist/wp-content"));
+    let out = args.out.clone().unwrap_or_else(|| project.join("tp/dist/wp-content"));
     let mut checks = Vec::new();
     let mut manifest = Value::Null;
     check(
@@ -22,7 +19,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
         platform::SERIES,
     );
     {
-        match std::fs::read(out.join("first-manifest.json"))
+        match std::fs::read(out.join("typedpress-manifest.json"))
             .and_then(|bytes| serde_json::from_slice(&bytes).map_err(std::io::Error::other))
         {
             Ok(value) => {
@@ -30,8 +27,8 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 let series = manifest["runtime"].as_str().unwrap_or("missing");
                 check(&mut checks, "built runtime series", series == platform::SERIES, series);
                 for slug in [
-                    "first-runtime".to_string(),
-                    format!("first-app-{}", manifest["app"].as_str().unwrap_or("")),
+                    "typedpress-runtime".to_string(),
+                    format!("typedpress-app-{}", manifest["app"].as_str().unwrap_or("")),
                 ] {
                     check(
                         &mut checks,
@@ -43,7 +40,8 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 check(
                     &mut checks,
                     "identity bundle",
-                    out.join("plugins/first-identity/first-identity.php").is_file(),
+                    out.join("plugins/typedpress-identity/typedpress-identity.php")
+                        .is_file(),
                     "optional identity plugin; runtime availability is reported by the site",
                 );
             }
@@ -51,7 +49,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 &mut checks,
                 "wp-content artifact",
                 false,
-                format!("{error}; run first build"),
+                format!("{error}; run typedpress build"),
             ),
         }
     }
@@ -63,8 +61,8 @@ pub(super) fn run(args: &Args) -> ExitCode {
     if let Some(site) = &args.site
         && project.join(crate::wordpress::abilities::LOCK).is_file()
     {
-        // Abilities are listed with the application password `first abilities pull` uses.
-        let credential = std::env::var("FIRST_APP_PASSWORD").ok().filter(|s| !s.is_empty());
+        // Abilities are listed with the application password `typedpress abilities pull` uses.
+        let credential = std::env::var("TP_APP_PASSWORD").ok().filter(|s| !s.is_empty());
         match super::abilities::list(site, credential.as_deref())
             .and_then(|listed| super::abilities::drift(&project, &listed))
         {
@@ -142,7 +140,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
 
 /// A bearer token for the site's schema, from the environment (never a flag value).
 fn token() -> Option<String> {
-    std::env::var("FIRST_TOKEN").ok().filter(|t| !t.is_empty())
+    std::env::var("TP_TOKEN").ok().filter(|t| !t.is_empty())
 }
 
 fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Value>) -> Result<(), String> {
@@ -155,7 +153,7 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
             "site must be the site's URL without a query (https://example.test or https://example.test/blog)".into(),
         );
     }
-    // The facade's schema (spec §3a): `GET /__first/api/v1`, below the site's path.
+    // The facade's schema (spec §3a): `GET /__tp/api/v1`, below the site's path.
     let path = url.path().trim_end_matches('/').to_string();
     let api = crate::sync::client::API;
     url.set_path(&if path.ends_with(api) {
@@ -172,8 +170,8 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
     let mut request = agent.get(url.as_str());
     if let Some(token) = token {
         request = request.header("Authorization", format!("Bearer {token}"));
-    } else if let Some(password) = std::env::var("FIRST_APP_PASSWORD").ok().filter(|p| !p.is_empty()) {
-        // As the other site commands take it: `user:application-password`. `FIRST_TOKEN` wins when
+    } else if let Some(password) = std::env::var("TP_APP_PASSWORD").ok().filter(|p| !p.is_empty()) {
+        // As the other site commands take it: `user:application-password`. `TP_TOKEN` wins when
         // both are set, as it did before this was accepted.
         request = request.header(
             "Authorization",
@@ -203,7 +201,7 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
             if identity == Some(true) {
                 "compatible identity active"
             } else if identity_required {
-                "configured authentication requires a compatible First Identity"
+                "configured authentication requires a compatible TypedPress Identity"
             } else {
                 "optional identity inactive"
             },
@@ -251,7 +249,7 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
         );
         // Sealed mode (docs/sealed.md). An active plugin the config doesn't list fails doctor. Must-use
         // plugins, drop-ins and theme PHP can't be listed in any config (a host's own are among
-        // them), so they are shown and never fail. The site reports; First stops and removes nothing.
+        // them), so they are shown and never fail. The site reports; TypedPress stops and removes nothing.
         let sealed = &versions["sealed"];
         let names = |key: &str| -> Option<Vec<String>> {
             sealed[key]
@@ -269,7 +267,7 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
                     if unlisted.is_empty() {
                         format!("every active plugin is listed (enforced by {enforced})")
                     } else {
-                        format!("active but not in first.config.ts: {}", unlisted.join(", "))
+                        format!("active but not in typedpress.config.ts: {}", unlisted.join(", "))
                     },
                 );
                 let also: Vec<String> = ["muPlugins", "dropins", "theme"]
@@ -291,7 +289,7 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
                 checks,
                 "sealed",
                 false,
-                "sign in as an administrator (FIRST_TOKEN or FIRST_APP_PASSWORD) to see what the site loads",
+                "sign in as an administrator (TP_TOKEN or TP_APP_PASSWORD) to see what the site loads",
             ),
             _ if manifest["sealed"].is_array() => check(
                 checks,

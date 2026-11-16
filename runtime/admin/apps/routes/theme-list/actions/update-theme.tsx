@@ -11,7 +11,7 @@ import { useState } from '@wordpress/element';
 import { decodeEntities } from '@wordpress/html-entities';
 import { __, sprintf } from '@wordpress/i18n';
 import { store as noticesStore } from '@wordpress/notices';
-import type { Action, RenderModalProps } from '@first-admin/dataviews';
+import type { Action, RenderModalProps } from '@typedpress-admin/dataviews';
 import { setImmutably } from '../../design-styles/global-styles-ui/font-library-modal/utils/set-immutably';
 import type { WordPressError } from '../types';
 
@@ -47,7 +47,7 @@ const UpdateThemeModal = ( {
 					/* translators: %(name)s is the theme name, %(version)d is the theme version */
 					__(
 						'Theme %(name)s updated to version %(version)s.',
-						'first-admin'
+						'typedpress-admin'
 					),
 					{ name, version: newVersion }
 				),
@@ -59,14 +59,14 @@ const UpdateThemeModal = ( {
 		} catch ( error: unknown ) {
 			const wpError = error as WordPressError;
 			const errorMessage =
-				wpError.message || __( 'Unknown error occurred', 'first-admin' );
+				wpError.message || __( 'Unknown error occurred', 'typedpress-admin' );
 
 			await createErrorNotice(
 				sprintf(
 					/* translators: name: The theme name. errorMessage: The error message. */
 					__(
 						'Theme %(name)s update failed: %(errorMessage)s',
-						'first-admin'
+						'typedpress-admin'
 					),
 					{ name, errorMessage }
 				),
@@ -85,7 +85,7 @@ const UpdateThemeModal = ( {
 					/* translators: name is the theme name, currentVersion is the current theme version, newVersion is the new theme version */
 					__(
 						'Do you want to update the %(name)s theme from version %(currentVersion)s to version %(newVersion)s?',
-						'first-admin'
+						'typedpress-admin'
 					),
 					{ name, currentVersion, newVersion }
 				) }
@@ -98,7 +98,7 @@ const UpdateThemeModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Cancel', 'first-admin' ) }
+					{ __( 'Cancel', 'typedpress-admin' ) }
 				</Button>
 				<Button
 					__next40pxDefaultSize
@@ -108,7 +108,7 @@ const UpdateThemeModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Update', 'first-admin' ) }
+					{ __( 'Update', 'typedpress-admin' ) }
 				</Button>
 			</HStack>
 		</VStack>
@@ -117,7 +117,7 @@ const UpdateThemeModal = ( {
 
 const updateTheme: Action< Theme > = {
 	id: 'update-theme',
-	label: __( 'Update', 'first-admin' ),
+	label: __( 'Update', 'typedpress-admin' ),
 	isPrimary: false,
 	RenderModal: UpdateThemeModal,
 	isEligible: ( item: Theme ) => {

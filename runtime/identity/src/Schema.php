@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity;
+namespace TypedPress\Identity;
 
 final class Schema
 {
@@ -71,11 +71,11 @@ final class Schema
         }
         $db->run(
             "INSERT INTO {$db->wp->options} (option_name,option_value,autoload) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE option_value=VALUES(option_value)",
-            "first_identity_schema_version",
+            "tp_identity_schema_version",
             (string) self::VERSION,
             "off",
         );
-        wp_cache_delete("first_identity_schema_version", "options");
+        wp_cache_delete("tp_identity_schema_version", "options");
         wp_cache_delete("alloptions", "options");
         wp_cache_delete("notoptions", "options");
     }

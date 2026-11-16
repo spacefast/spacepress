@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\OTPHP;
+namespace TypedPress\Identity\Vendor\OTPHP;
 
-use First\Identity\Vendor\Psr\Clock\ClockInterface;
+use TypedPress\Identity\Vendor\Psr\Clock\ClockInterface;
 
 interface FactoryInterface
 {

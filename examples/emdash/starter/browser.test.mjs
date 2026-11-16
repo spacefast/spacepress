@@ -8,7 +8,7 @@ import { submitSignIn } from '../sign-in.mjs';
 import { cleanup, makeProject, start } from './local.mjs';
 
 test('native admin saves and public search/theme controls work in Chromium', { timeout: 600000 }, async (t) => {
-  const evidence = await mkdtemp(join(tmpdir(), 'first-emdash-publishing-browser-'));
+  const evidence = await mkdtemp(join(tmpdir(), 'typedpress-emdash-publishing-browser-'));
   console.log(`Browser evidence: ${evidence}`);
   const project = await makeProject('blog');
   t.after(async () => {
@@ -25,9 +25,9 @@ test('native admin saves and public search/theme controls work in Chromium', { t
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${receipt.base}/wp-login.php`);
-  await submitSignIn(page, 'admin', 'first-test-admin');
+  await submitSignIn(page, 'admin', 'typedpress-test-admin');
   await page.waitForURL(/\/wp-admin\//);
-  await page.goto(`${receipt.base}/wp-admin/edit.php?post_type=first_posts`);
+  await page.goto(`${receipt.base}/wp-admin/edit.php?post_type=tp_posts`);
   const row = page.locator('#the-list tr').filter({ has: page.locator('.row-title') }).first();
   const rowId = await row.getAttribute('id');
   assert.match(rowId, /^post-\d+$/);

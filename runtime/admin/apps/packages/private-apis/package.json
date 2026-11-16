@@ -1,7 +1,7 @@
 {
-	"name": "@first-admin/private-apis",
+	"name": "@typedpress-admin/private-apis",
 	"version": "1.0.0",
-	"description": "Private APIs for First Admin",
+	"description": "Private APIs for TypedPress Admin",
 	"type": "module",
 	"wpModule": true,
 	"exports": {

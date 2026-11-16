@@ -1,14 +1,14 @@
 <?php
 
 declare(strict_types=1);
-namespace First\Identity\Legacy;
+namespace TypedPress\Identity\Legacy;
 
-use First\Identity\{DB, Sessions};
+use TypedPress\Identity\{DB, Sessions};
 
 /**
- * Sessions created before the rename to First are stored under the digest that build used
+ * Sessions created before the rename to TypedPress are stored under the digest that build used
  * (`zero-identity-session-v1`). The first request that presents such a session's secret re-keys it
- * to First's digest, so a signed-in visitor stays signed in. A session nobody presents again simply
+ * to TypedPress's digest, so a signed-in visitor stays signed in. A session nobody presents again simply
  * expires as it would have. Remove once every session created by a 0.3 runtime has expired (at most
  * one session lifetime after the last 0.3 site upgraded).
  */

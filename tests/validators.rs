@@ -27,7 +27,11 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
     let project = std::env::temp_dir().join(format!("first-validators-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&project);
     copy(&root().join("tests/fixtures/app-prebuilt"), &project);
-    let built = Command::new(env!("CARGO_BIN_EXE_first")).arg("build").arg(&project).output().unwrap();
+    let built = Command::new(env!("CARGO_BIN_EXE_first"))
+        .arg("build")
+        .arg(&project)
+        .output()
+        .unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
@@ -43,9 +47,18 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let seen: serde_json::Value = serde_json::from_slice(&out.stdout)
-        .unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
-    let validated = json!([true, [[304, true, true], [304, true, true], [304, true, true], [304, true, true]], 200]);
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let validated = json!([
+        true,
+        [
+            [304, true, true],
+            [304, true, true],
+            [304, true, true],
+            [304, true, true]
+        ],
+        200
+    ]);
     assert_eq!(seen["prebuilt"], json!([200, true, true]));
     assert_eq!(seen["prebuilt validators"], validated);
     assert_eq!(seen["prebuilt twin has its own"], true);

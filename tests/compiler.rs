@@ -1673,6 +1673,22 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("stringEquality")
     );
     assert!(body("localRead").contains("->p['title'] ??"), "{}", body("localRead"));
+    // A literal-typed value that may hold anything is still checked; a call stays on the helper.
+    assert!(
+        body("literalTypedNull").contains("(\\is_int($n) || \\is_float($n)) ? $n == 0"),
+        "{}",
+        body("literalTypedNull")
+    );
+    assert!(
+        body("literalTypedMissing").contains("\\is_float($__t"),
+        "{}",
+        body("literalTypedMissing")
+    );
+    assert!(
+        body("literalTypedCall").contains("\\First\\Js::strictEq($a, "),
+        "{}",
+        body("literalTypedCall")
+    );
 
     // Only a function that names `arguments`, itself or in one of its arrows, builds the object.
     for (name, uses) in [

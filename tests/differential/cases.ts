@@ -202,6 +202,10 @@ function localRead(row: { title: string; count: number | null; tags: string[] })
   return [copy.title, copy.count, copy.tags.length, other?.title, other?.count];
 }
 function absentRead() { const o = JSON.parse("{}") as { title: string }; const t = o.title; return t === undefined; }
+// A literal *type* is not a literal value: these operands still take the run-time number check.
+function literalTypedNull(input: string) { const n = JSON.parse(input) as 0; return [n === 0, n !== 0, n < 1]; }
+function literalTypedMissing(input: string) { const row = JSON.parse(input) as { n: 1 }; return [row.n < 2, row.n === 1, row.n >= 1]; }
+function literalTypedCall() { let a = 1; const mutate = (): 1 => { a = 2; return 1; }; return [a === mutate(), a]; }
 function bigintAsNumber() { const b = 10n; const k = b as unknown as number; return [k > 1, k === 10, k < 100]; }
 
 // Which functions get an `arguments` object: only one that names it, directly or in an arrow.
@@ -609,6 +613,7 @@ export const nativeOperators = run(() => [
   numberCompare(Infinity, -Infinity), numberCompare(2 ** 53, 2 ** 53 + 1), numberCompare(9007199254740993, 9007199254740992), numberCompare(0.1 + 0.2, 0.3),
   numberCompare(1.7976931348623157e308, Infinity), numberCompare(5e-324, 0), compareOrder(), stringEquality("a"), stringEquality(""),
   localRead({ title: "t", count: null, tags: ["x"] }), absentRead(), bigintAsNumber(),
+  literalTypedNull("null"), literalTypedNull("0"), literalTypedMissing("{}"), literalTypedMissing("{\"n\":1}"), literalTypedCall(),
 ]);
 export const argumentsUse = run(() => [argumentsShorthand("a", "b"), argumentsInNestedArrow("first"), argumentsInInnerFunction("a"), argumentsUnused("kept"), argumentsInDefault("a")]);
 

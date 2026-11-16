@@ -4168,7 +4168,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// system was told is a number, such as a BigInt cast with `as unknown as number`) takes
     /// `Js::dynamicBinary`, exactly as before. A literal operand needs no check.
     fn number_compare(&mut self, sym: &str, a: Out, b: Out) -> Out {
-        let literal = |v: &Out| matches!(v.ty, Ty::NumLit(_) | Ty::FreshNumLit(_));
+        let literal = numeric_literal_php;
         let plain = |v: &Out| literal(v) || is_php_variable(&v.php);
         // Operands are read left to right: when the right one must be evaluated into a temporary
         // (it may assign the left variable, as in `x < (x = 5)`), the left one is read first.
@@ -4227,8 +4227,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if (exact(&a.ty) && literal_php(a)) || (exact(&b.ty) && literal_php(b)) {
             return format!("{} === {}", a.wrapped(), b.wrapped());
         }
-        // Two typed numbers, each a literal or a plain variable (read twice without effect).
-        let literal = |v: &Out| matches!(v.ty, Ty::NumLit(_) | Ty::FreshNumLit(_));
+        // Two typed numbers, each a numeric literal or a plain variable (read twice without effect).
+        // Anything else, a call included, keeps the helper and its left-to-right evaluation.
+        let literal = numeric_literal_php;
         if a.ty.is_num()
             && b.ty.is_num()
             && (literal(a) || is_php_variable(&a.php))
@@ -11139,6 +11140,16 @@ fn php_local_base(name: &str) -> String {
     }
     let encoded = crate::hex(name);
     format!("__first_local_{encoded}")
+}
+
+/// A number literal the compiler wrote (`5`, `-1`, `1.5`, `NAN`): its PHP is exactly the literal its
+/// type names. A literal *type* alone proves nothing at run time (`JSON.parse(s) as 0` is typed `0`
+/// and may hold null), so only such an operand skips the int/float check.
+fn numeric_literal_php(v: &Out) -> bool {
+    match v.ty {
+        Ty::NumLit(n) | Ty::FreshNumLit(n) => v.php == php_number(n),
+        _ => false,
+    }
 }
 
 /// A plain PHP variable (`$x`, `$__t3`): reading it twice has no effect and gives the same value.

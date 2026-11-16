@@ -523,7 +523,10 @@ day and the active plugins (the site's and, on multisite, the network's). On
 multisite each site keeps its own. While it matches, requests skip those checks,
 as a managed build always does (`Runtime::installs()`); a managed site never
 records it. It is recorded at the end of `wp_loaded` only after each check is
-read again and passes, so a failed, refused or held install never records it. A
+read again and passes, so a failed, refused or held install never records it;
+the checks run once more after the write, and the marker is removed if they no
+longer pass or this request dropped it meanwhile. Dropping it always deletes the
+stored row, whatever this request cached about it. A
 new build, a runtime update, a plugin change or a new day finds no match.
 Activating, deactivating or migrating the app, a change to an option those checks
 keep or to an app route's Page, and a cancelled Action Scheduler action delete it.

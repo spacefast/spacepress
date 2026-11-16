@@ -1,16 +1,8 @@
 // Written by `typedpress add api-reference`; yours to change. One operation: who may call it, what it
 // takes and answers, and a request to copy.
-import { Html, Link, notFound, type PageProps, type StaticParams } from "typedpress/app";
+import { Html, Link, notFound, type PageProps } from "typedpress/app";
 import { apiReference } from "typedpress/content";
 import { ApiFields } from "../../../../components/ApiFields";
-
-// The same for every visitor, so it is prebuilt: one file per operation, on WordPress after each
-// deploy and in a static site (`output: "static"`).
-export const prerender = true;
-
-export async function staticParams(): Promise<StaticParams<"api/[tag]/[operation]">> {
-  return apiReference().tags.flatMap((t) => t.operations.map((o) => ({ tag: t.slug, operation: o.slug })));
-}
 
 export const metadata = ({ params }: PageProps<"api/[tag]/[operation]">) => {
   const tag = apiReference().tags.find((t) => t.slug === params.tag);

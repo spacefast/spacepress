@@ -28,8 +28,17 @@ struct File {
     /// Relative to the project root, with `/` separators.
     path: &'static str,
     content: &'static str,
+    /// For a project with `output: "static"`: text put in after the line that starts with the
+    /// first string, and the import names the second adds to the import from `typedpress/app`.
+    static_output: Option<StaticOutput>,
     what: &'static str,
     when: When,
+}
+
+struct StaticOutput {
+    after: &'static str,
+    insert: &'static str,
+    import: (&'static str, &'static str),
 }
 
 struct Module {
@@ -48,18 +57,21 @@ const MODULES: &[Module] = &[
             File {
                 path: "tp/tables.ts",
                 content: include_str!("add/db/tables.ts"),
+                static_output: None,
                 what: "two example tables, with a reference between them and access rules",
                 when: When::NoTables,
             },
             File {
                 path: "tables.client.ts",
                 content: include_str!("add/db/tables.client.ts"),
+                static_output: None,
                 what: "typed client calls for the example tables",
                 when: When::Tables(&["projects", "tasks"]),
             },
             File {
                 path: "tp/DATABASE.md",
                 content: include_str!("add/db/DATABASE.md"),
+                static_output: None,
                 what: "how tables, migrations and the deploy check work",
                 when: When::Always,
             },
@@ -77,24 +89,35 @@ const MODULES: &[Module] = &[
             File {
                 path: "tp/app/api/page.tsx",
                 content: include_str!("add/api-reference/page.tsx"),
+                static_output: None,
                 what: "/api: every operation, by tag",
                 when: When::Always,
             },
             File {
                 path: "tp/app/api/[tag]/[operation]/page.tsx",
                 content: include_str!("add/api-reference/operation.tsx"),
+                // A static site prebuilds every page, so the dynamic one lists its URLs. A site that
+                // renders per request gets none: `staticParams` would make the page prebuilt, which
+                // a guarded layout above /api refuses.
+                static_output: Some(StaticOutput {
+                    after: "import { ApiFields }",
+                    insert: include_str!("add/api-reference/static-params.tsx"),
+                    import: ("type PageProps }", "type PageProps, type StaticParams }"),
+                }),
                 what: "/api/<tag>/<operation>: parameters, body, responses and a request to copy",
                 when: When::Always,
             },
             File {
                 path: "tp/components/ApiFields.tsx",
                 content: include_str!("add/api-reference/ApiFields.tsx"),
+                static_output: None,
                 what: "the fields of a parameter list, body or response",
                 when: When::Always,
             },
             File {
                 path: "tp/API.md",
                 content: include_str!("add/api-reference/API.md"),
+                static_output: None,
                 what: "what the pages read and how to change them",
                 when: When::Always,
             },
@@ -142,6 +165,17 @@ fn skip(file: &File, schema: &Schema) -> Option<String> {
             .iter()
             .find(|name| !table(schema, Some(name)))
             .map(|name| format!("it calls the example table `{name}`, which the project doesn't have")),
+    }
+}
+
+fn with_static_output(content: &str, extra: &StaticOutput) -> String {
+    let content = content.replacen(extra.import.0, extra.import.1, 1);
+    let at = content
+        .find(extra.after)
+        .and_then(|i| content[i..].find('\n').map(|n| i + n + 1));
+    match at {
+        Some(at) => format!("{}{}{}", &content[..at], extra.insert, &content[at..]),
+        None => content,
     }
 }
 
@@ -245,7 +279,11 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
             report.push((file, "skipped", why));
             continue;
         }
-        if let Err(error) = created.file(&project, file.path, file.content) {
+        let content = match &file.static_output {
+            Some(extra) if schema.output == crate::schema::Output::Static => with_static_output(file.content, extra),
+            _ => file.content.to_string(),
+        };
+        if let Err(error) = created.file(&project, file.path, &content) {
             created.undo(&project);
             eprintln!("{command}: can't write {}: {error}. Nothing was added.", file.path);
             return ExitCode::from(1);

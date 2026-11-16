@@ -719,8 +719,8 @@ export default function Api() {
 - `description` fields are the document's Markdown as HTML: render them with `<Html value>`.
 - `apiReference("partner-api.json")` reads a JSON file in the app's `public/` folder instead, for a
   reference to another API. The path is a literal; one outside `public/` is a build error.
-- The added operation page is prebuilt (`prerender = true`) and lists every operation in
-  `staticParams`, so it also works in a static site (`output: "static"`). Export it with `typedpress export --site <hosted site>`, so the samples call
+- In a project with `output: "static"`, the added operation page also lists every operation in
+  `staticParams`, so the static site builds one page per operation. Export it with `typedpress export --site <hosted site>`, so the samples call
   that site's API; a plain `typedpress export` refuses, because the samples would name the
   throwaway WordPress the export renders on.
 

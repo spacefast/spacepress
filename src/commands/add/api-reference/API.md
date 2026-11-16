@@ -18,8 +18,8 @@ Both pages read `apiReference()` from `"typedpress/content"`. It returns the Ope
 - A field is `{ name, depth, type, required, description, constraints, in }`. Indent by `depth`.
 - Descriptions are HTML, from the document's Markdown: render them with `<Html value>`.
 - For another API, put its OpenAPI JSON in `public/` and call `apiReference("that-api.json")`.
-- The operation page is prebuilt (`prerender = true`) and lists every operation in
-  `staticParams`, so it also works in a static site (`output: "static"`). A static site has no API of its own, so export it with
+- In a project with `output: "static"`, the operation page also lists every operation in
+  `staticParams`, so the static site builds one page per operation. A static site has no API of its own, so export it with
   `typedpress export --site <hosted site>`: the samples then call that site's API. Without
   `--site` the export refuses, because the samples would name the throwaway WordPress it renders on.
 

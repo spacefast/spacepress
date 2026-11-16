@@ -557,6 +557,12 @@ final class Prebuilt
         if (!apply_filters('tp_prebuilt_serve', $public, $html)) {
             return;
         }
+        // One read: its bytes are tagged, measured and sent, so the ETag names exactly the body, even
+        // when a rebuild replaces the file meanwhile. A file that can't be read renders as usual.
+        $bytes = self::read($file);
+        if ($bytes === null) {
+            return;
+        }
         [$control] = Cache::policy(200, true, false);
         header('Cache-Control: ' . $control);
         header('X-TypedPress-Prebuilt: 1');
@@ -572,19 +578,30 @@ final class Prebuilt
         if ($signal !== '') {
             header('Content-Signal: ' . $signal);
         }
-        // The file's own validator: a client (or edge) that holds this file gets an empty 304. The
-        // gates above already decided the file is what this request would get.
-        $etag = \TypedPress\Validator::file($file);
+        // The bytes' own validator: a client (or edge) that holds them gets an empty 304. The gates
+        // above already decided the file is what this request would get.
+        $etag = \TypedPress\Validator::bytes($bytes);
         header('ETag: ' . $etag);
         if (\TypedPress\Validator::matches($etag)) {
             http_response_code(304);
             exit;
         }
-        header('Content-Length: ' . (string) filesize($file));
+        header('Content-Length: ' . (string) strlen($bytes));
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
-            readfile($file);
+            echo $bytes;
         }
         exit;
+    }
+
+    /** @var ?\Closure(string): (string|false) reads a prebuilt file (tests replace it); null reads the file */
+    public static ?\Closure $reader = null;
+
+    /** A prebuilt file's bytes, or null when they can't be read. */
+    private static function read(string $file): ?string
+    {
+        $bytes = self::$reader !== null ? (self::$reader)($file) : @file_get_contents($file);
+
+        return is_string($bytes) ? $bytes : null;
     }
 
     /**

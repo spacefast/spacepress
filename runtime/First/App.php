@@ -546,7 +546,8 @@ final class App
         $usage = static fn () => new HttpError(400, 'invalid_command', self::USAGE);
 
         return $this->db->transaction(function () use ($cmd, $pos, $flags, $json, $usage) {
-            $promoted = $this->db->promoteDue();
+            // `publish-due` is asked to look now; other commands promote as requests do.
+            $promoted = $this->db->promoteDue($cmd === 'publish-due');
             if ($cmd === 'publish-due') {
                 return ['promoted' => (object) $promoted];
             }

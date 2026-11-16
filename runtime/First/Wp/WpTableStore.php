@@ -234,6 +234,15 @@ final class WpTableStore implements Store, Links
         return $pks;
     }
 
+    /** The earliest `publishedAt` of a row still scheduled, or null. */
+    public function nextScheduled(string $collection): ?string
+    {
+        $table = $this->dialect->quote($this->table($collection));
+        $at = $this->db->run("SELECT MIN(`publishedAt`) AS at FROM $table WHERE `status` = 'scheduled'")[0]['at'] ?? null;
+
+        return is_string($at) && $at !== '' ? $at : null;
+    }
+
     // ================================================================ errors
 
     public function mapError(\Throwable $e): \Throwable

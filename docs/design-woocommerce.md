@@ -9,10 +9,12 @@ TypedPress provides the authoring and typed API; WooCommerce supplies the commer
 The immediate target is TypedPress on Spacefast. A separate Astro commerce product,
 standalone distribution milestone, or open-source release plan is not part of this work.
 
-The initial store should sell a downloadable product and a simple physical product through
-native Woo checkout. Products, inventory, carts, orders, payment processing and download
-permissions remain native Woo objects. TypedPress must use Woo's APIs rather than maintain
-a second commerce database or write directly to Woo tables.
+The proposed v1 store sells simple physical products through an interactive TypedPress
+storefront backed by Woo. Downloadable products are proposed for deferral; confirm that scope
+before implementation. Checkout presentation is an open decision, not a requirement to leave
+the TypedPress experience. Products, inventory, carts, orders and payment processing remain
+native Woo objects. TypedPress must use Woo's APIs rather than maintain a second commerce
+database or write directly to Woo tables.
 
 ## Product ownership
 
@@ -28,69 +30,37 @@ Products follow collection seed/sync behavior without becoming ordinary TypedPre
 Collection writes use WordPress post APIs; product writes must use Woo CRUD. Public syntax and
 the exact product-file format remain open.
 
-Sync covers authored fields such as names, descriptions, prices and download declarations.
-Stock quantities, sales counters, orders and download grants are operational state, not synced
+Sync covers authored fields such as names, descriptions, prices and taxonomy assignments.
+Stock quantities, sales counters and orders are operational state, not synced
 content. An optional initial stock value is create-only and must never reset stock on sync.
 
-## Existing seed and sync behavior
+## Sync integration
 
-Collections currently declare source files through `sync`, not a separate `seed` option:
-
-```ts
-export const posts = collection(
-  { title: text(), content: richText() },
-  { sync: "content/posts/*.md" },
-);
-```
-
-The compiler packages synced files as seed records. The hosted loader applies them while
-initializing a new build, before recording readiness. An already-ready build returns its
-stored receipt without applying seed again.
-
-| Source and database state | Collection seed | Table seed |
-| --- | --- | --- |
-| Record is missing | Create | Create |
-| Existing record matches | Leave unchanged | Leave unchanged |
-| Existing record differs | Preserve database content; report `skipped_existing` | Apply source values |
-| Record is trashed | Leave trashed | Leave trashed |
-| Source file disappears | Keep database record | Keep database record |
-
-Records have stable UIDs; the compiler derives an identity when a file does not supply one.
-Seed applies each collection in its own transaction, not the whole build in one transaction.
-
-`typedpress sync` is a separate operation. It reconciles files and database content per field,
-using a sync baseline and reporting conflicts where both sides changed the same field.
-It does not delete records merely because files disappear.
-
-For existing collections, deployment followed by sync can therefore create records and apply
-source changes when there are no conflicting runtime edits. This gives the desired data result,
-but does not enforce source ownership. Products do not participate in this mechanism yet.
-
-Implementation references:
-
-- [Seed compilation](../src/bundle.rs): `seed_records`.
-- [Hosted initialization](../runtime/wp-plugin/typedpress-loader.php): `Loader::initialize`.
-- [Seed execution](../runtime/TypedPress/Sync/Seed.php).
-- [Per-record seed policy](../runtime/TypedPress/Sync/Routes.php): `seedRecord`.
-- [Current sync contract](config-api.md#seeding-and-typedpress-sync).
+Extend the [existing seed/sync contract](config-api.md#seeding-and-typedpress-sync) to Woo
+products and taxonomies: seed missing records, preserve runtime edits during deployment, merge
+explicit sync changes and report conflicts. Missing files do not imply deletion. Reuse
+[seed compilation](../src/bundle.rs), [seed execution](../runtime/TypedPress/Sync/Seed.php)
+and the [record policy](../runtime/TypedPress/Sync/Routes.php) where compatible, with Woo CRUD
+as the product writer. This support is new work, not an existing Woo integration.
 
 ## Proposed minimum commerce API
 
 Product CRUD is the catalog foundation, but does not by itself provide a buying flow. The
-initial API also needs shopper cart operations and hosted checkout, plus authorized order reads
+initial API also needs shopper cart operations and checkout, plus authorized order reads
 for application dashboards. These are proposed boundaries; names below are illustrative.
 
 | Resource | Initial operations | Data contract |
 | --- | --- | --- |
-| Products | List, get, create, update, trash; seed and sync | Stable source identity and Woo ID, SKU, slug, name, descriptions, status, visibility, simple product type, virtual/downloadable flags, prices, images, stock configuration and availability, shipping dimensions, protected download declarations |
+| Products | List, get, create, update, trash; seed and sync | Stable source identity and Woo ID, SKU, slug, name, descriptions, status, visibility, simple product type, prices, images, stock configuration and availability, shipping dimensions |
 | Categories and tags | Existing taxonomy/terms API, extended to bind Woo taxonomies and support product relationships | Native term ID, stable source identity, name, slug; categories also have a parent. No separate commerce category/tag CRUD API |
 | Cart | Read current cart, add item, change quantity, remove item, update destination, choose shipping rate | Session-scoped lines, current prices, availability, discounts, shipping choices, taxes, fees and Woo-calculated totals |
-| Checkout | Obtain a native checkout handoff for the current cart | Hosted URL and session continuity; Woo collects payment and creates the order |
+| Checkout | Complete the current cart through Woo; presentation to be selected by a spike | Session continuity, address and shipping validation, supported payment integration, order result and receipt |
 | Orders | Authorized list/get, including line and refund details | Status, currency, timestamps, historical line items, totals, billing/shipping snapshots, optional customer reference, payment method label and refund summaries |
 | Store information | Read safe configuration and supported capabilities | Currency precision, display conventions, measurement units, supported product types and whether checkout is available; no gateway secrets |
 
-Use simple products initially. Virtual and downloadable are independent Woo flags, not mutually
-exclusive product types. Reject unsupported variable, grouped, external or extension-defined
+Use simple physical products for the proposed first proof. Virtual and downloadable are independent
+Woo flags, not mutually exclusive product types; their authoring and fulfillment are outside that
+proof. Reject unsupported variable, grouped, external or extension-defined
 product writes explicitly. Read projections should identify unsupported types without pretending
 they are simple products. Variation authoring and sync are deferred.
 
@@ -108,11 +78,11 @@ normal save behavior runs. Term edits can reuse the native WordPress term APIs a
 authorization, with Woo capabilities respected. Category-specific metadata such as images
 needs an explicit mapping rather than assuming TypedPress's `tp_*` term-meta convention.
 
-This requires extending current support: taxonomies presently create TypedPress-owned names,
-`terms()` attaches to supported collections, and taxonomy `sync` is not implemented. Product
-sync must resolve stable term references and report missing or conflicting terms; it must not
-silently create terms from names. Decide whether first-release term definitions use shared
-taxonomy seed/sync or an explicit term-creation step before product sync. A collection may
+Implement shared taxonomy seed/sync as part of this work, along with native-taxonomy bindings
+and product term relationships. Apply parent terms before children and resolve product references
+after their terms exist. Sync explicitly declared terms; never silently create terms from a
+product's display names. Report missing references and conflicting edits through the same sync
+workflow. A collection may
 share a product taxonomy only through an explicit attachment, not automatically for every
 collection. Preserve WordPress's aggregate term-count semantics across attached kinds.
 
@@ -132,10 +102,10 @@ and authorized billing/shipping information on orders; guest orders need no regi
 Account management, customer search and buyer order history can follow with an explicit identity
 mapping. Do not infer ownership from an email address supplied by the caller.
 
-Images use the existing media pipeline. Private downloadable files need a protected upload and
-reference boundary with Woo-owned grants; they must not become ordinary public media URLs.
-The initial buyer receipt and download experience can remain in native Woo checkout and email.
-Coupon application may remain in hosted checkout; coupon CRUD and custom promotion engines are
+Images use the existing media pipeline. Protected file ingestion, download grants, file retention
+and downloadable-product fulfillment are proposed follow-up scope, not v1 acceptance gates.
+The selected checkout must provide a receipt and preserve Woo order emails.
+Coupon application can use Woo's checkout integration; coupon CRUD and custom promotion engines are
 deferred. Shipping and tax settings remain in Woo administration; carts expose calculated results.
 
 ### Shared value types and query contracts
@@ -143,8 +113,15 @@ deferred. Shipping and tax settings remain in Woo administration; carts expose c
 - **Money:** exact decimal strings with currency and precision at the containing resource;
   never floating-point arithmetic. Normalize Store API minor-unit strings at the adapter boundary.
   Preserve Woo's tax-inclusive/exclusive display semantics and calculated totals.
-- **Identity:** stable source keys for sync, native Woo IDs for runtime relations. Renames must
-  not create duplicates; source identity is distinct from an editable SKU or slug.
+- **Identity:** source files use persistent sync UIDs for products, terms and references, never
+  site-local auto-increment product or term IDs. Reuse the existing UID format and mapping;
+  native Woo IDs remain local runtime identifiers. Preserve explicit UIDs when renaming or
+  moving files. Deriving a missing UID from a filename does not guarantee rename stability:
+  materialize/persist the UID before relying on moves, with the exact authoring step to be defined.
+  SKU and slug remain editable attributes, not identity. Image references use portable source
+  assets resolved to local media IDs; numeric attachment IDs must not leak into portable files.
+  Export/sync must convert runtime references back to stable source references and report missing
+  mappings rather than copy raw IDs. Test one source catalog on two stores with different IDs.
 - **Lists:** bounded pagination and explicit supported filters. Product filters include status,
   search, category, tag and availability; order filters include date range, status and customer.
   Use deterministic ordering. Do not imply arbitrary SQL joins or the complete `db` query language.
@@ -155,7 +132,7 @@ deferred. Shipping and tax settings remain in Woo administration; carts expose c
 ### Access boundaries
 
 Public product projections contain only storefront-visible data. Merchant product reads may also
-contain drafts, private assets and inventory details. Order lists and customer addresses require
+contain drafts and inventory details. Order lists and customer addresses require
 merchant authorization; a public page cannot obtain them by calling a server-side helper.
 Shopper carts belong to their session, and receipts require Woo's ownership/order authorization.
 Keep credentials and handoff-signing secrets on the server.
@@ -210,41 +187,55 @@ The [Spacefast host checklist](spacefast-host-checklist.md) records the existing
 runtime integration gap. Its upgrade and Woo integration need a coordinated implementation;
 the local source review does not establish the current production deployment state.
 
-### Checkout and delivery
+### Checkout presentation
 
-Keep native Woo checkout and its order lifecycle. Use a dummy gateway for the initial test
-purchase, followed by a tested stock gateway for a live-store pilot. Custom managed payments
-are deferred.
+TypedPress's [client bindings](pages.md#client-components) make an interactive product page,
+mini-cart and cart feasible within the application. They do not automatically implement Woo's
+payment-method registration, validation, payment events or gateway browser assets. Woo's
+[Checkout Block](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/how-checkout-processes-an-order/)
+and [payment integration contract](https://developer.woocommerce.com/docs/block-development/extensible-blocks/cart-and-checkout-blocks/checkout-payment-methods/payment-method-integration/)
+own behavior beyond rendering reactive fields.
 
-Purchased files must remain outside public build output and be delivered through Woo's
-authorization. Email templates can be authored with the app, with order details and authorized
-download links bound at runtime. File replacement and historical download access need an
-explicit policy before implementation.
+Spike two in-app presentation options: render Woo's native Checkout Block within the TypedPress
+page/layout, or author the form with TypedPress bindings over the Store API and a deliberately
+supported gateway integration. The first is the recommended starting investigation because it
+can preserve existing gateway UI; embedding and asset loading still need verification. A separate
+native checkout page remains a fallback, not a fixed product requirement.
+
+Compare session continuity, address/shipping recalculation, payment validation, decline/retry,
+authentication redirects, receipt rendering and navigation/remount behavior. Interactivity API
+bindings alone are not evidence of Checkout Block or arbitrary gateway compatibility. Keep Woo
+authoritative for totals, payment processing and orders whichever presentation is chosen.
+Use a dummy gateway for the first proof and a stock gateway for the pilot. Custom managed
+payments are deferred. Use Woo's default emails initially; custom email authoring is follow-up.
 
 ## Decisions still needed
 
 - **Product sync contract:** file format, field allowlist, stable identity, baseline storage and
   Woo conflict detection. Reuse the current sync behavior rather than introduce a second command.
+- **Source identity:** how newly authored files receive persistent UIDs and how portable image
+  references are represented; product and term references must not contain local numeric IDs.
+- **Checkout presentation:** choose after the in-app block versus custom-form spike.
+- **V1 product scope:** confirm the proposed physical-only proof and downloadable-product deferral.
 - **Identity and removal:** stable product keys, file renames, missing definitions and
   reintroduction. Prefer retirement over destructive deletion, but settle this separately from
-  current sync's no-delete behavior. Preserve order history and purchased-file access.
+  current sync's no-delete behavior. Preserve order history.
 - **Activation and rollback:** source changes apply through explicit sync; code rollback must
   not silently roll back the catalog. Define partial-sync retry and first-seed failure handling.
 - **Previews:** previews must not alter the live catalog or enable test purchases against live
   operational data. Choose read-only previews or an isolated staging store.
 - **Permissions and administration:** who can manage products and read orders, how TypedPress
   identities map to Woo capabilities, and which native admin surfaces the integration supports.
-- **API scope:** confirm the proposed resource table, especially taxonomy support, inventory
+- **API scope:** confirm the proposed resource table, especially inventory
   mutations, order detail depth and the first dashboard's reporting needs.
-- **Private assets and emails:** authoring format, upload ownership, retention, replacements
-  and supported native email overrides.
+- **Follow-up assets and emails:** when downloads are added, define protection, retention and
+  replacements; decide custom email authoring separately from v1 Woo default emails.
 
 ## First implementation proof
 
-Build one TypedPress example with an ebook and a physical product on Spacefast. Prove product
-creation and repeat deployment, live product reads, quantity changes, shipping, cart continuity,
-native checkout, a real dummy-gateway Woo order and an authorized download. Anonymous direct
-access to the purchased file must fail.
+Under the proposed physical-only scope, build one TypedPress example on Spacefast. Prove product
+and taxonomy creation and repeat deployment, live product reads, quantity changes, shipping,
+cart continuity, the selected checkout presentation and a real dummy-gateway Woo order.
 
 Prove file-to-Woo updates, Woo-to-file updates, conflicting edits, preserved stock and orders,
 partial-sync retry, removal behavior and preview isolation. Verify authorized order reads and
@@ -252,6 +243,6 @@ refusal of unauthorized reads. Then qualify the stock gateway with a payment and
 must come from those flows, not merely successful plugin installation.
 
 Variations, subscriptions, bookings, customer-account flows, a new commerce dashboard and custom
-payment infrastructure are deferred. The first implementation should reuse the existing
-checkout handoff, native product operations and private-file handling where suitable, without
-bringing along assumptions that every catalog must be source-managed.
+payment infrastructure are deferred. Downloads and custom email templates are proposed follow-up
+scope. Reuse native product operations and existing checkout integration where they fit the
+selected presentation; no catalog-wide source ownership restriction is needed.

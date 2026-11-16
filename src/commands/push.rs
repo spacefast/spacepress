@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: typedpress push [project-dir] [--site <url>] [--dry-run]\n       sign in first with: typedpress login <site-url>   (or TP_APP_PASSWORD=user:application-password)";
+const USAGE: &str = "usage: typedpress push [project-dir] [--site <url>] [--dry-run]\n       sign in first with: typedpress login <site-url>   (in CI: TP_APP_PASSWORD=user:application-password)";
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
     match run(args) {

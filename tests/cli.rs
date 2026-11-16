@@ -210,23 +210,111 @@ fn build_commands_refuse_options_they_do_not_take() {
 }
 
 #[test]
-fn sync_takes_its_credential_from_the_environment_only() {
-    let out = first()
-        .args(["sync", "--site", "http://127.0.0.1:9"])
-        .env_remove("TP_APP_PASSWORD")
-        .env_remove("TP_TOKEN")
-        .output()
-        .unwrap();
-    assert_eq!(out.status.code(), Some(3));
-    assert!(text(&out.stderr).starts_with("typedpress sync needs a credential in TP_APP_PASSWORD or TP_TOKEN"));
-    let out = first()
-        .args(["sync", "--site", "http://127.0.0.1:9"])
-        .env("TP_APP_PASSWORD", "a:b")
-        .env("TP_TOKEN", "t")
-        .output()
-        .unwrap();
-    assert_eq!(out.status.code(), Some(3));
-    assert!(text(&out.stderr).starts_with("set TP_APP_PASSWORD or TP_TOKEN, not both"));
+fn remote_commands_sign_in_one_way() {
+    let work = tempfile::tempdir().unwrap();
+    let config = work.path().join("config");
+    let run = |args: &[&str], env: &[(&str, &str)]| {
+        let mut cmd = first();
+        cmd.args(args)
+            .current_dir(work.path())
+            .env("TP_CONFIG_DIR", &config)
+            .env_remove("TP_APP_PASSWORD")
+            .env_remove("TP_TOKEN");
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        cmd.output().unwrap()
+    };
+    // Signed out, every command that needs a site's credential says how to sign in, before it
+    // reaches the site.
+    let site = "http://127.0.0.1:9";
+    for (args, code) in [(&["sync", "--site", site][..], 3), (&["pull", "--site", site][..], 1)] {
+        let out = run(args, &[]);
+        assert_eq!(out.status.code(), Some(code), "{args:?}: {}", text(&out.stderr));
+        assert!(
+            text(&out.stderr).starts_with(&format!("not signed in to {site}. Run: typedpress login {site}\n")),
+            "{args:?}: {}",
+            text(&out.stderr)
+        );
+        assert!(
+            text(&out.stderr).contains("in CI: TP_APP_PASSWORD"),
+            "{}",
+            text(&out.stderr)
+        );
+    }
+    // A credential written into the address is refused and never printed, signed in or not.
+    for args in [
+        &["sync", "--site", "https://demo:SENTINEL@example.test"][..],
+        &["pull", "--site", "https://demo:SENTINEL@example.test"][..],
+        &["export", "--site", "https://SENTINEL@example.test"][..],
+        &["abilities", "pull", "--site", "https://demo:SENTINEL@example.test"][..],
+    ] {
+        for env in [&[][..], &[("TP_APP_PASSWORD", "a:b")][..]] {
+            let out = run(args, env);
+            assert!(!out.status.success(), "{args:?}");
+            assert!(
+                !text(&out.stderr).contains("SENTINEL") && !text(&out.stdout).contains("SENTINEL"),
+                "{args:?}: {}",
+                text(&out.stderr)
+            );
+        }
+    }
+    // Both variables at once is refused, by every command alike.
+    for args in [&["sync", "--site", site][..], &["pull", "--site", site][..]] {
+        let out = run(args, &[("TP_APP_PASSWORD", "a:b"), ("TP_TOKEN", "t")]);
+        assert!(
+            text(&out.stderr).starts_with("set TP_APP_PASSWORD or TP_TOKEN, not both"),
+            "{args:?}: {}",
+            text(&out.stderr)
+        );
+    }
+    let out = run(&["sync", "--site", site], &[("TP_APP_PASSWORD", "no-colon")]);
+    assert!(
+        text(&out.stderr).starts_with("TP_APP_PASSWORD is user:application-password"),
+        "{}",
+        text(&out.stderr)
+    );
+    // What `typedpress login` stores is what sync signs in with: past the credential check, the
+    // command reaches the site (and fails there, since nothing listens on port 9).
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        config.join("sites.json"),
+        serde_json::json!({"sites": {site: {"rest": format!("{site}/wp-json"), "user": "admin", "password": "secret"}}}).to_string(),
+    )
+    .unwrap();
+    let out = run(&["sync", "--site", &format!("{site}/")], &[]);
+    assert!(!text(&out.stderr).contains("not signed in"), "{}", text(&out.stderr));
+    assert!(
+        !text(&out.stderr).contains("secret"),
+        "the stored password is never printed: {}",
+        text(&out.stderr)
+    );
+    // A stored login without its password is reported, not used.
+    std::fs::write(
+        config.join("sites.json"),
+        serde_json::json!({"sites": {site: {"rest": format!("{site}/wp-json"), "user": "admin"}}}).to_string(),
+    )
+    .unwrap();
+    let out = run(&["sync", "--site", site], &[]);
+    assert!(
+        text(&out.stderr).starts_with(&format!(
+            "the stored credential for {site} is incomplete. Run: typedpress login {site}"
+        )),
+        "{}",
+        text(&out.stderr)
+    );
+    // The environment overrides the stored credential (CI): the incomplete entry is never read.
+    let out = run(&["sync", "--site", site], &[("TP_APP_PASSWORD", "ci:password")]);
+    assert!(!text(&out.stderr).contains("incomplete"), "{}", text(&out.stderr));
+    // Deploying takes an application password: a bearer token is refused before anything is sent.
+    std::fs::write(work.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    let out = run(&["push", "--site", site], &[("TP_TOKEN", "t")]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        text(&out.stderr).starts_with("deploying needs an application password, not TP_TOKEN"),
+        "{}",
+        text(&out.stderr)
+    );
 }
 
 #[test]

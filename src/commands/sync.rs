@@ -7,8 +7,8 @@
 //! typedpress sync resolve <uid> [dir] --site …
 //! ```
 //!
-//! Without `--site`, the project's running dev site. The credential comes from the environment: `TP_APP_PASSWORD` (`user:application-password`) or
-//! `TP_TOKEN` (a bearer token from the identity plugin).
+//! Without `--site`, the project's running dev site. The credential is the one `typedpress login`
+//! stored for the site, or `TP_APP_PASSWORD` / `TP_TOKEN` in the environment (`remote::sign_in`).
 //!
 //! `--pr` runs on a fresh worktree of the default branch and opens or updates one pull request with
 //! the result (see `sync::pr`); it needs `GITHUB_TOKEN`.
@@ -16,19 +16,18 @@
 //! Exit codes: 0 ok, 1 failed, 2 changes pending or conflicts (`--check`), 3 usage, 4 auth.
 
 use crate::sync::apply::{self, Options};
-use crate::sync::client::{Client, Credential};
+use crate::sync::client::Client;
 use crate::sync::{Report, git, pr};
 use serde_json::json;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: typedpress sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       typedpress sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch] [--json]\n       credential: TP_APP_PASSWORD=<user:application-password> or TP_TOKEN=<bearer token>";
+const USAGE: &str = "usage: typedpress sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       typedpress sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch] [--json]";
 
 struct Flags {
     mode: Mode,
     project: PathBuf,
     site: Option<String>,
-    credential: Option<Credential>,
     only: Option<Vec<String>>,
     check: bool,
     commit: bool,
@@ -49,7 +48,6 @@ fn parse(args: &[String]) -> Result<Flags, String> {
         mode: Mode::Sync,
         project: PathBuf::from("."),
         site: None,
-        credential: None,
         only: None,
         check: false,
         commit: true,
@@ -117,13 +115,6 @@ fn parse(args: &[String]) -> Result<Flags, String> {
     if !flags.pr && (flags.repo.is_some() || flags.base.is_some()) {
         return Err("--repo and --base go with --pr".into());
     }
-    let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
-    flags.credential = match (env("TP_APP_PASSWORD"), env("TP_TOKEN")) {
-        (Some(_), Some(_)) => return Err("set TP_APP_PASSWORD or TP_TOKEN, not both".into()),
-        (Some(password), None) => Some(Credential::AppPassword(password)),
-        (None, Some(token)) => Some(Credential::Bearer(token)),
-        (None, None) => None,
-    };
     Ok(flags)
 }
 
@@ -136,18 +127,21 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     };
     let site = match flags.site.clone() {
-        Some(site) => Some(site),
+        Some(site) => site,
         None => match super::dev::url(&flags.project) {
-            Ok(url) => Some(url),
+            Ok(url) => url,
             Err(e) => {
                 eprintln!("{e}");
                 return ExitCode::from(3);
             }
         },
     };
-    let (Some(site), Some(credential)) = (site, flags.credential) else {
-        eprintln!("typedpress sync needs a credential in TP_APP_PASSWORD or TP_TOKEN\n{USAGE}");
-        return ExitCode::from(3);
+    let credential = match super::remote::require(&site) {
+        Ok(signed) => signed.credential,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}\n{}", super::remote::SIGN_IN);
+            return ExitCode::from(3);
+        }
     };
     let project = flags.project.canonicalize().unwrap_or(flags.project.clone());
     let client = match Client::new(&site, credential) {

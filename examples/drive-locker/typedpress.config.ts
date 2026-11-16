@@ -36,7 +36,6 @@ export const drives = table({
   label: text().min(1).max(120),
   model: text().min(1).max(160),
   serial: text().min(1).max(160),
-  serialKey: text().max(191).unique().default("").access({ read: false, create: false, update: false }),
   kind: select(["ssd", "hdd", "nvme", "sd", "usb"]),
   capacityGb: number().min(0.001),
   interface: text().min(1).max(80),
@@ -47,7 +46,7 @@ export const drives = table({
   notes: text({ multiline: true }).optional(),
   tags: json<string[]>().$default(() => []),
   replacementNeededAt: timestamp().access({ create: false, update: false }).optional(),
-}, { access }).on({
+}, { access }).index(["ownerId", "serial"], { unique: true }).on({
   async beforeCreate(data, ctx) {
     const owner = actor(ctx.user?.id);
     data.ownerId = owner;
@@ -56,13 +55,11 @@ export const drives = table({
     data.serial = data.serial.trim().toUpperCase();
     data.interface = data.interface.trim();
     if (!data.label || !data.model || !data.serial || !data.interface) throw new HttpError(422, "invalid_input", "Label, model, serial and interface are required.");
-    data.serialKey = `${owner}:${data.serial}`;
     await checkPlace(data.placeId, owner);
   },
   async beforeUpdate(data, existing) {
     data.ownerId = existing.ownerId;
     if (data.serial !== undefined) data.serial = data.serial.trim().toUpperCase();
-    data.serialKey = `${existing.ownerId}:${data.serial ?? existing.serial}`;
     if (data.label !== undefined) data.label = data.label.trim();
     if (data.model !== undefined) data.model = data.model.trim();
     if (data.interface !== undefined) data.interface = data.interface.trim();
@@ -198,7 +195,7 @@ export const whereIs = action({
     const ownerId = actor(ctx.user?.id);
     const needle = query.trim().toLowerCase();
     if (!needle) throw new HttpError(422, "invalid_input", "Enter a serial, label, model or content description.");
-    const inventory = await db.query.drives.findMany({ where: { ownerId }, columns: { serialKey: false }, with: { placeId: true, contents: true }, orderBy: { label: "asc" } });
+    const inventory = await db.query.drives.findMany({ where: { ownerId }, with: { placeId: true, contents: true }, orderBy: { label: "asc" } });
     return inventory.filter((drive) => drive.serial.toLowerCase().includes(needle) ||
       drive.label.toLowerCase().includes(needle) || drive.model.toLowerCase().includes(needle) ||
       drive.contents.some((entry) => entry.ownerId === ownerId && entry.description.toLowerCase().includes(needle)))
@@ -241,7 +238,7 @@ export const warrantyExpiring = action({
     const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
     return await db.query.drives.findMany({
       where: { ownerId: actor(ctx.user?.id), warrantyUntil: { gte: today, lte: cutoff }, status: { ne: "retired" } },
-      columns: { serialKey: false }, orderBy: { warrantyUntil: "asc" }, with: { placeId: true },
+      orderBy: { warrantyUntil: "asc" }, with: { placeId: true },
     });
   },
 });
@@ -253,8 +250,7 @@ export const retire = action({
     await requireDrive(driveId, ownerId);
     const [drive] = await db.update(drives).set({ status: "retired" }).where({ id: driveId, ownerId }).returning();
     if (!drive) throw new HttpError(404, "not_found", "Drive not found.");
-    const { serialKey, ...visibleDrive } = drive;
-    return visibleDrive;
+    return drive;
   },
 });
 

@@ -1551,6 +1551,11 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     ] {
         assert!(out.join(file).is_file(), "{file}");
     }
+    let layout = std::fs::read_to_string(out.join("tp/app/layout.tsx")).unwrap();
+    assert!(
+        layout.contains("export const template = \"blank\";"),
+        "the 0.8 layout draws the whole page, so it renders in the blank template: {layout}"
+    );
     let pricing = std::fs::read_to_string(out.join("tp/app/pricing/page.tsx")).unwrap();
     assert!(
         pricing.contains("import { plans } from '../../shared/plans';"),

@@ -5,10 +5,11 @@ Find a drive by its serial, label, model or recorded contents, then see its plac
 health history, warranty and capacity. The React SPA has search, places, drive
 detail, add-drive and capacity screens, with bottom navigation for use at a rack.
 
-The source compiles on `main` at `ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1`.
-Drive creation, editing and deletion have runtime restrictions described below.
-No live Space was created because the installed publishing CLI could not resolve
-the requested team. This example is not verified live.
+`node examples/drive-locker/verify.mjs` checks drive, place and contents CRUD
+over HTTP, all five actions, two-owner isolation and the replacement job. Drive
+creation works over HTTP. Owner deletes of drives and places don't yet: see the
+note at the end. No live Space was created because the installed publishing CLI
+could not resolve the requested team. This example is not verified live.
 
 ## Run locally
 
@@ -61,10 +62,10 @@ sets `ownerId` from the signed-in WordPress user. Clients cannot set or change
 it. Related places and drives must have the same owner, including on updates.
 The member projection uses existing WordPress accounts and typedpress-identity.
 
-Serials are trimmed and uppercased. A protected, unique `serialKey` stores
-`ownerId + ':' + serial`, so separate owners can record the same serial without
-sharing inventory. Its maximum length fits a MySQL unique text index. Action
-responses explicitly omit this internal key.
+Serials are trimmed and uppercased. A compound unique index,
+`.index(["ownerId", "serial"], { unique: true })`, refuses a second drive with the
+same serial for one owner (409 `unique_violation`), while separate owners can
+record the same serial without sharing inventory.
 
 | Action | Input | Result |
 | --- | --- | --- |
@@ -154,22 +155,17 @@ npm --prefix examples/drive-locker/web run build
 node examples/drive-locker/verify.mjs
 ```
 
-The ordinary HTTP verifier fails at the blocked drive create. To exercise the
-remaining paths on the current main, use the explicit probe mode:
+`TP_TEST_URL` names the local site (default `http://localhost:8796`). The
+verifier creates, edits and deletes drives, places and contents over HTTP as two
+owners, calls every action, runs Action Scheduler and reads the resulting stamp,
+then deletes its rows as their owner. Those deletes come last: on main the first
+of them answers 409 ([#533](https://github.com/spacefast/zero/issues/533)), after
+every other check has passed. Passwords stay in process memory and are
+revoked after the run.
 
-```sh
-node examples/drive-locker/verify.mjs --probe-main
-```
-
-That mode records the failed HTTP create and uses a trusted local WP-CLI insert
-for its disposable drive fixture. It then calls every action through real HTTP,
-checks owner isolation, exercises contents CRUD, runs Action Scheduler and reads
-the resulting stamp. Parent-row cleanup also uses trusted CLI after recording
-the HTTP delete refusal. Passwords stay in process memory and are revoked after
-the run. This mode proves the listed paths; it does not prove HTTP drive CRUD.
-
-The checked-in [HTTP transcript](verification/local-http.txt) contains commands'
-request methods, paths, statuses and JSON responses. The capacity fixture is
+The checked-in [HTTP transcript](verification/local-http.txt) is an older run's
+request methods, paths, statuses and JSON responses, from before drive creation
+worked over HTTP. The capacity fixture is
 `1000 - 240 = 760 GB` for its own place, with all other owner's rows excluded.
 The [verification record](verification/README.md) separates local, browser and
 publication evidence.
@@ -190,21 +186,8 @@ node examples/drive-locker/prepare-publish.mjs
 After publishing, register the live frontend callback with typedpress-identity,
 then verify sign-in, a collection read and an action on that hostname.
 
-## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
+## Notes
 
-The final source has no compiler diagnostics. The compiler diagnostic count is
-`diagnostics.filter(d => d.severity === 'error').length = 0` in
-[`check.json`](verification/check.json).
-
-| Gap | Exact observed diagnostic | Trigger in this example |
-| --- | --- | --- |
-| Owner-filtered unique writes | HTTP 403, `forbidden`, `You can't set serialKey`, pointer `/serialKey` | `serialKey.unique()` with the owner-filtered `access` in `typedpress.config.ts`; `POST /__tp/api/v1/drives` |
-| Owner-filtered referential deletes | HTTP 409, `reference_violation`, `Rows in health_readings may reference this row` | Drive references from `healthReadings.driveId` and deleting a drive |
-| Owner-filtered referential deletes | HTTP 409, `reference_violation`, `Rows in drives may reference this row` | `drives.placeId` and deleting an empty place |
-
-The constraint refusals follow main's
-[write pipeline contract](../../docs/runtime-contract.md#write-pipeline-dbinsertupdatedelete-rest-and-cli-all-go-through-it).
-The app preserves its owner filters, database uniqueness and references. It
-does not make reads public or replace constraints with a race-prone lookup.
+**Open gap ([#533](https://github.com/spacefast/zero/issues/533)):** on main, deleting a row that another table can reference returns `409 reference_violation` (`Rows in X may reference this row`) over HTTP, even when nothing references it, because the owner filter can't read the whole referencing table. Here that is deleting a drive (contents and health readings reference it) or a place (drives reference it). The verifier passes on the branch that fixes this; on main it stops at that delete, and CI marks it expected-fail with the issue number.
 
 Resolved build diagnostics are preserved [separately](verification/diagnostics.md).

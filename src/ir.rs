@@ -405,9 +405,13 @@ pub enum ExprKind {
     Instanceof(P<Expr>, P<Expr>),
     /// The strings array of a tagged template call site: `cooked` strings (None where an escape is
     /// invalid, which JavaScript passes as undefined) with a `raw` property. One array per site.
+    /// `lone_surrogate` is the first quasi whose cooked string holds a lone UTF-16 surrogate, which
+    /// UTF-8 can't hold (its `cooked` entry is None): the array is refused unless only `String.raw`
+    /// reads it, since that reads `raw` alone.
     TemplateStrings {
         cooked: Vec<Option<String>>,
         raw: Vec<String>,
+        lone_surrogate: Option<Span>,
     },
     /// `pattern = value` with an array or object pattern on the left. The value is the result.
     AssignPattern(P<AssignPat>, P<Expr>),

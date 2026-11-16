@@ -13,7 +13,7 @@ These commands run on your machine, on the project's files.
 
 | Command | What it does |
 | --- | --- |
-| `typedpress dev [dir] [--port n] [--no-watch \| --detach \| --foreground] [--allow-destructive]` | Start the local WordPress site and rebuild on change. |
+| `typedpress dev [dir] [--port n] [--url address \| --host address] [--no-watch \| --detach \| --foreground] [--allow-destructive]` | Start the local WordPress site and rebuild on change; --url is the address a proxy serves it at, --host an address of this machine to listen on. |
 | `typedpress dev stop [dir]` | Stop the local site, keeping its data. |
 | `typedpress dev status [dir] [--json]` | Report the local site. |
 | `typedpress build [dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]` | Write the WordPress plugins to tp/dist/wp-content. |

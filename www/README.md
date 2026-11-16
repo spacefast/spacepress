@@ -57,7 +57,6 @@ after changing `browser/` or `examples/`.
 | `browser/play.js` | `<tp-play>`, the playground component |
 | `scripts/build.mjs` | bundles `browser/` into `public/site.js`; copies the compiler, the example data and the plugin zips into `public/` |
 | `scripts/sources.mjs` | writes `tp/data/sources.ts`, the text of every file in `examples/` |
-| `scripts/share.mjs` | lets another machine open the dev site (below) |
 | `tests/site.test.mjs` | reads the running site in Chromium |
 
 Git-ignored: `public/`, `tp/data/sources.ts`, `tp/dist/`, `.tp/` except `.tp/sync-base.json`.
@@ -126,21 +125,21 @@ SITE_URL=http://localhost:8960 node --test tests/site.test.mjs
 Ten tests against the running site: the guide's sections and drawn code, the guide without
 JavaScript, phone width, the docs' navigation and highlighted code, an edit that builds a
 migration and is shared and reopened, an announced syntax error, the examples page with its JSON
-and its playground link, the blog from the menu to a post, and that a visitor can neither start the star job nor list `/shares`. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
+and its playground link, the blog from the menu to a post and its comments, the newest posts on the home page, and that a visitor can neither start the star job nor list `/shares`. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
 not wired into CI yet.
 
 ## Opening it from another machine
 
-`typedpress dev` listens on this machine's loopback only, and WordPress writes `http://localhost:8960`
-into every page. `scripts/share.mjs` forwards to it and rewrites that address in text answers:
+`typedpress dev` listens on this machine's loopback only. Name the address a proxy serves it at
+with `--url`, and WordPress writes that address into every page:
 
 ```sh
-PUBLIC=https://<this-machine>.<tailnet>.ts.net:8960 node scripts/share.mjs &   # listens on 127.0.0.1:8961
-tailscale serve --bg --https=8960 http://127.0.0.1:8961                        # tailnet only
-tailscale serve --https=8960 off                                               # to stop
+../target/release/typedpress dev --port 8960 --url https://<this-machine>.<tailnet>.ts.net:8960 --detach
+tailscale serve --bg --https=8960 http://localhost:8960     # tailnet only
+tailscale serve --https=8960 off                            # to stop
 ```
 
-It must not pass `X-Forwarded-*` headers on: WordPress then writes `https://localhost:8960`.
+`--host <address of this machine>` listens there instead, with no proxy.
 
 ## What TypedPress lacks for this site (15 November 2026)
 

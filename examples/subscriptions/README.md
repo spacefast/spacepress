@@ -24,8 +24,7 @@ Payment methods are labels, never card numbers or payment credentials.
 
 ## Run locally
 
-These commands require the compiler gap below to be resolved. Use a compiler
-built from this repository. `typedpress build` and `typedpress dev` manage the required
+Use a compiler built from this repository. `typedpress build` and `typedpress dev` manage the required
 plugins and their activation.
 
 ```sh
@@ -66,25 +65,23 @@ and an npm lockfile.
 `public/` is ignored. The [deploy guide](../../docs/spacefast-deploy.md) says
 static files are published as they are, and does not require committing Vite
 output. Run `npm --prefix web ci && npm --prefix web run build` from this
-example before publishing. A successful TypedPress build must also commit
-`tp/_generated/client/`, `tp/_generated/migrations/`, `tp/_generated/db.d.ts`, and `tp/_generated/wp-plugins.lock.json`.
-They cannot be generated from this config while the diagnostic remains.
+example before publishing. `typedpress build` writes `tp/_generated/client/`,
+`tp/_generated/migrations/`, `tp/_generated/db.d.ts`, and
+`tp/_generated/wp-plugins.lock.json`; commit them with the config.
 
 ## Known gaps
 
 `typedpress check examples/subscriptions` passes. The monthly totals (`monthlyBurn`) sum per currency, then per category, with `findIndex` and a running total, which TypedPress's type checker follows; an earlier form that reassigned a possibly undefined `find()` result did not compile.
 
-The disposable site also returns this runtime diagnostic on the owned
-subscription delete path. It is triggered by the `charges.subscriptionId`
-reference and owner-filtered table access in `typedpress.config.ts`:
+**Open gap ([#533](https://github.com/spacefast/zero/issues/533)):** on main, deleting a row that another table can reference returns `409 reference_violation` (`Rows in X may reference this row`) over HTTP, even when nothing references it, because the owner filter can't read the whole referencing table. Here that is deleting a subscription (charges reference it), which the verifier's cleanup does. The verifier passes on the branch that fixes this; on main it stops at that delete, and CI marks it expected-fail with the issue number.
 
-```json
-{"type":"about:blank","title":"Reference violation","status":409,"code":"reference_violation","detail":"Rows in charges may reference this row"}
-```
-
-`Db::requireReferenceVisibility()` requires full child-table visibility before
-cascading a delete. The owner rule intentionally filters that table. The app
-keeps its foreign key and private access rules. Its cancel action still works.
+With the generated `tp/_generated/db.d.ts` present, `tsc -p examples/subscriptions`
+(TypeScript 5.9.3) reports 6 errors on 2026-11-16, counted as lines matching
+`error TS`. `type Subscription = InferSelectModel<typeof subscriptions>` is used
+inside the `subscriptions` table's own hooks, so TypeScript reports the table as
+implicitly `any` (line 9) and the type alias as circular (lines 96 and 98); the
+`{ id }` filters at lines 112, 165, and 178 then fail as `TS2353`.
+`typedpress check` is unaffected.
 
 The installed `spacefast/0.8.0` CLI also refuses the deploy guide's preflight:
 
@@ -108,11 +105,12 @@ file-mode upload, rather than compiling a backend. A publish receipt marked
 
 | Check | Result |
 |---|---|
-| Main compiler | Blocked by the diagnostic above. |
-| Final app startup and generated-file freshness | Blocked by compilation. |
+| Compiler | `typedpress check examples/subscriptions` passes. |
+| HTTP verifier | `scripts/verify.mjs` passed against a local Studio site on 2026-11-16, below. |
+| Generated-file freshness | Not checked with `typedpress build --frozen`. |
 | Calendar and normalization tests | `node --test examples/subscriptions/tp/lib/calendar.test.mjs` passes. Covers month ends, leap years, year boundaries, and fractional cents. |
 | Agent protocol | A real, unchanged pantry `typedpress dev` site listed tools and executed a list tool. Exact output is in [the agent guide](../../docs/agents.md#verify-with-a-real-site). |
-| Frontend and other runtime paths | See the disposable contract proof below. It does not establish that the final app compiles. |
+| Frontend, reminder job, MCP | Only the earlier disposable contract proof below. Not rerun against the real app. |
 
 A rerunnable HTTP proof is `scripts/verify.mjs`. Against a disposable account,
 it creates fixtures, checks CRUD and every action, checks charge history,
@@ -126,9 +124,21 @@ TP_SITE=http://localhost:8794 TP_APP_PASSWORD="$AUTH" \
 It requires the real app's `monthlyBurn`; it does not replace that action with
 a stub or skip a failing check. Do not use an account holding real data.
 
-### Disposable contract proof
+On 2026-11-16, `TP_SITE=<local Studio URL> TP_APP_PASSWORD=admin:<application password>`
+against a local Studio site running the fix for [#533](https://github.com/spacefast/zero/issues/533) passed and printed:
 
-To test the independent paths despite the build failure, a disposable copy of
+```text
+PASS: collection CRUD, all actions, charge history, idempotency, inactive-charge and owner-input rejection
+```
+
+That run checks `monthlyBurn` for one yearly 12000-cent subscription as
+`12000 / 12 = 1000` cents in its category. Its cleanup deletes, including
+`DELETE /subscriptions/<id>` with a logged charge, returned 200.
+
+### Disposable contract proof (earlier run)
+
+This is an earlier run, from when the full config did not compile. To test the
+independent paths despite that build failure, a disposable copy of
 this config replaced only `monthlyBurn` with `{ currencies: [] }`, retaining the
 same declared output type. `typedpress build` generated its types and plugins. Its
 WordPress Studio site ran on `http://localhost:8795`, built with compiler/runtime
@@ -146,8 +156,8 @@ used application passwords for separate owner and subscriber accounts.
 Category CRUD, subscription create/read/update, `renewingSoon`, `logCharge`,
 request replay, `cancel`, reminder stamping, owner isolation, and the currency
 history guard passed. `monthlyBurn` returned the fixture's empty stub result;
-its calculation was not runtime-verified. REST subscription delete returned the
-known `409`; trusted local WP-CLI removed only the probe's fixture rows.
+its calculation was not runtime-verified in that run. REST subscription delete
+returned `409` in that run, before the per-row delete check.
 
 The [browser transcript](verification/contract-ui.json) records the Vite proxy,
 real sign-in and consent, callback, add/edit, search, charge history, charge
@@ -162,7 +172,7 @@ app's named tools and calls `subscriptions-subscriptions-list` on that fixture.
 The action declarations and table schemas match the committed config; the
 aggregation implementation is still a stub in this proof.
 
-Representative responses, with the full rows in the transcript:
+Representative responses from that earlier run, with the full rows in the transcript:
 
 ```text
 POST /categories                             201
@@ -189,8 +199,8 @@ The app-specific MCP endpoint is `/wp-json/mcp/typedpress-subscriptions`. Authen
 with a WordPress application password for your user. It applies the same owner
 rules as REST. [Use your TypedPress app from an agent](../../docs/agents.md) has exact
 Claude Code, Claude Desktop, and Codex configuration, plus a real MCP transcript.
-These subscription ability names follow the shipped runtime registration; they
-are not claimed as live-verified while this example cannot build.
+These subscription ability names follow the shipped runtime registration; MCP
+calls were not part of the 2026-11-16 local run, and they are not live-verified.
 
 | Prompt | Ability |
 |---|---|

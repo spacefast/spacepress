@@ -58,7 +58,7 @@ const postsWithTags = posts.map((post) => ({
 		)
 	}
 	<nav aria-label="Pagination">
-		{cursor && <a href="/posts">TypedPress page</a>}
+		{cursor && <a href="/posts">First page</a>}
 		{
 			nextCursor && (
 				<a href={`/posts?cursor=${encodeURIComponent(nextCursor)}`}>

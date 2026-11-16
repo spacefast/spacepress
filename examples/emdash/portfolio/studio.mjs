@@ -15,6 +15,8 @@ const first = resolve(process.env.TP_BIN ?? join(repo, 'target/debug/typedpress'
 const evidence = resolve(process.env.TP_PORTFOLIO_EVIDENCE ?? await mkdtemp(join(tmpdir(), 'typedpress-portfolio-evidence-')));
 
 async function port() {
+  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
   const listener = createServer();
   await new Promise((done) => listener.listen(0, '127.0.0.1', done));
   const address = listener.address();

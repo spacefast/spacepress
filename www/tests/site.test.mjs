@@ -152,6 +152,21 @@ test("blog: the menu links to it, and a post renders in the site's layout", asyn
   await page.waitForURL(/\/blog\/[\w-]+\/$/);
   assert.equal(await page.locator("article h1").textContent(), title);
   assert.equal(await page.locator("header.top .brand").count(), 1, "the post is not inside the site's layout");
+  // WordPress's own comments end the post; a signed-out visitor is asked to sign in to write one.
+  assert.equal(await page.locator("article + section.comments").count(), 1, "no comments after the post");
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test("home: the newest posts are listed at the end of the guide", async () => {
+  const { page, errors, status, close } = await open("/");
+  assert.equal(status, 200);
+  const latest = page.locator("section.latest li a");
+  assert.ok(await latest.count() >= 1 && await latest.count() <= 3, "From the blog lists one to three posts");
+  // The same newest post the blog's front page starts with.
+  const newest = new URL(await latest.first().getAttribute("href"), base).pathname;
+  await page.goto(`${base}/blog`);
+  assert.equal(new URL(await page.locator(".postlist li a").first().getAttribute("href"), base).pathname, newest);
   assert.deepEqual(errors, []);
   await close();
 });

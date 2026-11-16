@@ -11,6 +11,8 @@ export const example = fileURLToPath(new URL('.', import.meta.url));
 export const first = resolve(process.env.TP_BIN ?? new URL('../../../target/debug/typedpress', import.meta.url).pathname);
 export const command = async (args) => (await exec(first, args, { timeout: 600000, maxBuffer: 8 * 1024 * 1024 })).stdout.trim();
 export async function freePort() {
+  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
   const server = createServer();
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   const address = server.address();

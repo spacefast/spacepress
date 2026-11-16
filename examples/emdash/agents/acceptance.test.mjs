@@ -15,6 +15,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const binary = resolve(process.env.TP_BIN ?? join(here, '../../../target/debug/typedpress'));
 
 async function freePort() {
+  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
   const server = createServer();
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   const { port } = server.address();
@@ -259,10 +261,21 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
     assert.deepEqual(errors, []);
     await page.goto(base + '/wp-admin/');
     await Promise.all([page.waitForURL('**/wp-admin/**'), submitSignIn(page, 'admin', 'typedpress-test-admin')]);
-    await page.goto(base + '/wp-admin/plugins.php');
-    await page.getByRole('heading', { name: 'Plugins', exact: true }).waitFor();
-    await page.goto(base + '/wp-admin/options-general.php');
-    await page.getByRole('heading', { name: 'General Settings', exact: true }).waitFor();
-    await record('browser renders published editor content and job marker on desktop/mobile; classic plugins/settings remain usable', { screenshots: ['notebook-desktop.png', 'notebook-mobile.png'], browserErrors: errors });
+    // Default admin mode: a classic page opened as a page is framed in TypedPress Admin at /classic/<page>.
+    for (const [file, heading] of [['plugins.php', 'Plugins'], ['options-general.php', 'General Settings']]) {
+      await page.goto(base + '/wp-admin/' + file);
+      // `/wp-admin/new/<route>` with pretty permalinks, `admin.php?page=typedpress-admin&p=<route>` without.
+      await page.waitForURL((url) => (url.pathname.startsWith('/wp-admin/new/') ? url.pathname.slice('/wp-admin/new'.length) : url.searchParams.get('p')) === '/classic/' + file);
+      await page.frameLocator('iframe').getByRole('heading', { name: heading, exact: true }).waitFor();
+    }
+    // Developer mode (the user's own setting): classic wp-admin opens as itself.
+    await wp('user', 'meta', 'update', 'admin', 'tp_admin_developer_mode', '1');
+    for (const [file, heading] of [['plugins.php', 'Plugins'], ['options-general.php', 'General Settings']]) {
+      await page.goto(base + '/wp-admin/' + file);
+      assert.equal(new URL(page.url()).pathname, '/wp-admin/' + file);
+      await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+    }
+    await wp('user', 'meta', 'delete', 'admin', 'tp_admin_developer_mode');
+    await record('browser renders published editor content and job marker on desktop/mobile; classic plugins/settings remain usable framed in TypedPress Admin and on their own in developer mode', { screenshots: ['notebook-desktop.png', 'notebook-mobile.png'], browserErrors: errors });
   } finally { await browser.close(); }
 });

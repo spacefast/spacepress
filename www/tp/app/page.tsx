@@ -1,6 +1,8 @@
 // The home page: the guide, as one page. Each section is a file in tp/components/guide/, in the order of
 // tp/components/guide/sections.ts; add a section by adding it to both.
 import { Toc, Built, Decided, Proposed } from "../components/Guide";
+import { posts } from "typedpress:db";
+import { LatestPosts } from "../components/LatestPosts";
 import { Setup } from "../components/guide/setup";
 import { Layout } from "../components/guide/layout";
 import { How } from "../components/guide/how";
@@ -39,7 +41,9 @@ export const metadata = {
   description: "Every feature of TypedPress and how to use it, with examples you can edit, build and run in your browser.",
 };
 
-export default function Home() {
+export default async function Home() {
+  // WordPress content inside a TSX page: the newest posts, read when the page is rendered.
+  const latest = await posts.list({ orderBy: { publishedAt: "desc" }, limit: 3 });
   return (
     <main className="guide">
       <section className="hero">
@@ -86,6 +90,7 @@ export default function Home() {
       <Rename />
       <Limits />
       <Open />
+      <LatestPosts list={latest} />
     </main>
   );
 }

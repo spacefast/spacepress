@@ -5,10 +5,12 @@ wp-admin edit screens with generated Secure Custom Fields groups. Vet notes use
 Gutenberg. TypedPress Admin, which every build includes, edits the SQL tables. There are no
 custom frontend components, public assets, pages, or frontend dependencies.
 
-**The app is not running yet.** Main rejects the exported `AccessCtx` type.
-The Spacefast CLI published a restricted static source listing instead of a
-TypedPress app. Local actions, admin screenshots, and live app verification are not
-done. The exact blockers are recorded below.
+On 2026-11-16, `typedpress check` passed and `verify.mjs` passed end to end, with the runtime fix for [#533](https://github.com/spacefast/zero/issues/533),
+against a local Studio site, including the second-user isolation checks. The
+Action Scheduler shopping-list job, SCF saves, Gutenberg editing, MCP calls, and
+admin screenshots were not verified in that run. The Spacefast CLI published a
+restricted static source listing instead of a TypedPress app, so nothing is
+verified live. The remaining gaps are recorded below.
 
 ## Storage choices
 
@@ -43,8 +45,8 @@ cargo build --locked
 ./target/debug/typedpress dev examples/pet-food --port 8897 --no-watch
 ```
 
-These commands currently stop at the diagnostic below. Once main accepts the
-source, Studio supplies WordPress, SCF, Action Scheduler, and MCP Adapter. TypedPress
+`typedpress build` writes `tp/_generated/client/`, `tp/_generated/migrations/`,
+`tp/_generated/db.d.ts`, and the plugin lock. Studio supplies WordPress, SCF, Action Scheduler, and MCP Adapter. TypedPress
 Admin is included in every build. When installing elsewhere, follow the
 generated manifest's activation order and enable pretty permalinks.
 
@@ -56,24 +58,49 @@ WordPress sign-in needs no custom frontend or OAuth client registration.
 Create an application password and run the real HTTP verifier:
 
 ```sh
-./target/debug/typedpress dev wp examples/pet-food -- user application-password create admin pet-food-local --porcelain
+./target/debug/typedpress wp --site examples/pet-food user application-password create admin pet-food-local --porcelain
 read -rs 'TP_AUTH?WordPress username:application-password: '; echo
 export TP_AUTH
 TP_SITE=http://localhost:8897 node examples/pet-food/verify.mjs
 ```
 
-`verify.mjs` prints commands with credential variables and actual JSON responses.
-It creates Miso, salmon kibble, stock, and a vet note. It exercises pet CRUD and
-every action, owner spoofing, idempotent replay, and rollback after refused
-feedings. Set `TP_OTHER_AUTH` to another WordPress user's application-password
-credential to include cross-user reads, writes, actions, and reference checks.
-It retains fixtures for screenshots. Reruns create independent fixtures.
+`verify.mjs` reads `TP_SITE` (the site URL, without credentials), `TP_AUTH`
+(`username:application-password`), and optionally `TP_OTHER_AUTH` (a second
+WordPress user's credential). It prints each request as a `curl` command with
+credential variables, followed by the actual status and JSON response. It checks:
+
+- the application password signs in through `/wp-json/wp/v2/users/me`;
+- pet create, update, read, and delete, with a spoofed `ownerId` overwritten by
+  the signed-in user;
+- creating a food, a stock pack, and a vet note, all stamped with that owner;
+- guests get 401 or 403 on the pet list and on `feed`;
+- `feed` logs one meal with the captured price; a replay with the same
+  `Idempotency-Key` returns the saved response without subtracting stock or
+  logging a second feeding;
+- a meal larger than the stock and a meal in the future are refused, leaving
+  stock and the feeding log unchanged;
+- `runsOutOn` uses 14-day consumption, `costPerMonth` equals
+  `round(80 * 1200 / 1000 / 14 * 30)` cents, and `restockList` includes the
+  low-stock food;
+- with `TP_OTHER_AUTH`: the second user cannot list or read the owner's pets,
+  foods, stock, vet notes, or feedings, cannot update or delete the pet, cannot
+  call `feed`, `runsOutOn`, or `costPerMonth` on them, cannot add stock or a vet
+  note against them, and does not see the food in their own `restockList`; the
+  owner's pet and stock are unchanged afterwards.
+
+It ends by printing `{"verified":true,...}` with the fixture IDs. Without
+`TP_OTHER_AUTH` it says the second-user checks were not run. It retains
+fixtures for screenshots. Reruns create independent fixtures.
+
+On 2026-11-16 a run with `TP_SITE`, `TP_AUTH=admin:<application password>`, and
+`TP_OTHER_AUTH=other:<application password>` against a local Studio site passed
+and printed `{"verified":true,...}`. The temporary pet's delete returned 200.
 
 After the verifier succeeds, execute the queued Action Scheduler jobs:
 
 ```sh
-./target/debug/typedpress dev wp examples/pet-food -- action-scheduler run --group=typedpress-pet-food --force
-./target/debug/typedpress dev wp examples/pet-food -- typedpress jobs list
+./target/debug/typedpress wp --site examples/pet-food action-scheduler run --group=typedpress-pet-food --force
+./target/debug/typedpress jobs list --site examples/pet-food
 curl --fail-with-body -u "$TP_AUTH" 'http://localhost:8897/__tp/api/v1/shopping_list'
 unset TP_AUTH TP_OTHER_AUTH
 ```
@@ -145,8 +172,7 @@ Space's team-access gate is separate from WordPress authorization.
 
 The names come from the server registration and kebab-case naming in
 [`runtime/TypedPress/Wp/Abilities/Register.php`](../../runtime/TypedPress/Wp/Abilities/Register.php).
-The failed build has not emitted a plugin, so generated-plugin discovery and
-execution of these abilities are not verified.
+Generated-plugin discovery and execution of these abilities are not verified.
 
 | Prompt | Abilities |
 | --- | --- |
@@ -164,9 +190,7 @@ applies to direct REST calls; safe automatic MCP retries are a known gap.
 
 ## Admin screenshots
 
-Screenshots are not captured. The build fails before Studio creates this app,
-so its actual screens cannot be photographed. These requested views are not
-verified:
+Screenshots are not captured. These requested views are not verified:
 
 | View | Route |
 | --- | --- |
@@ -174,39 +198,16 @@ verified:
 | Pet edit screen with SCF fields | `/wp-admin/post.php?post=ID&action=edit`, using a real pet's WordPress post ID |
 | TypedPress Admin stock table | `/wp-admin/new/`, then Pantry stock |
 
-## Known gaps on main (b66e98b3866037061198c51ebef9534609a5e301)
+## Known gaps
 
-The native compiler was rebuilt from this revision with `cargo build --locked`.
-`typedpress check --json` emits one error, counted from `diagnostics` filtered by
-`severity == "error"`. It stops at the first blocker; later compilation stages
-are not proven error-free.
+`typedpress check examples/pet-food` passes. Earlier versions of this README
+recorded an `unknown type AccessCtx` error at `tp/lib/schema.ts:6`; the
+current compiler accepts the imported type, and `typedpress build` emits the
+generated client, migrations, `db.d.ts`, and plugin lock.
 
-At `tp/lib/schema.ts:6`, the source is `export function owned(ctx: AccessCtx) {`.
-`AccessCtx` is exported by `types/typedpress/index.d.ts`, but the callback compiler
-does not recognize the imported type. `typedpress build` prints this verbatim:
+**Open gap ([#533](https://github.com/spacefast/zero/issues/533)):** on main, deleting a row that another table can reference returns `409 reference_violation` (`Rows in X may reference this row`) over HTTP, even when nothing references it, because the owner filter can't read the whole referencing table. Here that is deleting a pet (vet notes and feedings reference it). The verifier passes on the branch that fixes this; on main it stops at that delete, and CI marks it expected-fail with the issue number.
 
-```text
-error: unknown type `AccessCtx`
-  --> tp/lib/schema.ts:6:28
-  |
-6 | export function owned(ctx: AccessCtx) {
-  |                            ^^^^^^^^^
-```
-
-`typedpress dev examples/pet-food --port 8897 --no-watch` prints that diagnostic,
-followed by:
-
-```text
-typedpress dev: Failed (1): build
-```
-
-Generated `tp/_generated/client/`, `tp/_generated/migrations/`, `tp/_generated/db.d.ts`, and plugin locks
-are absent because the build exits before emission. They have not been
-handwritten. The local collection probe reports `fetch failed: ECONNREFUSED`.
-`verify.mjs` passed `node --check` only. Local actions, CRUD, the scheduler,
-SCF saves, and Gutenberg editing remain unverified.
-
-| Other gap on main | Consequence |
+| Gap on main | Consequence |
 | --- | --- |
 | `Db::update()` selects with the filter, then `WpTableStore::update()` writes by primary key only. | The `gramsLeft` predicate in `feed` is not atomic compare-and-set. Distinct concurrent meals can spend the same stock. Idempotency only protects replay of the same meal. Concurrent stock safety requires a runtime change outside this example. |
 | `Abilities\\Invoke::call()` invokes actions without forwarding request headers. | MCP `feed` retries do not carry the REST idempotency key and can double-log meals. |

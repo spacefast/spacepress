@@ -13,6 +13,8 @@ import { command, wp, setup } from "./setup.mjs";
 const exec = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 async function freePort() {
+  // TP_EXAMPLE_PORT pins the WordPress port (a shared machine's assigned lane); otherwise any free one.
+  if (process.env.TP_EXAMPLE_PORT) return Number(process.env.TP_EXAMPLE_PORT);
   const server = createServer();
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
   const port = server.address().port;

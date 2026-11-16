@@ -167,6 +167,33 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
 }
 
 /// `typedpress check --json` lists each SQL index the deploy keeps and why it exists (spec §2.9).
+/// A validator receives the input it checks: a `json<string[]>()` value can be an object, so its
+/// parameter takes no PHP type and the validator's own `Array.isArray` answers (422, not a TypeError).
+#[test]
+fn a_validator_parameter_accepts_any_json_value() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_app(
+        tmp.path().join("typedpress.config.ts"),
+        "import { defineConfig, json, table } from \"typedpress\";\nexport const things = table({ tags: json<string[]>().$default(() => []).validate((tags) => Array.isArray(tags) || \"Tags must be a list.\") });\nexport default defineConfig({ name: \"tags\" });\n",
+    )
+    .unwrap();
+    let wp = build_wp(tmp.path());
+    let functions = std::fs::read_to_string(wp.join("plugins/typedpress-app-tags/tp/app/functions.php")).unwrap();
+    assert!(
+        functions.contains("function things__validate__tags($tags)"),
+        "{functions}"
+    );
+    let out = php(
+        r#"require $argv[1]; require $argv[2];
+        echo json_encode([\TypedPressApp\things__validate__tags(new \TypedPress\JsObject(['a' => true]), new \TypedPress\JsObject())]);"#,
+        &[
+            &root().join("runtime/TypedPress/bootstrap.php"),
+            &wp.join("plugins/typedpress-app-tags/tp/app/functions.php"),
+        ],
+    );
+    assert_eq!(out, json!(["Tags must be a list."]));
+}
+
 /// `.index(fields, { unique? })` (spec §2.9): a compound index the migration creates and `typedpress check
 /// --json` lists with its reason; a field the kind doesn't have is refused where it is written.
 #[test]
@@ -617,6 +644,44 @@ fn node_oracle_refuses_an_empty_selection_instead_of_reporting_success() {
     assert!(!out.status.success());
     assert!(out.stdout.is_empty());
     assert!(String::from_utf8_lossy(&out.stderr).contains("oracle executed no cases"));
+}
+
+/// A tagged template's cooked string with a lone UTF-16 surrogate can't be stored as UTF-8, so the
+/// strings array is refused, except under `String.raw`, which reads only the raw source text.
+#[test]
+fn tagged_templates_refuse_lone_surrogates_except_under_string_raw() {
+    for (handler, compiles) in [
+        (r"() => String.raw`a\uD800b`", true),
+        (
+            r"() => { const t = (s: TemplateStringsArray) => s.raw[0]; return t`a\uD800b`; }",
+            false,
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("typedpress.config.ts"),
+            format!(
+                r#"
+import {{ collection, text, action, defineConfig }} from "typedpress";
+const notes = collection({{ title: text() }}, {{ title: "title" }});
+const __raw = action({{ input: {{}}, handler: {handler} }});
+export {{ notes, __raw as raw }}; export default defineConfig({{}});
+"#
+            ),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.success(), compiles, "{handler}: {report}");
+        if !compiles {
+            assert!(
+                report["diagnostics"][0]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("lone UTF-16 surrogates"),
+                "{handler}: {report}"
+            );
+        }
+    }
 }
 
 #[test]

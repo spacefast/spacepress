@@ -12,6 +12,7 @@ tp/app/
 ├── layout.tsx                 # wraps every page: export const metadata, default component
 ├── page.tsx                   # /
 ├── not-found.tsx              # the 404 for URLs no route serves, and for notFound()
+├── login.tsx                  # wp-login.php's sign-in page, in the root layout
 ├── error.tsx                  # a render error (logged; the page shows only this)
 ├── about/page.tsx             # /about
 ├── colophon/page.md           # /colophon: a WordPress Page an editor can change
@@ -31,6 +32,7 @@ tp/app/
 | `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page. |
 | `layout.tsx` | Wraps every page below it, outermost first. May export `guard`. |
 | `not-found.tsx` | At the root only. |
+| `login.tsx` | At the root only: renders wp-login.php's sign-in page (see [The sign-in page](#the-sign-in-page)). |
 | `error.tsx` | The nearest one above a page renders when the page throws. |
 | `[x]` / `[...x]` / `[[...x]]` | One segment / one or more / zero or more (last folder only). |
 | `(group)` / `_private` | No URL segment / never routed. |
@@ -80,7 +82,7 @@ export async function POST(req: RouteRequest) {
   types the query string. A value a field refuses (`?page=abc`) reads as absent.
 - `guard` on a layout: a role (`"subscriber"`, `"editor"`, …),
   `"authenticated"`, or `({ user }) => boolean`. A signed-out visitor goes to
-  the login page; a signed-in one gets a 403.
+  the sign-in page (wp-login.php, or your `login.tsx`); a signed-in one gets a 403.
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router
   region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
 - `<Pagination page={search.page} pages={n} />` renders numbered links to the
@@ -166,6 +168,64 @@ export default function Page() {
   refused.
 - A `"use client"` component calls its action from `onSubmit` instead;
   `method` and `encType` on a form with an action are build errors.
+
+## The sign-in page
+
+WordPress's wp-login.php is the site's one sign-in page: wp-admin, a layout's `guard` and TypedPress
+Identity all send people there. `tp/app/login.tsx` renders it with the app's own markup,
+inside the root layout and its stylesheets. Without the file, WordPress's own page shows.
+
+```tsx
+// tp/app/login.tsx
+import { LoginForm, type LoginProps } from "typedpress/app";
+
+export const metadata = { title: "Sign in" };
+
+export default function Login({ messages, errors, registerUrl }: LoginProps) {
+  return (
+    <section className="signin">
+      <h1>Sign in to Field Notes</h1>
+      {messages.map((m) => <p className="notice">{m}</p>)}
+      {errors.length > 0 ? <p role="alert">{errors.join(" ")}</p> : null}
+      <LoginForm submitLabel="Sign in" notices={false} />
+      {registerUrl ? <a href={registerUrl}>Create an account</a> : null}
+    </section>
+  );
+}
+```
+
+- **WordPress still runs the sign-in.** The form posts to wp-login.php, so these all apply as
+  they do to WordPress's own form:
+  - the password check and every `authenticate` filter;
+  - the hardening that answers an unknown user and a wrong password alike;
+  - TypedPress Identity's attempt limits;
+  - the second factor (Two Factor, including an Identity authenticator).
+- **What renders it.** wp-login.php's sign-in view: the first visit, a failed attempt,
+  `?loggedout=true`, "check your email" and `reauth`.
+- **What keeps WordPress's screens.** Lost password, password reset, registration, the second
+  factor step, logging out and the sign-in inside wp-admin.
+- **What the page receives (`LoginProps`).**
+  - `errors` and `messages`: plain text, WordPress's wording after its filters.
+  - `login`: the login to fill in again after a wrong password.
+  - `remember` and `redirectTo`.
+  - `action`: wp-login.php.
+  - `lostPasswordUrl`, and `registerUrl` (null unless anyone may register).
+- **`<LoginForm />`.** It renders the fields wp-login.php reads (`log`, `pwd`, `rememberme`,
+  `redirect_to`), plus what plugins add to the form, all with WordPress's ids, so CSS can target
+  them. Its props:
+  - `className` and `submitLabel`;
+  - `notices={false}`: leaves the errors and messages to your page;
+  - `links={false}`: drops "Lost your password?" and "Register".
+  Anywhere other than `login.tsx` it is a sign-in form that comes back to its page. When
+  plugins add fields to the form (a captcha, a nonce), that page is `private, no-store`.
+- **Plugins on the page.** `login_head`, `login_footer`, `login_form` and the `login_message`
+  notice work on `login.tsx`'s page as on WordPress's own, so captcha and anti-bot plugins apply.
+- **Exports.** `login.tsx` exports `default` and `metadata` only. It has no URL of its own and no
+  `guard`.
+- **Caching and errors.** The page is `private, no-store` and `noindex`. If it throws, WordPress's
+  own page shows and the error is logged, so nobody is locked out.
+
+See [the decision](decisions/2026-11-15-one-sign-in-page.md).
 
 ## Comments
 

@@ -102,6 +102,12 @@ pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
     if body.contains("ComponentChildren") || body.contains("preact") {
         return Err(fail(at, reason(text, "a 0.8 layout with Preact types")));
     }
+    // A 0.8 layout drew the whole page, so it keeps doing so: the blank block template, without the
+    // theme's header and footer around it (docs/pages.md "Block templates").
+    let body = format!(
+        "{}\n// The 0.8 layout draws the whole page: no theme header or footer around it.\nexport const template = \"blank\";\n",
+        body.trim_end()
+    );
     Ok(Some(relocate(&body, 0)))
 }
 

@@ -140,7 +140,16 @@ export default function Page() {
 - `useFormState(action)` reads it: `{ pending, error, result, values }`.
   `error.fields` maps the field an input error is about to its message;
   `values` refills the form and never holds a password field. `pending` is
-  `false` on the server; the JavaScript submit sets it.
+  always `false`: the page is rendered on the server, before or after the post.
+- With JavaScript, the same post goes through `fetch` and the page updates in
+  place, as a `<Link>` click does: the page the action comes back to is swapped
+  into the router region, so client components, typed text, focus and scroll
+  stay. The URL bar ends on the page without `?_flash`, and coming back to the
+  same page adds no history entry. While the post is in flight the form has
+  `aria-busy="true"` and its submit buttons are disabled; style it with
+  `form[aria-busy="true"]`. If the request can't be sent, the browser posts the
+  form itself. A form outside the root layout's region, one with
+  `target` or a submit button with `formtarget`, posts as without JavaScript.
 - A page with a form stays cacheable for signed-out visitors: it carries no
   nonce. A page rendered for a signed-in user carries the REST nonce; without
   it, the action runs signed out. A post with another site's `Origin` is

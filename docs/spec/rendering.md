@@ -185,8 +185,14 @@ components defined inside render.
   with `?_flash=<id>`, the flash a sealed read-once cookie; the marked render
   is `private, no-store` ([pages.md](../pages.md#forms)).
 - With JavaScript, an Interactivity store submits it with `fetch`, keeps
-  `pending`, `error` and `result` in context, and updates in place.
-- `useFormState()` reads those values.
+  `pending`, `error` and `result` in context, and updates in place. As built:
+  `data-wp-on--submit="actions.submit"` in `first/router` sends the same body
+  with `fetch`, which follows the 303, and the HTML it gets goes to the router's
+  `navigate({ html, force })`; the router diffs the region. `pending` shows as
+  `aria-busy` on the form, not in `useFormState()`
+  ([decision](../decisions/2026-11-14-forms-without-javascript.md#follow-up-2026-11-16-the-javascript-submit)).
+- `useFormState()` reads `error`, `result` and `values`; its `pending` is always
+  `false`.
 
 ### 4.3 Navigation
 

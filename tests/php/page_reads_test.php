@@ -59,7 +59,8 @@ $record('/a/', ['posts' => ['ids' => [$post['id']], 'listed' => false]]);
 $record('/b/', ['posts' => ['ids' => [], 'listed' => true]]);
 $record('/c/', ['posts' => ['ids' => [$other['id']], 'listed' => false]]);
 $record('/d/', ['comments' => ['ids' => [1], 'listed' => true]]);
-eq('a row\'s own pages', array_map(static fn (string $u): string => (string) parse_url($u, PHP_URL_PATH), \TypedPress\Render\Cache::itemUrls('posts', $post['id'])), ['/a/', '/a']);
+// At the page's one address only: the bare spelling redirects there, so no cache holds it.
+eq('a row\'s own pages', array_map(static fn (string $u): string => (string) parse_url($u, PHP_URL_PATH), \TypedPress\Render\Cache::itemUrls('posts', $post['id'])), ['/a/']);
 $paths = static function () use (&$purged): array {
     $out = array_values(array_unique(array_map(static fn (string $u): string => (string) parse_url($u, PHP_URL_PATH), $purged)));
     sort($out);

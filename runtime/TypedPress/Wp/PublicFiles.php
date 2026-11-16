@@ -124,12 +124,13 @@ final class PublicFiles
      * (links followed) to a regular file under the resolved root.
      *
      * @param list<string> $reserved first path segments WordPress or TypedPress owns
+     * @param ?string $relative a path below the home URL to ask about, instead of the request's
      */
-    public static function file(string $root, array $reserved): ?string
+    public static function file(string $root, array $reserved, ?string $relative = null): ?string
     {
         // WordPress slashes $_SERVER (wp_magic_quotes): `it's.png` arrives as `it\'s.png`.
-        $path = (string) (wp_parse_url(wp_unslash((string) ($_SERVER['REQUEST_URI'] ?? '/')), PHP_URL_PATH) ?? '/');
-        $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
+        $path = $relative ?? (string) (wp_parse_url(wp_unslash((string) ($_SERVER['REQUEST_URI'] ?? '/')), PHP_URL_PATH) ?? '/');
+        $base = $relative === null ? rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/') : '';
         if ($base !== '') {
             if ($path !== $base && !str_starts_with($path, $base . '/')) {
                 return null;
@@ -194,6 +195,12 @@ final class PublicFiles
         }
 
         return $real;
+    }
+
+    /** Whether the app's `public/` folder serves a file at $path (below the home URL), as it would for a request. */
+    public static function serves(Plugin $plugin, string $path): bool
+    {
+        return is_dir($plugin->dir . '/public') && self::file($plugin->dir . '/public', $plugin->schema->reserved(), $path) !== null;
     }
 
     /** Whether `If-None-Match` names this ETag: `*`, a list, weak forms (`W/"…"`) included. */

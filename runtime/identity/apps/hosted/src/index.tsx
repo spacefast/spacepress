@@ -16,6 +16,8 @@ const client = new IdentityClient(root.dataset.api);
 // The issuer's own URL, so a WordPress in a subdirectory (/blog/identity) works unchanged.
 const issuerUrl = root.dataset.issuer ?? new URL("/identity", location.origin).href;
 const issuerPath = new URL(issuerUrl).pathname.replace(/\/$/, "");
+// The site's one sign-in page (wp-login.php), coming back here.
+const loginUrl = root.dataset.login ?? "/wp-login.php";
 function App() {
   const { state } = useIdentity();
   const [config, setConfig] = useState<{ providers: string[]; issuer: string }>(
@@ -58,6 +60,13 @@ function App() {
   const upgrade =
     upgradeRequested ||
     (state.kind === "signed_in" && state.data.account.guest);
+  // Signed out (or just signed out here): sign in on the site's one sign-in page. A second factor
+  // still owed after an external provider is the only sign-in step these screens keep.
+  const methods = new URLSearchParams(location.search).has("methods");
+  const toLogin = state.kind === "signed_out" && !factor && !upgrade && !methods;
+  useEffect(() => {
+    if (toLogin) location.assign(loginUrl);
+  }, [toLogin]);
   return (
     <>
       <header className="site-header">
@@ -85,6 +94,10 @@ function App() {
               onComplete={finish}
             />
           </div>
+        ) : toLogin ? (
+          <p className="loading" role="status">
+            Taking you to sign in…
+          </p>
         ) : state.kind === "signed_out" || reauth || factor ? (
           <div className="signin-layout">
             <div className="welcome">

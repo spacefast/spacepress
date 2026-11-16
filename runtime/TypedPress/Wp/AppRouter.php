@@ -61,6 +61,10 @@ final class AppRouter
         if ($app['legacyRoutes'] ?? false) {
             return;
         }
+        // `login.tsx`: wp-login.php's sign-in view, once wp-login.php has decided what it shows.
+        if (is_array($app['login'] ?? null)) {
+            add_filter('wp_login_errors', [self::$instance, 'login'], PHP_INT_MAX, 2);
+        }
         // After the frontend-mode gate (-1) and a kind URL's old-slug redirect (0).
         add_action('template_redirect', [self::$instance, 'claim'], 1);
         add_filter('pre_handle_404', [self::$instance, 'found'], 10, 2);
@@ -427,7 +431,16 @@ final class AppRouter
             return $path;
         }
         $match = self::match($this->app['routes'], $path);
-        return $match === null || ($match['route']['page'] ?? null) === null ? $path : self::address($path);
+        if ($match === null || ($match['route']['page'] ?? null) === null) {
+            return $path;
+        }
+        // A file in `public/` answers before a dynamic route (`[slug]`), though not before a page at a
+        // literal path (PublicFiles::page): its path is the file's own.
+        $pattern = (string) $match['route']['pattern'];
+        if ((str_contains($pattern, ':') || str_contains($pattern, '*')) && PublicFiles::serves($this->plugin, $path)) {
+            return $path;
+        }
+        return self::address($path);
     }
 
     /**
@@ -507,6 +520,83 @@ final class AppRouter
     }
 
     /**
+     * wp-login.php's sign-in view (`action=login`, the default, and `checkemail`), rendered by
+     * `login.tsx` inside the root layout. `wp_login_errors` is the last thing wp-login.php does
+     * before printing its own page: the sign-in has already run (`wp_signon`, so `authenticate`,
+     * Identity's limits and Two Factor's second step are behind us), and what is left is markup.
+     * The form posts back to wp-login.php. Anything this can't render (an interim sign-in inside
+     * wp-admin, the Customizer's, a render error) falls through to WordPress's own page.
+     *
+     * Other actions (lost password, reset, register, logout, Two Factor's screens) keep
+     * WordPress's own pages (docs/decisions/2026-11-15-one-sign-in-page.md).
+     */
+    public function login(mixed $errors, mixed $redirectTo = ''): mixed
+    {
+        global $action;
+        if (!$errors instanceof \WP_Error || !in_array($action ?? 'login', ['login', 'checkemail'], true)
+            || isset($_REQUEST['interim-login']) || isset($_REQUEST['customize-login']) || headers_sent()
+            || $this->plugin->unavailable() !== null) {
+            return $errors;
+        }
+        $route = $this->app['login'];
+        $login = '';
+        if (isset($_POST['log']) && is_string($_POST['log']) && in_array($errors->get_error_code(), ['incorrect_password', 'empty_password'], true)) {
+            $login = wp_unslash($_POST['log']);
+        }
+        // Everything that can fail (the app's boot, Identity's storage behind the viewer, the
+        // render) falls back to WordPress's own page: nobody is ever locked out of signing in.
+        try {
+            $this->plugin->app();
+            \TypedPress\Render\LoginView::capture($errors, is_string($redirectTo) ? $redirectTo : '', $login);
+            $viewer = CoreAccess::viewer() ?? new Viewer(null);
+            $page = $this->file($route['page']);
+            // The root layouts wrap the page; their `guard` doesn't apply to the page that signs people in.
+            $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
+            [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, \TypedPress\Render\LoginView::props()));
+        } catch (Halt $halt) {
+            if ($halt->location === null) {
+                return $errors;
+            }
+            wp_redirect(str_starts_with($halt->location, '/') ? home_url($halt->location) : $halt->location, $halt->status);
+            exit;
+        } catch (\Throwable $error) {
+            error_log('TypedPress login.tsx failed, WordPress\'s sign-in page shown instead: ' . $error::class . ': ' . $error->getMessage());
+            return $errors;
+        }
+        // What wp-login.php does after the filter: a reauth drops the old cookies, and the
+        // password-reset cookie is cleared once it has named the login.
+        if (!empty($_REQUEST['reauth'])) {
+            wp_clear_auth_cookie();
+        }
+        $reset = 'wp-resetpass-' . COOKIEHASH;
+        if (isset($_COOKIE[$reset]) && is_string($_COOKIE[$reset])) {
+            [$path] = explode('?', wp_unslash((string) ($_SERVER['REQUEST_URI'] ?? '')));
+            setcookie($reset, ' ', time() - YEAR_IN_SECONDS, $path, COOKIE_DOMAIN, is_ssl(), true);
+        }
+        $this->styles = $route['styles'] ?? [];
+        // What plugins load for the sign-in form's own fields (a captcha, Two Factor's scripts), as
+        // login_header() fires it.
+        do_action('login_enqueue_scripts');
+        // And what they print in the page's head and foot (a captcha's script, an anti-bot check):
+        // the app's document has `wp_head` and `wp_footer` where wp-login.php has these.
+        // Core's own callbacks on them print what wp_head and wp_footer already print here.
+        foreach (['wp_robots' => 1, 'wp_resource_hints' => 8, 'wp_print_head_scripts' => 9, 'print_admin_styles' => 9, 'wp_site_icon' => 99] as $core => $priority) {
+            remove_action('login_head', $core, $priority);
+        }
+        remove_action('login_footer', 'wp_print_footer_scripts', 20);
+        remove_action('login_footer', 'wp_prefetch_admin_assets', 21);
+        add_action('wp_head', static fn () => do_action('login_head'), 99);
+        add_action('wp_footer', static fn () => do_action('login_footer'), 1);
+        // Sign-in pages are never indexed (wp_robots_sensitive_page) and never shared.
+        $head['robots'] = ['index' => false, 'follow' => false];
+        add_filter('wp_robots', 'wp_robots_sensitive_page');
+        add_action('wp_head', 'wp_strict_cross_origin_referrer');
+        $this->cacheControl = 'private, no-store, max-age=0';
+        do_action('tp_app_login_rendered', (string) ($_SERVER['REQUEST_URI'] ?? '/'));
+        $this->document(200, $head, $body);
+    }
+
+    /**
      * @param array<string, string|list<string>> $params
      * @param ?string $moved the page's one address, when the request spelled it otherwise: a page
      *   that renders for this visitor redirects there instead
@@ -576,7 +666,7 @@ final class AppRouter
         $guarded = array_filter($layouts, static fn (array $l): bool => ($l['guard'] ?? null) !== null) !== [];
         // A page a form came back to (`?_flash=`), or one that ran a search, shows that visitor's
         // result: never shared, never recorded for purges.
-        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked(), $guarded);
+        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guarded);
         if ($shared) {
             \TypedPress\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         }

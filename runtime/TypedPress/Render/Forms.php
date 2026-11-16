@@ -164,6 +164,12 @@ final class Forms
         if (!preg_match('#\A/(?![/\\\\])[^\x00-\x20\x7f]*\z#', $back)) {
             $back = '/';
         }
+        // The return is the request URI, which carries a subdirectory install's home path
+        // (`/blog/join`); home_url() below adds that path, so it is taken off once here.
+        $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
+        if ($base !== '' && preg_match('#\A' . preg_quote($base, '#') . '(?=[/?\#]|\z)#', $back) === 1) {
+            $back = '/' . ltrim(substr($back, strlen($base)), '/');
+        }
         $values = [];
         if ($problem !== null) {
             // What the visitor typed, to fill the form again. Never a password.

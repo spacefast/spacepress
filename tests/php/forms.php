@@ -13,7 +13,9 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('forms', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber']]);
+// A second argument (`/blog`) puts WordPress in that subdirectory and runs the redirect steps only.
+$base = $argv[2] ?? '';
+$site = wpSite('forms', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber'], 'base' => $base]);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -92,6 +94,20 @@ function submit(array $form, array $values, array $headers = []): array
 $out = [];
 $page = fetch("$url/?ref=nav");
 $subscribe = form($page['body'], 'subscribe');
+if ($base !== '') {
+    // Under a subdirectory install the return is the request URI, home path included (`/blog/join`):
+    // the form still comes back to that page once, with its result.
+    $join = form(fetch("$url/join/")['body'], 'subscribe');
+    $ok = submit($join, ['email' => 'sub@example.test', 'seats' => '1']);
+    $sub = [
+        'return' => array_values(array_filter($join['fields'], static fn ($f) => $f[0] === '_tp_return'))[0][2] ?? null,
+        'location' => preg_replace('/_flash=[0-9a-f]{12}/', '_flash=ID', (string) parse_url((string) $ok['location'], PHP_URL_PATH) . '?' . parse_url((string) $ok['location'], PHP_URL_QUERY)),
+        'back' => [$ok['back']['status'] ?? null, text($ok['back']['body'] ?? '', 'done')],
+    ];
+    echo json_encode($sub, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
+    $site->destroy();
+    exit;
+}
 $out['form'] = [
     'method' => $subscribe['method'],
     'action' => parse_url($subscribe['action'], PHP_URL_PATH),

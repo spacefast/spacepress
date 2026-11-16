@@ -34,6 +34,10 @@ final class InstallMarker
 
     /** @var array<int, bool> blog id => whether the marker matched, read once per site per request */
     private static array $current = [];
+    /** @var array<int, int> blog id => forget() calls this request, so record() sees one made while it verified */
+    private static array $forgotten = [];
+    /** @var ?\Closure(): void runs between the final check and the write (tests inject an invalidation); null otherwise */
+    public static ?\Closure $beforeWrite = null;
 
     public static function register(): void
     {
@@ -64,7 +68,9 @@ final class InstallMarker
     /** Drop the marker: the next check runs every install step again. Returns true, for use in expressions. */
     public static function forget(): bool
     {
-        self::$current[get_current_blog_id()] = false;
+        $blog = get_current_blog_id();
+        self::$current[$blog] = false;
+        self::$forgotten[$blog] = (self::$forgotten[$blog] ?? 0) + 1;
         if (get_option(self::OPTION) !== false) {
             delete_option(self::OPTION);
         }
@@ -72,20 +78,36 @@ final class InstallMarker
         return true;
     }
 
-    /** wp_loaded, last: record the marker once every install check passes when read again now. */
+    /**
+     * wp_loaded, last: record the marker once every install check passes when read again now. Another
+     * request can invalidate while this one verifies (cancel a recurring action, change an option the
+     * checks keep); its forget() may find no marker to delete yet. So the checks run again after the
+     * write, and the marker is removed when they no longer pass or a forget() ran meanwhile.
+     */
     public static function record(): void
     {
         $plugin = Plugin::instance();
+        $blog = get_current_blog_id();
+        $seen = self::$forgotten[$blog] ?? 0;
         if ($plugin === null || Runtime::managed() || Runtime::plugin() !== $plugin || self::current() || !self::verified($plugin)) {
             return;
         }
+        if (self::$beforeWrite !== null) {
+            (self::$beforeWrite)();
+        }
         update_option(self::OPTION, self::key($plugin), true);
-        self::$current[get_current_blog_id()] = true;
+        if ((self::$forgotten[$blog] ?? 0) !== $seen || !self::verified($plugin)) {
+            delete_option(self::OPTION);
+            self::$current[$blog] = false;
+
+            return;
+        }
+        self::$current[$blog] = true;
     }
 
     private static function watches(string $option): bool
     {
-        return in_array($option, self::WATCHED, true) || preg_match('/\Afirst_[a-z0-9_-]+_(schema|refused|route_pages|content)\z/', $option) === 1;
+        return in_array($option, self::WATCHED, true) || preg_match('/\Atp_[a-z0-9_-]+_(schema|refused|route_pages|content)\z/', $option) === 1;
     }
 
     private static function key(Plugin $plugin): string

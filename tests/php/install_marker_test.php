@@ -164,6 +164,37 @@ wp_cache_flush();
 check('a changed plugin list is checked again on the next request, without any option hook', $status === 200 && in_array('ledger', checks($statements), true), checks($statements));
 check('and recorded under a new key', ($marker()[1] ?? null) !== null && $marker()[1] !== $recorded, [$recorded, $marker()]);
 
+// ---- an invalidation while recording (review 2, S5) ---------------------------------------------------
+// Another request cancels the recurring maintenance after this one's final check and before its write:
+// the marker must not stay, or the next request would skip scheduling it again. Run in this process: the
+// injected step is the other request's work, and the marker this process sees is the site's.
+$pending = static fn (): bool => as_has_scheduled_action('tp_jobs_maintain', [], 'typedpress');
+\TypedPress\Wp\InstallMarker::forget();
+wp_cache_flush();
+check('the maintenance action is scheduled before the race', $pending());
+\TypedPress\Wp\InstallMarker::$beforeWrite = static fn () => as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress');
+(new ReflectionProperty(\TypedPress\Wp\InstallMarker::class, 'current'))->setValue(null, []);
+\TypedPress\Wp\InstallMarker::record();
+\TypedPress\Wp\InstallMarker::$beforeWrite = null;
+wp_cache_flush();
+eq('a cancellation between the check and the write leaves no marker', [$pending(), $marker()], [false, null]);
+[$status, $statements] = request($url, '/');
+check('so the next request checks and schedules it again', $status === 200 && in_array('scheduled actions', checks($statements), true) && $pending(), [checks($statements), $pending()]);
+check('and records the marker', $marker() !== null, $marker());
+
+// ---- the app's own install options drop the marker (tp_<app>_schema, _refused, _route_pages, _content) ---
+foreach (['tp_blog_schema', 'tp_blog_refused', 'tp_blog_route_pages', 'tp_blog_content'] as $option) {
+    request($url, '/');
+    wp_cache_flush();
+    $before = get_option($option);
+    update_option($option, $before === false ? 'changed' : (is_array($before) ? $before + ['changed' => 1] : $before . '-changed'), false);
+    wp_cache_flush();
+    $dropped = $marker() === null;
+    $before === false ? delete_option($option) : update_option($option, $before, false);
+    check("a change to $option drops the marker", $dropped);
+}
+request($url, '/');
+
 // ---- a managed build never records one ---------------------------------------------------------------
 // (tests/wp/store-install-run.sh checks a managed site after initialize and its first requests.)
 eq('a plugin-installed site is not managed', \TypedPress\Wp\Runtime::managed(), false);

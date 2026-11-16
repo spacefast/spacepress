@@ -293,7 +293,10 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
     assert_eq!(seen["notes"], serde_json::json!([200, "Notes"]));
     assert_eq!(seen["note"], serde_json::json!([200, "Dawn on the ridge"]));
     // One address per page (#462): the bare spelling 301s to it, below the subdirectory.
-    assert_eq!(seen["note bare"], serde_json::json!([301, format!("{url}/notes/dawn-on-the-ridge/")]));
+    assert_eq!(
+        seen["note bare"],
+        serde_json::json!([301, format!("{url}/notes/dawn-on-the-ridge/")])
+    );
     // Still a 404: a draft for a signed-out visitor, and a slug no note has.
     assert_eq!(seen["draft"], serde_json::json!([404, "Not found"]));
     assert_eq!(seen["missing"], serde_json::json!([404, "Not found"]));
@@ -2141,11 +2144,7 @@ fn comments_follow_the_kind_policy_on_every_path() {
     // The page cache: a comment event that changes what visitors see of the thread purges the
     // item's URL (its one address), its twin and its comments feed; a held or spam submission purges
     // nothing.
-    let note = serde_json::json!([
-        "/notes/open-note/",
-        "/notes/open-note.md",
-        "/notes/open-note/feed/"
-    ]);
+    let note = serde_json::json!(["/notes/open-note/", "/notes/open-note.md", "/notes/open-note/feed/"]);
     let none = serde_json::json!([]);
     for (event, want) in [
         ("held", &none),
@@ -3471,7 +3470,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         let query = serde_json::json!({ "id": id, "type": "tp_docs", "is_404": false, "is_singular": true });
         assert_eq!(page["status"], 200, "{what}");
         assert_eq!(page["resolved"], query, "{what}: what WordPress resolved the URL to");
-        assert_eq!(page["query"], query, "{what}: what a plugin is told while the page renders");
+        assert_eq!(
+            page["query"], query,
+            "{what}: what a plugin is told while the page renders"
+        );
         assert_eq!(
             page["body"],
             serde_json::json!([
@@ -3497,10 +3499,21 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // A page argument that shares core's name (`?page=2`, `<!--nextpage-->` paging) is the page's own:
     // the doc, a 200, no 404 headers (core adds its `paged-2` body classes, as for any paged post).
     let paged = &wordpress["paged"];
-    let doc = serde_json::json!({ "id": paged["expected id"], "type": "tp_docs", "is_404": false, "is_singular": true });
-    assert_eq!((&paged["status"], &paged["resolved"], &paged["query"]), (&serde_json::json!(200), &doc, &doc), "{paged}");
+    let doc =
+        serde_json::json!({ "id": paged["expected id"], "type": "tp_docs", "is_404": false, "is_singular": true });
+    assert_eq!(
+        (&paged["status"], &paged["resolved"], &paged["query"]),
+        (&serde_json::json!(200), &doc, &doc),
+        "{paged}"
+    );
     assert_eq!(paged["expires"], serde_json::Value::Null, "{paged}");
-    assert!(!paged["body"].as_array().unwrap().contains(&serde_json::json!("error404")), "{paged}");
+    assert!(
+        !paged["body"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("error404")),
+        "{paged}"
+    );
     // A path with no item is the app's 404, and WordPress's.
     let missing = &wordpress["missing"];
     let not_found = serde_json::json!({ "id": 0, "type": null, "is_404": true, "is_singular": false });
@@ -3572,7 +3585,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(deploy["recorded after"], true);
     let request = &seen["stale site"]["request"];
     assert_eq!(request["rule before"], old_rule);
-    is_doc(&request["first request"], "the first request of a site with the old rule");
+    is_doc(
+        &request["first request"],
+        "the first request of a site with the old rule",
+    );
     assert_eq!(request["rule after"], new_rule);
     assert_eq!(request["recorded after"], true);
     // nav(): the published tree, siblings by order, the current item and its ancestors marked.
@@ -3718,7 +3734,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // what WordPress says the URL is. The Pages keep their own addresses.
     let pages = &seen["pages at a doc path"];
     is_doc(&pages["top"], "/docs/introduction beside a Page `introduction`");
-    is_doc(&pages["nested"], "/docs/guides/install beside a Page at `guides/install`");
+    is_doc(
+        &pages["nested"],
+        "/docs/guides/install beside a Page at `guides/install`",
+    );
     assert_eq!(pages["nested"]["h1"], serde_json::json!(["Install"]));
     assert_eq!(pages["nested"]["location"], serde_json::Value::Null);
     assert_eq!(pages["the page itself"], serde_json::json!([200, true]));

@@ -324,11 +324,24 @@ calculated results. Historical order reads retain their original tax and discoun
 
 ### Access boundaries
 
-Public product projections contain only storefront-visible data. Merchant product reads may also
-contain drafts and inventory details. Order lists and customer addresses require
-merchant authorization; a public page cannot obtain them by calling a server-side helper.
-Shopper carts belong to their session, and receipts require Woo's ownership/order authorization.
+**Decisions:** public visitors can read published, storefront-visible products. Drafts and private
+products require management access. Product and taxonomy writes use TypedPress's existing
+access-rule model with merchant/admin access by default; sync uses its authenticated caller's
+permissions. Order reads are merchant/admin-only initially: public storefront access does not
+expose order lists, addresses or customer details, including through server-side helpers.
+Buyer checkout and receipts use Woo's cart/session and order authorization. Guest checkout
+does not grant general order-read access.
 Keep credentials and handoff-signing secrets on the server.
+
+Allow native Woo administration for products, orders, inventory, shipping and payment settings,
+subject to the disabled-feature restrictions. No new TypedPress commerce dashboard is required.
+Map existing identities to Woo capabilities without a separate commerce login or role system.
+“Merchant/admin” describes the intended authority; its precise mapping is implementation work,
+not a new `merchant` role shorthand in the current TypedPress API.
+
+The [existing access syntax](config-api.md#access) supports per-operation booleans, audience/role
+shorthands and context functions returning booleans or row filters. Whether v1 commerce exposes
+author-customizable product/order rules beyond the agreed defaults remains open.
 
 Expose these operations through TypedPress's existing action, permission and client mechanisms
 where possible. Native Woo CRUD should run in-process on the server; a loopback REST request
@@ -421,8 +434,8 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **Permissions and administration:** who can manage products and read orders, how TypedPress
-  identities map to Woo capabilities, and which native admin surfaces the integration supports.
+- **Access customization:** whether app authors can customize product/order access with normal
+  TypedPress rules beyond the agreed defaults. Identity/capability mapping is implementation work.
 - **API scope:** confirm the proposed resource table, especially inventory
   mutations, order detail depth and the first dashboard's reporting needs.
 - **Download declaration:** finalize the nested file-reference shape and how new stable download

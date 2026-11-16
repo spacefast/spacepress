@@ -138,7 +138,28 @@ export default function Page() {
 - `useFormState(action)` reads it: `{ pending, error, result, values }`.
   `error.fields` maps the field an input error is about to its message;
   `values` refills the form and never holds a password field. `pending` is
-  `false` on the server; the JavaScript submit sets it.
+  always `false`: the page is rendered on the server, before or after the post.
+- With JavaScript, the same post goes through `fetch` and the page updates in
+  place, as a `<Link>` click does: the page the action comes back to is swapped
+  into the router region, so client components and scroll stay. An input whose
+  server HTML has a `value` (a `defaultValue`, or one refilled from `values`)
+  is reset to what the server rendered; don't count on typed text staying. The
+  URL bar ends on the page without `?_flash`, and coming back to the same page
+  adds no history entry.
+- While the post is in flight the form has `aria-busy="true"` and its submit
+  buttons (with `form="id"` ones outside it) are disabled; style it with
+  `form[aria-busy="true"]`. A second submit then sends nothing.
+- A post is never sent twice. If no page comes back (a 500, a dropped
+  connection), the form is enabled again and shows a message in an alert
+  (`.tp-form-error`). The browser posts the form itself only when the router
+  script can't load. A form outside the root layout's region, one with
+  `target`, `enctype` or a submit button with `formtarget` or `formenctype`,
+  posts as without JavaScript. An answer that comes back to a page without a
+  router region loads that page with a full navigation. A page the action
+  comes back to that is now a 404 (after a delete, say) is shown in place, as
+  without JavaScript.
+- After the swap, the page's first `role="status"` element (your success
+  message) is announced to screen readers, or the page title if there is none.
 - A page with a form stays cacheable for signed-out visitors: it carries no
   nonce. A page rendered for a signed-in user carries the REST nonce; without
   it, the action runs signed out. A post with another site's `Origin` is

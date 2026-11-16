@@ -90,7 +90,7 @@ final class CommentsView
     private static function form(int $postId, int $parent, string $label): Html
     {
         $field = 'typedpress-comment-' . $postId . '-' . $parent;
-        $form = Html::element('form', ['method' => 'post', 'action' => \TypedPress\Wp\Facade::url('/comments'), 'className' => $parent === 0 ? 'typedpress-comments-form' : 'typedpress-comments-reply'],
+        $form = Html::element('form', ['method' => 'post', 'action' => \TypedPress\Wp\Facade::url('/comments'), 'className' => $parent === 0 ? 'typedpress-comments-form' : 'typedpress-comments-reply'] + Forms::enhanced(),
             Html::element('input', ['type' => 'hidden', 'name' => 'on', 'value' => (string) $postId]),
             $parent > 0 ? Html::element('input', ['type' => 'hidden', 'name' => 'parent', 'value' => (string) $parent]) : null,
             Html::element('label', ['htmlFor' => $field], $label),

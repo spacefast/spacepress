@@ -14,9 +14,6 @@ on:
         description: Open, update or close the tracking issue as a scheduled run does
         type: boolean
         default: false
-  # TEMPORARY, removed before the PR is ready: proves the issue opens on a failing run and closes on a green one.
-  push:
-    branches: [tp/wordpress-ahead-issue]
 
 permissions:
   contents: read
@@ -40,7 +37,7 @@ jobs:
       - id: pick
         run: |
           set -euo pipefail
-          builds='[{"name":"nightly","url":"https://wordpress.org/nightly-builds/wordpress-latest.zip"},{"name":"broken","url":"https://wordpress.org/latest.tar.gz"}]'  # TEMPORARY failing entry
+          builds='[{"name":"nightly","url":"https://wordpress.org/nightly-builds/wordpress-latest.zip"}]'
           offers=$(curl -fsS 'https://api.wordpress.org/core/version-check/1.7/?channel=beta')
           next=$(jq -r '[.offers[] | select(.response == "development") | .download | select(test("/release/wordpress-[0-9.]+-(beta|RC)[0-9]+\\.zip$"))] | first // empty' <<<"$offers")
           if [ -n "$next" ]; then
@@ -219,7 +216,7 @@ jobs:
   # next green one. Nobody is assigned or mentioned; the issue is where a failure is visible.
   report:
     needs: [builds, php, wp, wp-schema]
-    if: always() && (github.event_name == 'schedule' || github.event_name == 'push' || inputs.report)
+    if: always() && (github.event_name == 'schedule' || inputs.report)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     # A job's permissions replace the workflow's: checkout still needs to read the repository.

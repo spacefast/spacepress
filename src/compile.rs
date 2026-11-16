@@ -825,7 +825,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Compiles every root (hooks, actions, defaults) and returns slot → PHP function name.
     pub fn compile_roots(&mut self, roots: &[Root]) -> Result<Vec<(Slot, String)>> {
         // Solve all roots together before emitting shared helper signatures.
+        let __t = std::time::Instant::now(); eprintln!("SCRATCH effects start");
         self.effects = effects::Effects::analyze(roots, self.schema, self.ev_program());
+        eprintln!("SCRATCH effects done {:?}", __t.elapsed());
         let mut out = Vec::new();
         for i in 0..self.plugin_names.len() {
             self.plugin = Some((i, self.plugin_names[i].clone()));
@@ -1088,6 +1090,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .entry(closure_key(closure))
             .or_insert_with(|| closure.clone());
         let f = closure.func.clone();
+        eprintln!("SCRATCH fn {} {}:{}", name, f.span.file, f.span.start);
         if f.is_generator && !self.javascript_module(f.module) {
             return err_help(
                 f.span,

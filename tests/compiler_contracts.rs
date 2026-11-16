@@ -179,7 +179,10 @@ fn a_validator_parameter_accepts_any_json_value() {
     .unwrap();
     let wp = build_wp(tmp.path());
     let functions = std::fs::read_to_string(wp.join("plugins/typedpress-app-tags/tp/app/functions.php")).unwrap();
-    assert!(functions.contains("function things__validate__tags($tags)"), "{functions}");
+    assert!(
+        functions.contains("function things__validate__tags($tags)"),
+        "{functions}"
+    );
     let out = php(
         r#"require $argv[1]; require $argv[2];
         echo json_encode([\TypedPressApp\things__validate__tags(new \TypedPress\JsObject(['a' => true]), new \TypedPress\JsObject())]);"#,

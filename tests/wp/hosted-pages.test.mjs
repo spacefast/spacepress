@@ -54,7 +54,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   assert.equal(home.status, 200);
   assert.match(home.text, /<title>Home · Field Notes<\/title>/);
   assert.match(home.text, /<h1>Notes from the field<\/h1>/);
-  assert.match(home.text, new RegExp(`<a href="${base}/notes/hosted-light"[^>]*>Hosted light</a>`), 'a <Link> to the note');
+  assert.match(home.text, new RegExp(`<a href="${base}/notes/hosted-light/"[^>]*>Hosted light</a>`), 'a <Link> to the note, at its one address');
   assert.doesNotMatch(home.text, /Hidden draft/);
   assert.equal(home.headers.get('cache-control'), 'public, max-age=0, s-maxage=300, must-revalidate', "an anonymous visitor's page is shared");
   // The layout's stylesheet, from the app plugin under a content-hashed name, cached for a year.
@@ -64,20 +64,24 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   assert.equal(sheet.status, 200);
   assert.match(sheet.headers.get('cache-control') ?? sheet.headers.get('expires') ?? '', /max-age=31536000|GMT/);
   assert.match(await sheet.text(), /body\.typedpress-app/);
-  const about = await http('/about');
+  const about = await http('/about/');
   assert.equal(about.status, 200);
   const svg = /src="([^"]+\/tp\/app\/assets\/compass-[0-9a-f]{16}\.svg)"/.exec(about.text)?.[1];
   assert.ok(svg, 'the imported SVG is its URL in the app plugin');
   assert.equal((await fetch(svg)).status, 200);
-  assert.match((await http('/notes')).text, /Hosted light/);
-  const detail = await http('/notes/hosted-light');
+  assert.match((await http('/notes/')).text, /Hosted light/);
+  // One address per page (#462): the bare spelling 301s to the permalink structure's.
+  const bare = await http('/notes/hosted-light?ref=x');
+  assert.equal(bare.status, 301);
+  assert.equal(bare.headers.get('location'), `${base}/notes/hosted-light/?ref=x`);
+  const detail = await http('/notes/hosted-light/');
   assert.equal(detail.status, 200);
   assert.match(detail.text, /<title>Hosted light · Field Notes<\/title>/);
   assert.match(detail.text, /Rendered by <em>WordPress<\/em>\./);
   assert.match(detail.text, /<article class="note_note">/, "the CSS module's class, renamed as packages/pages named it");
   assert.match(detail.text, /\/tp\/app\/assets\/note-[0-9a-f]{16}\.css/, 'the page links its module stylesheet');
   assert.doesNotMatch(detail.text, /Staff only/, 'field access applies to anonymous rendering');
-  const missing = await http('/notes/hidden-draft');
+  const missing = await http('/notes/hidden-draft/');
   assert.equal(missing.status, 404);
   assert.match(missing.text, /<h1>Not found<\/h1>/);
   assert.doesNotMatch(missing.text, /Hidden draft/);
@@ -90,7 +94,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
     tab.on('pageerror', (error) => errors.push(error.message));
     const actionCalls = [];
     tab.on('request', (request) => { if (request.url().includes('/actions/cheer')) actionCalls.push(request.method()); });
-    await tab.goto(`${base}/notes/hosted-light`);
+    await tab.goto(`${base}/notes/hosted-light/`);
     const button = 'button.cheer';
     assert.equal(await tab.textContent(button), '0 cheers');
     await tab.click(button);
@@ -106,7 +110,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   }
   // 2b. /applause, a first/app page with a "use client" component: the server renders the stored
   // count, and once hydrated a click calls the same action through the compiled store.
-  const applause = await http('/applause');
+  const applause = await http('/applause/');
   assert.equal(applause.status, 200, applause.text);
   assert.match(applause.text, /<title>Applause · Field Notes<\/title>/);
   assert.match(applause.text, /data-wp-interactive="fullsite\/CheerButton"/);
@@ -118,7 +122,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
     tab.on('pageerror', (error) => errors.push(error.message));
     const actionCalls = [];
     tab.on('request', (request) => { if (request.url().includes('/actions/cheer')) actionCalls.push(request.method()); });
-    await tab.goto(`${base}/applause`);
+    await tab.goto(`${base}/applause/`);
     const button = 'button.cheer';
     assert.equal(await tab.textContent(button), '2 cheers', 'the server rendered the stored count');
     await tab.click(button);

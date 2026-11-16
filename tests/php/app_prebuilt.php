@@ -155,10 +155,12 @@ file_put_contents($site->content . '/mu-plugins/gate.php', "<?php add_filter('tp
 $out['gated'] = fetch("$url/notes/hello/")['prebuilt'];
 unlink($site->content . '/mu-plugins/gate.php');
 // An expired or reused-past-expiry token is an ordinary request.
-$expired = \TypedPress\Render\Prebuilt::token('/live', time() - 5);
+$expired = \TypedPress\Render\Prebuilt::token('/live/', time() - 5);
 // An expired token is no prerender: the ordinary page, at its one address.
 $live = fetch("$url/live/", ['X-TypedPress-Prerender: ' . $expired]);
 $out['expired token'] = $live['cache'];
+// The same token, unexpired, for the same path: a prerender, so the expiry is what refused it above.
+$out['unexpired token'] = fetch("$url/live/", ['X-TypedPress-Prerender: ' . \TypedPress\Render\Prebuilt::token('/live/')])['cache'];
 $fresh = fetch("$url/live", ['X-TypedPress-Prerender: ' . \TypedPress\Render\Prebuilt::token('/live')]);
 $out['fresh token'] = $fresh['cache'];
 // A value staticParams no longer lists loses its file at the next build.
@@ -198,7 +200,10 @@ $drain();
 $negotiated = fetch("$url/about/", ['Accept: text/markdown']);
 $out['accept markdown'] = [$negotiated['prebuilt'], fetch("$url/about.md")['prebuilt']];
 // More spellings that aren't a prebuilt page's URL: an empty segment, a `.` segment, `/.md`.
-$out['spellings'] = [fetch("$url/notes//hello")['prebuilt'], fetch("$url/./about")['prebuilt'], fetch("$url/.md")['prebuilt']];
+$out['spellings'] = [fetch("$url/notes//hello")['prebuilt'], fetch("$url/./about")['prebuilt'], fetch("$url/.md")['prebuilt'], fetch("$url/about/.md")['prebuilt'], fetch("$url/about//.md")['prebuilt']];
+// The bare spelling of a prebuilt page is never its file: the router redirects it to the page's address.
+$bareAbout = fetch("$url/about");
+$out['bare about'] = [$bareAbout['status'], $bareAbout['prebuilt']];
 // A render that began before a forget() writes no file, and a full build that began before it
 // records nothing, so the next request schedules the build again.
 do_action('init');

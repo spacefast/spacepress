@@ -42,5 +42,7 @@ echo json_encode([
     'draft' => $get('/notes/notes-for-next-week/'),
     'missing' => $get('/notes/nope/'),
     'about' => $get('/about/'),
+    'dotted' => $get('/release.v1/'),
+    'dotted bare' => $get('/release.v1'),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

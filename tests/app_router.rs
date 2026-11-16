@@ -271,6 +271,13 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
     let project = std::env::temp_dir().join(format!("typedpress-full-site-subdir-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&project);
     copy(&root().join("examples/full-site"), &project);
+    // A page folder with a dot in its name is a page like any other, with one address.
+    std::fs::create_dir_all(project.join("tp/app/release.v1")).unwrap();
+    std::fs::write(
+        project.join("tp/app/release.v1/page.tsx"),
+        "export default function Release() { return <h1>Release v1</h1>; }\n",
+    )
+    .unwrap();
     build(&project);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
@@ -296,6 +303,11 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
     assert_eq!(
         seen["note bare"],
         serde_json::json!([301, format!("{url}/notes/dawn-on-the-ridge/")])
+    );
+    assert_eq!(seen["dotted"], serde_json::json!([200, "Release v1"]));
+    assert_eq!(
+        seen["dotted bare"],
+        serde_json::json!([301, format!("{url}/release.v1/")])
     );
     // Still a 404: a draft for a signed-out visitor, and a slug no note has.
     assert_eq!(seen["draft"], serde_json::json!([404, "Not found"]));
@@ -532,6 +544,7 @@ fn page_md_is_a_wordpress_page() {
     assert!(!text(&seen["hidden"]["body"]).contains("ninth"));
     assert_ne!(seen["hidden"]["description"], "Not for visitors yet.");
     assert_eq!(seen["hidden as subscriber"], 404);
+    assert_eq!(seen["hidden bare"], 404, "a draft's bare spelling is no redirect");
     assert_eq!(seen["hidden as editor"]["status"], 200);
     assert_eq!(seen["hidden as editor"]["cache"], private);
     assert!(text(&seen["hidden as editor"]["body"]).contains("The launch is on the ninth."));
@@ -1327,6 +1340,8 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
         "public, max-age=0, s-maxage=300, must-revalidate"
     );
     assert_eq!(seen["fresh token"], "private, no-store, max-age=0");
+    // The expired token's own path with an unexpired token is a prerender: expiry refused it.
+    assert_eq!(seen["unexpired token"], "private, no-store, max-age=0");
     // A value staticParams stops listing loses its file.
     assert_eq!(seen["dropped value"], json!([false, true]));
     // Another spelling of a path, and a coming-soon site, are never answered from a file.
@@ -1338,8 +1353,10 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     // `Accept: text/markdown` on the HTML URL is never answered with the HTML file: the file lane
     // steps aside for the Markdown negotiation, which a host's engine runs.
     assert_eq!(seen["accept markdown"], json!([false, true]));
-    // More spellings of a prebuilt path that aren't its URL: `/notes//hello`, `/./about`, `/.md`.
-    assert_eq!(seen["spellings"], json!([false, false, false]));
+    // More spellings of a prebuilt path that aren't its URL: `/notes//hello`, `/./about`, `/.md`,
+    // `/about/.md`, `/about//.md`; and `/about` redirects to `/about/` rather than serving the file.
+    assert_eq!(seen["spellings"], json!([false, false, false, false, false]));
+    assert_eq!(seen["bare about"], json!([301, false]));
     // A render that began before forget() leaves no file behind.
     assert_eq!(seen["forget race"], json!([false, false]));
 }
@@ -3328,7 +3345,9 @@ fn docs_at_the_site_root() {
     for (path, answer) in seen["hidden"].as_object().unwrap() {
         assert_eq!(answer, &serde_json::json!([404, false]), "{path}");
     }
-    assert_eq!(seen["hidden"].as_object().unwrap().len(), 10);
+    // Neither the bare spelling nor another case of a hidden item's path redirects: a redirect would
+    // tell the visitor the item exists.
+    assert_eq!(seen["hidden"].as_object().unwrap().len(), 13);
     // An item under a first segment WordPress or TypedPress owns (`/auth`) has no URL of its own.
     assert!(
         seen["reserved permalink"].as_str().unwrap().contains("?post_type="),

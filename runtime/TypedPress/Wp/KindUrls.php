@@ -598,14 +598,14 @@ final class KindUrls
                 $type, $name,
             ));
             $post = $id > 0 ? get_post($id) : null;
-            if ($post instanceof \WP_Post && ($url = $this->build($kind, $post)) !== null) {
+            if ($post instanceof \WP_Post && $this->readable($kind, $post) && ($url = $this->build($kind, $post)) !== null) {
                 wp_safe_redirect($url, 301);
                 exit;
             }
             return;
         }
         $post = get_queried_object();
-        if (!is_singular() || !$post instanceof \WP_Post || $post->post_type !== $this->kinds[$kind]['type']) {
+        if (!is_singular() || !$post instanceof \WP_Post || $post->post_type !== $this->kinds[$kind]['type'] || !$this->readable($kind, $post)) {
             return;
         }
         $want = $this->path($kind, $post);
@@ -618,6 +618,19 @@ final class KindUrls
             wp_safe_redirect((string) $this->build($kind, $post), 301);
             exit;
         }
+    }
+
+    /**
+     * Whether this request's visitor may read the item under its kind's read rule. A redirect to an
+     * item tells the visitor it exists, so an item they may not read gets none: its URL is the 404
+     * that the router or the theme answers.
+     */
+    private function readable(string $kind, \WP_Post $post): bool
+    {
+        $viewer = CoreAccess::viewer();
+        $keys = $viewer === null ? false : CoreAccess::keys($kind, 'read', $viewer);
+
+        return $keys === null || (is_array($keys) && in_array($post->ID, array_map('intval', $keys), true));
     }
 
     /** `frontend: false`: no public HTML at all. */

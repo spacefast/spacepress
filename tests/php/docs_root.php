@@ -65,7 +65,7 @@ $out['sitemap'] = array_map(static fn (string $u): ?string => parse_url($u, PHP_
 
 // What a visitor may not read stays unread, as a page, a twin, through %2F or in the sitemap: a
 // members-only item, a published item under a draft, and either with its `/` written as %2F.
-foreach (['/members', '/members.md', '/drafts/child', '/drafts/child.md', '/drafts/index.md', '/drafts.md', '/roadmap.md', '/reference%2Fconfig', '/reference%2Fconfig.md', '/drafts%2Fchild.md'] as $path) {
+foreach (['/members', '/members/', '/Members', '/members.md', '/drafts/child', '/drafts/child/', '/drafts/child.md', '/drafts/index.md', '/drafts.md', '/roadmap.md', '/reference%2Fconfig', '/reference%2Fconfig.md', '/drafts%2Fchild.md'] as $path) {
     $r = get("$url$path");
     $out['hidden'][$path] = [$r['status'], str_contains($r['body'], 'members-only text') || str_contains($r['body'], 'under a draft') || str_contains($r['body'], 'Every option')];
 }

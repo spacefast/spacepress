@@ -319,18 +319,14 @@ final class AppRouter
         }
         // One address per page (#462): the spelling the permalink structure gives, as WordPress's
         // redirect_canonical() gives a post's. That function runs later on template_redirect (10)
-        // than this, so it never sees a page the router serves. A kind's item is moved only once the
-        // visitor may read it (serve()), so the bare spelling of a hidden item is a 404 like a missing
-        // one. A prerender (the prebuild, `typedpress export`) asks for the path as the build lists
-        // it and gets the page.
+        // than this, so it never sees a page the router serves. serve() redirects only a page that
+        // would render: a hidden item, a draft page.md or notFound() is a 404 at either spelling, so
+        // the redirect never tells a visitor something exists. A prerender (the prebuild,
+        // `typedpress export`) asks for the path as the build lists it and gets the page.
         $moved = null;
         if ($this->canonical($path) !== $path && !\TypedPress\Render\Prebuilt::prerendering()) {
             $query = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '');
             $moved = home_url($this->canonical($path)) . ($query !== '' ? '?' . $query : '');
-            if (($match['route']['kind'] ?? null) === null) {
-                wp_safe_redirect($moved, 301);
-                exit;
-            }
         }
         // A static route's code Page ({@see RoutePages}) is the queried object while it renders,
         // as WordPress's own page template would have it: menus, SEO plugins and `the_ID()` see it.
@@ -366,11 +362,11 @@ final class AppRouter
      * A page's path below the home URL as WordPress spells a permalink: with a trailing slash when the
      * permalink structure has one (`user_trailingslashit`; TypedPress's is Hardening::PERMALINKS, which
      * is what a request answered before WordPress sets up its rewrites, a prebuilt file, goes by). The
-     * front page and a file name (a last segment with a dot, as in `.md` twins) keep their spelling.
+     * front page and a `.md` twin keep their spelling; callers pass page paths only ({@see canonical()}).
      */
     public static function address(string $path): string
     {
-        if ($path === '' || $path === '/' || str_contains((string) strrchr('/' . trim($path, '/'), '/'), '.')) {
+        if ($path === '' || $path === '/' || str_ends_with($path, '.md')) {
             return $path === '' ? '/' : $path;
         }
         $path = rtrim($path, '/');
@@ -440,8 +436,8 @@ final class AppRouter
 
     /**
      * @param array<string, string|list<string>> $params
-     * @param ?string $moved the page's one address, when the request spelled it otherwise: a kind's
-     *   item the visitor may read redirects there
+     * @param ?string $moved the page's one address, when the request spelled it otherwise: a page
+     *   that renders for this visitor redirects there instead
      */
     private function serve(array $route, array $params, Viewer $viewer, int $status, ?string $moved = null): never
     {
@@ -468,16 +464,11 @@ final class AppRouter
             }
             // The item a kind URL names is one of the render's reads: a write to any of its fields
             // purges this URL (and rebuilds a prebuilt one), not only a write core's post hooks see.
-            [$head, $body] = Reads::during(function () use ($route, $params, $viewer, $props, $page, $layouts, $moved): array {
+            [$head, $body] = Reads::during(function () use ($route, $params, $viewer, $props, $page, $layouts): array {
                 if (($route['kind'] ?? null) !== null) {
                     $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
                     if ($item === null) {
                         throw Halt::notFoundSignal();
-                    }
-                    if ($moved !== null) {
-                        // A permanent move, cacheable like core's canonical redirect (redirect() isn't).
-                        wp_safe_redirect($moved, 301);
-                        exit;
                     }
                     $props->p['item'] = $item;
                 }
@@ -501,6 +492,12 @@ final class AppRouter
             $this->failed($route, $error, $viewer);
         } catch (\Throwable $error) {
             $this->failed($route, $error, $viewer);
+        }
+        if ($moved !== null) {
+            // A permanent move, cacheable like core's canonical redirect (redirect() isn't); nothing
+            // of the render is sent or recorded.
+            wp_safe_redirect($moved, 301);
+            exit;
         }
         // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
         // page no layout guards is shared; what it read decides which writes purge its URL.

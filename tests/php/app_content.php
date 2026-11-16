@@ -116,6 +116,8 @@ $out['hidden stored'] = $stored('/hidden');
 $out['hidden as editor'] = page(fetch("$url/hidden/", [$cookie('chief')]));
 $out['hidden as subscriber'] = page(fetch("$url/hidden/", [$cookie('reader')]))['status'];
 $out['hidden twin'] = fetch("$url/hidden.md")['status'];
+// The bare spelling of a draft page.md is the same 404, not a redirect that says it exists.
+$out['hidden bare'] = fetch("$url/hidden")['status'];
 $out['hidden twin as editor'] = fetch("$url/hidden.md", [$cookie('chief')])['status'];
 // A page under a layout guard: stored private, shown to whoever the guard admits.
 $terms = fetch("$url/account/terms/");

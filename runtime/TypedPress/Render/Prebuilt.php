@@ -534,11 +534,13 @@ final class Prebuilt
         $markdown = str_ends_with($path, '.md');
         $html = $markdown ? (substr($path, 0, -3) === '/index' ? '/' : substr($path, 0, -3)) : $path;
         // A page only at its one address (`/about/`, AppRouter::address): the other spelling reaches
-        // the router, which redirects it. A twin is `/about.md`, never `/about/.md`.
-        if (!$markdown && $html !== AppRouter::address($html)) {
-            return;
+        // the router, which redirects it. A twin is `/about.md` only, so `/about/.md` is rejected below.
+        if (!$markdown) {
+            if ($html !== AppRouter::address($html)) {
+                return;
+            }
+            $html = $html === '/' ? '/' : rtrim($html, '/');
         }
-        $html = $html === '/' ? '/' : rtrim($html, '/');
         if ($html !== '/' && (str_ends_with($html, '/') || str_contains(rawurldecode($html), '..') || str_contains(rawurldecode($html), "\0") || str_contains(rawurldecode($html), '\\'))) {
             return;
         }

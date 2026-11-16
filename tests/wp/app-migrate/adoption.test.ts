@@ -102,7 +102,11 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   const ledgerBefore = sql("SELECT app, id FROM wp_tp__migrations ORDER BY app, id");
   // Legacy prefix indexes exceed MyISAM's key limit; restore them after the engine probe.
   sql(`ALTER TABLE ${table} DROP INDEX by_owner, DROP INDEX by_done, ENGINE=MyISAM`);
-  sql(`UPDATE wp_options SET option_value = 'pending-storage-upgrade' WHERE option_name = '${schemaOption}'`);
+  // Storage falls behind the way a site sees it: through WordPress's option API, whose hook drops the
+  // install marker (InstallMarker), so the next request checks storage again. A raw SQL edit would not
+  // (docs/runtime-contract.md).
+  wp("option", "update", schemaOption, "pending-storage-upgrade");
+  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_options WHERE option_name = 'tp_installed'")[0].n, "0");
   try {
     const refused = await fetch(`${api}/actions/list`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const problem: unknown = await refused.json();

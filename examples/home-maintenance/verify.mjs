@@ -33,11 +33,8 @@ const system = await create("systems", { name: "Hallway heat pump", room: "Hallw
 const scratch = await create("systems", { name: "CRUD check", room: "Utility room", kind: "appliance" });
 await request("systems/" + scratch.id, { method: "PATCH", body: { name: "CRUD updated" } });
 await request("systems/" + scratch.id);
-// A system nothing references deletes; one with a task is refused (`tasks.systemId` is required, so restrict).
-await request("systems/" + scratch.id, { method: "DELETE" });
-await request("systems/" + scratch.id, { status: 404 });
+await request("systems/" + scratch.id, { method: "DELETE", status: 409 });
 const task = await create("tasks", { systemId: system.id, title: "Wash heat pump filters", everyDays: 30, nextDueOn: yesterday, instructions: "<p>Switch off the unit. Rinse filters and dry before replacing.</p>" });
-await request("systems/" + system.id, { method: "DELETE", status: 409 }); // its task refers to it (a required ref restricts)
 wp("action-scheduler", "run", "--hooks=tp_job", "--force");
 const stamped = await request("tasks/" + task.id);
 assert.ok(stamped.overdueAt, "Action Scheduler must stamp the overdue task");

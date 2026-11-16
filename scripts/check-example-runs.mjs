@@ -28,6 +28,10 @@ const verifiers = {
   "stuff-drawer": "verify.mjs",
   subscriptions: "scripts/verify.mjs",
 };
+// Expected to fail until the issue is fixed: each still runs, and a pass is reported so the marker
+// can be removed. Owner-scoped deletes of referenced rows answer 409 on main
+// (https://github.com/spacefast/zero/issues/533).
+const expectedFail = { "drive-locker": 533, "pet-food": 533, "stuff-drawer": 533, subscriptions: 533 };
 const selected = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(verifiers);
 for (const name of selected) if (!verifiers[name]) throw new Error(`no verifier for ${name}; known: ${Object.keys(verifiers).join(", ")}`);
 
@@ -72,6 +76,12 @@ for (const name of selected) {
     spawnSync(binary, ["dev", "stop", project], { stdio: "ignore" });
     spawnSync("npx", ["--yes", "--package", STUDIO, "--", "studio", "delete", "--path", join(project, ".tp/dev/wordpress"), "--no-files"], { stdio: "ignore", timeout: 120_000 });
     rmSync(work, { recursive: true, force: true });
+  }
+  const issue = expectedFail[name];
+  if (issue) {
+    console.log(`=== ${name}: ${status === 0 ? `passed, but marked expected-fail for #${issue}: remove the marker` : `expected failure (#${issue})`}`);
+    if (status === 0) console.log(`::warning::${name} passes; remove its expected-fail marker for #${issue} in scripts/check-example-runs.mjs`);
+    continue;
   }
   console.log(`=== ${name}: ${status === 0 ? "ok" : "FAILED"}`);
   if (status !== 0) failed.push(name);

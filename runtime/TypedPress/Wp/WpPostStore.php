@@ -28,8 +28,6 @@ final class WpPostStore implements Store
     private array $sources = [];
     /** Trashed posts are read too ({@see withTrash()}). */
     private bool $trashVisible = false;
-    /** While set, password visibility is decided in SQL only ({@see withSqlVisibility()}). */
-    private bool $sqlVisibility = false;
     /** @var array<string, array> Request-local SQL visibility guards. */
     private array $visibility = [];
     private int $visibilityGeneration = -1;
@@ -96,27 +94,8 @@ final class WpPostStore implements Store
         return false;
     }
 
-    /**
-     * Run $fn with password visibility decided in SQL only ({@see passwordGuard()}), loading no post:
-     * for a delete's check about the posts that reference a row. It fails closed: a protected post the
-     * viewer's password proof doesn't open counts as hidden, even for an editor. Nothing is cached.
-     */
-    public function withSqlVisibility(callable $fn): mixed
-    {
-        $previous = $this->sqlVisibility;
-        $this->sqlVisibility = true;
-        try {
-            return $fn();
-        } finally {
-            $this->sqlVisibility = $previous;
-        }
-    }
-
     public function readGuards(string $collection, \TypedPress\Viewer $viewer): array
     {
-        if ($this->sqlVisibility) {
-            return [$this->passwordGuard($collection, $viewer, $this->schema->collection($collection))];
-        }
         if ($this->visibilityGeneration !== CoreAccess::generation()) {
             $this->visibility = [];
             $this->visibilityGeneration = CoreAccess::generation();

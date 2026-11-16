@@ -73,13 +73,7 @@ example before publishing. `typedpress build` writes `tp/_generated/client/`,
 
 `typedpress check examples/subscriptions` passes. The monthly totals (`monthlyBurn`) sum per currency, then per category, with `findIndex` and a running total, which TypedPress's type checker follows; an earlier form that reassigned a possibly undefined `find()` result did not compile.
 
-Deleting an owned subscription that has charges returns 200 and cascades to
-its charges through `charges.subscriptionId`'s `onDelete("cascade")`. A delete
-checks only the rows that reference the deleted row, not whole tables
-([decision](../../docs/decisions/2026-11-16-per-row-delete-visibility.md)). The
-`Rows you can't read may reference this row` refusal now appears only when another
-user's hidden charge references the subscription. The earlier runtime refused
-every such delete with that 409, as the earlier transcript below records.
+**Open gap ([#533](https://github.com/spacefast/zero/issues/533)):** on main, deleting a row that another table can reference returns `409 reference_violation` (`Rows in X may reference this row`) over HTTP, even when nothing references it, because the owner filter can't read the whole referencing table. Here that is deleting a subscription (charges reference it), which the verifier's cleanup does. The verifier passes on the branch that fixes this; on main it stops at that delete, and CI marks it expected-fail with the issue number.
 
 With the generated `tp/_generated/db.d.ts` present, `tsc -p examples/subscriptions`
 (TypeScript 5.9.3) reports 6 errors on 2026-11-16, counted as lines matching
@@ -131,7 +125,7 @@ It requires the real app's `monthlyBurn`; it does not replace that action with
 a stub or skip a failing check. Do not use an account holding real data.
 
 On 2026-11-16, `TP_SITE=<local Studio URL> TP_APP_PASSWORD=admin:<application password>`
-against a local Studio site passed and printed:
+against a local Studio site running the fix for [#533](https://github.com/spacefast/zero/issues/533) passed and printed:
 
 ```text
 PASS: collection CRUD, all actions, charge history, idempotency, inactive-charge and owner-input rejection

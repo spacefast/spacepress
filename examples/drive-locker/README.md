@@ -5,9 +5,10 @@ Find a drive by its serial, label, model or recorded contents, then see its plac
 health history, warranty and capacity. The React SPA has search, places, drive
 detail, add-drive and capacity screens, with bottom navigation for use at a rack.
 
-`node examples/drive-locker/verify.mjs` passes against a local site: drive,
-place and contents CRUD over HTTP, all five actions, two-owner isolation and the
-replacement job. No live Space was created because the installed publishing CLI
+`node examples/drive-locker/verify.mjs` checks drive, place and contents CRUD
+over HTTP, all five actions, two-owner isolation and the replacement job. Drive
+creation works over HTTP. Owner deletes of drives and places don't yet: see the
+note at the end. No live Space was created because the installed publishing CLI
 could not resolve the requested team. This example is not verified live.
 
 ## Run locally
@@ -162,7 +163,7 @@ revoked after the run.
 
 The checked-in [HTTP transcript](verification/local-http.txt) is an older run's
 request methods, paths, statuses and JSON responses, from before drive creation
-and owner deletes worked over HTTP. The capacity fixture is
+worked over HTTP. The capacity fixture is
 `1000 - 240 = 760 GB` for its own place, with all other owner's rows excluded.
 The [verification record](verification/README.md) separates local, browser and
 publication evidence.
@@ -185,7 +186,6 @@ then verify sign-in, a collection read and an action on that hostname.
 
 ## Notes
 
-Owner deletes work because a delete checks only the rows that reference the
-deleted row ([decision](../../docs/decisions/2026-11-16-per-row-delete-visibility.md)).
+**Open gap ([#533](https://github.com/spacefast/zero/issues/533)):** on main, deleting a row that another table can reference returns `409 reference_violation` (`Rows in X may reference this row`) over HTTP, even when nothing references it, because the owner filter can't read the whole referencing table. Here that is deleting a drive (contents and health readings reference it) or a place (drives reference it). The verifier passes on the branch that fixes this; on main it stops at that delete, and CI marks it expected-fail with the issue number.
 
 Resolved build diagnostics are preserved [separately](verification/diagnostics.md).

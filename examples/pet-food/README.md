@@ -5,7 +5,7 @@ wp-admin edit screens with generated Secure Custom Fields groups. Vet notes use
 Gutenberg. TypedPress Admin, which every build includes, edits the SQL tables. There are no
 custom frontend components, public assets, pages, or frontend dependencies.
 
-On 2026-11-16, `typedpress check` passed and `verify.mjs` passed end to end
+On 2026-11-16, `typedpress check` passed and `verify.mjs` passed end to end, with the runtime fix for [#533](https://github.com/spacefast/zero/issues/533),
 against a local Studio site, including the second-user isolation checks. The
 Action Scheduler shopping-list job, SCF saves, Gutenberg editing, MCP calls, and
 admin screenshots were not verified in that run. The Spacefast CLI published a
@@ -205,11 +205,7 @@ recorded an `unknown type AccessCtx` error at `tp/lib/schema.ts:6`; the
 current compiler accepts the imported type, and `typedpress build` emits the
 generated client, migrations, `db.d.ts`, and plugin lock.
 
-Owner deletes work: a delete checks only the rows that reference the deleted
-row, not whole tables
-([decision](../../docs/decisions/2026-11-16-per-row-delete-visibility.md)).
-The `Rows you can't read may reference this row` refusal now appears only when
-another user's hidden row references the deleted row.
+**Open gap ([#533](https://github.com/spacefast/zero/issues/533)):** on main, deleting a row that another table can reference returns `409 reference_violation` (`Rows in X may reference this row`) over HTTP, even when nothing references it, because the owner filter can't read the whole referencing table. Here that is deleting a pet (vet notes and feedings reference it). The verifier passes on the branch that fixes this; on main it stops at that delete, and CI marks it expected-fail with the issue number.
 
 | Gap on main | Consequence |
 | --- | --- |

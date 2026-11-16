@@ -50,7 +50,7 @@ node examples/stuff-drawer/verify.mjs --stamps
 
 Before the last command, set `TP_STAMP_LOAN_ID` to the ID printed by the first run. Set `TP_OTHER_APP_PASSWORD` for a second WordPress user to exercise isolation as well. The script leaves labeled demo rows for inspection and screenshots. It prints HTTP statuses and response bodies without credentials.
 
-On 2026-11-16 the first command, with `TP_SITE`, `TP_APP_PASSWORD`, and `TP_OTHER_APP_PASSWORD` set, passed against a local Studio site and printed:
+On 2026-11-16 the first command, with `TP_SITE`, `TP_APP_PASSWORD`, and `TP_OTHER_APP_PASSWORD` set, passed against a local Studio site running the fix for [#533](https://github.com/spacefast/zero/issues/533), and printed:
 
 ```text
 PASS: a second WordPress user cannot read or lend another owner's rows.
@@ -120,7 +120,7 @@ These screenshots are not done. Run the HTTP verifier to create demo data, then 
 
 `typedpress check examples/stuff-drawer` passes. Earlier versions of this README recorded compile errors here; the source now reads them out: `AccessCtx` and `HookCtx` compile, the loan checks build their argument field by field instead of spreading a partial patch, `quantity` is read once before it is compared, and the search loop skips an absent word.
 
-Owner deletes work: a delete checks only the rows that reference the deleted row, not whole tables ([decision](../../docs/decisions/2026-11-16-per-row-delete-visibility.md)). Deleting an empty bin returns 200. The `Rows you can't read may reference this row` refusal now appears only when another user's hidden row references the deleted row.
+**Open gap ([#533](https://github.com/spacefast/zero/issues/533)):** on main, deleting a row that another table can reference returns `409 reference_violation` (`Rows in X may reference this row`) over HTTP, even when nothing references it, because the owner filter can't read the whole referencing table. Here that is deleting a bin, even an empty one (things reference bins). The verifier passes on the branch that fixes this; on main it stops at that delete, and CI marks it expected-fail with the issue number.
 
 ### Native editor saves skip before hooks
 

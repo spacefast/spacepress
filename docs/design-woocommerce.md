@@ -43,7 +43,7 @@ not just the fields shown in a minimal example:
 
 | Field | Purpose |
 | --- | --- |
-| `uid` | Required persistent source identity; immutable |
+| `uid` | Persistent source identity; derived when absent and written into the file by sync, as for collections |
 | `name` | Product name |
 | `slug` | Optional editable URL slug; Woo derives it on creation when absent |
 | `sku` | Optional merchant SKU, independent of identity |
@@ -51,12 +51,12 @@ not just the fields shown in a minimal example:
 | Markdown body | Full product description |
 | `shortDescription` | Optional short description |
 | `price` | Exact decimal price in the store currency; maps to Woo's regular price internally |
-| `images` | Ordered project-relative image paths with optional alt text; first image is primary |
+| `images` | Ordered media references using existing collection media semantics; first image is primary |
 | `categories` | Product category UIDs |
 | `tags` | Product tag UIDs |
 
 Products created through this interface are simple physical products. A source file supplies
-`uid` and `name`; a product offered for sale needs a valid price. Exact required-field validation
+`name` and may supply an explicit `uid`; a product offered for sale needs a valid price. Exact required-field validation
 for unpublished drafts follows Woo. Reuse existing sync omission/clearing semantics rather
 than invent an independent field-ownership mode.
 
@@ -106,20 +106,21 @@ as the product writer. This support is new work, not an existing Woo integration
 
 ### Source files and an example
 
-**Decisions:** each product and term file carries a persistent explicit UID. Category and tag
-references use those UIDs, never numeric WordPress IDs. Renaming a file, SKU or slug preserves
-its UID. Use the existing per-field merge, baseline and conflict workflow; do not introduce a
-second baseline store or a commerce-specific sync command.
+**Decision:** reuse collection source-authoring behavior. Builds accept a missing UID and derive
+it without modifying the file. `typedpress sync` derives a missing UID and writes it into the
+file before applying changes. Once explicit, the UID survives file, SKU and slug renames;
+renaming a file before persisting its derived UID can change its identity. Category and tag
+references use UIDs, never numeric term IDs. Use the existing per-field merge, baseline and
+conflict workflow; do not introduce a second baseline store or a commerce-specific sync command.
 
 The product field list and sync behavior are settled. Implementing Woo value normalization,
 change detection and writes through this existing contract is implementation work, not a new
 merge-policy decision.
 
-For images, the proposed reference is a path relative to the project root, such as
-`assets/products/ceramic-mug.jpg`, not relative to the product file and not an attachment ID.
-Moving the product file therefore does not change its image reference. The asset pipeline resolves
-the path to a media record on each target store. Pulling an image added in Woo needs to materialize
-a local asset and write its portable path; exact naming and replacement behavior remain open.
+Images reuse existing collection media behavior for now: media fields may contain site-local
+numeric attachment IDs, and Markdown body images retain their URLs. Sync does not download
+those images or turn them into portable project assets. This is an explicit exception to using
+UIDs for product and term references, and limits media portability between stores.
 
 Example project layout:
 
@@ -128,7 +129,6 @@ content/
   products/ceramic-mug.md
   product-categories/home.md
   product-tags/handmade.md
-assets/products/ceramic-mug.jpg
 ```
 
 Proposed `content/products/ceramic-mug.md` (field names are illustrative; this is not implemented):
@@ -146,15 +146,16 @@ categories:
 tags:
   - zr_6c9d201e4a7b8350fd12
 images:
-  - path: assets/products/ceramic-mug.jpg
-    alt: Blue ceramic mug
+  - 42
 ---
 A handmade ceramic mug for your morning coffee.
 ```
 
 Price uses the store's configured currency. The UID is opaque, persisted in the file and
 independent of the file's name. For example, renaming this file to `blue-mug.md` must still
-update the same product. No current stock quantity belongs in this synced document.
+update the same product. Image `42` is an existing attachment on this store, not a product or
+term identity; its alt text belongs to the media record. No current stock quantity belongs in
+this synced document.
 
 Proposed `content/product-categories/home.md`:
 
@@ -187,8 +188,16 @@ order. First deployment seeds missing terms and products. After that:
 - Changing the same field differently in both places reports a conflict through existing sync.
 - Removing a file does not delete its Woo record.
 
-Different stores may assign different internal product, term and media IDs. These source files
-and references remain the same on both stores.
+Different stores may assign different internal product and term IDs; their UIDs remain stable.
+Media IDs and image URLs retain the existing collection portability limitations.
+
+### Future shared sync improvements
+
+Portable project-relative image references, downloading Woo/editor-added images into local
+assets, content-based reuse and replacement/conflict handling belong in the shared sync system
+for collections and products. They are deferred, not prerequisites or open v1 decisions.
+Stricter build-time requirements for explicit UIDs can also be considered as a shared change;
+v1 does not add a Woo-specific rule.
 
 ## Proposed minimum commerce API
 
@@ -266,11 +275,10 @@ calculated results. Historical order reads retain their original tax and discoun
   site-local auto-increment product or term IDs. Reuse the existing UID format and mapping;
   native Woo IDs remain local runtime identifiers. Preserve explicit UIDs when renaming or
   moving files. Deriving a missing UID from a filename does not guarantee rename stability:
-  materialize/persist the UID before relying on moves, with the exact authoring step to be defined.
-  SKU and slug remain editable attributes, not identity. Image references use portable source
-  assets resolved to local media IDs; numeric attachment IDs must not leak into portable files.
-  Export/sync must convert runtime references back to stable source references and report missing
-  mappings rather than copy raw IDs. Test one source catalog on two stores with different IDs.
+  run sync to persist the UID before relying on moves. SKU and slug remain editable attributes,
+  not identity. Media retains collection semantics, including numeric attachment IDs and image
+  URLs; portable asset mapping is deferred. Test product and term UID mapping independently of
+  those media portability limits.
 - **Lists:** bounded pagination and explicit supported filters. Product filters include status,
   search, category, tag and availability; order filters include date range, status and customer.
   Use deterministic ordering. Do not imply arbitrary SQL joins or the complete `db` query language.
@@ -360,8 +368,6 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **Source authoring details:** how new files receive their required persistent UIDs; confirm
-  project-relative image paths and define pulled-image naming and replacement behavior.
 - **Checkout presentation:** choose after the in-app block versus custom-form spike.
 - **V1 product scope:** confirm the proposed physical-only proof and downloadable-product deferral.
 - **Removal:** explicit retirement and reintroduction. Prefer retirement over destructive

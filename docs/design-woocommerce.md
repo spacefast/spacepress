@@ -56,7 +56,7 @@ not just the fields shown in a minimal example:
 | `tags` | Product tag UIDs |
 | `virtual` | Whether the product requires no shipping; independent of downloadability |
 | `downloadable` | Enables Woo's native downloadable-product behavior |
-| `downloads` | Named file references with stable Woo download identities; proposed shape below |
+| `downloads` | Array of `{ id, name, file }` entries with stable string IDs; contract below |
 
 Products created through this interface are simple products, physical or downloadable. A source file supplies
 `name` and may supply an explicit `uid`; a product offered for sale needs a valid price. Exact required-field validation
@@ -275,22 +275,27 @@ Images use the existing media pipeline. Downloadable products use Woo's native f
 order download permissions, delivery handler, receipts and email links in v1. TypedPress does not
 add an entitlement service or its own download endpoint.
 
-Proposed download fields for a digital product (exact nested field names remain to be finalized):
+**Decision:** download fields use an array of `{ id, name, file }` entries:
 
 ```yaml
 virtual: true
 downloadable: true
 downloads:
-  - id: 84a5b6c7d8e90123456789abcdef0123
+  - id: field-guide
     name: Field guide PDF
     file: https://files.example.com/field-guide.pdf
 ```
 
-The download ID is a stable opaque string, not an auto-increment ID. Preserve it during repeated
-sync and updates so existing Woo permissions are not detached from their download entry.
-Use Woo-supported file references; automatic local-file upload/protection is not part of this
-first contract. Download limits and expiry remain native Woo settings rather than new TypedPress
-fields for now.
+The download ID is an explicit author-chosen stable string, unique within the product, not an
+auto-increment ID. Preserve its corresponding Woo download identity during repeated sync and
+updates; files pulled from Woo retain their existing opaque download IDs. Changing the label or
+file URL keeps the ID and updates the existing entry in place, so previously entitled buyers
+receive the replacement through Woo's existing permissions. Do not recreate entries on each sync
+or introduce purchased-version storage.
+
+`name` is the buyer-facing label and `file` is a Woo-supported file URL. Automatic local-file
+upload/protection is deferred. Download limits and expiry remain native Woo settings rather than
+new TypedPress fields for now.
 
 Additional protection of backing files outside Woo, private storage provisioning, direct-origin
 access checks and retention/versioning policy are deferred. Native Woo authorization of its
@@ -439,11 +444,10 @@ v1 deliverable. Revisit the decision with that evidence rather than silently swi
 Use a dummy gateway for the first proof and a stock gateway for the pilot. Custom managed
 payments are deferred. Use Woo's default emails initially; custom email authoring is follow-up.
 
-## Decisions still needed
+## Decision status
 
-- **Download declaration:** finalize the nested file-reference shape and how new stable download
-  IDs are assigned. Reuse native Woo permissions; additional backing-file protection, retention
-  and versioning are future improvements. Custom email authoring is separate from v1 Woo defaults.
+The listed v1 product decisions are settled. Implementation validation and explicitly deferred
+improvements remain as described above; no download declaration decision remains open.
 
 ## First implementation proof
 

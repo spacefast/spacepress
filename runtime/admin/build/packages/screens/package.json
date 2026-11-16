@@ -1,7 +1,7 @@
 {
-	"name": "@first-admin/screens",
+	"name": "@typedpress-admin/screens",
 	"version": "1.0.0",
-	"description": "Screens declared once and rendered in First Admin and in classic wp-admin",
+	"description": "Screens declared once and rendered in TypedPress Admin and in classic wp-admin",
 	"private": true,
 	"type": "module",
 	"wpModule": true,
@@ -12,8 +12,9 @@
 	"dependencies": {
 		"@wordpress/api-fetch": "catalog:",
 		"@wordpress/components": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"react": "catalog:",
-		"react-dom": "catalog:"
+		"react-dom": "catalog:",
+		"@typedpress-admin/views": "workspace:*"
 	}
 }

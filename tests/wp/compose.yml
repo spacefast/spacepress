@@ -1,14 +1,14 @@
-# Disposable WordPress for First's WP-target tests. Not for production use.
+# Disposable WordPress for TypedPress's WP-target tests. Not for production use.
 # The DB credentials below are throwaway values for this local container only.
-name: ${FIRST_WP_PROJECT:-first-wp-test}
+name: ${TP_WP_PROJECT:-typedpress-wp-test}
 services:
   db:
     image: mariadb:11.4
     environment:
-      MARIADB_ROOT_PASSWORD: first-test-root
+      MARIADB_ROOT_PASSWORD: typedpress-test-root
       MARIADB_DATABASE: wordpress
       MARIADB_USER: wordpress
-      MARIADB_PASSWORD: first-test-db
+      MARIADB_PASSWORD: typedpress-test-db
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 1s
@@ -16,24 +16,24 @@ services:
     tmpfs:
       - /var/lib/mysql
   wordpress:
-    image: ${FIRST_WP_IMAGE:-wordpress:beta-7.2-beta5-php8.5-apache}
+    image: ${TP_WP_IMAGE:-wordpress:beta-7.2-beta5-php8.5-apache}
     depends_on:
       db:
         condition: service_healthy
     environment:
-      APACHE_RUN_USER: "#${FIRST_WP_UID:-1000}"
-      APACHE_RUN_GROUP: "#${FIRST_WP_GID:-1000}"
+      APACHE_RUN_USER: "#${TP_WP_UID:-1000}"
+      APACHE_RUN_GROUP: "#${TP_WP_GID:-1000}"
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: first-test-db
+      WORDPRESS_DB_PASSWORD: typedpress-test-db
       WORDPRESS_DB_NAME: wordpress
       # The Space whose Zero 0.8 tables (`sf_<space>_…`) an app may bind with existingTable; unset, none.
-      FIRST_WP_SPACE_ID: ${FIRST_WP_SPACE_ID:-}
+      TP_WP_SPACE_ID: ${TP_WP_SPACE_ID:-}
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
-        define('FIRST_IDENTITY_DEV_HTTP', true);
-        if (getenv('FIRST_WP_SPACE_ID')) define('FIRST_SPACE_ID', getenv('FIRST_WP_SPACE_ID'));
+        define('TP_IDENTITY_DEV_HTTP', true);
+        if (getenv('TP_WP_SPACE_ID')) define('TP_SPACE_ID', getenv('TP_WP_SPACE_ID'));
     healthcheck:
       test: ["CMD", "php", "-r", "exit(is_file('/var/www/html/wp-includes/version.php') && @fsockopen('127.0.0.1',80) ? 0 : 1);"]
       interval: 1s
@@ -42,18 +42,18 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${FIRST_WP_PORT:-8790}:80"
+      - "${TP_WP_PORT:-8790}:80"
     volumes:
       - wp:/var/www/html
-      - ./cache:/first-cache:ro
-      - ./mu-plugins:/first-mu-plugins:ro
-      - ./php/zz-first-tests.ini:/usr/local/etc/php/conf.d/zz-first-tests.ini:ro
-      - ./apache/zz-first-tests.conf:/etc/apache2/conf-enabled/zz-first-tests.conf:ro
-      - ${FIRST_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
+      - ./cache:/typedpress-cache:ro
+      - ./mu-plugins:/typedpress-mu-plugins:ro
+      - ./php/zz-typedpress-tests.ini:/usr/local/etc/php/conf.d/zz-typedpress-tests.ini:ro
+      - ./apache/zz-typedpress-tests.conf:/etc/apache2/conf-enabled/zz-typedpress-tests.conf:ro
+      - ${TP_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
   # WP-CLI, kept running so `harness.sh wp` is an exec, not a container start.
   cli:
     image: wordpress:cli-php8.5
-    user: "${FIRST_WP_UID:-1000}:${FIRST_WP_GID:-1000}"
+    user: "${TP_WP_UID:-1000}:${TP_WP_GID:-1000}"
     depends_on: [wordpress]
     command: ["sleep", "infinity"]
     extra_hosts:
@@ -61,20 +61,20 @@ services:
     environment:
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: first-test-db
+      WORDPRESS_DB_PASSWORD: typedpress-test-db
       WORDPRESS_DB_NAME: wordpress
-      FIRST_WP_SPACE_ID: ${FIRST_WP_SPACE_ID:-}
+      TP_WP_SPACE_ID: ${TP_WP_SPACE_ID:-}
       # wp-config evaluates this per process, so WP-CLI needs the same constants as the web server.
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
-        define('FIRST_IDENTITY_DEV_HTTP', true);
-        if (getenv('FIRST_WP_SPACE_ID')) define('FIRST_SPACE_ID', getenv('FIRST_WP_SPACE_ID'));
+        define('TP_IDENTITY_DEV_HTTP', true);
+        if (getenv('TP_WP_SPACE_ID')) define('TP_SPACE_ID', getenv('TP_WP_SPACE_ID'));
     volumes:
       - wp:/var/www/html
-      - ./cache:/first-cache:ro
-      - ./mu-plugins:/first-mu-plugins:ro
-      - ./php/zz-first-tests.ini:/usr/local/etc/php/conf.d/zz-first-tests.ini:ro
-      - ${FIRST_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
+      - ./cache:/typedpress-cache:ro
+      - ./mu-plugins:/typedpress-mu-plugins:ro
+      - ./php/zz-typedpress-tests.ini:/usr/local/etc/php/conf.d/zz-typedpress-tests.ini:ro
+      - ${TP_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
 volumes:
   wp:

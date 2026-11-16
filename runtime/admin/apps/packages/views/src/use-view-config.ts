@@ -1,4 +1,4 @@
-import { store as coreDataNextStore } from '@first-admin/core-data-next';
+import { store as coreDataNextStore } from '@typedpress-admin/core-data-next';
 import { useSelect } from '@wordpress/data';
 
 /**

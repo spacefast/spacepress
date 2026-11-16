@@ -12,7 +12,7 @@ import type {
 	Palette,
 	BlockType,
 	Duotone,
-} from '@first-admin/global-styles-engine';
+} from '@typedpress-admin/global-styles-engine';
 import type { Example } from './types';
 import ColorExamples from './color-examples';
 import DuotoneExamples from './duotone-examples';
@@ -87,7 +87,7 @@ function getOverviewBlockExamples( colors: MultiOriginPalettes ): Example[] {
 	if ( themePalette ) {
 		const themeColorexample: Example = {
 			name: 'theme-colors',
-			title: __( 'Colors', 'first-admin' ),
+			title: __( 'Colors', 'typedpress-admin' ),
 			category: 'overview',
 			blocks: null,
 			content: (
@@ -111,7 +111,7 @@ function getOverviewBlockExamples( colors: MultiOriginPalettes ): Example[] {
 			// translators: Typography example. Your local alphabet, numbers and some common special characters.
 			content: __(
 				`AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz0123456789X{(…)},.-<>?!*&:/A@HELFO™©`,
-				'first-admin'
+				'typedpress-admin'
 			),
 			level: 1,
 		} );
@@ -122,13 +122,13 @@ function getOverviewBlockExamples( colors: MultiOriginPalettes ): Example[] {
 		const firstParagraphBlock = createBlock( 'core/paragraph', {
 			content: __(
 				`A paragraph in a website refers to a distinct block of text that is used to present and organize information. It is a fundamental unit of content in web design and is typically composed of a group of related sentences or thoughts focused on a particular topic or idea. Paragraphs play a crucial role in improving the readability and user experience of a website. They break down the text into smaller, manageable chunks, allowing readers to scan the content more easily.`,
-				'first-admin'
+				'typedpress-admin'
 			),
 		} );
 		const secondParagraphBlock = createBlock( 'core/paragraph', {
 			content: __(
 				`Additionally, paragraphs help structure the flow of information and provide logical breaks between different concepts or pieces of information. In terms of formatting, paragraphs in websites are commonly denoted by a vertical gap or indentation between each block of text. This visual separation helps visually distinguish one paragraph from another, creating a clear and organized layout that guides the reader through the content smoothly.`,
-				'first-admin'
+				'typedpress-admin'
 			),
 		} );
 
@@ -158,7 +158,7 @@ function getOverviewBlockExamples( colors: MultiOriginPalettes ): Example[] {
 	if ( !! typographyBlockExamples.length ) {
 		examples.push( {
 			name: 'typography',
-			title: __( 'Typography', 'first-admin' ),
+			title: __( 'Typography', 'typedpress-admin' ),
 			category: 'overview',
 			blocks: typographyBlockExamples,
 		} );
@@ -243,13 +243,13 @@ export function getExamples( colors: MultiOriginPalettes ): Example[] {
 	// heading levels.
 	const headingsExample = {
 		name: 'core/heading',
-		title: __( 'Headings', 'first-admin' ),
+		title: __( 'Headings', 'typedpress-admin' ),
 		category: 'text',
 		blocks: [ 1, 2, 3, 4, 5, 6 ].map( ( level ) => {
 			return createBlock( 'core/heading', {
 				content: sprintf(
 					// translators: %d: heading level e.g: "1", "2", "3"
-					__( 'Heading %d', 'first-admin' ),
+					__( 'Heading %d', 'typedpress-admin' ),
 					level
 				),
 				level,

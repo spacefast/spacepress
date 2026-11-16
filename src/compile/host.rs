@@ -1,7 +1,7 @@
-//! Standard host globals, lowered onto the PHP runtime: the global `fetch` (`First\Fetch`),
-//! `Response`/`Headers`/`URLSearchParams`, `process.env.NAME` (`First\Env`), `process.platform` and
-//! `navigator.platform` (`First\Host`), the global `crypto`'s `randomUUID` and the `node:crypto`
-//! subset (`First\Crypto`).
+//! Standard host globals, lowered onto the PHP runtime: the global `fetch` (`TypedPress\Fetch`),
+//! `Response`/`Headers`/`URLSearchParams`, `process.env.NAME` (`TypedPress\Env`), `process.platform` and
+//! `navigator.platform` (`TypedPress\Host`), the global `crypto`'s `randomUUID` and the `node:crypto`
+//! subset (`TypedPress\Crypto`).
 //!
 //! Every outbound call, crypto call and environment read is reported to [`Compiler::host_use`]
 //! before its PHP is emitted, so one function sees all of them. Forms that cannot be lowered
@@ -61,7 +61,7 @@ impl Compiler<'_, '_> {
     /// URL or a redirect can't leave the grant. A lock holding `*` answers null: any public host.
     fn fetch_hosts(&self) -> String {
         match &self.plugin {
-            Some((i, _)) => format!(", \\FirstApp\\{}()", self.host_functions[*i]),
+            Some((i, _)) => format!(", \\TypedPressApp\\{}()", self.host_functions[*i]),
             None => String::new(),
         }
     }
@@ -94,7 +94,10 @@ impl Compiler<'_, '_> {
     fn env_read(&mut self, name: &str, span: Span) -> Result<Out> {
         self.host_use(HostUse::EnvRead(name), span)?;
         Ok(Out::atom(
-            format!("(\\First\\Env::get({}) ?? \\First\\Js::undefined())", php_str(name)),
+            format!(
+                "(\\TypedPress\\Env::get({}) ?? \\TypedPress\\Js::undefined())",
+                php_str(name)
+            ),
             Ty::union([Ty::Str, Ty::Undefined]),
         ))
     }
@@ -129,7 +132,7 @@ impl Compiler<'_, '_> {
             _ => ("navigator.platform", "navigatorPlatform"),
         };
         self.host_use(HostUse::Platform(what), span)?;
-        Ok(Out::atom(format!("\\First\\Host::{method}()"), Ty::Str))
+        Ok(Out::atom(format!("\\TypedPress\\Host::{method}()"), Ty::Str))
     }
 
     /// Reads: `process.env.NAME`, `process.platform`, `navigator.platform`, and refusals for every
@@ -159,7 +162,7 @@ impl Compiler<'_, '_> {
             } else {
                 err_help(
                     prop_span,
-                    format!("`process.{prop}` isn't available in First code"),
+                    format!("`process.{prop}` isn't available in TypedPress code"),
                     "handlers run in PHP; only `process.env.NAME` and `process.platform` are supported",
                 )
             };
@@ -168,7 +171,7 @@ impl Compiler<'_, '_> {
             return match prop {
                 "subtle" => err_help(
                     prop_span,
-                    "`crypto.subtle` isn't available in First code",
+                    "`crypto.subtle` isn't available in TypedPress code",
                     "hash with `createHash(\"sha256\").update(text).digest(\"hex\")` from \"node:crypto\"",
                 ),
                 "randomUUID" => err_help(
@@ -182,7 +185,7 @@ impl Compiler<'_, '_> {
         if self.is_global(obj, "Buffer") {
             return err_help(
                 prop_span,
-                "Buffer values aren't available in First code",
+                "Buffer values aren't available in TypedPress code",
                 "compare with `timingSafeEqual(Buffer.from(a), Buffer.from(b))` or measure with `Buffer.byteLength(text)`",
             );
         }
@@ -234,7 +237,7 @@ impl Compiler<'_, '_> {
         {
             return err_help(
                 target.span,
-                "`process.env` and host objects are read-only in First code",
+                "`process.env` and host objects are read-only in TypedPress code",
                 "keep the value in a local variable or the database",
             );
         }
@@ -298,7 +301,7 @@ impl Compiler<'_, '_> {
                 if self.is_global(obj, "process") || self.is_process_env(obj) {
                     return err_help(
                         *prop_span,
-                        format!("`{prop}` isn't available on `process` in First code"),
+                        format!("`{prop}` isn't available on `process` in TypedPress code"),
                         "handlers run in PHP; only `process.env.NAME` and `process.platform` are supported",
                     );
                 }
@@ -330,21 +333,21 @@ impl Compiler<'_, '_> {
             "Request" => {
                 return err_help(
                     span,
-                    "`new Request` isn't available in First code",
+                    "`new Request` isn't available in TypedPress code",
                     "pass the URL and init to `fetch(url, init)`",
                 );
             }
             "Response" => {
                 return err_help(
                     span,
-                    "`new Response` isn't available in First code",
+                    "`new Response` isn't available in TypedPress code",
                     "return a value, or `{ status, headers, body }` from a route",
                 );
             }
             "FormData" | "Blob" => {
                 return err_help(
                     span,
-                    format!("`{g}` isn't available in First code"),
+                    format!("`{g}` isn't available in TypedPress code"),
                     "send a string or URLSearchParams body",
                 );
             }
@@ -369,7 +372,10 @@ impl Compiler<'_, '_> {
                 v.php
             }
         };
-        Ok(Some(Out::atom(format!("(new \\First\\{class}({init}))"), Ty::Host(ty))))
+        Ok(Some(Out::atom(
+            format!("(new \\TypedPress\\{class}({init}))"),
+            Ty::Host(ty),
+        )))
     }
 
     /// `fetch(url, init?)`, the standard signature, → `Promise<Response>`.
@@ -390,7 +396,7 @@ impl Compiler<'_, '_> {
             return err_help(
                 url_expr.span,
                 format!("fetch() needs a URL string or URL, not {}", url.ty.describe()),
-                "pass the URL as a string or a URL; Request objects aren't available in First code",
+                "pass the URL as a string or a URL; Request objects aren't available in TypedPress code",
             );
         }
         // A WHATWG URL is fetch input as its href.
@@ -422,9 +428,13 @@ impl Compiler<'_, '_> {
                 let init = self.expr(init_expr)?;
                 let init = self.finish_value(init, init_expr.span)?;
                 if init.ty == Ty::Dynamic {
-                    // Checked JavaScript: First\Fetch::call refuses other keys and values at runtime.
+                    // Checked JavaScript: TypedPress\Fetch::call refuses other keys and values at runtime.
                     return Ok(Out::atom(
-                        format!("\\First\\Fetch::call({url_php}, {}{})", init.php, self.fetch_hosts()),
+                        format!(
+                            "\\TypedPress\\Fetch::call({url_php}, {}{})",
+                            init.php,
+                            self.fetch_hosts()
+                        ),
                         Ty::Promise(Box::new(Ty::Host(HostTy::Response))),
                     ));
                 }
@@ -444,7 +454,7 @@ impl Compiler<'_, '_> {
             }
         };
         Ok(Out::atom(
-            format!("\\First\\Fetch::call({url_php}, {init}{})", self.fetch_hosts()),
+            format!("\\TypedPress\\Fetch::call({url_php}, {init}{})", self.fetch_hosts()),
             Ty::Promise(Box::new(Ty::Host(HostTy::Response))),
         ))
     }
@@ -499,7 +509,7 @@ impl Compiler<'_, '_> {
             if u.len() != 1 {
                 return err_help(
                     span,
-                    "update() takes one string in First code",
+                    "update() takes one string in TypedPress code",
                     "input encodings aren't supported; pass text",
                 );
             }
@@ -513,7 +523,7 @@ impl Compiler<'_, '_> {
         let parts = format!("[{}]", parts.join(", "));
         let php = match (f, base.len()) {
             ("createHash", 1) => format!(
-                "\\First\\Crypto::hash({}, {parts}, {})",
+                "\\TypedPress\\Crypto::hash({}, {parts}, {})",
                 php_str(&algorithm),
                 php_str(encoding)
             ),
@@ -522,7 +532,7 @@ impl Compiler<'_, '_> {
                 if let Some(name) = self.env_name(key) {
                     self.host_use(HostUse::EnvRead(&name), key.span)?;
                     format!(
-                        "\\First\\Crypto::hmacEnv({}, {}, {parts}, {})",
+                        "\\TypedPress\\Crypto::hmacEnv({}, {}, {parts}, {})",
                         php_str(&algorithm),
                         php_str(&name),
                         php_str(encoding)
@@ -534,7 +544,7 @@ impl Compiler<'_, '_> {
                         "pass the key as a string, e.g. `process.env.SECRET!`",
                     )?;
                     format!(
-                        "\\First\\Crypto::hmac({}, {key}, {parts}, {})",
+                        "\\TypedPress\\Crypto::hmac({}, {key}, {parts}, {})",
                         php_str(&algorithm),
                         php_str(encoding)
                     )
@@ -579,7 +589,7 @@ impl Compiler<'_, '_> {
             );
         }
         Ok(Out::atom(
-            format!("\\First\\Crypto::randomBytes({}, {})", n.php, php_str(encoding)),
+            format!("\\TypedPress\\Crypto::randomBytes({}, {})", n.php, php_str(encoding)),
             Ty::Str,
         ))
     }
@@ -589,10 +599,10 @@ impl Compiler<'_, '_> {
         match f {
             "randomUUID" => {
                 if !args.is_empty() {
-                    return err(span, "randomUUID() takes no options in First code");
+                    return err(span, "randomUUID() takes no options in TypedPress code");
                 }
                 self.host_use(HostUse::Crypto(f), span)?;
-                Ok(Out::atom("\\First\\Crypto::randomUUID()", Ty::Str))
+                Ok(Out::atom("\\TypedPress\\Crypto::randomUUID()", Ty::Str))
             }
             "timingSafeEqual" => {
                 let mut argv = Vec::new();
@@ -612,18 +622,18 @@ impl Compiler<'_, '_> {
                 }
                 self.host_use(HostUse::Crypto(f), span)?;
                 Ok(Out::atom(
-                    format!("\\First\\Crypto::timingSafeEqual({})", argv.join(", ")),
+                    format!("\\TypedPress\\Crypto::timingSafeEqual({})", argv.join(", ")),
                     Ty::Bool,
                 ))
             }
             "randomBytes" => err_help(
                 span,
-                "randomBytes() returns a Buffer, which First doesn't compile",
+                "randomBytes() returns a Buffer, which TypedPress doesn't compile",
                 "write `randomBytes(n).toString(\"hex\")`",
             ),
             _ => err_help(
                 span,
-                format!("{f}() returns a stateful object, which First compiles only as one expression"),
+                format!("{f}() returns a stateful object, which TypedPress compiles only as one expression"),
                 if f == "createHash" {
                     "write `createHash(\"sha256\").update(text).digest(\"hex\")`"
                 } else {
@@ -652,14 +662,14 @@ impl Compiler<'_, '_> {
         if prop != "byteLength" {
             return err_help(
                 prop_span,
-                "Buffer values aren't available in First code",
+                "Buffer values aren't available in TypedPress code",
                 "compare with `timingSafeEqual(Buffer.from(a), Buffer.from(b))` or measure with `Buffer.byteLength(text)`",
             );
         }
         utf8_only(args, span, "Buffer.byteLength()")?;
         let e = self.arg(args, 0, span, "text")?;
         let text = self.string_arg(e, "Buffer.byteLength()", "pass text")?;
-        Ok(Out::atom(format!("strlen({text})"), Ty::Num))
+        Ok(Out::atom(format!("\\strlen({text})"), Ty::Num))
     }
 
     /// `crypto.subtle.digest(algorithm, data)` in imported JavaScript: a promise of an ArrayBuffer,
@@ -685,7 +695,7 @@ impl Compiler<'_, '_> {
         self.host_use(HostUse::Crypto("subtle.digest"), span)?;
         let argv = self.javascript_args(args)?;
         Ok(Some(Out::atom(
-            format!("\\First\\Crypto::subtleDigest(...({argv})->a)"),
+            format!("\\TypedPress\\Crypto::subtleDigest(...({argv})->a)"),
             Ty::Dynamic,
         )))
     }
@@ -698,19 +708,19 @@ impl Compiler<'_, '_> {
             return err(span, "crypto.randomUUID() takes no arguments");
         }
         self.host_use(HostUse::Crypto("randomUUID"), span)?;
-        Ok(Out::atom("\\First\\Crypto::randomUUID()", Ty::Str))
+        Ok(Out::atom("\\TypedPress\\Crypto::randomUUID()", Ty::Str))
     }
 
     fn web_crypto_refusal<T>(&self, prop: &str, span: Span) -> Result<T> {
         match prop {
             "getRandomValues" => err_help(
                 span,
-                "`crypto.getRandomValues` needs typed arrays, which First doesn't compile",
+                "`crypto.getRandomValues` needs typed arrays, which TypedPress doesn't compile",
                 "use `randomBytes(n).toString(\"hex\")` from \"node:crypto\"",
             ),
             _ => err_help(
                 span,
-                format!("`crypto.{prop}` isn't available in First code"),
+                format!("`crypto.{prop}` isn't available in TypedPress code"),
                 "the global crypto has `randomUUID()`; import hashes and MACs from \"node:crypto\"",
             ),
         }
@@ -725,7 +735,7 @@ impl Compiler<'_, '_> {
             ] if ENCODINGS.contains(&e.as_str()) => Ok(ENCODINGS.iter().find(|x| **x == e).expect("listed")),
             [] => err_help(
                 span,
-                format!("{call}() without an encoding returns a Buffer, which First doesn't compile"),
+                format!("{call}() without an encoding returns a Buffer, which TypedPress doesn't compile"),
                 format!("write {call}(\"hex\")"),
             ),
             _ => err_help(
@@ -771,7 +781,7 @@ impl Compiler<'_, '_> {
             (HostTy::Response, "headers") => field("headers", Ty::Host(HostTy::Headers)),
             (HostTy::Response, "body") => err_help(
                 span,
-                "response streams aren't available in First code",
+                "response streams aren't available in TypedPress code",
                 "read the body with `await response.text()` or `await response.json()`",
             ),
             (_, m) if host_methods(h).contains(&m) => err_help(
@@ -780,7 +790,10 @@ impl Compiler<'_, '_> {
                 format!("call it: `.{m}(...)`"),
             ),
             _ => {
-                let mut d = Diag::new(span, format!("{} has no property `{prop}` in First code", h.name()));
+                let mut d = Diag::new(
+                    span,
+                    format!("{} has no property `{prop}` in TypedPress code", h.name()),
+                );
                 let known: &[&str] = match h {
                     HostTy::Response => &["status", "statusText", "ok", "url", "redirected", "bodyUsed", "headers"],
                     _ => host_methods(h),
@@ -817,12 +830,12 @@ impl Compiler<'_, '_> {
             }
             (HostTy::Response, "arrayBuffer" | "blob" | "bytes" | "formData") => err_help(
                 m_span,
-                "binary and form bodies aren't available in First code",
+                "binary and form bodies aren't available in TypedPress code",
                 "read the body with `await response.text()` or `await response.json()`",
             ),
             (HostTy::Response, "clone") => err_help(
                 m_span,
-                "responses can't be cloned in First code",
+                "responses can't be cloned in TypedPress code",
                 "read the body once into a variable and use that",
             ),
             (HostTy::Headers, "get") => {
@@ -851,11 +864,11 @@ impl Compiler<'_, '_> {
             }
             (HostTy::Headers, "entries" | "keys" | "values" | "getSetCookie") => err_help(
                 m_span,
-                format!("`Headers.{m}` isn't available in First code"),
+                format!("`Headers.{m}` isn't available in TypedPress code"),
                 "walk them with `headers.forEach((value, name) => ...)`; set-cookie is never returned",
             ),
             _ => {
-                let mut d = Diag::new(m_span, format!("{} has no method `{m}` in First code", h.name()));
+                let mut d = Diag::new(m_span, format!("{} has no method `{m}` in TypedPress code", h.name()));
                 if let Some(s) = suggest(m, host_methods(h).iter().copied()) {
                     d = d.help(format!("did you mean `{s}`?"));
                 }
@@ -891,33 +904,33 @@ fn host_methods(h: &HostTy) -> &'static [&'static str] {
 }
 
 fn unknown_node_crypto(name: &str, span: Span) -> Diag {
-    let d = Diag::new(span, format!("\"node:crypto\" has no `{name}` in First code"));
+    let d = Diag::new(span, format!("\"node:crypto\" has no `{name}` in TypedPress code"));
     match suggest(name, NODE_CRYPTO.iter().copied()) {
         Some(s) => d.help(format!("did you mean `{s}`?")),
         None => d.help(format!(
-            "First compiles {} from \"node:crypto\" to PHP",
+            "TypedPress compiles {} from \"node:crypto\" to PHP",
             NODE_CRYPTO.join(", ")
         )),
     }
 }
 
-/// A `RequestInit` key First lowers, or a located refusal with a fix.
+/// A `RequestInit` key TypedPress lowers, or a located refusal with a fix.
 fn init_key(key: &str, span: Span) -> Result<()> {
     match key {
         "method" | "headers" | "body" | "redirect" => Ok(()),
         "signal" => err_help(
             span,
-            "fetch() `signal` isn't available in First code",
+            "fetch() `signal` isn't available in TypedPress code",
             "remove it; every call ends after 10 s",
         ),
         "credentials" | "mode" | "cache" | "referrer" | "referrerPolicy" | "integrity" | "keepalive" | "priority"
         | "window" | "duplex" | "dispatcher" => err_help(
             span,
             format!("fetch() `{key}` has no effect in a server-side request"),
-            "remove it; First sends no cookies and keeps no HTTP cache",
+            "remove it; TypedPress sends no cookies and keeps no HTTP cache",
         ),
         _ => {
-            let mut d = Diag::new(span, format!("fetch() init has no option `{key}` in First code"));
+            let mut d = Diag::new(span, format!("fetch() init has no option `{key}` in TypedPress code"));
             if let Some(s) = suggest(key, ["method", "headers", "body", "redirect"]) {
                 d = d.help(format!("did you mean `{s}`?"));
             } else {

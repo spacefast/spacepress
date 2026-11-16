@@ -1,6 +1,6 @@
 ---
 // The playground: edit an example's config and see everything the compiler makes of it, compiled in
-// the browser by the same compiler as `first build` (public/compiler.wasm, built from src/wasm.rs).
+// the browser by the same compiler as `typedpress build` (public/compiler.wasm, built from src/wasm.rs).
 import path from "node:path";
 import PageLayout from "blume/components/layout/PageLayout.astro";
 import data from "blume:data";
@@ -20,8 +20,8 @@ const runs: Record<string, ExampleRun> = Object.fromEntries(await Promise.all(si
 const { php, sqlite } = platformVersions();
 const runtime = Object.fromEntries(wordpressFiles.map(({ path: file }) => [file, readFileSync(path.join(repo, file), "utf8")]));
 const { config } = data;
-// Playground fetches First's shared plugin zips from the published site.
-const siteUrl = (config.site ?? "https://first-docs.space.fast").replace(/\/$/, "");
+// Playground fetches TypedPress's shared plugin zips from the published site.
+const siteUrl = (config.site ?? "https://typedpress-docs.space.fast").replace(/\/$/, "");
 ---
 
 <PageLayout
@@ -34,13 +34,13 @@ const siteUrl = (config.site ?? "https://first-docs.space.fast").replace(/\/$/, 
 	searchEnabled={config.search.enabled}
 	siteUrl={config.site}
 	ogEnabled={config.og.enabled}
-	page={{ title: "Playground · First", description: "Edit a First config and see the PHP, SQL migrations and TypeScript client it compiles to. The compiler runs in your browser.", route: "/playground" }}
+	page={{ title: "Playground · TypedPress", description: "Edit a TypedPress config and see the PHP, SQL migrations and TypeScript client it compiles to. The compiler runs in your browser.", route: "/playground" }}
 >
 	<main class="playground" data-wasm="/compiler.wasm">
 		<div class="intro">
 			<div>
 				<h1>Playground</h1>
-				<p class="lede">Edit a config and see the PHP, SQL and TypeScript that First makes from it. The compiler runs in your browser.</p>
+				<p class="lede">Edit a config and see the PHP, SQL and TypeScript that TypedPress makes from it. The compiler runs in your browser.</p>
 			</div>
 			<div class="example-controls">
 				<label for="example">Example</label>

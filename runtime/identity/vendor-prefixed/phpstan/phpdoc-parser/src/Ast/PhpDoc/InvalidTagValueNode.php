@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
+namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\ParserException;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\ParserException;
 use function sprintf;
 use function trigger_error;
 use const E_USER_WARNING;

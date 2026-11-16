@@ -1,4 +1,4 @@
-//! The few GitHub REST calls `first sync --pr` makes: find the open sync pull request, open one,
+//! The few GitHub REST calls `typedpress sync --pr` makes: find the open sync pull request, open one,
 //! update its description and comment on it. Blocking, through the same HTTP agent as the site client.
 //! The token is `GITHUB_TOKEN`; the API's URL is `GITHUB_API_URL` (set by GitHub Actions, and by
 //! GitHub Enterprise), otherwise `https://api.github.com`.
@@ -64,7 +64,7 @@ impl GitHub {
             ("Authorization", self.auth.as_str()),
             ("Accept", "application/vnd.github+json"),
             ("X-GitHub-Api-Version", "2022-11-28"),
-            ("User-Agent", "first-sync"),
+            ("User-Agent", "typedpress-sync"),
         ];
         let response = match (method, body) {
             ("GET", _) => headers

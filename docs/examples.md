@@ -1,23 +1,24 @@
 # The examples
 
-The pantry, blog and site examples commit `first/_generated/client/` and `first/_generated/migrations/`
-as produced by `first build`, so a fresh build changes nothing. The showcase
-builds its disposable app under `.first/showcase/`, leaving its sources unchanged.
+The pantry, blog and site examples commit `tp/_generated/client/` and `tp/_generated/migrations/`
+as produced by `typedpress build`, so a fresh build changes nothing. The showcase
+builds its disposable app under `.tp/showcase/`, leaving its sources unchanged.
 
 | Example | What it shows |
 | --- | --- |
 | [`examples/showcase/`](../examples/showcase/README.md) | One-command seeded demo: native admin, structured fields, SQL relations, media and a compiled class/action |
+| [`examples/drive-store/`](../examples/drive-store/README.md) | Most of TypedPress at once: a used hard-drive shop with an English/Turkish catalog, a fake checkout through a form action, stock rules in hooks, SQL order tables, reviews, an RSS feed, guarded pages, a settings global and TypedPress Admin, with a WordPress test |
 | [`examples/reading-list/`](../examples/reading-list/README.md) | Each part of an app once: a collection, a table, owner-scoped access, hooks, an action, a job, a route and two npm packages compiled to PHP |
 | `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, translations, hooks and jobs |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
 | [`examples/subscriptions/`](../examples/subscriptions/README.md) | Owner-scoped subscription tables, renewal actions, an Action Scheduler reminder, and a mobile React SPA, with current gaps documented. [Connect an agent](agents.md). |
-| [`examples/pet-food/`](../examples/pet-food/README.md) | Personal pet pantry using stock WordPress, SCF, Gutenberg, and First Admin; owner-scoped actions and an Action Scheduler shopping list, with current build and publishing blockers documented |
-| [`examples/home-maintenance/`](../examples/home-maintenance/README.md) | Private home systems, recurring tasks, work costs, and overdue jobs using wp-admin, SCF, and First Admin |
-| [`examples/stuff-drawer/`](../examples/stuff-drawer/README.md) | Personal inventory and lending log in wp-admin, SCF and First Admin; owner filters, agent abilities and overdue stamps, with main's current gaps documented |
+| [`examples/pet-food/`](../examples/pet-food/README.md) | Personal pet pantry using stock WordPress, SCF, Gutenberg, and TypedPress Admin; owner-scoped actions and an Action Scheduler shopping list, with current build and publishing blockers documented |
+| [`examples/home-maintenance/`](../examples/home-maintenance/README.md) | Private home systems, recurring tasks, work costs, and overdue jobs using wp-admin, SCF, and TypedPress Admin |
+| [`examples/stuff-drawer/`](../examples/stuff-drawer/README.md) | Personal inventory and lending log in wp-admin, SCF and TypedPress Admin; owner filters, agent abilities and overdue stamps, with main's current gaps documented |
 | [`examples/drive-locker/`](../examples/drive-locker/README.md) | Owner-scoped drive inventory, health trends, Action Scheduler, typed React SPA and capacity reports; main runtime and publication gaps are documented |
 | [`examples/docs/`](../examples/docs/README.md) | A documentation site: a docs kind synced from a folder of Markdown, navigation, components and highlighted code in Markdown, and a Markdown page, with a browser test |
-| [`examples/garden/`](../examples/garden/README.md) and [`examples/astro-garden/`](../examples/astro-garden/README.md) | One plant guide twice: as a First app with `first/app/` pages, and as an Astro site reading that app with `@first/astro`; a browser test reads both |
-| [`examples/migrate-astro/`](../examples/migrate-astro/README.md) | An Astro site before and after the `first-migrate-astro` skill: what it converted, what it flagged, and a browser test of the result |
+| [`examples/garden/`](../examples/garden/README.md) and [`examples/astro-garden/`](../examples/astro-garden/README.md) | One plant guide twice: as a TypedPress app with `tp/app/` pages, and as an Astro site reading that app with `@typedpress/astro`; a browser test reads both |
+| [`examples/migrate-astro/`](../examples/migrate-astro/README.md) | An Astro site before and after the `typedpress-migrate-astro` skill: what it converted, what it flagged, and a browser test of the result |
 | `examples/blog/` | The CMS tour: every phase-2 feature, with a browser page |
 | `examples/site/` | The publication that `tests/system` drives end to end |
 | `examples/wp-plugins/` | Extra pinned WordPress plugins (see [plugin dependencies](wp-plugins.md)) |
@@ -35,7 +36,7 @@ It includes options-backed site settings, English/German content, image sizes, p
 handouts, a queued activity job and a pinned Classic Editor dependency. Webhooks read
 `KITCHEN_WEBHOOK_URL` and `KITCHEN_WEBHOOK_SECRET` from the server environment.
 
-Run a normal example without Docker using `first dev examples/pantry` or the
+Run a normal example without Docker using `typedpress dev examples/pantry` or the
 blog commands below. Node 22+ and npm are required; WordPress Studio supplies
 PHP, WordPress and SQLite.
 
@@ -62,27 +63,27 @@ that:
 
 Build it, turn the generated client into browser JS, build again so the
 plugin ships that page, then start the persistent Studio site and
-register the page with first-identity:
+register the page with typedpress-identity:
 
 ```sh
-./target/release/first build examples/blog
+./target/release/typedpress build examples/blog
 node examples/blog/build-client.mjs
-./target/release/first build examples/blog        # ships public/client/ with the plugin
-./target/release/first dev examples/blog --no-watch
-./target/release/first wp --site examples/blog first identity app add --name=Blog --id=app_blog \
-  --redirect=http://localhost:8787/wp-content/plugins/first-app-blog/public/ --origin=http://localhost:8787
-./target/release/first wp --site examples/blog user application-password create admin first-sync --porcelain
+./target/release/typedpress build examples/blog        # ships public/client/ with the plugin
+./target/release/typedpress dev examples/blog --no-watch
+./target/release/typedpress wp --site examples/blog typedpress identity app add --name=Blog --id=app_blog \
+  --redirect=http://localhost:8787/wp-content/plugins/typedpress-app-blog/public/ --origin=http://localhost:8787
+./target/release/typedpress wp --site examples/blog user application-password create admin typedpress-sync --porcelain
 ```
 
 These commands assume Studio printed `http://localhost:8787`; substitute its
 actual URL in the registration and sync commands if different. The page is at
-`http://localhost:8787/wp-content/plugins/first-app-blog/public/`.
+`http://localhost:8787/wp-content/plugins/typedpress-app-blog/public/`.
 Its Sign in button goes through the first-identity screens; it switches between
 English and German and takes comments. Send its committed posts to the site with
-`FIRST_APP_PASSWORD=admin:<application password> first sync examples/blog`,
-using the password created above. Stop it with `first dev stop examples/blog`;
+`TP_APP_PASSWORD=admin:<application password> typedpress sync examples/blog`,
+using the password created above. Stop it with `typedpress dev stop examples/blog`;
 the next start retains its content and uploads. Omit `--no-watch` to keep
-First watching and rebuilding sources in the foreground.
+TypedPress watching and rebuilding sources in the foreground.
 
 ## Suites
 

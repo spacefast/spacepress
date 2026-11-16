@@ -5,14 +5,10 @@
 // inserts the fixture's `Badge` (no children: core's `autoRegister`) and `Callout` (children: inner
 // blocks), reads what the canvas and the sidebar show, saves, and prints JSON.
 import { createRequire } from "node:module";
-import { readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { chromiumPath } from "./chromium.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright-core");
-const cache = join(homedir(), ".cache/ms-playwright");
-const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()[0];
-const executablePath = process.env.FIRST_CHROMIUM ?? join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell");
+const executablePath = chromiumPath();
 const [url] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath });
 const out = { errors: [] };
@@ -27,8 +23,8 @@ try {
   // that moment types the password over the username. Fill until both fields hold their text.
   for (let attempt = 0; ; attempt++) {
     await page.fill("#user_login", "admin");
-    await page.fill("#user_pass", "first-test-admin");
-    if ((await page.inputValue("#user_login")) === "admin" && (await page.inputValue("#user_pass")) === "first-test-admin") break;
+    await page.fill("#user_pass", "typedpress-test-admin");
+    if ((await page.inputValue("#user_login")) === "admin" && (await page.inputValue("#user_pass")) === "typedpress-test-admin") break;
     if (attempt === 20) throw new Error("the WordPress sign-in form would not keep its values");
   }
   await Promise.all([page.waitForNavigation(), page.click("#wp-submit")]);
@@ -87,7 +83,7 @@ try {
     window.wp.data.dispatch("core/block-editor").selectBlock(block.clientId);
     return block.clientId;
   });
-  await canvas().locator(`[data-block='${status}'].first-block-preview`).waitFor({ timeout: 30000 });
+  await canvas().locator(`[data-block='${status}'].typedpress-block-preview`).waitFor({ timeout: 30000 });
   out.statusEmpty = await canvas().locator(`[data-block='${status}']`).innerText();
   const kind = sidebar.getByLabel("kind", { exact: true });
   await kind.waitFor({ timeout: 30000 });
@@ -101,7 +97,7 @@ try {
   await label.fill("Shipped");
   await canvas().locator(`[data-block='${status}'].status`, { hasText: "Shipped" }).waitFor({ timeout: 30000 });
   await label.fill("");
-  await canvas().locator(`[data-block='${status}'].first-block-preview`).waitFor({ timeout: 30000 });
+  await canvas().locator(`[data-block='${status}'].typedpress-block-preview`).waitFor({ timeout: 30000 });
   out.statusCleared = await page.evaluate((id) => window.wp.data.select("core/block-editor").getBlockAttributes(id).label ?? null, status);
 
   // Saved, the post holds the blocks as stored blocks.

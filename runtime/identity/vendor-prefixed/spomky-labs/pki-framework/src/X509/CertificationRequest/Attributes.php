@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest;
 
 use LogicException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection\SetOfAttributes;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute\ExtensionRequestValue;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Attribute;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Collection\SetOfAttributes;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationRequest\Attribute\ExtensionRequestValue;
 
 /**
  * Implements *Attributes* ASN.1 type of *CertificationRequestInfo*.

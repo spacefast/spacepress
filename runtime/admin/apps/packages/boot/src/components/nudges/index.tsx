@@ -31,10 +31,10 @@ const actionStyleToVariant: Record<
 };
 
 const severityLabels: Record< NonNullable< Nudge[ 'severity' ] >, string > = {
-	info: __( 'Information', 'first-admin' ),
-	warning: __( 'Warning', 'first-admin' ),
-	urgent: __( 'Urgent', 'first-admin' ),
-	error: __( 'Error', 'first-admin' ),
+	info: __( 'Information', 'typedpress-admin' ),
+	warning: __( 'Warning', 'typedpress-admin' ),
+	urgent: __( 'Urgent', 'typedpress-admin' ),
+	error: __( 'Error', 'typedpress-admin' ),
 };
 
 const severityToStatus: Record<
@@ -70,7 +70,7 @@ export function NudgeDisplay( { nudge }: NudgeDisplayProps ) {
 		<Notice
 			status={ severityToStatus[ nudge.severity ] }
 			isDismissible={ false }
-			className={ `first-admin-nudge first-admin-nudge--${ nudge.severity }` }
+			className={ `typedpress-admin-nudge typedpress-admin-nudge--${ nudge.severity }` }
 		>
 			<Stack direction="row" gap="sm" align="flex-start">
 				{ iconElement && (
@@ -79,7 +79,7 @@ export function NudgeDisplay( { nudge }: NudgeDisplayProps ) {
 						size={ 24 }
 						aria-label={ sprintf(
 							/* translators: %s: severity level (Information, Warning, Urgent, Error) */
-							__( '%s notification', 'first-admin' ),
+							__( '%s notification', 'typedpress-admin' ),
 							severityLabels[ nudge.severity ] || nudge.severity
 						) }
 					/>
@@ -88,15 +88,15 @@ export function NudgeDisplay( { nudge }: NudgeDisplayProps ) {
 				<Stack
 					direction="column"
 					gap="sm"
-					className="first-admin-nudge__content"
+					className="typedpress-admin-nudge__content"
 				>
 					<Stack direction="column">
-						<h2 className="first-admin-nudge__title">
+						<h2 className="typedpress-admin-nudge__title">
 							{ nudge.title }
 						</h2>
 
 						{ nudge.content && (
-							<div className="first-admin-nudge__context">
+							<div className="typedpress-admin-nudge__context">
 								{ nudge.content }
 							</div>
 						) }
@@ -107,7 +107,7 @@ export function NudgeDisplay( { nudge }: NudgeDisplayProps ) {
 							variant={ buttonVariant }
 							tone="neutral"
 							size="compact"
-							className="first-admin-nudge__button"
+							className="typedpress-admin-nudge__button"
 							render={ <Link to={ nudge.action.url } /> }
 						>
 							{ nudge.action.text }

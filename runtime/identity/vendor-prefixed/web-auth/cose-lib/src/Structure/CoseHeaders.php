@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Structure;
+namespace TypedPress\Identity\Vendor\Cose\Structure;
 
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\DecoderInterface;
-use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\CBOR\Tag\AbstractCoseTag;
+use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
+use TypedPress\Identity\Vendor\CBOR\CBORObject;
+use TypedPress\Identity\Vendor\CBOR\DecoderInterface;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
+use TypedPress\Identity\Vendor\CBOR\MapObject;
+use TypedPress\Identity\Vendor\CBOR\Tag\AbstractCoseTag;
 
 /**
  * The two header buckets of a COSE message, read the way RFC 9052 defines them.
@@ -24,7 +24,7 @@ use First\Identity\Vendor\CBOR\Tag\AbstractCoseTag;
  * Cose\...Tag classes and the per-signer or per-recipient entries through of().
  *
  * ```php
- * $message = Decoder::create()->decode(StringStream::create($bytes)); // First\Identity\Vendor\CBOR\Tag\CoseSign1Tag
+ * $message = Decoder::create()->decode(StringStream::create($bytes)); // TypedPress\Identity\Vendor\CBOR\Tag\CoseSign1Tag
  * $headers = CoseHeaders::fromMessage($message);
  *
  * $alg = $headers->getProtectedHeaderParameter(1);   // never answered by the text string "1"

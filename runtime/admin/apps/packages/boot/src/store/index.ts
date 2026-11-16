@@ -3,7 +3,7 @@ import reducer from './reducer';
 import * as actions from './actions';
 import * as selectors from './selectors';
 
-export const STORE_NAME: string = 'first-admin';
+export const STORE_NAME: string = 'typedpress-admin';
 
 export const storeConfig = {
 	reducer,

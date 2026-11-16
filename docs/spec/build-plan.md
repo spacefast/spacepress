@@ -45,19 +45,19 @@ PR.
 
 **Exists:** `collection()`/`table()`, Drizzle builders, `defineConfig`
 registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
-(`src/eval.rs`, `src/extract.rs`), `first.gen.ts`.
+(`src/eval.rs`, `src/extract.rs`), `typedpress.gen.ts`.
 
 **Build:**
-- The `first/` root, plus `first.config.ts` at the project root with the import
+- The `tp/` root, plus `typedpress.config.ts` at the project root with the import
   fence (`F1210`).
-- Load every `.ts` under `first/` and register exports by name (`F1221` on duplicates).
+- Load every `.ts` under `tp/` and register exports by name (`F1221` on duplicates).
 - Required by default and `.optional()`.
 - `ref()` with reverse relations and `onDelete` defaults; `.many()` join tables.
 - `taxonomy()` with `terms()`; `global()`; `files()`.
 - `.on()` hooks plus `afterPublish`; the implicit `author`; `"author"` / `"org"` access values.
 - Inferred title, content and labels.
-- Index inference from compiled queries, with `first check --json` reasons.
-- `_generated/db.d.ts` and the `first:db` import.
+- Index inference from compiled queries, with `typedpress check --json` reasons.
+- `_generated/db.d.ts` and the `typedpress:db` import.
 - One query API (`list`, `paginate`, `get`, `count`, `create`, `update`,
   `delete`, `.system`) replacing `db.query`/`db.insert`.
 - `action()` input types from the handler signature; `job()` with `every`/`cron`.
@@ -66,7 +66,7 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
 - the registries, `defineRelations` and `userProjection`;
 - `.notNull()`, `.references()`, `id()`, `$default`, `$onUpdate` and `real()`;
 - `db.*` and `jobs.x.enqueue`;
-- `first.gen.ts` and the generated `first/client/` source.
+- `typedpress.gen.ts` and the generated `tp/client/` source.
 
 **Done when:**
 - `examples/blog`, `pantry` and `full-site` are rewritten.
@@ -74,12 +74,12 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
 - The authoring rewrite produces no data migration.
 - The two-collection hook type test is in the TS suite.
 
-## 2. Core REST underneath, `/__first/api/v1` facade on top
+## 2. Core REST underneath, `/__tp/api/v1` facade on top
 
 **Exists:**
-- `runtime/First/Wp/Rest.php` serves `/wp-json/first/v1/*` through a catch-all
+- `runtime/TypedPress/Wp/Rest.php` serves `/wp-json/tp/v1/*` through a catch-all
   route, as a second implementation with its own queries and writes.
-- `CoreAccess.php` already applies First's rules to core `/wp/v2/first_*`:
+- `CoreAccess.php` already applies TypedPress's rules to core `/wp/v2/tp_*`:
   - capabilities through `map_meta_cap`;
   - read filtering and field stripping;
   - the wp-admin lists.
@@ -100,14 +100,14 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
   annotations from options), with input and output schemas from the TS
   signature, through core's run route.
 - **Errors:** move to core's `WP_Error` JSON.
-- **Facade:** `/__first/api/v1/<kind>`, `/me`, `/actions/<name>` and `/` (the
+- **Facade:** `/__tp/api/v1/<kind>`, `/me`, `/actions/<name>` and `/` (the
   schema). Each request is dispatched to the core route with `rest_do_request`,
   and the facade only maps input and output: First row shapes, `{ data, cursor }`,
   problem documents, and `?format=md`.
-- **Typed client and adapters** on the facade; `first pull` reads `GET /__first/api/v1`.
+- **Typed client and adapters** on the facade; `typedpress pull` reads `GET /__tp/api/v1`.
 
 **Delete:**
-- `Rest.php`'s own query and write path under `/first/v1`, replaced by the
+- `Rest.php`'s own query and write path under `/tp/v1`, replaced by the
   facade, which only maps and dispatches;
 - the revisions, `/media` and `/globals/*` implementations (core routes cover them).
 
@@ -122,7 +122,7 @@ the core route. The access suite proves the same denials on both:
 **Exists:**
 - `WpUserStore` and `WpPostStore`;
 - `userProjection`;
-- first-identity (sign-in, guests, upgrade, organizations);
+- typedpress-identity (sign-in, guests, upgrade, organizations);
 - SCF field groups.
 
 **Build:**
@@ -133,12 +133,12 @@ the core route. The access suite proves the same denials on both:
 - `comments` options on kinds: guests, moderation, threading, auto-close.
 - `F1220` for an export that shadows a built-in.
 
-**Done when:** EmDash `blog` runs on `wp.posts` instead of a `first_posts`
+**Done when:** EmDash `blog` runs on `wp.posts` instead of a `tp_posts`
 type, with comments, categories, tags and menus all core.
 
 ## 4. Deploy-time schema check
 
-**Exists:** the migration snapshot and numbered SQL, `-- first-adopt`, and the migrator ledger.
+**Exists:** the migration snapshot and numbered SQL, `-- typedpress-adopt`, and the migrator ledger.
 
 **Build:**
 - The ledger moves to `_generated/`.
@@ -156,7 +156,7 @@ type, with comments, categories, tags and menus all core.
 
 | Capability | Status |
 |---|---|
-| Expressions → PHP with JS semantics | **done**: `src/lower.rs`, `src/compile.rs`, `runtime/First/Js*.php` (29 files) |
+| Expressions → PHP with JS semantics | **done**: `src/lower.rs`, `src/compile.rs`, `runtime/TypedPress/Js*.php` (29 files) |
 | Node-vs-PHP parity harness | **done for values** (`tests/differential/`, `tests/compiler.rs:800`); no HTML cases yet |
 | Request-time escaping, island SSR (`wp_interactivity_process_directives`), routes, assets, `the_content` | **done**: `runtime/pages/Renderer.php`, `Plugin.php`, `Routes.php` |
 | Block serialization | **done**: `packages/blocks` (152 tests) |
@@ -174,7 +174,7 @@ serialization if a page wants block output.
 **Build:**
 - Replace the JSX refusal with IR nodes for elements, fragments, expression
   containers and component calls.
-- A PHP renderer that writes an escaping HTML buffer, with a `First\Html` child
+- A PHP renderer that writes an escaping HTML buffer, with a `TypedPress\Html` child
   helper on React rules: `null`/`false` render nothing, `0` renders `"0"`,
   arrays concatenate.
 - Async server components (blocking calls).
@@ -183,10 +183,10 @@ serialization if a page wants block output.
   - derived values compiled to both JS and PHP.
 - Node-vs-PHP HTML parity tests.
 
-**Deleted** (the full-site cutover): `packages/pages` with `first-pages build`, the
-`runtime/pages` renderer, `first/pages.json` and its capture checks (`src/pages.rs`),
+**Deleted** (the full-site cutover): `packages/pages` with `typedpress-pages build`, the
+`runtime/pages` renderer, `tp/pages.json` and its capture checks (`src/pages.rs`),
 and `load()`, `<Show>`, `orElse()`, `count()` and `<Island>`. A capture that
-still carries `pages/` or `first/pages.json` is refused, on both bundle formats.
+still carries `pages/` or `tp/pages.json` is refused, on both bundle formats.
 `docs/design-pages-and-agents.md` §4.3's block-region output model is replaced
 too.
 
@@ -200,7 +200,7 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
 
 **Exists:**
 - Page routing for `pages/` (hidden Page records, route IDs);
-- `route.ts` handlers in `first/app/` (`AppRouter.php`);
+- `route.ts` handlers in `tp/app/` (`AppRouter.php`);
 - `template_redirect` handling.
 
 **Build:**
@@ -213,7 +213,7 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
   - an `app/` page that matches a pattern takes over its URL;
   - otherwise the theme renders it.
 - **Front-end modes:** none, `app/`, `false` and a URL, behind one `template_redirect` gate.
-- **Static pages:** built. `prerender = true` pages are prebuilt on the site, and `first export` writes a static site ([decision](../decisions/2026-11-13-static-output.md)).
+- **Static pages:** built. `prerender = true` pages are prebuilt on the site, and `typedpress export` writes a static site ([decision](../decisions/2026-11-13-static-output.md)).
 
 **Done when:** the browser suite covers every mode's URLs, admin, login and REST staying up, and a slug change redirecting.
 
@@ -225,7 +225,7 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
   POST plus a store); `<Link>` with the router region.
 - **Live data:** `<Live>` and `useLive` on the existing Cast live updates
   (monorepo #5152, zero #128).
-- **First's own components:** `<Comments>`, `<SignIn>`, `<Search>`, `<Pagination>` and `<Menu>`.
+- **TypedPress's own components:** `<Comments>`, `<SignIn>`, `<Search>`, `<Pagination>` and `<Menu>`.
 
 **Done when:** the browser tests in rendering.md §8 pass.
 
@@ -274,27 +274,27 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
 ## 10. Framework adapters
 
 **Build:**
-- **Packages:** `@first/astro` (build-time and live loaders), `@first/next`
-  (fetch with cache tags, a revalidate and draft handler) and `@first/tanstack`
+- **Packages:** `@typedpress/astro` (build-time and live loaders), `@typedpress/next`
+  (fetch with cache tags, a revalidate and draft handler) and `@typedpress/tanstack`
   (`queryOptions`, a TanStack DB collection over the change feed).
 - **Preview:** a single preview contract across all three.
 - **Webhooks:** carry tags and URLs.
 
-**Done when:** the EmDash `blog` Astro template runs on `@first/astro` with no
+**Done when:** the EmDash `blog` Astro template runs on `@typedpress/astro` with no
 bridge code, a Next.js 16 example picks up a wp-admin edit with no redeploy,
 and a TanStack list updates live.
 
 ## 11. Opinionated WordPress
 
-**Exists:** plugin pinning (`plugins.lock.json`), the SCF and Action Scheduler bundles, `first-identity`.
+**Exists:** plugin pinning (`plugins.lock.json`), the SCF and Action Scheduler bundles, `typedpress-identity`.
 
-**Build:** First's release installs and pins Secure Custom Fields, Action
+**Build:** TypedPress's release installs and pins Secure Custom Fields, Action
 Scheduler, the MCP Adapter, Two Factor and (with `locales`) Polylang. Spam
 checks use the Akismet a site has through Jetpack, when it has a key.
 It also hardens WordPress:
-- turns off XML-RPC, pings, emoji scripts, file editors, plugin and theme installs, core auto-updates and the Customizer;
+- turns off emoji scripts, file editors, plugin and theme installs, core auto-updates and the Customizer, and XML-RPC and pings when the config says so (`xmlrpc: false`, `pings: false`);
 - disables comments everywhere except kinds that turn them on;
-- refuses edits made on the site to the schema First generates (the schema lock);
+- refuses edits made on the site to the schema TypedPress generates (the schema lock);
 - closes the public listing of users unless the app makes authors public;
 - answers sign-in and lost-password requests the same whether or not the account exists;
 - turns on pretty permalinks, the Space timezone and the object cache;
@@ -307,11 +307,11 @@ On Spacefast, the box image and Spacefast Access do the parts that belong to the
 **Build:**
 - **Docs:** rewrite `docs/config-api.md`, `docs/pages.md`, the README and the site to match the spec.
 - **Examples:** port every example.
-- **0.8 migration:** `first migrate app --from zero-0.8` emits this layout, and a
+- **0.8 migration:** `typedpress migrate app --from zero-0.8` emits this layout, and a
   0.8 publish from the CLI, local MCP or a source build runs it. The census
   decides which 0.8 features get converted; anything else is a located refusal
   with a fix, and that publish stays on 0.8.
-- **Monorepo:** `sf first`, MCP and the Spacefast publish path follow the new layout.
+- **Monorepo:** `sf typedpress`, MCP and the Spacefast publish path follow the new layout.
 
 ## How fast
 
@@ -327,6 +327,6 @@ Nothing here is gated by typing speed. What sets the pace:
 - **0.8 migration keeps working.** No workstream merges while it breaks the
   converter or a rule in [coexistence.md](coexistence.md).
 
-First useful cut: 1 + 2 + 3 + 4 + 11. That gives the new authoring surface on
+TypedPress useful cut: 1 + 2 + 3 + 4 + 11. That gives the new authoring surface on
 core REST with the facade and WordPress rendering: a complete backend with
 admin, API and agent tools. Pages (5, 6, 7) and caching (8) follow.

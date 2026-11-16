@@ -1,4 +1,4 @@
-# EmDash coverage on native First
+# EmDash coverage on native TypedPress
 
 This guide describes the qualification target, recorded native results and known
 differences. **Runtime qualification is partial:** the publication, marketing,
@@ -21,7 +21,7 @@ All sources in this table use
 [EmDash `1824902c0c383c052b623528799427b8a5ff75d0`](https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0).
 The manifest's `source` and `sources` give each exact pinned directory/file.
 
-| Official source | Concrete application behavior | First owner |
+| Official source | Concrete application behavior | TypedPress owner |
 | --- | --- | --- |
 | `templates/blank` | Welcome page, empty CMS and admin entry | `blank` |
 | `templates/starter` | Recent posts, posts/pages, rich text/media, category/tag archives, menus and settings | `starter` |
@@ -55,9 +55,9 @@ belong to the forms plugin; a decorative contact form cannot qualify that plugin
 [The original-source applications](../examples/emdash/official-sites/README.md)
 retain pinned blank, starter and blog Astro routes, components, styles and
 utilities with a source-hash drift guard. Astro compiles to a Node frontend;
-First compiles its backend and the original reading-time algorithm to PHP.
-`@first/astro/emdash` reads WordPress content, menus, media, comments, the
-widgets global, staged-version previews and privacy rules through First's API
+TypedPress compiles its backend and the original reading-time algorithm to PHP.
+`@typedpress/astro/emdash` reads WordPress content, menus, media, comments, the
+widgets global, staged-version previews and privacy rules through TypedPress's API
 for those original routes, with no adapter code in the templates. The deeper marketing and portfolio examples above remain behavioral
 counterparts; they do not claim unchanged upstream frontend source.
 
@@ -93,16 +93,16 @@ The remaining 22 workspace packages are separately classified in the manifest:
 framework/admin/auth, converters, scaffolding/upgrades, registry services/types,
 workerd test/runtime support, external auth and x402. They are not thirteen
 additional plugin examples. Provider/converter behavior remains an explicit gap
-where First's different implementation does not hold the same contract.
+where TypedPress's different implementation does not hold the same contract.
 
 ## Agent and tutorial workflows
 
 The [official AI tools guide](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/docs/src/content/docs/guides/ai-tools.mdx)
 and [MCP reference](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/docs/src/content/docs/reference/mcp-server.mdx)
 cover content, bylines, media, search, taxonomies, menus, settings, schema,
-revisions and whole-site transfer. Generated First operations expose the compiled
+revisions and whole-site transfer. Generated TypedPress operations expose the compiled
 model through core WordPress Abilities and MCP Adapter. For the agent example,
-the endpoint is `/wp-json/mcp/first-agents`; use its actual `tools/list` schemas
+the endpoint is `/wp-json/mcp/typedpress-agents`; use its actual `tools/list` schemas
 and application-password authentication. EmDash's endpoint, tool names and
 OAuth scopes are different.
 
@@ -117,18 +117,18 @@ Three official contracts require separate attention:
 
 - **Published and staged content:** EmDash stages edits without replacing the
   live version. Compare/discard/promote uses `_rev`; held edit locks reject
-  writes. First's [staged versions](staged.md) are `partial`: staging beside
+  writes. TypedPress's [staged versions](staged.md) are `partial`: staging beside
   the live item, compare, discard, promote as an update, scheduled promote,
   signed preview links and concurrent writers are proven by
   `tests/php/staged_test.php` and `tests/wp/staged.test.ts`. `_rev` tokens,
   held edit locks and the wp-admin screens are not built yet. `table()` kinds
   have no staged versions.
 - **Schema changes:** EmDash tools create collections/fields/block versions at
-  runtime. First declares them in `first.config.ts` and compiles them. A source
+  runtime. TypedPress declares them in `typedpress.config.ts` and compiles them. A source
   edit plus rebuild is a different agent workflow, not the same runtime tool.
   An opt-in runtime path exists for collections, globals, their fields, labels and presentation
   ([`runtimeSchema`](config-api.md#runtime-schema-changes)) through the app's own Abilities and MCP
-  tools (`schema-read`, `schema-propose`, `schema-apply`), and `first pull` brings those changes back
+  tools (`schema-read`, `schema-propose`, `schema-apply`), and `typedpress pull` brings those changes back
   into the project.
 - **Whole-site transfer:** portable export/analyze/import/resume/receipt includes
   media, principals, comments and approvals. Config migration and Markdown sync
@@ -172,7 +172,7 @@ and application work instead of adding an echo/mock under its name.
 
 Use the [root example commands](../examples/emdash/README.md) from the repository
 root: `node examples/emdash/test.mjs`. The runner builds with
-`cargo build --locked` unless `FIRST_BIN` selects a matching existing binary,
+`cargo build --locked` unless `TP_BIN` selects a matching existing binary,
 and installs the shared browser dependencies and Chromium.
 Its default suites run sequentially; `publishing` owns blank/starter/blog,
 and `publishing-browser` holds their browser seam. Select owners with arguments
@@ -206,14 +206,14 @@ edits. Whole upstream source entries remain pending or gaps rather than
 inheriting a suite's pass. Source-object and snippet audits remain unchanged.
 
 Each suite must create a unique disposable Studio project,
-allocate a free port, verify `.first/dev/owner.json`, use real native saves,
+allocate a free port, verify `.tp/dev/owner.json`, use real native saves,
 and stop/unregister only its exact site. Keep full native admin/plugins/settings
 available. Preserve unrelated plugins, credentials, content and uploads across
 restarts. Keep failed-run receipts for precise cleanup; never stop/delete globally.
 
 Use an existing matching binary only while its compiler/runtime inputs match.
 Concurrent workers must isolate build outputs and pass their matching binary as
-`FIRST_BIN`. Record which binary/revision produced the evidence. Disposable local
+`TP_BIN`. Record which binary/revision produced the evidence. Disposable local
 credentials are documented deliberately in the examples; they must never be
 reused for deployed sites or personal accounts.
 
@@ -223,18 +223,18 @@ Promote only the checks that ran. Browser assertions inspect the live product;
 source/snippet inventory checks establish provenance only. Keep comprehensive
 run artifacts outside tracked documentation and record failures plainly.
 
-First alternatives currently include native Gutenberg/SCF instead of Portable
+TypedPress alternatives currently include native Gutenberg/SCF instead of Portable
 Text/Astro, native WordPress search instead of EmDash FTS, numbered pages
 instead of opaque cursors, and native authors instead of multiple/guest bylines.
 CSS theme switching alone does not prove saved dark-image variants. PHP plugins
 have process authority and do not establish Worker-isolate/host-allowlist security.
 
 Cloudflare, PostgreSQL, AT Protocol, AI, mail, payment and ad-delivery claims need
-actual provider evidence. The upstream notifier uses optional Bearer-token authorization; First built-in
+actual provider evidence. The upstream notifier uses optional Bearer-token authorization; TypedPress built-in
 webhooks use HMAC. Record the declared wire contract rather than treating them
 as identical. The plugin workshop's notifier sends both Bearer authorization
-and an `x-first-signature` HMAC, verified by its owned HTTP receiver; the platform
-journey exercises First's separate built-in signature formats.
+and an `x-typedpress-signature` HMAC, verified by its owned HTTP receiver; the platform
+journey exercises TypedPress's separate built-in signature formats.
 A local receiver can prove received webhook bytes;
 mail capture can prove dispatch; neither demonstrates external delivery or
 provider parity. Existing Docker suites remain useful lower-level regression

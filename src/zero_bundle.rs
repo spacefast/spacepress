@@ -1,9 +1,9 @@
-//! Source bundles captured before the rename to First: format `zero.source-bundle.v1`.
+//! Source bundles captured before the rename to TypedPress: format `zero.source-bundle.v1`.
 //!
 //! Released clients that predate the rename (the `spacefast` CLI and `@spacefast/mcp` 0.9.0) still
 //! upload what the 0.3.0 compiler captured: `app.zero.json` and `vendor.zero.json` beside the
 //! manifest, project paths on the 0.3.0 layout (`zero.config.ts`, `zero/migrations/`, `wp-hooks/`),
-//! and sources that import `"zero"`. A host compiles such an upload as the First bundle it stands
+//! and sources that import `"zero"`. A host compiles such an upload as the TypedPress bundle it stands
 //! for: the hashes are checked on the bytes as captured, then the paths move onto the current layout
 //! here and the loader reads `"zero"` as `"first"` (see [`MODULE`]). Nothing else in the compiler
 //! knows the old names.
@@ -41,12 +41,12 @@ pub const MODULE: &str = "zero";
 /// Old path → current path. A path under `zero/` that is not listed is refused: 0.3.0 captured
 /// nothing else there, so an unknown one means the bundle is not what this module was written for.
 const MOVED: &[(&str, &str)] = &[
-    ("zero.config.ts", "first.config.ts"),
-    ("zero/migrations/", "first/_generated/migrations/"),
-    ("zero/plugins.lock.json", "first/_generated/plugins.lock.json"),
-    ("zero/abilities.json", "first/_generated/abilities.json"),
-    ("zero/wp-plugins.lock.json", "first/_generated/wp-plugins.lock.json"),
-    ("wp-hooks/", "first/wp-hooks/"),
+    ("zero.config.ts", "typedpress.config.ts"),
+    ("zero/migrations/", "tp/_generated/migrations/"),
+    ("zero/plugins.lock.json", "tp/_generated/plugins.lock.json"),
+    ("zero/abilities.json", "tp/_generated/abilities.json"),
+    ("zero/wp-plugins.lock.json", "tp/_generated/wp-plugins.lock.json"),
+    ("wp-hooks/", "tp/wp-hooks/"),
 ];
 
 fn failure(message: impl Into<String>) -> Diag {
@@ -63,7 +63,7 @@ pub(crate) fn read(source: &Path, manifest: &Manifest, raw: Option<[String; 2]>)
                 "a {FORMAT} bundle holds {APP_FILE} and {VENDOR_FILE}, but this one also has {name}"
             ))
             .help(
-                "upload one capture: either the files `first sources` writes, or the ones the 0.3.0 compiler wrote",
+                "upload one capture: either the files `typedpress sources` writes, or the ones the 0.3.0 compiler wrote",
             ));
         }
     }
@@ -88,12 +88,12 @@ pub(crate) fn read(source: &Path, manifest: &Manifest, raw: Option<[String; 2]>)
     Ok(sources)
 }
 
-// 0.3.0 rendered TSX pages ahead of time (`pages/` and their `zero/pages.json` artifact). First has
-// no such renderer: pages are `first/app/` sources the compiler turns into PHP. A bundle or raw
+// 0.3.0 rendered TSX pages ahead of time (`pages/` and their `zero/pages.json` artifact). TypedPress has
+// no such renderer: pages are `tp/app/` sources the compiler turns into PHP. A bundle or raw
 // project that carries either is refused rather than compiled into a site with no pages.
 fn pages_refusal() -> Diag {
-    failure("this bundle has TSX pages (pages/) rendered by the 0.3.0 compiler, which First can't serve").help(
-        "move each page to first/app/<path>/page.tsx, then publish again with a client that captures First sources (`first sources`)",
+    failure("this bundle has TSX pages (pages/) rendered by the 0.3.0 compiler, which TypedPress can't serve").help(
+        "move each page to tp/app/<path>/page.tsx, then publish again with a client that captures TypedPress sources (`typedpress sources`)",
     )
 }
 
@@ -106,9 +106,9 @@ fn current(path: &str) -> Result<String, Diag> {
             return Ok(format!("{new}{rest}"));
         }
     }
-    if path.starts_with("zero/") || path.starts_with("first/") || path == "first.config.ts" {
+    if path.starts_with("zero/") || path.starts_with("tp/") || path == "typedpress.config.ts" {
         return Err(failure(format!("{path} has no place in a {FORMAT} bundle"))
-            .help("publish again with a client that captures First sources (`first sources`)"));
+            .help("publish again with a client that captures TypedPress sources (`typedpress sources`)"));
     }
     Ok(path.to_owned())
 }
@@ -116,7 +116,7 @@ fn current(path: &str) -> Result<String, Diag> {
 /// The capture files a host may find in an upload, besides the raw project.
 const CAPTURES: &[&str] = &[
     ".zero-source",
-    ".first-source",
+    ".typedpress-source",
     APP_FILE,
     VENDOR_FILE,
     bundle::APP_FILE,
@@ -124,7 +124,7 @@ const CAPTURES: &[&str] = &[
 ];
 
 /// Whether `project` is a raw 0.3.0 project (`zero.config.ts` at its root) for [`write_raw`]. A tree
-/// that also holds `first.config.ts`, or a capture, is refused: which one the owner meant to publish
+/// that also holds `typedpress.config.ts`, or a capture, is refused: which one the owner meant to publish
 /// is not the host's to guess.
 pub(crate) fn is_raw(project: &Path) -> Result<bool, Diag> {
     if std::fs::symlink_metadata(project.join(OLD_CONFIG)).is_err() {
@@ -132,11 +132,11 @@ pub(crate) fn is_raw(project: &Path) -> Result<bool, Diag> {
     }
     if std::fs::symlink_metadata(project.join(crate::layout::CONFIG)).is_ok() {
         return Err(failure(format!(
-            "this upload has both {OLD_CONFIG} (from before the rename to First) and {}",
+            "this upload has both {OLD_CONFIG} (from before the rename to TypedPress) and {}",
             crate::layout::CONFIG
         ))
         .help(format!(
-            "keep one: delete {OLD_CONFIG} to publish the First project, or publish from a copy that holds only the 0.3 project"
+            "keep one: delete {OLD_CONFIG} to publish the TypedPress project, or publish from a copy that holds only the 0.3 project"
         )));
     }
     if let Some(capture) = CAPTURES
@@ -169,7 +169,7 @@ pub(crate) fn capture_raw(project: &Path) -> Result<[String; 3], Diag> {
     let mut written = Vec::new();
     for text in [&captured.app, &captured.vendor] {
         let current: SourceBundle = serde_json::from_str(text).map_err(|e| failure(e.to_string()))?;
-        // Paths that exist only on the current layout (the `first/` and `first/_generated/` folders
+        // Paths that exist only on the current layout (the `tp/` and `tp/_generated/` folders
         // the moved files sit in) have no 0.3.0 name, and 0.3.0 recorded nothing for them.
         let mut old = SourceBundle::default();
         for (path, text) in current.files {
@@ -207,7 +207,7 @@ fn unplaced(path: &str) -> Diag {
 enum Place {
     /// At this path of the project on disk.
     Disk(String),
-    /// A folder of the current layout the moved files sit in (`first/`, `first/_generated/`).
+    /// A folder of the current layout the moved files sit in (`tp/`, `tp/_generated/`).
     Folder,
     /// Not part of what 0.3.0 read: an old name seen at its new place, or a path 0.3.0 never read.
     Hidden,
@@ -241,7 +241,7 @@ fn place(path: &str) -> Place {
 }
 
 /// A 0.3.0 path → where the current layout sees it ([`MOVED`]); `None` for what it doesn't see: the
-/// 0.3.0 `zero/` folder's other files and a `first/` folder 0.3.0 never read.
+/// 0.3.0 `zero/` folder's other files and a `tp/` folder 0.3.0 never read.
 fn new_path(old: &str) -> Option<String> {
     for (from, to) in MOVED {
         if let Some(rest) = old.strip_prefix(from) {

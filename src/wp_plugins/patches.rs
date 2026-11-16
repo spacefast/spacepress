@@ -5,8 +5,14 @@ use std::path::Path;
 
 const MCP_PIN: &str = "719d81aa1250615acfd8256f0acc8c13f1712f1ae398c3d5883c8b166024fe9b";
 
+/// Whether a build patch changes this archive's tree. A patched tree is extracted and patched on
+/// every build, so a compiler that changes the patch never keeps an output patched by another.
+pub(super) fn applies(plugin: &Plugin, sha256: &str) -> bool {
+    plugin.slug == "mcp-adapter" && plugin.version == "0.7.1" && sha256 == MCP_PIN
+}
+
 pub(super) fn apply(plugin: &Plugin, sha256: &str, directory: &Path) -> Result<()> {
-    if plugin.slug != "mcp-adapter" || plugin.version != "0.7.1" || sha256 != MCP_PIN {
+    if !applies(plugin, sha256) {
         return Ok(());
     }
     let path = directory.join("includes/Core/McpComponentRegistry.php");

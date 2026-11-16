@@ -1,10 +1,10 @@
 //! Embeds the runtime into the binary: every file under `runtime/` (PHP runtime,
 //! WordPress stores, plugin template, client runtime). New files are picked up
-//! without code changes; `first build` decides which go where.
+//! without code changes; `typedpress build` decides which go where.
 //!
-//! Also embeds the documentation `first mcp` searches and reads (`docs_files.rs`): the guides and
+//! Also embeds the documentation `typedpress mcp` searches and reads (`docs_files.rs`): the guides and
 //! references in `docs/*.md` and the docs site's pages in `docs-site/docs/`, so an answer matches
-//! the binary that gave it. And the agent skills under `skills/`, which `first init` writes into a
+//! the binary that gave it. And the agent skills under `skills/`, which `typedpress init` writes into a
 //! project.
 
 use std::fmt::Write as _;
@@ -69,7 +69,7 @@ fn docs(dir: &Path, repo: &Path, recurse: bool, extensions: &[&str], out: &mut V
     }
 }
 
-/// The `docs/*.md` pages `first mcp` answers from: what someone building an app with First reads.
+/// The `docs/*.md` pages `typedpress mcp` answers from: what someone building an app with TypedPress reads.
 const GUIDES: &[&str] = &[
     "admin.md",
     "admin-screens.md",
@@ -81,7 +81,7 @@ const GUIDES: &[&str] = &[
     "config-migration.md",
     "deployment.md",
     "examples.md",
-    "first-compatibility.md",
+    "typedpress-compatibility.md",
     "identity-api.md",
     "identity-security.md",
     "installation.md",
@@ -89,6 +89,7 @@ const GUIDES: &[&str] = &[
     "migrating-from-zero.md",
     "npm-compatibility.md",
     "pages.md",
+    "plugin.md",
     "realtime.md",
     "sealed.md",
     "services.md",
@@ -122,7 +123,7 @@ fn is_guide(rel: &str) -> bool {
     }
     assert!(
         name.starts_with("design-") || NOT_GUIDES.contains(&name),
-        "docs/{name} is in neither GUIDES nor NOT_GUIDES in build.rs: decide whether `first mcp` should answer from it"
+        "docs/{name} is in neither GUIDES nor NOT_GUIDES in build.rs: decide whether `typedpress mcp` should answer from it"
     );
     false
 }

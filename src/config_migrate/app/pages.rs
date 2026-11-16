@@ -1,6 +1,6 @@
-//! 0.8 pages that are static markup become `first/app/` pages at the same URL.
+//! 0.8 pages that are static markup become `tp/app/` pages at the same URL.
 //!
-//! A `first/app/` page compiles to PHP and renders on each request, so a page whose output never
+//! A `tp/app/` page compiles to PHP and renders on each request, so a page whose output never
 //! depends on the browser maps mechanically: no hooks, no `@spacefast/zero/*`
 //! component or client import, no event handlers, and no imports other than relative TypeScript
 //! data modules. Everything else is refused with what it uses and where to port it.
@@ -18,7 +18,7 @@ pub(super) struct Page {
     pub imports: Vec<String>,
 }
 
-/// Maps `pages/<path>.tsx` to `first/app/<path>/page.tsx`, or explains the refusal.
+/// Maps `pages/<path>.tsx` to `tp/app/<path>/page.tsx`, or explains the refusal.
 pub(super) fn page(relative: &Path, text: &str, at: &str) -> Result<Page, Failure> {
     let name = relative.to_string_lossy().replace('\\', "/");
     let Some(stem) = name.strip_prefix("pages/").and_then(|n| n.strip_suffix(".tsx")) else {
@@ -59,9 +59,9 @@ pub(super) fn page(relative: &Path, text: &str, at: &str) -> Result<Page, Failur
 }
 
 /// Where converted pages go in the candidate.
-pub(super) const APP: &str = "first/app";
+pub(super) const APP: &str = "tp/app";
 
-/// `client/index.tsx`'s `Layout` becomes `first/app/layout.tsx` when it is static markup.
+/// `client/index.tsx`'s `Layout` becomes `tp/app/layout.tsx` when it is static markup.
 pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
     let arena = Allocator::default();
     let parsed = Parser::new(&arena, text, SourceType::tsx()).parse();
@@ -93,7 +93,7 @@ pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
         .replace("export function Layout(", "export default function Layout(")
         .replace(
             "import type { ComponentChildren } from \"preact\";",
-            "import type { LayoutProps } from \"first/app\";",
+            "import type { LayoutProps } from \"typedpress/app\";",
         )
         .replace(
             "{ children }: { children: ComponentChildren }",

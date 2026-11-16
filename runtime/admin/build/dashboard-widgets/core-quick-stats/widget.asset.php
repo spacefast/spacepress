@@ -1,1 +1,1 @@
-<?php return array('name' => 'core-quick-stats', 'dependencies' => array('wp-i18n'), 'moduleDependencies' => array(), 'version' => '35ade714d8e9b5d4c232');
+<?php return array('name' => 'core-quick-stats', 'dependencies' => array('wp-i18n'), 'moduleDependencies' => array(), 'version' => '789db2fec503370b1980');

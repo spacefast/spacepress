@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type;
+namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
 
 class ConstTypeNode implements TypeNode
 {

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-use First\Identity\Vendor\Symfony\Polyfill\Intl\Grapheme as p;
+use TypedPress\Identity\Vendor\Symfony\Polyfill\Intl\Grapheme as p;
 
 if (\PHP_VERSION_ID >= 80000) {
     return require __DIR__.'/bootstrap80.php';
@@ -21,14 +21,14 @@ if (!class_exists('ValueError', false)) {
     }
 }
 
-if (!defined('FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT')) {
-    define('FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT', 0);
+if (!defined('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT')) {
+    define('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT', 0);
 }
-if (!defined('FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES')) {
-    define('FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES', 1);
+if (!defined('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES')) {
+    define('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES', 1);
 }
-if (!defined('FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS')) {
-    define('FIRST_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS', 2);
+if (!defined('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS')) {
+    define('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS', 2);
 }
 
 if (!function_exists('grapheme_extract')) {

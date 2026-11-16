@@ -1,5 +1,5 @@
 import { redirect } from '@wordpress/route';
-import { preloadFieldCollections } from '@first-admin/core-data-next';
+import { preloadFieldCollections } from '@typedpress-admin/core-data-next';
 export const route = {
 	beforeLoad: () => {
 		throw redirect( {

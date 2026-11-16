@@ -7,7 +7,7 @@
 
 	.chip {
 		--wp-ui-combobox-chip-content-padding-inline-start: calc(
-			2 * var( --wpds-dimension-base )
+			2 * var( --wpds-dimension-gap-xs )
 		); /* TODO: Use or create new control/interactive padding token */
 
 		overflow: hidden;
@@ -16,9 +16,9 @@
 		min-height: 24px;
 		border: 1px solid var( --wpds-color-stroke-interactive-neutral );
 		border-radius: 12px;
-		background-color: var( --wpds-color-bg-interactive-neutral-weak );
-		font-size: var( --wpds-font-size-md );
-		color: var( --wpds-color-fg-interactive-neutral );
+		background-color: var( --wpds-color-background-interactive-neutral-weak );
+		font-size: var( --wpds-typography-font-size-md );
+		color: var( --wpds-color-foreground-interactive-neutral );
 		cursor: default;
 
 		&:not( [data-disabled] ):has(
@@ -26,11 +26,11 @@
 			),
 		&:not( [data-disabled] ):focus {
 			background-color: var(
-				--wpds-color-bg-interactive-neutral-weak-active
+				--wpds-color-background-interactive-neutral-weak-active
 			);
 			border-color: var( --wpds-color-stroke-interactive-neutral-active );
 			outline: none;
-			color: var( --wpds-color-fg-interactive-neutral-active );
+			color: var( --wpds-color-foreground-interactive-neutral-active );
 
 			@media ( forced-colors: active ) {
 				background-color: SelectedItem;
@@ -39,12 +39,12 @@
 
 		&[data-disabled] {
 			background-color: var(
-				--wpds-color-bg-interactive-neutral-weak-disabled
+				--wpds-color-background-interactive-neutral-weak-disabled
 			);
 			border-color: var(
 				--wpds-color-stroke-interactive-neutral-disabled
 			);
-			color: var( --wpds-color-fg-interactive-neutral-disabled );
+			color: var( --wpds-color-foreground-interactive-neutral-disabled );
 
 			@media ( forced-colors: active ) {
 				border-color: GrayText;
@@ -54,7 +54,7 @@
 
 		&:has( .chip-prefix ) {
 			--wp-ui-combobox-chip-content-padding-inline-start: var(
-				--wpds-dimension-base
+				--wpds-dimension-gap-xs
 			); /* TODO: Use or create new control/interactive padding token */
 		}
 	}

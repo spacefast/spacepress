@@ -1,6 +1,6 @@
 import { Link } from '@wordpress/ui';
 import type { Plugin } from '@wordpress/core-data';
-import type { Field } from '@first-admin/dataviews';
+import type { Field } from '@typedpress-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< Plugin > > = {
 	getValue: ( { item }: { item: Plugin } ) => item.plugin_uri,

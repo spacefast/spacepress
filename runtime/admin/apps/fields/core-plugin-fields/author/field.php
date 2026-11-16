@@ -2,12 +2,12 @@
 /**
  * Author field definition for core plugins fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'         => 'text',
-	'label'        => __( 'Author', 'first-admin' ),
+	'label'        => __( 'Author', 'typedpress-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => array(
 		'operators' => array( 'contains', 'startsWith', 'is', 'isNot' ),

@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/theme-list",
+	"name": "@typedpress-admin/theme-list",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -12,13 +12,13 @@
 		}
 	},
 	"dependencies": {
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/core-data-next": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/fields-next": "workspace:*",
-		"@first-admin/views": "workspace:*",
-		"@first-admin/telemetry": "workspace:*",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/admin-toolkit": "workspace:*",
+		"@typedpress-admin/core-data-next": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
+		"@typedpress-admin/fields-next": "workspace:*",
+		"@typedpress-admin/views": "workspace:*",
+		"@typedpress-admin/telemetry": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/base-styles": "catalog:",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",

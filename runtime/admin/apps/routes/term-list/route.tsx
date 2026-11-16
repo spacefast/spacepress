@@ -1,9 +1,9 @@
 import { notFound } from '@wordpress/route';
-import { loadView } from '@first-admin/views';
+import { loadView } from '@typedpress-admin/views';
 import {
 	loadViewConfig,
 	preloadFieldCollections,
-} from '@first-admin/core-data-next';
+} from '@typedpress-admin/core-data-next';
 import { resolveSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
 import { getDefaultView, viewToQuery } from './view-utils';

@@ -1,4 +1,4 @@
-import { normalizeRotation } from '@first-admin/image-cropper';
+import { normalizeRotation } from '@typedpress-admin/image-cropper';
 
 /**
  * Calculates the maximum scale that can be used to fit the image into the container.

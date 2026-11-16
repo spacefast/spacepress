@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Mac;
+namespace TypedPress\Identity\Vendor\Cose\Algorithm\Mac;
 
 final class HS256Truncated64 extends Hmac
 {

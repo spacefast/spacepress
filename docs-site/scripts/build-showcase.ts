@@ -1,5 +1,5 @@
 // Builds every example the site shows (lib/site-examples.ts) with the native compiler and publishes
-// every file of it, so a visitor can open any file `first build` writes, the WordPress plugins
+// every file of it, so a visitor can open any file `typedpress build` writes, the WordPress plugins
 // included.
 //
 // Each example is copied to .showcase/<name>/ first (its committed migrations come along; nothing
@@ -19,7 +19,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { toFirst } from "../lib/names.ts";
+import { toTypedPress } from "../lib/names.ts";
 import { filesRoot, showcaseRoot, type Manifest } from "../lib/showcase.ts";
 import { blueprint, sharedPlugins } from "../lib/blueprint.ts";
 import { platformVersions } from "../lib/platform.ts";
@@ -46,27 +46,27 @@ function walk(root: string, rel = ""): string[] {
 	return found;
 }
 
-// Files of WordPress.org plugins are shown as their authors wrote them. Everything First wrote reads
-// with First names, as the code will after the rename.
+// Files of WordPress.org plugins are shown as their authors wrote them. Everything TypedPress wrote reads
+// with TypedPress names, as the code will after the rename.
 // WordPress.org plugins are copied as published: the platform's pinned ones, and the ones an app's
-// lock adds (tests/fixtures/platform.json, first/_generated/wp-plugins.lock.json). Only files First
-// wrote get First names.
+// lock adds (tests/fixtures/platform.json, tp/_generated/wp-plugins.lock.json). Only files TypedPress
+// wrote get TypedPress names.
 const platformPlugins = Object.keys((JSON.parse(readFileSync(path.join(repo, "tests/fixtures/platform.json"), "utf8")) as { plugins: Record<string, unknown> }).plugins);
 const thirdParty = (lock: string[]) => new Set([...platformPlugins, ...lock]);
 const firstWrote = (file: string, published: Set<string>) => {
-	const plugin = /^first\/dist\/wp-content\/plugins\/([^/.]+)[/.]/.exec(file)?.[1];
+	const plugin = /^tp\/dist\/wp-content\/plugins\/([^/.]+)[/.]/.exec(file)?.[1];
 	return plugin === undefined || !published.has(plugin);
 };
 
-const binary = path.join(target, "release", "first");
+const binary = path.join(target, "release", "typedpress");
 if (!existsSync(binary)) run("cargo", ["build", "--locked", "--release"], repo);
 
 /**
  * The records the runtime seeds a synced collection from, as the host compile writes them
- * (`seed/<collection>.json`): the same parser as `first sync` reads the content files with.
+ * (`seed/<collection>.json`): the same parser as `typedpress sync` reads the content files with.
  */
 function syncRecords(project: string): Record<string, unknown> {
-	const scratch = mkdtempSync(path.join(tmpdir(), "first-showcase-"));
+	const scratch = mkdtempSync(path.join(tmpdir(), "typedpress-showcase-"));
 	try {
 		run(binary, ["sources", project, "--out", path.join(scratch, "sources")], repo);
 		mkdirSync(path.join(scratch, "assets"));
@@ -88,20 +88,20 @@ for (const { name, landing, seed } of siteExamples) {
 	const from = path.join(repo, "examples", name);
 	const to = path.join(showcaseRoot, name);
 	// What the site says about the example (playground.json, the seed) is the site's, not the app's.
-	cpSync(from, to, { recursive: true, filter: (file) => !/[/\\](node_modules|\.first|dist)$/.test(file) && !(path.dirname(file) === from && siteFiles.has(path.basename(file))) });
+	cpSync(from, to, { recursive: true, filter: (file) => !/[/\\](node_modules|\.tp|dist)$/.test(file) && !(path.dirname(file) === from && siteFiles.has(path.basename(file))) });
 	if (existsSync(path.join(to, "package-lock.json"))) run("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], to);
 	run(binary, ["build", to, "--quiet"], repo);
-	const plugins = path.join(to, "first/dist/wp-content/plugins");
-	// `first/app/` pages route on the path (`/notes/`), so their site needs pretty permalinks.
-	const appPages = existsSync(path.join(to, "first/app"));
+	const plugins = path.join(to, "tp/dist/wp-content/plugins");
+	// `tp/app/` pages route on the path (`/notes/`), so their site needs pretty permalinks.
+	const appPages = existsSync(path.join(to, "tp/app"));
 	// A synced collection (`sync: "content/posts/*.md"`) starts with its content files' rows.
 	const syncSeed = syncRecords(to);
 
-	const lock = JSON.parse(readFileSync(path.join(to, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
+	const lock = JSON.parse(readFileSync(path.join(to, "tp/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
 	const published = thirdParty(lock.plugins.map((p) => p.slug));
-	// `plugins` lists First's own plugins in the order `first build` writes them: the runtime, then
+	// `plugins` lists TypedPress's own plugins in the order `typedpress build` writes them: the runtime, then
 	// the plugins that require it. WordPress refuses to activate a plugin before the ones it requires.
-	const built = JSON.parse(readFileSync(path.join(to, "first/dist/wp-content/first-manifest.json"), "utf8")) as { app: string; plugins: Record<string, string> };
+	const built = JSON.parse(readFileSync(path.join(to, "tp/dist/wp-content/typedpress-manifest.json"), "utf8")) as { app: string; plugins: Record<string, string> };
 	const manifest: Manifest = {
 		app: built.app,
 		files: [],
@@ -109,7 +109,7 @@ for (const { name, landing, seed } of siteExamples) {
 		syncSeed,
 		appPages,
 	};
-	for (const file of walk(to).filter((file) => !file.startsWith("node_modules/") && !file.startsWith(".first/"))) {
+	for (const file of walk(to).filter((file) => !file.startsWith("node_modules/") && !file.startsWith(".tp/"))) {
 		const bytes = readFileSync(path.join(to, file));
 		const text = new TextDecoder("utf-8", { fatal: true });
 		let contents: string | null = null;
@@ -118,7 +118,7 @@ for (const { name, landing, seed } of siteExamples) {
 		} catch {
 			contents = null;
 		}
-		const shown = firstWrote(file, published) && contents !== null ? toFirst(contents) : contents;
+		const shown = firstWrote(file, published) && contents !== null ? toTypedPress(contents) : contents;
 		let blob: string | null = null;
 		if (shown !== null) {
 			blob = createHash("sha256").update(shown).digest("hex").slice(0, 24);
@@ -127,14 +127,14 @@ for (const { name, landing, seed } of siteExamples) {
 				written.add(blob);
 			}
 		}
-		manifest.files.push({ path: toFirst(file), blob, size: bytes.length });
+		manifest.files.push({ path: toTypedPress(file), blob, size: bytes.length });
 	}
 	writeFileSync(path.join(filesRoot, `${name}.json`), JSON.stringify(manifest));
 
 	// The Playground blueprint: the plugin zips this build wrote, and the WordPress.org plugins at
 	// the versions in the app's lock.
 	const generated = Object.keys(built.plugins).filter((slug) => !published.has(slug));
-	for (const slug of generated) if (!existsSync(path.join(plugins, `${slug}.zip`))) throw new Error(`examples/${name}: first build wrote no ${slug}.zip`);
+	for (const slug of generated) if (!existsSync(path.join(plugins, `${slug}.zip`))) throw new Error(`examples/${name}: typedpress build wrote no ${slug}.zip`);
 	mkdirSync(path.join(filesRoot, "plugins", name), { recursive: true });
 	// Copied as built: the folder inside each zip is the plugin's name, so the zip keeps it.
 	for (const slug of generated) cpSync(path.join(plugins, `${slug}.zip`), path.join(filesRoot, "plugins", name, `${slug}.zip`));
@@ -146,9 +146,9 @@ for (const { name, landing, seed } of siteExamples) {
 		if (!existsSync(shared)) writeFileSync(shared, zip);
 		else if (!readFileSync(shared).equals(zip)) throw new Error(`examples/${name}: ${slug}.zip differs from another example's; it must not depend on the config`);
 	}
-	const zipBase = `${process.env.SITE_URL ?? "https://first-docs.space.fast"}/files/plugins/${name}/`;
-	const firstPlugins = generated.map((slug) => ({ slug, url: `${zipBase}${slug}.zip` }));
-	const print = blueprint({ platform: platformVersions(), firstPlugins, wordpressPlugins: lock.plugins, landingPage: landing, seed, syncSeed, prettyPermalinks: appPages });
+	const zipBase = `${process.env.SITE_URL ?? "https://typedpress-docs.space.fast"}/files/plugins/${name}/`;
+	const tpPlugins = generated.map((slug) => ({ slug, url: `${zipBase}${slug}.zip` }));
+	const print = blueprint({ platform: platformVersions(), tpPlugins, wordpressPlugins: lock.plugins, landingPage: landing, seed, syncSeed, prettyPermalinks: appPages });
 	writeFileSync(path.join(filesRoot, `${name}.blueprint.json`), `${JSON.stringify(print, null, "\t")}\n`);
 	console.log(`${name}: ${manifest.files.length} files`);
 }

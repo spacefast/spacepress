@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
 
 use function array_key_exists;
 use function count;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Boolean;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Boolean;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
 use function sprintf;
 use Stringable;
 

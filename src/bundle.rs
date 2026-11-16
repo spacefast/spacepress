@@ -15,8 +15,8 @@ use std::{
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const APP_FILE: &str = "app.first.json";
-pub const VENDOR_FILE: &str = "vendor.first.json";
+pub const APP_FILE: &str = "app.typedpress.json";
+pub const VENDOR_FILE: &str = "vendor.typedpress.json";
 pub const MANIFEST_FILE: &str = "manifest.json";
 
 /// Original compiler inputs, not JavaScript bundler output. Paths retain module identity.
@@ -38,7 +38,7 @@ pub struct Manifest {
 
 fn hash(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    crate::hex(Sha256::digest(bytes))
 }
 
 fn failure(message: impl Into<String>) -> Diag {
@@ -137,7 +137,7 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
         packages,
     });
     let program =
-        loader::load_from(recording.clone(), &project.join("first.config.ts")).map_err(|mut d| d.remove(0))?;
+        loader::load_from(recording.clone(), &project.join("typedpress.config.ts")).map_err(|mut d| d.remove(0))?;
     let built = pipeline::build(&project, &program, || Ok(pipeline::Previous::none()), |_| None)?;
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
         return Err(failure(
@@ -183,7 +183,7 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     }
     let app = serde_json::to_string(&app).map_err(|e| failure(e.to_string()))?;
     let vendor = serde_json::to_string(&vendor).map_err(|e| failure(e.to_string()))?;
-    let manifest = manifest_for("first.source-bundle.v1", &built.schema.name, &app, &vendor);
+    let manifest = manifest_for("typedpress.source-bundle.v1", &built.schema.name, &app, &vendor);
     let mut public_files = Vec::new();
     capture_assets(&*fs, &project.join("public"), &project, &mut public_files)?;
     public_files.sort();
@@ -358,7 +358,7 @@ fn public_assets(from: &Path, to: Option<&Path>) -> Result<(), Diag> {
 struct CapturedFs {
     root: PathBuf,
     sources: SourceBundle,
-    /// The name a pre-rename capture imports First by (`crate::zero_bundle`).
+    /// The name a pre-rename capture imports TypedPress by (`crate::zero_bundle`).
     module_alias: Option<&'static str>,
 }
 #[cfg(feature = "host")]
@@ -485,16 +485,16 @@ pub(crate) fn check_bundles(files: [(&str, Vec<u8>, &String); 2]) -> Result<Sour
 pub(crate) struct Compiled {
     pub manifest: serde_json::Value,
     pub name: String,
-    /// The app has an auth collection, so it mounts `first-identity`.
+    /// The app has an auth collection, so it mounts `typedpress-identity`.
     pub identity: bool,
     pub admin: bool,
-    /// `sealed: true`: the plugin slugs a host lets load, First's own and the platform's.
+    /// `sealed: true`: the plugin slugs a host lets load, TypedPress's own and the platform's.
     pub sealed: Option<Vec<String>>,
     /// The names of the jobs the app declares, sorted.
     pub jobs: Vec<String>,
 }
 
-/// Each synced kind's files as seed records (`wp first seed --records`), as a publish seeds a Space:
+/// Each synced kind's files as seed records (`wp typedpress seed --records`), as a publish seeds a Space:
 /// one `{collection, format, records}` document per kind, by kind name, parents before children.
 #[cfg(feature = "host")]
 pub(crate) fn seed_records(
@@ -652,7 +652,7 @@ pub(crate) fn compile_tree(
     };
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
     let legacy = manifest.format == crate::zero_bundle::FORMAT;
-    if !(legacy || manifest.format == "first.source-bundle.v1")
+    if !(legacy || manifest.format == "typedpress.source-bundle.v1")
         || manifest.name.is_empty()
         || !manifest
             .name
@@ -668,7 +668,7 @@ pub(crate) fn compile_tree(
             source,
             [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)],
         )?;
-        // A bundle captured before `first/_generated/` names its locks and ledger at their old paths.
+        // A bundle captured before `tp/_generated/` names its locks and ledger at their old paths.
         // The hashes cover the bytes as captured; only the paths are read on this layout.
         SourceBundle {
             files: captured
@@ -683,18 +683,18 @@ pub(crate) fn compile_tree(
                 .collect(),
         }
     };
-    // A capture from before `first/app/` may hold TSX pages for the old renderer (`pages/`, with
-    // their `first/pages.json` artifact). There is no renderer for them any more, and compiling the
+    // A capture from before `tp/app/` may hold TSX pages for the old renderer (`pages/`, with
+    // their `tp/pages.json` artifact). There is no renderer for them any more, and compiling the
     // rest would publish the site without its pages.
     if let Some(path) = sources
         .files
         .keys()
-        .find(|p| *p == "first/pages.json" || p.starts_with("pages/"))
+        .find(|p| *p == "tp/pages.json" || p.starts_with("pages/"))
     {
         return Err(failure(format!(
-            "this bundle has TSX pages from the old pages renderer ({path}), which First no longer has"
+            "this bundle has TSX pages from the old pages renderer ({path}), which TypedPress no longer has"
         ))
-        .help("move the pages to first/app/ (docs/pages.md), then publish again with `first sources`"));
+        .help("move the pages to tp/app/ (docs/pages.md), then publish again with `typedpress sources`"));
     }
     let name = manifest.name;
     let root = source.join("modules");
@@ -719,7 +719,7 @@ pub(crate) fn compile_tree(
         sources,
         module_alias: legacy.then_some(crate::zero_bundle::MODULE),
     });
-    let program = loader::load_from(fs.clone(), &root.join("first.config.ts")).map_err(|mut d| d.remove(0))?;
+    let program = loader::load_from(fs.clone(), &root.join("typedpress.config.ts")).map_err(|mut d| d.remove(0))?;
     let snapshot = previous
         .map(|p| {
             std::fs::read(p.join("snapshot.json"))
@@ -791,19 +791,19 @@ pub(crate) fn compile_tree(
         .into_iter()
         .map(|p| (p.slug, p.version))
         .collect();
-    // The app's `first/app/` routes and pages, so the host can tell which of its URLs outside
+    // The app's `tp/app/` routes and pages, so the host can tell which of its URLs outside
     // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the app
     // plugin's own files are not listed. Both lists use the route path grammar: a
     // leading `/`, no trailing slash except `/`, literal segments, `:name` for one segment and a
     // final `*name` for one or more. A host matching against them should:
     // - trim one trailing `/` from the request path first (pages canonicalize `/about/` to `/about`);
-    // - treat HEAD as GET, as First\App::routeFor does;
+    // - treat HEAD as GET, as TypedPress\App::routeFor does;
     // - hand over any request whose path matches an entry, whatever its method, so a known path with
     //   the wrong method gets the runtime's 405 rather than the host's 404.
     // `pagePaths` are GET and HEAD only. The runtime still picks the most specific route.
     let mut app_routes: Vec<(String, String)> = Vec::new();
     let mut page_paths: Vec<String> = Vec::new();
-    // `first/app/` pages are GET paths; `route.ts` handlers and pages with handlers take any
+    // `tp/app/` pages are GET paths; `route.ts` handlers and pages with handlers take any
     // method. A zero-or-more catch-all (`**rest`) is its folder plus `*rest`, in the host grammar.
     if let Some(app) = &built.schema.app {
         for route in &app.routes {
@@ -845,9 +845,9 @@ pub(crate) fn compile_tree(
         .collect();
     page_paths.sort();
     page_paths.dedup();
-    // What a host shows and routes without reading First's generated files (docs/host-contract.md).
+    // What a host shows and routes without reading TypedPress's generated files (docs/host-contract.md).
     let schema = &built.schema;
-    // Names as the REST API spells them (`/wp-json/first/v1/<name>`).
+    // Names as the REST API spells them (`/wp-json/tp/v1/<name>`).
     let mut tables: Vec<&str> = schema
         .collections
         .values()
@@ -861,7 +861,7 @@ pub(crate) fn compile_tree(
     actions.sort();
     let summary = serde_json::json!({"name": schema.name, "collections": collections, "tables": tables, "actions": actions,
         "identity": schema.collections.values().any(|c| c.auth), "admin": schema.admin});
-    let mut manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
+    let mut manifest = serde_json::json!({"format":"typedpress.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
         "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "routes":routes, "pagePaths":page_paths,
         "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
     let sealed = sealed_plugins(&built.schema, hosted_first(&built.schema));
@@ -888,30 +888,33 @@ pub(crate) fn compile_tree(
     })
 }
 
-/// The First plugins a host mounts for this build (the build store loader's order).
+/// The TypedPress plugins a host mounts for this build (the build store loader's order).
 #[cfg(feature = "host")]
 fn hosted_first(schema: &crate::schema::Schema) -> Vec<String> {
-    ["first-runtime".to_string(), format!("first-app-{}", schema.name)]
-        .into_iter()
-        .chain(
-            schema
-                .collections
-                .values()
-                .any(|c| c.auth)
-                .then(|| "first-identity".to_string()),
-        )
-        .chain(schema.admin.then(|| "first-admin".to_string()))
-        .collect()
+    [
+        "typedpress-runtime".to_string(),
+        format!("typedpress-app-{}", schema.name),
+    ]
+    .into_iter()
+    .chain(
+        schema
+            .collections
+            .values()
+            .any(|c| c.auth)
+            .then(|| "typedpress-identity".to_string()),
+    )
+    .chain(schema.admin.then(|| "typedpress-admin".to_string()))
+    .collect()
 }
 
-/// Plugins a sealed site never runs, declared or not: each serves stored content around First's
+/// Plugins a sealed site never runs, declared or not: each serves stored content around TypedPress's
 /// read rules. The Block Data API answers a post's raw `post_content` after an item-level check
 /// only, which shows a rich text field that a field rule hides; the decoupled bundle ships that
 /// API and WPGraphQL. Kept in step with `Sealed::DENIED` in the runtime.
 pub(crate) const SEALED_DENIED: [&str; 2] = ["vip-block-data-api", "vip-decoupled-bundle"];
 
-/// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `first` (the First plugins
-/// of this target, which its caller names), First's admin, the platform pins this app needs, and
+/// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `typedpress` (the TypedPress plugins
+/// of this target, which its caller names), TypedPress's admin, the platform pins this app needs, and
 /// the WordPress plugins the config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app
 /// plugin, so they need no entry.
 pub(crate) fn sealed_plugins(
@@ -921,9 +924,11 @@ pub(crate) fn sealed_plugins(
     let declared = schema.sealed.as_ref()?;
     let mut slugs: Vec<String> = first
         .into_iter()
-        // First's admin is First's own plugin: listed whether or not this build ships it
-        // (`admin: true`), so a sealed site never refuses it however it is installed.
-        .chain(["first-admin".to_string()])
+        // TypedPress's admin is TypedPress's own plugin: listed whether or not this build ships it
+        // (`admin: true`), so a sealed site never refuses it however it is installed. So is the
+        // TypedPress plugin (`typedpress`, runtime/typedpress-plugin), which a site deployed to with `typedpress push`
+        // runs its builds through.
+        .chain(["typedpress".to_string(), "typedpress-admin".to_string()])
         .chain(
             crate::platform::plugins(schema.locales.is_some())
                 .into_iter()
@@ -940,7 +945,7 @@ pub(crate) fn sealed_plugins(
 pub(crate) fn sources_cli(args: &[String]) -> std::process::ExitCode {
     let result = match args {
         [project, flag, output] if flag == "--out" => sources(Path::new(project), Path::new(output)).map(|_| ()),
-        _ => Err(failure("usage: first sources <project> --out <new-directory>")),
+        _ => Err(failure("usage: typedpress sources <project> --out <new-directory>")),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -951,7 +956,7 @@ pub(crate) fn sources_cli(args: &[String]) -> std::process::ExitCode {
     }
 }
 
-/// `first compile-to-store <sources> <store> <assets> [previous-build]`: prints the build receipt.
+/// `typedpress compile-to-store <sources> <store> <assets> [previous-build]`: prints the build receipt.
 #[cfg(feature = "cli")]
 pub(crate) fn compile_to_store_cli(args: &[String]) -> std::process::ExitCode {
     let result = match args {
@@ -962,7 +967,7 @@ pub(crate) fn compile_to_store_cli(args: &[String]) -> std::process::ExitCode {
             crate::store::compile_to_store(Path::new(source), Path::new(root), Path::new(assets), Some(previous))
         }
         _ => Err(failure(
-            "usage: first compile-to-store <sources> <store> <assets> [previous-build]",
+            "usage: typedpress compile-to-store <sources> <store> <assets> [previous-build]",
         )),
     };
     match result {
@@ -992,7 +997,7 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
             Some(Path::new(previous)),
         ),
         _ => Err(failure(
-            "usage: first compile-sources <sources> <new-output> <assets> [previous-output]",
+            "usage: typedpress compile-sources <sources> <new-output> <assets> [previous-output]",
         )),
     };
     match result {

@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
 
 use LogicException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\Name;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
 
 /**
  * Implements *V2Form* ASN.1 type used as a attribute certificate issuer.

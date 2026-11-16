@@ -3,11 +3,11 @@
 declare(strict_types=1);
 
 /*
- * `first/app/` on WordPress over HTTP (tests/compiler.rs `app_router_serves_pages_on_wordpress`):
- * the fixture tests/fixtures/app-router, built by `first build`, installed with every plugin active
+ * `tp/app/` on WordPress over HTTP (tests/compiler.rs `app_router_serves_pages_on_wordpress`):
+ * the fixture tests/fixtures/app-router, built by `typedpress build`, installed with every plugin active
  * and served by php -S with the theme front end on. Prints one JSON object: label => observed.
  *
- *   FIRST_WP_THEMES=1 php tests/php/app_router.php <wp-content dir>
+ *   TP_WP_THEMES=1 php tests/php/app_router.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -16,8 +16,18 @@ require __DIR__ . '/wp.php';
 $site = wpSite('app', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber', 'chief' => 'editor'],
     'muPlugins' => ['secret' => "<?php define('APPROUTER_HOOK_SECRET', 'hook-secret');"]]);
 wp_set_current_user(1);
-\First\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'secret' => 'desk only', 'status' => 'published']);
-\First\db()->insert('notes', ['title' => 'Draft', 'slug' => 'draft', 'status' => 'draft']);
+\TypedPress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'secret' => 'desk only', 'status' => 'published']);
+\TypedPress\db()->insert('notes', ['title' => 'Draft', 'slug' => 'draft', 'status' => 'draft']);
+// What a site owner sets in WordPress: a Global Styles color (the Styles screen, the Site Editor),
+// Additional CSS, and a site icon. TypedPress's pages must print each, as the theme's own templates do.
+$styles = WP_Theme_JSON_Resolver::get_user_data_from_wp_global_styles(wp_get_theme(), true);
+wp_update_post(['ID' => $styles['ID'], 'post_content' => wp_json_encode([
+    'version' => WP_Theme_JSON::LATEST_SCHEMA, 'isGlobalStylesUserThemeJSON' => true,
+    'settings' => ['color' => ['palette' => ['custom' => [['slug' => 'brand', 'color' => '#123456', 'name' => 'Brand']]]]],
+])]);
+wp_update_custom_css_post('.owner-css { color: #654321; }');
+$icon = wp_insert_attachment(['post_mime_type' => 'image/png', 'post_title' => 'icon', 'post_status' => 'inherit'], 'icon.png');
+update_option('site_icon', $icon);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -45,7 +55,7 @@ function fetch(string $url, string $method = 'GET', array $headers = [], ?string
 function page(array $r): array
 {
     preg_match('#<title>(.*?)</title>#s', $r['body'], $t);
-    preg_match('#data-wp-router-region="first/main">(.*)</div>\n#s', $r['body'], $m);
+    preg_match('#data-wp-router-region="tp/main">(.*)</div>\n#s', $r['body'], $m);
     return ['status' => $r['status'], 'title' => html_entity_decode($t[1] ?? '', ENT_QUOTES), 'body' => $m[1] ?? null];
 }
 
@@ -75,14 +85,14 @@ $out = [
     'home' => page($home),
     'home description' => str_contains($home['body'], '<meta name="description" content="Notes.">'),
     'home cache' => $home['headers']['cache-control'] ?? null,
-    'router module' => str_contains($home['body'], 'first/Render/client/router.js'),
+    'router module' => str_contains($home['body'], 'tp/Render/client/router.js'),
     'note' => page(fetch("$url/notes/hello")),
     'note canonical' => (bool) preg_match('#<link rel="canonical" href="' . preg_quote($url, '#') . '/notes/hello">#', fetch("$url/notes/hello")['body']),
     // The layout's Open Graph type, card and link, with the page's image and link added.
     'note social' => (static function (string $body): array {
         preg_match_all('#<meta (?:property|name)="((?:og|twitter):[a-z]+)" content="([^"]*)">#', $body, $meta, PREG_SET_ORDER);
         preg_match_all('#<link rel="(describedby|alternate)" href="([^"]*)" type="([^"]*)">#', $body, $links, PREG_SET_ORDER);
-        preg_match_all('#<script id="first-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $body, $scripts);
+        preg_match_all('#<script id="typedpress-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $body, $scripts);
         return ['meta' => array_map(static fn ($m) => [$m[1], html_entity_decode($m[2], ENT_QUOTES)], $meta), 'links' => array_map(static fn ($m) => array_slice($m, 1), $links), 'scripts' => $scripts[1]];
     })(fetch("$url/notes/hello")['body']),
     'note as editor' => page(fetch("$url/notes/hello", headers: [$cookie('chief')])),
@@ -96,7 +106,7 @@ $out = [
         $doc = new DOMDocument();
         @$doc->loadHTML((string) fetch("$url/notes?q=tea&page=6&_flash=abcdefabcdef")['body']);
         $x = new DOMXPath($doc);
-        $nav = $x->query('//nav[@class="first-pagination"]')->item(0);
+        $nav = $x->query('//nav[@class="typedpress-pagination"]')->item(0);
         $out = ['label' => $nav?->getAttribute('aria-label'), 'items' => []];
         foreach ($nav === null ? [] : $x->query('.//li', $nav) as $li) {
             $a = $x->query('.//a', $li)->item(0);
@@ -109,7 +119,7 @@ $out = [
         $doc = new DOMDocument();
         @$doc->loadHTML((string) fetch("$url/notes")['body']);
         $x = new DOMXPath($doc);
-        return array_map(static fn ($li) => trim($li->textContent), iterator_to_array($x->query('//nav[@class="first-pagination"]//li')));
+        return array_map(static fn ($li) => trim($li->textContent), iterator_to_array($x->query('//nav[@class="typedpress-pagination"]//li')));
     })(),
     'search noindex' => str_contains(fetch("$url/notes")['body'], 'noindex'),
     'group' => page(fetch("$url/about")),
@@ -147,6 +157,23 @@ $out = [
     'rest' => fetch("$url/wp-json/")['status'],
     'feed' => fetch("$url/feed/")['status'],
     'reserved' => str_contains(fetch("$url/wp-content/nothing-here")['body'], 'No such page'),
+    // The theme's presets as CSS variables, the owner's Global Styles and Additional CSS, the site icon.
+    'styles' => (static function (string $head): array {
+        return [
+            'theme preset' => str_contains($head, '--wp--preset--font-family--system:'),
+            'core preset' => str_contains($head, '--wp--preset--color--black:'),
+            // The project's tp/theme.json, over the theme's...
+            'project preset' => str_contains($head, '--wp--preset--color--code: #0000aa'),
+            // ...and the owner's Global Styles over the project's, for the slug both name.
+            'global styles' => str_contains($head, '--wp--preset--color--brand: #123456') && !str_contains($head, '#000001'),
+            'additional css' => str_contains($head, '.owner-css { color: #654321; }'),
+            'site icon' => (bool) preg_match('#<link rel="icon" href="[^"]*icon\.png"#', $head),
+        ];
+    })(explode('</head>', fetch("$url/notes/hello")['body'])[0]),
 ];
+// `wp typedpress styles export`, which `typedpress styles pull` writes to tp/theme.json: the project's file
+// with the owner's Global Styles merged over it, settings and styles only.
+$export = \TypedPress\Wp\ThemeStyles::export();
+$out['styles export'] = [array_keys($export), array_map(static fn (array $c): string => $c['slug'] . ' ' . $c['color'], $export['settings']['color']['palette'] ?? [])];
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

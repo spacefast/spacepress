@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace TypedPress\Identity\Vendor\Webauthn;
 
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use First\Identity\Vendor\Psr\Log\LoggerInterface;
-use First\Identity\Vendor\Psr\Log\NullLogger;
+use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use TypedPress\Identity\Vendor\Psr\Log\LoggerInterface;
+use TypedPress\Identity\Vendor\Psr\Log\NullLogger;
 use Throwable;
-use First\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
-use First\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationFailedEvent;
-use First\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationSucceededEvent;
-use First\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
-use First\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use First\Identity\Vendor\Webauthn\MetadataService\CanLogData;
+use TypedPress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
+use TypedPress\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationFailedEvent;
+use TypedPress\Identity\Vendor\Webauthn\Event\AuthenticatorAttestationResponseValidationSucceededEvent;
+use TypedPress\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
+use TypedPress\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
+use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use TypedPress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\CanLogData;
 
 class AuthenticatorAttestationResponseValidator implements CanLogData, CanDispatchEvents
 {

@@ -1,17 +1,13 @@
 // Usage: node export-site.mjs <static site url>
-// Reads a `first export --site` output (tests/fixtures/app-export-site) in Chromium: the home page
+// Reads a `typedpress export --site` output (tests/fixtures/app-export-site) in Chromium: the home page
 // lists the hosted site's published notes, a note page's client component calls the hosted site's
 // public action across origins and shows the stored count, and the sign-in link goes to the hosted
 // site. Prints JSON.
 import { createRequire } from "node:module";
-import { readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { chromiumPath } from "./chromium.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright-core");
-const cache = join(homedir(), ".cache/ms-playwright");
-const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()[0];
-const browser = await chromium.launch({ executablePath: join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell") });
+const browser = await chromium.launch({ executablePath: chromiumPath() });
 const out = { errors: [], actions: [] };
 try {
   const page = await browser.newPage();

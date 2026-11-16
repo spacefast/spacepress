@@ -2,9 +2,9 @@
 // Test stack only: one screen declared once for both admins (runtime/admin/lib/screens.php), over
 // the test app's comments table. It lists through the app's `blog/comments-list` ability and
 // approves through `blog/comments-update`, so who may see and do what is the app's access rules.
-// runtime/admin/apps/wp-journey/screens.spec.ts opens it in First Admin and in classic wp-admin.
-add_action('first_admin_screens', static function (): void {
-    first_admin_register_screen('test-comments', [
+// runtime/admin/apps/wp-journey/screens.spec.ts opens it in TypedPress Admin and in classic wp-admin.
+add_action('tp_admin_screens', static function (): void {
+    tp_admin_register_screen('test-comments', [
         'title' => 'Comment review',
         'description' => 'Comments waiting for approval.',
         'capability' => 'read',
@@ -27,13 +27,13 @@ add_action('first_admin_screens', static function (): void {
         'data' => ['Approving a comment publishes it.'],
     ]);
     // An administrators-only screen: the same list, and a `data` line that must never reach anyone else.
-    first_admin_register_screen('test-admin-only', [
+    tp_admin_register_screen('test-admin-only', [
         'title' => 'Admin only',
         'capability' => 'manage_options',
         'classic' => ['parent' => 'tools.php'],
         'view' => ['ability' => 'blog/comments-list', 'items' => 'rows', 'fields' => [['id' => 'body']]],
         'data' => static function (): array {
-            update_option('first_harness_admin_only_data', (int) get_option('first_harness_admin_only_data', 0) + 1, false);
+            update_option('tp_harness_admin_only_data', (int) get_option('tp_harness_admin_only_data', 0) + 1, false);
             return ['Administrators only.'];
         },
     ]);

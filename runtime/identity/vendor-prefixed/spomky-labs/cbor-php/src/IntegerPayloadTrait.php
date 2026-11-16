@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR;
+namespace TypedPress\Identity\Vendor\CBOR;
 
-use First\Identity\Vendor\Brick\Math\BigInteger;
+use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
 use function chr;
 use InvalidArgumentException;
 use function ord;

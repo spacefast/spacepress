@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 
 /**
  * Interface for classes providing implicit tagging.

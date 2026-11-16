@@ -25,11 +25,11 @@ It does not approve every unrelated deletion or default in #55.
 
 ## The smallest app
 
-`first.config.ts` alone remains a complete backend. Every additional directory
+`typedpress.config.ts` alone remains a complete backend. Every additional directory
 below is optional. Names and storage choices appear once:
 
 ```ts
-import { collection, table, text, integer, richText, slug, defineConfig, defineRelations } from "first";
+import { collection, table, text, integer, richText, slug, defineConfig, defineRelations } from "typedpress";
 
 // A WordPress content type: editor, post identity and editorial lifecycle.
 export const products = collection({
@@ -73,7 +73,7 @@ Both kinds can appear on either side of a relation. One-to-one and one-to-many
 use the existing cardinality declarations; many-to-many uses an explicit join
 table and its relations. An inverse relation does not add a second writable
 copy of the foreign key. Ambiguous reverse relations require an explicit
-selection. Cross-kind references use logical First IDs, not unchecked native
+selection. Cross-kind references use logical TypedPress IDs, not unchecked native
 post IDs. Backend validation must reject an ID for the wrong content type.
 
 The generated client keeps the existing flat resource vocabulary:
@@ -103,8 +103,8 @@ does not drop data or manufacture a post/table conversion.
 | Public URL | Optional content route; not inferred | No native post URL; a page loader may query it |
 | Auth identities | Preserve the existing WP-user projection | Preserve the existing WP-user projection |
 
-A new project starts with collections only. `first add db` adds the table half
-as files the author owns (see [the `first add` decision](decisions/2026-11-13-first-add.md)),
+A new project starts with collections only. `typedpress add db` adds the table half
+as files the author owns (see [the `typedpress add` decision](decisions/2026-11-13-first-add.md)),
 and [Content and database](config-api.md#content-and-database) describes the
 same split for users.
 
@@ -119,7 +119,7 @@ retains target row access, field masking and appropriate nullable/omitted
 relation types. Trusted server `db` and viewer-bound reads keep their existing
 different authority contracts. SQL joins, filters and pagination must not leak
 denied target rows. An SQL foreign-key declaration alone cannot provide
-referential integrity against shared `wp_posts`; First must validate the target
+referential integrity against shared `wp_posts`; TypedPress must validate the target
 kind and implement the declared delete behavior at its write boundary.
 
 ## Files and stateless app replicas
@@ -168,8 +168,8 @@ redaction through their existing test owners.
 
 ```text
 shop/
-├── first.config.ts             # required: content, tables, access and backend behavior
-├── first/_generated/db.d.ts                # generated editor types; never hand-edit
+├── typedpress.config.ts             # required: content, tables, access and backend behavior
+├── tp/_generated/db.d.ts                # generated editor types; never hand-edit
 ├── tsconfig.json
 ├── lib/                      # ordinary imported TS; no discovery conventions
 │   └── pricing.ts
@@ -191,25 +191,25 @@ shop/
 ├── agents/                   # optional instruction files, referenced by agent declarations
 │   └── editor.md
 ├── content/products/         # optional collection file sync
-├── first/
+├── tp/
 │   ├── wp-hooks/             # optional WordPress actions/filters, one per hook name
 │   │   ├── save_post.ts      # default-exports the handler
 │   │   └── the_content/      # several handlers, registered in file-name order
 │   │       └── frame.ts
 │   ├── client/               # generated typed HTTP client
 │   ├── migrations/           # reviewed database migrations
-│   ├── abilities.json        # optional: abilities locked by `first abilities pull`
+│   ├── abilities.json        # optional: abilities locked by `typedpress abilities pull`
 │   └── wp-plugins.lock.json  # pinned plugin artifacts
-└── .first/                    # generated build/staging output
+└── .tp/                    # generated build/staging output
 ```
 
 Do not require a folder per collection, service classes, a route handler per
 resource, or a special file for every backend operation. Splitting the config
 into ordinary relative imports is optional. Discovery applies only to the
-documented page entry files and to `first/wp-hooks/`, where a file or directory
+documented page entry files and to `tp/wp-hooks/`, where a file or directory
 name is a WordPress hook name and each file default-exports its handler.
 Co-located helper and test files are not routes; helpers for hooks live outside
-`first/wp-hooks/` and are imported.
+`tp/wp-hooks/` and are imported.
 `page.blocks.html` is the alternative content-owned page format described in
 the pages proposal; one route cannot declare competing ownership formats.
 
@@ -230,7 +230,7 @@ islands remain later work.
 
 Use the existing OXC parser/AST family as the frontend. The crate registry was
 checked on 2026-11-02: matching `oxc_semantic`, `oxc_ast_visit` and
-`oxc_transformer` 0.152.0 are MIT and require Rust 1.96, matching First's pin.
+`oxc_transformer` 0.152.0 are MIT and require Rust 1.96, matching TypedPress's pin.
 Their latest releases were 0.156.0; upgrade the family together only for a
 demonstrated need. These crates were assessed, not added or runtime-qualified
 by this document.
@@ -239,8 +239,8 @@ by this document.
 |---|---|
 | Parse and source locations | Existing OXC parser, allocator, AST and spans |
 | Scope and references | Evaluate matching OXC semantic analysis/visitors before writing more scope walkers |
-| TS-only syntax | Reuse appropriate transforms when they preserve declarations, types and source provenance needed by First |
-| PHP lowering | First's typed IR, effect/reachability analysis and emitter |
+| TS-only syntax | Reuse appropriate transforms when they preserve declarations, types and source provenance needed by TypedPress |
+| PHP lowering | TypedPress's typed IR, effect/reachability analysis and emitter |
 | JS runtime semantics | Existing handle/runtime library, extended against Node behavior |
 | Editor and generated-client types | Schema-derived declarations and strict TypeScript checks |
 | Browser compiler | Same compiler core; compare native and WASM results |
@@ -268,7 +268,7 @@ project's complete emitter is compatible.
 
 ## Native providers and automated setup
 
-Selected direction: expose typed First capabilities backed by maintained PHP
+Selected direction: expose typed TypedPress capabilities backed by maintained PHP
 libraries and WordPress plugins where they fit. Keep expanding compilation for
 authored TypeScript; importing an npm package does not by itself make that
 package compatible with PHP. Avoid porting a library when a maintained native
@@ -285,7 +285,7 @@ For each supported integration, define its typed inputs/results, effects,
 authority and target requirements. Access analysis must still distinguish a
 pure helper from database writes or network effects. A WordPress-only provider
 must produce a located diagnostic on an unsupported target. An installed plugin
-is not evidence that its operations obey First's row access or field masking;
+is not evidence that its operations obey TypedPress's row access or field masking;
 the adapter must retain those boundaries.
 
 Dependency acquisition, installation, activation, configuration and readiness

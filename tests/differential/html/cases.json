@@ -42,7 +42,7 @@
       "notes": [
         {
           "id": 1,
-          "title": "First ships",
+          "title": "TypedPress ships",
           "tags": [
             "release",
             "php"
@@ -225,6 +225,23 @@
     "props": {
       "books": [],
       "open": false
+    }
+  },
+  {
+    "component": "components/static.tsx#Static",
+    "props": {
+      "name": "<Ada> & 'co'",
+      "items": [
+        "a",
+        "<b>"
+      ]
+    }
+  },
+  {
+    "component": "components/static.tsx#Static",
+    "props": {
+      "name": "",
+      "items": []
     }
   }
 ]

@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
+namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\GenericTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\GenericTypeNode;
 use function trim;
 
 class ExtendsTagValueNode implements PhpDocTagValueNode

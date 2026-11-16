@@ -9,13 +9,13 @@ declare(strict_types=1);
  * an accepted field is stored exactly as the compiler compiles it. Pure PHP: no WordPress.
  */
 
-require __DIR__ . '/../../runtime/First/bootstrap.php';
+require __DIR__ . '/../../runtime/TypedPress/bootstrap.php';
 require __DIR__ . '/harness.php';
 
-use First\RuntimeSchema\Changes;
-use First\RuntimeSchema\Kinds;
-use First\RuntimeSchema\Loader;
-use First\RuntimeSchema\Refused;
+use TypedPress\RuntimeSchema\Changes;
+use TypedPress\RuntimeSchema\Kinds;
+use TypedPress\RuntimeSchema\Loader;
+use TypedPress\RuntimeSchema\Refused;
 
 $corpus = json_decode((string) file_get_contents(__DIR__ . '/../runtime-schema/corpus.json'), true, 64, JSON_THROW_ON_ERROR);
 // `$kinds` is the build's schema.php: every change is checked against it and the state so far.
@@ -30,7 +30,7 @@ foreach ($corpus['cases'] as $case) {
     try {
         $resolved = Changes::resolve($kinds, $empty, $add($case['kind'], $case['field'], $case['definition']));
         eq("$name: accepted", 'accept', $case['runtime']);
-        // `===`: same keys in the same order, same value types. A build after `first pull` then
+        // `===`: same keys in the same order, same value types. A build after `typedpress pull` then
         // declares the field exactly as the site stored it.
         eq("$name: stored as the compiler compiles it", $resolved['changes'][0]['definition'], $case['stored'] ?? null);
         eq("$name: the state holds the stored definition", $resolved['state']['collections'][$case['kind']]['columns'][$case['field']], $case['stored'] ?? null);
@@ -246,7 +246,7 @@ eq('undoing a version that presented a field and then removed it leaves the fiel
 eq('undoing the version that added a kind, after another built on it, removes the kind whole', Loader::apply($kinds, Changes::resolve($kinds, $grown['state'], ['format' => Loader::FORMAT, 'changes' => Changes::reverse($empty, $site['changes'])])['state'])['collections'], $kinds['collections']);
 
 // ---------------------------------------------------------------- what a deploy does with the site's changes
-$deploy = static fn (array $built, array $state): array => \First\RuntimeSchema\Deploy::check($built, $state);
+$deploy = static fn (array $built, array $state): array => \TypedPress\RuntimeSchema\Deploy::check($built, $state);
 $codes = static fn (array $r): array => array_map(static fn (array $x): string => "{$x['code']} {$x['name']}", $r['refusals']);
 $withMood = Changes::resolve($kinds, $empty, $add('articles', 'mood', ['type' => 'text', 'enum' => ['calm', 'loud']]))['state'];
 eq('a build without the runtime field keeps it', $deploy($kinds, $withMood)['kept'], ['articles.mood']);
@@ -271,7 +271,7 @@ $fewer['collections']['articles']['columns']['venue'] = ['type' => 'group', 'fie
 eq('and so is one with other sub-fields', $codes($deploy($fewer, $withVenue)), ['runtime_type_differs articles.venue']);
 $withEvents = Changes::resolve($kinds, $empty, $set(['op' => 'addCollection', 'kind' => 'events', 'definition' => ['fields' => ['title' => ['type' => 'text', 'notNull' => true]]]]))['state'];
 $table = $kinds;
-$table['collections']['events'] = ['key' => 'events', 'editor' => false, 'wp' => null, 'table' => 'first_events', 'primaryKey' => 'id', 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true], 'title' => ['type' => 'text', 'notNull' => true]]];
+$table['collections']['events'] = ['key' => 'events', 'editor' => false, 'wp' => null, 'table' => 'tp_events', 'primaryKey' => 'id', 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true], 'title' => ['type' => 'text', 'notNull' => true]]];
 eq('a build that declares a table() named like a runtime collection is refused', $codes($deploy($table, $withEvents)), ['runtime_kind_differs events']);
 // A build field stored under a runtime field's key: the two would write one meta row.
 $withPromoTitle = Changes::resolve($kinds, $empty, $add('articles', 'promo_title', ['type' => 'integer']))['state'];
@@ -330,6 +330,44 @@ eq('one the option holds as a change made it is', $clean['collections']['article
 eq('an override carries a label and field presentation only; presentation a change couldn\'t set is ignored',
     [$loaded['collections']['articles']['label'], $loaded['collections']['articles']['access'], $loaded['collections']['articles']['columns']['rating']],
     ['Stories', $kinds['collections']['articles']['access'], ['type' => 'integer']]);
+
+// A state the option holds is served only as the changes could have made it: every rule a change
+// passes holds on load too, whoever wrote the option.
+$title = ['title' => ['type' => 'text', 'notNull' => true]];
+$forged = ['format' => Loader::FORMAT, 'version' => 1, 'hash' => 'h',
+    'added' => ['collections' => ['users' => ['fields' => $title], 'posts' => ['fields' => $title]]],
+    'collections' => ['articles' => ['columns' => ['staged' => ['type' => 'json'], 'system' => ['type' => 'json'], 'author' => ['type' => 'integer'],
+        str_repeat('x', 200) => $text, 'required' => ['type' => 'text', 'notNull' => true], 'seo_title' => ['type' => 'integer'], 'fine' => $text]]],
+    'overrides' => ['collections' => ['votes' => ['label' => 'Ballots', 'ui' => ['weight' => ['label' => 'W']]], 'articles' => ['ui' => ['status' => ['label' => 'S'], 'id' => ['label' => 'I']]]]]];
+$served = Loader::apply($kinds, $forged);
+eq('kinds every site has are not served from the option', [isset($served['collections']['users']), isset($served['collections']['posts'])], [false, false]);
+eq('nor fields under reserved names, over-long names, required without a default, or on another field\'s keys; a field a change could add still is',
+    array_values(array_intersect(array_keys($served['collections']['articles']['columns']), ['staged', 'system', 'author', str_repeat('x', 200), 'required', 'seo_title', 'fine'])), ['fine']);
+eq('nor a label or presentation on a table() kind, a system field or the primary key',
+    [$served['collections']['votes']['label'], $served['collections']['votes']['columns']['weight'], $served['collections']['articles']['columns']['status'], $served['collections']['articles']['columns']['id']],
+    [$kinds['collections']['votes']['label'], $kinds['collections']['votes']['columns']['weight'], $kinds['collections']['articles']['columns']['status'], $kinds['collections']['articles']['columns']['id']]);
+
+// The seal is keyed to the site: a writer who knows the algorithm but not the site's salt can't make one.
+$sealable = ['format' => Loader::FORMAT, 'version' => 3, 'hash' => 'h'] + Changes::resolve($kinds, $empty, $add('articles', 'subtitle', $text))['state'];
+$plain = $sealable;
+$plain['seal'] = hash('sha256', serialize((static function (array $s): array { ksort($s); return $s; })($sealable)));
+eq('an unkeyed hash is not a seal', Loader::sealedBy($plain), false);
+eq('a state apply seals is', Loader::sealedBy(Loader::sealed($sealable)), true);
+eq('the empty state needs none, and any other state without one is refused', [Loader::sealedBy($empty), Loader::sealedBy(['format' => 1, 'version' => 0, 'hash' => '', 'collections' => ['articles' => ['columns' => ['x' => $text]]]])], [true, false]);
+$floaty = $sealable;
+$floaty['collections']['articles']['columns']['ratio'] = ['type' => 'real', 'rules' => ['min' => 0.1]];
+$previous = ini_get('serialize_precision');
+ini_set('serialize_precision', '17');
+$sealedAt17 = Loader::sealed($floaty);
+ini_set('serialize_precision', $previous);
+eq('a seal doesn\'t depend on the PHP precision setting it was made under', Loader::sealedBy($sealedAt17), true);
+
+// A table() label stored before the rule existed can be taken off again, and isn't exported to the lock.
+$legacy = ['format' => Loader::FORMAT, 'version' => 1, 'hash' => 'h', 'overrides' => ['collections' => ['votes' => ['label' => 'Ballots']]]];
+eq('clearing a table() label is accepted; setting one is not',
+    [$verdict($set(['op' => 'setLabel', 'kind' => 'votes', 'label' => null]), $kinds, $legacy), $verdict($set(['op' => 'setFieldUi', 'kind' => 'votes', 'field' => 'weight', 'ui' => null]), $kinds, $legacy), $verdict($set(['op' => 'setLabel', 'kind' => 'votes', 'label' => 'B']), $kinds, $legacy)],
+    ['accept', 'accept', '422 schema_build_only /changes/0/kind']);
+eq('and the lock leaves table() overrides out, so `typedpress build` takes what `typedpress pull` writes', Changes::lock($legacy, $kinds)['overrides'] ?? [], []);
 
 // ---------------------------------------------------------------- replay
 $first = Changes::resolve($kinds, $empty, $add('articles', 'subtitle', $text));

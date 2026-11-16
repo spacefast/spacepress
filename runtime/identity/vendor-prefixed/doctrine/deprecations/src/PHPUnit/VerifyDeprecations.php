@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Doctrine\Deprecations\PHPUnit;
+namespace TypedPress\Identity\Vendor\Doctrine\Deprecations\PHPUnit;
 
-use First\Identity\Vendor\Doctrine\Deprecations\Deprecation;
+use TypedPress\Identity\Vendor\Doctrine\Deprecations\Deprecation;
 use PHPUnit\Framework\Attributes\After;
 use PHPUnit\Framework\Attributes\Before;
 

@@ -6,8 +6,8 @@ wp="$(cd "$here/.." && pwd)"
 repo="$(cd "$wp/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-spacefast}"
-export FIRST_WP_PORT="${FIRST_WP_PORT:-8892}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-spacefast}"
+export TP_WP_PORT="${TP_WP_PORT:-8892}"
 app="$(mktemp -d)"
 cleanup() { "$wp/harness.sh" down; rm -rf "$app"; }
 trap cleanup EXIT
@@ -29,21 +29,21 @@ export default capsule({
   },
 });
 TS
-"$target/debug/first" migrate app --from zero-0.8 "$app/source" --out "$app/converted" --users >/dev/null
-"$target/debug/first" build "$app/converted" --quiet >/dev/null
+"$target/debug/typedpress" migrate app --from zero-0.8 "$app/source" --out "$app/converted" --users >/dev/null
+"$target/debug/typedpress" build "$app/converted" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-spacefast"
-rsync -a --delete "$app/converted/first/dist/wp-content/" "$wp/.wp-content-spacefast/"
+rsync -a --delete "$app/converted/tp/dist/wp-content/" "$wp/.wp-content-spacefast/"
 "$wp/harness.sh" down
 "$wp/harness.sh" up --wp-content "$wp/.wp-content-spacefast" > "$app/harness.json"
-"$wp/harness.sh" wp first migrate >/dev/null
+"$wp/harness.sh" wp typedpress migrate >/dev/null
 for file in spacefast.php spacefast-scope.php; do
   "$wp/harness.sh" compose cp "$here/$file" "cli:/tmp/$file" >/dev/null 2>&1
 done
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php seed
-"$wp/harness.sh" compose exec -T cli cp /tmp/spacefast-scope.php /var/www/html/wp-content/mu-plugins/first-spacefast-scope.php
-"$wp/harness.sh" wp first migrate >/dev/null
+"$wp/harness.sh" compose exec -T cli cp /tmp/spacefast-scope.php /var/www/html/wp-content/mu-plugins/typedpress-spacefast-scope.php
+"$wp/harness.sh" wp typedpress migrate >/dev/null
 prefix="$(python3 -c 'import hashlib; print("sfz_"+hashlib.sha256(b"imported-space").hexdigest()[:24]+"_")')"
-command=(first migrate-spacefast --space=imported-space --source-prefix=wp_ --target-prefix="$prefix")
+command=(typedpress migrate-spacefast --space=imported-space --source-prefix=wp_ --target-prefix="$prefix")
 "$wp/harness.sh" wp "${command[@]}" --verify > "$app/missing.json" && { echo 'Expected missing receipts to refuse verify' >&2; exit 1; }
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php comments
 for mode in --dry-run ''; do
@@ -65,7 +65,7 @@ fi
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php rollback
 # The operator's backup of the target users, taken before the copy (restored by recover-subjects).
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php snapshot-users
-"$wp/harness.sh" wp "${command[@]}" > "$app/first.json"
+"$wp/harness.sh" wp "${command[@]}" > "$app/typedpress.json"
 "$wp/harness.sh" wp "${command[@]}" --verify > "$app/verify.json"
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php copied
 "$wp/harness.sh" wp "${command[@]}" > "$app/second.json"
@@ -74,18 +74,18 @@ import json,sys
 from pathlib import Path
 p=Path(sys.argv[1])
 assert all(g['status']=='missing' and g['stored'] is None for g in json.loads((p/'missing.json').read_text())['error']['groups'].values())
-assert json.loads((p/'missing.json').read_text())['error']['code']=='first_spacefast_drift'
-assert json.loads((p/'comments.json').read_text())['error']['code']=='first_spacefast_unsupported_comments'
+assert json.loads((p/'missing.json').read_text())['error']['code']=='tp_spacefast_drift'
+assert json.loads((p/'comments.json').read_text())['error']['code']=='tp_spacefast_unsupported_comments'
 assert json.loads((p/'comments.json').read_text())['error']['pointer']=='/comments'
 assert all(g['status']=='verified' and g['stored']==g['current'] for g in json.loads((p/'verify.json').read_text())['data']['groups'].values())
-assert json.loads((p/'conflict.json').read_text())['error']['code']=='first_spacefast_conflict'
+assert json.loads((p/'conflict.json').read_text())['error']['code']=='tp_spacefast_conflict'
 assert all(g['status']=='dry-run' for g in json.loads((p/'dry.json').read_text())['data']['groups'].values())
-assert all(g['status']=='copied' and g['copied']>0 for g in json.loads((p/'first.json').read_text())['data']['groups'].values())
+assert all(g['status']=='copied' and g['copied']>0 for g in json.loads((p/'typedpress.json').read_text())['data']['groups'].values())
 assert all(g=={'copied':0,'status':'already-migrated'} for g in json.loads((p/'second.json').read_text())['data']['groups'].values())
 CHECK
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php storage-failure
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php upgrade-failure
-FIRST_SPACEFAST_HARNESS="$app/harness.json" node --test "$here/spacefast.test.mjs"
+TP_SPACEFAST_HARNESS="$app/harness.json" node --test "$here/spacefast.test.mjs"
 "$wp/harness.sh" wp eval-file /tmp/spacefast.php authenticated
 # Receipts must also protect upgraded hashes and revoked sessions on later retries.
 "$wp/harness.sh" wp "${command[@]}" > "$app/after-auth.json"
@@ -106,7 +106,7 @@ import json,sys
 from pathlib import Path
 p=Path(sys.argv[1])
 error=json.loads((p/'subjects.json').read_text())['error']
-assert error['code']=='first_spacefast_subjects_missing' and error['pointer'].startswith('/users/'), error
+assert error['code']=='tp_spacefast_subjects_missing' and error['pointer'].startswith('/users/'), error
 assert "delete the" in error['detail'] and "backup" in error['detail'] and "table_group 'users'" in error['detail'], error
 assert json.loads((p/'subjects-verify.json').read_text())['error']['groups']['users']['status']=='incomplete'
 CHECK
@@ -130,7 +130,7 @@ fi
 python3 - "$app/drift.json" <<'CHECK'
 import json,sys
 error=json.load(open(sys.argv[1]))['error']
-assert error['status']==409 and error['code']=='first_spacefast_drift'
+assert error['status']==409 and error['code']=='tp_spacefast_drift'
 assert error['groups']['posts']['status']=='drifted'
 assert error['groups']['posts']['stored']!=error['groups']['posts']['current']
 assert all(error['groups'][g]['status']=='verified' for g in ['users','sessions'])

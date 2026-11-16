@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Uid;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Uid;
 
 /**
  * A v5 UUID contains a SHA1 hash of another UUID and a name.

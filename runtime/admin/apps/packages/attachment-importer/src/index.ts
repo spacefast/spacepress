@@ -4,14 +4,14 @@ import { store as noticesStore } from '@wordpress/notices';
 import type { useRegistry } from '@wordpress/data';
 import type { RestAttachment } from '@wordpress/media-utils';
 
-/** Upload under First's rules, then read the native representation Gutenberg expects. */
+/** Upload under TypedPress's rules, then read the native representation Gutenberg expects. */
 export async function uploadAttachment(file: File): Promise<RestAttachment> {
 	const body = new FormData();
 	body.append('file', file);
-	// First's API (window.firstAdmin.api, /__first/api/v1): the upload under First's media rules.
-	const base = (window as { firstAdmin?: { api?: unknown } }).firstAdmin?.api;
+	// TypedPress's API (window.tpAdmin.api, /__tp/api/v1): the upload under TypedPress's media rules.
+	const base = (window as { tpAdmin?: { api?: unknown } }).tpAdmin?.api;
 	const result: unknown = await apiFetch({
-		url: `${typeof base === 'string' ? base.replace(/\/+$/, '') : '/__first/api/v1'}/media`,
+		url: `${typeof base === 'string' ? base.replace(/\/+$/, '') : '/__tp/api/v1'}/media`,
 		method: 'POST',
 		body,
 	});

@@ -1,6 +1,6 @@
-//! `first doctor --links`: every link and `#anchor` a site's own pages make, followed.
+//! `typedpress doctor --links`: every link and `#anchor` a site's own pages make, followed.
 //!
-//! A First site's pages come from content (synced Markdown, edited in wp-admin), TSX and WordPress
+//! A TypedPress site's pages come from content (synced Markdown, edited in wp-admin), TSX and WordPress
 //! itself, so a broken link can come from any of them and only shows on the served site. The check
 //! reads the site as a visitor does:
 //!
@@ -303,7 +303,7 @@ fn wordpress_own(site: &Url, url: &Url) -> bool {
         "/wp-cron.php",
         "/feed",
         "/comments/feed",
-        "/__first",
+        "/__tp",
         "/__spacefast",
     ]
     .iter()
@@ -620,7 +620,9 @@ fn local(site: &Url, url: &Url) -> String {
     }
 }
 
-fn percent_decode(text: &str) -> String {
+/// `%XX` escapes to bytes, read as UTF-8 (the text unchanged when they aren't); every other
+/// character, `+` included, is itself, as in a URL path or fragment.
+pub(super) fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

@@ -45,13 +45,25 @@ test('schema metadata describes labels, help, explicit kind and defaults indepen
 		collection: 'roots', column: 'code',
 	});
 });
+test('a field labels and explains itself from `.ui()` when the schema gives no label of its own', () => {
+	const c = columns({
+		buyerEmail: { type: 'email', ui: { label: 'Email', help: 'Where the receipt goes' } },
+		code: { type: 'text', label: 'Order code', ui: { label: 'Ignored' } },
+		unitPrice: { type: 'number' },
+		items: { type: 'repeater', fields: { sku: { type: 'text', ui: { label: 'SKU' } } } },
+	});
+	expect(c.buyerEmail).toMatchObject({ label: 'Email', help: 'Where the receipt goes' });
+	expect(c.code.label).toBe('Order code');
+	expect(c.unitPrice.label).toBe('Unit Price');
+	expect(c.items.fields.sku.label).toBe('SKU');
+});
 test('native mapping retains only returned fields and round-trips SCF values without core-field duplication', () => {
-	window.firstAdmin = {
+	window.tpAdmin = {
 		native: {
 			posts: {
-				path: '/wp/v2/first_posts',
-				postType: 'first_posts',
-				metaPrefix: 'first_',
+				path: '/wp/v2/tp_posts',
+				postType: 'tp_posts',
+				metaPrefix: 'tp_',
 			},
 		},
 		readable: ['posts'],
@@ -81,10 +93,10 @@ test('native mapping retains only returned fields and round-trips SCF values wit
 		title: { raw: 'Title' },
 		content: { raw: '<p>Body</p>' },
 		acf: {
-			_source: { first_excerpt: 'field_first_excerpt' },
+			_source: { tp_excerpt: 'field_tp_excerpt' },
 			unrelated: 'Not a schema field',
-			first_excerpt: 'Visible',
-			first_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }],
+			tp_excerpt: 'Visible',
+			tp_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }],
 		},
 	});
 	expect(nativeEditor(c, row, true)).toBe(true);
@@ -99,20 +111,20 @@ test('native mapping retains only returned fields and round-trips SCF values wit
 	});
 	expect(toNative(c, { headline: 'Changed', sections: row.sections })).toEqual({
 		title: 'Changed',
-		acf: { first_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }] },
+		acf: { tp_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }] },
 	});
 	// Captured SCF textarea representation of an absent/saved-null JSON scalar.
-	const nullRow = fromNative(c, { acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: '' }] } });
+	const nullRow = fromNative(c, { acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: '' }] } });
 	expect(nullRow.sections).toEqual([{ layout: 'hero', configuration: null }]);
-	expect(toNative(c, { sections: nullRow.sections })).toEqual({ acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: null }] } });
-	const emptyString = fromNative(c, { acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
+	expect(toNative(c, { sections: nullRow.sections })).toEqual({ acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: null }] } });
+	const emptyString = fromNative(c, { acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
 	expect(emptyString.sections).toEqual([{ layout: 'hero', configuration: '' }]);
-	expect(toNative(c, { sections: emptyString.sections })).toEqual({ acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
-	const falseRow = fromNative(c, { acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
+	expect(toNative(c, { sections: emptyString.sections })).toEqual({ acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
+	const falseRow = fromNative(c, { acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
 	expect(falseRow.sections).toEqual([{ layout: 'hero', configuration: false }]);
-	expect(toNative(c, { sections: falseRow.sections })).toEqual({ acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
+	expect(toNative(c, { sections: falseRow.sections })).toEqual({ acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
 	// Incoming SCF false still denotes an empty structured/platform field.
-	expect(fromNative(c, { acf: { first_sections: false } }).sections).toBe(false);
+	expect(fromNative(c, { acf: { tp_sections: false } }).sections).toBe(false);
 });
 test('conditional fields evaluate sibling values and grouped conditions', () => {
 	const condition = {

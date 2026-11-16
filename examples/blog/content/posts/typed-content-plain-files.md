@@ -19,4 +19,4 @@ translations:
 ---
 ## One schema
 
-The fields in the front matter come from `first.config.ts`. Typos are refused with the file and line.
+The fields in the front matter come from `typedpress.config.ts`. Typos are refused with the file and line.

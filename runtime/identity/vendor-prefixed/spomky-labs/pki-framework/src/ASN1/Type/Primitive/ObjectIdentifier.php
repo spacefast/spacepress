@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
-use First\Identity\Vendor\Brick\Math\BigInteger;
+use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
 use function chr;
 use function count;
 use function is_int;
 use function mb_strlen;
 use function ord;
 use RuntimeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
 use function sprintf;
 use Throwable;
 use UnexpectedValueException;

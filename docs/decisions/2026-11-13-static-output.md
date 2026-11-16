@@ -241,6 +241,7 @@ What this means:
   - later, a host engine that serves these files before PHP at the static-file speed in the last
     row, once that work is done (see "Serving prebuilt files before PHP: deferred").
 - The edge cache is unchanged: prebuilt answers carry the same `Cache-Control` as a cacheable render.
+- A prebuilt answer carries the file's `ETag`; a matching `If-None-Match` gets an empty 304 (added 2026-11-16).
 
 ## Serving prebuilt files before PHP: deferred
 

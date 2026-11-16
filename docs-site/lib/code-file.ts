@@ -8,7 +8,7 @@
 import { preloadFile } from "@pierre/diffs/ssr";
 
 import type { Diagnostic } from "./compiler.ts";
-import { toFirst } from "./names.ts";
+import { toTypedPress } from "./names.ts";
 
 export interface InlineDiagnostic {
 	line: number;
@@ -20,8 +20,8 @@ export interface InlineDiagnostic {
 /** The diagnostics of one file, keyed to its lines, with First names. */
 export function diagnosticsFor(file: string, diagnostics: Diagnostic[]): InlineDiagnostic[] {
 	return diagnostics
-		.filter((d) => d.location && toFirst(d.location.file) === file)
-		.map((d) => ({ line: d.location!.line, code: toFirst(d.code), message: toFirst(d.message), help: d.help === null ? null : toFirst(d.help) }));
+		.filter((d) => d.location && toTypedPress(d.location.file) === file)
+		.map((d) => ({ line: d.location!.line, code: toTypedPress(d.code), message: toTypedPress(d.message), help: d.help === null ? null : toTypedPress(d.help) }));
 }
 
 const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

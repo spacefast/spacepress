@@ -1,8 +1,8 @@
 @use "@wordpress/base-styles/variables";
 @use "@wordpress/base-styles/mixins";
 
-.first-admin-sidebar-navigation-item.components-item {
-	color: var( --wpds-color-fg-interactive-neutral-weak );
+.typedpress-admin-sidebar-navigation-item.components-item {
+	color: var( --wpds-color-foreground-interactive-neutral-weak );
 	padding-inline: variables.$grid-unit-05;
 	padding-block: 0;
 	margin-inline: variables.$grid-unit-15;
@@ -14,7 +14,7 @@
 	align-items: center;
 	@include mixins.body-medium();
 
-	.first-admin-sidebar-dropdown-item__children & {
+	.typedpress-admin-sidebar-dropdown-item__children & {
 		min-height: variables.$grid-unit-40;
 
 		/*		&.active {
@@ -29,18 +29,18 @@
 	&:hover,
 	&:focus,
 	&[aria-current="true"] {
-		color: var( --wpds-color-fg-interactive-neutral-active );
+		color: var( --wpds-color-foreground-interactive-neutral-active );
 	}
 
 	&:has( .active ) {
-		color: var( --wpds-color-fg-interactive-neutral-active );
-		background: var( --wpds-color-bg-interactive-neutral-weak-active );
+		color: var( --wpds-color-foreground-interactive-neutral-active );
+		background: var( --wpds-color-background-interactive-neutral-weak-active );
 	}
 
 	&.active {
 		font-weight: var(--wpds-typography-font-weight-emphasis, 499);
-		color: var( --wpds-color-fg-interactive-neutral-active );
-		background: var( --wpds-color-bg-interactive-neutral-weak-active );
+		color: var( --wpds-color-foreground-interactive-neutral-active );
+		background: var( --wpds-color-background-interactive-neutral-weak-active );
 	}
 
 	svg:last-child {
@@ -48,7 +48,7 @@
 	}
 
 	&[aria-current="true"] {
-		color: var( --wpds-color-fg-interactive-brand-active );
+		color: var( --wpds-color-foreground-interactive-brand-active );
 		font-weight: var(--wpds-typography-font-weight-emphasis, 499);
 	}
 
@@ -64,9 +64,9 @@
 
 // Style the ancestor of an active child item to appear active.
 
-/*.first-admin-sidebar-dropdown-item:has(.first-admin-sidebar-dropdown-item__children .active) {
-	> div > .first-admin-sidebar-navigation-item {
-		color: var( --wpds-color-fg-interactive-neutral-active );
-		background: var( --wpds-color-bg-interactive-neutral-weak-active );
+/*.typedpress-admin-sidebar-dropdown-item:has(.typedpress-admin-sidebar-dropdown-item__children .active) {
+	> div > .typedpress-admin-sidebar-navigation-item {
+		color: var( --wpds-color-foreground-interactive-neutral-active );
+		background: var( --wpds-color-background-interactive-neutral-weak-active );
 	}
 }*/

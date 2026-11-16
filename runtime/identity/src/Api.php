@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity;
+namespace TypedPress\Identity;
 
 final class Api
 {
@@ -16,7 +16,7 @@ final class Api
     public function register(): void
     {
         register_rest_route(
-            "first-identity/v1",
+            "typedpress-identity/v1",
             "/(?P<operation>[a-z0-9/-]+)",
             [
                 "methods" => ["GET", "POST", "DELETE", "PATCH"],
@@ -50,7 +50,7 @@ final class Api
             );
         } catch (\Throwable $e) {
             error_log(
-                "First Identity: " . get_class($e) . " " . $e->getMessage(),
+                "TypedPress Identity: " . get_class($e) . " " . $e->getMessage(),
             );
             $response = new \WP_REST_Response(
                 [
@@ -265,7 +265,7 @@ final class Api
             return [
                 "account" => $this->accounts->profile($uid) + [
                     "guest" => in_array(
-                        "first_guest",
+                        "tp_guest",
                         (array) get_userdata($uid)->roles,
                         true,
                     ),

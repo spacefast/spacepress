@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\OtherObject;
+namespace TypedPress\Identity\Vendor\CBOR\OtherObject;
 
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\CBOR\OtherObject as Base;
-use First\Identity\Vendor\CBOR\Utils;
+use TypedPress\Identity\Vendor\CBOR\Normalizable;
+use TypedPress\Identity\Vendor\CBOR\OtherObject as Base;
+use TypedPress\Identity\Vendor\CBOR\Utils;
 use function chr;
 use InvalidArgumentException;
 use function ord;

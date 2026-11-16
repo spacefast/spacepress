@@ -8,7 +8,7 @@ import './style.scss';
  *
  * @example
  * ```tsx
- * import { WidgetLoadingOverlay } from '@first-admin/dashboard';
+ * import { WidgetLoadingOverlay } from '@typedpress-admin/dashboard';
  *
  * <WidgetLoadingOverlay />
  * ```

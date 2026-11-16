@@ -7,7 +7,7 @@ export async function releaseVersion(requested) {
   const cargo = await readFile(new URL('Cargo.toml', root), 'utf8');
   const version = cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
   if (!version || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Cargo.toml must declare a semantic release version.');
-  for (const file of ['packages/cli/package.json', 'packages/create-first/package.json']) {
+  for (const file of ['packages/cli/package.json', 'packages/create-typedpress/package.json']) {
     const metadata = JSON.parse(await readFile(new URL(file, root), 'utf8'));
     if (metadata.version !== version) throw new Error(`${file} version ${metadata.version} differs from Cargo.toml ${version}. Update all three before packaging.`);
   }

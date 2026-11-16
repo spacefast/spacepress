@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
 
 /**
  * Implements *Validity* ASN.1 type.

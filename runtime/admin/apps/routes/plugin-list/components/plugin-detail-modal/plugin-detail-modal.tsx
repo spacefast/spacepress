@@ -28,7 +28,7 @@ function useWpOrgPluginDetails( slug: string ) {
 		setIsLoading( true );
 		setError( null );
 
-		// First, check cache to avoid re-fetching on every re-render/open
+		// TypedPress, check cache to avoid re-fetching on every re-render/open
 		const cached = pluginInfoCache.get( slug );
 		if ( cached ) {
 			setData( cached );
@@ -103,10 +103,10 @@ export default function PluginDetailModal( {
 
 	const title = useMemo( () => {
 		if ( isLoading ) {
-			return __( 'Loading plugin…', 'first-admin' );
+			return __( 'Loading plugin…', 'typedpress-admin' );
 		}
 		if ( error ) {
-			return __( 'Plugin not found', 'first-admin' );
+			return __( 'Plugin not found', 'typedpress-admin' );
 		}
 		return decodeEntities( data?.name || slug );
 	}, [ isLoading, error, data?.name, slug ] );
@@ -132,7 +132,7 @@ export default function PluginDetailModal( {
 				<div className="plugin-details-error">
 					{ __(
 						'There was an error fetching plugin details.',
-						'first-admin'
+						'typedpress-admin'
 					) }
 				</div>
 			) }

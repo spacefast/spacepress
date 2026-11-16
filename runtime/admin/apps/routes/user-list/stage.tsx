@@ -5,10 +5,10 @@ import {
 	useParams,
 	useInvalidate,
 } from '@wordpress/route';
-import { DataViews, useView, useViewConfig } from '@first-admin/views';
-import { useFieldCollections } from '@first-admin/core-data-next';
-import { Page, RouterLink, unlock } from '@first-admin/admin-toolkit';
-import type { Action, View } from '@first-admin/dataviews';
+import { DataViews, useView, useViewConfig } from '@typedpress-admin/views';
+import { useFieldCollections } from '@typedpress-admin/core-data-next';
+import { Page, RouterLink, unlock } from '@typedpress-admin/admin-toolkit';
+import type { Action, View } from '@typedpress-admin/dataviews';
 import {
 	store as coreStore,
 	privateApis as coreDataPrivateApis,
@@ -22,7 +22,7 @@ import {
 	usePageView,
 	useTrack,
 	useTrackedDataView,
-} from '@first-admin/telemetry';
+} from '@typedpress-admin/telemetry';
 import { useFullEditAction } from './actions/full-edit';
 import { useQuickEditAction } from './actions/quick-edit';
 import { useDeleteUserAction } from './actions/delete-user';

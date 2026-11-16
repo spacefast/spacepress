@@ -5,8 +5,8 @@
 use crate::schema::{ColType, Column};
 use indexmap::IndexMap;
 
-/// First segments a kind's URL can't start with: WordPress's own entry points and First's.
-pub const RESERVED_FIRST_SEGMENTS: &[&str] = &[
+/// TypedPress segments a kind's URL can't start with: WordPress's own entry points and TypedPress's.
+pub const RESERVED_TP_SEGMENTS: &[&str] = &[
     "wp-admin",
     "wp-json",
     "wp-content",
@@ -17,7 +17,7 @@ pub const RESERVED_FIRST_SEGMENTS: &[&str] = &[
     "wp-sitemap.xml",
     "xmlrpc.php",
     "feed",
-    "__first",
+    "__tp",
     "__spacefast",
     "llms.txt",
     "robots.txt",
@@ -38,13 +38,13 @@ pub const RESERVED_FIRST_SEGMENTS: &[&str] = &[
     "wp-trackback.php",
     "wp-comments-post.php",
     "wp-mail.php",
-    // The host's and First's own entry points.
+    // The host's and TypedPress's own entry points.
     ".well-known",
     "__zero",
     "identity",
     "index.php",
     "wp-config.php",
-    "first-admin",
+    "typedpress-admin",
     "auth",
 ];
 
@@ -157,12 +157,14 @@ pub fn check(pattern: &str, kind: &UrlKind<'_>) -> Result<Vec<Segment>, Invalid>
             "start it with your own literal segment, e.g. \"/blog/:slug\": WordPress's posts, pages, archives and feeds own every other first segment (a hierarchical kind may be \"/:path\")",
         ));
     }
-    if let Some(reserved) = RESERVED_FIRST_SEGMENTS
+    if let Some(reserved) = RESERVED_TP_SEGMENTS
         .iter()
         .find(|r| r.eq_ignore_ascii_case(segments[0]))
     {
         return Err(invalid(
-            format!("the url pattern \"{pattern}\" starts with `/{reserved}`, which WordPress or First already serves"),
+            format!(
+                "the url pattern \"{pattern}\" starts with `/{reserved}`, which WordPress or TypedPress already serves"
+            ),
             "start the pattern with your own segment, e.g. \"/blog/:slug\"",
         ));
     }
@@ -459,15 +461,15 @@ mod tests {
     }
 
     /// The runtime keeps a copy of this list for apps built before schema.php carried it
-    /// (runtime/First/Schema.php `RESERVED`): the two are the same, in order.
+    /// (runtime/TypedPress/Schema.php `RESERVED`): the two are the same, in order.
     #[test]
     fn the_runtime_copy_of_the_reserved_segments_is_this_list() {
-        let php = include_str!("../runtime/First/Schema.php");
+        let php = include_str!("../runtime/TypedPress/Schema.php");
         let start =
             php.find("private const RESERVED = [").expect("Schema::RESERVED") + "private const RESERVED = [".len();
         let list = &php[start..start + php[start..].find("];").expect("end of the list")];
         let copy: Vec<&str> = list.split(", ").map(|s| s.trim_matches('\'')).collect();
-        assert_eq!(copy, RESERVED_FIRST_SEGMENTS);
+        assert_eq!(copy, RESERVED_TP_SEGMENTS);
     }
 
     #[test]
@@ -482,7 +484,7 @@ mod tests {
         assert!(message("/../:slug").contains("can't keep as written"));
         assert!(message("/x/./:slug").contains("can't keep as written"));
         assert!(message("/wp-json/:slug").contains("already serves"));
-        assert!(message("/__first/:slug").contains("already serves"));
+        assert!(message("/__tp/:slug").contains("already serves"));
         assert!(message("/category/:slug").contains("already serves"));
         assert!(message("/blog/:title").contains("doesn't identify an item"));
         assert!(message("/n/:slug/:slug").contains("appears twice"));

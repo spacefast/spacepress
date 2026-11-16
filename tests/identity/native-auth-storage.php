@@ -3,17 +3,17 @@
 declare(strict_types=1);
 
 (static function (): void {
-    $db = \First\Identity\Plugin::$db;
-    $accounts = \First\Identity\Plugin::$accounts;
+    $db = \TypedPress\Identity\Plugin::$db;
+    $accounts = \TypedPress\Identity\Plugin::$accounts;
     $assert = static function (bool $ok, string $label): void {
         if (!$ok) {
             throw new RuntimeException($label);
         }
     };
     // Exercise an upgrade inventory on real users without password hashing per fixture row.
-    $inventory = 'first_identity_password_inventory';
+    $inventory = 'tp_identity_password_inventory';
     $fixtureTag = 'inventory-' . bin2hex(random_bytes(6)) . '-';
-    $fixtureHash = get_option('first_identity_dummy_password_hash');
+    $fixtureHash = get_option('tp_identity_dummy_password_hash');
     for ($batch = 0; $batch < 25; $batch++) {
         $values = [];
         for ($i = 0; $i < 100; $i++) {
@@ -22,17 +22,17 @@ declare(strict_types=1);
         $db->run("INSERT INTO {$db->wp->users} (user_login,user_pass) VALUES " . implode(',', $values));
     }
     delete_option($inventory);
-    delete_option('first_identity_password_profiles');
-    \First\Identity\Accounts::rememberPasswordHash($fixtureHash);
-    $registered = get_option('first_identity_password_profiles');
+    delete_option('tp_identity_password_profiles');
+    \TypedPress\Identity\Accounts::rememberPasswordHash($fixtureHash);
+    $registered = get_option('tp_identity_password_profiles');
     $assert(is_array($registered) && count($registered) === 1 && is_string(array_values($registered)[0]), 'legacy registration initializes the profile map before request provisioning');
-    delete_option('first_identity_password_profiles');
+    delete_option('tp_identity_password_profiles');
     $interleaved = false;
     $inventoryInterleaved = false;
     $registerDuringProvision = static function ($sql) use (&$interleaved, &$inventoryInterleaved, $inventory) {
-        if (!$interleaved && preg_match('/^INSERT /i', $sql) && str_contains($sql, "'first_identity_password_profiles'")) {
+        if (!$interleaved && preg_match('/^INSERT /i', $sql) && str_contains($sql, "'tp_identity_password_profiles'")) {
             $interleaved = true;
-            \First\Identity\Accounts::rememberPasswordHash(md5('disposable-imported-password'));
+            \TypedPress\Identity\Accounts::rememberPasswordHash(md5('disposable-imported-password'));
         }
         if (!$inventoryInterleaved && preg_match('/^INSERT /i', $sql) && str_contains($sql, "'$inventory'")) {
             $inventoryInterleaved = true;
@@ -42,11 +42,11 @@ declare(strict_types=1);
     };
     add_filter('query', $registerDuringProvision);
     try {
-        \First\Identity\Accounts::provisionPasswordHash();
+        \TypedPress\Identity\Accounts::provisionPasswordHash();
     } finally {
         remove_filter('query', $registerDuringProvision);
     }
-    $assert($interleaved && isset(get_option('first_identity_password_profiles')['md5']), 'provisioning preserves a profile registered between the option existence check and insert');
+    $assert($interleaved && isset(get_option('tp_identity_password_profiles')['md5']), 'provisioning preserves a profile registered between the option existence check and insert');
     $assert($inventoryInterleaved && get_option($inventory)['after'] === 123, 'provisioning preserves concurrently committed inventory progress');
     update_option($inventory, ['after' => 0, 'complete' => false], false);
     $inventoryReads = 0;
@@ -57,14 +57,14 @@ declare(strict_types=1);
         return $sql;
     };
     add_filter('query', $observeInventory);
-    \First\Identity\Accounts::provisionPasswordHash();
+    \TypedPress\Identity\Accounts::provisionPasswordHash();
     remove_filter('query', $observeInventory);
     $assert($inventoryReads === 0, 'ordinary requests never inventory WordPress password hashes');
     $peak = 0;
     $page = static function () use (&$peak): void {
         memory_reset_peak_usage();
         $start = memory_get_usage();
-        do_action('first_identity_password_inventory');
+        do_action('tp_identity_password_inventory');
         $peak = max($peak, memory_get_peak_usage() - $start);
     };
     $page();
@@ -123,14 +123,14 @@ declare(strict_types=1);
         try {
             $accounts->password('absent-' . $tag, 'incorrect-password');
             throw new RuntimeException('Missing account accepted during inventory');
-        } catch (\First\Identity\Failure $e) {
+        } catch (\TypedPress\Identity\Failure $e) {
             $assert($e->kind === 'invalid_credentials', 'incomplete inventory keeps generic refusal');
         }
     } finally {
         remove_filter('check_password', $observeFallback);
         update_option($inventory, $completeInventory, false);
     }
-    $fixedDummy = get_option('first_identity_dummy_password_hash');
+    $fixedDummy = get_option('tp_identity_dummy_password_hash');
     $assert($fallbackChecks === [[$fixedDummy, 0], [get_userdata($uid)->user_pass, $uid], [$fixedDummy, 0], [$fixedDummy, 0]], 'incomplete inventory always verifies the current dummy plus own hash or dummy');
     $verified = [];
     $observe = static function ($valid, $plain, $hash, $userId) use (&$verified) {
@@ -143,20 +143,20 @@ declare(strict_types=1);
             try {
                 $accounts->password($login, 'incorrect-password');
                 throw new RuntimeException('Wrong password accepted');
-            } catch (\First\Identity\Failure $e) {
+            } catch (\TypedPress\Identity\Failure $e) {
                 $assert($e->kind === 'invalid_credentials' && $e->getMessage() === 'The sign-in details are incorrect.', 'generic sign-in refusal');
             }
         }
     } finally {
         remove_filter('check_password', $observe);
     }
-    $profileCount = count(get_option('first_identity_password_profiles'));
+    $profileCount = count(get_option('tp_identity_password_profiles'));
     $assert(count($verified) === 3 * $profileCount, 'each attempt verifies every stored password profile');
     [$knownChecks, $absentChecks, $repeatChecks] = array_chunk($verified, $profileCount);
     $actualChecks = array_values(array_filter($knownChecks, static fn ($check) => (int) $check[1] === $uid));
     $assert(count($actualChecks) === 1 && $actualChecks[0][0] === get_userdata($uid)->user_pass, 'known user is verified by ID within its schedule');
     $assert($absentChecks === $repeatChecks && array_unique(array_column($absentChecks, 1)) === [0], 'absent accounts repeat the fixed dummy schedule');
-    $currentDummy = get_option('first_identity_dummy_password_hash');
+    $currentDummy = get_option('tp_identity_dummy_password_hash');
     $currentChecks = array_filter($absentChecks, static fn ($check) => !wp_password_needs_rehash($check[0]));
     $assert(count($currentChecks) >= 1 && !wp_password_needs_rehash($currentDummy), 'absent schedule includes a fixed current-algorithm hash');
     require_once ABSPATH . WPINC . '/class-phpass.php';
@@ -193,8 +193,8 @@ declare(strict_types=1);
         clean_user_cache($legacyId);
         if ($i === 2) {
             // A raw legacy import has no WordPress password-write hook (#118).
-            $assert(is_callable([\First\Identity\Accounts::class, 'rememberPasswordHash']), 'legacy importer can detect the password-profile capability');
-            \First\Identity\Accounts::rememberPasswordHash($hash);
+            $assert(is_callable([\TypedPress\Identity\Accounts::class, 'rememberPasswordHash']), 'legacy importer can detect the password-profile capability');
+            \TypedPress\Identity\Accounts::rememberPasswordHash($hash);
         } else {
             do_action('profile_update', $legacyId, $old);
         }
@@ -238,7 +238,7 @@ declare(strict_types=1);
         try {
             $accounts->password($candidate ? get_userdata($candidate)->user_login : 'absent-profile-' . $tag, 'incorrect-password');
             throw new RuntimeException('Wrong profile password accepted');
-        } catch (\First\Identity\Failure $e) {
+        } catch (\TypedPress\Identity\Failure $e) {
             $assert($e->kind === 'invalid_credentials', 'every password profile has the same generic refusal');
         } finally {
             remove_filter('check_password', $observeProfiles);
@@ -253,7 +253,7 @@ declare(strict_types=1);
         try {
             $accounts->password(get_userdata($invalidId)->user_login, $legacyPassword);
             throw new RuntimeException('Unsupported password format accepted');
-        } catch (\First\Identity\Failure $e) {
+        } catch (\TypedPress\Identity\Failure $e) {
             $assert($e->kind === 'invalid_credentials', 'unsupported password formats fail closed without custom verification work');
         } finally {
             remove_filter('check_password', $acceptPluggable);
@@ -298,7 +298,7 @@ declare(strict_types=1);
             }
         }
     };
-    $profilesBeforeBudget = get_option('first_identity_password_profiles');
+    $profilesBeforeBudget = get_option('tp_identity_password_profiles');
     $stateBeforeBudget = get_option($inventory);
     $savedHasher = $GLOBALS['wp_hasher'] ?? null;
     $GLOBALS['wp_hasher'] = $verifier;
@@ -307,7 +307,7 @@ declare(strict_types=1);
         try {
             $accounts->password($login, 'incorrect-password');
             throw new RuntimeException('Over-budget or absent account authenticated');
-        } catch (\First\Identity\Failure $e) {
+        } catch (\TypedPress\Identity\Failure $e) {
             $assert($e->kind === 'invalid_credentials', 'over-budget accounts retain the generic refusal');
         }
         return $verifier->hashes;
@@ -318,44 +318,44 @@ declare(strict_types=1);
         foreach ($overBudget as $i => $hash) {
             $staleProfiles['previously-imported-' . $i] = $hash;
         }
-        update_option('first_identity_password_profiles', $staleProfiles, false);
+        update_option('tp_identity_password_profiles', $staleProfiles, false);
         $assert($refuse('absent-budget-' . $tag) === $baselineWork, 'previously stored extreme profiles add no verification work for absent accounts');
-        update_option('first_identity_password_profiles', $profilesBeforeBudget, false);
+        update_option('tp_identity_password_profiles', $profilesBeforeBudget, false);
         $extremeId = $unsupportedUsers[0];
         foreach ($overBudget as $hash) {
-            \First\Identity\Accounts::rememberPasswordHash($hash);
-            $assert(get_option('first_identity_password_profiles') === $profilesBeforeBudget, 'extreme imports create no verification profile');
+            \TypedPress\Identity\Accounts::rememberPasswordHash($hash);
+            $assert(get_option('tp_identity_password_profiles') === $profilesBeforeBudget, 'extreme imports create no verification profile');
             $db->wp->update($db->wp->users, ['user_pass' => $hash], ['ID' => $extremeId]);
             clean_user_cache($extremeId);
             $assert($refuse(get_userdata($extremeId)->user_login) === $baselineWork, 'extreme imports are refused with the same bounded schedule as absent accounts');
             update_option($inventory, ['after' => 0, 'complete' => false], false);
             $fallbackWork = $refuse('absent-budget-' . $tag);
             $assert($refuse(get_userdata($extremeId)->user_login) === $fallbackWork, 'incomplete inventory never verifies an over-budget credential');
-            \First\Identity\Accounts::inventoryPasswordHashes();
-            $assert(get_option('first_identity_password_profiles') === $profilesBeforeBudget, 'background inventory never derives an extreme profile');
+            \TypedPress\Identity\Accounts::inventoryPasswordHashes();
+            $assert(get_option('tp_identity_password_profiles') === $profilesBeforeBudget, 'background inventory never derives an extreme profile');
             update_option($inventory, $stateBeforeBudget, false);
         }
         $assert($accounts->password('storage-' . $tag, $password) === $uid, 'extreme imports leave supported sign-in working');
     } finally {
         $GLOBALS['wp_hasher'] = $savedHasher;
-        update_option('first_identity_password_profiles', $profilesBeforeBudget, false);
+        update_option('tp_identity_password_profiles', $profilesBeforeBudget, false);
         update_option($inventory, $stateBeforeBudget, false);
     }
     echo "PASS imported costs are bounded; default WordPress \$wp\$2y\$, phpass and MD5 authenticate\n";
     wp_set_password('replacement legacy password', $legacyUsers[0]);
     require_once ABSPATH . 'wp-admin/includes/user.php';
     wp_delete_user($legacyUsers[0]);
-    foreach (get_option('first_identity_password_profiles') as $dummy) {
+    foreach (get_option('tp_identity_password_profiles') as $dummy) {
         $assert(!wp_check_password($legacyPassword, $dummy), 'retained verification profiles cannot verify credentials after password replacement and user deletion');
     }
     $accounts->ensure($uid);
     $client = 'storage_' . $tag;
     $db->insert('applications', ['id' => $client, 'name' => 'Storage test', 'redirects' => '[]', 'origins' => '[]']);
-    if (!did_action('first_runtime_loaded')) {
-        do_action('first_runtime_loaded');
+    if (!did_action('tp_runtime_loaded')) {
+        do_action('tp_runtime_loaded');
     }
     $tokens = $accounts->issueForUser($uid, $client);
-    $assert((new \First\Identity\OAuth($db, $accounts))->access($tokens['access_token'])['uid'] === $uid, 'OAuth token works before suspension');
+    $assert((new \TypedPress\Identity\OAuth($db, $accounts))->access($tokens['access_token'])['uid'] === $uid, 'OAuth token works before suspension');
     // Retain credentials: suspension status itself must refuse, even without revocation help.
     $db->run("UPDATE {$db->prefix}accounts SET status='suspended' WHERE wp_user_id=%d", $uid);
     $assert(is_wp_error(wp_authenticate('storage-' . $tag, $password)), 'suspended native login refused');
@@ -371,7 +371,7 @@ declare(strict_types=1);
             try {
                 $db->$method("SELECT * FROM $table");
                 throw new RuntimeException('Failed read became an absent row');
-            } catch (\First\Identity\Failure $e) {
+            } catch (\TypedPress\Identity\Failure $e) {
                 $assert($e->kind === 'storage_unavailable' && $e->status === 503 && !str_contains($e->getMessage(), $table), 'sanitized storage refusal');
             }
         }
@@ -383,22 +383,22 @@ declare(strict_types=1);
         $error = apply_filters('rest_authentication_errors', null);
         $assert(is_wp_error($error) && $error->get_error_code() === 'storage_unavailable', 'failed cookie is an error, never anonymous REST');
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $tokens['access_token'];
-        $assert((int) \First\Identity\Bearer::resolve($uid) === 0, 'Bearer refuses storage failure even with cookie identity');
-        $error = \First\Identity\Bearer::errors(null);
+        $assert((int) \TypedPress\Identity\Bearer::resolve($uid) === 0, 'Bearer refuses storage failure even with cookie identity');
+        $error = \TypedPress\Identity\Bearer::errors(null);
         $assert(is_wp_error($error) && $error->get_error_code() === 'storage_unavailable', 'failed Bearer is an error, never anonymous REST');
         try {
-            (new \First\Identity\OAuth($db, $accounts))->access($tokens['access_token']);
+            (new \TypedPress\Identity\OAuth($db, $accounts))->access($tokens['access_token']);
             throw new RuntimeException('OAuth accepted storage failure');
-        } catch (\First\Identity\Failure $e) {
+        } catch (\TypedPress\Identity\Failure $e) {
             $assert($e->kind === 'storage_unavailable', 'OAuth refuses storage failure');
         }
-        if (class_exists(\First\Wp\WpAuth::class)) {
+        if (class_exists(\TypedPress\Wp\WpAuth::class)) {
             wp_set_current_user($uid);
-            $assert(\First\Wp\CoreAccess::viewer() === null, 'core access refuses failed authentication instead of using anonymous policy');
+            $assert(\TypedPress\Wp\CoreAccess::viewer() === null, 'core access refuses failed authentication instead of using anonymous policy');
             try {
-                \First\Wp\WpAuth::current();
+                \TypedPress\Wp\WpAuth::current();
                 throw new RuntimeException('Runtime accepted storage failure');
-            } catch (\First\HttpError $e) {
+            } catch (\TypedPress\HttpError $e) {
                 $assert($e->status === 503 && $e->errorCode === 'storage_unavailable', 'runtime suspension guard refuses storage failure');
             }
         }
@@ -406,7 +406,7 @@ declare(strict_types=1);
         $assert($ddl("ALTER TABLE {$table}_unavailable RENAME TO $table") !== false, "accounts table restored");
         $db->wp->suppress_errors($suppress);
         unset($_SERVER['HTTP_AUTHORIZATION'], $_COOKIE[LOGGED_IN_COOKIE]);
-        \First\Identity\Bearer::resolve(0);
+        \TypedPress\Identity\Bearer::resolve(0);
         apply_filters('determine_current_user', 0);
         wp_set_current_user(0);
         remove_filter('wp_is_application_passwords_available', '__return_true');
@@ -416,18 +416,18 @@ declare(strict_types=1);
     $disconnected = new class extends wpdb {
         public function __construct() { $this->ready = false; }
     };
-    $deadDb = new \First\Identity\DB($disconnected);
+    $deadDb = new \TypedPress\Identity\DB($disconnected);
     foreach (['row', 'rows'] as $method) {
         try {
             $deadDb->$method('SELECT 1');
             throw new RuntimeException('False query with empty last_error became missing data');
-        } catch (\First\Identity\Failure $e) {
+        } catch (\TypedPress\Identity\Failure $e) {
             $assert($e->kind === 'storage_unavailable' && $disconnected->last_error === '', 'false query is unavailable even without last_error');
         }
     }
-    $liveAccounts = \First\Identity\Plugin::$accounts;
-    \First\Identity\Plugin::$db = $deadDb;
-    \First\Identity\Plugin::$accounts = new \First\Identity\Accounts($deadDb, \First\Identity\Plugin::$security);
+    $liveAccounts = \TypedPress\Identity\Plugin::$accounts;
+    \TypedPress\Identity\Plugin::$db = $deadDb;
+    \TypedPress\Identity\Plugin::$accounts = new \TypedPress\Identity\Accounts($deadDb, \TypedPress\Identity\Plugin::$security);
     add_filter('wp_is_application_passwords_available', '__return_true');
     try {
         $native = wp_authenticate('storage-' . $tag, $password);
@@ -440,8 +440,8 @@ declare(strict_types=1);
         $assert(is_wp_error($application) && $application->get_error_code() === 'storage_unavailable', 'application password refuses false query with empty last_error');
         $assert((int) $cookieUser === 0 && is_wp_error($error) && $error->get_error_code() === 'storage_unavailable', 'cookie refuses false query with empty last_error');
     } finally {
-        \First\Identity\Plugin::$db = $db;
-        \First\Identity\Plugin::$accounts = $liveAccounts;
+        \TypedPress\Identity\Plugin::$db = $db;
+        \TypedPress\Identity\Plugin::$accounts = $liveAccounts;
         unset($_COOKIE[LOGGED_IN_COOKIE]);
         apply_filters('determine_current_user', false);
         remove_filter('wp_is_application_passwords_available', '__return_true');

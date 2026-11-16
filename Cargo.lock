@@ -275,32 +275,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
-name = "first"
-version = "0.3.0"
-dependencies = [
- "boon",
- "indexmap",
- "oxc_allocator",
- "oxc_ast",
- "oxc_codegen",
- "oxc_isolated_declarations",
- "oxc_parser",
- "oxc_semantic",
- "oxc_span",
- "oxc_syntax",
- "oxc_transformer",
- "regex",
- "ryu-js",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "ureq",
- "url",
- "zip",
-]
-
-[[package]]
 name = "flate2"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -607,6 +581,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy-regex"
+version = "3.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0a2cce8a22920a29fdcc8c9170aa5d29edd9fbcf8bea856e24c2cb1c2419f67"
+dependencies = [
+ "lazy-regex-proc_macros",
+ "once_cell",
+ "regex",
+]
+
+[[package]]
+name = "lazy-regex-proc_macros"
+version = "3.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f1e4b1f1d8c71edb4ff2b2150ec4606445fd2ddf67ddc097655daf59286baa6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn 3.0.9",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -833,15 +830,20 @@ version = "0.158.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c336b5de230f15686a2b6d3e8661d305ef3af9645efc1cf15ef5e7763fc38274"
 dependencies = [
+ "cow-utils",
  "itoa",
  "memchr",
  "num-bigint",
  "num-traits",
+ "oxc_allocator",
  "oxc_ast",
+ "oxc_compat",
  "oxc_data_structures",
+ "oxc_regular_expression",
  "oxc_span",
  "oxc_str",
  "oxc_syntax",
+ "smallvec",
  "zmij_ecma",
 ]
 
@@ -876,6 +878,51 @@ dependencies = [
  "oxc_span",
  "oxc_str",
  "oxc_syntax",
+ "rustc-hash",
+]
+
+[[package]]
+name = "oxc_mangler"
+version = "0.158.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4fbbe72447b39c2eac79a5837c3d1e7e1f7334e0ba3c8de55f922bd171955d5"
+dependencies = [
+ "itertools",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_data_structures",
+ "oxc_ecmascript",
+ "oxc_index",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_str",
+ "oxc_syntax",
+ "rustc-hash",
+]
+
+[[package]]
+name = "oxc_minifier"
+version = "0.158.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96005b0c4c7b821f8866e91e0eec2fe3f6ba57f25d079bd25f4ec80c67ffbeda"
+dependencies = [
+ "cow-utils",
+ "itoa",
+ "lazy-regex",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_ast_visit",
+ "oxc_compat",
+ "oxc_data_structures",
+ "oxc_ecmascript",
+ "oxc_index",
+ "oxc_mangler",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_str",
+ "oxc_syntax",
+ "oxc_traverse",
  "rustc-hash",
 ]
 
@@ -1478,6 +1525,33 @@ name = "typed-path"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
+
+[[package]]
+name = "typedpress"
+version = "0.3.0"
+dependencies = [
+ "boon",
+ "indexmap",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_codegen",
+ "oxc_isolated_declarations",
+ "oxc_minifier",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_syntax",
+ "oxc_transformer",
+ "regex",
+ "ryu-js",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "ureq",
+ "url",
+ "zip",
+]
 
 [[package]]
 name = "typenum"

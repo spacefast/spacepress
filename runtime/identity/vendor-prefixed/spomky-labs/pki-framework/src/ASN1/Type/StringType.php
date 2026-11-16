@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
 
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\Stringable;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\Stringable;
 
 /**
  * Interface to mark types that correspond to ASN.1 specification's character strings. That being all simple strings and

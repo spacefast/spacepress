@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Parser;
+namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser;
 
 use Exception;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
 use function assert;
 use function json_encode;
 use function sprintf;

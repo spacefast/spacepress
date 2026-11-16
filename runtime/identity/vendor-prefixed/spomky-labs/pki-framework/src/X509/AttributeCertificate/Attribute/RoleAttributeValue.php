@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute;
 
 use LogicException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
-use First\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\UniformResourceIdentifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ExplicitlyTaggedType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\BinaryMatch;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\UniformResourceIdentifier;
 
 /**
  * Implements value for 'Role' attribute.

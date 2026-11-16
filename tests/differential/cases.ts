@@ -1,7 +1,7 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
-import { collection, text, integer, defineConfig, action, json as jsonField, group, repeater, blocks , table} from "first";
-import { job, jobs, once } from "first"; // lane D
+import { collection, text, integer, defineConfig, action, json as jsonField, group, repeater, blocks , table} from "typedpress";
+import { job, jobs, once } from "typedpress"; // lane D
 import * as ns from "./namespace.mjs";
 import picoish from "./namespace.mjs";
 import { jsAbort as jsAbortImpl, jsCollections as jsCollectionsImpl, jsTimers as jsTimersImpl } from "./stdlib.js";
@@ -190,6 +190,30 @@ function argumentSemanticsImpl(first: string, ...tail: string[]) {
 }
 
 const BUILD_TIME_ARGUMENT_SEMANTICS = argumentSemanticsImpl("original", "tail");
+
+// Native comparisons and reads on typed numbers, strings and objects (src/compile.rs
+// number_compare, strict_eq and the plain-variable property read).
+function numberCompare(a: number, b: number) { return [a < b, a <= b, a > b, a >= b, a === b, a !== b]; }
+function compareOrder() { let x = 1; const y = x < (x = 5); let n = 0; const z = (n += 2) > n; return [y, x, z, n]; }
+function stringEquality(s: string) { return [s === "a", "a" === s, s !== "", s === undefined as unknown as string]; }
+function localRead(row: { title: string; count: number | null; tags: string[] }) {
+  const copy = row;
+  const other = Math.random() > 2 ? null : { title: "other", count: 0, tags: [] };
+  return [copy.title, copy.count, copy.tags.length, other?.title, other?.count];
+}
+function absentRead() { const o = JSON.parse("{}") as { title: string }; const t = o.title; return t === undefined; }
+// A literal *type* is not a literal value: these operands still take the run-time number check.
+function literalTypedNull(input: string) { const n = JSON.parse(input) as 0; return [n === 0, n !== 0, n < 1]; }
+function literalTypedMissing(input: string) { const row = JSON.parse(input) as { n: 1 }; return [row.n < 2, row.n === 1, row.n >= 1]; }
+function literalTypedCall() { let a = 1; const mutate = (): 1 => { a = 2; return 1; }; return [a === mutate(), a]; }
+function bigintAsNumber() { const b = 10n; const k = b as unknown as number; return [k > 1, k === 10, k < 100]; }
+
+// Which functions get an `arguments` object: only one that names it, directly or in an arrow.
+function argumentsShorthand(a: string, b: string) { return { arguments }.arguments.length; }
+function argumentsInNestedArrow(a: string) { const outer = () => () => arguments[0]; return outer()(); }
+function argumentsInInnerFunction(a: string) { function inner(b: string, c: string) { return arguments.length; } return [inner("x", "y"), typeof a]; }
+function argumentsUnused(a: string) { return a; }
+function argumentsInDefault(a: string, b: number = arguments.length) { return b; }
 
 function argumentSerializationImpl(...values: string[]) {
   return JSON.stringify(arguments);
@@ -584,6 +608,14 @@ export const varSemantics = run(() => ({ buildTime: BUILD_TIME_VAR_SEMANTICS, ru
 export const argumentSemantics = run(() => ({ buildTime: BUILD_TIME_ARGUMENT_SEMANTICS, runtime: argumentSemanticsImpl("original", "tail") }));
 
 export const argumentSerialization = run(() => argumentSerializationImpl("original", "tail"));
+export const nativeOperators = run(() => [
+  numberCompare(1, 2), numberCompare(2, 2), numberCompare(1, 1.0), numberCompare(-0, 0), numberCompare(NaN, NaN), numberCompare(NaN, 1),
+  numberCompare(Infinity, -Infinity), numberCompare(2 ** 53, 2 ** 53 + 1), numberCompare(9007199254740993, 9007199254740992), numberCompare(0.1 + 0.2, 0.3),
+  numberCompare(1.7976931348623157e308, Infinity), numberCompare(5e-324, 0), compareOrder(), stringEquality("a"), stringEquality(""),
+  localRead({ title: "t", count: null, tags: ["x"] }), absentRead(), bigintAsNumber(),
+  literalTypedNull("null"), literalTypedNull("0"), literalTypedMissing("{}"), literalTypedMissing("{\"n\":1}"), literalTypedCall(),
+]);
+export const argumentsUse = run(() => [argumentsShorthand("a", "b"), argumentsInNestedArrow("first"), argumentsInInnerFunction("a"), argumentsUnused("kept"), argumentsInDefault("a")]);
 
 export const languageTypes = run(() => {
   const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];
@@ -1013,7 +1045,7 @@ export const enqueueIds = action({ input: {}, handler: async () => {
   return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
 } });
 
-export const envRead = action({ input: {}, handler: () => [process.env.FIRST_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.FIRST_LANE_D_UNSET === undefined] });
+export const envRead = action({ input: {}, handler: () => [process.env.TP_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.TP_LANE_D_UNSET === undefined] });
 
 export const loopClosures = run(() => {
   const fs: (() => number)[] = [];
@@ -1151,7 +1183,7 @@ export const ping = job({ input: { note: text().optional() }, handler: async () 
 export default defineConfig({});
 
 // ---- lane D: jobs, once(), process.env (phase 2 §6.1). The Node shim keeps once() receipts and pending
-// enqueue keys in memory; PHP keeps them in __first_receipts and __first_jobs. Keys are unique per case.
+// enqueue keys in memory; PHP keeps them in __tp_receipts and __tp_jobs. Keys are unique per case.
 
 // ---- standard objects: Map and Set in typed code (docs/decisions/2026-11-07-stdlib-objects.md).
 type Entry = { n: number };

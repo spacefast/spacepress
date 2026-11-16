@@ -60,18 +60,53 @@ impl Site {
         };
         let status = command.status().map_err(|e| match self {
             Site::Alias(_) => format!("cannot run wp (WP-CLI) from PATH: {e}"),
-            _ => format!("first needs Node.js 22+ and npm (npx) for the dev site: {e}"),
+            _ => format!("typedpress needs Node.js 22+ and npm (npx) for the dev site: {e}"),
         })?;
         Ok(ExitCode::from(status.code().unwrap_or(1).clamp(0, 255) as u8))
     }
 }
 
-/// An offline deployment workspace (`first deploy init`) carries its adapter's owner record.
+impl Site {
+    /// Run WP-CLI on this site with `args` and capture its output, for a build command that reads a
+    /// site command's answer (`typedpress styles pull`). A dev site or an `@alias` only: a workspace
+    /// answers with the deploy adapter's receipt, not the command's output.
+    pub(crate) fn wp_output(&self, args: &[String]) -> Result<std::process::Output, String> {
+        let mut command = match self {
+            Site::Dev(project) => {
+                let project = project
+                    .canonicalize()
+                    .map_err(|e| format!("{}: {e}", project.display()))?;
+                if !super::dev::created(&project) {
+                    return Err(format!(
+                        "{} has no dev site yet: start it with `typedpress dev`, or pass --site @alias",
+                        project.display()
+                    ));
+                }
+                super::dev::wp_command(&project)?
+            }
+            Site::Alias(alias) => {
+                let mut command = Command::new("wp");
+                command.arg(alias);
+                command
+            }
+            Site::Workspace(_) | Site::Url(_) => {
+                return Err("--site must be a project directory (its dev site) or a WP-CLI @alias".into());
+            }
+        };
+        command.args(args).stdin(std::process::Stdio::null());
+        command.output().map_err(|e| match self {
+            Site::Alias(_) => format!("cannot run wp (WP-CLI) from PATH: {e}"),
+            _ => format!("typedpress needs Node.js 22+ and npm (npx) for the dev site: {e}"),
+        })
+    }
+}
+
+/// An offline deployment workspace (`typedpress deploy init`) carries its adapter's owner record.
 fn is_workspace(dir: &Path) -> bool {
     std::fs::read(dir.join("owner.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .is_some_and(|owner| owner["adapter"] == "first-offline-wordpress-v1")
+        .is_some_and(|owner| owner["adapter"] == "typedpress-offline-wordpress-v1")
 }
 
 /// Run WP-CLI on the site and exit with its status; stdin, stdout and stderr are the caller's.

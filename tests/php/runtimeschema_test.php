@@ -11,9 +11,9 @@ declare(strict_types=1);
  * `php -S`, because a version takes effect from the next request.
  */
 
-use First\RuntimeSchema\Loader;
-use First\RuntimeSchema\Refused;
-use First\Wp\SchemaVersions;
+use TypedPress\RuntimeSchema\Loader;
+use TypedPress\RuntimeSchema\Refused;
+use TypedPress\Wp\SchemaVersions;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -29,8 +29,8 @@ $wp = wpSite('rtschema', ['schema' => $base, 'server' => true, 'identity' => tru
             return;
         }
         try {
-            $out = [200, \First\Wp\SchemaVersions::of(\First\Wp\Runtime::plugin())->propose(json_decode((string) file_get_contents('php://input'), true))];
-        } catch (\First\HttpError $e) {
+            $out = [200, \TypedPress\Wp\SchemaVersions::of(\TypedPress\Wp\Runtime::plugin())->propose(json_decode((string) file_get_contents('php://input'), true))];
+        } catch (\TypedPress\HttpError $e) {
             $out = [$e->status, ['code' => $e->errorCode, 'pointer' => $e->pointer]];
         }
         status_header($out[0]);
@@ -39,19 +39,19 @@ $wp = wpSite('rtschema', ['schema' => $base, 'server' => true, 'identity' => tru
         exit;
     }, 99);
     PHP], 'functions' => <<<'PHP'
-    function articles__hook__beforeCreate(\First\JsObject $data, \First\JsObject $ctx): \First\JsObject
+    function articles__hook__beforeCreate(\TypedPress\JsObject $data, \TypedPress\JsObject $ctx): \TypedPress\JsObject
     {
-        return new \First\JsObject(['title' => \First\Js::prop($data, 'title') . '!'] + array_diff_key($data->p, ['title' => 1]));
+        return new \TypedPress\JsObject(['title' => \TypedPress\Js::prop($data, 'title') . '!'] + array_diff_key($data->p, ['title' => 1]));
     }
 
-    function articles__hook__beforeUpdate(\First\JsObject $patch, \First\JsObject $existing, \First\JsObject $ctx): \First\JsObject
+    function articles__hook__beforeUpdate(\TypedPress\JsObject $patch, \TypedPress\JsObject $existing, \TypedPress\JsObject $ctx): \TypedPress\JsObject
     {
         // A replacement built from the fields of the build it was compiled with: a runtime field in
         // the patch is not in it.
-        return new \First\JsObject(array_intersect_key($patch->p, \First\RuntimeSchema\Loader::compiled()['collections']['articles']['columns']));
+        return new \TypedPress\JsObject(array_intersect_key($patch->p, \TypedPress\RuntimeSchema\Loader::compiled()['collections']['articles']['columns']));
     }
     PHP]);
-$api = $wp->url() . '/__first/api/v1';
+$api = $wp->url() . '/__tp/api/v1';
 
 /** @return array{int, mixed} status and decoded body, as $as (a test user name) or anonymous */
 function http(string $method, string $url, mixed $body = null, ?string $as = null): array
@@ -101,7 +101,7 @@ $subtitle = $add('subtitle', ['rules' => ['max' => 20], 'type' => 'text', 'ui' =
 $proposal = $versions->propose($subtitle);
 eq('a proposal names its parent and returns the change in stored form', [$proposal['parent'], $proposal['changes']],
     [0, [['op' => 'addField', 'kind' => 'articles', 'field' => 'subtitle', 'definition' => ['type' => 'text', 'rules' => ['max' => 20], 'ui' => ['label' => 'Subtitle']]]]]);
-eq('and what it does to stored data', $proposal['effects'][0], ['op' => 'addField', 'kind' => 'articles', 'field' => 'subtitle', 'storage' => 'post meta first_subtitle on first_articles',
+eq('and what it does to stored data', $proposal['effects'][0], ['op' => 'addField', 'kind' => 'articles', 'field' => 'subtitle', 'storage' => 'post meta tp_subtitle on tp_articles',
     'existingItems' => 1, 'note' => 'existing items have no value until they are edited']);
 eq('a proposal stores nothing', [$versions->list(), get_option(Loader::option('rtschema'), 'absent')], [[], 'absent']);
 check('nor does it change the schema requests see', !isset($described()['kinds']['articles']['columns']['subtitle']));
@@ -118,7 +118,7 @@ eq('refusals store nothing', $versions->list(), []);
 // ================================================================ apply: version 1
 $v1 = $versions->apply(0, $subtitle, $admin);
 eq('the first change is version 1 on parent 0', [$v1['version'], $v1['parent'], $v1['format'], $v1['actor']], [1, 0, 1, $admin]);
-eq('it records the build it was validated on', $v1['build'], hash_file('sha256', "$wp->content/plugins/first-app-rtschema/first/app/schema.php"));
+eq('it records the build it was validated on', $v1['build'], hash_file('sha256', "$wp->content/plugins/typedpress-app-rtschema/tp/app/schema.php"));
 check('and when', preg_match('/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.000Z\z/', $v1['createdAt']) === 1, $v1['createdAt']);
 eq('the stored version reads back as it was applied', $versions->list(), [$v1]);
 eq('its hash covers the row and the parent\'s hash', $v1['hash'], SchemaVersions::hashOf('', $v1));
@@ -134,13 +134,13 @@ $before = http('GET', "$api/articles/{$old['data']['id']}")[1]['data'];
 eq('an item written before the change reads the field as empty', [array_key_exists('subtitle', $before), $before['subtitle'] ?? null], [true, null]);
 [$status, $patched] = http('PATCH', "$api/articles/{$old['data']['id']}", ['subtitle' => 'Added later'], 'editor');
 eq('and takes a value through a hook that returns a replacement built from the build\'s fields', [$status, $patched['data']['subtitle'] ?? null], [200, 'Added later']);
-eq('the value is post meta under the field\'s name', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'first_subtitle'", [$new['data']['id']]), 'Now it fits');
-[$status, $core] = http('GET', $wp->url() . "/wp-json/wp/v2/first_articles/{$new['data']['id']}?context=edit", null, 'editor');
+eq('the value is post meta under the field\'s name', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'tp_subtitle'", [$new['data']['id']]), 'Now it fits');
+[$status, $core] = http('GET', $wp->url() . "/wp-json/wp/v2/tp_articles/{$new['data']['id']}?context=edit", null, 'editor');
 eq('core REST serves it as registered meta', [$status, $core['meta']['subtitle'] ?? null], [200, 'Now it fits']);
-[$status, $core] = http('POST', $wp->url() . "/wp-json/wp/v2/first_articles/{$new['data']['id']}", ['meta' => ['subtitle' => str_repeat('s', 21)]], 'editor');
+[$status, $core] = http('POST', $wp->url() . "/wp-json/wp/v2/tp_articles/{$new['data']['id']}", ['meta' => ['subtitle' => str_repeat('s', 21)]], 'editor');
 eq('and core REST enforces the rule too', $status, 422);
-[$status, $types] = http('GET', $wp->url() . '/wp-json/wp/v2/first_articles/' . $new['data']['id'] . '?context=edit&_fields=acf', null, 'editor');
-check('the editor\'s field group has the field', array_key_exists('first_subtitle', $types['acf'] ?? []), $types);
+[$status, $types] = http('GET', $wp->url() . '/wp-json/wp/v2/tp_articles/' . $new['data']['id'] . '?context=edit&_fields=acf', null, 'editor');
+check('the editor\'s field group has the field', array_key_exists('tp_subtitle', $types['acf'] ?? []), $types);
 
 // ================================================================ two changes on one parent
 eq('a second change on the same parent is a 409', $refusal(fn () => $versions->apply(0, $add('stars', ['type' => 'integer']), $admin)), '409 schema_conflict /parent');
@@ -160,14 +160,14 @@ $site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSO
 wpDefine($dir, $site["url"]);
 $_SERVER["REQUEST_METHOD"] = "GET";
 require_once ABSPATH . "wp-settings.php";
-$versions = \First\Wp\SchemaVersions::of(\First\Wp\Runtime::plugin());
+$versions = \TypedPress\Wp\SchemaVersions::of(\TypedPress\Wp\Runtime::plugin());
 fwrite(STDOUT, "ready\n");
 // Both processes are loaded and waiting here until the test lets go of the gate.
 flock(fopen("$dir/gate", "c"), LOCK_SH);
 try {
     $row = $versions->apply(2, ["format" => 1, "changes" => [["op" => "addField", "kind" => "articles", "field" => $argv[1], "definition" => ["type" => "text"]]]], ["user" => 1, "login" => "admin", "via" => "test"]);
     echo json_encode(["version" => $row["version"], "field" => $argv[1]]), "\n";
-} catch (\First\RuntimeSchema\Refused $e) {
+} catch (\TypedPress\RuntimeSchema\Refused $e) {
     echo json_encode(["status" => $e->status, "code" => $e->errorCode]), "\n";
 }
 ');
@@ -207,24 +207,24 @@ $site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSO
 wpDefine($dir, $site["url"]);
 $_SERVER["REQUEST_METHOD"] = "GET";
 require_once ABSPATH . "wp-settings.php";
-$plugin = \First\Wp\Runtime::plugin();
-$option = "first_" . $plugin->schema->name() . "_schema";
+$plugin = \TypedPress\Wp\Runtime::plugin();
+$option = "tp_" . $plugin->schema->name() . "_schema";
 // The lock a deploy takes (Plugin::migrateLocked).
-\First\Wp\Migrator::locked($plugin->connection(), $option, static function () use ($option): void {
+\TypedPress\Wp\Migrator::locked($plugin->connection(), $option, static function () use ($option): void {
     fwrite(STDOUT, "held\n");
     usleep(1500000);
     // Just before it lets go, the deploy records the build it migrated to (Plugin::migrateNow).
     update_option($option, hash("sha256", "another build"), false);
 });
 ');
-$recorded = get_option('first_rtschema_schema');
+$recorded = get_option('tp_rtschema_schema');
 $deployer = proc_open([PHP_BINARY, '-d', 'memory_limit=512M', $hold], [1 => ['pipe', 'w'], 2 => ['file', "$wp->dir/hold.log", 'a']], $pipes);
 eq('the deploy holds the lock', fgets($pipes[1]), "held\n");
 // Without the shared lock this apply would land before the deploy records its build, and be accepted.
 $lockRefusal = $refusal(fn () => $versions->apply(count($versions->list()), $add('lockProbe', ['type' => 'text']), $admin));
 proc_close($deployer);
 eq('an apply during a deploy waits for it, and is checked against the build the deploy made live', $lockRefusal, '409 schema_build_changed /changes');
-update_option('first_rtschema_schema', $recorded, false);
+update_option('tp_rtschema_schema', $recorded, false);
 
 // ================================================================ the option is a copy of the versions
 delete_option(Loader::option('rtschema'));
@@ -235,7 +235,7 @@ check('the next change rebuilds it from the stored versions', $v4['version'] ===
 eq('and the stored value is still there', http('GET', "$api/articles/{$new['data']['id']}")[1]['data']['subtitle'], 'Now it fits');
 
 // ================================================================ a build deployed over runtime changes
-// A build that declares the field itself (as it would after `first pull`, here with a tighter rule): its declaration is used.
+// A build that declares the field itself (as it would after `typedpress pull`, here with a tighter rule): its declaration is used.
 $declares = $base;
 $declares['collections']['articles']['columns']['subtitle'] = ['type' => 'text', 'rules' => ['max' => 5]];
 $wp->writeSchema($declares);
@@ -252,7 +252,7 @@ $related['collections']['articles']['relations']['stars'] = ['kind' => 'many', '
 $wp->writeSchema($related);
 $columns = $described()['kinds']['articles']['columns'];
 check('a build\'s relation wins over a runtime field of the same name', !isset($columns['stars']) && isset($columns['teaser']), array_keys($columns));
-eq('and the field\'s stored values are untouched', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'first_stars'", [$defaulted['data']['id']]), '3');
+eq('and the field\'s stored values are untouched', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'tp_stars'", [$defaulted['data']['id']]), '3');
 
 // A build that ran on the site declared `mood` as an integer. Another build is served now, without
 // it; a runtime change can't give `mood` another type, whichever build the request runs.
@@ -287,7 +287,7 @@ $d = $described();
 check('with the flag off the schema is the build\'s alone', !isset($d['runtimeSchema']) && !isset($d['kinds']['articles']['columns']['subtitle']) && isset($d['kinds']['articles']['columns']['rating']), $d['kinds']['articles']['columns']);
 [$status] = http('POST', "$api/articles", ['title' => 'Flag off', 'subtitle' => 'x'], 'editor');
 eq('and a runtime field is unknown again', $status, 422);
-eq('its stored values and versions are untouched', [$wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'first_subtitle'", [$new['data']['id']]), count($versions->list())], ['Now it fits', 4]);
+eq('its stored values and versions are untouched', [$wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'tp_subtitle'", [$new['data']['id']]), count($versions->list())], ['Now it fits', 4]);
 $wp->writeSchema($base);
 eq('turning the flag back on brings the fields and values back', http('GET', "$api/articles/{$new['data']['id']}")[1]['data']['subtitle'], 'Now it fits');
 
@@ -301,16 +301,16 @@ $kindsVersion = $versions->apply($next, $set(
 ), $admin);
 $d = $described();
 eq('a collection added at runtime is a kind with its route', [$d['kinds']['events']['route'] ?? null, $d['kinds']['events']['label'] ?? null, array_keys($d['kinds']['events']['columns'] ?? [])],
-    ['/wp/v2/first_events', 'Events', ['id', 'title', 'content', 'starts', 'status', 'publishedAt']]);
+    ['/wp/v2/tp_events', 'Events', ['id', 'title', 'content', 'starts', 'status', 'publishedAt']]);
 eq('and a global added at runtime is a global', array_keys($d['globals']['banner']['fields'] ?? []), ['text', 'on']);
 $tables = static fn (): array => array_merge(...array_map('array_values', $GLOBALS['wp']->sql('SHOW TABLES')));
-check('no SQL table was created for either', array_filter($tables(), static fn (string $t): bool => str_contains($t, 'first_events') || str_contains($t, 'banner')) === [], $tables());
+check('no SQL table was created for either', array_filter($tables(), static fn (string $t): bool => str_contains($t, 'tp_events') || str_contains($t, 'banner')) === [], $tables());
 [$status, $event] = http('POST', "$api/events", ['title' => 'Launch', 'content' => '<p>Doors at seven.</p>', 'starts' => '2027-03-01'], 'author');
 eq('its access rule lets an author create', [$status, $event['data']['title'] ?? null, $event['data']['starts'] ?? null], [201, 'Launch', '2027-03-01']);
 eq('and refuses a subscriber', http('POST', "$api/events", ['title' => 'No'], 'subscriber')[0], 403);
 eq('its field rules are enforced', http('POST', "$api/events", ['title' => str_repeat('t', 61)], 'author')[0], 422);
 eq('an item is a post of the kind\'s type, title and body in core\'s columns', $wp->sql('SELECT post_type, post_title, post_content FROM {prefix}posts WHERE ID = ?', [$event['data']['id']]),
-    [['post_type' => 'first_events', 'post_title' => 'Launch', 'post_content' => '<p>Doors at seven.</p>']]);
+    [['post_type' => 'tp_events', 'post_title' => 'Launch', 'post_content' => '<p>Doors at seven.</p>']]);
 eq('anyone reads it', http('GET', "$api/events/{$event['data']['id']}")[1]['data']['title'] ?? null, 'Launch');
 eq('the global reads its defaults', http('GET', "$api/banner")[1]['data'] ?? null, ['text' => null, 'on' => false]);
 eq('an editor may not update it', http('PATCH', "$api/banner", ['on' => true], 'editor')[0], 403);
@@ -339,18 +339,18 @@ eq('a rollback is a new version; the one it reverses is still stored', [$rolledB
 $d = $described();
 eq('after it the schema is the one before that version', [$d['kinds']['events']['label'], $d['kinds']['articles']['label'], $d['kinds']['articles']['columns']['rating'], isset($d['kinds']['events']['columns']['venue'])],
     ['Events', 'Articles', ['type' => 'integer'], false]);
-eq('the hidden field\'s value is still stored', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'first_venue'", [$event['data']['id']]), 'Town hall');
+eq('the hidden field\'s value is still stored', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'tp_venue'", [$event['data']['id']]), 'Town hall');
 eq('it can\'t come back as another type', $refusal(fn () => $versions->propose($set(['op' => 'addField', 'kind' => 'events', 'field' => 'venue', 'definition' => ['type' => 'integer']]))), '422 schema_retype /changes/0/definition/type');
 $versions->apply($count(), $set(['op' => 'addField', 'kind' => 'events', 'field' => 'venue', 'definition' => ['type' => 'text']]), $admin);
 eq('added again as the same type, its value is there', http('GET', "$api/events/{$event['data']['id']}")[1]['data']['venue'] ?? null, 'Town hall');
 
 // Removing a kind hides it; nothing is dropped.
 $removed = $versions->propose($set(['op' => 'removeCollection', 'kind' => 'events'], ['op' => 'removeGlobal', 'global' => 'banner']));
-eq('a proposal to remove a collection says how many items it hides', [$removed['effects'][0]['existingItems'], $removed['effects'][0]['note']], [1, 'hidden from the schema; its items stay in post type first_events and come back if the collection is added again']);
+eq('a proposal to remove a collection says how many items it hides', [$removed['effects'][0]['existingItems'], $removed['effects'][0]['note']], [1, 'hidden from the schema; its items stay in post type tp_events and come back if the collection is added again']);
 $removal = $versions->apply($count(), $set(['op' => 'removeCollection', 'kind' => 'events'], ['op' => 'removeGlobal', 'global' => 'banner']), $admin);
 $d = $described();
 eq('a removed kind is gone from the schema and the API', [isset($d['kinds']['events']), isset($d['globals']['banner']), http('GET', "$api/events")[0]], [false, false, 404]);
-eq('its items and values are kept', [$wp->scalar("SELECT COUNT(*) FROM {prefix}posts WHERE post_type = 'first_events' AND post_status = 'publish'"), $wp->scalar("SELECT option_value FROM {prefix}options WHERE option_name = 'first_global_banner_text'")], [1, 'Sale']);
+eq('its items and values are kept', [$wp->scalar("SELECT COUNT(*) FROM {prefix}posts WHERE post_type = 'tp_events' AND post_status = 'publish'"), $wp->scalar("SELECT option_value FROM {prefix}options WHERE option_name = 'tp_global_banner_text'")], [1, 'Sale']);
 eq('removing a kind the build declares is build-only', $refusal(fn () => $versions->propose($set(['op' => 'removeCollection', 'kind' => 'articles']))), '422 schema_build_only /changes/0/kind');
 $versions->apply($count(), $versions->reversal($removal['version']), $admin);
 $back = http('GET', "$api/events/{$event['data']['id']}")[1]['data'] ?? [];
@@ -358,9 +358,9 @@ eq('rolling the removal back brings the kind and its item back, later field incl
 eq('and the global with its values', http('GET', "$api/banner")[1]['data'] ?? null, ['text' => 'Sale', 'on' => true]);
 problem('a version that doesn\'t exist has no reversal', fn () => $versions->reversal(999), 404, 'not_found');
 
-// A build that declares a kind the site added (after `first pull`): the build's is used.
+// A build that declares a kind the site added (after `typedpress pull`): the build's is used.
 $declared = $base;
-$declared['collections']['events'] = ['label' => 'From the build'] + \First\RuntimeSchema\Kinds::expandCollection('events', ['fields' => ['title' => ['type' => 'text', 'notNull' => true], 'content' => ['type' => 'richText'], 'starts' => ['type' => 'date']]]);
+$declared['collections']['events'] = ['label' => 'From the build'] + \TypedPress\RuntimeSchema\Kinds::expandCollection('events', ['fields' => ['title' => ['type' => 'text', 'notNull' => true], 'content' => ['type' => 'richText'], 'starts' => ['type' => 'date']]]);
 $wp->writeSchema($declared);
 $d = $described();
 eq('a build that declares a runtime kind uses its own declaration and keeps the runtime field on it', [$d['kinds']['events']['label'], isset($d['kinds']['events']['columns']['venue'])], ['From the build', true]);
@@ -390,13 +390,13 @@ $newest = static function (): int {
 
     return $rows === [] ? 0 : end($rows)['version'];
 };
-// `wp first schema …` as WP-CLI runs it (the runtime registers it for WP-CLI only).
+// `wp typedpress schema …` as WP-CLI runs it (the runtime registers it for WP-CLI only).
 $schemaCli = static function (array $args, array $flags = []): array {
     if (!class_exists('WP_CLI')) {
         eval('final class WP_CLI { public static array $lines = []; public static function line(string $s): void { self::$lines[] = $s; } public static function halt(int $c): never { throw new WpCliHalt($c); } }');
     }
     \WP_CLI::$lines = [];
-    $code = \First\RuntimeSchema\Surfaces::wpCli($args, $flags);
+    $code = \TypedPress\RuntimeSchema\Surfaces::wpCli($args, $flags);
 
     return [$code, json_decode(implode("\n", \WP_CLI::$lines), true)];
 };
@@ -416,7 +416,7 @@ eq('an editor can\'t propose', $run('schema-propose', ['changes' => [$change]], 
 eq('a proposal returns the stored change and its effect, and stores nothing', [$status, $proposal['changes'][0]['definition'] ?? null, $proposal['effects'][0]['op'] ?? null, count($versions->list())],
     [200, ['type' => 'text', 'rules' => ['max' => 80]], 'addField', $count]);
 [$status, $refused] = $run('schema-propose', ['changes' => [['op' => 'addField', 'kind' => 'articles', 'field' => 'bad-name', 'definition' => ['type' => 'text']]]], 'admin');
-eq('a refusal keeps its code and pointer over the run route', [$status, $refused['code'] ?? null, $refused['data']['pointer'] ?? null], [422, 'first_schema_invalid', '/changes/0/definition']);
+eq('a refusal keeps its code and pointer over the run route', [$status, $refused['code'] ?? null, $refused['data']['pointer'] ?? null], [422, 'tp_schema_invalid', '/changes/0/definition']);
 
 // Applying needs its own capability; an application password can be denied it.
 eq('an editor can\'t apply', $run('schema-apply', ['parent' => $newest(), 'changes' => [$change]], 'editor')[0], 403);
@@ -425,8 +425,8 @@ eq('an administrator applies; the version records the user and the application p
     [200, $count + 1, 'admin', 'ability', true, $applied['actor']['credential']['name'] ?? 'missing']);
 check('the recorded credential is the one that signed the request', in_array($applied['actor']['credential']['uuid'] ?? '', array_column(WP_Application_Passwords::get_user_application_passwords($wp->userId('admin')), 'uuid'), true));
 [$status, $conflict] = $run('schema-apply', ['parent' => $newest() - 1, 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Late']]], 'admin');
-eq('a change made against an older version is a 409 over the run route too', [$status, $conflict['code'] ?? null], [409, 'first_schema_conflict']);
-update_option('first_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'password' => $applied['actor']['credential']['uuid']]]);
+eq('a change made against an older version is a 409 over the run route too', [$status, $conflict['code'] ?? null], [409, 'tp_schema_conflict']);
+update_option('tp_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'password' => $applied['actor']['credential']['uuid']]]);
 [$status] = $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Denied']]], 'admin');
 eq('an application password an administrator denied can\'t apply', $status, 403);
 eq('it can still read and propose', [$run('schema-read', [], 'admin')[0], $run('schema-propose', ['changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'x']]], 'admin')[0]], [200, 200]);
@@ -435,11 +435,11 @@ eq('it can still read and propose', [$run('schema-read', [], 'admin')[0], $run('
 [$status, $minted] = http('POST', $wp->url() . '/wp-json/wp/v2/users/me/application-passwords', ['name' => 'minted while denied'], 'admin');
 eq('a denied password can still create another one through core', $status, 201);
 $mintedAuth = 'admin:' . $minted['password'];
-// A password made over core's route starts read-only (First's default scope); its owner grants writes
+// A password made over core's route starts read-only (TypedPress's default scope); its owner grants writes
 // on purpose. Even then the deny its maker carried must hold.
 // (This process read the user's passwords before the HTTP request made one: read them again.)
 wp_cache_delete($wp->userId('admin'), 'user_meta');
-\First\Wp\AgentScope::store($wp->userId('admin'), $minted['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+\TypedPress\Wp\AgentScope::store($wp->userId('admin'), $minted['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
 $runAs = static function (string $ability, array $input, string $credential) use ($wp): array {
     $ch = curl_init($wp->url() . "/wp-json/wp-abilities/v1/abilities/rtschema/$ability/run");
     curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => 'POST', CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60,
@@ -449,7 +449,7 @@ $runAs = static function (string $ability, array $input, string $credential) use
     return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), is_string($body) ? json_decode($body, true) : null];
 };
 [$status, $mintedAnswer] = $runAs('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Minted']]], $mintedAuth);
-eq('a password a denied one created can\'t apply either: the deny passed to it', [$status, $mintedAnswer['code'] ?? null], [403, 'first_forbidden']);
+eq('a password a denied one created can\'t apply either: the deny passed to it', [$status, $mintedAnswer['code'] ?? null], [403, 'tp_forbidden']);
 [$status] = $runAs('schema-read', [], $mintedAuth);
 eq('it signs in fine otherwise', $status, 405);
 // Core lets an administrator create passwords for another user too: one a denied password makes for
@@ -458,15 +458,15 @@ $colleague = $wp->addUser('colleague_admin', 'admin');
 [$status, $forColleague] = http('POST', $wp->url() . "/wp-json/wp/v2/users/$colleague/application-passwords", ['name' => 'made by a denied password'], 'admin');
 eq('a denied password can create one for another administrator through core', $status, 201);
 wp_cache_delete($colleague, 'user_meta');
-\First\Wp\AgentScope::store($colleague, $forColleague['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+\TypedPress\Wp\AgentScope::store($colleague, $forColleague['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
 eq('and that one can\'t apply either', $runAs('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Colleague']]], "colleague_admin:{$forColleague['password']}")[0], 403);
 // A deny list written as the first release documented it, a list of password UUIDs, still denies.
-update_option('first_rtschema_schema_apply_denied', [$applied['actor']['credential']['uuid']]);
+update_option('tp_rtschema_schema_apply_denied', [$applied['actor']['credential']['uuid']]);
 eq('a password UUID listed on its own is denied', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Old form']]], 'admin')[0], 403);
-// A user denied for First Identity access tokens who uses a token to create an application password
+// A user denied for TypedPress Identity access tokens who uses a token to create an application password
 // through core: the new password is denied too, so the token can't get round the deny that way.
-\First\Identity\Plugin::$db->insert('applications', ['id' => 'app_rtschema', 'name' => 'Schema tests', 'redirects' => '[]', 'origins' => '[]']);
-$bearer = \First\Identity\Plugin::$accounts->issueForUser($wp->userId('admin'), 'app_rtschema')['access_token'];
+\TypedPress\Identity\Plugin::$db->insert('applications', ['id' => 'app_rtschema', 'name' => 'Schema tests', 'redirects' => '[]', 'origins' => '[]']);
+$bearer = \TypedPress\Identity\Plugin::$accounts->issueForUser($wp->userId('admin'), 'app_rtschema')['access_token'];
 $withBearer = static function (string $method, string $url, mixed $body) use ($bearer): array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60,
@@ -476,50 +476,50 @@ $withBearer = static function (string $method, string $url, mixed $body) use ($b
     return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), is_string($res) ? json_decode($res, true) : null];
 };
 $applyUrl = $wp->url() . '/wp-json/wp-abilities/v1/abilities/rtschema/schema-apply/run';
-update_option('first_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'credential' => 'bearer']]);
+update_option('tp_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'credential' => 'bearer']]);
 eq('an administrator denied for access tokens can\'t apply with one', $withBearer('POST', $applyUrl, ['input' => ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Bearer']]]])[0], 403);
 [$status, $fromBearer] = $withBearer('POST', $wp->url() . '/wp-json/wp/v2/users/me/application-passwords', ['name' => 'made with a denied token']);
 eq('the token can create an application password through core', $status, 201);
 wp_cache_delete($wp->userId('admin'), 'user_meta');
-\First\Wp\AgentScope::store($wp->userId('admin'), $fromBearer['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+\TypedPress\Wp\AgentScope::store($wp->userId('admin'), $fromBearer['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
 eq('and that password can\'t apply: the token\'s deny passed to it', $runAs('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'From bearer']]], "admin:{$fromBearer['password']}")[0], 403);
 eq('it signs in fine otherwise', $runAs('schema-read', [], "admin:{$fromBearer['password']}")[0], 405);
 // Denying a user's application passwords as a kind: every one of them, present and future.
-update_option('first_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'credential' => 'application-password']]);
+update_option('tp_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'credential' => 'application-password']]);
 eq('denying all of a user\'s application passwords covers the one they sign in with now', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Kind']]], 'admin')[0], 403);
-delete_option('first_rtschema_schema_apply_denied');
+delete_option('tp_rtschema_schema_apply_denied');
 eq('nothing denied: an administrator applies', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Free']]], 'admin')[0], 200);
 
-// Revoking the capability. WordPress's own `wp cap remove administrator first_apply_schema` removes it
+// Revoking the capability. WordPress's own `wp cap remove administrator tp_apply_schema` removes it
 // from the role; it stays removed. So does an explicit false.
 $role = get_role('administrator');
-$role->remove_cap(\First\RuntimeSchema\Surfaces::APPLY);
+$role->remove_cap(\TypedPress\RuntimeSchema\Surfaces::APPLY);
 eq('after the capability is removed from the role, administrators can\'t apply', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Removed']]], 'admin')[0], 403);
-$role->add_cap(\First\RuntimeSchema\Surfaces::APPLY, false);
+$role->add_cap(\TypedPress\RuntimeSchema\Surfaces::APPLY, false);
 eq('an explicit false on the role does the same', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'No']]], 'admin')[0], 403);
-$role->add_cap(\First\RuntimeSchema\Surfaces::APPLY);
+$role->add_cap(\TypedPress\RuntimeSchema\Surfaces::APPLY);
 eq('and they apply again once it is given back', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Yes']]], 'admin')[0], 200);
 // The grant happens once: an administrator account made later gets it from the role, and taking it
 // from that one user holds while the role keeps it: the user gets the capability as false.
 $later = $wp->addUser('later_admin', 'admin');
-check('a later administrator holds the capability through the role', user_can($later, \First\RuntimeSchema\Surfaces::APPLY));
-(new WP_User($later))->add_cap(\First\RuntimeSchema\Surfaces::APPLY, false);
-check('given it as false, that one administrator doesn\'t hold it, though the role does', !user_can($later, \First\RuntimeSchema\Surfaces::APPLY) && user_can($wp->userId('admin'), \First\RuntimeSchema\Surfaces::APPLY));
+check('a later administrator holds the capability through the role', user_can($later, \TypedPress\RuntimeSchema\Surfaces::APPLY));
+(new WP_User($later))->add_cap(\TypedPress\RuntimeSchema\Surfaces::APPLY, false);
+check('given it as false, that one administrator doesn\'t hold it, though the role does', !user_can($later, \TypedPress\RuntimeSchema\Surfaces::APPLY) && user_can($wp->userId('admin'), \TypedPress\RuntimeSchema\Surfaces::APPLY));
 // A site that took it from the role before the grant was recorded (an explicit false, as the first
 // release had it) keeps it taken when the grant runs.
-$role->add_cap(\First\RuntimeSchema\Surfaces::APPLY, false);
-delete_option('first_schema_apply_granted');
-\First\RuntimeSchema\Surfaces::grant();
-check('the grant leaves a false on the role as it is', !user_can($wp->userId('admin'), \First\RuntimeSchema\Surfaces::APPLY), get_role('administrator')->capabilities[\First\RuntimeSchema\Surfaces::APPLY] ?? 'absent');
-$role->add_cap(\First\RuntimeSchema\Surfaces::APPLY);
+$role->add_cap(\TypedPress\RuntimeSchema\Surfaces::APPLY, false);
+delete_option('tp_schema_apply_granted');
+\TypedPress\RuntimeSchema\Surfaces::grant();
+check('the grant leaves a false on the role as it is', !user_can($wp->userId('admin'), \TypedPress\RuntimeSchema\Surfaces::APPLY), get_role('administrator')->capabilities[\TypedPress\RuntimeSchema\Surfaces::APPLY] ?? 'absent');
+$role->add_cap(\TypedPress\RuntimeSchema\Surfaces::APPLY);
 
 // The abilities are on the app's MCP server with the rest of its tools.
-$tools = array_column(\First\Wp\Abilities\Register::operations(), 'agents', 'name');
-// A credential without personal data (First's default scope for agent passwords) reads the versions
+$tools = array_column(\TypedPress\Wp\Abilities\Register::operations(), 'agents', 'name');
+// A credential without personal data (TypedPress's default scope for agent passwords) reads the versions
 // without who made them: the actor's login and application password name are personal data.
 [$status, $private] = http('POST', $wp->url() . '/wp-json/wp/v2/users/me/application-passwords', ['name' => 'no personal data'], 'admin');
 wp_cache_delete($wp->userId('admin'), 'user_meta');
-\First\Wp\AgentScope::store($wp->userId('admin'), $private['uuid'], ['write' => false, 'personal' => false, 'abilities' => null]);
+\TypedPress\Wp\AgentScope::store($wp->userId('admin'), $private['uuid'], ['write' => false, 'personal' => false, 'abilities' => null]);
 $ch = curl_init($wp->url() . '/wp-json/wp-abilities/v1/abilities/rtschema/schema-read/run');
 curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_HTTPHEADER => ['Authorization: Basic ' . base64_encode('admin:' . $private['password'])]]);
 $privateRead = json_decode((string) curl_exec($ch), true);
@@ -528,10 +528,14 @@ eq('a credential without personal data reads every version, but no login or pass
     [true, [], ['user' => $wp->userId('admin'), 'via' => $privateRead['versions'][0]['actor']['via'] ?? null]]);
 check('nor in the line saying who made each version', !str_contains(json_encode(array_column($privateRead['versions'] ?? [], 'by')), 'admin') && !str_contains(json_encode(array_column($privateRead['versions'] ?? [], 'by')), 'application password'), array_column($privateRead['versions'] ?? [], 'by'));
 eq('a credential with personal data still sees them', isset($run('schema-read', [], 'admin')[1]['versions'][0]['actor']['login']), true);
+// Applying answers with the stored version; without personal data, without the login and password name.
+\TypedPress\Wp\AgentScope::store($wp->userId('admin'), $private['uuid'], ['write' => true, 'personal' => false, 'abilities' => null]);
+$privateApply = $runAs('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Private']]], 'admin:' . $private['password']);
+eq('applying without personal data answers without the login or password name', [$privateApply[0], $privateApply[1]['actor'] ?? null], [200, ['user' => $wp->userId('admin'), 'via' => 'ability']]);
 
 eq('the three are agent tools', [$tools['rtschema/schema-read'] ?? null, $tools['rtschema/schema-propose'] ?? null, $tools['rtschema/schema-apply'] ?? null], [true, true, true]);
 
-// `wp first schema`: list, diff, apply, rollback.
+// `wp typedpress schema`: list, diff, apply, rollback.
 [$code, $listed] = $schemaCli(['list']);
 eq('schema list: one line per version, newest last', [$code, count($listed['data']), end($listed['data'])['version'], end($listed['data'])['changes']], [0, $newest(), $newest(), 1]);
 [$code, $diff] = $schemaCli(['diff', (string) $applied['version']]);
@@ -548,7 +552,7 @@ eq('schema rollback: a new version that reverses the given one', [$code, $rolled
 eq('a bad argument says how to call it', [$code, $bad['error']['code'] ?? null], [1, 'invalid_command']);
 
 // The versions screen (both admins) lists what schema-read returns: each version with who made it
-// and each change in words. The screens API itself is First Admin's; its WordPress tests cover both hosts.
+// and each change in words. The screens API itself is TypedPress Admin's; its WordPress tests cover both hosts.
 [, $read] = $run('schema-read', [], 'admin');
 $withByline = array_values(array_filter($read['versions'], static fn (array $v): bool => in_array('Added articles.byline (text)', $v['summary'] ?? [], true)));
 check('each version says what it changed, in words', $withByline !== [] && in_array('Hid articles.teaserImage (its values are kept)', array_merge(...array_map(static fn (array $v): array => $v['summary'], $read['versions'])), true), $read['versions']);
@@ -557,11 +561,13 @@ check('and who made it', str_contains(implode(' ', array_column($read['versions'
 // ================================================================ the chain and the option are checked
 // The version rows are chained by hash; a row edited in the database breaks the chain. The site then
 // keeps serving the last state that checked out and says why, and refuses to apply on top of it.
-$table = $wp->connection()->prefix() . 'first__schema_versions';
+$table = $wp->connection()->prefix() . 'tp__schema_versions';
 $goodState = get_option(Loader::option('rtschema'));
 $rowsBefore = $versions->list();
 $second = $rowsBefore[1];
 $wp->exec("UPDATE `$table` SET `changes` = ? WHERE `app` = 'rtschema' AND `version` = 2", [json_encode([['op' => 'addField', 'kind' => 'articles', 'field' => 'forged', 'definition' => ['type' => 'text']]])]);
+$d = $described();
+eq('the next request finds the broken chain itself, before anything reads the versions', [$d['runtimeSchema']['version'], $d['runtimeSchema']['problem'] ?? null], [$goodState['version'], 'schema version 2 does not match its hash']);
 // A deployment's preflight reads the versions through verify(): the same refusal, and nothing written.
 $optionBefore = get_option(Loader::option('rtschema'));
 eq('verify refuses a broken chain as list does', $refusal(fn () => $versions->verify()), '409 schema_chain_broken /changes');
@@ -569,6 +575,24 @@ wp_cache_delete('alloptions', 'options');
 wp_cache_delete(Loader::option('rtschema'), 'options');
 eq('and records nothing on the option', get_option(Loader::option('rtschema')), $optionBefore);
 eq('a broken chain refuses the next change, naming the first version that doesn\'t check out', $refusal(fn () => $versions->apply(count($rowsBefore), $add('afterForgery', ['type' => 'text']), $admin)), '409 schema_chain_broken /changes');
+// The admin screen says so instead of failing.
+wp_set_current_user($wp->userId('admin'));
+$screenLines = (static function (): array|string {
+    try {
+        return \TypedPress\RuntimeSchema\Surfaces::summary();
+    } catch (\Throwable $e) {
+        return get_class($e);
+    }
+})();
+eq('the admin screen shows a broken chain instead of failing', is_array($screenLines) && str_contains(implode(' ', $screenLines), 'does not match its hash'), true);
+// An option written while the chain is broken stays unserved: nothing seals content no version made.
+$planted = $goodState;
+$planted['collections']['articles']['columns']['planted'] = ['type' => 'text'];
+unset($planted['seal']);
+update_option(Loader::option('rtschema'), $planted, true);
+$refusal(fn () => $versions->list());
+check('a broken chain never seals an option it didn\'t check', !isset($described()['kinds']['articles']['columns']['planted']), array_keys($described()['kinds']['articles']['columns']));
+update_option(Loader::option('rtschema'), $goodState, true);
 eq('it exports no lock from a broken chain', $refusal(fn () => $versions->lock()) !== 'accepted', true);
 $d = $described();
 eq('requests keep serving the last state that checked out, and the API says the chain is broken', [$d['runtimeSchema']['version'], $d['runtimeSchema']['problem'] ?? null, isset($d['kinds']['articles']['columns']['forged'])],
@@ -588,15 +612,34 @@ eq('verify answers what deployCheck answers', $versions->verify(), $versions->de
 update_option(Loader::option('rtschema'), $forged, true);
 $d = $described();
 eq('an option edited outside apply is not served: the build\'s schema is, and the API says why', [isset($d['kinds']['articles']['columns']['planted']), isset($d['kinds']['articles']['columns']['subtitle']), $d['runtimeSchema']['problem'] ?? null],
-    [false, false, 'the runtime schema option does not match its own hash; apply a change, or run `wp first schema list`, to rebuild it from the stored versions']);
+    [false, false, 'the runtime schema option does not match its own hash; apply a change, or run `wp typedpress schema list`, to rebuild it from the stored versions']);
 [$code, $listed] = $schemaCli(['list']);
 eq('reading the versions rebuilds it from the table', [$code, isset($described()['kinds']['articles']['columns']['subtitle']), $described()['runtimeSchema']['problem'] ?? null], [0, true, null]);
 
+// An option at version 0 without a seal (apply never writes one) is not served either.
+$zero = ['format' => 1, 'version' => 0, 'hash' => '', 'collections' => ['articles' => ['columns' => ['zeroPlanted' => ['type' => 'text']]]]];
+$kept = get_option(Loader::option('rtschema'));
+update_option(Loader::option('rtschema'), $zero, true);
+$d = $described();
+eq('an unsealed option at version 0 is not served, and the API says so', [isset($d['kinds']['articles']['columns']['zeroPlanted']), $d['runtimeSchema']['version'], isset($d['runtimeSchema']['problem'])], [false, 0, true]);
+update_option(Loader::option('rtschema'), $kept, true);
+
+// Deleting the newest versions is noticed: the option remembers the version it was written for.
+$rowsNow = $versions->list();
+$last = end($rowsNow);
+$wp->exec("DELETE FROM `$table` WHERE `app` = 'rtschema' AND `version` = ?", [$last['version']]);
+eq('a missing newest version breaks the chain', $refusal(fn () => $versions->list()), '409 schema_chain_broken /changes');
+$wp->exec("INSERT INTO `$table` (`app`, `version`, `parent`, `format`, `build`, `actor`, `changes`, `hash`, `createdAt`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ['rtschema', $last['version'], $last['parent'], $last['format'], $last['build'], json_encode($last['actor'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), json_encode($last['changes'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $last['hash'], $last['createdAt']]);
+eq('and putting it back mends it', count($versions->list()), count($rowsNow));
+
 // ================================================================ a format this runtime doesn't know
+// Sealed, so it is the format check that turns it away, not the seal.
 $state = get_option(Loader::option('rtschema'));
-update_option(Loader::option('rtschema'), ['format' => 2] + $state, true);
+update_option(Loader::option('rtschema'), Loader::sealed(['format' => 2] + $state), true);
 $d = $described();
 check('a state in a newer format isn\'t guessed at: the site serves the build\'s schema', !isset($d['kinds']['articles']['columns']['subtitle']) && !isset($d['kinds']['events']), array_keys($d['kinds']));
+eq('and says which format it found', $d['runtimeSchema']['problem'] ?? null, 'the site\'s runtime schema is in format 2; this runtime reads format 1');
 update_option(Loader::option('rtschema'), $state, true);
 check('and the known format loads again', isset($described()['kinds']['articles']['columns']['subtitle']));
 

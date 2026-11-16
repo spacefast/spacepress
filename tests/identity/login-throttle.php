@@ -1,10 +1,10 @@
 <?php
-// Failed password attempts through WordPress's own sign-in (wp-login.php, XML-RPC where it is on, any
+// Failed password attempts through WordPress's own sign-in (wp-login.php, XML-RPC unless turned off, any
 // caller of wp_authenticate) are limited per address and per login, with the limits of Identity's own
 // password sign-in. Sign-ins that succeed count nothing.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use First\Identity\{Plugin, Security};
+use TypedPress\Identity\{Plugin, Security};
 
 $tag = bin2hex(random_bytes(5));
 $password = 'correct horse ' . $tag;
@@ -95,7 +95,7 @@ for ($i = 0; $i < 15; $i++) {
 }
 unset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW']);
 check($limits() === 0, 'application password requests count nothing');
-// The same through wp_authenticate (how XML-RPC signs in, where a site turns it on): an application
+// The same through wp_authenticate (how XML-RPC signs in): an application
 // password that authenticates isn't counted, and a wrong one is a password attempt like any other.
 $through = [];
 for ($i = 0; $i < 15; $i++) {
@@ -176,7 +176,7 @@ $limit = static function () use ($tag): string {
     try {
         Plugin::$security->limit("probe-$tag", 3);
         return 'ok';
-    } catch (\First\Identity\Failure $e) {
+    } catch (\TypedPress\Identity\Failure $e) {
         return $e->kind;
     }
 };

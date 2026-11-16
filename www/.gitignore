@@ -1,0 +1,8 @@
+# Written by scripts/build.mjs.
+/public/
+/tp/data/sources.ts
+# typedpress dev's local WordPress, and typedpress build's output.
+.tp/*
+!.tp/sync-base.json
+/tp/dist/
+node_modules/

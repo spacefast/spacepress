@@ -1,7 +1,7 @@
 {
-	"name": "@first-admin/admin-toolkit",
+	"name": "@typedpress-admin/admin-toolkit",
 	"version": "1.0.0",
-	"description": "Shared components and utilities for First Admin",
+	"description": "Shared components and utilities for TypedPress Admin",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
@@ -11,10 +11,10 @@
 		"build"
 	],
 	"dependencies": {
-		"@first-admin/private-apis": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
+		"@typedpress-admin/private-apis": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
 		"@wordpress/theme": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/a11y": "catalog:",
 		"@wordpress/base-styles": "catalog:",
 		"@wordpress/components": "catalog:",

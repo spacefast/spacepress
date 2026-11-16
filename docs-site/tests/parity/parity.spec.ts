@@ -1,4 +1,4 @@
-// The docs site's parity suite: what the site served before it moved to First, and what any build
+// The docs site's parity suite: what the site served before it moved to TypedPress, and what any build
 // of it must keep serving. tests/parity/inventory.json is the record (tests/parity/inventory.mjs
 // wrote it from that build); each test reads a URL as a reader or an agent would and checks it
 // against the record, by role, label and text, never by the markup of one implementation.
@@ -8,6 +8,8 @@
 // (PARITY_BASE_URL).
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+
+import { pick } from "../tree.ts";
 
 interface SidebarEntry {
 	label: string;
@@ -202,7 +204,7 @@ test("llms.txt lists every page it listed, and llms-full.txt has their text", as
 	for (const route of inventory.llms) expect(listed, route).toContain(route);
 	const full = await (await request.get(at("/llms-full.txt"))).text();
 	for (const route of ["/getting-started", "/reference/config", "/publishing/spacefast"]) expect(full).toContain(inventory.pages[route]!.h1);
-	expect(full).toContain("npm create @spacefast/first my-app");
+	expect(full).toContain("npm create typedpress my-app");
 });
 
 test("files are served with their media types", async ({ request }) => {
@@ -216,7 +218,7 @@ test("files are served with their media types", async ({ request }) => {
 // where the host applies them: PARITY_HEADERS=1 checks them.
 test("the _headers rules the site set are kept", async ({ request }) => {
 	test.skip(!process.env.PARITY_HEADERS, "the host does not apply _headers (GitHub Pages)");
-	const examples: Record<string, string> = { "/*.md": "/getting-started.md", "/*.mdx": "/getting-started.mdx", "/*.txt": "/llms.txt", "/.well-known/agent-skills/*.md": "/.well-known/agent-skills/first/SKILL.md" };
+	const examples: Record<string, string> = { "/*.md": "/getting-started.md", "/*.mdx": "/getting-started.mdx", "/*.txt": "/llms.txt", "/.well-known/agent-skills/*.md": "/.well-known/agent-skills/typedpress/SKILL.md" };
 	for (const [pattern, lines] of Object.entries(inventory.headers)) {
 		const url = examples[pattern] ?? (pattern.includes("*") ? null : pattern);
 		if (url === null) continue;
@@ -244,7 +246,7 @@ test("an unknown address is a 404 page that leads back to the docs", async ({ pa
 test("the header has the logo, the section tabs, the Tour and GitHub links, and the Playground", async ({ page }) => {
 	await page.goto(at("/reference/config"));
 	const header = page.getByRole("banner");
-	await expect(header.getByRole("link", { name: "First" }).first()).toHaveAttribute("href", /\/$/);
+	await expect(header.getByRole("link", { name: "TypedPress" }).first()).toHaveAttribute("href", /\/$/);
 	const tabs = header.getByRole("navigation", { name: "Sections" }).first();
 	await expect(tabs.getByRole("link")).toHaveText(["Docs", "Examples", "Reference", "REST API"]);
 	await expect(header.getByRole("link", { name: "Tour", exact: true })).toHaveAttribute("href", /\/tour$/);
@@ -255,7 +257,7 @@ test("the header has the logo, the section tabs, the Tour and GitHub links, and 
 test("the footer has the licence line and the Spacefast link", async ({ page }) => {
 	await page.goto(at("/getting-started"));
 	const footer = page.getByRole("contentinfo");
-	await expect(footer).toContainText("First is MIT licensed. The code that runs inside WordPress is GPL-2.0-or-later.");
+	await expect(footer).toContainText("TypedPress is MIT licensed. The code that runs inside WordPress is GPL-2.0-or-later.");
 	await expect(footer.getByRole("link", { name: "Spacefast" })).toHaveAttribute("href", "https://spacefast.com");
 });
 
@@ -302,9 +304,9 @@ test("a code block has a copy button", async ({ page, context }) => {
 	await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 	await page.goto(at("/getting-started"));
 	const block = page.locator("main pre").first();
-	await expect(block).toContainText("npm create @spacefast/first");
+	await expect(block).toContainText("npm create typedpress");
 	await page.getByRole("button", { name: "Copy code" }).first().click();
-	expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("npm create @spacefast/first");
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("npm create typedpress");
 });
 
 test("code is highlighted, in the light and the dark theme", async ({ page }) => {
@@ -340,7 +342,7 @@ test("cards link to their pages, with a title and a line of text", async ({ page
 test("RepoFile shows a repository file whole, highlighted", async ({ page }) => {
 	await page.goto(at("/pages"));
 	await expect(page.getByRole("heading", { name: /^A layout/ })).toBeVisible();
-	// tests/fixtures/app-router/first/app/layout.tsx, which only this file says.
+	// tests/fixtures/app-router/tp/app/layout.tsx, which only this file says.
 	const file = page.getByRole("main").getByText("%s · Field Notes").first();
 	await expect(file).toBeVisible();
 	await expect(page.getByRole("main").getByText("layout.tsx", { exact: true }).first()).toBeVisible();
@@ -362,9 +364,9 @@ test("CompiledExcerpt shows the PHP the compiler wrote for an example", async ({
 
 test("ExampleConfig shows an example's config with the compiler's names", async ({ page }) => {
 	await page.goto(at("/reference/wordpress-plugins"));
-	// examples/wp-plugins/first.config.ts, shown with First's names.
+	// examples/wp-plugins/typedpress.config.ts, shown with TypedPress's names.
 	await expect(page.getByRole("main").getByText('"classic-editor": "1.6.7"').first()).toBeVisible();
-	await expect(page.getByRole("main").getByText('from "first"').first()).toBeVisible();
+	await expect(page.getByRole("main").getByText('from "typedpress"').first()).toBeVisible();
 });
 
 // --- The REST reference ---------------------------------------------------------------------
@@ -434,15 +436,17 @@ test("the tour shows each stop's config next to what it compiles to", async ({ p
 });
 
 test("an example page lists every file, opens one, and opens one a link names", async ({ page }) => {
-	const plugins = "first/dist/wp-content/plugins";
-	const file = `${plugins}/first-app-pantry/first/app/schema.php`;
+	const plugins = "tp/dist/wp-content/plugins";
+	const file = `${plugins}/typedpress-app-pantry/tp/app/schema.php`;
 	await page.goto(at(`/examples/pantry#file=${encodeURIComponent(file)}`));
 	await expect(page.getByRole("main").getByText("<?php").first()).toBeVisible();
 	await page.goto(at("/examples/pantry"));
 	const tree = page.getByRole("tree").first();
 	await expect(tree).toBeVisible();
-	// The tree opens on the app plugin's folder; a click shows the file.
-	await tree.getByRole("treeitem", { name: "schema.php", exact: true }).first().click();
+	// The tree opens on the app plugin's folder and the explorer opens its compiled PHP. Wait for that
+	// file, so its selection doesn't replace the one made here; then a click shows the file.
+	await expect(page.getByRole("main").getByText("<?php").first()).toBeVisible();
+	await pick(page, file);
 	await expect(tree.getByRole("treeitem", { name: "schema.php", exact: true }).first()).toHaveAttribute("aria-selected", "true");
 	await expect(page).toHaveURL(/#file=.*schema\.php$/);
 	await expect(page.getByRole("main").getByText("'name' => 'pantry'", { exact: false }).first()).toBeVisible();

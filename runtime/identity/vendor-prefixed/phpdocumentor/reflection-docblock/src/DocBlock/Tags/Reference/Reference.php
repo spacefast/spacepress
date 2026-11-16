@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Reference;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Reference;
 
 /**
- * Interface for references in {@see \First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\See}
+ * Interface for references in {@see \TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\See}
  */
 interface Reference
 {

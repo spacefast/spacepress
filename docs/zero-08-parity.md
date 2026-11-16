@@ -1,21 +1,21 @@
 # Zero 0.8 parity
 
 This page tracks what stands between each live Zero 0.8 Space on Spacefast and
-First. For each 0.8 capability, in the SDK (`@spacefast/zero` 0.8.1) and the
+TypedPress. For each 0.8 capability, in the SDK (`@spacefast/zero` 0.8.1) and the
 engine (`runtime/engine/legacy/zero-0.8`), it gives:
 
 - the v2 equivalent, or **missing**;
-- what `first migrate app --from zero-0.8` does with it;
+- what `typedpress migrate app --from zero-0.8` does with it;
 - what still needs a person.
 
 v2 runs only PHP at request time. Anything 0.8 did in its JavaScript isolate,
 Preact client or Rust runner either has a PHP counterpart or is listed as
 missing. [Migrate from Zero](migrating-from-zero.md) has the procedure.
 
-Sources read: `spacefast/monorepo` branch `first-cutover` at `0cc0293a04`:
+Sources read: `spacefast/monorepo` branch `typedpress-cutover` at `0cc0293a04`:
 `legacy/zero-0.8/packages/{zero,zero-compile}/src`,
 `runtime/engine/legacy/zero-0.8`, `crates/stattic-zero-runner/src/legacy/zero-0.8`
-and `packages/cli/src/first-commands.ts`.
+and `packages/cli/src/typedpress-commands.ts`.
 
 ## Census
 
@@ -32,8 +32,8 @@ version whose converted candidate takes the v2 compiler more than ten minutes to
 binary is `origin/main` at `ed83a588`.
 
 ```sh
-node scripts/census-08/census.mjs --data <export> --zero main=target/debug/first --json summary.json
-node scripts/census-08/census.mjs --data <export> --users --zero main=target/debug/first --json summary-users.json
+node scripts/census-08/census.mjs --data <export> --zero main=target/debug/typedpress --json summary.json
+node scripts/census-08/census.mjs --data <export> --users --zero main=target/debug/typedpress --json summary-users.json
 ```
 
 | | Without `--users` (885) | With `--users` (884) |
@@ -60,7 +60,7 @@ Refusal reasons with at least 10 Spaces (Spaces with at least one error for the 
 | ctx.env | 28 | 38 |
 | client: 0.8 sign-in | 26 | 26 |
 | pages: Markdown or HTML document | 24 | 24 |
-| endpoint: path owned by WordPress or First | 19 | 19 |
+| endpoint: path owned by WordPress or TypedPress | 19 | 19 |
 | ImageResponse (JSX on the server) | 19 | 19 |
 | client: kit components | 17 | 17 |
 | endpoint: name shared with a handler | 17 | 17 |
@@ -99,7 +99,7 @@ stop before.
 
 ### Production census (2026-11-07)
 
-**The bar.** v2 can replace 0.8 on Spacefast when `first migrate app --from
+**The bar.** v2 can replace 0.8 on Spacefast when `typedpress migrate app --from
 zero-0.8` converts a live 0.8 Space, with no human edit, into a candidate that
 compiles. The census reports the share it converts and ranks why the rest are
 refused.
@@ -157,7 +157,7 @@ Each feature is decided from whichever of these can decide it:
 its payload: the bundle becomes `server/index.ts`, with the default export
 restored, `var X = class` written back as `class X`, and each untyped handler
 input given a placeholder type. Each page becomes a stub of its file. Every
-binary under test then runs `first migrate app --from zero-0.8 <capsule>
+binary under test then runs `typedpress migrate app --from zero-0.8 <capsule>
 --dry-run --json` on the same rebuilt capsules. A version whose original source
 is placed under `sources/<version_id>/`, and matches every recorded SHA-256, is
 converted from that source instead.
@@ -229,7 +229,7 @@ reason, ranked by the #133 column):
 | ImageResponse (JSX on the server) | 19 | 19 | 19 | 19 | 19 | 19 | 19 |
 | ctx.auth: profile fields or methods | 0 | 0 | 0 | 19 | 19 | 19 | 19 |
 | ctx.env | 26 | 26 | 26 | 17 | 17 | 17 | 17 |
-| endpoint: path owned by WordPress or First | 0 | 0 | 0 | 16 | 16 | 16 | 16 |
+| endpoint: path owned by WordPress or TypedPress | 0 | 0 | 0 | 16 | 16 | 16 | 16 |
 | db: paginate, filter or other operation | 17 | 17 | 17 | 14 | 14 | 14 | 14 |
 | language: delete | 14 | 14 | 14 | 14 | 14 | 14 | 14 |
 | language: this outside a class | 14 | 14 | 14 | 14 | 14 | 14 | 14 |
@@ -300,7 +300,7 @@ one, and so what fixing it alone would release to source review):
 | ctx.db: database handle use | 10 |
 | favicon | 9 |
 | language: delete | 9 |
-| endpoint: path owned by WordPress or First | 7 |
+| endpoint: path owned by WordPress or TypedPress | 7 |
 | language: destructuring assignment | 6 |
 | ctx.env | 5 |
 
@@ -352,7 +352,7 @@ Retry a read the replica cancels ("conflict with recovery"). Then:
 
 ```sh
 node scripts/census-08/census.mjs --data <dir> --users \
-  --zero 118=<#118>/first --zero head=target/debug/first --json summary.json
+  --zero 118=<#118>/tp --zero head=target/debug/typedpress --json summary.json
 ```
 
 The summary has counts only. `--per-space` writes version ids, so keep that
@@ -366,7 +366,7 @@ counts refusal reasons. Rerun it with:
 ```sh
 cargo build
 scripts/migrate-census.py --flag --users          # this branch
-scripts/migrate-census.py --zero <old>/first --flag --users   # a baseline binary
+scripts/migrate-census.py --zero <old>/tp --flag --users   # a baseline binary
 scripts/migrate-census.py --json                  # per-app detail
 ```
 
@@ -389,7 +389,7 @@ source at all:
   (`zero-compile/src/capsule.ts`) excludes every `.ts`/`.tsx` file and
   `server/`, `shared/` and `pages/` sources from the upload.
 - `GET /v1/spaces/{id}/source/archive` serves a hosted or connected
-  repository. Of the account's three runtime Spaces only `batuhan-tasks` has
+  repository. Of the account's three runtime Spaces only one has
   one, and it is a Functions app (`functions/api/v1/*.js`), not a capsule.
   Versions published from a local checkout record only the commit
   (`source.kind: "git"`, `commit`, `repository`), which needs access to that
@@ -400,7 +400,7 @@ source at all:
   The bundles are compiled JavaScript without types, so they cannot be turned
   back into the authored TypeScript.
 
-**Converting from a finalize manifest.** `first migrate app --from zero-0.8
+**Converting from a finalize manifest.** `typedpress migrate app --from zero-0.8
 --manifest <finalize.json> [<source-dir>]` reads that stored payload (or its
 bare `artifact`):
 
@@ -424,10 +424,10 @@ the copier:
 
 1. **Capture source at 0.8 publish time** from now on: upload the capsule tree
    (`server/`, `shared/`, `pages/`, `client/`, `content/`, `sf.jsonc`) as a
-   private version artifact, as v2 already does with `.first-source/`. This does
+   private version artifact, as v2 already does with `.typedpress-source/`. This does
    nothing for versions already live.
 2. **An internal endpoint** for the migration operation,
-   `GET /v1/internal/spaces/{id}/versions/{versionId}/first-source`, returning
+   `GET /v1/internal/spaces/{id}/versions/{versionId}/typedpress-source`, returning
    the capsule tree for versions whose `source.kind` is `git` with a
    repository the control plane can read (GitHub App installations), or a
    hosted repository at the version's commit. Spaces published from an
@@ -471,7 +471,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 ## Capability table
 
-"Auto" means `first migrate app` maps it and a fixture proves it compiles.
+"Auto" means `typedpress migrate app` maps it and a fixture proves it compiles.
 **WP** means a WordPress/MariaDB lane proves the behavior
 (`tests/wp/app-migrate/run.sh`, `tests/wp/legacy/spacefast-run.sh`).
 
@@ -484,13 +484,13 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `table()` with `string`, `number`, `boolean`, `id`, `userId`, `.optional()`, `.default()` | `table()` over the existing `sf_<space>_<table>_<hash>` table with `existingTable`; string IDs over `BIGINT` | Auto, **WP** | IDs above `Number.MAX_SAFE_INTEGER` |
 | `.index(name, fields)`, `by_creation` | Index order plus `createdAt`, `id`, as 0.8 ordered | Auto, **WP** | — |
 | `ctx.db.<t>.get/insert/update/delete` | Generated row helpers keeping 0.8's string ids, defaults and optional omission | Auto, **WP** | — |
-| `withIndex(...).order().collect/take/first/count` | `db.query.<t>.findMany` with the same order; `eq: null` matches `IS NULL` | Auto, **WP** | — |
+| `withIndex(...).order().collect/take/tp/count` | `db.query.<t>.findMany` with the same order; `eq: null` matches `IS NULL` | Auto, **WP** | — |
 | `withIndex(...).paginate({ numItems, cursor })` | A keyset helper per call site: same order, `numItems` clamp 1–1000, `{ page, isDone, continueCursor }`; the cursor carries its call site and filter values | Auto, **WP** | Clients restart from page one after cutover (old cursors are refused); optional index fields |
 | Range on an optional field, `.where()`, `.orderBy()`, `.limit()`, `.offset()` | `db.query` filters exist; not mapped | Refused | Port the query |
-| `query()`, `mutation()`, `action()` | `action()` at `POST /__first/api/v1/actions/<name>` with named inputs | Auto, **WP** | Update callers to the v2 client |
+| `query()`, `mutation()`, `action()` | `action()` at `POST /__tp/api/v1/actions/<name>` with named inputs | Auto, **WP** | Update callers to the v2 client |
 | `type PaginationOptions`, `Id<T>` | Structural types in the candidate | Auto | — |
 | `collections`, native `posts`, `content/posts/` | Collections and a post-backed `posts` collection; data copied with IDs | Auto for declared collections, **WP**; undeclared `content/posts/` is refused (`Z08_OMITTED_POSTS`) | Native `pages` and `media` collections; rich blocks; multiple references; declaring `posts` for undeclared content |
-| `sync` declarations | `first sync` (local) | Refused (`Z08_OMITTED_SYNC`) | Declare the collection with `sync` in `first.config.ts`; hosted edits do not rebuild a frontend |
+| `sync` declarations | `typedpress sync` (local) | Refused (`Z08_OMITTED_SYNC`) | Declare the collection with `sync` in `typedpress.config.ts`; hosted edits do not rebuild a frontend |
 | `connectors` | The Space config's `connectors` (Spacefast Connectors v2), served to pages on the engine's `/__spacefast/connectors/<role>/<tool>` and called with `@spacefast/client` | Auto: each role carried into the candidate's `sf.jsonc` under the same name, as Spacefast froze it for 0.8 (`owner` is `personal`, every tool, the default cache); a role declared without a `connector` slug is refused (`Z08_OMITTED_CONNECTORS`) | Narrow `tools` if the page doesn't need every one |
 | `favicon` | Nothing to map: no 0.8 compiler, engine or runner read it, so the icon was always the published `/favicon.ico` | Dropped with a review entry | Keep the icon file in `public/` |
 | Pure helpers, classes, local `shared/` modules | Copied | Auto | Helpers outside the v2 subset (for example `in`, `URL`) |
@@ -501,14 +501,14 @@ those four. No refused corpus app is blocked by endpoints any more.
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
 | `auth.requireSignIn` | A 401 gate on every generated action and route | Auto, **WP** | — |
-| `auth.onGuestUpgrade` | `first_identity_guest_upgraded` (keeps the same user id) | Refused | Usually unnecessary: v2 guests keep their id on upgrade |
+| `auth.onGuestUpgrade` | `tp_identity_guest_upgraded` (keeps the same user id) | Refused | Usually unnecessary: v2 guests keep their id on upgrade |
 | `ctx.auth.isSignedIn`, `isAuthenticated`, `isGuest`, `displayName` | `ctx.user` and its role | Auto | — |
 | `ctx.auth.userId` with Space Users | The member's hidden `spacefastSubject`, which `migrate-spacefast` copies from `spacefast_app_subject_<id>_<space>` | Auto with `--users`, **WP** | New users answer `wp:<id>`; rows owned by `guest:<id>` or `account:<id>` principals have no v2 user |
 | `ctx.auth.requireSignedIn()`, `requireIdentity()` | Same refusal (401), same returned fields | Auto with `--users` | — |
 | `ctx.auth.userId` without Space Users (Spacefast accounts, guests) | **open owner decision**: v2 users are WordPress users, and how a Spacefast account or a 0.8 `guest:<id>` becomes one waits on Sign in with Spacefast | Refused (`Z08_CTX_AUTH_USERS`, which names the decision) | Keep the app on 0.8 until the decision lands |
 | `ctx.auth.email`, `emailVerified`, `picture`, `provider`, `subject`, `identityAliases` | With Space Users: what 0.8 gave a Space Users session, `provider` `"space-users"` (`"guest"` for a guest, `null` signed out) and the rest unset. Without them: **open owner decision**, tied to Sign in with Spacefast | Auto with `--users`; otherwise refused (`Z08_CTX_AUTH_PROFILE`, naming the decision) | Keep the app on 0.8 until the decision lands |
-| Users, passwords, sessions, Google bindings, Space Users subjects | `wp first migrate-spacefast`; a users receipt without the candidate's subjects refuses (`first_spacefast_subjects_missing`) and `--verify` reports `incomplete` | Data command, **WP** | Original auth salt and cookie alias on the host |
-| `verifyUser()` (server SDK) | `GET /wp-json/first-identity/v1/account` | Not applicable (runs outside the capsule) | Port callers |
+| Users, passwords, sessions, Google bindings, Space Users subjects | `wp typedpress migrate-spacefast`; a users receipt without the candidate's subjects refuses (`tp_spacefast_subjects_missing`) and `--verify` reports `incomplete` | Data command, **WP** | Original auth salt and cookie alias on the host |
+| `verifyUser()` (server SDK) | `GET /wp-json/typedpress-identity/v1/account` | Not applicable (runs outside the capsule) | Port callers |
 
 ### Context services
 
@@ -517,20 +517,20 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `ctx.env.NAME` | `process.env["NAME"]`: process environment, then a `wp-config.php` constant | Auto, **WP** | Move secrets to the host's variables; a name 0.8 left unset may now resolve to a host constant |
 | `ctx.log.info/warn/error/debug` | `console.*` to the PHP error log | Auto | — |
 | `ctx.invalidate(...)` | Committed writes announce themselves | Owned by the realtime PR (#128) | — |
-| `ctx.email.send` | `mail.send` from `"first"` (#133), queued with the write, sent after commit | Auto once #133 lands | Spacefast engine connects `first_mail_transport` to the Space sender (#5063) |
+| `ctx.email.send` | `mail.send` from `"first"` (#133), queued with the write, sent after commit | Auto once #133 lands | Spacefast engine connects `tp_mail_transport` to the Space sender (#5063) |
 | `ctx.spam.check/reportSpam/reportHam` | **missing** | Refused | **Gap** |
 | `ctx.gravatar` | `avatarUrl` is the same URL (SHA-256 of the trimmed, lower-cased address, same options); `profile` fetches Gravatar's public profile with `fetch` and projects it as 0.8 did | Auto | Bad `avatarUrl` options answer 422 `service_payload_invalid` with the 0.8 message |
 | `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `createHash`/`createHmac`/`timingSafeEqual` from `"node:crypto"`, byte for byte 0.8's output on the 452 recorded vectors; a named key reads `process.env` trimmed | Auto | — |
 | `ctx.jwt.sign` | **missing** | Refused | **Gap** |
 | `ctx.storage.list/get/delete` | [files](config-api.md#files) buckets | Refused | Port to file buckets |
-| `ctx.connectors.<role>.<tool>()` | **missing** in server code: First has no PHP connector broker. Pages call the same role with `@spacefast/client` | Refused (`Z08_CTX_CONNECTORS`), with the fix to call the role from the page | Move the call to the page |
+| `ctx.connectors.<role>.<tool>()` | **missing** in server code: TypedPress has no PHP connector broker. Pages call the same role with `@spacefast/client` | Refused (`Z08_CTX_CONNECTORS`), with the fix to call the role from the page | Move the call to the page |
 | `fetch()` in actions | The same global `fetch`, unchanged: HTTPS only, private and special-purpose addresses refused after every redirect, 10 s, 1 MiB | Auto | — |
 
 ### HTTP
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | a [`first/app/**/route.ts`](config-api.md#http-routes) handler at the same method and path (`:id` becomes a `[id]` folder, a final `:splat` a `[...splat]` folder plus a route at the bare prefix); v2 prefers literal segments over params, as 0.8 did | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
+| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | a [`tp/app/**/route.ts`](config-api.md#http-routes) handler at the same method and path (`:id` becomes a `[id]` folder, a final `:splat` a `[...splat]` folder plus a route at the bare prefix); v2 prefers literal segments over params, as 0.8 did | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
 | `json()`, `text()`, `empty()`, `redirect()`, plain values, `undefined` → 204 | The same status, headers and body | Auto, **WP** | — |
 | `request.text()`, `json()`, `headers.get/has`, `query.get/getAll/has`, `params`, `method` | `req.body`, `req.headers`, `req.query` (URLSearchParams semantics: first value, byte-exact names), `req.params` | Auto, **WP** | — |
 | `request.json().catch(fn)`, `text().catch(fn)`, and a returned `json()`/`text()` | The same read; invalid JSON calls `fn` as 0.8's rejection did | Auto | — |
@@ -541,7 +541,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `:param` segments | `:param` | Auto, **WP** | — |
 | A final `:splat` (0.8's only catch-all; `*` is refused at publish) | `*splat` (#134), one or more decoded segments joined with `/`, plus a second route at the bare prefix, which 0.8's `:splat` also answered with an empty `params.splat` | Auto, **WP** | — |
 | A writing `GET` (`readOnly: false`) | **missing** by design: GET routes take cookies without a nonce | Refused | Move to POST |
-| Paths under `wp-*`, `feed`, `auth`, `__zero`, … | Owned by WordPress or First | Refused | Move the endpoint |
+| Paths under `wp-*`, `feed`, `auth`, `__zero`, … | Owned by WordPress or TypedPress | Refused | Move the endpoint |
 | `ImageResponse` | **missing** (PHP has no JSX renderer) | Refused | Pre-render the image |
 | `/llms.txt`, `/api/ping` defaults | Not converter work | — | The host serves them |
 
@@ -549,10 +549,10 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| Static `pages/*.tsx` (no hooks, event attributes, browser globals, clocks, client or kit imports) | `first/app/<path>/page.tsx`, compiled to PHP and rendered by WordPress on each request; the data modules beside them move to `first/app/` too, so relative imports keep working | Auto, **WP** (hosted compile) | — |
-| `client/index.tsx` static `Layout` | `first/app/layout.tsx` | Auto, **WP** | — |
-| Client app without pages (`client/` served as a single-page app) | Static files in `public/`: the client compiled to browser modules, mounted by `public/index.html`, with `public/first/client.js` answering `@spacefast/zero/client` | Auto (native CLI and the WebAssembly compiler give the same files) | Check each screen on the candidate; reads refresh on this browser's writes and on focus |
-| `"use client"` pages with `useQuery`, `useMutation`, `useAction`, `useState`, `useAuth` | A `first/app/` page that reads as the visitor, plus `"use client"` components that call actions | Refused, lists what each page uses | Port each page |
+| Static `pages/*.tsx` (no hooks, event attributes, browser globals, clocks, client or kit imports) | `tp/app/<path>/page.tsx`, compiled to PHP and rendered by WordPress on each request; the data modules beside them move to `tp/app/` too, so relative imports keep working | Auto, **WP** (hosted compile) | — |
+| `client/index.tsx` static `Layout` | `tp/app/layout.tsx` | Auto, **WP** | — |
+| Client app without pages (`client/` served as a single-page app) | Static files in `public/`: the client compiled to browser modules, mounted by `public/index.html`, with `public/tp/client.js` answering `@spacefast/zero/client` | Auto (native CLI and the WebAssembly compiler give the same files) | Check each screen on the candidate; reads refresh on this browser's writes and on focus |
+| `"use client"` pages with `useQuery`, `useMutation`, `useAction`, `useState`, `useAuth` | A `tp/app/` page that reads as the visitor, plus `"use client"` components that call actions | Refused, lists what each page uses | Port each page |
 | `usePaginatedQuery` | In a client app without pages: the bridge calls the paginated action, passing `{ numItems, cursor }` to the handler's `PaginationOptions` parameter. In a `"use client"` page: a `"use client"` component over the paginated action | Auto in a client app; refused in a page | Port pages |
 | `@spacefast/zero/kit` components | **missing**: plain markup and CSS | Refused | Restyle |
 | `@spacefast/zero/charts` | **missing** | Refused | **Gap** |
@@ -560,9 +560,9 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `@spacefast/zero/content` blocks (`PostLoop`, …) | `content.query` in `load()` | Refused | Port |
 | Islands (`client/` components in document pages) | `<Island>` with an Interactivity API module | Refused | Port |
 | `pages/[param].tsx` | `collectionPage()` for collection items | Refused | Port |
-| `pages/*.md`, `pages/*.html` documents | `first/app/**/page.md`, a WordPress Page ([Pages](pages.md#markdown-pages)); `.html` documents are **missing** | Refused: the migrator does not convert them | Move a Markdown document to `first/app/<path>/page.md` by hand; move other text into a TSX page or a collection |
+| `pages/*.md`, `pages/*.html` documents | `tp/app/**/page.md`, a WordPress Page ([Pages](pages.md#markdown-pages)); `.html` documents are **missing** | Refused: the migrator does not convert them | Move a Markdown document to `tp/app/<path>/page.md` by hand; move other text into a TSX page or a collection |
 | `_pages/` system pages (404, access gate) | The host's own pages | Refused | — |
-| Tailwind `zero.css` | No generator: First does not compile Tailwind | Client app without pages: the published `zero.css` goes to `public/zero.css`, linked first as 0.8 linked it. It comes from `--zero-css <file>` (wasm `zeroCss`) or from a `--manifest` payload that kept its bytes; without it the app is refused with `Z08_CLIENT_STYLES` | For a version whose payload kept no bytes, compile it with 0.8's `compileZeroUtilityStylesheet` over the published source |
+| Tailwind `zero.css` | No generator: TypedPress does not compile Tailwind | Client app without pages: the published `zero.css` goes to `public/zero.css`, linked first as 0.8 linked it. It comes from `--zero-css <file>` (wasm `zeroCss`) or from a `--manifest` payload that kept its bytes; without it the app is refused with `Z08_CLIENT_STYLES` | For a version whose payload kept no bytes, compile it with 0.8's `compileZeroUtilityStylesheet` over the published source |
 | Live updates, realtime | `watch()` in the v2 client (#128) | Owned by #128 | Replace subscriptions |
 | `Link`, `navigate`, `Router` | Plain links; WordPress routes the page | Refused with the page | Port |
 
@@ -570,11 +570,11 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 route | v2 equivalent | Notes |
 | --- | --- | --- |
-| `/__zero/run` | `/__first/api/v1/actions/<name>` | Clients change; a converted client app calls it through `public/first/client.js` |
+| `/__zero/run` | `/__tp/api/v1/actions/<name>` | Clients change; a converted client app calls it through `public/tp/client.js` |
 | `/__zero/config` | `/__spacefast/client.js` | Clients change; the converted client app's bridge needs no config |
-| `/__zero/auth/start`, `/sign-out` | `/wp-json/first-identity/v1/*` | Identity plugin |
+| `/__zero/auth/start`, `/sign-out` | `/wp-json/typedpress-identity/v1/*` | Identity plugin |
 | `/__zero/realtime/*` | #128 transport | |
-| `/__spacefast/zero/connectors/<role>/*` | `/__spacefast/connectors/<role>/<tool>` | The engine answers it before WordPress on every Space, First included |
+| `/__spacefast/zero/connectors/<role>/*` | `/__spacefast/connectors/<role>/<tool>` | The engine answers it before WordPress on every Space, TypedPress included |
 
 ## v2 runtime gaps
 

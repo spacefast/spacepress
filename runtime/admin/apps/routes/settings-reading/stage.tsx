@@ -1,7 +1,7 @@
 import { useNavigate } from '@wordpress/route';
-import { Page } from '@first-admin/admin-toolkit';
+import { Page } from '@typedpress-admin/admin-toolkit';
 import { IconButton } from '@wordpress/ui';
-import type { Form as FormType } from '@first-admin/dataviews';
+import type { Form as FormType } from '@typedpress-admin/dataviews';
 import { seen } from '@wordpress/icons';
 import { __ } from '@wordpress/i18n';
 import { useSelect, useDispatch } from '@wordpress/data';
@@ -31,14 +31,14 @@ function SettingsReading() {
 
 	return (
 		<Page
-			title={ __( 'Reading settings', 'first-admin' ) }
+			title={ __( 'Reading settings', 'typedpress-admin' ) }
 			actions={
 				<IconButton
 					aria-pressed={ showCanvas }
 					tone="neutral"
 					variant="minimal"
 					icon={ seen }
-					label={ __( 'Preview', 'first-admin' ) }
+					label={ __( 'Preview', 'typedpress-admin' ) }
 					onClick={ async () => {
 						await set(
 							'core/settings-route',

@@ -1,16 +1,16 @@
 @use "@wordpress/base-styles/variables";
 
-.first-admin-site-icon {
+.typedpress-admin-site-icon {
 	display: flex;
 }
 
-.first-admin-site-icon__icon {
+.typedpress-admin-site-icon__icon {
 	width: variables.$grid-unit-40;
 	height: variables.$grid-unit-40;
-	color: var( --wpds-color-fg-content-neutral );
+	color: var( --wpds-color-foreground-content-neutral );
 }
 
-.first-admin-site-icon__image {
+.typedpress-admin-site-icon__image {
 	width: variables.$grid-unit-40;
 	height: variables.$grid-unit-40;
 	object-fit: cover;

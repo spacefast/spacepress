@@ -8,13 +8,13 @@
     "noEmit": true,
     "types": [],
     "jsx": "react-jsx",
-    "jsxImportSource": "first",
+    "jsxImportSource": "typedpress",
     "allowImportingTsExtensions": true,
     "paths": {
-      "first": ["../../../types/first/index.d.ts"],
-      "first/*": ["../../../types/first/*.d.ts"],
-      "first:db": ["../../../types/first/db.d.cts"]
+      "typedpress": ["../../../types/typedpress/index.d.ts"],
+      "typedpress/*": ["../../../types/typedpress/*.d.ts"],
+      "typedpress:db": ["../../../types/typedpress/db.d.cts"]
     }
   },
-  "include": ["first.config.ts", "first"]
+  "include": ["typedpress.config.ts", "tp"]
 }

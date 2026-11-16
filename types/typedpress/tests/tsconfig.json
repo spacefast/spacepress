@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "types": [],
+    "paths": {
+      "typedpress": [
+        "../index.d.ts"
+      ],
+      "php/wordpress": [
+        "../wordpress.d.ts"
+      ],
+      "typedpress/content": [
+        "../content.d.ts"
+      ],
+      "typedpress/app": [
+        "../app.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "*.ts"
+  ]
+}

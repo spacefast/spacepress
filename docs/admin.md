@@ -1,14 +1,14 @@
-# First Admin
+# TypedPress Admin
 
-First Admin is the default admin of every First app. `first build` puts the
-`first-admin` plugin (compiled assets included) into the artifact next to
-`first-runtime` and `first-app-<name>`; activate it after the app. It runs at
+TypedPress Admin is the default admin of every TypedPress app. `typedpress build` puts the
+`typedpress-admin` plugin (compiled assets included) into the artifact next to
+`typedpress-runtime` and `typedpress-app-<name>`; activate it after the app. It runs at
 `/wp-admin/new/`, the address the upstream admin used, and classic
 `/wp-admin/` stays complete and unchanged beside it. A subdirectory installation
 uses its own prefix, for example `/blog/wp-admin/new/`.
 
 ```ts
-import { collection, defineConfig, richText, text } from "first";
+import { collection, defineConfig, richText, text } from "typedpress";
 
 const posts = collection({
   title: text(),
@@ -20,7 +20,7 @@ const posts = collection({
   access: { read: "anyone", create: "editor", update: "editor", delete: "admin" },
 });
 
-// No setting needed: First Admin ships. `admin: false` leaves only classic wp-admin.
+// No setting needed: TypedPress Admin ships. `admin: false` leaves only classic wp-admin.
 export default defineConfig({ name: "my-app", collections: { posts } });
 ```
 
@@ -31,21 +31,50 @@ REST nonces, users, settings, plugins, themes, media and the block editor.
 
 | URL | What it serves |
 |---|---|
-| `/wp-admin/new/<route>` | First Admin. Apache rewrites it to `wp-admin/admin.php?page=first-admin`; the route stays in the path. |
-| `/wp-admin/admin.php?page=first-admin&p=<route>` | The same page on any server. A server that does not read `.htaccess` (nginx, and WordPress Studio's server behind `first dev`) redirects `/wp-admin/new/<route>` here. |
-| `/wp-admin/` | Classic wp-admin, unchanged. Its `First` menu entry opens First Admin. |
-| `/first-admin/<route>` | The earlier address: a permanent redirect to `/wp-admin/new/<route>`. |
+| `/wp-admin/new/<route>` | TypedPress Admin. Apache rewrites it to `wp-admin/admin.php?page=typedpress-admin`; the route stays in the path. |
+| `/wp-admin/admin.php?page=typedpress-admin&p=<route>` | The same page on any server. A server that does not read `.htaccess` (nginx, and WordPress Studio's server behind `typedpress dev`) redirects `/wp-admin/new/<route>` here. |
+| `/wp-admin/new/classic/<slug>` | A classic wp-admin page (`options-permalink.php`, `edit-comments.php`, `admin.php?page=<plugin>`) framed inside TypedPress Admin, without wp-admin's menu and toolbar. |
+| `/wp-admin/` | Classic wp-admin. Without developer mode its pages open framed in TypedPress Admin (below). Its `TypedPress` menu entry opens TypedPress Admin. |
+| `/typedpress-admin/<route>` | The earlier address: a permanent redirect to `/wp-admin/new/<route>`. |
+| `/wp-admin/new/legacy/<slug>` | The frame route's earlier address: a permanent redirect to `/wp-admin/new/classic/<slug>`. |
 
 The page is a wp-admin page: `admin.php` signs the visitor in (`auth_redirect`)
-and builds wp-admin's menus, so plugin menu entries appear in First Admin's
+and builds wp-admin's menus, so plugin menu entries appear in TypedPress Admin's
 sidebar. The plugin writes its rule into `.htaccess` on the first web request
 after it is activated or updated (WP-CLI never writes that file).
 
 After signing in, WordPress's default destination (`/wp-admin/`) becomes
 `/wp-admin/new/`. A page the visitor asked for (`redirect_to`) is kept.
-`Classic admin` in First Admin's sidebar and command palette opens
-`/wp-admin/`; `First` in wp-admin's menu returns. Existing plugin settings and
-classic plugin screens remain accessible in both.
+
+### Developer mode
+
+TypedPress Admin is the only admin people see. Classic wp-admin is behind
+**developer mode**, a per-user setting (user meta `tp_admin_developer_mode`,
+off by default) on the user's profile in TypedPress Admin, under Admin.
+
+- **Off**: the sidebar and command palette have no `Classic admin`. A classic
+  page opened in the browser as a page of its own goes to the same page framed
+  in TypedPress Admin: `/wp-admin/` to `/wp-admin/new/`, `options-permalink.php` to
+  `/wp-admin/new/classic/options-permalink.php`. Only an allowlist of pages
+  redirects (`tp_admin_framed_pages` filter). The block editor
+  (`post.php`, `post-new.php`), uploads, `admin-ajax.php`, `admin-post.php`,
+  REST, WP-CLI and wp-login.php are untouched, and so is the frame's own
+  request (the browser marks it `Sec-Fetch-Dest: iframe`).
+- **On**: `Classic admin` in the sidebar and command palette opens
+  `/wp-admin/`, classic pages open as themselves, and `TypedPress` in wp-admin's menu
+  returns.
+
+Classic screens TypedPress Admin has no screen for are in its sidebar either way,
+framed at `/classic/<slug>`: Settings → Writing, Discussion, Media,
+Permalinks, Privacy and plugin settings; Tools (Site Health, Import, Export,
+personal data); Comments; and every plugin's own menu. Entries come from
+wp-admin's menu for the signed-in user, so pages the user may not open, and
+pages the app's hardening switches refuse (plugin and theme installs, the file
+editors, the Customizer), are not listed. Comments is listed only while a
+collection takes comments (`comments: true`) or the site has comments.
+
+The app's own wp-admin menu entry (`typedpress-<app>`, the parent of its globals and
+table screens) opens its collections in TypedPress Admin.
 
 `admin: false` in `defineConfig` leaves the plugin out of the build, and a build
 that adds it removes the plugin from the output. Classic wp-admin is then the
@@ -56,9 +85,9 @@ subdirectory prefix.
 
 ## Screens in both admins
 
-A screen declared once with `first_admin_register_screen()` appears in First
+A screen declared once with `tp_admin_register_screen()` appears in TypedPress
 Admin (`/wp-admin/new/screens/<id>`) and as a classic wp-admin page, rendered by
-the same component, with actions that run Abilities. First declares Schema
+the same component, with actions that run Abilities. TypedPress declares Schema
 versions and one list per `table()` kind this way. See
 [admin-screens.md](admin-screens.md).
 
@@ -68,50 +97,50 @@ The admin includes the complete distributable next-admin / CIAB Admin plugin
 package, route, field, dashboard-widget and PHP library trees. This includes
 Dashboard, native Posts and Pages, Users, Plugins, Themes, Settings, Design,
 Styles, Navigation, taxonomy and comment fields, importers and the AI-agent
-integration package. These surfaces are retained alongside First's schema-driven
+integration package. These surfaces are retained alongside TypedPress's schema-driven
 collections, tables, relations, media and globals.
 
 The home route `/` is the upstream dashboard, as upstream has it;
-`/collections` is First's collection overview (Collections → All collections in
+`/collections` is TypedPress's collection overview (Collections → All collections in
 the sidebar). The sidebar includes native WordPress content types as well
-as First collections; mapped types appear through the access-aware First adapter.
+as TypedPress collections; mapped types appear through the access-aware TypedPress adapter.
 Native content uses WordPress's editor routes. The complete upstream attachment
-editor is at `/types/attachment/edit/:id`; `Edit image` opens it from First
-media details, with crop/rotate/flip tools and WordPress-native image saving. First content uses the same block
-editor with Secure Custom Fields and First's existing REST authorization.
-Database tables use First's table forms and relation pickers. Hiding navigation
+editor is at `/types/attachment/edit/:id`; `Edit image` opens it from TypedPress
+media details, with crop/rotate/flip tools and WordPress-native image saving. TypedPress content uses the same block
+editor with Secure Custom Fields and TypedPress's existing REST authorization.
+Database tables use TypedPress's table forms and relation pickers. Hiding navigation
 never grants or revokes access: the server remains the authority.
 
 ## Styles
 
-First Admin keeps the upstream look. Where a pinned WordPress package changed
+TypedPress Admin keeps the upstream look. Where a pinned WordPress package changed
 underneath it, the change is the smallest one that keeps that look:
 
 | Change | Why |
 |---|---|
 | `font-weight: var(--wpds-typography-font-weight-emphasis, 499)` (and `-default, 400`) for `$font-weight-medium`/`-regular` | the pinned `@wordpress/base-styles` removed those variables; the tokens carry the same values |
-| Color settings name the background seed `background` and use `@wordpress/theme` directly | upstream's `@first-admin/theme` shim passed the old `bg` seed; WordPress 7.1's `wp-theme` reads `background` |
+| Color settings name the background seed `background` and use `@wordpress/theme` directly | upstream's `@typedpress-admin/theme` shim passed the old `bg` seed; WordPress 7.1's `wp-theme` reads `background` |
 | The site hub wraps its title in a `<span>` | the upstream stylesheet sizes the link's first span, which the pinned `@wordpress/ui` Link no longer adds |
 | `style` on design-system popups and primitives | the pinned Base UI types moved it |
 | The page opts in to view transitions (`@view-transition`) | the router starts one on each navigation; without the opt-in the browser aborts it with an error |
 
 Everything else that differs from the retained originals is behaviour: the
-mount and subdirectory URLs, First's schema screens, and the AI chat button,
-which needs a provider (see External services). First's own screens
+mount and subdirectory URLs, TypedPress's schema screens, and the AI chat button,
+which needs a provider (see External services). TypedPress's own screens
 (`packages/schema`) use `@wordpress/components` and DataViews with upstream's
 spacing.
 
 ## WordPress packages instead of copies
 
-Where the WordPress floor (7.1) allows it, First Admin uses WordPress's own
+Where the WordPress floor (7.1) allows it, TypedPress Admin uses WordPress's own
 packages instead of the copies the upstream admin carried:
 
 | Was | Now | How it loads |
 |---|---|---|
-| `packages/theme` (`@first-admin/theme`) | `@wordpress/theme` | WordPress 7.1's `wp-theme` script; `useThemeProviderStyles` is its private API, unlocked as core's packages do. WordPress 7.1 marks that private API deprecated (removal planned for 7.3), so the AI panel and the editor settings need a replacement before First supports 7.3 |
+| `packages/theme` (`@typedpress-admin/theme`) | `@wordpress/theme` | WordPress 7.1's `wp-theme` script; `useThemeProviderStyles` is its private API, unlocked as core's packages do. WordPress 7.1 marks that private API deprecated (removal planned for 7.3), so the AI panel and the editor settings need a replacement before TypedPress supports 7.3 |
 | `packages/views`: `useView`, `loadView`, the view types and preference keys | `@wordpress/views` | bundled into the admin (WordPress 7.1 has no `wp-views` script) |
-| `packages/views`: `useViewConfig`, the `DataViews` layout wrapper | stays First's | `useViewConfig` reads First Admin's own fields (tabs, quick and add forms, labels, actions) from `/first-admin/v1/view-config`, which core's endpoint doesn't serve |
-| `packages/wp-build` | stays for now | `@wordpress/build` targets WordPress core's admin boot and a newer `@wordpress/theme` than 7.1 ships; it moves with First Admin onto core's boot |
+| `packages/views`: `useViewConfig`, the `DataViews` layout wrapper | stays TypedPress's | `useViewConfig` reads TypedPress Admin's own fields (tabs, quick and add forms, labels, actions) from `/typedpress-admin/v1/view-config`, which core's endpoint doesn't serve |
+| `packages/wp-build` | stays for now | `@wordpress/build` targets WordPress core's admin boot and a newer `@wordpress/theme` than 7.1 ships; it moves with TypedPress Admin onto core's boot |
 
 The packages are pinned with the rest in `apps/pnpm-workspace.yaml`. Their former
 copies stay recorded in `upstream-inventory.json`, with each retained input.
@@ -140,6 +169,12 @@ saving a copy of the default. A tab's filters (a role, a status) are applied on
 top of whatever the user saved, so a saved filter on the same field can't
 override the tab.
 
+Collections, Media, and declared list screens use the same view system for
+per-user columns, sorting where supported, and page size. Collections and Media
+keep page and search in the URL. Declared screens keep those navigation values
+only while the screen is open; their saved display settings are shared between
+TypedPress Admin and classic wp-admin. Each collection and screen has its own key.
+
 ## Provenance and updates
 
 The input distribution declares GPL-2.0-or-later. Its archive contains no Git
@@ -154,7 +189,7 @@ SHA-256, its destination, and the adapter disposition. The input digest is:
 This digest covers the 1,094 distributable plugin source files; repository agent
 instruction files are excluded. It identifies the archive, not a Git commit.
 Upstream root configuration/bootstrap and PHP tests are retained under
-`upstream-metadata/` as reference material, outside the active plugin loader; `first build` leaves
+`upstream-metadata/` as reference material, outside the active plugin loader; `typedpress build` leaves
 that folder out of the plugin, as it leaves out the JS workspace `apps/`.
 For each adapted file, `upstream-metadata/adapter-originals/` retains its complete
 input after namespace and privacy normalization. `retainedSourcePath` and
@@ -166,7 +201,7 @@ Dependency packages retain their original notices. The generated
 `build/THIRD-PARTY-LICENSES.txt` includes bundled dependency licenses and every
 workspace notice.
 
-Local changes use `@first-admin/*` and `first_admin_*` names, the existing First
+Local changes use `@typedpress-admin/*` and `tp_admin_*` names, the existing TypedPress
 mount/login/iframe adapter, a schema bridge, native menu merging, widget
 registration and compatibility adjustments for the pinned WordPress packages.
 The package tree remains intact. Review `adaptedSha256` and `adaptation` in the
@@ -202,7 +237,7 @@ disposable WordPress artifact created by `tests/wp/harness.sh`, run:
 ```sh
 cd runtime/admin/apps
 pnpm exec playwright install chromium
-FIRST_WP_HARNESS=/path/to/disposable-harness.json \
+TP_WP_HARNESS=/path/to/disposable-harness.json \
 pnpm exec playwright test --config wp-journey/playwright.config.ts
 ```
 
@@ -218,20 +253,20 @@ unchanged; it remains a known verification gap.
 
 The AI-agent package includes its context store, abilities lifecycle, cache
 invalidation and provider slot. It includes no AI service. A WordPress plugin
-may enable `ai_agent_enabled` through `first_admin_boot_context` and implement
+may enable `ai_agent_enabled` through `tp_admin_boot_context` and implement
 `window.wpOrchestratorAgent.ask`. Missing providers reject requests explicitly.
 See the package README for its events and slot contract. Hosted AI execution
 and hosted account invitations are not proven by local WordPress tests.
 
 The slot stays unwired on purpose. It needs a model that turns a prompt into
-answers and tool calls; First's agent surface (the site's MCP endpoint,
-`/wp-json/mcp/first-<app>`, and the app's Abilities) is the tools side of that,
+answers and tool calls; TypedPress's agent surface (the site's MCP endpoint,
+`/wp-json/mcp/typedpress-<app>`, and the app's Abilities) is the tools side of that,
 not a model. Wiring the two together would still need a hosted model and its
-credentials, which First does not ship. An agent outside the site (Claude Code,
+credentials, which TypedPress does not ship. An agent outside the site (Claude Code,
 an MCP client) already uses that endpoint and the same Abilities the admin's
-screens run, under the same permissions; see `first mcp` and docs/agents.md.
+screens run, under the same permissions; see `typedpress mcp` and docs/agents.md.
 
-Telemetry calls use an inert compatibility adapter: First sends no upstream
+Telemetry calls use an inert compatibility adapter: TypedPress sends no upstream
 usage events. The three upstream dashboard demonstration widgets retain their
 example data and explicitly label it as such. They do not report live traffic,
 weather or recent posts. Native plugin/theme catalog installation, update,

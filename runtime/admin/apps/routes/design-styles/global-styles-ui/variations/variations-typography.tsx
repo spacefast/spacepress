@@ -32,7 +32,7 @@ export default function TypographyVariations( {
 			<Grid
 				columns={ 3 }
 				gap={ gap }
-				className="first-admin-global-styles-style-variations-container"
+				className="typedpress-admin-global-styles-style-variations-container"
 			>
 				{ typographyVariations.map(
 					( variation: any, index: number ) => {

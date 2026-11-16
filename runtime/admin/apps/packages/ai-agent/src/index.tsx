@@ -5,9 +5,9 @@
  * This component just provides a minimal slot for rendering into.
  */
 
-import { useColorPreference } from '@first-admin/admin-toolkit';
+import { useColorPreference } from '@typedpress-admin/admin-toolkit';
 import { privateApis as themePrivateApis } from '@wordpress/theme';
-import { unlock } from '@first-admin/private-apis';
+import { unlock } from '@typedpress-admin/private-apis';
 
 // A private API of @wordpress/theme (no public replacement yet), unlocked as core's packages do.
 const { useThemeProviderStyles } = unlock( themePrivateApis ) as {
@@ -97,23 +97,23 @@ export function AIAgent( { onClose }: AIAgentProps ) {
 
 		return {
 			sidebarBg: resolveCSSVar(
-				styles[ '--wpds-color-bg-surface-neutral-weak' ],
+				styles[ '--wpds-color-background-surface-neutral-weak' ],
 				styles
 			),
 			sidebarPrimary: resolveCSSVar(
-				styles[ '--wpds-color-bg-interactive-brand-strong' ],
+				styles[ '--wpds-color-background-interactive-brand-strong' ],
 				styles
 			),
 			fgContentNeutral: resolveCSSVar(
-				styles[ '--wpds-color-fg-content-neutral' ],
+				styles[ '--wpds-color-foreground-content-neutral' ],
 				styles
 			),
 			fgContentNeutralWeak: resolveCSSVar(
-				styles[ '--wpds-color-fg-content-neutral-weak' ],
+				styles[ '--wpds-color-foreground-content-neutral-weak' ],
 				styles
 			),
 			fgInteractiveBrandStrong: resolveCSSVar(
-				styles[ '--wpds-color-fg-interactive-brand-strong' ],
+				styles[ '--wpds-color-foreground-interactive-brand-strong' ],
 				styles
 			),
 			strokeInteractiveNeutral: resolveCSSVar(
@@ -121,7 +121,7 @@ export function AIAgent( { onClose }: AIAgentProps ) {
 				styles
 			),
 			bgSurfaceNeutral: resolveCSSVar(
-				styles[ '--wpds-color-bg-surface-neutral' ],
+				styles[ '--wpds-color-background-surface-neutral' ],
 				styles
 			),
 		};
@@ -130,7 +130,7 @@ export function AIAgent( { onClose }: AIAgentProps ) {
 	// Fire ready event once on mount
 	useEffect( () => {
 		const colors = extractColors( themeProviderStyles );
-		const event = new CustomEvent( 'first-admin-ai-agent-ready', {
+		const event = new CustomEvent( 'typedpress-admin-ai-agent-ready', {
 			detail: {
 				onClose,
 				colors,
@@ -142,7 +142,7 @@ export function AIAgent( { onClose }: AIAgentProps ) {
 	// Fire theme change event when theme preferences change
 	useEffect( () => {
 		const colors = extractColors( themeProviderStyles );
-		const event = new CustomEvent( 'first-admin-theme-preferences-change', {
+		const event = new CustomEvent( 'typedpress-admin-theme-preferences-change', {
 			detail: {
 				colors,
 			},
@@ -152,8 +152,8 @@ export function AIAgent( { onClose }: AIAgentProps ) {
 
 	return (
 		<div
-			id="first-admin-ai-agent-slot"
-			className="first-admin-ai-agent-slot"
+			id="typedpress-admin-ai-agent-slot"
+			className="typedpress-admin-ai-agent-slot"
 			data-ai-agent-active="true"
 		/>
 	);

@@ -10,7 +10,7 @@ declare(strict_types=1);
  *   php docs/spikes/runtime-schema-request.php [--json]
  *
  * Boots the blog fixture on the in-process WordPress harness (tests/php/wp.php), seeds ten posts,
- * starts the harness's `php -S` and sends `GET /__first/api/v1/posts?limit=10` over loopback. A
+ * starts the harness's `php -S` and sends `GET /__tp/api/v1/posts?limit=10` over loopback. A
  * must-use plugin runs one loader per request, chosen by a file the script rewrites between
  * rounds, and logs how long the loader took and how long the whole request took:
  *
@@ -44,7 +44,7 @@ $wp = wpSite('rtschema-spike', [
                 return;
             }
             [$loader, $fields] = explode(':', $mode);
-            $compiled = glob(WP_PLUGIN_DIR . '/first-app-*/first/app/schema.php')[0];
+            $compiled = glob(WP_PLUGIN_DIR . '/typedpress-app-*/tp/app/schema.php')[0];
             // The file the loader requires: the compiled schema, or the generated merged one.
             $required = $loader === 'file' ? "$site/merged-$fields.php" : $compiled;
             $start = hrtime(true);
@@ -52,13 +52,13 @@ $wp = wpSite('rtschema-spike', [
                 $loaded = require $compiled;
             } elseif ($loader === 'option') {
                 $loaded = require $compiled;
-                foreach ((array) get_option("first_spike_overlay_$fields", []) as $kind => $added) {
+                foreach ((array) get_option("tp_spike_overlay_$fields", []) as $kind => $added) {
                     if (isset($loaded['collections'][$kind])) {
                         $loaded['collections'][$kind]['columns'] += $added;
                     }
                 }
             } else {
-                $loaded = require "$site/" . get_option("first_spike_pointer_$fields");
+                $loaded = require "$site/" . get_option("tp_spike_pointer_$fields");
             }
             $took = hrtime(true) - $start;
             $columns = array_sum(array_map(static fn (array $c): int => count($c['columns']), $loaded['collections']));
@@ -76,7 +76,7 @@ for ($i = 1; $i <= 10; $i++) {
     $status === 201 || throw new RuntimeException("seeding post $i answered $status");
 }
 
-$compiled = require "$wp->content/plugins/first-app-blog/first/app/schema.php";
+$compiled = require "$wp->content/plugins/typedpress-app-blog/tp/app/schema.php";
 $kinds = ['authors', 'posts'];
 $defs = [
     ['type' => 'text', 'rules' => ['max' => 120], 'ui' => ['label' => 'Subtitle', 'help' => 'Shown under the title']],
@@ -96,17 +96,17 @@ foreach ([1, 20, 200, 450] as $fields) {
     foreach ($overlay as $kind => $added) {
         $merged['collections'][$kind]['columns'] += $added;
     }
-    update_option("first_spike_overlay_$fields", $overlay, true);
+    update_option("tp_spike_overlay_$fields", $overlay, true);
     file_put_contents("$wp->dir/merged-$fields.php", '<?php return ' . var_export($merged, true) . ';');
     // opcache keeps a file out of the cache for opcache.file_update_protection seconds after its mtime.
     touch("$wp->dir/merged-$fields.php", time() - 60);
-    update_option("first_spike_pointer_$fields", "merged-$fields.php", true);
+    update_option("tp_spike_pointer_$fields", "merged-$fields.php", true);
     $modes[] = "option:$fields";
     $modes[] = "file:$fields";
 }
-touch("$wp->content/plugins/first-app-blog/first/app/schema.php", time() - 60);
+touch("$wp->content/plugins/typedpress-app-blog/tp/app/schema.php", time() - 60);
 
-$url = $wp->url() . '/__first/api/v1/posts?limit=10';
+$url = $wp->url() . '/__tp/api/v1/posts?limit=10';
 $get = static function () use ($url): void {
     $body = file_get_contents($url, false, stream_context_create(['http' => ['timeout' => 30, 'ignore_errors' => true]]));
     $rows = json_decode((string) $body, true)['data'] ?? null;
@@ -145,7 +145,7 @@ $median = static function (array $v): float {
 };
 $load = sys_getloadavg();
 $results = ['php' => PHP_VERSION, 'wordpress' => WP_CORE_VERSION, 'database' => 'SQLite', 'server' => 'php -S (cli-server)',
-    'request' => 'GET /__first/api/v1/posts?limit=10', 'requestsPerLoader' => ROUNDS * REQUESTS, 'hostLoad' => $load, 'baseColumns' => $baseColumns, 'loaders' => []];
+    'request' => 'GET /__tp/api/v1/posts?limit=10', 'requestsPerLoader' => ROUNDS * REQUESTS, 'hostLoad' => $load, 'baseColumns' => $baseColumns, 'loaders' => []];
 foreach ($modes as $mode) {
     [$loader, $fields] = explode(':', $mode);
     count($samples[$mode]['request']) === ROUNDS * REQUESTS || throw new RuntimeException("$mode logged " . count($samples[$mode]['request']) . ' requests');

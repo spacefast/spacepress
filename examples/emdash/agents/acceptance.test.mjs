@@ -12,7 +12,7 @@ import { submitSignIn } from '../sign-in.mjs';
 
 const exec = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
-const binary = resolve(process.env.FIRST_BIN ?? join(here, '../../../target/debug/first'));
+const binary = resolve(process.env.TP_BIN ?? join(here, '../../../target/debug/typedpress'));
 
 async function freePort() {
   const server = createServer();
@@ -23,14 +23,14 @@ async function freePort() {
 }
 
 test('native WordPress agent workflow: authenticated MCP, core Abilities, REST and editor share real state', { timeout: 600000 }, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'first-emdash-agents-'));
+  const root = await mkdtemp(join(tmpdir(), 'typedpress-emdash-agents-'));
   const project = join(root, 'app');
   const tools = join(root, 'tools');
-  const site = join(project, '.first/dev/wordpress');
+  const site = join(project, '.tp/dev/wordpress');
   const evidence = { binary, project, site, upstream: '1824902c0c383c052b623528799427b8a5ff75d0', steps: [] };
   console.log(`Agent acceptance evidence: ${root}`);
   await mkdir(project); await mkdir(tools);
-  await cp(join(here, 'first.config.ts'), join(project, 'first.config.ts'));
+  await cp(join(here, 'typedpress.config.ts'), join(project, 'typedpress.config.ts'));
   await cp(join(here, 'public'), join(project, 'public'), { recursive: true });
   // Enforce the public native lifecycle: no Docker or host PHP on the dev process's PATH.
   for (const name of ['node', 'npx', 'npm', 'sh', 'bash', 'uname', 'tar', 'unzip', 'chmod']) {
@@ -52,7 +52,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
       // A start command can fail after Studio registered the site. Recover from
       // the ownership receipt rather than relying on the command's exit status.
       let owner;
-      try { owner = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8')); }
+      try { owner = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       if (owner) {
         assert.equal(owner.project, project);
@@ -80,7 +80,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   const base = status.siteUrl.replace(/\/$/, '');
   evidence.base = base;
   // Receipts identify this run's project and registration; credentials never enter evidence.
-  const receipt = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
+  const receipt = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8'));
   assert.equal(receipt.project, project);
   assert.equal(receipt.site, site);
   evidence.receipt = { project: receipt.project, site: receipt.site, created: receipt.created };
@@ -101,7 +101,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
     catch { throw new Error(`${method} ${path}: ${response.status}, non-JSON ${text.slice(0, 250)}`); }
     return { status: response.status, type: response.headers.get('content-type'), json, headers: response.headers };
   };
-  const api = (path, options) => request('/__first/api/v1' + path, options);
+  const api = (path, options) => request('/__tp/api/v1' + path, options);
   const ok = (response) => { assert.equal(response.status, 200, JSON.stringify(response.json)); return response.json.data; };
   const ability = (name, input, who, method = 'POST') => {
     const path = `/wp-json/wp-abilities/v1/abilities/agents/${name}/run`;
@@ -126,10 +126,10 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
 
   // Streamable HTTP: initialize, negotiated protocol/session, initialized notification, tools/list/call.
   let rpcId = 0;
-  const mcpPath = '/wp-json/mcp/first-agents';
+  const mcpPath = '/wp-json/mcp/typedpress-agents';
   const initialize = (who) => request(mcpPath, { who, method: 'POST', headers: { accept: 'application/json, text/event-stream' }, body: {
     jsonrpc: '2.0', id: ++rpcId, method: 'initialize', params: {
-      protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'first-native-acceptance', version: '1' },
+      protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'typedpress-native-acceptance', version: '1' },
     },
   } });
   const anonymous = await initialize();
@@ -165,7 +165,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   assert.deepEqual(content(await call('admin', 'echo', { message: 'admin' })), { message: 'admin', length: 5 });
   await record('authenticated MCP handshake, named tool discovery and official echo behavior', { anonymousStatus: anonymous.status, tools: names, echo });
 
-  const descriptors = JSON.parse(await wp('first', 'abilities')).data;
+  const descriptors = JSON.parse(await wp('typedpress', 'abilities')).data;
   for (const name of ['agents/private-notes-list', 'agents/global-private-settings-get', 'agents/operator-note']) {
     const descriptor = descriptors.find((entry) => entry.name === name);
     assert.deepEqual([descriptor.meta.show_in_rest, descriptor.meta.mcp.public], [false, false]);
@@ -185,8 +185,8 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   assert.deepEqual(ok(await api('/articles')), []);
   assert.deepEqual(content(await call('subscriber', 'articles-list', {})).rows, []);
   assert.equal(content(await call('editor', 'articles-list', {})).rows[0].id, draft.id);
-  const nativeSave = await request(`/wp-json/wp/v2/first_articles/${draft.id}`, { who: 'editor', method: 'POST', body: {
-    title: 'Saved in the native editor', content: '<!-- wp:paragraph --><p>Native WordPress body</p><!-- /wp:paragraph -->', acf: { first_internalNote: 'Native SCF note' },
+  const nativeSave = await request(`/wp-json/wp/v2/tp_articles/${draft.id}`, { who: 'editor', method: 'POST', body: {
+    title: 'Saved in the native editor', content: '<!-- wp:paragraph --><p>Native WordPress body</p><!-- /wp:paragraph -->', acf: { tp_internalNote: 'Native SCF note' },
   } });
   assert.equal(nativeSave.status, 200, JSON.stringify(nativeSave.json));
   const nativeViaAgent = content(await call('editor', 'articles-get', { id: draft.id }));
@@ -208,7 +208,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   const deniedRest = await api(`/articles/${draft.id}`, { who: 'subscriber', method: 'PATCH', body: { title: 'Forbidden' } });
   const deniedCore = await ability('articles-update', { id: draft.id, patch: { title: 'Forbidden' } }, 'subscriber');
   const deniedMcp = await call('subscriber', 'articles-update', { id: draft.id, patch: { title: 'Forbidden' } });
-  assert.deepEqual([deniedRest.status, deniedRest.json.code, deniedCore.status, deniedCore.json.code, deniedMcp.isError], [403, 'forbidden', 403, 'first_forbidden', true]);
+  assert.deepEqual([deniedRest.status, deniedRest.json.code, deniedCore.status, deniedCore.json.code, deniedMcp.isError], [403, 'forbidden', 403, 'tp_forbidden', true]);
   assert.equal(ok(await api(`/articles/${draft.id}`)).title, 'Saved in the native editor');
   const anonymousWrite = await api('/articles', { method: 'POST', body: { title: 'Forbidden' } });
   assert.deepEqual([anonymousWrite.status, anonymousWrite.json.code], [401, 'unauthenticated']);
@@ -217,7 +217,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   const badMcp = await call('editor', 'echo', { message: '' });
   assert.deepEqual([badRest.status, badRest.json.code, badRest.json.pointer], [422, 'invalid_input', '/message']);
   assert.match(badRest.type, /^application\/problem\+json/);
-  assert.deepEqual([badCore.status, badCore.json.code, badCore.json.data.pointer, badMcp.isError], [422, 'first_invalid_input', '/message', true]);
+  assert.deepEqual([badCore.status, badCore.json.code, badCore.json.data.pointer, badMcp.isError], [422, 'tp_invalid_input', '/message', true]);
   const missing = await call('editor', 'publish-article', { id: 999999999 });
   assert.equal(missing.isError, true);
   await record('failure envelopes and denied mutations preserve real state', { rest: badRest.json, core: badCore.json, mcp: badMcp, deniedMcp, missing });
@@ -228,11 +228,11 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
   assert.deepEqual([coreSettings.status, coreSettings.json], [200, updatedSettings]);
   const review = content(await call('editor', 'job-review', { articleId: draft.id }));
   assert.equal(['string', 'number'].includes(typeof review.id), true, JSON.stringify(review));
-  await wp('action-scheduler', 'run', '--hooks=first_job');
+  await wp('action-scheduler', 'run', '--hooks=tp_job');
   assert.equal(ok(await api(`/articles/${draft.id}`)).reviewed, true);
   const deniedJob = await call('subscriber', 'job-review', { articleId: draft.id });
   assert.equal(deniedJob.isError, true);
-  const publicPage = `/wp-content/plugins/first-app-agents/public/index.html`;
+  const publicPage = `/wp-content/plugins/typedpress-app-agents/public/index.html`;
   const served = await fetch(base + publicPage);
   assert.equal(served.status, 200);
   assert.match(served.headers.get('content-type'), /text\/html/);
@@ -258,7 +258,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
     await page.screenshot({ path: join(root, 'notebook-mobile.png'), fullPage: true });
     assert.deepEqual(errors, []);
     await page.goto(base + '/wp-admin/');
-    await Promise.all([page.waitForURL('**/wp-admin/**'), submitSignIn(page, 'admin', 'first-test-admin')]);
+    await Promise.all([page.waitForURL('**/wp-admin/**'), submitSignIn(page, 'admin', 'typedpress-test-admin')]);
     await page.goto(base + '/wp-admin/plugins.php');
     await page.getByRole('heading', { name: 'Plugins', exact: true }).waitFor();
     await page.goto(base + '/wp-admin/options-general.php');

@@ -1,5 +1,5 @@
 // One screen declared once (tests/wp/mu-plugins/admin-screen.php, runtime/admin/lib/screens.php)
-// renders natively in both admins: First Admin's /screens/<id> route and a classic wp-admin page.
+// renders natively in both admins: TypedPress Admin's /screens/<id> route and a classic wp-admin page.
 // Both show the same fields and actions, run the same Ability, and the server decides access in
 // both: a subscriber sees the screen but may not approve, in either admin.
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { submitSignIn } from './sign-in';
 const harness = JSON.parse(
 	readFileSync(
-		process.env.FIRST_WP_HARNESS ??
+		process.env.TP_WP_HARNESS ??
 			fileURLToPath( new URL( '../../../../tests/wp/.harness.json', import.meta.url ) ),
 		'utf8'
 	)
@@ -21,17 +21,17 @@ const auth = ( role: string ) => ( {
 
 /** A post for the comments to belong to. */
 async function post( request: APIRequestContext ): Promise< number > {
-	const made = await request.post( `${ site }/__first/api/v1/posts`, { headers: auth( 'admin' ), data: { title: `Screen post ${ Date.now() }` } } );
+	const made = await request.post( `${ site }/__tp/api/v1/posts`, { headers: auth( 'admin' ), data: { title: `Screen post ${ Date.now() }` } } );
 	expect( made.status(), await made.text() ).toBe( 201 );
 	return ( await made.json() ).data.id;
 }
 
 /**
  * An unapproved comment. Created as a subscriber: the test app approves comments that other roles
- * create (tests/wp/app/first.config.ts, comments.afterCreate).
+ * create (tests/wp/app/typedpress.config.ts, comments.afterCreate).
  */
 async function comment( request: APIRequestContext, postId: number, body: string ): Promise< number > {
-	const made = await request.post( `${ site }/__first/api/v1/comments`, { headers: auth( 'subscriber' ), data: { postId, name: 'Reader', body } } );
+	const made = await request.post( `${ site }/__tp/api/v1/comments`, { headers: auth( 'subscriber' ), data: { postId, name: 'Reader', body } } );
 	expect( made.status(), await made.text() ).toBe( 201 );
 	const row = ( await made.json() ).data;
 	expect( row.approved ).toBe( false );
@@ -40,13 +40,23 @@ async function comment( request: APIRequestContext, postId: number, body: string
 
 async function signIn( page: Page, role: 'admin' | 'subscriber' ) {
 	await page.goto( `${ site }/wp-login.php` );
-	await submitSignIn( page, role, `first-test-${ role }` );
+	await submitSignIn( page, role, `typedpress-test-${ role }` );
 	await expect( page ).toHaveURL( `${ site }/wp-admin/new/` );
 }
 
+/**
+ * Classic wp-admin opens on its own only with developer mode on (otherwise a classic page is framed
+ * in TypedPress Admin): this journey looks at the classic host as itself, so it turns that on for the
+ * role, and off again after.
+ */
+async function developerMode( request: APIRequestContext, role: string, on: boolean ) {
+	const set = await request.post( `${ site }/wp-json/wp/v2/users/me`, { headers: auth( role ), data: { tp_admin_developer_mode: on } } );
+	expect( set.status(), await set.text() ).toBe( 200 );
+}
+
 const hosts = {
-	'First Admin': `/wp-admin/new/screens/test-comments`,
-	'classic wp-admin': `/wp-admin/admin.php?page=first-screen-test-comments`,
+	'TypedPress Admin': `/wp-admin/new/screens/test-comments`,
+	'classic wp-admin': `/wp-admin/admin.php?page=typedpress-screen-test-comments`,
 };
 
 /**
@@ -84,6 +94,7 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		const body = `Screen check ${ which } ${ Date.now() }`;
 		made.push( { which, body, id: await comment( request, postId, body ) } );
 	}
+	await developerMode( request, 'admin', true );
 	await signIn( page, 'admin' );
 	const seen: Record< string, { headings: string[]; actions: string[] } > = {};
 	for ( const [ which, path ] of Object.entries( hosts ) ) {
@@ -91,9 +102,9 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		await page.goto( `${ site }${ path }` );
 		if ( which === 'classic wp-admin' ) {
 			// wp-admin's own chrome around it: the admin menu lists the page under Comments.
-			await expect( page.locator( '#adminmenu a[href$="page=first-screen-test-comments"]' ) ).toBeVisible();
+			await expect( page.locator( '#adminmenu a[href$="page=typedpress-screen-test-comments"]' ) ).toBeVisible();
 		} else {
-			await expect( page.locator( '.first-admin-sidebar__content' ).getByRole( 'link', { name: 'Comment review', exact: true } ) ).toBeVisible();
+			await expect( page.locator( '.typedpress-admin-sidebar__content' ).getByRole( 'link', { name: 'Comment review', exact: true } ) ).toBeVisible();
 		}
 		const { headings, actions, row } = await shown( page, body );
 		seen[ which ] = { headings, actions };
@@ -104,19 +115,21 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		await rowMenu( page ).getByRole( 'menuitem', { name: 'Approve' } ).click();
 		expect( ( await ran ).status() ).toBe( 200 );
 		await expect( page.locator( '[data-screen="test-comments"]' ).getByText( 'Approve: done.' ) ).toBeVisible();
-		const stored = await request.get( `${ site }/__first/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
+		const stored = await request.get( `${ site }/__tp/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
 		expect( ( await stored.json() ).data.approved ).toBe( true );
 		// The list reruns its ability: an approved comment is no longer waiting.
 		await expect( page.locator( '[data-screen="test-comments"]' ).getByRole( 'row' ).filter( { hasText: body } ) ).toHaveCount( 0 );
 	}
-	expect( seen[ 'classic wp-admin' ] ).toEqual( seen[ 'First Admin' ] );
-	expect( seen[ 'First Admin' ].actions ).toContain( 'Approve' );
+	await developerMode( request, 'admin', false );
+	expect( seen[ 'classic wp-admin' ] ).toEqual( seen[ 'TypedPress Admin' ] );
+	expect( seen[ 'TypedPress Admin' ].actions ).toContain( 'Approve' );
 	expect( errors ).toEqual( [] );
 } );
 
 test( 'the server decides access, the same way in both admins', async ( { page, request } ) => {
 	const body = `Subscriber check ${ Date.now() }`;
 	const id = await comment( request, await post( request ), body );
+	await developerMode( request, 'subscriber', true );
 	await signIn( page, 'subscriber' );
 	for ( const path of Object.values( hosts ) ) {
 		await page.goto( `${ site }${ path }` );
@@ -129,9 +142,10 @@ test( 'the server decides access, the same way in both admins', async ( { page, 
 		expect( ( await ran ).status() ).toBe( 403 );
 		await expect( page.locator( '[data-screen="test-comments"]' ).locator( '.components-notice.is-error' ) ).toBeVisible();
 	}
-	const stored = await request.get( `${ site }/__first/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
+	await developerMode( request, 'subscriber', false );
+	const stored = await request.get( `${ site }/__tp/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
 	expect( ( await stored.json() ).data.approved ).toBe( false );
 	// The declaration itself is refused to a user below the screen's capability, by the same route both read.
-	const anonymous = await request.get( `${ site }/wp-json/first-admin/v1/screens/test-comments` );
+	const anonymous = await request.get( `${ site }/wp-json/typedpress-admin/v1/screens/test-comments` );
 	expect( anonymous.status() ).toBe( 401 );
 } );

@@ -6,7 +6,7 @@ fn copy(from: &Path, to: &Path) {
     for entry in fs::read_dir(from).unwrap() {
         let entry = entry.unwrap();
         let name = entry.file_name();
-        if name == ".first" || name == "node_modules" {
+        if name == ".tp" || name == "node_modules" {
             continue;
         }
         if entry.file_type().unwrap().is_dir() {
@@ -22,13 +22,13 @@ fn capture(work: &Path, label: &str) -> std::path::PathBuf {
     // The app name comes from the directory name: both builds are of one app, `pantry`.
     let project = work.join(label).join("pantry");
     copy(Path::new("examples/pantry"), &project);
-    let config = project.join("first.config.ts");
+    let config = project.join("typedpress.config.ts");
     let text = fs::read_to_string(&config).unwrap();
     let changed = text.replace("left` };", &format!("left ({label})` }};"));
     assert_ne!(text, changed, "the fixture edit applies");
     fs::write(&config, changed).unwrap();
     let sources = work.join(format!("sources-{label}"));
-    first::host::sources(&project, &sources).unwrap();
+    typedpress::host::sources(&project, &sources).unwrap();
     sources
 }
 
@@ -48,15 +48,15 @@ fn two_builds_share_one_runtime_tree_and_collect_only_unreferenced_trees() {
     let one = capture(work.path(), "one");
     let two = capture(work.path(), "two");
 
-    let first = first::host::compile_to_store(&one, &root, &one, None).unwrap();
+    let first = typedpress::host::compile_to_store(&one, &root, &one, None).unwrap();
     let runtime = root.join("runtime").join(&first.runtime_revision);
-    assert!(runtime.join("first-runtime/first-runtime.php").is_file());
-    assert!(runtime.join("first-identity/first-identity.php").is_file());
-    assert!(runtime.join("first-loader.php").is_file());
+    assert!(runtime.join("typedpress-runtime/typedpress-runtime.php").is_file());
+    assert!(runtime.join("typedpress-identity/typedpress-identity.php").is_file());
+    assert!(runtime.join("typedpress-loader.php").is_file());
     let app = root.join("app").join(&first.app_hash);
-    assert!(app.join("plugins/first-app-pantry/first/app/functions.php").is_file());
+    assert!(app.join("plugins/typedpress-app-pantry/tp/app/functions.php").is_file());
     assert!(
-        !app.join("plugins/first-runtime").exists(),
+        !app.join("plugins/typedpress-runtime").exists(),
         "the app tree holds no runtime copy"
     );
     assert_eq!(first.manifest.runtime, first.runtime_revision);
@@ -64,8 +64,8 @@ fn two_builds_share_one_runtime_tree_and_collect_only_unreferenced_trees() {
     assert!(app.join("snapshot.json").is_file());
 
     // The runtime tree is written once: its bytes keep their inode, so opcache paths stay valid.
-    let marker = fs::metadata(runtime.join("first-runtime/first-runtime.php")).unwrap();
-    let second = first::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
+    let marker = fs::metadata(runtime.join("typedpress-runtime/typedpress-runtime.php")).unwrap();
+    let second = typedpress::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
     assert_eq!(second.runtime_revision, first.runtime_revision);
     assert_ne!(second.app_hash, first.app_hash);
     assert_ne!(second.build_id, first.build_id);
@@ -74,7 +74,7 @@ fn two_builds_share_one_runtime_tree_and_collect_only_unreferenced_trees() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let after = fs::metadata(runtime.join("first-runtime/first-runtime.php")).unwrap();
+        let after = fs::metadata(runtime.join("typedpress-runtime/typedpress-runtime.php")).unwrap();
         assert_eq!(after.ino(), marker.ino());
     }
 
@@ -83,7 +83,7 @@ fn two_builds_share_one_runtime_tree_and_collect_only_unreferenced_trees() {
         fs::read_to_string(
             root.join("app")
                 .join(hash)
-                .join("plugins/first-app-pantry/first/app/functions.php"),
+                .join("plugins/typedpress-app-pantry/tp/app/functions.php"),
         )
         .unwrap()
     };
@@ -91,13 +91,13 @@ fn two_builds_share_one_runtime_tree_and_collect_only_unreferenced_trees() {
     assert!(functions(&second.app_hash).contains("(two)"));
 
     // Same sources, same baseline: the same build, nothing new written.
-    let again = first::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
+    let again = typedpress::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
     assert_eq!(again.build_id, second.build_id);
     assert_eq!(entries(&root.join("app")).len(), 2);
     assert_eq!(entries(&root.join(".tmp")), Vec::<String>::new());
 
     // A dry run reports and removes nothing.
-    let doomed = first::host::store_gc(&root, &[&second.build_id], true).unwrap();
+    let doomed = typedpress::host::store_gc(&root, &[&second.build_id], true).unwrap();
     assert_eq!(
         doomed,
         vec![
@@ -106,7 +106,7 @@ fn two_builds_share_one_runtime_tree_and_collect_only_unreferenced_trees() {
         ]
     );
     assert!(app.is_dir());
-    let removed = first::host::store_gc(&root, &[&second.build_id], false).unwrap();
+    let removed = typedpress::host::store_gc(&root, &[&second.build_id], false).unwrap();
     assert_eq!(removed, doomed);
     assert!(!app.exists());
     assert!(
@@ -116,12 +116,12 @@ fn two_builds_share_one_runtime_tree_and_collect_only_unreferenced_trees() {
     assert_eq!(entries(&root.join("build")), vec![format!("{}.json", second.build_id)]);
 
     // An unknown or tampered kept build fails instead of collecting around it.
-    assert!(first::host::store_gc(&root, &["0".repeat(64).as_str()], true).is_err());
+    assert!(typedpress::host::store_gc(&root, &["0".repeat(64).as_str()], true).is_err());
     let manifest = root.join("build").join(format!("{}.json", second.build_id));
     let mut bytes = fs::read(&manifest).unwrap();
     bytes.push(b'\n');
     fs::write(&manifest, bytes).unwrap();
-    assert!(first::host::store_gc(&root, &[&second.build_id], true).is_err());
+    assert!(typedpress::host::store_gc(&root, &[&second.build_id], true).is_err());
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn a_failed_compile_leaves_the_store_unchanged() {
     let root = work.path().join("store");
     let sources = capture(work.path(), "bad");
     fs::write(sources.join("manifest.json"), "{}").unwrap();
-    assert!(first::host::compile_to_store(&sources, &root, &sources, None).is_err());
+    assert!(typedpress::host::compile_to_store(&sources, &root, &sources, None).is_err());
     for dir in ["runtime", "app", "build", ".tmp"] {
         assert_eq!(entries(&root.join(dir)), Vec::<String>::new(), "{dir}");
     }
@@ -143,7 +143,7 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
     let work = tempfile::tempdir().unwrap();
     let root = work.path().join("store");
     let plain = capture(work.path(), "plain");
-    let built = first::host::compile_to_store(&plain, &root, &plain, None).unwrap();
+    let built = typedpress::host::compile_to_store(&plain, &root, &plain, None).unwrap();
     assert_eq!(built.manifest.sealed, None);
     let manifest = fs::read_to_string(root.join("build").join(format!("{}.json", built.build_id))).unwrap();
     assert!(
@@ -156,27 +156,29 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
 
     let project = work.path().join("sealed").join("pantry");
     copy(Path::new("examples/pantry"), &project);
-    let config = project.join("first.config.ts");
+    let config = project.join("typedpress.config.ts");
     let text = fs::read_to_string(&config).unwrap();
     let sealed = text.replacen("defineConfig({", "defineConfig({\n  sealed: true,", 1);
     assert_ne!(text, sealed, "the fixture edit applies");
     fs::write(&config, sealed).unwrap();
     let sources = work.path().join("sources-sealed");
-    first::host::sources(&project, &sources).unwrap();
-    let built = first::host::compile_to_store(&sources, &root, &sources, None).unwrap();
+    typedpress::host::sources(&project, &sources).unwrap();
+    let built = typedpress::host::compile_to_store(&sources, &root, &sources, None).unwrap();
     let listed = built.manifest.sealed.expect("a sealed build lists its plugins");
-    // Exactly the plugins this host mounts for this app, plus First's admin (always listed): no
+    // Exactly the plugins this host mounts for this app, plus the TypedPress plugin and TypedPress's admin
+    // (always listed): no
     // identity (no users kind), no pages, no Polylang (no locales).
     assert_eq!(
         listed,
         [
             "action-scheduler",
-            "first-admin",
-            "first-app-pantry",
-            "first-runtime",
             "mcp-adapter",
             "secure-custom-fields",
-            "two-factor"
+            "two-factor",
+            "typedpress",
+            "typedpress-admin",
+            "typedpress-app-pantry",
+            "typedpress-runtime"
         ]
     );
     let manifest: serde_json::Value =
@@ -193,7 +195,7 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
     let loader = root
         .join("runtime")
         .join(&built.runtime_revision)
-        .join("first-loader.php");
+        .join("typedpress-loader.php");
     let php = |code: &str| {
         let out = std::process::Command::new("php")
             .args(["-r", code])
@@ -205,16 +207,16 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
         String::from_utf8_lossy(&out.stdout).into_owned()
     };
     let read = php(
-        "define('ABSPATH', '/'); require $argv[1]; echo json_encode(First\\Loader\\Loader::sealed($argv[2], $argv[3]));",
+        "define('ABSPATH', '/'); require $argv[1]; echo json_encode(TypedPress\\Loader\\Loader::sealed($argv[2], $argv[3]));",
     );
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&read).unwrap(),
         serde_json::json!(listed)
     );
     let kept = php(
-        "define('ABSPATH', '/'); require $argv[1]; $l = First\\Loader\\Loader::sealed($argv[2], $argv[3]);
-         echo json_encode([First\\Loader\\Loader::allowedPlugins(['akismet/akismet.php', 'two-factor/two-factor.php', 'two-factor.php', 'two-factor/x/y.php', 'two-factor/../akismet/akismet.php', 7], $l),
-            First\\Loader\\Loader::keepUnlisted(['two-factor/two-factor.php'], ['akismet/akismet.php', 'two-factor/two-factor.php', 'first-runtime/first-runtime.php'], $l)]);",
+        "define('ABSPATH', '/'); require $argv[1]; $l = TypedPress\\Loader\\Loader::sealed($argv[2], $argv[3]);
+         echo json_encode([TypedPress\\Loader\\Loader::allowedPlugins(['akismet/akismet.php', 'two-factor/two-factor.php', 'two-factor.php', 'two-factor/x/y.php', 'two-factor/../akismet/akismet.php', 7], $l),
+            TypedPress\\Loader\\Loader::keepUnlisted(['two-factor/two-factor.php'], ['akismet/akismet.php', 'two-factor/two-factor.php', 'typedpress-runtime/typedpress-runtime.php'], $l)]);",
     );
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&kept).unwrap(),
@@ -226,7 +228,7 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
     // A plugin a sealed site never runs doesn't load even when the list a host holds names it.
     let denied = php(
         "define('ABSPATH', '/'); require $argv[1];
-         echo json_encode(First\\Loader\\Loader::allowedPlugins(['vip-block-data-api/vip-block-data-api.php', 'vip-decoupled-bundle/vip-decoupled.php', 'two-factor/two-factor.php'], ['vip-block-data-api', 'vip-decoupled-bundle', 'two-factor']));",
+         echo json_encode(TypedPress\\Loader\\Loader::allowedPlugins(['vip-block-data-api/vip-block-data-api.php', 'vip-decoupled-bundle/vip-decoupled.php', 'two-factor/two-factor.php'], ['vip-block-data-api', 'vip-decoupled-bundle', 'two-factor']));",
     );
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&denied).unwrap(),
@@ -244,12 +246,15 @@ fn every_build_keeps_a_baseline_and_describes_its_storage() {
     let root = work.path().join("store");
     let one = capture(work.path(), "one");
     let two = capture(work.path(), "two");
-    let first = first::host::compile_to_store(&one, &root, &one, None).unwrap();
-    let second = first::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
+    let first = typedpress::host::compile_to_store(&one, &root, &one, None).unwrap();
+    let second = typedpress::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
     assert_eq!(first.manifest.baseline, None);
     assert_eq!(second.manifest.baseline.as_deref(), Some(first.build_id.as_str()));
     assert_eq!(first.manifest.jobs, ["notifyLowStock"]);
-    assert_eq!(first.manifest.wordpress.as_deref(), Some(first::platform::WORDPRESS));
+    assert_eq!(
+        first.manifest.wordpress.as_deref(),
+        Some(typedpress::platform::WORDPRESS)
+    );
 
     for built in [&first, &second] {
         let baseline = root.join("baseline").join(&built.build_id);
@@ -272,24 +277,24 @@ fn every_build_keeps_a_baseline_and_describes_its_storage() {
         );
     }
     // Only action code differs: both builds store the same things the same way.
-    let storage = |built: &first::store::StoredBuild| {
+    let storage = |built: &typedpress::store::StoredBuild| {
         fs::read(root.join("app").join(&built.app_hash).join("storage.json")).unwrap()
     };
     assert_eq!(storage(&first), storage(&second));
 
     let described: serde_json::Value = serde_json::from_slice(&storage(&first)).unwrap();
-    assert_eq!(described["format"], "first.storage.v1");
+    assert_eq!(described["format"], "typedpress.storage.v1");
     let items = &described["kinds"]["items"];
     assert_eq!(items["in"], "table");
-    assert_eq!(items["table"], "first_items");
+    assert_eq!(items["table"], "tp_items");
     assert_eq!(
         items["fields"]["slug"],
-        serde_json::json!({ "at": { "column": "slug", "table": "first_items" }, "max": 191.0, "required": true, "type": "text", "unique": true })
+        serde_json::json!({ "at": { "column": "slug", "table": "tp_items" }, "max": 191.0, "required": true, "type": "text", "unique": true })
     );
     assert_eq!(items["fields"]["opened"]["default"], false);
     assert_eq!(
         items["indexes"],
-        serde_json::json!([{ "columns": ["id"], "name": "PRIMARY", "unique": true }, { "columns": ["slug"], "name": "slug_unique", "unique": true }, { "columns": ["locationId"], "name": "first_items_locationId_fk", "unique": false }])
+        serde_json::json!([{ "columns": ["id"], "name": "PRIMARY", "unique": true }, { "columns": ["slug"], "name": "slug_unique", "unique": true }, { "columns": ["locationId"], "name": "tp_items_locationId_fk", "unique": false }])
     );
     assert_eq!(
         described["kinds"]["locations"]["fields"]["kind"]["choices"],
@@ -307,7 +312,7 @@ fn every_build_keeps_a_baseline_and_describes_its_storage() {
 
     // Written once: compiling the same thing again leaves the baseline as it was.
     let marker = fs::metadata(root.join("baseline").join(&second.build_id).join("hashes.json")).unwrap();
-    let again = first::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
+    let again = typedpress::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
     assert_eq!(again.build_id, second.build_id);
     #[cfg(unix)]
     {
@@ -325,13 +330,13 @@ fn manifests_with_and_without_the_deployment_fields_load() {
     let work = tempfile::tempdir().unwrap();
     let root = work.path().join("store");
     let one = capture(work.path(), "one");
-    let built = first::host::compile_to_store(&one, &root, &one, None).unwrap();
+    let built = typedpress::host::compile_to_store(&one, &root, &one, None).unwrap();
     let loader = root
         .join("runtime")
         .join(&built.runtime_revision)
-        .join("first-loader.php");
+        .join("typedpress-loader.php");
     let out = std::process::Command::new("php")
-        .args(["-r", "define('ABSPATH', '/'); require $argv[1]; echo json_encode(First\\Loader\\Store::manifest($argv[2], $argv[3])['jobs'] ?? null);"])
+        .args(["-r", "define('ABSPATH', '/'); require $argv[1]; echo json_encode(TypedPress\\Loader\\Store::manifest($argv[2], $argv[3])['jobs'] ?? null);"])
         .arg(&loader)
         .arg(&root)
         .arg(&built.build_id)
@@ -344,11 +349,44 @@ fn manifests_with_and_without_the_deployment_fields_load() {
         String::from_utf8_lossy(&out.stderr)
     );
     // A manifest without the new fields, as the previous compiler wrote it, deserializes.
-    let old = serde_json::json!({ "format": "first.build.v1", "name": "pantry", "compiler": "0.3.0", "runtime": "a".repeat(64),
+    let old = serde_json::json!({ "format": "typedpress.build.v1", "name": "pantry", "compiler": "0.3.0", "runtime": "a".repeat(64),
         "app": "b".repeat(64), "identity": false, "admin": true, "snapshot": "app/x/snapshot.json", "client": null });
-    let manifest: first::store::BuildManifest = serde_json::from_value(old).unwrap();
+    let manifest: typedpress::store::BuildManifest = serde_json::from_value(old).unwrap();
     assert_eq!(
         (manifest.baseline, manifest.storage, manifest.jobs, manifest.wordpress),
         (None, None, Vec::new(), None)
     );
+}
+
+/// The TypedPress plugin publishes an uploaded tree only under the name its contents hash to
+/// (runtime/typedpress-plugin/src/Trees.php). That hash must be the compiler's, or no upload would ever
+/// be accepted: both are computed here over the same two stored trees.
+#[test]
+fn the_plugin_hashes_a_stored_tree_to_the_name_the_compiler_gave_it() {
+    let work = tempfile::tempdir().unwrap();
+    let root = work.path().join("store");
+    let sources = capture(work.path(), "digest");
+    let built = typedpress::host::compile_to_store(&sources, &root, &sources, None).unwrap();
+    let digest = |dir: std::path::PathBuf| {
+        let out = std::process::Command::new("php")
+            .args([
+                "-r",
+                "require $argv[1]; echo TypedPressPlugin\\Trees::digest($argv[2]);",
+                "runtime/typedpress-plugin/src/Trees.php",
+            ])
+            .arg(&dir)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8(out.stdout).unwrap()
+    };
+    assert_eq!(digest(root.join("app").join(&built.app_hash)), built.app_hash);
+    assert_eq!(
+        digest(root.join("runtime").join(&built.runtime_revision)),
+        built.runtime_revision
+    );
+    // One changed byte is another tree.
+    let app = root.join("app").join(&built.app_hash);
+    fs::write(app.join("snapshot.json"), b"{}").unwrap();
+    assert_ne!(digest(app), built.app_hash);
 }

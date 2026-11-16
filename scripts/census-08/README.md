@@ -1,10 +1,10 @@
 # Zero 0.8 production census
 
-Measures how many live Zero 0.8 Spaces `first migrate app --from zero-0.8` converts with no human
+Measures how many live Zero 0.8 Spaces `typedpress migrate app --from zero-0.8` converts with no human
 edit, and ranks why the rest are refused. [`docs/zero-08-parity.md`](../../docs/zero-08-parity.md#production-census-2026-11-07)
 has the bar, the formula, the export query and the latest numbers.
 
-- `census.mjs` runs one or more `first` binaries over every Space and prints accepted, refused and
+- `census.mjs` runs one or more `typedpress` binaries over every Space and prints accepted, refused and
   not-recoverable counts with ranked reasons. `--json` writes the same summary; it has counts
   only.
 - `reconstruct.mjs` rebuilds a capsule from a stored finalize payload: the server bundle becomes
@@ -19,13 +19,13 @@ has the bar, the formula, the export query and the latest numbers.
 ```sh
 cargo build
 node scripts/census-08/census.mjs --data <scratch-dir> --users \
-  --zero base=<baseline>/first --zero head=target/debug/first --json summary.json
+  --zero base=<baseline>/tp --zero head=target/debug/typedpress --json summary.json
 node scripts/census-08/usage.mjs --data <scratch-dir> --json usage.json --markdown usage.md
-FIRST_BIN=target/debug/first node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
+TP_BIN=target/debug/typedpress node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
 ```
 
 `<scratch-dir>` holds customer data: one `<version_id>.json` per Space (or under `out/`), the
-usage files `meta.tsv`, `traffic-30d.tsv` and `parent-teams.tsv` (columns are listed at the top of
+usage files `meta.tsv`, `traffic-30d.tsv`, `parent-teams.tsv` and `internal-teams.tsv` (columns are listed at the top of
 `usage.mjs`), and optionally
 `sources/<version_id>/`, the original source, which is used only when every recorded SHA-256
 matches. Keep it outside any repository and delete it when you are done. `--per-space` writes version

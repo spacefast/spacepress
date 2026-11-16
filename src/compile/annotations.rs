@@ -37,7 +37,7 @@ impl Compiler<'_, '_> {
         if self.annotation_depth >= 96 {
             return err(
                 annotation_span(a),
-                "type expansion exceeds First's 96-level limit (recursive types aren't supported)",
+                "type expansion exceeds TypedPress's 96-level limit (recursive types aren't supported)",
             );
         }
         self.annotation_depth += 1;
@@ -92,7 +92,7 @@ impl Compiler<'_, '_> {
             TyAnn::Any(span) => {
                 return err_help(
                     *span,
-                    "`any` isn't allowed in First code",
+                    "`any` isn't allowed in TypedPress code",
                     "use a precise type, or `unknown` and narrow it",
                 );
             }
@@ -148,7 +148,7 @@ impl Compiler<'_, '_> {
                 }
                 // The context and request types `"first"` exports, so a helper can take what a
                 // handler received: `HookCtx<T>`, `AccessCtx<T>` and `ValidateCtx` take the data.
-                if let Some(imported) = self.first_type_import(module, name).as_deref().filter(|imported| {
+                if let Some(imported) = self.tp_type_import(module, name).as_deref().filter(|imported| {
                     matches!(
                         *imported,
                         "User" | "Role" | "HookCtx" | "AccessCtx" | "ValidateCtx" | "RouteRequest" | "RouteResponse"
@@ -178,7 +178,7 @@ impl Compiler<'_, '_> {
                 }
                 // `StaticParams<"blog/[slug]">`: the list a prebuilt page's `staticParams` returns,
                 // one entry of that route's params per page to build.
-                if self.first_type_import(module, name).as_deref() == Some("StaticParams") {
+                if self.tp_type_import(module, name).as_deref() == Some("StaticParams") {
                     let file = match args.as_slice() {
                         [TyAnn::StrLit(id)] => self
                             .schema
@@ -222,7 +222,7 @@ impl Compiler<'_, '_> {
                                 }
                             }
                         }
-                        // `"first/content"`'s types, so a component can take the tree `nav()` returns.
+                        // `"typedpress/content"`'s types, so a component can take the tree `nav()` returns.
                         if let Stmt::Import { source, specs, .. } = stmt
                             && source == crate::loader::CONTENT_MODULE
                         {
@@ -236,7 +236,7 @@ impl Compiler<'_, '_> {
                             }
                         }
                         if let Stmt::Import { source, specs, .. } = stmt
-                            && source == crate::loader::FIRST_MODULE
+                            && source == crate::loader::TP_MODULE
                         {
                             for spec in specs {
                                 if spec.local == *name
@@ -264,7 +264,7 @@ impl Compiler<'_, '_> {
                         return err_help(
                             *span,
                             format!(
-                                "`{name}` comes from an installed package or JavaScript module, whose types First erases"
+                                "`{name}` comes from an installed package or JavaScript module, whose types TypedPress erases"
                             ),
                             "describe the value with a local type, or narrow it with `typeof`/`instanceof`",
                         );
@@ -289,7 +289,8 @@ impl Compiler<'_, '_> {
                     ("AbortSignal", []) => Ty::AbortSignal,
                     ("URL", []) => Ty::Url,
                     ("URLSearchParams", []) => Ty::UrlParams,
-                    ("Error", []) => Ty::Error,
+                    // The built-in subclasses are the same runtime value as `Error`; `name` tells them apart.
+                    (name, []) if ERROR_CONSTRUCTORS.contains(&name) => Ty::Error,
                     // JSX's result type, with the names TypeScript's React typings use for it.
                     ("JSX.Element" | "React.JSX.Element" | "React.ReactElement" | "ReactElement", []) => Ty::Html,
                     // Anything React can render. Arrays nest one level here; deeper nesting is `unknown`.
@@ -655,14 +656,14 @@ impl Compiler<'_, '_> {
     }
 
     /// The `"first"` export a local type name was imported as, if it was.
-    fn first_type_import(&self, module: usize, name: &str) -> Option<String> {
+    fn tp_type_import(&self, module: usize, name: &str) -> Option<String> {
         self.ev_program().modules[module]
             .body
             .iter()
             .find_map(|stmt| match stmt {
-                // "first/app" re-exports the request and response types for route files.
+                // "typedpress/app" re-exports the request and response types for route files.
                 Stmt::Import { source, specs, .. }
-                    if source == crate::loader::FIRST_MODULE || source == crate::loader::APP_MODULE =>
+                    if source == crate::loader::TP_MODULE || source == crate::loader::APP_MODULE =>
                 {
                     specs.iter().find_map(|spec| match &spec.imported {
                         ImportName::Named(imported) if spec.local == name => Some(imported.clone()),
@@ -737,7 +738,7 @@ fn finite_keys(t: &Ty, span: Span) -> Result<Vec<String>> {
         keys.push(key);
     }
     if keys.len() > 512 {
-        return err(span, "type operation exceeds First's 512-key limit");
+        return err(span, "type operation exceeds TypedPress's 512-key limit");
     }
     Ok(keys)
 }
@@ -958,7 +959,7 @@ fn literal_key_domain(a: &TyAnn) -> bool {
 fn type_step(steps: &mut usize, span: Span) -> Result<()> {
     *steps += 1;
     if *steps > 16_384 {
-        return err(span, "type expansion exceeds First's 16384-step limit");
+        return err(span, "type expansion exceeds TypedPress's 16384-step limit");
     }
     Ok(())
 }
@@ -1051,7 +1052,10 @@ fn intersect(a: Ty, b: Ty, span: Span, steps: &mut usize) -> Result<Ty> {
         _ => 1,
     };
     if alternatives(&a).saturating_mul(alternatives(&b)) > 512 {
-        return err(span, "intersection expansion exceeds First's 512-alternative limit");
+        return err(
+            span,
+            "intersection expansion exceeds TypedPress's 512-alternative limit",
+        );
     }
     match (a, b) {
         (Ty::Union(xs), b) => Ok(Ty::union(

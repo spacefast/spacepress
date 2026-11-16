@@ -1,5 +1,5 @@
 {
-  "name": "first-differential-html",
+  "name": "typedpress-differential-html",
   "private": true,
   "description": "React 19 renders the Node half of the TSX parity tests (tests/compiler.rs); esbuild compiles their TSX",
   "type": "module",

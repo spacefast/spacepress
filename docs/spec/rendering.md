@@ -1,4 +1,4 @@
-# Rendering, interactivity and caching (`first/app/`)
+# Rendering, interactivity and caching (`tp/app/`)
 
 Owner: one workstream. The TSX → PHP renderer and the TSX →
 Interactivity compiler are gated on the spike in [tsx-to-php.md](tsx-to-php.md).
@@ -14,7 +14,7 @@ Decisions (2026-11-08):
 
 ## 1. Routing: what we took from whom
 
-| | Next.js App Router | TanStack Router/Start | Vite ecosystem (vite-plugin-pages, Remix/RR7, SvelteKit, Astro) | **First** |
+| | Next.js App Router | TanStack Router/Start | Vite ecosystem (vite-plugin-pages, Remix/RR7, SvelteKit, Astro) | **TypedPress** |
 |---|---|---|---|---|
 | Layout | folders, one name per role (`page`, `layout`, `route`) | flat dot files or folders, `__root.tsx`, `route.tsx` | folders (`+page`, `[slug].astro`) or flat (`posts.$id.tsx`) | **folders, Next names** (`page`, `layout`, `not-found`, `error`, `route`) |
 | Params | `[slug]`, `[...rest]`, `[[...opt]]` | `$postId`, `$` splat, `{-$opt}` | mostly `[slug]` | **`[slug]`, `[...rest]`, `[[...opt]]`**. Brackets are what most frameworks use and what agents write by default |
@@ -27,14 +27,14 @@ Decisions (2026-11-08):
 | Head | `metadata` / `generateMetadata` | `head()` | `<svelte:head>`, frontmatter | **`metadata` object or function** |
 | Middleware | `middleware.ts` | route and handler middleware | hooks | **`layout.tsx` may export `guard`** (§2) |
 
-So First uses Next's file names because agents write them most reliably. From
+So TypedPress uses Next's file names because agents write them most reliably. From
 TanStack it takes typed links, typed search params and page+handler in one
 file. From React Router 7 and SvelteKit it takes forms that work without JavaScript.
 
 ## 2. Files
 
 ```text
-first/app/
+tp/app/
 ├── layout.tsx                    # root layout: <html>, <head>, router region
 ├── page.tsx                      # /
 ├── not-found.tsx                 # unclaimed URLs when app/ owns the front end
@@ -64,9 +64,9 @@ first/app/
 ## 3. A page
 
 ```tsx
-// first/app/blog/[year]/[slug]/page.tsx
-import { likes } from "first:db";
-import { Content, Comments, Link, type PageProps } from "first/app";
+// tp/app/blog/[year]/[slug]/page.tsx
+import { likes } from "typedpress:db";
+import { Content, Comments, Link, type PageProps } from "typedpress/app";
 import LikeButton from "../../../../components/LikeButton";
 
 export const metadata = ({ item }: PageProps<"posts">) => ({ title: item.title, description: item.excerpt });
@@ -91,12 +91,12 @@ Server components are ordinary async functions that compile to PHP. `&&`,
 
 ## 4. Interactivity: all in on the Interactivity API
 
-**Every** interactive behavior in First compiles to the WordPress Interactivity API:
+**Every** interactive behavior in TypedPress compiles to the WordPress Interactivity API:
 - client components;
 - forms;
 - navigation;
 - live updates;
-- First's built-in components (`<Comments>`, sign-in, search).
+- TypedPress's built-in components (`<Comments>`, sign-in, search).
 
 That gives one runtime, about 11 kB, which WordPress already ships and which
 core blocks and plugins share. There is no React or Preact bundle of our own
@@ -105,9 +105,9 @@ and no second hydration model.
 ### 4.1 Client components
 
 ```tsx
-// first/components/LikeButton.tsx
+// tp/components/LikeButton.tsx
 "use client";
-import { useState } from "first/client";
+import { useState } from "typedpress/client";
 import { like } from "../server/posts";
 
 export default function LikeButton({ postId, count: initial }: { postId: number; count: number }) {
@@ -126,10 +126,10 @@ The compiler produces:
 
 1. **Server HTML (PHP)** with real values and directives, so the page is
    correct before JavaScript loads:
-   `<button data-wp-interactive="first/LikeButton" data-wp-context='{"postId":42,"count":7,"busy":false}' data-wp-bind--disabled="context.busy" data-wp-on--click="actions.click">♥ <span data-wp-text="state.label">7 likes</span></button>`
+   `<button data-wp-interactive="tp/LikeButton" data-wp-context='{"postId":42,"count":7,"busy":false}' data-wp-bind--disabled="context.busy" data-wp-on--click="actions.click">♥ <span data-wp-text="state.label">7 likes</span></button>`
 2. **A store module (JS)**, registered as a script module and loaded only on
    pages that use the component:
-   `store("first/LikeButton", { state: { get label() { … } }, actions: { *click() { … } } })`.
+   `store("tp/LikeButton", { state: { get label() { … } }, actions: { *click() { … } } })`.
 3. **Derived values compiled to PHP too** (`wp_interactivity_state` closures),
    so step 1 can print "7 likes". Parity between the PHP and JS output is tested ([tsx-to-php.md](tsx-to-php.md)).
 
@@ -157,7 +157,7 @@ The TSX → directive mapping, which also defines what's supported:
 | `style={{ color }}` | `data-wp-style--color` |
 | `onClick`, `onInput`, … | `data-wp-on--click`, … (`withSyncEvent` for `preventDefault`) |
 | window/document listeners via `useEvent("resize", …)` | `data-wp-on-window--resize` |
-| `{cond && <X/>}`, `{a ? <X/> : <Y/>}` | a `<template data-wp-each--first-shown>` per branch over a derived `[1]` or `[]`; a condition that reads nothing reactive renders once on the server |
+| `{cond && <X/>}`, `{a ? <X/> : <Y/>}` | a `<template data-wp-each--tp-shown>` per branch over a derived `[1]` or `[]`; a condition that reads nothing reactive renders once on the server |
 | `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">`, after the server's items marked `data-wp-each-child` |
 | `useEffect(fn, [deps])` | `data-wp-watch` (cleanup returned) |
 | `useMount(fn)` | `data-wp-init` |
@@ -181,12 +181,18 @@ components defined inside render.
 
 - Without JavaScript, the form POSTs to the action endpoint and redirects back
   to the page, with errors in a flash. As built: form-encoded to
-  `/__first/api/v1/actions/<name>`, `303` to the hidden `_first_return` path
+  `/__tp/api/v1/actions/<name>`, `303` to the hidden `_tp_return` path
   with `?_flash=<id>`, the flash a sealed read-once cookie; the marked render
   is `private, no-store` ([pages.md](../pages.md#forms)).
-- With JavaScript, an Interactivity store submits it with `fetch`, keeps
-  `pending`, `error` and `result` in context, and updates in place.
-- `useFormState()` reads those values.
+- With JavaScript, `data-wp-on--submit="actions.submit"` in `tp/router` sends
+  the same body with `fetch`, which follows the 303, and the page it comes back
+  to goes to the router's `navigate({ html, force })`: the router diffs the
+  region, and the page updates in place. `error`, `result` and `values` come
+  from the flash that page read, as without JavaScript; nothing is kept in
+  client context. While the post is in flight the form has `aria-busy="true"`
+  ([decision](../decisions/2026-11-14-forms-without-javascript.md#follow-up-2026-11-16-the-javascript-submit)).
+- `useFormState()` reads `error`, `result` and `values`; its `pending` is always
+  `false`.
 
 ### 4.3 Navigation
 
@@ -204,10 +210,10 @@ core marks it stable. `<Link prefetch>` uses the router's `prefetch`.
 
 ### 4.4 Live data over Cast
 
-This exists for Zero 0.3 builds (monorepo #5152, zero #128). For First builds, steps 2 and 3 wait on
-the engine's move to First ([host checklist](../spacefast-host-checklist.md), item 7): today the
+This exists for Zero 0.3 builds (monorepo #5152, zero #128). For TypedPress builds, steps 2 and 3 wait on
+the engine's move to TypedPress ([host checklist](../spacefast-host-checklist.md), item 7): today the
 event is `zero.changes` and the browser registry `__zeroRealtime`.
-1. A committed write fires `first_realtime_changes` with ids only.
+1. A committed write fires `tp_realtime_changes` with ids only.
 2. The control plane broadcasts the notice into the Space's Cast room.
 3. The Space's realtime script holds one socket per page.
 4. The client re-runs its own query through the normal API, so a viewer only
@@ -227,7 +233,7 @@ This spec adds:
 - `useLive(kind, query)` inside client components: the result lives in
   context, and directives update when it changes. As built: a list read,
   seeded by `Live\Module::evaluate` in the first render and subscribed through
-  the typed client served as `@first/client` ([pages.md](../pages.md#client-components)).
+  the typed client served as `@typedpress/client` ([pages.md](../pages.md#client-components)).
 
 Both load the host's realtime transport only on pages that use them.
 Real-time co-editing uses the Gutenberg plugin's real-time collaboration
@@ -251,7 +257,7 @@ TSX subset, so they are examples as well as product.
   never share a cache entry with the HTML. Batcache keys on the URL; it varies on
   `Accept` only for JSON-only clients (wpcom `wp-content/advanced-cache.php`),
   and it answers before page code runs. So `Vary: Accept` on the response is not
-  enough. First's early hook (the engine's pre-WordPress lane, before
+  enough. TypedPress's early hook (the engine's pre-WordPress lane, before
   `advanced-cache.php` loads) sees `Accept: text/markdown` and answers it
   before any cache lookup:
   - it renders with `batcache_cancel()` (`MarkdownTwins::negotiate()`), also for a prebuilt page:
@@ -278,8 +284,8 @@ TSX subset, so they are examples as well as product.
   Code pages render from their compiled output, as an anonymous visitor (built). A prebuilt page's
   twin is written beside its HTML and served from the same file lane (§6.1).
 - `/llms.txt` lists kinds with URLs plus pages, with descriptions.
-- In WordPress-rendered mode, First serves markdown for every kind URL.
-- Backend-only sites: `GET /wp-json/wp/v2/posts/<id>?format=md` (built), and `GET /__first/api/v1/posts/<id>?format=md` once the facade lands (workstream 2).
+- In WordPress-rendered mode, TypedPress serves markdown for every kind URL.
+- Backend-only sites: `GET /wp-json/wp/v2/posts/<id>?format=md` (built), and `GET /__tp/api/v1/posts/<id>?format=md` once the facade lands (workstream 2).
 
 ## 6. Caching
 
@@ -288,9 +294,9 @@ The plan is to use WP Cloud's existing stack:
 - the edge cache;
 - URL purges.
 
-First's job is to tell those layers what each page is and to purge the right
+TypedPress's job is to tell those layers what each page is and to purge the right
 URLs. This covers pages WordPress serves. A frontend hosted elsewhere, such as
-Astro, owns its own cache; First only sends it the webhook (04).
+Astro, owns its own cache; TypedPress only sends it the webhook (04).
 
 Already on main in the runtime:
 - `runtime/engine/shared/purge.php` sends durable, per-host purge records to
@@ -319,17 +325,17 @@ route is viewer-independent: a prebuilt page is the same anonymous render, made 
   under `output: "static"`. A page that can't be prebuilt (a layout `guard`, `search`, a viewer
   function, a dynamic segment with nothing to list) is a build error.
 - **On WordPress** (`output: "server"` only). An Action Scheduler action renders each prebuilt URL
-  as a signed-out visitor and writes its HTML and `.md` below `wp-content/cache/first-prebuilt/`.
+  as a signed-out visitor and writes its HTML and `.md` below `wp-content/cache/typedpress-prebuilt/`.
   The app plugin serves them before WordPress parses the request. A write that purges a prebuilt
   URL removes its files and schedules the rebuild (on-demand regeneration). What no write
   announces (an option a page reads, a menu, the time) can be up to an hour old: a file is never
   served past an hour, and every file is rebuilt after 45 minutes. Site-wide settings drop every
   file at once.
-- **As a static site** (`output: "static"`). `first export` writes the whole site to
-  `first/dist/static/` from local content or from a hosted site. Nothing is prebuilt on a WordPress
+- **As a static site** (`output: "static"`). `typedpress export` writes the whole site to
+  `tp/dist/static/` from local content or from a hosted site. Nothing is prebuilt on a WordPress
   site for a static app.
 
-Still deferred: a policy decided per route at build time, and `first check --json` printing it.
+Still deferred: a policy decided per route at build time, and `typedpress check --json` printing it.
 
 ### 6.2 Purges by URL
 
@@ -337,14 +343,14 @@ Still deferred: a policy decided per route at build time, and `first check --jso
   compiler knows the queries, so the runtime only collects ids. These are
   stored as a URL → reads index in the object cache, with a database copy so
   eviction can't lose it.
-- On every committed write, First computes the affected URLs:
+- On every committed write, TypedPress computes the affected URLs:
   - the item's own `url` and its old URL if the slug changed;
   - every indexed page that read that id, or listed that kind;
   - the item's term archives, author archive, home, feeds, the sitemap, and each URL's `.md` twin.
 - The URLs go into the existing durable purge records, as one purge obligation
   in the same transaction as the write. It is retried until the gateway accepts it.
 - Batcache entries for those URLs are deleted in the same step.
-- **Query variants:** First purges each URL plus every query variant its index
+- **Query variants:** TypedPress purges each URL plus every query variant its index
   saw (`?page=2`, typed `search` params). Unknown variants fall back to the
   `s-maxage` window. A purge that touches more than N URLs, or a kind-wide
   change such as a schema deploy or a settings change, becomes the existing whole-host purge.
@@ -372,14 +378,14 @@ Still deferred: a policy decided per route at build time, and `first check --jso
   when none is given. Our runtime sends only `wp_domain` today; URL purges add
   `purge_uris` to the same durable records. No URL-count limit is enforced.
 - **Batcache:** stores a URL on its second hit within two minutes, reads only
-  `max-age`, ignores tracking params in its key. Public First pages stay in
+  `max-age`, ignores tracking params in its key. Public TypedPress pages stay in
   Batcache; viewer-dependent ones call `batcache_cancel()`, as the WordPress
   lanes already do.
 - Still open: the edge TTL ceiling, which only sets the fallback window.
 
 ## 7. Kept from today
 
-- Hidden code-owned WordPress Page records for static routes (`First\Wp\RoutePages`): one Page per
+- Hidden code-owned WordPress Page records for static routes (`TypedPress\Wp\RoutePages`): one Page per
   parameterless `page.tsx` route, its permalink the route URL, `/` the front page.
 - Escaping through the HTML API.
 - Route IDs that survive moving a file: `export const route = { id }` in a `page.tsx`, `id:` in a
@@ -399,7 +405,7 @@ Still deferred: a policy decided per route at build time, and `first check --jso
   - region navigation.
 - Agents: markdown twins and `llms.txt`.
 - Modes and fallbacks:
-  - a 404 in First-owned mode;
+  - a 404 in TypedPress-owned mode;
   - WordPress rendering a kind URL that has no page.
 - Caching:
   - a cache hit (Batcache, then edge) after the first request;

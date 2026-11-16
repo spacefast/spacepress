@@ -1,5 +1,5 @@
 {
-  "name": "first-differential-client",
+  "name": "typedpress-differential-client",
   "private": true,
   "description": "Chromium drives the browser half of the client component tests (tests/app_router.rs)",
   "type": "module",

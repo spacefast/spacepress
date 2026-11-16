@@ -1,14 +1,14 @@
-//! `first sync` (design §5.4).
+//! `typedpress sync` (design §5.4).
 //!
 //! ```text
-//! first sync [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]
-//! first sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch]
-//! first sync status [dir] --site …     what a sync would do; writes nothing
-//! first sync resolve <uid> [dir] --site …
+//! typedpress sync [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]
+//! typedpress sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch]
+//! typedpress sync status [dir] --site …     what a sync would do; writes nothing
+//! typedpress sync resolve <uid> [dir] --site …
 //! ```
 //!
-//! Without `--site`, the project's running dev site. The credential comes from the environment: `FIRST_APP_PASSWORD` (`user:application-password`) or
-//! `FIRST_TOKEN` (a bearer token from the identity plugin).
+//! Without `--site`, the project's running dev site. The credential is the one `typedpress login`
+//! stored for the site, or `TP_APP_PASSWORD` / `TP_TOKEN` in the environment (`remote::sign_in`).
 //!
 //! `--pr` runs on a fresh worktree of the default branch and opens or updates one pull request with
 //! the result (see `sync::pr`); it needs `GITHUB_TOKEN`.
@@ -16,19 +16,18 @@
 //! Exit codes: 0 ok, 1 failed, 2 changes pending or conflicts (`--check`), 3 usage, 4 auth.
 
 use crate::sync::apply::{self, Options};
-use crate::sync::client::{Client, Credential};
+use crate::sync::client::Client;
 use crate::sync::{Report, git, pr};
 use serde_json::json;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: first sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       first sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch] [--json]\n       credential: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token>";
+const USAGE: &str = "usage: typedpress sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       typedpress sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch] [--json]";
 
 struct Flags {
     mode: Mode,
     project: PathBuf,
     site: Option<String>,
-    credential: Option<Credential>,
     only: Option<Vec<String>>,
     check: bool,
     commit: bool,
@@ -49,7 +48,6 @@ fn parse(args: &[String]) -> Result<Flags, String> {
         mode: Mode::Sync,
         project: PathBuf::from("."),
         site: None,
-        credential: None,
         only: None,
         check: false,
         commit: true,
@@ -79,7 +77,9 @@ fn parse(args: &[String]) -> Result<Flags, String> {
             "--pr" => flags.pr = true,
             "--repo" => flags.repo = Some(value("--repo")?),
             "--base" => flags.base = Some(value("--base")?),
-            "--watch" => return Err("--watch is not available yet; run first sync again, or from a scheduler".into()),
+            "--watch" => {
+                return Err("--watch is not available yet; run typedpress sync again, or from a scheduler".into());
+            }
             other if other.starts_with("--") => return Err(format!("unknown flag {other}")),
             other => positional.push(other.to_string()),
         }
@@ -100,7 +100,7 @@ fn parse(args: &[String]) -> Result<Flags, String> {
         return Err("too many arguments".into());
     }
     if flags.check && matches!(flags.mode, Mode::Resolve(_)) {
-        return Err("resolve writes both sides; it has no --check (first sync --check shows the conflict)".into());
+        return Err("resolve writes both sides; it has no --check (typedpress sync --check shows the conflict)".into());
     }
     if flags.pr && (flags.check || !flags.commit || !matches!(flags.mode, Mode::Sync)) {
         return Err(
@@ -115,13 +115,6 @@ fn parse(args: &[String]) -> Result<Flags, String> {
     if !flags.pr && (flags.repo.is_some() || flags.base.is_some()) {
         return Err("--repo and --base go with --pr".into());
     }
-    let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
-    flags.credential = match (env("FIRST_APP_PASSWORD"), env("FIRST_TOKEN")) {
-        (Some(_), Some(_)) => return Err("set FIRST_APP_PASSWORD or FIRST_TOKEN, not both".into()),
-        (Some(password), None) => Some(Credential::AppPassword(password)),
-        (None, Some(token)) => Some(Credential::Bearer(token)),
-        (None, None) => None,
-    };
     Ok(flags)
 }
 
@@ -134,18 +127,21 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     };
     let site = match flags.site.clone() {
-        Some(site) => Some(site),
+        Some(site) => site,
         None => match super::dev::url(&flags.project) {
-            Ok(url) => Some(url),
+            Ok(url) => url,
             Err(e) => {
                 eprintln!("{e}");
                 return ExitCode::from(3);
             }
         },
     };
-    let (Some(site), Some(credential)) = (site, flags.credential) else {
-        eprintln!("first sync needs a credential in FIRST_APP_PASSWORD or FIRST_TOKEN\n{USAGE}");
-        return ExitCode::from(3);
+    let credential = match super::remote::require(&site) {
+        Ok(signed) => signed.credential,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}\n{}", super::remote::SIGN_IN);
+            return ExitCode::from(3);
+        }
     };
     let project = flags.project.canonicalize().unwrap_or(flags.project.clone());
     let client = match Client::new(&site, credential) {
@@ -207,7 +203,7 @@ pub fn run(args: &[String]) -> ExitCode {
     if result.is_ok() && !check && flags.commit && !flags.pr && !report.written.is_empty() {
         let paths = report.written.clone();
         let message = format!(
-            "first sync: {} applied, {} conflicts",
+            "typedpress sync: {} applied, {} conflicts",
             report.applied,
             report.conflicts.len()
         );

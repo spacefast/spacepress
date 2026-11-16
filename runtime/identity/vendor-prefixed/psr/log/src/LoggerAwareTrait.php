@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Identity\Vendor\Psr\Log;
+namespace TypedPress\Identity\Vendor\Psr\Log;
 
 /**
  * Basic Implementation of LoggerAwareInterface.

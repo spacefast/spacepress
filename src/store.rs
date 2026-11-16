@@ -1,7 +1,7 @@
 //! The build store: immutable, content-addressed compiled builds on disk.
 //!
 //! ```text
-//! <root>/runtime/<revision>/   first-loader.php, first-runtime/, first-identity/, first-admin/
+//! <root>/runtime/<revision>/   typedpress-loader.php, typedpress-runtime/, typedpress-identity/, typedpress-admin/
 //! <root>/app/<hash>/           the app tree compile_sources writes, minus the runtime plugins
 //! <root>/build/<id>.json       BuildManifest; <id> is the SHA-256 of these bytes
 //! <root>/baseline/<id>/        what the next compile needs from build <id> apart from its code:
@@ -12,7 +12,7 @@
 //!
 //! Everything is written below `<root>/.tmp/` and renamed into place, then never edited, so file
 //! paths stay valid for the opcode cache. Writers and the collector hold `flock(<root>/.lock)`,
-//! the same lock `First\Loader\Store` takes in PHP.
+//! the same lock `TypedPress\Loader\Store` takes in PHP.
 use crate::{
     bundle,
     diag::{Diag, Span},
@@ -25,14 +25,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const FORMAT: &str = "first.build.v1";
+pub const FORMAT: &str = "typedpress.build.v1";
 
 /// One build: which runtime tree and which app tree a request mounts.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildManifest {
     pub format: String,
-    /// The app name (`first-app-<name>`).
+    /// The app name (`typedpress-app-<name>`).
     pub name: String,
     /// The compiler's Cargo version.
     pub compiler: String,
@@ -40,9 +40,9 @@ pub struct BuildManifest {
     pub runtime: String,
     /// `app/<hash>/`
     pub app: String,
-    /// Mount `first-identity` (the app has an auth collection).
+    /// Mount `typedpress-identity` (the app has an auth collection).
     pub identity: bool,
-    /// Mount `first-admin`.
+    /// Mount `typedpress-admin`.
     pub admin: bool,
     /// The app's schema snapshot, relative to the store root.
     pub snapshot: String,
@@ -105,7 +105,7 @@ fn digest<'a>(files: impl IntoIterator<Item = (&'a str, &'a [u8])>) -> String {
     hex(hash.finalize())
 }
 
-fn tree_files(root: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
+pub(crate) fn tree_files(root: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
     fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) -> std::io::Result<()> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -251,8 +251,44 @@ pub fn compile_to_store(
 ) -> Result<StoredBuild, Diag> {
     let store = Store::open(root)?;
     let baseline = previous
-        .map(|id| store.manifest(id).map(|m| root.join("app").join(m.app)))
+        .map(|id| store.manifest(id).map(|m| (id, root.join("app").join(m.app))))
         .transpose()?;
+    compile_in(
+        store,
+        sources,
+        assets,
+        baseline.as_ref().map(|(id, dir)| (*id, dir.as_path())),
+    )
+}
+
+/// [`compile_to_store`] against a baseline that is not in this store: `baseline` is the previous
+/// build's ID and a directory holding its `snapshot.json` and `migrations/`. For a store that is not
+/// the one the site serves from (`typedpress push` compiles locally against what the site sent).
+#[cfg(feature = "cli")]
+pub(crate) fn compile_to_store_against(
+    sources: &Path,
+    root: &Path,
+    assets: &Path,
+    baseline: Option<(&str, &Path)>,
+) -> Result<StoredBuild, Diag> {
+    if let Some((id, _)) = baseline
+        && !valid_id(id)
+    {
+        return Err(failure(format!("build store: invalid build id {id:?}")));
+    }
+    compile_in(Store::open(root)?, sources, assets, baseline)
+}
+
+fn compile_in(
+    store: Store,
+    sources: &Path,
+    assets: &Path,
+    baseline: Option<(&str, &Path)>,
+) -> Result<StoredBuild, Diag> {
+    let root = store.root.clone();
+    let root = root.as_path();
+    let previous = baseline.map(|(id, _)| id);
+    let baseline = baseline.map(|(_, dir)| dir.to_path_buf());
     let staged = store.staging("app");
     let compiled = match bundle::compile_tree(sources, &staged, assets, baseline.as_deref(), false) {
         Ok(compiled) => compiled,

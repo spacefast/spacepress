@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn;
+namespace TypedPress\Identity\Vendor\Webauthn;
 
 use function strlen;
-use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 class PublicKeyCredentialUserEntity extends PublicKeyCredentialEntity
 {

@@ -1,9 +1,9 @@
 import { useNavigate, useSearch } from '@wordpress/route';
-import { mergeGlobalStyles } from '@first-admin/global-styles-engine';
+import { mergeGlobalStyles } from '@typedpress-admin/global-styles-engine';
 import type {
 	GlobalStylesConfig,
 	GlobalStylesSettings,
-} from '@first-admin/global-styles-engine';
+} from '@typedpress-admin/global-styles-engine';
 import { store as coreStore } from '@wordpress/core-data';
 import { useSelect } from '@wordpress/data';
 import { useMemo } from '@wordpress/element';

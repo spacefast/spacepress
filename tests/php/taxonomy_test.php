@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /*
  * `taxonomy()` and `terms()` on WordPress, in-process (tests/php/wp.php), on the app in
- * tests/fixtures/taxonomy (schema.php is what `first build` emits for it, checked by tests/compiler.rs):
+ * tests/fixtures/taxonomy (schema.php is what `typedpress build` emits for it, checked by tests/compiler.rs):
  * term rows and their implicit fields, term meta fields, assigning through `on` and `terms()`, write
  * order, list filters, `with` both ways, access (assigning vs creating), the hierarchy and term URLs
  * (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
@@ -19,7 +19,7 @@ $wp = wpSite('taxonomy', [
     'functions' => file_get_contents("$fixture/functions.php"),
     'users' => ['ed' => 'editor', 'alice' => 'author', 'sub' => 'subscriber'],
 ]);
-$db = \First\db();
+$db = \TypedPress\db();
 
 /** @return array{int, mixed} */
 function req(string $method, string $path, mixed $body = null, ?string $as = null, array $query = []): array
@@ -40,17 +40,17 @@ $names = static fn (array $rows): array => array_column($rows, 'name');
 
 // ================================================================ registration (ruling 25)
 
-$taxonomy = get_taxonomy('first_topics');
-check('the taxonomy registers as first_<name> for its kinds', $taxonomy instanceof \WP_Taxonomy && $taxonomy->object_type === ['first_posts', 'first_pages'], $taxonomy?->object_type);
-eq('… hierarchical, in REST under first_<name>, with no rewrite or query var', [$taxonomy->hierarchical, $taxonomy->show_in_rest, $taxonomy->rest_base, $taxonomy->rewrite, $taxonomy->query_var], [true, true, 'first_topics', false, false]);
+$taxonomy = get_taxonomy('tp_topics');
+check('the taxonomy registers as tp_<name> for its kinds', $taxonomy instanceof \WP_Taxonomy && $taxonomy->object_type === ['tp_posts', 'tp_pages'], $taxonomy?->object_type);
+eq('… hierarchical, in REST under tp_<name>, with no rewrite or query var', [$taxonomy->hierarchical, $taxonomy->show_in_rest, $taxonomy->rest_base, $taxonomy->rewrite, $taxonomy->query_var], [true, true, 'tp_topics', false, false]);
 eq('… keeping write order', [$taxonomy->sort, $taxonomy->args], [true, ['orderby' => 'term_order']]);
-eq('… with per-taxonomy capabilities', (array) $taxonomy->cap, ['manage_terms' => 'manage_first_topics', 'edit_terms' => 'edit_first_topics', 'delete_terms' => 'delete_first_topics', 'assign_terms' => 'assign_first_topics']);
-eq('a taxonomy with a url is public', [$taxonomy->public, get_taxonomy('first_tags')->public], [true, true]);
-eq('terms() registers the taxonomy for its kind', get_taxonomy('first_tags')->object_type, ['first_posts']);
-check('term fields are registered term meta', isset(get_registered_meta_keys('term', 'first_topics')['first_color']), array_keys(get_registered_meta_keys('term', 'first_topics')));
-$group = acf_get_local_field_group('group_first_topics');
-check('the SCF field group sits on the taxonomy', is_array($group) && $group['location'][0][0] === ['param' => 'taxonomy', 'operator' => '==', 'value' => 'first_topics'], $group);
-eq('no table is created for a taxonomy', $wp->connection()->run("SELECT name FROM sqlite_master WHERE name LIKE '%first_topics%'"), []);
+eq('… with per-taxonomy capabilities', (array) $taxonomy->cap, ['manage_terms' => 'manage_tp_topics', 'edit_terms' => 'edit_tp_topics', 'delete_terms' => 'delete_tp_topics', 'assign_terms' => 'assign_tp_topics']);
+eq('a taxonomy with a url is public', [$taxonomy->public, get_taxonomy('tp_tags')->public], [true, true]);
+eq('terms() registers the taxonomy for its kind', get_taxonomy('tp_tags')->object_type, ['tp_posts']);
+check('term fields are registered term meta', isset(get_registered_meta_keys('term', 'tp_topics')['tp_color']), array_keys(get_registered_meta_keys('term', 'tp_topics')));
+$group = acf_get_local_field_group('group_tp_topics');
+check('the SCF field group sits on the taxonomy', is_array($group) && $group['location'][0][0] === ['param' => 'taxonomy', 'operator' => '==', 'value' => 'tp_topics'], $group);
+eq('no table is created for a taxonomy', $wp->connection()->run("SELECT name FROM sqlite_master WHERE name LIKE '%tp_topics%'"), []);
 
 // ================================================================ term rows (ruling 27)
 
@@ -58,9 +58,9 @@ $news = $db->insert('topics', ['name' => 'News', 'color' => 'red', 'shades' => [
 eq('a term row: implicit fields, then the authored ones', array_keys($news), ['id', 'name', 'slug', 'description', 'parent', 'count', 'url', 'color', 'icon', 'owner', 'shades', 'note']);
 eq('… slug derived from the name, empty description, no parent, no items', [$news['slug'], $news['description'], $news['parent'], $news['count']], ['news', '', null, 0]);
 eq('… url from the pattern', $news['url'], home_url('/topics/news/'));
-eq('… term meta in First\'s value form', [$news['color'], $news['shades']], ['red', ['dark']]);
-eq('… stored under first_<field>', get_term_meta($news['id'], 'first_color', true), 'red');
-eq('the id is core\'s term id', get_term($news['id'], 'first_topics')->name, 'News');
+eq('… term meta in TypedPress\'s value form', [$news['color'], $news['shades']], ['red', ['dark']]);
+eq('… stored under tp_<field>', get_term_meta($news['id'], 'tp_color', true), 'red');
+eq('the id is core\'s term id', get_term($news['id'], 'tp_topics')->name, 'News');
 $sports = $db->insert('topics', ['name' => 'Sports', 'slug' => 'sport'], true)[0];
 eq('a given slug is kept', $sports['slug'], 'sport');
 $other = $db->insert('topics', ['name' => 'Other', 'slug' => 'sport'], true)[0];
@@ -73,7 +73,7 @@ problem('url is read-only', fn () => $db->update('topics', ['url' => 'x'], ['id'
 problem('a term has no author', fn () => $db->insert('topics', ['name' => 'A', 'author' => 1]), 422, 'invalid_input', '/author');
 $updated = $db->update('topics', ['name' => 'World news', 'description' => 'Everywhere', 'color' => null], ['id' => $news['id']], true)[0];
 eq('an update writes core\'s fields and term meta', [$updated['name'], $updated['slug'], $updated['description'], $updated['color']], ['World news', 'news', 'Everywhere', null]);
-eq('a cleared field is gone from term meta', get_term_meta($news['id'], 'first_color', true), '');
+eq('a cleared field is gone from term meta', get_term_meta($news['id'], 'tp_color', true), '');
 eq('a term with no fields of its own is a row too', array_keys($db->insert('tags', ['name' => 'Short'], true)[0]), ['id', 'name', 'slug', 'description', 'count', 'url']);
 
 // ================================================================ hierarchy (ruling 30)
@@ -92,7 +92,7 @@ problem('a flat taxonomy has no parent', fn () => $db->insert('tags', ['name' =>
 $p1 = $db->insert('posts', ['title' => 'First', 'topics' => [$sports['id'], $news['id']], 'labels' => [$tag['id']]], true)[0];
 eq('`on` gives the item a field named after the taxonomy, in write order', $p1['topics'], [$sports['id'], $news['id']]);
 eq('terms() is the same kind of field', $p1['labels'], [$tag['id']]);
-eq('the links are core\'s term relationships, in that order', wp_get_object_terms($p1['id'], 'first_topics', ['fields' => 'ids', 'orderby' => 'term_order']), [$sports['id'], $news['id']]);
+eq('the links are core\'s term relationships, in that order', wp_get_object_terms($p1['id'], 'tp_topics', ['fields' => 'ids', 'orderby' => 'term_order']), [$sports['id'], $news['id']]);
 eq('core keeps the counts', $db->findFirst('topics', ['where' => ['id' => $sports['id']]])['count'], 1);
 $p2 = $db->insert('posts', ['title' => 'Second', 'topics' => [$news['id']]], true)[0];
 $p3 = $db->insert('posts', ['title' => 'Third'], true)[0];
@@ -102,7 +102,7 @@ eq('a write replaces the set, in its new order', $reordered['topics'], [$news['i
 problem('a term of another taxonomy is refused', fn () => $db->update('posts', ['topics' => [$tag['id']]], ['id' => $p3['id']]), 409, 'reference_violation', '/topics/0');
 problem('a duplicate id is refused', fn () => $db->update('posts', ['topics' => [$news['id'], $news['id']]], ['id' => $p3['id']]), 422, 'invalid_input', '/topics/1');
 problem('a name never creates a term', fn () => $db->update('posts', ['topics' => ['Brand new']], ['id' => $p3['id']]), 422, 'invalid_input', '/topics/0');
-check('… and none was created', get_term_by('name', 'Brand new', 'first_topics') === false);
+check('… and none was created', get_term_by('name', 'Brand new', 'tp_topics') === false);
 
 // ================================================================ queries (ruling 28)
 
@@ -130,7 +130,7 @@ eq('an item with no term has no URL yet', str_contains((string) get_permalink($p
 
 eq('anyone reads terms', req('GET', '/topics')[0], 200);
 [$s, $read] = req('GET', '/topics', query: ['where' => '{"slug":"sport"}']);
-eq('… through First\'s pipeline', [$s, $names($read)], [200, ['Sports']]);
+eq('… through TypedPress\'s pipeline', [$s, $names($read)], [200, ['Sports']]);
 check('a field with a read rule is masked', !array_key_exists('note', $read[0]), $read[0]);
 [$s, $created] = req('POST', '/topics', ['name' => 'By alice'], as: 'alice');
 eq('the create rule (author) lets an author create', [$s, $created['name'] ?? null], [201, 'By alice']);
@@ -141,13 +141,13 @@ isProblem('tags: an author may not create', req('POST', '/tags', ['name' => 'nop
 eq('assigning needs the item\'s rule (pages: author), not the taxonomy\'s update rule', [$s, $assigned['topics'] ?? null], [201, [$news['id']]]);
 isProblem('… and an item kind the author may not write refuses', req('POST', '/posts', ['title' => 'No', 'labels' => [$tag['id']]], as: 'alice'), 403, 'forbidden');
 wp_set_current_user($wp->userId('alice'));
-check('assign_first_topics is granted to someone who may write an attached kind', current_user_can('assign_first_topics'));
-check('… assign_first_tags is not: posts are editor-only', !current_user_can('assign_first_tags'));
-check('edit_first_topics (core\'s create check on a hierarchical taxonomy) follows the create rule', current_user_can('edit_first_topics'));
-check('… delete_first_topics follows the delete rule (editor)', !current_user_can('delete_first_topics'));
-check('core\'s create path is refused without the create rule', is_wp_error(wp_insert_term('Sneaky', 'first_tags')));
+check('assign_tp_topics is granted to someone who may write an attached kind', current_user_can('assign_tp_topics'));
+check('… assign_tp_tags is not: posts are editor-only', !current_user_can('assign_tp_tags'));
+check('edit_tp_topics (core\'s create check on a hierarchical taxonomy) follows the create rule', current_user_can('edit_tp_topics'));
+check('… delete_tp_topics follows the delete rule (editor)', !current_user_can('delete_tp_topics'));
+check('core\'s create path is refused without the create rule', is_wp_error(wp_insert_term('Sneaky', 'tp_tags')));
 wp_set_current_user($wp->userId('sub'));
-check('a subscriber who may write no attached kind has no assign capability', !current_user_can('assign_first_tags'));
+check('a subscriber who may write no attached kind has no assign capability', !current_user_can('assign_tp_tags'));
 wp_set_current_user(0);
 
 // ================================================================ deletes (ruling 30)
@@ -183,5 +183,17 @@ eq('core terms controller: the overridden handlers take ($request)', array_map(s
     array_fill(0, 10, ['public', 1, 1]));
 eq('core terms controller: prepare_item_for_response($item, $request), get_collection_params()', [$member(WP_REST_Terms_Controller::class, 'prepare_item_for_response'), $member(WP_REST_Terms_Controller::class, 'get_collection_params')], [['public', 2, 2], ['public', 0, 0]]);
 eq('core term meta fields: constructed with ($taxonomy); get_value($object_id, $request)', [$member(WP_REST_Term_Meta_Fields::class, '__construct'), $member(WP_REST_Meta_Fields::class, 'get_value')], [['public', 1, 1], ['public', 2, 2]]);
+
+// `columns` on a term-backed kind: only what was asked (and the key) is selected, the result as before.
+$statements = [];
+\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
+    $statements[] = $sql;
+};
+$narrow = $db->findMany('topics', ['columns' => ['name' => true, 'shades' => true], 'orderBy' => ['id' => 'asc']]);
+\TypedPress\Wp\Connection::$observer = null;
+$wide = array_map(static fn (array $r): array => array_intersect_key($r, array_flip(['name', 'shades'])), $db->findMany('topics', ['orderBy' => ['id' => 'asc']]));
+eq('a term read with columns returns what reading every column gave', $narrow, $wide);
+$termSql = array_values(array_filter($statements, static fn (string $s): bool => str_contains($s, 'AS `name`')))[0] ?? '';
+check('and selects no other term field or meta join', !str_contains($termSql, 'AS `color`') && !str_contains($termSql, 'AS `description`') && !str_contains($termSql, "meta_key = 'tp_color'"), $termSql);
 
 finish('taxonomy');

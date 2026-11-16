@@ -4,11 +4,11 @@ import apiFetch from '@wordpress/api-fetch';
 import { Button, Modal, Notice, Spinner } from '@wordpress/components';
 import {
 	DataForm,
-	DataViews,
 	type Action,
 	type Field,
 	type View,
-} from '@first-admin/dataviews';
+} from '@typedpress-admin/dataviews';
+import { DataViews, useView } from '@typedpress-admin/views';
 import {
 	actionInput,
 	display,
@@ -26,8 +26,8 @@ import './style.scss';
 
 export * from './model';
 
-/** Which admin hosts the screen: First Admin's route, or a classic wp-admin page. */
-export type Host = 'first-admin' | 'classic';
+/** Which admin hosts the screen: TypedPress Admin's route, or a classic wp-admin page. */
+export type Host = 'typedpress-admin' | 'classic';
 
 type Load< T > =
 	| { kind: 'loading' }
@@ -44,7 +44,7 @@ function message( e: unknown ): string {
 /** The declaration, from the server, for the signed-in user. */
 export function fetchScreen( id: string ): Promise< Screen > {
 	return apiFetch< Screen >( {
-		path: `/first-admin/v1/screens/${ encodeURIComponent( id ) }`,
+		path: `/typedpress-admin/v1/screens/${ encodeURIComponent( id ) }`,
 	} );
 }
 
@@ -76,7 +76,7 @@ function fields( declared: ScreenField[] ): Field< Item >[] {
 		filterBy: false,
 		getValue: ( { item } ) => item[ f.id ],
 		render: ( { item } ) => (
-			<span className="first-admin-screen__value">
+			<span className="typedpress-admin-screen__value">
 				{ display( item[ f.id ] ) }
 			</span>
 		),
@@ -123,13 +123,26 @@ function ScreenList( {
 		};
 	}, [ declared, reload, round ] );
 	const viewFields = useMemo( () => fields( declared.fields ), [ declared ] );
-	const [ view, setView ] = useState< View >( () => ( {
+	const defaultView = useMemo< View >( () => ( {
 		type: 'table',
 		perPage: 20,
-		page: 1,
 		fields: declared.fields.map( ( f ) => f.id ),
-		...( declared.layout as Partial< View > ),
-	} as View ) );
+		...declared.layout,
+	} ), [ declared ] );
+	const [ queryParams, setQueryParams ] = useState( { page: 1, search: '' } );
+	const { view, updateView, isModified, resetToDefault } = useView( {
+		kind: 'firstScreen',
+		name: screen.id,
+		slug: 'all',
+		defaultView,
+		queryParams,
+		onChangeQueryParams: ( { page = 1, search = '' } ) => {
+			setQueryParams( ( previous ) => ( {
+				page: search !== previous.search ? 1 : page,
+				search,
+			} ) );
+		},
+	} );
 	const run = useCallback(
 		async ( action: ScreenAction, item: Item ) => {
 			try {
@@ -177,7 +190,11 @@ function ScreenList( {
 				data={ filtered.slice( ( page - 1 ) * perPage, page * perPage ) }
 				fields={ viewFields }
 				view={ view }
-				onChangeView={ setView }
+				onChangeView={ updateView }
+				onReset={ isModified ? () => {
+					resetToDefault();
+					setQueryParams( previous => ( { ...previous, page: 1 } ) );
+				} : false }
 				actions={ actions }
 				getItemId={ ( item ) => String( at( item, key ) ) }
 				defaultLayouts={ { table: {} } }
@@ -193,7 +210,7 @@ function ScreenList( {
 					size="small"
 				>
 					<p>{ confirming.action.confirm }</p>
-					<div className="first-admin-screen__confirm">
+					<div className="typedpress-admin-screen__confirm">
 						<Button variant="tertiary" onClick={ () => setConfirming( null ) }>
 							Cancel
 						</Button>
@@ -248,7 +265,7 @@ function ScreenForm( {
 	const submit = declared.submit;
 	return (
 		<form
-			className="first-admin-screen__form"
+			className="typedpress-admin-screen__form"
 			onSubmit={ ( e ) => {
 				e.preventDefault();
 				if ( ! submit || busy ) {
@@ -277,7 +294,7 @@ function ScreenForm( {
 }
 
 /**
- * One declared screen. The same component runs on First Admin's `/screens/<id>` route and on the
+ * One declared screen. The same component runs on TypedPress Admin's `/screens/<id>` route and on the
  * classic wp-admin page; only the surrounding chrome (title, layout) differs.
  */
 export function ScreenBody( {
@@ -287,7 +304,7 @@ export function ScreenBody( {
 }: {
 	id: string;
 	host: Host;
-	/** The host's chrome around the body: First Admin's Page with the declared title. */
+	/** The host's chrome around the body: TypedPress Admin's Page with the declared title. */
 	frame?: ( screen: Screen | null, body: JSX.Element ) => JSX.Element;
 } ) {
 	const [ state, setState ] = useState< Load< Screen > >( { kind: 'loading' } );
@@ -309,18 +326,18 @@ export function ScreenBody( {
 	const summary = Array.isArray( screen.data ) ? screen.data : screen.data == null ? [] : [ screen.data ];
 	return frame(
 		screen,
-		<div className={ `first-admin-screen first-admin-screen--${ host }` } data-screen={ screen.id }>
+		<div className={ `typedpress-admin-screen typedpress-admin-screen--${ host }` } data-screen={ screen.id }>
 			{ notice && (
 				<Notice status={ notice.status } onRemove={ () => setNotice( null ) }>
 					{ notice.text }
 				</Notice>
 			) }
 			{ summary.map( ( line, i ) => (
-				<p key={ i } className="first-admin-screen__summary">
+				<p key={ i } className="typedpress-admin-screen__summary">
 					{ display( line ) }
 				</p>
 			) ) }
-			{ screen.view && <ScreenList screen={ screen } reload={ 0 } setNotice={ setNotice } /> }
+			{ screen.view && <ScreenList key={ screen.id } screen={ screen } reload={ 0 } setNotice={ setNotice } /> }
 			{ screen.form && <ScreenForm screen={ screen } setNotice={ setNotice } /> }
 		</div>
 	);

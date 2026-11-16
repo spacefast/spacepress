@@ -1,5 +1,5 @@
-import { InputControl } from '@first-admin/design-system';
-import type { FontSize } from '@first-admin/global-styles-engine';
+import { InputControl } from '@typedpress-admin/design-system';
+import type { FontSize } from '@typedpress-admin/global-styles-engine';
 import {
 	__experimentalVStack as VStack,
 	__experimentalHStack as HStack,
@@ -36,7 +36,7 @@ function RenameFontSizeDialog( {
 		<Modal
 			onRequestClose={ toggleOpen }
 			focusOnMount="firstContentElement"
-			title={ __( 'Rename', 'first-admin' ) }
+			title={ __( 'Rename', 'typedpress-admin' ) }
 			size="small"
 		>
 			<form
@@ -51,10 +51,10 @@ function RenameFontSizeDialog( {
 						autoComplete="off"
 						value={ newName }
 						onValueChange={ setNewName }
-						label={ __( 'Name', 'first-admin' ) }
+						label={ __( 'Name', 'typedpress-admin' ) }
 						placeholder={ __(
 							'Font size preset name',
-							'first-admin'
+							'typedpress-admin'
 						) }
 					/>
 					<HStack justify="right">
@@ -63,14 +63,14 @@ function RenameFontSizeDialog( {
 							variant="tertiary"
 							onClick={ toggleOpen }
 						>
-							{ __( 'Cancel', 'first-admin' ) }
+							{ __( 'Cancel', 'typedpress-admin' ) }
 						</Button>
 						<Button
 							__next40pxDefaultSize
 							variant="primary"
 							type="submit"
 						>
-							{ __( 'Save', 'first-admin' ) }
+							{ __( 'Save', 'typedpress-admin' ) }
 						</Button>
 					</HStack>
 				</VStack>

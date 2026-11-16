@@ -1,8 +1,8 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Lexer;
+namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Lexer;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
 use function implode;
 use function preg_match_all;
 

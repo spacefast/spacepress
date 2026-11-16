@@ -25,7 +25,7 @@ export default function MediaEditor({
 			<Notice status="error" isDismissible={false}>
 				{__(
 					"You attempted to edit an item that doesn't exist. Perhaps it was deleted?",
-					'first-admin',
+					'typedpress-admin',
 				)}
 			</Notice>
 		);

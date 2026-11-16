@@ -5,7 +5,7 @@
 // Ensures that the footer is always visible when the modal content is scrollable.
 $footer-height: 70px;
 
-.first-admin-font-library-modal {
+.typedpress-admin-font-library-modal {
 	// Force width to override upstream @wordpress/editor modal styles.
 	// Temporary until font library is extracted from upstream components.
 	width: 65vw !important;
@@ -54,7 +54,7 @@ $footer-height: 70px;
 	bottom: variables.$grid-unit-40;
 	width: 100%;
 	height: $footer-height;
-	background-color: var( --wpds-color-bg-surface-neutral-strong );
+	background-color: var( --wpds-color-background-surface-neutral-strong );
 }
 
 .font-library-modal__category-select {
@@ -105,11 +105,11 @@ $footer-height: 70px;
 	padding: variables.$grid-unit-20;
 	margin-top: -1px; /* To collapse the margin with the previous element */
 
-	background-color: var( --wpds-color-bg-interactive-neutral-weak );
+	background-color: var( --wpds-color-background-interactive-neutral-weak );
 
 	&:hover {
 		background-color: var(
-			--wpds-color-bg-interactive-neutral-weak-active
+			--wpds-color-background-interactive-neutral-weak-active
 		);
 	}
 
@@ -118,7 +118,7 @@ $footer-height: 70px;
 	}
 
 	.font-library-modal__font-card__count {
-		color: var( --wpds-color-fg-content-neutral-weak );
+		color: var( --wpds-color-foreground-content-neutral-weak );
 	}
 
 	.font-library-modal__font-variant_demo-image {
@@ -141,7 +141,7 @@ $footer-height: 70px;
 	position: sticky;
 	top: 0;
 	border-bottom: 1px solid var( --wpds-color-stroke-surface-neutral );
-	background: var( --wpds-color-bg-surface-neutral-strong );
+	background: var( --wpds-color-background-surface-neutral-strong );
 	z-index: 1;
 
 	[role="tablist"] {
@@ -162,7 +162,7 @@ $footer-height: 70px;
 }
 
 button.font-library-modal__upload-area {
-	background-color: var( --wpds-color-bg-surface-neutral );
+	background-color: var( --wpds-color-background-surface-neutral );
 }
 
 .font-library-modal__local-fonts {
@@ -170,7 +170,7 @@ button.font-library-modal__upload-area {
 	width: 80%;
 
 	.font-library-modal__upload-area__text {
-		color: var( --wpds-color-fg-content-neutral-weak );
+		color: var( --wpds-color-foreground-content-neutral-weak );
 	}
 }
 

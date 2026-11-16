@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Key;
+namespace TypedPress\Identity\Vendor\Cose\Key;
 
 use function array_key_exists;
 use function extension_loaded;
@@ -14,11 +14,11 @@ use RuntimeException;
 use function sodium_crypto_scalarmult_base;
 use function sodium_crypto_sign_publickey;
 use function sodium_crypto_sign_seed_keypair;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\ObjectIdentifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\OctetString;
 use function strlen;
 
 /**

@@ -1,1 +1,0 @@
-<?php return array('name' => 'legacy-admin', 'dependencies' => array('react', 'wp-compose'), 'moduleDependencies' => array('@first-admin/admin-toolkit', '@first-admin/boot', '@wordpress/route'), 'version' => 'eb0e5abfab199a42ce4d');

@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag;
+namespace TypedPress\Identity\Vendor\CBOR\Tag;
 
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\DecoderInterface;
-use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthListObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
-use First\Identity\Vendor\CBOR\ListObject;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\CBOR\OtherObject\NullObject;
-use First\Identity\Vendor\CBOR\StringStream;
-use First\Identity\Vendor\CBOR\Tag;
+use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
+use TypedPress\Identity\Vendor\CBOR\CBORObject;
+use TypedPress\Identity\Vendor\CBOR\Decoder;
+use TypedPress\Identity\Vendor\CBOR\DecoderInterface;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthListObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
+use TypedPress\Identity\Vendor\CBOR\ListObject;
+use TypedPress\Identity\Vendor\CBOR\MapObject;
+use TypedPress\Identity\Vendor\CBOR\Normalizable;
+use TypedPress\Identity\Vendor\CBOR\OtherObject\NullObject;
+use TypedPress\Identity\Vendor\CBOR\StringStream;
+use TypedPress\Identity\Vendor\CBOR\Tag;
 use function count;
 use InvalidArgumentException;
 use function sprintf;

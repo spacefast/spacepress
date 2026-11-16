@@ -1,9 +1,9 @@
 @use "@wordpress/base-styles/variables";
 
-.first-admin-site-hub {
+.typedpress-admin-site-hub {
 	position: sticky;
 	top: 0;
-	background-color: var( --wpds-color-bg-surface-neutral-weak );
+	background-color: var( --wpds-color-background-surface-neutral-weak );
 	z-index: 1;
 	display: grid;
 	grid-template-columns: 60px 1fr auto;
@@ -12,11 +12,11 @@
 	flex-shrink: 0; // Prevent flex parent from shrinking this element.
 }
 
-.first-admin-site-hub__actions {
+.typedpress-admin-site-hub__actions {
 	flex-shrink: 0;
 }
 
-.first-admin-site-hub__title {
+.typedpress-admin-site-hub__title {
 	display: flex;
 	align-items: center;
 
@@ -32,7 +32,7 @@
 	> span:last-child {
 		opacity: 0;
 		transition: opacity 0.1s ease-out;
-		color: var( --wpds-color-fg-content-neutral );
+		color: var( --wpds-color-foreground-content-neutral );
 	}
 
 	&:hover > span:last-child {
@@ -46,13 +46,13 @@
 
 	&:focus:not( :active ) {
 		outline: var( --wpds-border-width-focus ) solid
-			var( --wpds-color-stroke-focus-brand );
+			var( --wpds-color-stroke-focus );
 		outline-offset: calc( -1 * var( --wpds-border-width-focus ) );
 	}
 }
 
-.first-admin-site-hub__title-text {
-	color: var( --wpds-color-fg-content-neutral );
+.typedpress-admin-site-hub__title-text {
+	color: var( --wpds-color-foreground-content-neutral );
 	font-size: variables.$font-size-medium;
 	font-weight: var(--wpds-typography-font-weight-emphasis, 499);
 	overflow: hidden;
@@ -60,8 +60,8 @@
 	white-space: nowrap;
 }
 
-.first-admin-site-hub__url {
-	color: var( --wpds-color-fg-content-neutral-weak );
+.typedpress-admin-site-hub__url {
+	color: var( --wpds-color-foreground-content-neutral-weak );
 	font-size: variables.$font-size-small;
 	overflow: hidden;
 	text-overflow: ellipsis;

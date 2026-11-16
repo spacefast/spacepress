@@ -3,7 +3,7 @@
 // contents, previous and next, its Markdown twin and social image). The parity suite
 // (tests/parity/parity.spec.ts) checks a build against this record.
 //
-// It was run once on the Blume build the site had before it moved to First, so the record is what
+// It was run once on the Blume build the site had before it moved to TypedPress, so the record is what
 // that site served. It reads Blume's markup; it is not meant to read any other build.
 //
 //   node tests/parity/inventory.mjs <dist dir>

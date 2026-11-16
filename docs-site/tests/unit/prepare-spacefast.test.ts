@@ -22,7 +22,7 @@ function parse(text: string): [string, string[]][] {
 }
 
 function prepare(): { headers: [string, string[]][]; page: string } {
-	const dist = mkdtempSync(path.join(tmpdir(), "first-dist-"));
+	const dist = mkdtempSync(path.join(tmpdir(), "typedpress-dist-"));
 	mkdirSync(path.join(dist, "guide"));
 	writeFileSync(path.join(dist, "_headers"), blumeHeaders);
 	writeFileSync(path.join(dist, "guide/index.md"), "# Guide\n");

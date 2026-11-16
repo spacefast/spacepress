@@ -2,7 +2,7 @@
 /**
  * Core user fields collection - applies to user type
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(

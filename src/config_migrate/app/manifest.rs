@@ -219,7 +219,7 @@ impl Manifest {
                 ));
             }
             match fs.read_to_string(&root.join(relative)) {
-                Ok(text) if hex(&Sha256::digest(text.as_bytes())) == *expected => {
+                Ok(text) if crate::hex(Sha256::digest(text.as_bytes())) == *expected => {
                     verified.insert(path.clone(), text);
                 }
                 Ok(_) => differing.push(format!("{path} (changed)")),
@@ -236,10 +236,6 @@ impl Manifest {
             format!("source differs from the published version: {}", differing.join(", ")),
         ))
     }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Standard base64 with padding, as 0.8's finalize manifest stores file contents.

@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection;
 
 /**
  * Interface for project. Since the definition of a project can be different per factory this interface will be small.

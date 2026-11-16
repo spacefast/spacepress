@@ -1,8 +1,8 @@
-// `for await` in authored TypeScript over sync iterables, the narrow form that First's blocking
-// model runs exactly: each element is a plain value or the settled result of a First call. Async
+// `for await` in authored TypeScript over sync iterables, the narrow form that TypedPress's blocking
+// model runs exactly: each element is a plain value or the settled result of a TypedPress call. Async
 // iterables and generators work in imported JavaScript (the job queue) and stay refused here.
 // Every action runs under Node and as compiled PHP; the JSON results must be byte-identical.
-import { action, defineConfig } from "first";
+import { action, defineConfig } from "typedpress";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 

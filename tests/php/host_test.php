@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/../../runtime/First/bootstrap.php';
+require __DIR__ . '/../../runtime/TypedPress/bootstrap.php';
 require __DIR__ . '/harness.php';
 
-use First\Host;
+use TypedPress\Host;
 
 // Host::names(PHP_OS_FAMILY, PHP_OS, php_uname('m')) against Node's process.platform and
 // navigator.platform (lib/internal/navigator.js getNavigatorPlatform), for every OS on one runner.

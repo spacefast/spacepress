@@ -2,11 +2,11 @@
 //! Integration plugin translates it on SQLite sites).
 //!
 //! Each build compares the evaluated schema with the last snapshot
-//! (`first/_generated/migrations/snapshot.json`, committed with the project) and
+//! (`tp/_generated/migrations/snapshot.json`, committed with the project) and
 //! writes the next numbered migration beside it.
 //!
-//! Only `table()` definitions get a table, `{prefix}first_<table>`, plus
-//! the `{prefix}first__revisions` system table. Post-backed collections live in
+//! Only `table()` definitions get a table, `{prefix}tp_<table>`, plus
+//! the `{prefix}tp__revisions` system table. Post-backed collections live in
 //! `wp_posts`/`wp_postmeta` and get no table. Changes are `ALTER TABLE`
 //! (add/modify/drop), never rebuilds. Foreign keys exist only when both sides
 //! are custom tables (§4.2). `{prefix}` is the WordPress table prefix,
@@ -17,10 +17,10 @@ use serde_json::{Value as Json, json};
 
 pub const BREAKPOINT: &str = "--> statement-breakpoint";
 /// First line of a statement the deploy checks against live rows before running any of the
-/// migration (`Wp\Migrator::check`): `-- first-check {json}`. Spec §2.9.
-pub const CHECK: &str = "-- first-check ";
+/// migration (`Wp\Migrator::check`): `-- typedpress-check {json}`. Spec §2.9.
+pub const CHECK: &str = "-- typedpress-check ";
 /// Snapshot key of the revisions system table.
-const REVISIONS: &str = "first__revisions";
+const REVISIONS: &str = "tp__revisions";
 
 fn q(ident: &str) -> String {
     format!("`{}`", ident.replace('`', "``"))
@@ -33,7 +33,7 @@ fn table(t: &str, tables: &Map) -> String {
     if t == REVISIONS {
         format!("`{{prefix}}{t}`")
     } else {
-        format!("`{{prefix}}first_{t}`")
+        format!("`{{prefix}}tp_{t}`")
     }
 }
 
@@ -332,11 +332,11 @@ fn fk_sql(t: &str, name: &str, c: &Json, tables: &Map) -> Option<String> {
 
 fn fk_name(t: &str, col: &str) -> String {
     // MySQL identifiers are limited to 64 characters.
-    let n = format!("first_{t}_{col}_fk");
+    let n = format!("tp_{t}_{col}_fk");
     n.chars().take(64).collect()
 }
 
-/// Every index the schema's SQL tables get, and why it exists, for `first check --json`
+/// Every index the schema's SQL tables get, and why it exists, for `typedpress check --json`
 /// (spec §2.9). Post-backed kinds have none of their own: WordPress indexes `wp_posts` and its meta.
 pub fn index_report(snapshot: &Json) -> Json {
     let tables = tables(snapshot);
@@ -450,7 +450,7 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
         .find(|(_, c)| c["primaryKey"].as_bool() == Some(true))
         .map(|(n, _)| n.clone());
     let referenced = |n: &str| cols.get(n).is_some_and(|c| c["references"].is_object());
-    // A table First didn't create (`existingTable`) keeps the indexes it had: adoption checks them.
+    // A table TypedPress didn't create (`existingTable`) keeps the indexes it had: adoption checks them.
     let queried = if adopted(def) { None } else { def["queried"].as_array() };
     for col in queried.into_iter().flatten().filter_map(Json::as_str) {
         let Some(c) = cols.get(col) else { continue };
@@ -505,7 +505,7 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
                 let target_name = tables[target]["existingTable"]
                     .as_str()
                     .map(str::to_owned)
-                    .unwrap_or_else(|| format!("{{prefix}}first_{target}"));
+                    .unwrap_or_else(|| format!("{{prefix}}tp_{target}"));
                 Some(json!({ "name": fk_name(t, name), "column": name, "table": target_name,
                 "target": r["column"], "onDelete": r["onDelete"].as_str().unwrap_or("restrict").to_uppercase(),
                 "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
@@ -517,7 +517,7 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
         let adoption = json!({ "table": def["existingTable"], "name": name, "indexes": expected_indexes,
             "foreignKeys": foreign_keys, "integerColumns": integer_columns });
         return format!(
-            "-- first-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
+            "-- typedpress-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
             cols.keys().map(|n| q(n)).collect::<Vec<_>>().join(", "),
             table(t, tables)
         );
@@ -724,7 +724,7 @@ fn default_literal(ty: &str, v: &Json) -> String {
 /// Statements that turn `prev` into `next`. Empty when nothing changed.
 ///
 /// Statements that can lose data or leave rows without a required value carry a
-/// `-- first-check` line ([`CHECK`]): before the migration runs, `Wp\Migrator` counts the live
+/// `-- typedpress-check` line ([`CHECK`]): before the migration runs, `Wp\Migrator` counts the live
 /// rows each one affects and refuses unless the counts allow it (spec §2.9).
 pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
     let renames = Renames::of(prev, next);
@@ -844,7 +844,7 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
             if rt == t {
                 // `definition` is for SQLite, where the deploy runs this as a CHANGE COLUMN (the SQLite
                 // Database Integration driver loses the values on RENAME COLUMN). RENAME keeps the
-                // stored type on MySQL, which matters for a table First didn't create.
+                // stored type on MySQL, which matters for a table TypedPress didn't create.
                 out.push(checked(
                     json!({ "check": "rename", "name": format!("{t}.{old}"), "table": physical,
                         "column": old, "to": new, "definition": column_sql(new, &pc[new]), "adopted": adopted }),
@@ -888,7 +888,7 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
                             q(k)
                         )
                     });
-                    // A table First didn't create may store the column under another type than the snapshot
+                    // A table TypedPress didn't create may store the column under another type than the snapshot
                     // says (adoption checks names, not types), so any change to one is confirmed first.
                     let mut check = match (tightens && c["default"].is_null(), &fits) {
                         (true, _) => json!({ "check": "required", "name": name, "table": physical, "column": column }),
@@ -1098,13 +1098,13 @@ mod tests {
                 .position(|s| s.starts_with(&format!("CREATE TABLE `{{prefix}}{table}`")))
                 .unwrap_or_else(|| panic!("no table {table} in {first:?}"))
         };
-        assert!(at("first_locations") < at("first_items"), "{first:?}");
+        assert!(at("tp_locations") < at("tp_items"), "{first:?}");
         assert_eq!(first.len(), 3, "{first:?}");
-        at("first__revisions");
-        let items = &first[at("first_items")];
+        at("tp__revisions");
+        let items = &first[at("tp_items")];
         assert!(items.contains("`locationId` BIGINT UNSIGNED"), "{items}");
         assert!(
-            items.contains("FOREIGN KEY (`locationId`) REFERENCES `{prefix}first_locations` (`id`) ON DELETE SET NULL"),
+            items.contains("FOREIGN KEY (`locationId`) REFERENCES `{prefix}tp_locations` (`id`) ON DELETE SET NULL"),
             "{items}"
         );
 
@@ -1113,7 +1113,7 @@ mod tests {
         v2["tables"]["items"]["columns"]["note"] = col("text");
         assert_eq!(
             plan(&v1, &v2),
-            vec!["ALTER TABLE `{prefix}first_items` ADD COLUMN `note` LONGTEXT;".to_string()]
+            vec!["ALTER TABLE `{prefix}tp_items` ADD COLUMN `note` LONGTEXT;".to_string()]
         );
         assert!(preservation_problems(&v1, &v2).is_empty());
         let mut v3 = v2.clone();
@@ -1122,7 +1122,7 @@ mod tests {
         assert_eq!(
             plan(&v2, &v3),
             vec![
-                "-- first-check {\"check\":\"required\",\"name\":\"items.note\",\"table\":\"{prefix}first_items\",\"column\":\"note\",\"adopted\":false}\nALTER TABLE `{prefix}first_items` MODIFY COLUMN `note` LONGTEXT NOT NULL;".to_string()
+                "-- typedpress-check {\"check\":\"required\",\"name\":\"items.note\",\"table\":\"{prefix}tp_items\",\"column\":\"note\",\"adopted\":false}\nALTER TABLE `{prefix}tp_items` MODIFY COLUMN `note` LONGTEXT NOT NULL;".to_string()
             ]
         );
         assert_eq!(preservation_problems(&v2, &v3), vec!["changes field items.note"]);
@@ -1165,9 +1165,9 @@ mod tests {
         assert_eq!(
             plan(&v3, &v4),
             vec![
-                "ALTER TABLE `{prefix}first_items` DROP FOREIGN KEY `first_items_locationId_fk`;".to_string(),
-                "-- first-check {\"check\":\"drop\",\"name\":\"items.note\",\"table\":\"{prefix}first_items\",\"column\":\"note\",\"adopted\":false}\nALTER TABLE `{prefix}first_items` DROP COLUMN `note`;".to_string(),
-                "-- first-check {\"check\":\"drop\",\"name\":\"locations\",\"table\":\"{prefix}first_locations\",\"adopted\":false}\nDROP TABLE `{prefix}first_locations`;".to_string(),
+                "ALTER TABLE `{prefix}tp_items` DROP FOREIGN KEY `tp_items_locationId_fk`;".to_string(),
+                "-- typedpress-check {\"check\":\"drop\",\"name\":\"items.note\",\"table\":\"{prefix}tp_items\",\"column\":\"note\",\"adopted\":false}\nALTER TABLE `{prefix}tp_items` DROP COLUMN `note`;".to_string(),
+                "-- typedpress-check {\"check\":\"drop\",\"name\":\"locations\",\"table\":\"{prefix}tp_locations\",\"adopted\":false}\nDROP TABLE `{prefix}tp_locations`;".to_string(),
             ]
         );
         assert_eq!(
@@ -1238,9 +1238,9 @@ mod tests {
         assert_eq!(
             plan(&v1, &v2),
             vec![
-                "ALTER TABLE `{prefix}first_pages` ADD COLUMN `locale` VARCHAR(191) DEFAULT 'en' NOT NULL;".to_string(),
-                "ALTER TABLE `{prefix}first_pages` ADD COLUMN `translationGroup` VARCHAR(36);".to_string(),
-                "ALTER TABLE `{prefix}first_pages` ADD UNIQUE KEY `translationGroup_locale` (`translationGroup`, `locale`);".to_string(),
+                "ALTER TABLE `{prefix}tp_pages` ADD COLUMN `locale` VARCHAR(191) DEFAULT 'en' NOT NULL;".to_string(),
+                "ALTER TABLE `{prefix}tp_pages` ADD COLUMN `translationGroup` VARCHAR(36);".to_string(),
+                "ALTER TABLE `{prefix}tp_pages` ADD UNIQUE KEY `translationGroup_locale` (`translationGroup`, `locale`);".to_string(),
             ]
         );
     }
@@ -1292,8 +1292,8 @@ mod tests {
         assert_eq!(
             plan(&v1, &v2),
             [
-                "UPDATE `{prefix}first_likes` SET `state` = 'open' WHERE `state` IS NULL;",
-                "ALTER TABLE `{prefix}first_likes` MODIFY COLUMN `state` LONGTEXT DEFAULT ('open') NOT NULL;",
+                "UPDATE `{prefix}tp_likes` SET `state` = 'open' WHERE `state` IS NULL;",
+                "ALTER TABLE `{prefix}tp_likes` MODIFY COLUMN `state` LONGTEXT DEFAULT ('open') NOT NULL;",
             ]
         );
     }
@@ -1312,9 +1312,9 @@ mod tests {
         assert_eq!(
             sql,
             [
-                "RENAME TABLE `{prefix}first_likes` TO `{prefix}first_reactions`;",
-                "UPDATE `{prefix}first__revisions` SET `collection` = 'reactions' WHERE `collection` = 'likes';",
-                "ALTER TABLE `{prefix}first_reactions` RENAME COLUMN `body` TO `text`;",
+                "RENAME TABLE `{prefix}tp_likes` TO `{prefix}tp_reactions`;",
+                "UPDATE `{prefix}tp__revisions` SET `collection` = 'reactions' WHERE `collection` = 'likes';",
+                "ALTER TABLE `{prefix}tp_reactions` RENAME COLUMN `body` TO `text`;",
             ]
         );
         // Every check names the table as stored before the plan runs; the deploy follows the rename.
@@ -1322,8 +1322,8 @@ mod tests {
         assert_eq!(
             checks,
             [
-                json!({ "check": "rename", "table": "{prefix}first_likes", "to": "{prefix}first_reactions" }),
-                json!({ "check": "rename", "name": "reactions.body", "table": "{prefix}first_likes", "column": "body",
+                json!({ "check": "rename", "table": "{prefix}tp_likes", "to": "{prefix}tp_reactions" }),
+                json!({ "check": "rename", "name": "reactions.body", "table": "{prefix}tp_likes", "column": "body",
                     "to": "text", "definition": "`text` LONGTEXT", "adopted": false }),
             ]
         );
@@ -1427,11 +1427,11 @@ mod tests {
                 .unwrap_or_else(|| panic!("{prefix} in {sql:?}"))
         };
         assert!(
-            at("ALTER TABLE `{prefix}first_kids` DROP FOREIGN KEY") < at("RENAME TABLE"),
+            at("ALTER TABLE `{prefix}tp_kids` DROP FOREIGN KEY") < at("RENAME TABLE"),
             "{sql:?}"
         );
         assert!(
-            at("RENAME TABLE") < at("ALTER TABLE `{prefix}first_kids` ADD CONSTRAINT"),
+            at("RENAME TABLE") < at("ALTER TABLE `{prefix}tp_kids` ADD CONSTRAINT"),
             "{sql:?}"
         );
         assert_eq!(
@@ -1470,7 +1470,7 @@ mod tests {
         // The backfill of the defaulted field carries the check, so it's measured before the UPDATE runs.
         let backfill = statements
             .iter()
-            .find(|s| s.contains("UPDATE `{prefix}first_notes` SET `tag`"))
+            .find(|s| s.contains("UPDATE `{prefix}tp_notes` SET `tag`"))
             .unwrap();
         assert!(check_of(backfill).is_some(), "{backfill}");
     }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /*
  * Media sizes + focal (phase 2 §7.2) on WordPress, in-process (tests/php/wp.php). Media is attachments:
- * the configured sizes are core image sizes `first_<name>`, rendered with the focal crop into files
+ * the configured sizes are core image sizes `tp_<name>`, rendered with the focal crop into files
  * beside the original; a new focal point writes new files inside the transaction and removes the old
  * ones after commit. Core's own regeneration passes are proven in tests/wp/media.test.ts.
  */
@@ -41,8 +41,8 @@ $post = static fn (string $file, string $name) => $mediaReq('POST', '/media', $a
 $base = substr($img['url'], 0, -4);
 eq('upload returns every configured size; a size the original fits is the original', [$s, array_map(static fn ($z) => [$z['width'], $z['height']], $img['sizes']), $img['sizes']['huge']['url'], $img['focal']],
     [201, ['thumb' => [100, 100], 'wide' => [200, 100], 'huge' => [400, 200]], $img['url'], null]);
-check('size files sit next to the original as <name>-first_<size>-…', str_starts_with($img['sizes']['thumb']['url'], "$base-first_thumb-") && str_starts_with($img['sizes']['wide']['url'], "$base-first_wide-"), $img['sizes']);
-eq('… and the attachment metadata names them beside the core sizes', array_values(array_filter(array_keys(wp_get_attachment_metadata($img['id'])['sizes']), static fn ($k) => str_starts_with($k, 'first_'))), ['first_thumb', 'first_wide']);
+check('size files sit next to the original as <name>-tp_<size>-…', str_starts_with($img['sizes']['thumb']['url'], "$base-tp_thumb-") && str_starts_with($img['sizes']['wide']['url'], "$base-tp_wide-"), $img['sizes']);
+eq('… and the attachment metadata names them beside the core sizes', array_values(array_filter(array_keys(wp_get_attachment_metadata($img['id'])['sizes']), static fn ($k) => str_starts_with($k, 'tp_'))), ['tp_thumb', 'tp_wide']);
 $dims = static fn (string $url) => array_slice(getimagesize($onDisk($url)) ?: [], 0, 2);
 eq('size files exist with their dimensions', [$dims($img['sizes']['thumb']['url']), $dims($img['sizes']['wide']['url'])], [[100, 100], [200, 100]]);
 $thumbBytes = file_get_contents($onDisk($img['sizes']['thumb']['url']));
@@ -74,7 +74,7 @@ $meta = wp_get_attachment_metadata($legacy['id']);
 $meta['sizes'] = [];
 wp_update_attachment_metadata($legacy['id'], $meta);
 $upgraded = $mediaReq('PATCH', "/media/{$legacy['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
-eq('an attachment uploaded before sizes were configured gets every size on its first focal change', [array_keys($upgraded['sizes']), array_values(array_filter(array_keys(wp_get_attachment_metadata($legacy['id'])['sizes']), static fn ($k) => str_starts_with($k, 'first_')))], [['thumb', 'wide', 'huge'], ['first_thumb', 'first_wide']]);
+eq('an attachment uploaded before sizes were configured gets every size on its first focal change', [array_keys($upgraded['sizes']), array_values(array_filter(array_keys(wp_get_attachment_metadata($legacy['id'])['sizes']), static fn ($k) => str_starts_with($k, 'tp_')))], [['thumb', 'wide', 'huge'], ['tp_thumb', 'tp_wide']]);
 eq('internal media fields are not queryable at any depth', array_map(
     static fn (string $w) => $mediaReq('GET', '/media', null, query: ['where' => $w])[0],
     ['{"focal":null}', '{"OR":[{"sizes":{"isNull":true}}]}', '{"NOT":{"path":"x"}}'],
@@ -83,9 +83,9 @@ eq('internal media fields are not queryable at any depth', array_map(
 // Focal A → B → A inside one transaction: rollback keeps the committed crop, commit the final one.
 $sequence = static function (bool $rollback) use ($img, $onDisk, $base): array {
     try {
-        \First\db()->transaction(static function () use ($img, $rollback): void {
-            \First\db()->media()->update($img['id'], ['focal' => ['x' => 1, 'y' => 0.5]]);
-            \First\db()->media()->update($img['id'], ['focal' => ['x' => 0, 'y' => 0.5]]);
+        \TypedPress\db()->transaction(static function () use ($img, $rollback): void {
+            \TypedPress\db()->media()->update($img['id'], ['focal' => ['x' => 1, 'y' => 0.5]]);
+            \TypedPress\db()->media()->update($img['id'], ['focal' => ['x' => 0, 'y' => 0.5]]);
             if ($rollback) {
                 throw new \RuntimeException('roll back');
             }
@@ -93,7 +93,7 @@ $sequence = static function (bool $rollback) use ($img, $onDisk, $base): array {
     } catch (\RuntimeException) {
     }
 
-    return glob($onDisk("$base-first_thumb-*"));
+    return glob($onDisk("$base-tp_thumb-*"));
 };
 $committed = $mediaReq('GET', "/media/{$img['id']}", null)[1]['sizes']['thumb']['url'];
 eq('A → B → A rolled back: only the committed crop remains', $sequence(true), [$onDisk($committed)]);
@@ -103,23 +103,59 @@ eq('A → B → A committed: exactly the final crop remains, and the row points 
 
 // A size configured after the upload is filled in on the next focal change.
 $meta = wp_get_attachment_metadata($img['id']);
-unset($meta['sizes']['first_wide']);
+unset($meta['sizes']['tp_wide']);
 wp_update_attachment_metadata($img['id'], $meta);
 $filled = $mediaReq('PATCH', "/media/{$img['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
 eq('a size missing from the row is rendered on the next focal change', [$filled['sizes']['wide']['width'], $filled['sizes']['wide']['height']], [200, 100]);
 
 // A size the original now fits (config changed) drops its old rendition: file and metadata entry.
 $small = $post($png(80, 80), 'small.png')[1];
-$stale = substr($onDisk($small['url']), 0, -4) . '-first_thumb-stale.png';
+$stale = substr($onDisk($small['url']), 0, -4) . '-tp_thumb-stale.png';
 copy($onDisk($small['url']), $stale);
 $meta = wp_get_attachment_metadata($small['id']);
-$meta['sizes']['first_thumb'] = ['file' => basename($stale), 'width' => 50, 'height' => 50, 'mime-type' => 'image/png'];
+$meta['sizes']['tp_thumb'] = ['file' => basename($stale), 'width' => 50, 'height' => 50, 'mime-type' => 'image/png'];
 wp_update_attachment_metadata($small['id'], $meta);
 $refit = $mediaReq('PATCH', "/media/{$small['id']}", $asEditor, '{"focal":{"x":0.5,"y":0.5}}')[1];
-eq('a size the original now fits is served by the original and its old file is gone', [$refit['sizes']['thumb']['url'], is_file($stale), isset(wp_get_attachment_metadata($small['id'])['sizes']['first_thumb'])], [$small['url'], false, false]);
+eq('a size the original now fits is served by the original and its old file is gone', [$refit['sizes']['thumb']['url'], is_file($stale), isset(wp_get_attachment_metadata($small['id'])['sizes']['tp_thumb'])], [$small['url'], false, false]);
 
 $final = $mediaReq('GET', "/media/{$img['id']}", null)[1];
 $mediaReq('DELETE', "/media/{$img['id']}", $asEditor);
 check('deleting media removes the attachment and its size files after commit', !is_file($onDisk($final['sizes']['thumb']['url'])) && !is_file($onDisk("$base.png")) && get_post($img['id']) === null);
+
+// The rectangles are core's image_resize_dimensions(); TypedPress moves a cover crop's origin to the focal
+// point. [dst_x, dst_y, src_x, src_y, dst_w, dst_h, src_w, src_h].
+$rect = [\TypedPress\Media\Images::class, 'dimensions'];
+eq('cover: core centres the crop without a focal point; the focal point moves it, clamped to the image', [
+    $rect(400, 200, 100, 100, true),
+    $rect(400, 200, 100, 100, true, ['x' => 0, 'y' => 0.5]),
+    $rect(400, 200, 100, 100, true, ['x' => 1, 'y' => 0.5]),
+    $rect(400, 200, 100, 100, true, ['x' => 0.4, 'y' => 0.5]),
+    $rect(200, 400, 100, 100, true, ['x' => 0.5, 'y' => 0.9]),
+], [
+    [0, 0, 100, 0, 100, 100, 200, 200],
+    [0, 0, 0, 0, 100, 100, 200, 200],
+    [0, 0, 200, 0, 100, 100, 200, 200],
+    [0, 0, 60, 0, 100, 100, 200, 200],
+    [0, 0, 0, 200, 100, 100, 200, 200],
+]);
+eq('inside scales to the width; a size core would not make (larger, or within 1px) is null', [
+    $rect(400, 200, 100, null, false),
+    $rect(80, 60, 100, 100, true),
+    $rect(400, 200, 399, null, false),
+], [[0, 0, 0, 0, 100, 50, 400, 200], null, null]);
+$upscale = static fn ($out, $ow, $oh, $w, $h, $crop) => $crop ? $out : [0, 0, 0, 0, $w, (int) round($w * $oh / $ow), $ow, $oh];
+add_filter('image_resize_dimensions', $upscale, 10, 6);
+eq("core's image_resize_dimensions filter decides the rectangle (a site that allows upscaling)", $rect(40, 20, 100, null, false), [0, 0, 0, 0, 100, 50, 40, 20]);
+remove_filter('image_resize_dimensions', $upscale, 10);
+// The optional Jetpack Image CDN adapter builds Photon arguments from the same rectangles.
+eq('CDN cover args carry the focal crop rectangle; inside args fit', [
+    \TypedPress\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => 100, 'fit' => 'cover'], ['x' => 1, 'y' => 0]),
+    \TypedPress\Wp\Media\ImageCdn::args(400, 200, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
+    \TypedPress\Wp\Media\ImageCdn::args(40, 20, ['width' => 100, 'height' => null, 'fit' => 'inside'], null),
+], [
+    [['crop' => '200px,0px,200px,200px', 'resize' => '100,100'], 100, 100],
+    [['fit' => '100,50'], 100, 50],
+    [[], 40, 20],
+]);
 
 finish('media_test');

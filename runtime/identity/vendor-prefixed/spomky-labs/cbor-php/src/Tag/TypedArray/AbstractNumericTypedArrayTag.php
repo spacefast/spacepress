@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace TypedPress\Identity\Vendor\CBOR\Tag\TypedArray;
 
 use function array_map;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\CBOR\OtherObject\HalfPrecisionFloatObject;
+use TypedPress\Identity\Vendor\CBOR\Normalizable;
+use TypedPress\Identity\Vendor\CBOR\OtherObject\HalfPrecisionFloatObject;
 use InvalidArgumentException;
 use function is_float;
 use function is_int;

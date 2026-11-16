@@ -1,4 +1,4 @@
-import { useFieldCollections } from '@first-admin/core-data-next';
+import { useFieldCollections } from '@typedpress-admin/core-data-next';
 import { __ } from '@wordpress/i18n';
 import { select, useDispatch, useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
@@ -85,11 +85,11 @@ export function useUserForm( userId: number ): UserFormProps {
 	const [ errorMessage, setErrorMessage ] = useState< string >( '' );
 	const [ isSuccess, setIsSuccess ] = useState< boolean >( false );
 
-	let saveButtonLabel: string = __( 'Save', 'first-admin' );
+	let saveButtonLabel: string = __( 'Save', 'typedpress-admin' );
 	if ( isSaving ) {
-		saveButtonLabel = __( 'Saving…', 'first-admin' );
+		saveButtonLabel = __( 'Saving…', 'typedpress-admin' );
 	} else if ( isSuccess && ! isDirty ) {
-		saveButtonLabel = __( 'Saved!', 'first-admin' );
+		saveButtonLabel = __( 'Saved!', 'typedpress-admin' );
 	}
 
 	async function handleSubmit() {

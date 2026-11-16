@@ -1,0 +1,18 @@
+import { collection, text, slug, richText, integer } from "typedpress";
+
+// Each file in tp/content/plants/ is one plant. Editors change them in the WordPress editor,
+// and `typedpress sync` carries their edits back to the files.
+export const plants = collection({
+  title: text(),
+  slug: slug({ source: "title" }),
+  family: text(),
+  summary: text().optional(),
+  height: integer().optional(),
+  body: richText().optional(),
+}, {
+  title: "title",
+  content: "body",
+  url: "/plants/:slug",
+  sync: "content/plants/*.md",
+  access: { read: "anyone", create: "editor", update: "editor", delete: "editor" },
+});

@@ -25,7 +25,7 @@ export default meta;
 
 const ThemedParagraph = ( { children }: { children: React.ReactNode } ) => {
 	return (
-		<p style={ { color: 'var( --wpds-color-fg-content-neutral )' } }>
+		<p style={ { color: 'var( --wpds-color-foreground-content-neutral )' } }>
 			{ children }
 		</p>
 	);
@@ -88,7 +88,7 @@ export const SizeAndOverflowPlayground: StoryObj< typeof Tabs.Root > = {
 					style={ {
 						maxWidth: '40rem',
 						marginBottom: '1rem',
-						color: 'var( --wpds-color-fg-content-neutral )',
+						color: 'var( --wpds-color-foreground-content-neutral )',
 					} }
 				>
 					<p>

@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 /*
  * Reactive queries on WordPress, in-process (tests/php/wp.php): the per-kind counters written with
- * each committing transaction, and the subscription seam (First\Live\Module::evaluate, and the
+ * each committing transaction, and the subscription seam (TypedPress\Live\Module::evaluate, and the
  * facade route over it) answering "not modified" or a fresh result as the visitor. What a visitor
  * may not read never shows: not a row, not a field, not that a write happened.
  * Concurrent writers and the HTTP cost are proven on MariaDB in tests/wp/live.test.ts.
  */
 
-use First\Live\Module as Live;
-use First\Live\Token;
-use First\Viewer;
+use TypedPress\Live\Module as Live;
+use TypedPress\Live\Token;
+use TypedPress\Viewer;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -40,7 +40,7 @@ $schema = ['name' => 'live', 'collections' => [
     // Drafts, in a table (scheduled rows are promoted by Db::promoteDue).
     'memos' => ['key' => 'memos', 'primaryKey' => 'id', 'drafts' => true, 'columns' => ['id' => $id, 'title' => $text, 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]],
         'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']]],
-    // A post type: wp-admin and core REST save it without First's API.
+    // A post type: wp-admin and core REST save it without TypedPress's API.
     'articles' => ['key' => 'articles', 'primaryKey' => 'id', 'drafts' => true, 'editor' => true, 'title' => 'title',
         'columns' => ['id' => $id, 'title' => $text + ['notNull' => true], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]],
         'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']]],
@@ -51,11 +51,11 @@ $schema = ['name' => 'live', 'collections' => [
     'job_notes' => ['key' => 'jobNotes', 'primaryKey' => 'id', 'columns' => ['id' => $id, 'title' => $text], 'access' => $open],
 ]];
 $functions = <<<'PHP'
-    function diary__access__read(\First\JsObject $ctx)
+    function diary__access__read(\TypedPress\JsObject $ctx)
     {
-        $user = \First\Js::prop($ctx, 'user');
+        $user = \TypedPress\Js::prop($ctx, 'user');
 
-        return $user === null ? false : ['ownerId' => \First\Js::prop($user, 'id')];
+        return $user === null ? false : ['ownerId' => \TypedPress\Js::prop($user, 'id')];
     }
     PHP;
 
@@ -63,11 +63,11 @@ $wp = wpSite('live', ['schema' => $schema, 'functions' => $functions, 'users' =>
 $app = $wp->app();
 $db = $app->db;
 $as = static fn (?string $who): Viewer => new Viewer($who === null ? null : $wp->user($who));
-$counter = static fn (string $kind, string $scope = 'all'): int => (int) ($wp->scalar('SELECT `version` FROM {prefix}first__versions WHERE `kind` = ? AND `scope` = ?', [$kind, $scope]) ?? 0);
+$counter = static fn (string $kind, string $scope = 'all'): int => (int) ($wp->scalar('SELECT `version` FROM {prefix}tp__versions WHERE `kind` = ? AND `scope` = ?', [$kind, $scope]) ?? 0);
 
 // Reads that actually ran, per collection: "not modified" by counter must not run one.
 $ran = [];
-\First\Extensions::onRead(static function (array $rows, string $collection) use (&$ran): array {
+\TypedPress\Extensions::onRead(static function (array $rows, string $collection) use (&$ran): array {
     $ran[$collection] = ($ran[$collection] ?? 0) + 1;
 
     return $rows;
@@ -80,7 +80,7 @@ $reads = static function (callable $fn) use (&$ran): array {
 };
 /** One query as $who: the result. */
 $ask = static fn (?string $who, array $query): array => Live::evaluate($db, $as($who), [$query])[0];
-$plain = static fn (mixed $data): mixed => json_decode((string) \First\Js::jsonStringify($data), true);
+$plain = static fn (mixed $data): mixed => json_decode((string) \TypedPress\Js::jsonStringify($data), true);
 
 // ---------------------------------------------------------------- counters
 
@@ -92,7 +92,7 @@ $db->transaction(static function () use ($db, $list): void {
 });
 eq('a transaction counts once per kind it wrote, however many rows', $counter('todos'), 1);
 eq('each kind has its own counter', $counter('lists'), 1);
-eq('a kind without drafts keeps one counter, not two', $wp->sql('SELECT `kind`, `scope` FROM {prefix}first__versions ORDER BY `kind`, `scope`'), [['kind' => 'lists', 'scope' => 'all'], ['kind' => 'todos', 'scope' => 'all']]);
+eq('a kind without drafts keeps one counter, not two', $wp->sql('SELECT `kind`, `scope` FROM {prefix}tp__versions ORDER BY `kind`, `scope`'), [['kind' => 'lists', 'scope' => 'all'], ['kind' => 'todos', 'scope' => 'all']]);
 try {
     $db->transaction(static function () use ($db): void {
         $db->insert('todos', ['title' => 'doomed']);
@@ -141,7 +141,7 @@ eq('and the next poll is answered by counter again', [$settled['changed'], $n], 
 // A write that commits while a poll's read is running: the token keeps the counters from before
 // the read, so the next poll runs the read again instead of trusting a result that missed the write.
 $racing = false;
-\First\Extensions::onRead(static function (array $rows, string $collection) use (&$racing, $db): array {
+\TypedPress\Extensions::onRead(static function (array $rows, string $collection) use (&$racing, $db): array {
     if ($racing && $collection === 'todos') {
         $racing = false;
         $db->insert('todos', ['title' => 'landed mid-read']);
@@ -257,7 +257,7 @@ $db->update('staff', ['salary' => '300'], ['id' => $person['id']]);
 check('and sees it change', $boss2['changed'] === true && $plain($boss2['data'])[0]['salary'] === '300', $boss2);
 problem('a filter on the hidden field is refused as on every read', static function () use ($ask): void {
     $r = $ask('sub', ['kind' => 'staff', 'op' => 'list', 'args' => ['where' => ['salary' => '300']]]);
-    throw new \First\HttpError($r['error']['status'], $r['error']['code'], $r['error']['detail'], $r['error']['pointer'] ?? null);
+    throw new \TypedPress\HttpError($r['error']['status'], $r['error']['code'], $r['error']['detail'], $r['error']['pointer'] ?? null);
 }, 403, 'forbidden', '/where/salary');
 
 // ---------------------------------------------------------------- drafts
@@ -288,8 +288,8 @@ $db->delete('memos', ['id' => $draft['id']]);
 eq('deleting a draft is invisible again', [$m5['changed'], $n], [false, []]);
 
 // Scheduled promotion runs no write hooks, yet the row appears to subscribers.
-$wp->exec("INSERT INTO {prefix}first_memos (`title`, `status`, `publishedAt`) VALUES ('later', 'scheduled', '2026-01-02T00:00:00.000Z')");
-putenv('FIRST_NOW=2026-01-03T00:00:00.000Z');
+$wp->exec("INSERT INTO {prefix}tp_memos (`title`, `status`, `publishedAt`) VALUES ('later', 'scheduled', '2026-01-02T00:00:00.000Z')");
+putenv('TP_NOW=2026-01-03T00:00:00.000Z');
 $m6 = $ask(null, $memos); // a token issued at the pinned time
 $db->transaction(static fn () => $db->promoteDue());
 $m7 = $ask(null, $memos + ['token' => $m6['token']]);
@@ -299,15 +299,15 @@ check('a promoted row reaches the visitor', $m7['changed'] === true && array_col
 
 [$fresh, $n] = $reads(static fn () => $ask(null, $memos + ['token' => $m7['token']]));
 eq('inside the window the counter answers', [$fresh['changed'], $n], [false, []]);
-// A write that never passed First's write path moves no counter...
-$wp->exec("UPDATE {prefix}first_memos SET `title` = 'edited in SQL' WHERE `title` = 'later'");
+// A write that never passed TypedPress's write path moves no counter...
+$wp->exec("UPDATE {prefix}tp_memos SET `title` = 'edited in SQL' WHERE `title` = 'later'");
 [$blind, $n] = $reads(static fn () => $ask(null, $memos + ['token' => $fresh['token']]));
 eq('a write outside the write path is not seen while the counter is trusted', [$blind['changed'], $n], [false, []]);
 // ...so a counter is trusted only so long after the read last ran.
-putenv('FIRST_NOW=' . \First\Js::iso(\First\Js::date('2026-01-03T00:00:00.000Z') + Live::TRUST_SECONDS * 1000));
+putenv('TP_NOW=' . \TypedPress\Js::iso(\TypedPress\Js::date('2026-01-03T00:00:00.000Z') + Live::TRUST_SECONDS * 1000));
 [$late, $n] = $reads(static fn () => $ask(null, $memos + ['token' => $blind['token']]));
 check('past the window the read runs again and finds it', $late['changed'] === true && $n === ['memos' => 1] && in_array('edited in SQL', array_column($plain($late['data']), 'title'), true), [$late, $n]);
-putenv('FIRST_NOW');
+putenv('TP_NOW');
 
 // ---------------------------------------------------------------- tokens
 
@@ -353,7 +353,7 @@ check('core saved the post', $updated === (int) $article['id'], $updated);
 $a2 = $ask(null, $articles + ['token' => $a['token']]);
 check("a save through WordPress's own API is counted and reaches the visitor", $a2['changed'] === true && array_column($plain($a2['data']), 'title') === ['Hello from wp-admin'], $a2);
 $wp->actAs('ed');
-$draftId = wp_insert_post(['post_type' => 'first_articles', 'post_title' => 'Core draft', 'post_status' => 'draft'], true);
+$draftId = wp_insert_post(['post_type' => 'tp_articles', 'post_title' => 'Core draft', 'post_status' => 'draft'], true);
 $wp->actAs(null);
 check('core created a draft', is_int($draftId) && $draftId > 0, $draftId);
 [$a3, $n] = $reads(static fn () => $ask(null, $articles + ['token' => $a2['token']]));
@@ -414,7 +414,7 @@ check('get stays on while list is off', array_key_exists('data', $ask(null, ['ki
 $route = static function (?string $who, mixed $body, string $method = 'POST') use ($wp): array {
     $wp->actAs($who);
     try {
-        [$status, $headers, $out] = \First\Wp\Facade::route($wp->plugin(), $method, '/_live', [], is_string($body) ? $body : (string) json_encode($body));
+        [$status, $headers, $out] = \TypedPress\Wp\Facade::route($wp->plugin(), $method, '/_live', [], is_string($body) ? $body : (string) json_encode($body));
 
         return [$status, $headers, json_decode((string) $out, true)];
     } finally {
@@ -431,9 +431,9 @@ eq('the poll window the client keeps to', $out['data']['poll'], Live::POLL);
 eq('not modified on the wire: no data', [array_keys($second['data']['results'][0]), $second['data']['results'][0]['changed']], [['changed', 'token'], false]);
 [, , $asOther] = $route('sub2', ['queries' => [$q + ['token' => $out['data']['results'][0]['token']]]]);
 eq('the route answers as the signed-in visitor', $asOther['data']['results'][0]['changed'], true);
-add_filter('first_live_poll', static fn (array $poll): array => ['minMs' => 5000, 'bogus' => 1] + $poll);
-eq('a host sets the window with first_live_poll', $route(null, ['queries' => [$q]])[2]['data']['poll'], ['minMs' => 5000, 'maxMs' => 30000]);
-remove_all_filters('first_live_poll');
+add_filter('tp_live_poll', static fn (array $poll): array => ['minMs' => 5000, 'bogus' => 1] + $poll);
+eq('a host sets the window with tp_live_poll', $route(null, ['queries' => [$q]])[2]['data']['poll'], ['minMs' => 5000, 'maxMs' => 30000]);
+remove_all_filters('tp_live_poll');
 problem('GET is not allowed', static fn () => $route(null, ['queries' => [$q]], 'GET'), 405, 'method_not_allowed');
 problem('no queries', static fn () => $route(null, ['queries' => []]), 422, 'invalid_input', '/queries');
 problem('queries must be a list', static fn () => $route(null, ['queries' => ['a' => $q]]), 422, 'invalid_input', '/queries');

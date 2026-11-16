@@ -169,10 +169,10 @@ importers:
 
   .:
     dependencies:
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:packages/design-system
       '@wordpress/base-styles':
@@ -197,9 +197,6 @@ importers:
       '@babel/core':
         specifier: 'catalog:'
         version: 7.29.7
-      '@first-admin/wp-build':
-        specifier: workspace:*
-        version: link:packages/wp-build
       '@playwright/test':
         specifier: 1.64.1
         version: 1.64.1
@@ -215,6 +212,9 @@ importers:
       '@testing-library/user-event':
         specifier: 'catalog:'
         version: 14.6.6(@testing-library/dom@10.4.1)
+      '@typedpress-admin/wp-build':
+        specifier: workspace:*
+        version: link:packages/wp-build
       '@types/node':
         specifier: 22.20.0
         version: 22.20.0
@@ -251,7 +251,7 @@ importers:
 
   dashboard-widgets/core-quick-stats:
     dependencies:
-      '@first-admin/dashboard':
+      '@typedpress-admin/dashboard':
         specifier: workspace:*
         version: link:../../packages/dashboard
       '@wordpress/i18n':
@@ -260,7 +260,7 @@ importers:
 
   dashboard-widgets/core-recent-posts:
     dependencies:
-      '@first-admin/dashboard':
+      '@typedpress-admin/dashboard':
         specifier: workspace:*
         version: link:../../packages/dashboard
       '@wordpress/i18n':
@@ -269,7 +269,7 @@ importers:
 
   dashboard-widgets/core-weather:
     dependencies:
-      '@first-admin/dashboard':
+      '@typedpress-admin/dashboard':
         specifier: workspace:*
         version: link:../../packages/dashboard
       '@wordpress/i18n':
@@ -278,13 +278,13 @@ importers:
 
   fields/core-comments-fields:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -314,10 +314,10 @@ importers:
 
   fields/core-media-fields:
     dependencies:
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -350,10 +350,10 @@ importers:
 
   fields/core-plugin-fields:
     dependencies:
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/core-data':
@@ -368,13 +368,13 @@ importers:
 
   fields/core-post-fields:
     dependencies:
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/lazy-editor':
+      '@typedpress-admin/lazy-editor':
         specifier: workspace:*
         version: link:../../packages/lazy-editor
       '@wordpress/block-editor':
@@ -413,10 +413,10 @@ importers:
 
   fields/core-taxonomy-term-fields:
     dependencies:
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/core-data':
@@ -431,10 +431,10 @@ importers:
 
   fields/core-theme-fields:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
       '@wordpress/components':
@@ -455,10 +455,10 @@ importers:
 
   fields/core-user-fields:
     dependencies:
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -488,13 +488,13 @@ importers:
 
   packages/admin-toolkit:
     dependencies:
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../design-system
-      '@first-admin/private-apis':
+      '@typedpress-admin/private-apis':
         specifier: workspace:*
         version: link:../private-apis
       '@wordpress/a11y':
@@ -567,10 +567,10 @@ importers:
 
   packages/ai-agent:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@first-admin/private-apis':
+      '@typedpress-admin/private-apis':
         specifier: workspace:*
         version: link:../private-apis
       '@wordpress/abilities':
@@ -624,42 +624,42 @@ importers:
 
   packages/boot:
     dependencies:
-      '@first-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../admin-toolkit
-      '@first-admin/ai-agent':
-        specifier: workspace:*
-        version: link:../ai-agent
-      '@first-admin/attachment-importer':
-        specifier: workspace:*
-        version: link:../attachment-importer
-      '@first-admin/core-data-next':
-        specifier: workspace:*
-        version: link:../core-data-next
-      '@first-admin/dashboard':
-        specifier: workspace:*
-        version: link:../dashboard
-      '@first-admin/dataviews':
-        specifier: workspace:*
-        version: link:../dataviews
-      '@first-admin/design-system':
-        specifier: workspace:*
-        version: link:../design-system
-      '@first-admin/fields-next':
-        specifier: workspace:*
-        version: link:../fields-next
-      '@first-admin/global-styles-engine':
-        specifier: workspace:*
-        version: link:../global-styles-engine
-      '@first-admin/lazy-editor':
-        specifier: workspace:*
-        version: link:../lazy-editor
-      '@first-admin/schema':
-        specifier: workspace:*
-        version: link:../schema
       '@tanstack/history':
         specifier: ^1.120.17
         version: 1.162.5
+      '@typedpress-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../admin-toolkit
+      '@typedpress-admin/ai-agent':
+        specifier: workspace:*
+        version: link:../ai-agent
+      '@typedpress-admin/attachment-importer':
+        specifier: workspace:*
+        version: link:../attachment-importer
+      '@typedpress-admin/core-data-next':
+        specifier: workspace:*
+        version: link:../core-data-next
+      '@typedpress-admin/dashboard':
+        specifier: workspace:*
+        version: link:../dashboard
+      '@typedpress-admin/dataviews':
+        specifier: workspace:*
+        version: link:../dataviews
+      '@typedpress-admin/design-system':
+        specifier: workspace:*
+        version: link:../design-system
+      '@typedpress-admin/fields-next':
+        specifier: workspace:*
+        version: link:../fields-next
+      '@typedpress-admin/global-styles-engine':
+        specifier: workspace:*
+        version: link:../global-styles-engine
+      '@typedpress-admin/lazy-editor':
+        specifier: workspace:*
+        version: link:../lazy-editor
+      '@typedpress-admin/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@wordpress/a11y':
         specifier: 4.54.1-next.v.202608281122.0
         version: 4.54.1-next.v.202608281122.0
@@ -768,10 +768,10 @@ importers:
 
   packages/core-data-next:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
       '@wordpress/api-fetch':
@@ -804,10 +804,10 @@ importers:
       '@automattic/grid':
         specifier: 'catalog:'
         version: 0.2.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../design-system
       '@wordpress/base-styles':
@@ -932,13 +932,13 @@ importers:
 
   packages/fields-next:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
       '@wordpress/components':
@@ -1017,19 +1017,19 @@ importers:
 
   packages/lazy-editor:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../core-data-next
-      '@first-admin/global-styles-engine':
+      '@typedpress-admin/global-styles-engine':
         specifier: workspace:*
         version: link:../global-styles-engine
-      '@first-admin/load-assets':
+      '@typedpress-admin/load-assets':
         specifier: workspace:*
         version: link:../load-assets
-      '@first-admin/private-apis':
+      '@typedpress-admin/private-apis':
         specifier: workspace:*
         version: link:../private-apis
       '@wordpress/core-data':
@@ -1079,15 +1079,18 @@ importers:
 
   packages/schema:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
-      '@first-admin/attachment-importer':
+      '@typedpress-admin/attachment-importer':
         specifier: workspace:*
         version: link:../attachment-importer
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
+      '@typedpress-admin/views':
+        specifier: workspace:*
+        version: link:../views
       '@wordpress/api-fetch':
         specifier: 7.54.1-next.v.202608281122.0
         version: 7.54.1-next.v.202608281122.0
@@ -1106,9 +1109,12 @@ importers:
 
   packages/screens:
     dependencies:
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
+      '@typedpress-admin/views':
+        specifier: workspace:*
+        version: link:../views
       '@wordpress/api-fetch':
         specifier: 7.54.1-next.v.202608281122.0
         version: 7.54.1-next.v.202608281122.0
@@ -1126,7 +1132,7 @@ importers:
 
   packages/user-data:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../admin-toolkit
       '@wordpress/api-fetch':
@@ -1147,13 +1153,13 @@ importers:
 
   packages/views:
     dependencies:
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../design-system
       '@wordpress/base-styles':
@@ -1198,25 +1204,25 @@ importers:
 
   routes/attachment:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/image-cropper':
+      '@typedpress-admin/image-cropper':
         specifier: workspace:*
         version: link:../../packages/image-cropper
-      '@first-admin/schema':
+      '@typedpress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/base-styles':
@@ -1271,9 +1277,27 @@ importers:
         specifier: 'catalog:'
         version: 2.1.1
 
+  routes/classic-admin:
+    dependencies:
+      '@typedpress-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@typedpress-admin/boot':
+        specifier: workspace:*
+        version: link:../../packages/boot
+      '@types/react':
+        specifier: 'catalog:'
+        version: 18.3.27
+      '@wordpress/compose':
+        specifier: 8.7.2-next.v.202608281122.0
+        version: 8.7.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/route':
+        specifier: 0.20.1-next.v.202608281122.0
+        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+
   routes/collection-edit:
     dependencies:
-      '@first-admin/schema':
+      '@typedpress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1282,7 +1306,7 @@ importers:
 
   routes/collection-list:
     dependencies:
-      '@first-admin/schema':
+      '@typedpress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1291,7 +1315,7 @@ importers:
 
   routes/collection-new:
     dependencies:
-      '@first-admin/schema':
+      '@typedpress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1300,7 +1324,7 @@ importers:
 
   routes/collections:
     dependencies:
-      '@first-admin/schema':
+      '@typedpress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1309,19 +1333,19 @@ importers:
 
   routes/dashboard:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/boot':
+      '@typedpress-admin/boot':
         specifier: workspace:*
         version: link:../../packages/boot
-      '@first-admin/dashboard':
+      '@typedpress-admin/dashboard':
         specifier: workspace:*
         version: link:../../packages/dashboard
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
       '@wordpress/components':
@@ -1376,13 +1400,13 @@ importers:
 
   routes/design-navigation-edit:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/lazy-editor':
+      '@typedpress-admin/lazy-editor':
         specifier: workspace:*
         version: link:../../packages/lazy-editor
       '@wordpress/block-editor':
@@ -1427,22 +1451,22 @@ importers:
 
   routes/design-navigation-list:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -1481,13 +1505,13 @@ importers:
 
   routes/design-styles:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/global-styles-engine':
+      '@typedpress-admin/global-styles-engine':
         specifier: workspace:*
         version: link:../../packages/global-styles-engine
       '@wordpress/a11y':
@@ -1559,7 +1583,7 @@ importers:
 
   routes/global-edit:
     dependencies:
-      '@first-admin/schema':
+      '@typedpress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@wordpress/route':
@@ -1568,55 +1592,37 @@ importers:
 
   routes/globals:
     dependencies:
-      '@first-admin/schema':
+      '@typedpress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
-      '@wordpress/route':
-        specifier: 0.20.1-next.v.202608281122.0
-        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-
-  routes/legacy-admin:
-    dependencies:
-      '@first-admin/admin-toolkit':
-        specifier: workspace:*
-        version: link:../../packages/admin-toolkit
-      '@first-admin/boot':
-        specifier: workspace:*
-        version: link:../../packages/boot
-      '@types/react':
-        specifier: 'catalog:'
-        version: 18.3.27
-      '@wordpress/compose':
-        specifier: 8.7.2-next.v.202608281122.0
-        version: 8.7.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
   routes/media:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/attachment-importer':
+      '@typedpress-admin/attachment-importer':
         specifier: workspace:*
         version: link:../../packages/attachment-importer
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/schema':
+      '@typedpress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/block-editor':
@@ -1676,7 +1682,7 @@ importers:
 
   routes/media-document:
     dependencies:
-      '@first-admin/schema':
+      '@typedpress-admin/schema':
         specifier: workspace:*
         version: link:../../packages/schema
 
@@ -1688,22 +1694,22 @@ importers:
 
   routes/plugin-list:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/base-styles':
@@ -1756,31 +1762,31 @@ importers:
 
   routes/post-list:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/attachment-importer':
+      '@typedpress-admin/attachment-importer':
         specifier: workspace:*
         version: link:../../packages/attachment-importer
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/image-cropper':
+      '@typedpress-admin/image-cropper':
         specifier: workspace:*
         version: link:../../packages/image-cropper
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/block-editor':
@@ -1855,7 +1861,7 @@ importers:
 
   routes/profile:
     dependencies:
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
       '@wordpress/core-data':
@@ -1870,10 +1876,10 @@ importers:
 
   routes/screen:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/screens':
+      '@typedpress-admin/screens':
         specifier: workspace:*
         version: link:../../packages/screens
       '@wordpress/route':
@@ -1891,7 +1897,7 @@ importers:
 
   routes/settings-experiments:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
       '@wordpress/components':
@@ -1918,13 +1924,13 @@ importers:
 
   routes/settings-general:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -1954,13 +1960,13 @@ importers:
 
   routes/settings-reading:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
       '@wordpress/components':
@@ -1993,22 +1999,22 @@ importers:
 
   routes/term-add:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -2041,25 +2047,25 @@ importers:
 
   routes/term-edit:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -2092,25 +2098,25 @@ importers:
 
   routes/term-list:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -2149,25 +2155,25 @@ importers:
 
   routes/theme-list:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/base-styles':
@@ -2216,16 +2222,16 @@ importers:
 
   routes/user:
     dependencies:
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/user-data':
+      '@typedpress-admin/user-data':
         specifier: workspace:*
         version: link:../../packages/user-data
       '@wordpress/components':
@@ -2258,25 +2264,25 @@ importers:
 
   routes/user-add:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':
@@ -2303,25 +2309,25 @@ importers:
 
   routes/user-list:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/fields-next':
+      '@typedpress-admin/fields-next':
         specifier: workspace:*
         version: link:../../packages/fields-next
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/api-fetch':
@@ -2366,25 +2372,25 @@ importers:
 
   routes/user-profile:
     dependencies:
-      '@first-admin/admin-toolkit':
+      '@typedpress-admin/admin-toolkit':
         specifier: workspace:*
         version: link:../../packages/admin-toolkit
-      '@first-admin/boot':
+      '@typedpress-admin/boot':
         specifier: workspace:*
         version: link:../../packages/boot
-      '@first-admin/core-data-next':
+      '@typedpress-admin/core-data-next':
         specifier: workspace:*
         version: link:../../packages/core-data-next
-      '@first-admin/dataviews':
+      '@typedpress-admin/dataviews':
         specifier: workspace:*
         version: link:../../packages/dataviews
-      '@first-admin/design-system':
+      '@typedpress-admin/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
-      '@first-admin/telemetry':
+      '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
-      '@first-admin/views':
+      '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
       '@wordpress/components':

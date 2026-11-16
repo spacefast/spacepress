@@ -10,10 +10,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\MethodParameterFactory;
-use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\MethodParameterFactory;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Type;
 
 final class MethodParameter
 {

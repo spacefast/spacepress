@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import { useNavigate, useParams, useSearch } from '@wordpress/route';
 import { Button, Notice, Spinner } from '@wordpress/components';
-import { Page, RouterLink, useDocumentChanges } from '@first-admin/admin-toolkit';
-import { DataViews, type Field, type View } from '@first-admin/dataviews';
+import { Page, RouterLink, useDocumentChanges } from '@typedpress-admin/admin-toolkit';
+import type { Field, View } from '@typedpress-admin/dataviews';
+import { DataViews, useView } from '@typedpress-admin/views';
 import {
 	EditingObjects,
 	allowed,
@@ -53,7 +54,7 @@ export function Overview() {
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
-				<div className="first-schema-cards">
+				<div className="typedpress-schema-cards">
 					{Object.values(state.value.collections)
 						.filter((c) => bootstrap().readable.includes(c.name))
 						.map((c) => (
@@ -98,6 +99,7 @@ export function listFields(c: Collection, rows: Row[]): Field<Row>[] {
 						: 'text',
 			enableSorting: key === c.primaryKey || key === c.title,
 			enableGlobalSearch: key === c.title,
+			filterBy: false,
 			getValue: ({ item }) => item[key],
 			render: ({ item }) =>
 				key === linkField ? (
@@ -113,45 +115,61 @@ export function listFields(c: Collection, rows: Row[]): Field<Row>[] {
 }
 export function CollectionList() {
 	const { collection } = useParams({ from: '/collections/$collection' });
+	const state = useLoad(() => collectionSpec(collection), [collection]);
+	return state.kind === 'ready' ? (
+		<CollectionTable key={collection} c={state.value} />
+	) : (
+		<Page title="Collection"><Loading state={state} /></Page>
+	);
+}
+function CollectionTable({ c }: { c: Collection }) {
+	const collection = c.name;
 	const search = object(useSearch({ from: '/collections/$collection' }));
 	const navigate = useNavigate();
-	const page = Math.max(1, Number(search.page) || 1),
-		perPage = Math.min(100, Math.max(10, Number(search.perPage) || 20));
-	const query = text(search.search) ?? '',
-		orderBy = text(search.orderBy),
-		direction = search.direction === 'asc' ? 'asc' : 'desc';
-	const state = useLoad(async () => {
-		const c = await collectionSpec(collection);
+	const defaultView = useMemo<View>(() => {
+		const titleField = c.title && c.title in c.columns ? c.title : c.primaryKey;
 		return {
-			c,
-			...(await list(c, { page, perPage, search: query, orderBy, direction })),
+			type: 'table',
+			titleField,
+			fields: [titleField, ...Object.keys(c.columns).filter(id => id !== titleField && id !== c.primaryKey)].slice(0, 5),
+			perPage: 20,
+			sort: { field: c.primaryKey, direction: 'desc' },
 		};
-	}, [collection, page, perPage, query, orderBy, direction]);
-	const [saved, setLayout] = useState<{ collection: string; view: View }>({
-		collection, view: { type: 'table', fields: [] },
+	}, [c]);
+	const { view: savedView, updateView, isModified, resetToDefault } = useView({
+		kind: 'firstCollection',
+		name: collection,
+		slug: 'all',
+		defaultView,
+		queryParams: { page: Math.max(1, Number(search.page) || 1), search: text(search.search) ?? '' },
+		onChangeQueryParams: (next) => {
+			void navigate({ to: `/collections/${collection}`, search: {
+				page: next.page,
+				search: next.search || undefined,
+			} });
+		},
 	});
-	const layout: View = saved.collection === collection ? saved.view : { type: 'table', fields: [] };
+	const page = savedView.page ?? 1,
+		perPage = Math.min(100, Math.max(1, savedView.perPage ?? 20)),
+		query = savedView.search ?? '',
+		orderBy = savedView.sort?.field,
+		direction = savedView.sort?.direction ?? 'desc';
+	const state = useLoad(() => list(c, { page, perPage, search: query, orderBy, direction }),
+		[c, page, perPage, query, orderBy, direction]);
 	if (state.kind !== 'ready')
 		return (
 			<Page title="Collection">
 				<Loading state={state} />
 			</Page>
 		);
-	const { c, rows, total, hasMore } = state.value,
+	const { rows, total, hasMore } = state.value,
 		fields = listFields(c, rows);
 	const available = fields.map((f) => f.id);
 	const titleField =
 		c.title && available.includes(c.title) ? c.title : c.primaryKey;
-	const initial = [
-		titleField,
-		...fields
-			.map((f) => f.id)
-			.filter((id) => id !== c.title && id !== c.primaryKey),
-	].slice(0, 5);
-	const kept = (layout.fields ?? []).filter((id) => available.includes(id));
 	const view: View = {
-		...layout,
-		fields: kept.length ? kept : initial,
+		...savedView,
+		fields: (savedView.fields ?? []).filter((id) => available.includes(id)),
 		titleField,
 		page,
 		perPage,
@@ -163,6 +181,7 @@ export function CollectionList() {
 	return (
 		<Page
 			title={c.label}
+			hasPadding={false}
 			subTitle={c.storage ?? (native(c.name) ? 'Collection' : 'Table')}
 			actions={
 				<Button
@@ -184,21 +203,15 @@ export function CollectionList() {
 				fields={fields}
 				view={view}
 				onChangeView={(next) => {
-					setLayout({ collection, view: next });
-					void navigate({
-						to: `/collections/${collection}`,
-						search: {
-							page: next.search !== query ? 1 : next.page,
-							perPage: next.perPage,
-							search: next.search || undefined,
-							orderBy: next.sort?.field,
-							direction: next.sort?.direction,
-						},
-					});
+					updateView({ ...next, page: next.search !== query || next.perPage !== perPage ? 1 : next.page });
 				}}
+				onReset={isModified ? () => {
+					resetToDefault();
+					void navigate({ to: `/collections/${collection}`, search: { page: 1, search: query || undefined } });
+				} : false}
 				getItemId={(r) => String(r[c.primaryKey])}
 				defaultLayouts={{ table: {} }}
-				search={Boolean(c.title)}
+				showSearch={Boolean(c.title)}
 				paginationInfo={{
 					totalItems,
 					totalPages: Math.max(1, Math.ceil(totalItems / perPage)),
@@ -268,7 +281,7 @@ export function DocumentForm({
 	}, [savedResult, onSaved, sharedChanges]);
 	return (
 		<form
-			className="first-schema-form"
+			className="typedpress-schema-form"
 			onSubmit={(e) => {
 				e.preventDefault();
 				if (disabled || busy || !drafts.valid) return;
@@ -333,7 +346,7 @@ export function NewDocument() {
 			title={`New ${c.label}`}
 			breadcrumbs={
 				<RouterLink
-					className="first-schema-back"
+					className="typedpress-schema-back"
 					to={`/collections/${collection}`}
 				>
 					Back to {c.label}
@@ -386,7 +399,7 @@ export function PlainDocument() {
 			title={`Edit ${c.label}`}
 			breadcrumbs={
 				<RouterLink
-					className="first-schema-back"
+					className="typedpress-schema-back"
 					to={`/collections/${collection}`}
 				>
 					Back to {c.label}
@@ -434,7 +447,7 @@ export function Globals() {
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
-				<div className="first-schema-cards">
+				<div className="typedpress-schema-cards">
 					{state.value.map((g) => (
 						<article key={g.name}>
 							<h2>

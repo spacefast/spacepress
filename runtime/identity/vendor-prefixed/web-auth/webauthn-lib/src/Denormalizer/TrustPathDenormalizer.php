@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
 
 use function array_key_exists;
 use function assert;
 use function is_array;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use First\Identity\Vendor\Webauthn\Exception\InvalidTrustPathException;
-use First\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
-use First\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
-use First\Identity\Vendor\Webauthn\TrustPath\TrustPath;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidTrustPathException;
+use TypedPress\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
+use TypedPress\Identity\Vendor\Webauthn\TrustPath\EmptyTrustPath;
+use TypedPress\Identity\Vendor\Webauthn\TrustPath\TrustPath;
 
 final class TrustPathDenormalizer implements DenormalizerInterface, NormalizerInterface
 {

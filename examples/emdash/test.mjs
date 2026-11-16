@@ -23,7 +23,7 @@ if (requested.includes('--help') || requested.includes('--list')) {
   console.log('Usage: node examples/emdash/test.mjs [suite ...]\n');
   console.log(Object.keys(suites).join('\n'));
   console.log('\nDefault: all example suites. lifecycle is optional.');
-  console.log('Builds First and installs shared Chromium dependencies. Set FIRST_BIN to reuse a matching binary.');
+  console.log('Builds TypedPress and installs shared Chromium dependencies. Set TP_BIN to reuse a matching binary.');
 } else {
   const selected = requested.length ? [...new Set(requested)] : Object.keys(suites).filter((name) => name !== 'lifecycle');
   const unknown = selected.filter((name) => !Object.hasOwn(suites, name));
@@ -39,17 +39,17 @@ if (requested.includes('--help') || requested.includes('--list')) {
     if (result.error) throw result.error;
     if (result.status !== 0) throw new Error(`${program} failed (${result.signal ?? result.status}).`);
   };
-  if (!process.env.FIRST_BIN) {
+  if (!process.env.TP_BIN) {
     run('cargo', ['build', '--locked'], { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? '2' });
   }
-  const binary = resolve(root, process.env.FIRST_BIN ?? join(process.env.CARGO_TARGET_DIR ?? 'target', 'debug/first'));
+  const binary = resolve(root, process.env.TP_BIN ?? join(process.env.CARGO_TARGET_DIR ?? 'target', 'debug/typedpress'));
   const binarySha256 = createHash('sha256').update(await readFile(binary)).digest('hex');
   run('npm', ['--prefix', here, 'ci', '--ignore-scripts']);
   run('npm', ['--prefix', here, 'exec', '--', 'playwright', 'install', 'chromium']);
   if (selected.includes('official-source')) run('npm', ['--prefix', join(here, 'official-sites'), 'ci', '--ignore-scripts']);
   const revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' });
   const changes = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' });
-  const evidence = await mkdtemp(join(tmpdir(), 'first-emdash-suite-'));
+  const evidence = await mkdtemp(join(tmpdir(), 'typedpress-emdash-suite-'));
   const receipt = { startedAt: new Date().toISOString(), revision: revision.stdout?.trim(), dirty: changes.stdout?.trim() !== '', binary, binarySha256, suites: [], result: 'running' };
   const save = () => writeFile(join(evidence, 'results.json'), JSON.stringify(receipt, null, 2) + '\n');
   console.log(`\nSuite receipt: ${join(evidence, 'results.json')}`);
@@ -60,7 +60,7 @@ if (requested.includes('--help') || requested.includes('--list')) {
       receipt.suites.push(result);
       await save();
       try {
-        run(process.execPath, ['--test', suites[name]], { ...process.env, FIRST_BIN: binary });
+        run(process.execPath, ['--test', suites[name]], { ...process.env, TP_BIN: binary });
         result.result = 'passed';
       } catch (error) {
         result.result = 'failed';

@@ -1,4 +1,4 @@
-//! First's own intermediate form. oxc's arena AST is lowered into this once per
+//! TypedPress's own intermediate form. oxc's arena AST is lowered into this once per
 //! module (see `lower.rs`); both backends read it: the build-time evaluator
 //! (`eval.rs`) and the PHP compiler (`compile.rs`). Anything outside the
 //! supported subset is rejected during lowering, so neither backend has to
@@ -56,6 +56,9 @@ pub struct Func {
     pub receives_this: bool,
     /// The `this.<key>` names the body (or one of its arrows) reads, in source order.
     pub this_reads: Vec<String>,
+    /// The body, or an arrow function inside it, names `arguments`. Only then does an ordinary
+    /// function get the `arguments` object (an arrow's `arguments` is its defining function's).
+    pub uses_arguments: bool,
     pub ret: Option<TyAnn>,
     pub type_params: Vec<String>,
     pub span: Span,
@@ -142,6 +145,7 @@ impl ClassField {
             is_generator: false,
             receives_this: false,
             this_reads: vec![],
+            uses_arguments: false,
             ret: self.ann.clone(),
             type_params: vec![],
             span: self.span,
@@ -486,7 +490,7 @@ pub enum ExprKind {
     Jsx(P<Jsx>),
 }
 
-/// One JSX node. Its value is rendered HTML (`\First\Html` at run time).
+/// One JSX node. Its value is rendered HTML (`\TypedPress\Html` at run time).
 #[derive(Debug, Clone)]
 pub struct Jsx {
     pub kind: JsxKind,

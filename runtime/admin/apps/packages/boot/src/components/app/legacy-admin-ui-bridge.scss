@@ -1,25 +1,25 @@
 /**
- * Temporary bridge between @wordpress/admin-ui Page and First Admin's @first-admin/admin-toolkit Page.
+ * Temporary bridge between @wordpress/admin-ui Page and TypedPress Admin's @typedpress-admin/admin-toolkit Page.
  *
  * Both are structurally identical (NavigableRegion + Header + content) but use
- * different class names and design tokens. This will be removed when First Admin
+ * different class names and design tokens. This will be removed when TypedPress Admin
  * migrates to @wordpress/admin-ui upstream.
  */
 
-/* Hide Jetpack branding in First Admin */
-.first-admin-layout__surface .admin-ui-page .jetpack-logo {
+/* Hide Jetpack branding in TypedPress Admin */
+.typedpress-admin-layout__surface .admin-ui-page .jetpack-logo {
 	display: none;
 }
 
-/* Match first-admin-page background (neutral instead of neutral-strong) */
-.first-admin-layout__surface .admin-ui-page {
+/* Match typedpress-admin-page background (neutral instead of neutral-strong) */
+.typedpress-admin-layout__surface .admin-ui-page {
 	margin: 0;
-	background: var( --wpds-color-bg-surface-neutral );
+	background: var( --wpds-color-background-surface-neutral );
 }
 
-/* Match first-admin-page header: padding, background, border, z-index */
-.first-admin-layout__surface .admin-ui-page__header {
-	background: var( --wpds-color-bg-surface-neutral );
+/* Match typedpress-admin-page header: padding, background, border, z-index */
+.typedpress-admin-layout__surface .admin-ui-page__header {
+	background: var( --wpds-color-background-surface-neutral );
 	border-bottom: none;
 	padding: 8px 20px;
 	z-index: 2;
@@ -27,20 +27,20 @@
 	flex-shrink: 0;
 }
 
-.first-admin-layout__surface .admin-ui-page__header.has-tabs {
+.typedpress-admin-layout__surface .admin-ui-page__header.has-tabs {
 	padding-block-end: 0;
 	border-bottom: 1px solid var( --wpds-color-stroke-surface-neutral-weak );
 }
 
-/* Match first-admin-page content: gap, background, stacking context */
-.first-admin-layout__surface .admin-ui-page__content {
+/* Match typedpress-admin-page content: gap, background, stacking context */
+.typedpress-admin-layout__surface .admin-ui-page__content {
 	gap: 24px;
-	background: var( --wpds-color-bg-surface-neutral );
+	background: var( --wpds-color-background-surface-neutral );
 	clip-path: inset( 0 );
 }
 
 /* Fix breadcrumb list-item bullets */
-.first-admin-layout__surface .admin-ui-breadcrumbs__list {
+.typedpress-admin-layout__surface .admin-ui-breadcrumbs__list {
 	list-style: none;
 	padding: 0;
 }

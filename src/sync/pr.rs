@@ -1,4 +1,4 @@
-//! `first sync --pr`: the site's changes as one pull request instead of a commit on the current branch.
+//! `typedpress sync --pr`: the site's changes as one pull request instead of a commit on the current branch.
 //!
 //! Each run starts from the default branch (fetched from `origin`) in a temporary worktree, so the
 //! checkout it is started from is never touched. The sync there is the ordinary two-way sync: file
@@ -15,9 +15,9 @@
 //!   the branch and the default branch, so the push is a fast-forward and never rewrites history; or a
 //!   new branch and pull request when none is open.
 //!
-//! Conflict files (`.first/conflicts/<uid>.md`, ignored by git) are added to the pull request and
-//! listed in a comment whenever the set changes. A sync branch carrying a commit that `first sync`
-//! didn't make (not a merge, and its subject doesn't start with `first sync`) is never rebuilt: the
+//! Conflict files (`.tp/conflicts/<uid>.md`, ignored by git) are added to the pull request and
+//! listed in a comment whenever the set changes. A sync branch carrying a commit that `typedpress sync`
+//! didn't make (not a merge, and its subject doesn't start with `typedpress sync`) is never rebuilt: the
 //! run stops and says so.
 
 use super::Report;
@@ -45,8 +45,8 @@ pub struct Outcome {
     pub changes: Vec<String>,
 }
 
-const BASE_FILE: &str = ".first/sync-base.json";
-const CONFLICTS: &str = ".first/conflicts";
+const BASE_FILE: &str = ".tp/sync-base.json";
+const CONFLICTS: &str = ".tp/conflicts";
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     git_env(dir, args, &[])
@@ -207,13 +207,13 @@ pub fn run(
         Some(b) => b.clone(),
         None => gh.default_branch()?,
     };
-    // The timestamp follows the last `/`: `first-sync/<host>[/<path>]/<unix time>`.
-    let prefix = format!("first-sync/{}/", site_segment(&settings.site));
+    // The timestamp follows the last `/`: `typedpress-sync/<host>[/<path>]/<unix time>`.
+    let prefix = format!("typedpress-sync/{}/", site_segment(&settings.site));
     let open = gh.open_pull(&base, &prefix)?;
 
     // Into refs of this command's own, never FETCH_HEAD, which the checkout's own fetches share.
     let fetch = |branch: &str, name: &str| -> Result<String, String> {
-        let local = format!("refs/first-sync/{name}");
+        let local = format!("refs/typedpress-sync/{name}");
         git(
             &root,
             &[
@@ -240,10 +240,10 @@ pub fn run(
         )?;
         if let Some(commit) = foreign
             .lines()
-            .find(|l| !l.split_once(' ').is_some_and(|(_, s)| s.starts_with("first sync")))
+            .find(|l| !l.split_once(' ').is_some_and(|(_, s)| s.starts_with("typedpress sync")))
         {
             return Err(format!(
-                "{}: its branch has a commit first sync didn't make ({commit}); merge or close that pull request, and the next run opens a new one",
+                "{}: its branch has a commit typedpress sync didn't make ({commit}); merge or close that pull request, and the next run opens a new one",
                 pull.url
             ));
         }
@@ -322,7 +322,7 @@ fn publish(
         .iter()
         .filter(|p| p.exists())
         .filter_map(|p| p.strip_prefix(wt).ok().map(|r| r.to_string_lossy().replace('\\', "/")))
-        .filter(|p| !p.contains("/.first/") && !p.starts_with(".first/"))
+        .filter(|p| !p.contains("/.tp/") && !p.starts_with(".tp/"))
         .filter(|p| git(wt, &["check-ignore", "-q", "--no-index", "--", p]).is_ok())
         .collect();
     if !ignored.is_empty() {
@@ -331,7 +331,7 @@ fn publish(
             ignored.join(", ")
         ));
     }
-    // Both are under the ignored `.first/`: the base is committed, and conflicts go in the pull request.
+    // Both are under the ignored `.tp/`: the base is committed, and conflicts go in the pull request.
     for path in [BASE_FILE, CONFLICTS] {
         if wt.join(in_repo(rel, path)).exists() {
             git(wt, &["add", "-A", "-f", "--", &in_repo(rel, path)])?;
@@ -357,7 +357,7 @@ fn publish(
         };
         gh.comment(
             pull.number,
-            &format!("`{base}` and the site agree now, so this pull request has nothing left to carry. Closed by `first sync --pr`."),
+            &format!("`{base}` and the site agree now, so this pull request has nothing left to carry. Closed by `typedpress sync --pr`."),
         )?;
         gh.close_pull(pull.number)?;
         return Ok(Outcome {
@@ -393,7 +393,7 @@ fn publish(
     }
 
     let message = format!(
-        "first sync: {} applied, {} conflicts, from {site}",
+        "typedpress sync: {} applied, {} conflicts, from {site}",
         report.applied,
         report.conflicts.len()
     );
@@ -494,7 +494,7 @@ fn publish(
 
 /// The pull request's description: what changed, the conflicts, and how the branch is kept.
 fn description(site: &str, base: &str, listed: &[String], report: &Report, conflicts: &[String]) -> String {
-    let mut s = format!("Content from {site} that `{base}` doesn't have yet, written by `first sync --pr`.\n\n");
+    let mut s = format!("Content from {site} that `{base}` doesn't have yet, written by `typedpress sync --pr`.\n\n");
     s.push_str("| Change | File |\n|---|---|\n");
     for line in listed.iter().take(200) {
         let (kind, path) = line.split_once(' ').unwrap_or(("M", line));
@@ -511,8 +511,8 @@ fn description(site: &str, base: &str, listed: &[String], report: &Report, confl
         ));
     }
     s.push_str(&format!(
-        "\nEach run of `first sync --pr` builds this branch again from `{base}` and the site and adds one commit, so \
-         edit content on `{base}` or on the site, not here. A commit on this branch that `first sync` didn't make stops \
+        "\nEach run of `typedpress sync --pr` builds this branch again from `{base}` and the site and adds one commit, so \
+         edit content on `{base}` or on the site, not here. A commit on this branch that `typedpress sync` didn't make stops \
          the next runs until this pull request is merged or closed.\n"
     ));
     s
@@ -534,7 +534,7 @@ fn conflict_comment(files: &[String]) -> String {
     s.push_str(
         "\nNothing was written to either side for them. To resolve one, make the record the same on both sides: edit it \
          on the site, or edit its file on the default branch, into the version to keep. The next run of \
-         `first sync --pr` finds them equal, records that, and drops the conflict file from this pull request.\n",
+         `typedpress sync --pr` finds them equal, records that, and drops the conflict file from this pull request.\n",
     );
     s
 }
@@ -559,7 +559,7 @@ mod tests {
 
     #[test]
     fn paths_are_joined_below_the_projects_directory() {
-        assert_eq!(in_repo("", BASE_FILE), ".first/sync-base.json");
-        assert_eq!(in_repo("site", CONFLICTS), "site/.first/conflicts");
+        assert_eq!(in_repo("", BASE_FILE), ".tp/sync-base.json");
+        assert_eq!(in_repo("site", CONFLICTS), "site/.tp/conflicts");
     }
 }

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception;
+namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception;
 
 /**
  * Thrown when a type of given value does not match an expected type.

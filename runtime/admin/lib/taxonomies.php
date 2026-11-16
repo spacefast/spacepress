@@ -1,8 +1,8 @@
 <?php
 /**
- * Taxonomy overrides for First Admin.
+ * Taxonomy overrides for TypedPress Admin.
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 /**
@@ -11,10 +11,10 @@
  * @param object $labels    Taxonomy labels object.
  * @return object Modified labels object.
  */
-function first_admin_add_category_labels( $labels ) {
+function tp_admin_add_category_labels( $labels ) {
 	$labels->delete_warning = sprintf(
 		/* translators: %s: Default category. */
-		__( 'Deleting a category does not delete the posts in that category. Instead, posts that were only assigned to the deleted category are set to the default category %s. The default category cannot be deleted.', 'first-admin' ),
+		__( 'Deleting a category does not delete the posts in that category. Instead, posts that were only assigned to the deleted category are set to the default category %s. The default category cannot be deleted.', 'typedpress-admin' ),
 		/** This filter is documented in wp-includes/category-template.php */
 		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 		'<strong>' . apply_filters( 'the_category', get_cat_name( get_option( 'default_category' ) ), '', '' ) . '</strong>'
@@ -22,7 +22,7 @@ function first_admin_add_category_labels( $labels ) {
 
 	return $labels;
 }
-add_filter( 'taxonomy_labels_category', 'first_admin_add_category_labels', 10, 1 );
+add_filter( 'taxonomy_labels_category', 'tp_admin_add_category_labels', 10, 1 );
 
 /**
  * Automatically ensure unique slugs when creating terms via the REST API.
@@ -37,7 +37,7 @@ add_filter( 'taxonomy_labels_category', 'first_admin_add_category_labels', 10, 1
  *
  * @return stdClass Filtered term data.
  */
-function first_admin_rest_taxonomy_unique_slug( stdClass $prepared_term, WP_REST_Request $request, string $fallback_taxonomy = 'category' ) {
+function tp_admin_rest_taxonomy_unique_slug( stdClass $prepared_term, WP_REST_Request $request, string $fallback_taxonomy = 'category' ) {
 	// Only adjust during term creation requests.
 	if ( 'POST' !== $request->get_method() ) {
 		return $prepared_term;
@@ -82,7 +82,7 @@ function first_admin_rest_taxonomy_unique_slug( stdClass $prepared_term, WP_REST
 /**
  * Register the REST term slug filter for all public taxonomies.
  */
-function first_admin_register_rest_taxonomy_slug_filter(): void {
+function tp_admin_register_rest_taxonomy_slug_filter(): void {
 	$taxonomies = get_taxonomies(
 		array(
 			'public' => true,
@@ -94,11 +94,11 @@ function first_admin_register_rest_taxonomy_slug_filter(): void {
 		add_filter(
 			"rest_pre_insert_{$taxonomy}",
 			static function ( stdClass $prepared_term, WP_REST_Request $request ) use ( $taxonomy ) {
-				return first_admin_rest_taxonomy_unique_slug( $prepared_term, $request, $taxonomy );
+				return tp_admin_rest_taxonomy_unique_slug( $prepared_term, $request, $taxonomy );
 			},
 			10,
 			2
 		);
 	}
 }
-add_action( 'rest_api_init', 'first_admin_register_rest_taxonomy_slug_filter', 9 );
+add_action( 'rest_api_init', 'tp_admin_register_rest_taxonomy_slug_filter', 9 );

@@ -1,9 +1,9 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
+namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
 use function trim;
 
 class PhpDocTagNode implements PhpDocChildNode

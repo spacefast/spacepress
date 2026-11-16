@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Feature;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Feature;
 
 use DateTimeImmutable;
 use DateTimeZone;

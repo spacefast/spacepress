@@ -1,5 +1,5 @@
 import { Link, privateApis as routePrivateApis } from '@wordpress/route';
-import { unlock } from '@first-admin/private-apis';
+import { unlock } from '@typedpress-admin/private-apis';
 import SiteIcon from '../site-icon';
 import './style.scss';
 
@@ -21,7 +21,7 @@ function SiteIconLink( {
 		<Link
 			to={ to }
 			aria-label={ props[ 'aria-label' ] }
-			className="first-admin-site-icon-link"
+			className="typedpress-admin-site-icon-link"
 			onClick={ ( event ) => {
 				// If possible, restore the previous page with
 				// filters etc.

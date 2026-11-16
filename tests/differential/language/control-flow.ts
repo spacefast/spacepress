@@ -2,7 +2,7 @@
 // loops that run at least once, and `break outer` / `continue outer` across nested loops.
 // Every action runs under Node and as compiled PHP; the JSON results must be byte-identical.
 // `control-flow-helpers.mjs` runs the same shapes untyped.
-import { action, defineConfig } from "first";
+import { action, defineConfig } from "typedpress";
 import { controlFlowUntyped } from "./control-flow-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

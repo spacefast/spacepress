@@ -1,13 +1,13 @@
 # Host filesystem ABI
 
 Build with `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown`.
-`first_alloc`, `first_free` and `first_compile` retain their existing ABI. New exports
-`first_sources`, `first_check`, `first_migrate_app` and `first_migrate_config` use the
+`tp_alloc`, `tp_free` and `tp_compile` retain their existing ABI. New exports
+`tp_sources`, `tp_check`, `tp_migrate_app` and `tp_migrate_config` use the
 same owned UTF-8 JSON request and length-prefixed JSON response buffers.
 
 The module imports `host.read_file`, `host.stat`, `host.canonicalize` and
 `host.read_dir`. Each receives a UTF-8 path pointer and length and returns a
-length-prefixed JSON buffer allocated by `first_alloc`. Rust owns and frees it.
+length-prefixed JSON buffer allocated by `tp_alloc`. Rust owns and frees it.
 Return `{data: value}` or `{error: {kind: "ENOENT", message: "..."}}`. Values are
 UTF-8 text, `{file, directory, symlink}` booleans, an absolute canonical path,
 and absolute child paths respectively. `host-fs.mjs` is an executable reference
@@ -27,10 +27,10 @@ project, defaults to `capsule.ts`) and returns `{status, entries, errors, files}
 Migration never writes files; the caller reviews errors before writing the
 candidate map. Invalid requests return `{error: message}`.
 
-Native finalizers use the `host` feature and call `first::host::sources` (relative
-imports and `first` only), then `first::host::compile_sources`. These do not need
+Native finalizers use the `host` feature and call `typedpress::host::sources` (relative
+imports and `typedpress` only), then `typedpress::host::compile_sources`. These do not need
 `cli`, `ureq`, `zip` or `tempfile`. Local installed npm sources are captured with
-`first::bundle::sources` or the wasm sources export.
+`typedpress::bundle::sources` or the wasm sources export.
 
 Run `node --test tests/wasm/host.test.mjs` after building wasm and the native debug
 binary. `CARGO_TARGET_DIR` selects both build outputs.

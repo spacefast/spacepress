@@ -1,68 +1,101 @@
-# First PHP runtime contract
+# TypedPress PHP runtime contract
 
-The Rust compiler (`first build`) emits WordPress plugins. Everything that runs
-at request time is PHP: a hand-written runtime library (`runtime/First/*.php`,
+The Rust compiler (`typedpress build`) emits WordPress plugins. Everything that runs
+at request time is PHP: a hand-written runtime library (`runtime/TypedPress/*.php`,
 copied verbatim into every build) plus generated files. This document is the
 seam between them. The compiler only emits calls listed here.
 
 Requirements (`Platform::problems()` is the one statement of them; activation
-and `first doctor` both apply it): WordPress 7.2-beta5+ on PHP 8.2+ with the
+and `typedpress doctor` both apply it): WordPress 7.2-beta5+ on PHP 8.2+ with the
 `mbstring`, `json` and `gd` extensions (`sodium` for the identity bundle);
-MySQL 8.0+ or MariaDB 10.11+ with every First table InnoDB, or SQLite through
+MySQL 8.0+ or MariaDB 10.11+ with every TypedPress table InnoDB, or SQLite through
 SQLite Database Integration 3.1.2+; the pinned platform plugins Secure Custom
 Fields, Action Scheduler and MCP Adapter at the versions in
 `Platform::PLUGINS`, plus Polylang when the app is localized. Composer runs
 only at maintainer time; prefixed third-party libraries ship under
 `vendor-prefixed/`. See `dependencies.md` for their locks and regeneration.
-Every First file starts with `declare(strict_types=1);`. Namespace `First`.
+Every TypedPress file starts with `declare(strict_types=1);`. Namespace `TypedPress`.
 
 ## Build output layout
 
 ```
-<out>/                                 (default: <project>/first/dist/wp-content)
-  first-manifest.json                   versions, runtime series, platform requirements, dependency checksums
-  plugins/first-runtime/
-    first-runtime.php                   plugin header; boots Wp\Plugin
-    first/*.php                         this library, copied verbatim
-    first/vendor-prefixed/**            bundled, isolated PHP dependencies
-  plugins/first-identity/               optional identity bundle (passkeys, sessions, tokens)
-  plugins/first-app-<name>/
-    first-app-<name>.php                plugin header
-    first/app/schema.php                generated: `return [...]` schema metadata
-    first/app/functions.php             generated: compiled hooks, actions, helpers (namespace FirstApp)
-    first/app/openapi.json              generated: the API as OpenAPI 3.1, served at /__first/api/v1/openapi.json
-    first/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
+<out>/                                 (default: <project>/tp/dist/wp-content)
+  typedpress-manifest.json                   versions, runtime series, platform requirements, dependency checksums
+  plugins/typedpress-runtime/
+    typedpress-runtime.php                   plugin header; boots Wp\Plugin
+    tp/*.php                         this library, copied verbatim
+    tp/vendor-prefixed/**            bundled, isolated PHP dependencies
+  plugins/typedpress-identity/               optional identity bundle (passkeys, sessions, tokens)
+  plugins/typedpress-app-<name>/
+    typedpress-app-<name>.php                plugin header
+    tp/app/schema.php                generated: `return [...]` schema metadata
+    tp/app/functions.php             generated: compiled hooks, actions, helpers (namespace TypedPressApp)
+    tp/app/openapi.json              generated: the API as OpenAPI 3.1, served at /__tp/api/v1/openapi.json
+    tp/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
+    tp/app/client/typedpress-client.js   the typed client as a browser module (`@typedpress/client`), minified
+    tp/app/client-version.php       `return '<12 hex>';`: digest of typedpress-client.js, its script version
+    tp/app/client/<stem>.<12 hex>.js  "use client" stores, minified; the hex is SHA-256 of these bytes
+    tp/app/client/.htaccess         an immutable year-long Cache-Control for those stores only
     public/...                         copied from <project>/public if present
   *.zip                                the same plugins, packaged
 ```
 
-`first/bootstrap.php` eagerly loads `Db.php` (for the `First\db()` function),
-registers an autoloader for `First\*` from its own directory, and registers the
+Script modules with fixed names carry a version so a browser never keeps a copy from an earlier
+build: `@typedpress/client` is registered with `client-version.php`'s digest, and the runtime's
+`@typedpress/live` (`tp/Render/client/live.js`) and `typedpress-router` (`router.js`) with
+`TP_RUNTIME_HASH` (a digest of the runtime's `TypedPress/` files), or the release version when a
+build-store mount defines no such constant. The content-hashed store modules need no version.
+The app plugin's copies of these modules are minified (`oxc_minifier`, names of functions and
+classes kept); the committed `tp/_generated/client/client.js` and `client.d.ts` stay readable.
+
+### Build output reuse
+
+A `typedpress build` over an existing output starts from that output and writes only what changed;
+the result is the same tree a build into an empty directory writes.
+
+- `typedpress-manifest.json` records `runtimeRevision`, the digest of the runtime plugin tree this
+  compiler embeds (the revision the build store keys on). `typedpress-runtime`, `typedpress-identity`
+  and `typedpress-admin` and their ZIPs stay as they are when the previous manifest has the same
+  revision and each folder holds exactly the paths, at the sizes, this compiler writes, with its
+  ZIP present. Otherwise the plugin and its ZIP are written again.
+- The app plugin is compared file by file: a file with the same bytes keeps its modification
+  time, a file no longer generated is removed, and its ZIP is rebuilt only when something in it
+  changed. Only the PHP files that changed go through `php -l`.
+- A dependency plugin whose output folder holds its locked tree (one digest pass against the
+  lock's `treeSha256`, as before) stays; its archive is extracted only when the folder is
+  missing or the lock entry changed.
+
+The runtime check is cheap on purpose: it compares paths and sizes, not bytes. A hand edit to a
+runtime plugin file that keeps the file's size, or a hand edit to a runtime ZIP, survives the next
+build. Don't edit the output; delete it (`tp/dist`) and build again to get a clean tree.
+
+`tp/bootstrap.php` eagerly loads `Db.php` (for the `TypedPress\db()` function),
+registers an autoloader for `TypedPress\*` from its own directory, and registers the
 ordered feature modules through `Features::register()` (once per process).
 It preserves the site's numeric precision and PHP diagnostic settings.
 `Json::encode` scopes round-tripping native JSON precision to one encoding and
 restores the host setting even on failure. `Js::numStr` and JavaScript JSON
 serialization own their numeric spelling independently of PHP's ini precision.
 The bundled Composer loader and its autoloaded function files load on the first
-`First\Vendor\*` or `First_Vendor_*` class use. Ordinary requests do not load the
+`TypedPress\Vendor\*` or `TypedPress_Vendor_*` class use. Ordinary requests do not load the
 optional Markdown, merge or S3 dependencies. Both scoped namespace and global
 class names use the same authoritative Composer map. HTML parsing and block
 parsing/serialization are WordPress core's (`WP_HTML_*`, `parse_blocks`,
 `serialize_blocks`); the bundle carries no copy.
 
-The signing key for private-file URLs is the `first_runtime_secret` option,
+The signing key for private-file URLs is the `tp_runtime_secret` option,
 minted on activation.
 
 The app's schema is the authoritative runtime series check; the runtime
 refuses a mismatched series or a second app plugin.
 
-`GET /__first/api/v1` on WordPress includes `runtime.wp` with WordPress/PHP/database
+`GET /__tp/api/v1` on WordPress includes `runtime.wp` with WordPress/PHP/database
 versions, `scf`, `actionScheduler`, `mcpAdapter`, `twoFactor`, `polylang`, `identity`,
 `imageCdn`, `akismet` (`{ version, spamChecks }`: the Akismet a site has through
 Jetpack, and whether it has a key; never required), and `incompatibleTables`. `runtime.pendingMigrations` and
 `runtime.languages` report app migration and localization state. Identity is
 true only for a compatible implementation; the A3 placeholder does not enable it.
-`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`, or `FIRST_APP_PASSWORD`) checks this data against the same
+`typedpress doctor [--site URL]` (signed in with `typedpress login`, or `TP_TOKEN` / `TP_APP_PASSWORD`) checks this data against the same
 platform policy used by runtime activation.
 
 ## schema.php
@@ -91,7 +124,7 @@ return [
         // kind 'many': target rows whose `to` column equals this row's `from` column.
         // (for locations.items: from => 'id', to => 'locationId')
       ],
-      // Names of functions in functions.php (namespace FirstApp). Absent = no hook.
+      // Names of functions in functions.php (namespace TypedPressApp). Absent = no hook.
       'hooks' => ['beforeCreate' => 'items__beforeCreate', 'afterUpdate' => 'items__afterUpdate'],
       'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
     ],
@@ -109,8 +142,8 @@ Column keys are also the SQL column names (always double-quoted in SQL).
 
 ## functions.php
 
-Generated. `namespace FirstApp;`. Contains plain PHP functions. The runtime
-calls them by the names in schema.php (prefix `\FirstApp\`):
+Generated. `namespace TypedPressApp;`. Contains plain PHP functions. The runtime
+calls them by the names in schema.php (prefix `\TypedPressApp\`):
 
 | Compiled callback | Call | Return handling |
 |---|---|---|
@@ -154,7 +187,7 @@ not a blanket refusal of writes into array elements.
 
 ## Compiled classes
 
-Generated class methods are plain `FirstApp` functions with an explicit first
+Generated class methods are plain `TypedPressApp` functions with an explicit first
 receiver argument. They use `JsObject` handles for instances, so aliases,
 closures, member mutations and strict identity use the existing object model.
 `JsObject::$class` is readonly descriptor metadata; only `JsObject::$p` contains
@@ -188,7 +221,7 @@ instance identity recursively at the wire boundary.
 Viewer-bound reads exclude password-protected WordPress records before filters,
 projections, pagination and relation matching. Locked item reads return 404;
 list and Ability reads omit the row. This boundary covers native core REST as
-well as First. An explicit viewer with native `edit_post` capability or a valid
+well as TypedPress. An explicit viewer with native `edit_post` capability or a valid
 WordPress post-password cookie can read the record. Trusted server reads with
 no viewer retain their existing authority.
 
@@ -204,7 +237,12 @@ Setting a non-null unique value (including an explicit primary key or a generate
 slug) requires an unfiltered collection read rule and visibility of that field
 across rows. Otherwise both taken and free values return 401/403 before any
 uniqueness lookup. A filtered read, including `self` or automatic draft filtering,
-does not authorize new or changed unique values. An unchanged value is accepted
+does not authorize new or changed unique values. The one exception is the users
+kind's `email`: WordPress's Users screen shows every email to whoever may list
+users (`list_users`), so for them a taken email answers 409 and a free one is
+written. It does not extend to other unique columns of the users kind, to a
+network (where only a super admin sees every user), to a scoped application
+password, or to a column hidden from the viewer. An unchanged value is accepted
 only when the viewer can read the current row and the column cannot hide values.
 That value is omitted from persistence, and native slug repair preserves it without
 querying competitors. Publishing a WordPress draft is a new uniqueness operation;
@@ -285,7 +323,7 @@ even if an application hook catches its exception. Attempting the outer commit
 rolls back all writes, discards after-commit callbacks, and throws. Hooks must let
 the outer operation fail and retry the complete unit of work. Two things are outside that guarantee: an
 `afterCommit` callback runs after the commit, so its failure propagates without
-undoing the request; and `wp first migrate` records each DDL statement as it
+undoing the request; and `wp typedpress migrate` records each DDL statement as it
 succeeds (MySQL DDL commits implicitly), so a later statement's failure leaves
 the earlier ones applied and recorded (see Migrations).
 Transactions run concurrently, so a read whose result the transaction then
@@ -293,26 +331,26 @@ depends on takes an explicit lock (`FOR UPDATE`, `LOCK IN SHARE MODE`; see
 `Sync\Lock`, `Locale\Lock`, `Jobs\Storage`).
 
 A job queued inside a transaction (`Jobs::enqueue`, a retry, a re-queue) writes
-its `first__jobs` row and its Action Scheduler action in that transaction.
+its `tp__jobs` row and its Action Scheduler action in that transaction.
 Action Scheduler writes through the global `$wpdb`, the connection the
 transaction runs on (`Wp\Connection`), so the action commits or rolls back with
 the row, and a crash after the commit loses no job. Action Scheduler caches the
 id of each group it creates in the object cache, which a rollback doesn't undo,
-so First creates its groups (`first`, `first-<app>`) at `action_scheduler_init`,
+so TypedPress creates its groups (`typedpress`, `typedpress-<app>`) at `action_scheduler_init`,
 outside any transaction (`Wp\Jobs\ActionSchedulerQueue::prepare`). The same
 step requires Action Scheduler's actions and groups tables to be InnoDB, like
-First's own; until they are, First refuses writes. If wpdb reconnects during a
+TypedPress's own; until they are, TypedPress refuses writes. If wpdb reconnects during a
 transaction (it retries a query after a lost connection, and the server has
 rolled the transaction back), every later statement of it and its commit fail.
 A job queued before Action Scheduler is ready (a `wp-hooks` handler on `init`
 at priority 0) commits without an action and gets one once Action Scheduler is
 ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
-daily maintenance action, gives each waiting job that has no `first_job` action
+daily maintenance action, gives each waiting job that has no `tp_job` action
 of any status one, at most 1000 per run. That covers a request that died before
 Action Scheduler was ready, deleted actions, and the jobs that runtimes before
-this one left in `first__outbox`. A job whose action an administrator cancelled
-in Tools > Scheduled Actions stays as it is; `wp first jobs cancel` cancels a
-job. The `first__outbox` table, where each job's ticket waited until after
+this one left in `tp__outbox`. A job whose action an administrator cancelled
+in Tools > Scheduled Actions stays as it is; `wp typedpress jobs cancel` cancels a
+job. The `tp__outbox` table, where each job's ticket waited until after
 commit, is no longer written; its rows stay
 (`tests/php/jobs_transaction_cases.php`, run on SQLite and MariaDB).
 
@@ -347,7 +385,7 @@ final class Db {
   public function update(string $collection, array $set, array $where, bool $returning = false): ?array;
   public function delete(string $collection, array $where, bool $returning = false): ?array;
 }
-function db(): Db;   // namespace First, in Db.php, returns Db::instance()
+function db(): Db;   // namespace TypedPress, in Db.php, returns Db::instance()
 ```
 
 `insert` `$values`: one row (assoc array) or a list of rows. With
@@ -360,7 +398,12 @@ function db(): Db;   // namespace First, in Db.php, returns Db::instance()
 - `where`: filter (below).
 - `orderBy`: `['name' => 'asc', 'createdAt' => 'desc']`.
 - `limit`, `offset`: ints.
-- `columns`: `['id' => true, 'name' => true]` → only those keys.
+- `columns`: `['id' => true, 'name' => true]` → only those keys. The SQL selects
+  (and joins) only those, plus the primary key, the fields `with` loads and the
+  keys it joins on, a relation's partition column, a localized kind's `locale`
+  and `translations`, and what read extensions declare they read. It selects
+  every column when a read extension declares nothing, or a field's read rule is
+  a function (it sees the whole row).
 - `with`: `['location' => true, 'items' => ['where' => ..., 'orderBy' => ..., 'limit' => ..., 'with' => ...]]`.
   `one` relations attach a row or null; `many` attach a list. Load with one
   extra query per relation per level (`WHERE fk IN (...)`), never N+1.
@@ -406,8 +449,10 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   and decode. Lookup receives nonempty collection pages, not system-media rows.
   Mutation results (including receipt replay) and revision snapshots also prime
   their page before read transforms; callbacks may run again after write hooks.
-- `onRead(rows, collection, ?viewer)` transforms decoded rows before `with` and
-  projection; also applies to revision reads and returning write responses.
+- `onRead(rows, collection, ?viewer, reads: ?fn(collection, ?viewer): list<string>)`
+  transforms decoded rows before `with` and projection; also applies to revision
+  reads and returning write responses. `reads` names the columns it reads beside
+  the ones the query keeps; without it every read selects every column.
   Revision restore authorizes first, then uses the full stored snapshot; display
   transforms never supply persistence input. Internal mutation selection keeps
   authorization filters and passes full decoded storage rows to normalization,
@@ -429,7 +474,7 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   immediately. Nested transactions join without savepoints. A callback that
   throws propagates after commit, without rollback cleanup or callback replay.
 - `Realtime\Module` collects `onWritten` per transaction while a `Publisher` is
-  registered or `first_realtime_changes` has a listener, and emits one id-only
+  registered or `tp_realtime_changes` has a listener, and emits one id-only
   notice after the outermost commit (see [Live updates](realtime.md)). Rollback
   discards the batch. Publishers run in order; one that throws is logged.
 - `route(prefix, handler)` receives `(method, fullDecodedSegments, query,
@@ -456,7 +501,7 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   feature consumes/normalizes its options; unknown remaining options fail normal
   query validation.
 - `cli(command, handler)` receives `(argsWithoutCommand, flags)` inside the
-  canonical `wp first` transaction and receipts.
+  canonical `wp typedpress` transaction and receipts.
 - `schemaDescribe(fn)` transforms the public schema description.
 
 `SystemTables::register(name, statements)` assigns one owner per table. The
@@ -465,7 +510,37 @@ or guarded `callable(Store): void` upgrades (a column check against
 `information_schema` before `ADD COLUMN`). `apply(Store)` rejects request
 transactions before running SQL or guards; the runtime applies registrations
 on activation and on the first request after an update, outside request
-transactions. `Store` exposes `afterCommit(callable)` and
+transactions.
+
+On a plugin-installed site, the checks behind "the first request after an
+update" (the stored-name upgrade, the system tables, the app's migration ledger,
+Action Scheduler groups and recurring actions, route and content Pages, Polylang
+languages, the search index shape, the runtime-schema capability) run until one
+request finds them all in place. That request records the autoloaded option
+`tp_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
+`schema.php`, the system-tables version, the runtime version and hash, the UTC
+day and the active plugins (the site's and, on multisite, the network's). On
+multisite each site keeps its own. While it matches, requests skip those checks,
+as a managed build always does (`Runtime::installs()`); a managed site never
+records it. It is recorded at the end of `wp_loaded` only after each check is
+read again and passes, so a failed, refused or held install never records it;
+the checks run once more after the write, and the marker is removed if they no
+longer pass or this request dropped it meanwhile. Dropping it always deletes the
+stored row, whatever this request cached about it. A
+new build, a runtime update, a plugin change or a new day finds no match.
+Activating, deactivating or migrating the app, a change to an option those checks
+keep or to an app route's Page, a cancelled Action Scheduler action, and a recurring
+action whose next run could not be scheduled delete it. A managed build's Polylang
+languages don't depend on it: they are provisioned on its first request that has Polylang.
+
+What it deliberately no longer re-checks on every request, until the marker is
+gone (at the latest the next UTC day): storage changed without WordPress's
+option hooks, such as the migration ledger or system tables rewritten by hand, a
+database restored from a backup taken before an install step, or an option
+those checks keep edited with SQL. After such a change, drop the marker so the
+next request checks everything: `wp option delete tp_installed` (or
+`DELETE FROM <prefix>options WHERE option_name = 'tp_installed'`, then flush
+the object cache). `Store` exposes `afterCommit(callable)` and
 `applySystemStatements(list<string>)` for these seams.
 
 `Wp\Scf::fieldFilter(fn)` transforms each fully-built field, including nested
@@ -504,13 +579,13 @@ operation or replace an already-started response.
 
 `App::boot(string $appRoot, Schema $schema, Store $store, Auth $auth, Media $media): App`
 uses the validated schema passed by the WordPress registry and requires
-`first/app/functions.php`; the plugin passes
+`tp/app/functions.php`; the plugin passes
 its store, authentication and media services, and migrates on activation and
 on the first request after an update (`Wp\Plugin`).
 
-The app's API is `/__first/api/v1` (spec §3a, `Wp\Facade`), served on
+The app's API is `/__tp/api/v1` (spec §3a, `Wp\Facade`), served on
 `do_parse_request` before the theme. Each request is dispatched with
-`rest_do_request()` to the core route that serves it, which enforces First's
+`rest_do_request()` to the core route that serves it, which enforces TypedPress's
 rules (`PostsController`, `UserMeta`, `TableController`, the Abilities run
 route); the facade maps input and output only. Everything else → 404 problem.
 
@@ -520,21 +595,21 @@ route); the facade maps input and output only. Everything else → 404 problem.
 | `GET /search?q=…` | each searchable kind's read as the caller, with `search` (`Search\Module`); `kinds=`, `limit=` (10, at most 50) | 200 `{data: {q, results: [{kind, rows}]}}`; 400 `invalid_query` without a word |
 | `GET /{kind}` | `GET /wp/v2/<route>` with `where`, `orderBy`, `with`, `search`, `locale`, `status`; `limit` (default 50, max 100), `offset`, `cursor` | 200 `{data: [rows], cursor}` |
 | `GET /{kind}/{id}` (`slug:x`) | `GET /wp/v2/<route>/{id}`, `with` allowed; `?format=md` is `MarkdownTwins::post()` | 200 `{data: row}` / 404 `not_found` |
-| `POST /{kind}`, `PATCH /{kind}/{id}`, `DELETE /{kind}/{id}` | the core route's create, update and permanent delete, through First's write pipeline | 201/200 `{data: row}` |
+| `POST /{kind}`, `PATCH /{kind}/{id}`, `DELETE /{kind}/{id}` | the core route's create, update and permanent delete, through TypedPress's write pipeline | 201/200 `{data: row}` |
 | `GET /{kind}/{id}/revisions[/{rid}]`, `POST …/{rid}/restore` | core's revisions route; a restore is an update | 200 `{data}` |
 | `GET`/`PATCH`/`DELETE /{kind}/{id}/staged`, `GET …/staged/compare`, `POST …/staged/promote`, `POST …/staged/preview` | `Wp\Staged` (no core route): a post kind's [staged version](staged.md); a promote is an update | 200 `{data}` / 404 `not_found` without the update rule |
 | `GET`/`PATCH /{global}` | `/wp-abilities/v1/abilities/<app>/global-<name>-{get,update}/run` | 200 `{data}` |
 | `POST /actions/{name}` (`GET` when readonly) | `/wp-abilities/v1/abilities/<app>/<name>/run` | 200 `{data: result}` |
 | `GET /me`, `/settings`, `/menus[/{location}]` | `/wp/v2/users/me`, `/wp/v2/settings`, `/wp/v2/menu-locations` + `/wp/v2/menu-items` | 200 `{data}` |
-| `/auth/*`, `/sync/*`, `/services/*`, `/files/*`, `/media/{id}/file/*` | First's own routes (no core route) | as each documents |
-| `GET /openapi.json` | the app plugin's `first/app/openapi.json` (`First\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` |
+| `/auth/*`, `/sync/*`, `/services/*`, `/files/*`, `/media/{id}/file/*` | TypedPress's own routes (no core route) | as each documents |
+| `GET /openapi.json` | the app plugin's `tp/app/openapi.json` (`TypedPress\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` and an `ETag` that is the digest of the encoded body sent (built from one read of the file); a matching `If-None-Match` is an empty 304; an unreadable file is a 404, never a 304 |
 
 Kinds are the app's collections, tables and users kind, plus WordPress's
 own (`posts`, `pages`, `comments`, `media`, `categories`, `tags`, `menus`)
 where the app declares none of that name. A collection's `api` flags gate
 list/get/create/update/delete (disabled → 405 `method_not_allowed`).
 Authentication is core REST's (cookie and nonce, an application password,
-or a First Identity bearer); CORS headers and `OPTIONS` preflights are
+or a TypedPress Identity bearer); CORS headers and `OPTIONS` preflights are
 core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. Every
 answer is `Cache-Control: private, no-store` with `Vary: Origin, Cookie,
 Authorization`, except file streams and `/openapi.json`, which is the same for
@@ -551,7 +626,7 @@ Status mapping: `invalid_input` 422, `invalid_query` 400, `invalid_json`
 400, `not_found` 404, `method_not_allowed` 405, `unique_violation` 409,
 `reference_violation` 409, `rejected` 422 (any `JsError` thrown by user
 code: `detail` = its message), `HttpError` → its own status/code, anything
-else → 500 `internal` (detail = message only when env `FIRST_DEBUG=1`,
+else → 500 `internal` (detail = message only when env `TP_DEBUG=1`,
 always logged to `error_log`).
 
 JSON responses are encoded with `Js::jsonStringify` (so integral floats
@@ -559,14 +634,14 @@ print without `.0`).
 
 ## Markdown twins (`Wp\MarkdownTwins`)
 
-The v2 app plugin registers these. A WordPress without a First app is unchanged.
+The v2 app plugin registers these. A WordPress without a TypedPress app is unchanged.
 
 - **`/x.md`** answers for every public URL WordPress renders. On
   `do_parse_request` (priority 1, after app routes), it is parsed as `/x`. On
-  `wp`, after the main query and before any template or redirect, First answers
+  `wp`, after the main query and before any template or redirect, TypedPress answers
   it. The answer is `text/markdown; charset=UTF-8` with
   `Link: <html>; rel="canonical"`, the same for every visitor. A page with no
-  public content (404, draft, preview, private post, feed, First collection,
+  public content (404, draft, preview, private post, feed, TypedPress collection,
   pages-add-on code Page) gets a 404. Nothing varies on `Accept`. Batcache and
   the edge key on the URL, so the twin is a separate cache entry.
 - **Twin requests are anonymous.** From `do_parse_request` on, the request
@@ -585,7 +660,7 @@ The v2 app plugin registers these. A WordPress without a First app is unchanged.
   list, so a site that also turns on that experiment is told in its settings
   that two plugins answer Markdown requests and print Markdown `<link>` tags.
 - **`/llms.txt`** and **`Content-Signal`** (on HTML pages, twins,
-  `/llms.txt`, and a `robots.txt` line). The `first_content_signal` filter
+  `/llms.txt`, and a `robots.txt` line). The `tp_content_signal` filter
   changes the value; `''` sends none.
 - **`?format=md` on core item routes** (`GET /wp-json/wp/v2/<type>/<id>`, any
   post type in REST): after core has run the route and its permission check,
@@ -594,7 +669,7 @@ The v2 app plugin registers these. A WordPress without a First app is unchanged.
   `password` parameter, or an editor in the edit context). Core is asked only
   for the item's `id` (`_fields=id`), so `the_content` runs once per request. Every refusal stays
   core's JSON error. List routes and other methods are unchanged. The
-  `/__first/api/v1` item route's `?format=md` calls `MarkdownTwins::post()`
+  `/__tp/api/v1` item route's `?format=md` calls `MarkdownTwins::post()`
   too, so both give the same Markdown.
 - **Listing and `/llms.txt` summaries** come from the hand-written excerpt or
   from `Markdown::renderPost()` of the post, never from its raw stored markup. So
@@ -602,7 +677,7 @@ The v2 app plugin registers these. A WordPress without a First app is unchanged.
   callback, "Hide block", a `render_block` filter, a shortcode, a
   `the_content` paywall) hides it there too. Each post is set up while it
   renders, as in a loop.
-- **`first_markdown_twin` filter** (`bool $twin, WP_Post $post`): return false
+- **`tp_markdown_twin` filter** (`bool $twin, WP_Post $post`): return false
   when a URL shows something other than the post's stored content. The pages
   add-on uses it for code Pages.
 
@@ -623,9 +698,9 @@ by the engine instead, never from a page cache:
 1. The engine sees `Accept: text/markdown` on a v2 Space's HTML URL. If the
    build has a prebuilt `/x.md` file, it serves that.
 2. Otherwise it loads `wp-load.php` (which calls `batcache_cancel()`), then
-   calls `\First\Wp\MarkdownTwins::negotiate($requestUri)` before anything
+   calls `\TypedPress\Wp\MarkdownTwins::negotiate($requestUri)` before anything
    runs the main query or prints.
-3. `null` means no First app is active: the engine serves the request as it
+3. `null` means no TypedPress app is active: the engine serves the request as it
    would have.
 4. Otherwise the engine sends `['status' => int, 'headers' => array, 'body' => string]`.
    It sends the status with `status_header()`, because WordPress may already
@@ -646,28 +721,28 @@ request.
 
 The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
 `robots.txt`). Core renders the index, each file, the stylesheets and the
-`robots.txt` line; First writes no XML.
+`robots.txt` line; TypedPress writes no XML.
 
 - **Core's providers** list posts, pages, terms and authors as on any
-  WordPress site, with the links First's kind `url` patterns filter. First
+  WordPress site, with the links TypedPress's kind `url` patterns filter. TypedPress
   narrows them in two ways: a password-protected post is left out
   (`wp_sitemaps_posts_query_args`), and with a users kind an author is listed
   only when a signed-out visitor may read that user's row
   (`wp_sitemaps_users_query_args`). Without a users kind the users sitemap
   is gone unless the config sets `publicAuthors`
   ([Authors](config-api.md#authors)).
-- **First's provider** (`first`, registered on `wp_sitemaps_init` with
+- **TypedPress's provider** (`typedpress`, registered on `wp_sitemaps_init` with
   `wp_register_sitemap_provider()`) adds a file per kind that has a `url`,
-  `/wp-sitemap-first-<kind>-<n>.xml`, and one for `first/app/` pages,
-  `/wp-sitemap-first-app-pages-<n>.xml`. A file holds up to
+  `/wp-sitemap-typedpress-<kind>-<n>.xml`, and one for `tp/app/` pages,
+  `/wp-sitemap-typedpress-app-pages-<n>.xml`. A file holds up to
   `wp_sitemaps_get_max_urls('first')` URLs (2000), as core's do.
 - **Only what a signed-out visitor may read.** A sitemap request is answered as
   nobody: no user, and no post-password cookie. A kind's items are selected by
-  First's read pipeline as an anonymous viewer, so the read rule, a filter the
+  TypedPress's read pipeline as an anonymous viewer, so the read rule, a filter the
   rule returns and draft visibility decide, exactly as for a visitor's
   `posts.list()`. Then an item is listed only when it is published without a
   password, every placeholder of its `url` comes from a field a visitor may read
-  (a `:slug` only editors read lists nothing), and no `first/app/` page under a
+  (a `:slug` only editors read lists nothing), and no `tp/app/` page under a
   layout `guard` serves its address. A file's count, its paging and its entries
   come from that one list, so a hidden row adds no file and no page. A kind with
   nothing to list has no file.
@@ -682,8 +757,8 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
   off (`wp_sitemaps_enabled`) and core answers their URLs with a 404. With an
   external frontend the sitemap is still answered here (a 404 stays a 404, never
   a redirect), and every `<loc>` is at that site, like every other link.
-- **`first_sitemap_entry` filter** (`array $entry, string $subtype`): change one
-  entry of First's files, or return an empty value to leave the URL out. Core's
+- **`tp_sitemap_entry` filter** (`array $entry, string $subtype`): change one
+  entry of TypedPress's files, or return an empty value to leave the URL out. Core's
   own filters (`wp_sitemaps_posts_entry`, `wp_sitemaps_max_urls`,
   `wp_sitemaps_add_provider`, ...) work as on any site.
 
@@ -692,10 +767,10 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
 `search` is a reserved kind name: the compiler refuses it, as it does `media` and
 `files`, because the API serves `GET /search`.
 
-`search` on a kind (`posts.list({ search })`, `?search=` on `/__first/api/v1/<kind>`
-and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
+`search` on a kind (`posts.list({ search })`, `?search=` on `/__tp/api/v1/<kind>`
+and on core `/wp/v2/<route>`) and `GET /__tp/api/v1/search` read one index.
 
-- **The index.** `{prefix}first__search` has one row per (kind, row id, field):
+- **The index.** `{prefix}tp__search` has one row per (kind, row id, field):
   the field's text with markup and block comments removed (each tag is a word
   break) and entities decoded. Kind, row id and field are bytes, so ids that
   differ only in case are different rows.
@@ -709,7 +784,7 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
   `wp_update_user`, the profile screen, sign-up) are re-indexed on core's
   `user_register`, `profile_update` and `deleted_user`. When a build changes a
   kind's searchable fields, the first request after it queues the runtime job
-  `first.search.reindex` (Action Scheduler) for each kind that has
+  `typedpress.search.reindex` (Action Scheduler) for each kind that has
   rows. It re-indexes 200 rows per run, each locked against a concurrent write,
   and queues the next; nothing is cleared first, so rows stay searchable during
   it, and the last run removes entries of deleted rows and dropped fields. A run
@@ -720,11 +795,11 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
   store's guards apply as on any list, so results, counts and order are the
   reader's. There is no relevance order. MySQL and MariaDB match with
   `MATCH ... AGAINST ('+word*' IN BOOLEAN MODE)`; the SQLite translator with
-  `FIRST_WORD_PREFIX(body, word)`, which `Wp\Connection` registers. A text with
+  `TP_WORD_PREFIX(body, word)`, which `Wp\Connection` registers. A text with
   no letter or digit matches nothing; at most 8 words and 200 characters.
 - **Not refused.** A search is never a 403 because a field is hidden from the
   reader: it runs over the fields they may read. On core's users route
-  (`/wp/v2/users?search=`) First selects the members as the reader and core's
+  (`/wp/v2/users?search=`) TypedPress selects the members as the reader and core's
   own search over login, nicename and email is off; `search_columns=name` is
   the member's name, and other columns match nothing. `X-WP-Total` counts the
   same members.
@@ -744,7 +819,7 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
   The kinds are subtypes of `post`, because the editor asks for `type=post`
   only and core keeps one handler per type. The handler wraps whichever
   handler of `post` the site had: core's results come first, unchanged, then
-  each kind's published items as the caller reads them through First's read
+  each kind's published items as the caller reads them through TypedPress's read
   pipeline with `search`. A kind the caller may not read is left out without a
   word; a row the rule hides is neither found nor counted (`X-WP-Total`); a
   title hidden from the caller comes back empty, and a kind whose `url` shows a
@@ -758,15 +833,15 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
 ## URL purges (`Wp\Purges`)
 
 After a committed write to public content, the v2 app plugin announces the
-URLs it changed on the host's `first_purge_urls` action:
-`do_action('first_purge_urls', list<string> $paths)`. On Spacefast the engine
+URLs it changed on the host's `tp_purge_urls` action:
+`do_action('tp_purge_urls', list<string> $paths)`. On Spacefast the engine
 listens and purges those URLs from Batcache and the edge. With no listener
 (`has_action` is false), nothing is collected or announced.
 
 - **Writes covered:** posts and pages of public post types (create, update,
   publish, unpublish, trash, delete), term assignments, and term edits and
-  deletes in public taxonomies, and First kinds with a `url`. Drafts that stay
-  drafts and First kinds without a `url` announce nothing. A First write to a
+  deletes in public taxonomies, and TypedPress kinds with a `url`. Drafts that stay
+  drafts and TypedPress kinds without a `url` announce nothing. A TypedPress write to a
   kind with a `url`, or to the users kind, also purges that kind's sitemap
   files, since it can change who may read a row without touching the post.
 - **Paths, root-relative with their query:** the item's URL before and after
@@ -780,30 +855,47 @@ listens and purges those URLs from Batcache and the edge. With no listener
   post's terms (`wp_set_object_terms()`, `wp_remove_object_terms()`) purges
   page 1 and page 2 of every term archive it joined or left. Deeper listing pages fall back to the edge's `s-maxage`
   window.
-- **When:** once per request, after the outermost First transaction commits,
+- **When:** once per request, after the outermost TypedPress transaction commits,
   or at `shutdown` for writes made outside one (wp-admin, core REST). A
   rolled-back transaction announces nothing.
 - `Purges::paths(array $urls): list<string>` turns URLs into the announced
   paths, `.md` twins included.
-- **`first/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
+- **`tp/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
   a page outside any guarded layout sends `Cache-Control: public,
-  max-age=0, s-maxage=300, must-revalidate` (the `first_app_cache_window`
+  max-age=0, s-maxage=300, must-revalidate` (the `tp_app_cache_window`
   filter sets the window; `s-maxage` comes after `max-age` because Batcache
   takes the last `max-age=` in the header as its own window); anything else sends `private, no-store` and calls
   `batcache_cancel()`. Each cacheable render records the rows it read in
-  `first__app_reads` (kind, row id or `*` for a listing, path with query),
+  `tp__app_reads` (kind, row id or `*` for a listing, path with query),
   under the address WordPress links the page at (`/notes/a/` for a visit to
-  `/notes/a`). A committed write to a kind adds every recorded path that read
+  `/notes/a`): one read of what the path recorded last, and nothing written
+  when the render read the same rows; otherwise the path's rows are replaced
+  with inserts of 100 rows each. A committed write to a kind adds every recorded path that read
   that row or listed the kind, with its `.md` twin, to the same announcement
-  as the paths above: one `first_purge_urls` call per committed transaction.
+  as the paths above: one `tp_purge_urls` call per committed transaction.
   The router answers a page with or without its trailing slash, so both
   spellings are purged. More than 200 paths in that call becomes `/*`, a
   whole-host purge. Nothing is recorded or announced without a listener.
+- **Prebuilt pages** (`Render\Prebuilt::serve`) open the file once, hash that
+  handle in 64 KiB chunks, rewind it and stream it (`fpassthru`), so the `ETag`
+  (an xxh128 digest of exactly the bytes sent) and `Content-Length` (from
+  `fstat` on the handle) name one version. TypedPress itself never reads the page
+  into a string; with PHP output buffering on, the buffer holds the streamed body,
+  as it does for `readfile`. A matching `If-None-Match` (itself, its weak form, a list of quoted
+  tags, or `*` alone; a comma or `*` inside a tag's quotes is part of that tag, and a field that
+  is not such a list names nothing) gets an
+  empty 304 that keeps the page's `Cache-Control`; it and HEAD read the file only
+  for the hash. The validator is checked only after every
+  gate that decides the file is this request's answer (no query string,
+  signed-in cookie, Markdown negotiation, gated site). A file that can't be
+  opened, stat'ed, hashed or rewound, whose read returns nothing before its end,
+  or whose bytes read differ from its stat size renders as usual, never a 304,
+  and gets no prebuilt header.
 - **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
   (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
   or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack
   Boost (`jetpack_boost_clear_page_cache_url`) is loaded, the runtime listens on
-  `first_purge_urls` and clears each path in each of them. Batcache counts only
+  `tp_purge_urls` and clears each path in each of them. Batcache counts only
   while its drop-in runs (`$batcache` is set). `/*` bans the VIP site and clears
   Boost's whole cache; a list longer than VIP queues in one request (100) bans
   the VIP site once instead of each URL. Boost clears a URL recursively, so `/`
@@ -814,7 +906,7 @@ listens and purges those URLs from Batcache and the edge. With no listener
 
 Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md).
 
-- **Counters.** `first__versions (kind, scope, version)` holds, per collection, an `all` counter
+- **Counters.** `tp__versions (kind, scope, version)` holds, per collection, an `all` counter
   and, for a collection with drafts, a `published` counter (it moves only when a row is published
   before or after the write). `Live\Versions` listens on `Extensions::onWritten` and writes the
   counters through `Connection::beforeCommit`, as the transaction's last statements. A rollback
@@ -823,7 +915,7 @@ Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md
   out of the trash (`transition_post_status`).
 - **`Connection::beforeCommit(callable)`** runs a callback just before `COMMIT` of the outermost
   transaction (at once when none is open). A throw rolls the transaction back.
-- **`POST /__first/api/v1/_live`** takes `{ queries: [{ kind, op, args?, id?, token? }] }`:
+- **`POST /__tp/api/v1/_live`** takes `{ queries: [{ kind, op, args?, id?, token? }] }`:
   `kind` is the client's schema key, `op` one of `list`, `paginate`, `get`, `count`, `args` that
   call's arguments, `id` the row for `get` (or `args.where` for a `get` by filter), `token` what
   the previous answer to the same query returned. It answers
@@ -839,7 +931,7 @@ Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md
   At most 20 queries and 32 KiB per request; a `list` or `paginate` is capped at 100 rows, `offset`
   at 999999999 and `with` at three levels; after one
   second of reads the rest are `pending`. The response is `private, no-store`. The
-  `first_live_poll` filter changes the `poll` window clients keep to.
+  `tp_live_poll` filter changes the `poll` window clients keep to.
 - **`Live\Module::evaluate(Db $db, Viewer $viewer, array $queries, int $budgetMs = 1000): array`**
   is the same thing without HTTP, for server code that renders a read and hands its token to the
   browser. Results also carry `json`, the encoded `data` the token's hash was taken of.
@@ -852,18 +944,18 @@ Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md
   after the read last ran, which bounds how long a write made outside the write pipeline can go
   unseen.
 
-## CLI (`wp first`)
+## CLI (`wp typedpress`)
 
 ```
-wp first migrate [--mark-applied <id>:<n>]
-wp first publish-due
-wp first action <name> [json]
-wp first find <collection> [opts-json]
-wp first insert <collection> <json>
-wp first update <collection> <where-json> <set-json>
-wp first delete <collection> <where-json>
-wp first staged list [<kind>] | show|compare|discard <kind> <id> | stage <kind> <id> <json>
-wp first staged promote <kind> <id> [--at=<ISO time> | --cancel]
+wp typedpress migrate [--mark-applied <id>:<n>]
+wp typedpress publish-due
+wp typedpress action <name> [json]
+wp typedpress find <collection> [opts-json]
+wp typedpress insert <collection> <json>
+wp typedpress update <collection> <where-json> <set-json>
+wp typedpress delete <collection> <where-json>
+wp typedpress staged list [<kind>] | show|compare|discard <kind> <id> | stage <kind> <id> <json>
+wp typedpress staged promote <kind> <id> [--at=<ISO time> | --cancel]
 ```
 
 Prints `{"data": ...}` on success (exit 0) or `{"error": {problem}}` (exit 1)
@@ -874,26 +966,26 @@ post-backed collections are scheduled by WordPress itself.
 
 ## Migrations
 
-`Wp\Migrator` applies the app plugin's `first/app/migrations/NNNN_<name>.sql`
+`Wp\Migrator` applies the app plugin's `tp/app/migrations/NNNN_<name>.sql`
 files (MySQL dialect, `{prefix}` replaced by `$wpdb->prefix`) in filename
 order. Statements are separated by a line `--> statement-breakpoint`. The
-compiler's `-- first-adopt` statement metadata makes the migrator validate existing
+compiler's `-- typedpress-adopt` statement metadata makes the migrator validate existing
 primary/unique index names and foreign-key definitions before recording adoption.
 Integer columns must match the declared BIGINT signedness, so later generated
 foreign keys cannot silently assume a different physical key type.
 Unmanaged indexes are retained. The
 shared migration path checks existing tables before DDL or ledger writes, and
 checks the resulting tables before marking the app current. Non-InnoDB or
-non-utf8mb4 tables refuse activation, first-request upgrades and CLI migration;
-failed upgrades keep First unavailable until the storage is corrected. The
-ledger is `{prefix}first__migrations(app, id, applied_at)`, keyed by app so two
+non-utf8mb4 tables refuse activation, typedpress-request upgrades and CLI migration;
+failed upgrades keep TypedPress unavailable until the storage is corrected. The
+ledger is `{prefix}tp__migrations(app, id, applied_at)`, keyed by app so two
 plugins' `0001_init` files stay apart. MySQL DDL commits implicitly, so every
 statement that succeeds is recorded as `<id>:<n>` before the next one runs;
 once a file completes its own id is recorded and the step rows are removed. A
 file that failed half way resumes at the failing statement. A statement that
 committed without its marker fails on the retry ("already exists") until the
-operator records it with `wp first migrate --mark-applied <id>:<n>`. Writers
-(first request, activation, `wp first migrate`) serialize on `Connection::locked`.
+operator records it with `wp typedpress migrate --mark-applied <id>:<n>`. Writers
+(first request, activation, `wp typedpress migrate`) serialize on `Connection::locked`.
 
 ## Errors
 
@@ -901,7 +993,7 @@ operator records it with `wp first migrate --mark-applied <id>:<n>`. Writers
 class JsError extends \Exception {      // what `throw new Error(msg)` compiles to
   public function __construct(string $message, public readonly string $jsName = 'Error');
 }
-class HttpError extends \Exception {    // `throw new HttpError(404, "not_found", "...")` from `first`
+class HttpError extends \Exception {    // `throw new HttpError(404, "not_found", "...")` from `typedpress`
   public function __construct(public readonly int $status, public readonly string $errorCode, string $message, public readonly ?string $pointer = null);
 }
 ```
@@ -927,7 +1019,7 @@ and calls through erased dynamic receivers; typed class dispatch stays supported
 Own data fields continue to take precedence over inherited methods.
 
 Built-in overloads and phase arity are owned by `src/builtins.rs`. Its generated
-`runtime/First/Builtins.php` guards checked JavaScript dispatch; regenerate with
+`runtime/TypedPress/Builtins.php` guards checked JavaScript dispatch; regenerate with
 `UPDATE_BUILTINS=1 cargo test --lib builtins::tests`. The normal Rust suite
 checks freshness. Type/coercion guards remain at their language boundary.
 JSON parsing/serialization and Error instances are runtime-only. The evaluator
@@ -1012,9 +1104,9 @@ large and adjacent-to-half boundaries.
 
 Static methods on `final class Js`. Value model: JS `number` = PHP
 `int|float`; `string` = PHP `string` (UTF-8; indexes count UTF-16 code units; splitting a surrogate pair throws `RangeError`); `boolean` = `bool`; `null` = PHP `null`; explicit `undefined` = `JsUndefined::Value`;
-arrays are `First\JsArray`, plain objects are `First\JsObject`, both handles
+arrays are `TypedPress\JsArray`, plain objects are `TypedPress\JsObject`, both handles
 with identity; class instances are `JsObject` handles with a non-enumerable
-`JsClass` descriptor; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `First\RegExp`.
+`JsClass` descriptor; functions are `Closure`; `Date` values are numbers (epoch ms); `RegExp` is `TypedPress\RegExp`.
 The compiler emits native PHP whenever types make it safe; these helpers
 cover the cases where JS and PHP genuinely differ. Each must match the
 JavaScript result exactly on the inputs its types allow.
@@ -1135,13 +1227,13 @@ Conversions:
 - `str(mixed $v): string` — `String(v)`. null → `"null"`, bools → `"true"/"false"`, numbers → `numStr`, list → elements `str`'d joined by `,` with null as `""`, assoc → `"[object Object]"`, `RegExp` → `/src/flags`.
 - `numStr(int|float $n): string` — `Number.prototype.toString()`: `NaN`, `Infinity`, `-Infinity`, `-0` → `"0"`, integral values below 1e21 without exponent, shortest round-trip digits (including adjacent decimal candidates at binary rounding boundaries), exponent form `1e+21`, `1.5e-7` exactly where JS uses it (≥ 1e21 or < 1e-6).
 - `toNumber(mixed $v): int|float` — `Number(v)`: null → 0, bool → 0/1, string trimmed of JS whitespace: `""` → 0, decimal, `0x`/`0o`/`0b` prefixes, `Infinity`/`-Infinity`, otherwise NAN. Safe integers (|n| ≤ 2^53) return int, larger values float.
-- `n(int|float $r): int|float` — an int as a JS number: beyond ±2^53 it becomes the nearest double. Compiled `a + b`, `a - b`, `a * b` and unary `-a` on numbers are `add`/`sub`/`mul`/`neg`, which take each operand through `n()` and then the result; `++`/`--` are `preStep`/`postStep(&$x, ±1)` (the place is evaluated once), and `**`/`Math.pow` are `pow(a, b)`. So First ints never do exact arithmetic JS numbers can't, whether an operand is a literal, a computed value, or an exact int read from storage or input. Compiled `JSON.parse` (`jsonParse`) uses `decodeJson(string)`: integers past ±2^53 decode as the double a JS parser would produce. Stored values, ids and request bodies stay exact (identity and storage keys must not round): compiled code that passes such a value on unchanged (a lookup, a write, a return) passes the exact int; only the arithmetic it does sees the JS number. Comparisons (`<`, `===`) and `String(n)` of an untouched exact int past 2^53 still see the exact value, unlike JS; ids that large only come from storage, where the exact value is the right one.
+- `n(int|float $r): int|float` — an int as a JS number: beyond ±2^53 it becomes the nearest double. Compiled `a + b`, `a - b`, `a * b` and unary `-a` on numbers are `add`/`sub`/`mul`/`neg`, which take each operand through `n()` and then the result; `++`/`--` are `preStep`/`postStep(&$x, ±1)` (the place is evaluated once), and `**`/`Math.pow` are `pow(a, b)`. So TypedPress ints never do exact arithmetic JS numbers can't, whether an operand is a literal, a computed value, or an exact int read from storage or input. Compiled `JSON.parse` (`jsonParse`) uses `decodeJson(string)`: integers past ±2^53 decode as the double a JS parser would produce. Stored values, ids and request bodies stay exact (identity and storage keys must not round): compiled code that passes such a value on unchanged (a lookup, a write, a return) passes the exact int; only the arithmetic it does sees the JS number. Comparisons (`<`, `===`) and `String(n)` of an untouched exact int past 2^53 still see the exact value, unlike JS; ids that large only come from storage, where the exact value is the right one.
 - `bitwise(string $operator, mixed $a, mixed $b): int` — compiled `&`, `|`, `^`, `<<`, `>>`, `>>>` and their compound assignments. Both operands go through `toNumber` (objects with the number hint), then ToInt32; the left side of `>>>` uses ToUint32. Shift counts are ToUint32 masked to five bits, so a negative count or a count of 32 or more wraps as in JavaScript. The result is a signed 32-bit int, or an unsigned one for `>>>`. `bitNot(mixed $a): int` is `~a`. Checked JavaScript reaches both through `dynamicBinary`.
 - `hasProperty(mixed $key, mixed $object): bool` — compiled `key in object`. A primitive or undefined right side throws `TypeError` with JavaScript's message. The key goes through ToPropertyKey; own properties are checked, then the value's fixed prototype chain: class methods (instances) or statics and static methods (classes), the built-in prototype names of arrays, arguments, functions, errors, regexes, Map, Set, Date and Math, then `Object.prototype`. Null-prototype objects see only own keys. Arrays are dense, so an index is present exactly when it is below the length. `arguments` and `caller` are inherited by every function; `prototype` presence on a closure throws, because PHP closures don't record whether they were arrows, and so does `stack` on an error.
 - `delete(mixed $object, mixed $key): bool` — compiled `delete object[key]` in strict mode. Null and undefined receivers throw `TypeError`. Own object keys are removed without reordering the others; the result is true, also for absent and inherited keys. Arrays are dense: an in-range index throws `RangeError` (typed code refuses it at build time) rather than leaving a hole, while named array properties and indexes past the end are removed like object keys. `arguments` indexes are removable slots. Non-configurable properties throw JavaScript's `TypeError` (`Cannot delete property 'length' of [object Array]`): array and string `length`, in-range string indexes, regex `lastIndex`, class and function `prototype`, `arguments.callee`, Math constants. Class statics, `arguments.length` and an error's own `message` (reads then fall back to the inherited empty message) are removable; class methods and other modeled built-in own properties throw an explicit unsupported `TypeError`. Frozen arrays (a tagged template's strings) refuse deletion of their elements.
 - `receiverFunction(\Closure $method): \Closure` wraps a compiled function that reads `this` (its receiver is the first PHP parameter). Called plainly it receives undefined; method calls, `call` and `apply` pass the receiver through the checked dispatcher, as for class methods.
 - `templateStrings(string $site, array $cooked, array $raw): JsArray` — a tagged template's first argument: the cooked strings (undefined where an escape is invalid) with a `raw` property. `$site` names the call site, so every call of one site receives the same array. Both arrays are frozen (`JsArray::$frozen`): index and `length` writes and every mutating method throw `TypeError` through `Js::writable`. `templateRaw(JsArray $strings): JsArray` reads `raw` from a typed `TemplateStringsArray`. `stringRaw(mixed $template, mixed ...$substitutions): string` is `String.raw`.
-- `First\JsBigInt` is a JavaScript BigInt: immutable, sign plus base-10^7 limbs, pure PHP. `JsBigInt::literal($digits)` is a compiled literal and `JsBigInt::of($value)` is `BigInt(value)`. Operators reach it through `dynamicBinary`, `neg`, `bitNot`, `add`/`sub`/`mul`/`pow`: arithmetic needs two BigInts (else `TypeError`), relational and loose equality compare mathematically with numbers and numeric strings, `strictEq` compares values. `typeOf` is `bigint`, `truthy` is false only for `0n`, `str` gives decimal digits, `toNumber` throws (ToNumber), `number()` (the `Number()` call) gives the nearest double, and JSON serialization throws.
+- `TypedPress\JsBigInt` is a JavaScript BigInt: immutable, sign plus base-10^7 limbs, pure PHP. `JsBigInt::literal($digits)` is a compiled literal and `JsBigInt::of($value)` is `BigInt(value)`. Operators reach it through `dynamicBinary`, `neg`, `bitNot`, `add`/`sub`/`mul`/`pow`: arithmetic needs two BigInts (else `TypeError`), relational and loose equality compare mathematically with numbers and numeric strings, `strictEq` compares values. `typeOf` is `bigint`, `truthy` is false only for `0n`, `str` gives decimal digits, `toNumber` throws (ToNumber), `number()` (the `Number()` call) gives the nearest double, and JSON serialization throws.
 - `Seam` owns conversions between compiled handles and schema-shaped runtime arrays: Db inputs/results, callback contexts, validators, generators, action/job inputs, Sync envelopes and ability inputs/outputs. User `json()` leaves remain handles in runtime rows. Write inputs detach them from compiled locals; each callback receives a fresh graph. Validator `value` aliases its full path in `ctx.data`; a before-hook's `data`/`patch` aliases `ctx.data` and is read back when no replacement is returned. Native `Extensions` callbacks keep array contracts. A string in a schema callback slot names compiled code; native callbacks use non-string callables.
 - Objects enumerate canonical array-index keys in ascending order, then other keys in insertion order (`ownKeys`). Empty objects encode as `{}` and empty arrays as `[]`, including nested JSON and numeric-keyed objects.
 - Array length assignment applies ToUint32 and ToNumber separately, including both object-conversion effects, before validating the new length.
@@ -1171,7 +1263,7 @@ Strings (indexes and lengths count UTF-16 code units like JS, so 🙂 is two; ne
 - `strIndex(string $s, int|float $i): string|JsUndefined` — numeric bracket access; fractional, negative and non-finite indexes name no character.
 - `strMatch(string $s, RegExp $re): ?JsArray` — `String.prototype.match`: non-global → `[match, ...groups]` (unmatched groups undefined) or null; global → list of all matches or null.
 
-Every runtime and emitted `mb_*` call passes explicit encodings; First never
+Every runtime and emitted `mb_*` call passes explicit encodings; TypedPress never
 depends on `mb_internal_encoding()`.
 
 Computed object keys evaluate before their values; computed fields and map spreads
@@ -1251,15 +1343,15 @@ Misc:
 - `now(): int` — epoch ms. `date(mixed $v): int|float` — `new Date(v).getTime()`: number → itself, ISO/`YYYY-MM-DD` string → ms (date-only = UTC midnight, date-time without zone = UTC). Time requires a complete date and T separator; offsets require a colon. Invalid calendar components produce NAN; unsupported syntax throws RangeError. Like V8 it lets an in-range day overflow (`2021-02-30` → March 2) and takes hour 24 only as exact midnight; legacy/non-ISO syntax is refused explicitly (`10/30/2026` throws RangeError). Column writes don't rely on it for validation: the timestamp codec checks the calendar first. `iso(int|float $ms): string` — `toISOString()`, NAN → `JsError` RangeError.
 - `uuid(): string` — RFC 4122 v4.
 - `random(): float` — `[0, 1)`.
-- `log(string $level, mixed ...$args): void` — `console.log`: args `str`'d (arrays/objects via jsonStringify) joined by a space, written to `error_log` with `[first] ` prefix.
+- `log(string $level, mixed ...$args): void` — `console.log`: args `str`'d (arrays/objects via jsonStringify) joined by a space, written to `error_log` with `[typedpress] ` prefix.
 
 ## TypeScript type normalization
 
-First uses OXC 0.158.0 to parse TypeScript and keeps its annotations and source
+TypedPress uses OXC 0.158.0 to parse TypeScript and keeps its annotations and source
 locations in the typed IR. The native and browser/WASM compilers run the same
 normalizer before PHP emission. These are type operations, not a JavaScript
 engine or a replacement for TypeScript's complete checker. Check authoring
-code with strict TypeScript as well as `first check`.
+code with strict TypeScript as well as `typedpress check`.
 
 | Surface | Support | Boundary |
 |---|---|---|
@@ -1302,7 +1394,7 @@ PHP compilation and generated backend query types retain the authored
 null/undefined domain after model expansion. Public client types apply JSON
 serialization rules after that expansion.
 
-The executable [strict fixture](../tests/fixtures/type-semantics/first.config.ts)
+The executable [strict fixture](../tests/fixtures/type-semantics/typedpress.config.ts)
 imports its generic interfaces from a separate module. Its `typeReport` action
 with input `{"entry":{"id":7,"title":"Hello","state":"draft","active":true}}`
 emits this PHP/JSON result:
@@ -1391,9 +1483,9 @@ phpass, SHA-crypt, and PHP Argon2. Over-budget profiles are never generated or
 verified; supported profiles remain even when their last user upgrades.
 
 Legacy importers can detect the registration capability with
-`is_callable([\First\Identity\Accounts::class, 'rememberPasswordHash'])` and call
-`\First\Identity\Accounts::rememberPasswordHash(string $hash): void` after a raw
-user import. The `first_identity_password_profiles` option remains an associative
+`is_callable([\TypedPress\Identity\Accounts::class, 'rememberPasswordHash'])` and call
+`\TypedPress\Identity\Accounts::rememberPasswordHash(string $hash): void` after a raw
+user import. The `tp_identity_password_profiles` option remains an associative
 map from algorithm/cost profile keys to independent random-password hash strings.
 Registration merges into that map using the importer's existing database
 transaction. Importers must include the option in their rollback cache cleanup.

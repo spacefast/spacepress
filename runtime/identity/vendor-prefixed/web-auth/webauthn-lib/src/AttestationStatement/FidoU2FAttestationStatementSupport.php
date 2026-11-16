@@ -2,31 +2,31 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AttestationStatement;
+namespace TypedPress\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
-use First\Identity\Vendor\CBOR\Decoder;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\Cose\Key\Ec2Key;
+use TypedPress\Identity\Vendor\CBOR\Decoder;
+use TypedPress\Identity\Vendor\CBOR\MapObject;
+use TypedPress\Identity\Vendor\Cose\Key\Ec2Key;
 use function count;
 use function is_array;
 use const OPENSSL_ALGO_SHA256;
 use function openssl_pkey_get_public;
 use function openssl_verify;
 use OpenSSLAsymmetricKey;
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
 use function sprintf;
 use Throwable;
-use First\Identity\Vendor\Webauthn\AuthenticatorData;
-use First\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
-use First\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
-use First\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
-use First\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
-use First\Identity\Vendor\Webauthn\StringStream;
-use First\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorData;
+use TypedPress\Identity\Vendor\Webauthn\Event\AttestationStatementLoaded;
+use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use TypedPress\Identity\Vendor\Webauthn\Exception\AttestationStatementLoadingException;
+use TypedPress\Identity\Vendor\Webauthn\Exception\AttestationStatementVerificationException;
+use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidAttestationStatementException;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
+use TypedPress\Identity\Vendor\Webauthn\StringStream;
+use TypedPress\Identity\Vendor\Webauthn\TrustPath\CertificateTrustPath;
 
 final class FidoU2FAttestationStatementSupport implements AttestationStatementSupport, CanDispatchEvents
 {

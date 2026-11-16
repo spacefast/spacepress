@@ -1,4 +1,4 @@
-# First pages, components, layouts, sync, publish and agents
+# TypedPress pages, components, layouts, sync, publish and agents
 
 Status: broader implementation proposal under the owner's binding rulings (§2).
 An optional [Pages subset](pages.md) now implements TSX routes, layouts,
@@ -14,8 +14,8 @@ It supersedes the content-inference choice in this document's conditional #55
 examples. Other owner decisions, including the Blocks isolation exception,
 remain listed in §10. Dependent implementation waits for them.
 
-New names under `first/pages`, `first/agents`,
-`@spacefast/first-blocks/universal`, `First\Pages` and `First\Agents` describe
+New names under `tp/pages`, `tp/agents`,
+`@typedpress/blocks/universal`, `TypedPress\Pages` and `TypedPress\Agents` describe
 contracts to implement, not existing APIs. WordPress, Data Machine and SEO
 claims were inspected at the exact revisions in §11. That inspection is
 source evidence, not a passing runtime qualification.
@@ -33,25 +33,25 @@ closed as superseded and its remaining API changes were not adopted. Build error
 | Optional pages | `pages/**/page.tsx` beside config, nested `layout.tsx`, optional content-owned `page.md` and `page.blocks.html`. Backend-only produces no page or theme output and invokes no page serializer. DM is required only for declared agents or approvals. |
 | Identity | Hidden code-owned WordPress Pages for static code routes. Content-owned Pages for optional content files. Collection item routes use the item's existing post. One injective route ID encoding (§4.1). |
 | Rendering | Build-time Gutenberg markup, PHP dynamic regions and viewer-bound scalar bindings. Checked universal components can also compile for React. |
-| Editing | TSX never editor-mutable. Hidden code Pages have a separate authorized First routes screen. Content-owned files and collection content can round-trip through optional sync. |
+| Editing | TSX never editor-mutable. Hidden code Pages have a separate authorized TypedPress routes screen. Content-owned files and collection content can round-trip through optional sync. |
 | Routing | Reconciled route-to-post map owns inbound rewrites, outbound permalinks and canonical redirects. Root Page is never another route's parent. |
 | Head | Metadata resolves before output. Title calculation and the single title emitter have separate owners. Qualified SEO adapters preserve unspecified plugin values (§4.4). |
 | Layouts | Plugin canvas by default. Optional block theme with unique route template slugs, stable theme identity and preserved Site Editor customizations. |
 | Publish | Local build is separate from authenticated, signed publish. Durable DB operation ownership spans stage, activate and finalize. Host-acknowledged process drain precedes code/schema cutover; a spare DB connection cannot prove drain. Readiness lives in DB, not a release file. |
 | Immutable hosts | Content-only endpoint plus host-owned code deploy, installed-digest acknowledgments and explicit finalize handshake. No executable PHP in the DB. |
-| Agents | DM core owns runs, conversations, memory and approvals. First compiles manifests and adapts pinned DM abilities. No second agent loop or run ledger. |
-| Approvals | DM required even without declared agents. Proposed `FirstApprovalBridgeV1` supplies human review, atomic local application, unknown-outcome recovery and durable pipeline continuation. Missing bridge fails closed. |
+| Agents | DM core owns runs, conversations, memory and approvals. TypedPress compiles manifests and adapts pinned DM abilities. No second agent loop or run ledger. |
+| Approvals | DM required even without declared agents. Proposed `TypedPressApprovalBridgeV1` supplies human review, atomic local application, unknown-outcome recovery and durable pipeline continuation. Missing bridge fails closed. |
 | Naming | Existing exposure flag becomes `abilities`; top-level `agents` means AI agents. |
 | Unapproved dependencies | #55 stays a proposal. Any config or core coupling to optional Blocks requires the owner's explicit exception. |
-| Queue | One qualified Action Scheduler installation and runner policy for First jobs and DM runs, with separate existing logical owners. |
+| Queue | One qualified Action Scheduler installation and runner policy for TypedPress jobs and DM runs, with separate existing logical owners. |
 
 ## 1. Why
 
-First compiles a config into a WordPress backend with a typed client. The
+TypedPress compiles a config into a WordPress backend with a typed client. The
 owner wants the same project to carry its front end when the author wants
 that: a single `/about` page with a layout, a full site, a couple of routes
 over a collection, or nothing at all behind an Astro or TanStack Start app.
-First Blocks (phase 1 shipped, phase 2 paused) proved the TSX → Gutenberg
+TypedPress Blocks (phase 1 shipped, phase 2 paused) proved the TSX → Gutenberg
 path and found three gaps a page system has to close: a template alone is
 not a route (someone creates the post row), a `public: false` collection is
 invisible to the front end, and CSS and head metadata have no home in block
@@ -65,16 +65,16 @@ document is the decision across all of them.
 Given 2026-11-01. Speech-to-text slips are corrected in brackets. These are
 binding; the rest of the document is read under them.
 
-1. Code pages get **hidden WordPress Page records**. First creates and owns
+1. Code pages get **hidden WordPress Page records**. TypedPress creates and owns
    them, so SEO plugins, menus and canonical URLs work.
 2. Rendering is a **combination**: pages compile at **build time to Gutenberg
    block markup + PHP**. "anything dynamic in there that's important from
    WordPress at render time should render with PHP", "using normal WordPress
    stuff as possible".
-3. **`first sync`** is an **optional subsystem** that syncs "back-and-forth"
+3. **`typedpress sync`** is an **optional subsystem** that syncs "back-and-forth"
    (files ↔ DB). "zero deployments can block from things to be edited in DB
    when the user's not gonna do a sync".
-4. **`first build`** builds. **`first publish`** publishes "to an endpoint
+4. **`typedpress build`** builds. **`first publish`** publishes "to an endpoint
    essentially that's built as a WordPress plugin, like the main plugin, and
    it will just push up everything … and gets saved into the file system".
    This is "our own entirely different mechanism".
@@ -84,14 +84,14 @@ binding; the rest of the document is read under them.
    full site; a couple of routes; backend-only behind static frontends
    (Astro, Vite, TanStack Start).
 6. **Agents: Data Machine is the runtime.** (The owner overruled report 05's
-   First-owned-runtime recommendation.)
+   TypedPress-owned-runtime recommendation.)
 7. Blocks: "we want everything": keep the blocks compiling, with "optional
    layouts that essentially become themes"; layouts authored "like you do in
    TanStack Start or Next"; "still … do WordPress rendering when needed";
    "in the future … zero as an island in Astro, but that's not something
    we're doing today".
-8. Earlier, still binding: WordPress-only; First Blocks is an optional add-on,
-   and First core never depends on it; "we want to not follow the wordpress
+8. Earlier, still binding: WordPress-only; TypedPress Blocks is an optional add-on,
+   and TypedPress core never depends on it; "we want to not follow the wordpress
    stuff if not needed"; compiled code must match JavaScript or refuse;
    "Current behavior doesn't matter … what matters is JS turns into PHP
    properly".
@@ -100,20 +100,20 @@ binding; the rest of the document is read under them.
 
 The journal project shape and config excerpt. Everything under `pages/`,
 `components/`,
-`islands/`, `styles/` and `agents/` is optional; `first.config.ts` alone is
-still a whole First app.
+`islands/`, `styles/` and `agents/` is optional; `typedpress.config.ts` alone is
+still a whole TypedPress app.
 
 ```text
 journal/
-├── first.config.ts                 # data, access, hooks, actions, jobs, pages switches, agents
-├── first/_generated/db.d.ts                    # generated; unchanged
+├── typedpress.config.ts                 # data, access, hooks, actions, jobs, pages switches, agents
+├── tp/_generated/db.d.ts                    # generated; unchanged
 ├── tsconfig.json                  # jsx: react-jsx; include pages, components, islands
 ├── agents/
 │   └── editor.md                  # instructions → the DM pipeline step's system prompt (§4.10)
 ├── pages/
 │   ├── layout.tsx                 # root layout: chrome + metadata defaults
 │   ├── page.tsx                   # /  (front page; §4.7)
-│   ├── not-found.tsx              # First's 404 body for claimed routes
+│   ├── not-found.tsx              # TypedPress's 404 body for claimed routes
 │   ├── theme.config.ts            # optional: present → layouts compile to a block theme (§4.6)
 │   ├── about/
 │   │   └── page.tsx               # /about, code-owned Page record
@@ -141,14 +141,14 @@ journal/
 │   └── global.css
 ├── content/
 │   └── posts/*.md                 # collection sync (existing feature)
-└── .first/
+└── .tp/
     ├── sync-base.json             # committed
     └── wp-content/                # build output, ignored
-        ├── mu-plugins/first-loader.php            # host-installed early admission gate
-        ├── plugins/first-runtime/                 # includes the publish endpoint (§4.9)
-        ├── plugins/first-identity/
-        ├── plugins/first-app-journal/
-        │   ├── first-app-journal.php              # stable bootstrap reads the DB release tuple (§4.9)
+        ├── mu-plugins/typedpress-loader.php            # host-installed early admission gate
+        ├── plugins/typedpress-runtime/                 # includes the publish endpoint (§4.9)
+        ├── plugins/typedpress-identity/
+        ├── plugins/typedpress-app-journal/
+        │   ├── typedpress-app-journal.php              # stable bootstrap reads the DB release tuple (§4.9)
         │   └── releases/<digest>/
         │       ├── app/                          # today's generated plugin tree
         │       ├── pages/routes.php              # route table, rewrites, Page reconciler, canvas selection
@@ -161,24 +161,24 @@ journal/
         │       ├── assets/*.css|*.js             # hashed
         │       ├── theme/                        # optional immutable theme payload (§4.6)
         │       └── agents/manifest.php           # §4.10
-        ├── plugins/first-admin/                   # unless admin: false
-        └── themes/first-journal/                  # stable stylesheet path; theme-mode only
+        ├── plugins/typedpress-admin/                   # unless admin: false
+        └── themes/typedpress-journal/                  # stable stylesheet path; theme-mode only
             ├── style.css
             ├── theme.json
             ├── templates/*.html
             └── parts/*.html
 ```
 
-`first.config.ts` is data and switches. It gains `pages?` (switches for the
+`typedpress.config.ts` is data and switches. It gains `pages?` (switches for the
 subsystem, §4.8) and `agents?` (§4.10). It never names a route; pages
 import collections from it, never the reverse.
 
 ```ts
-// first.config.ts (the journal)
+// typedpress.config.ts (the journal)
 import {
   collection, text, richText, slug, boolean, media, group, ref, user,
   action, job, jobs, db, HttpError, defineConfig, type Row,
-} from "first";
+} from "typedpress";
 
 export const authors = collection({
   name: text().notNull().max(80),
@@ -259,22 +259,22 @@ the old route. Generated filenames, block names and theme slugs use a
 checked manifest key `k` (lowercase SHA-256 of the length-prefixed app ID
 and full route ID), never a lossy punctuation replacement. Detect a digest
 collision at build time. The manifest maps `k` back to the full ID. Region
-`n` has block name `first/r<k>-<n>` and directory `blocks/r<k>-<n>/`.
+`n` has block name `tp/r<k>-<n>` and directory `blocks/r<k>-<n>/`.
 
 **Request lifecycle.** The reconciler creates the route-to-post map before
 readiness. Every static route has an explicit top rewrite to its mapped
 `page_id`; the collection permastruct uses its route directory and existing
 post. A static sibling wins over a dynamic pattern and reserves that slug
 at every supported collection write entry, including core REST and SCF;
-the reserved-slug validator cannot exist only in First CRUD. Flush rules
+the reserved-slug validator cannot exist only in TypedPress CRUD. Flush rules
 only when the ready route-map hash changes. Refuse plain-permalink
 installations for page output in v1.
 
 WordPress still performs the main query. At `template_redirect:0`, before
-core canonical redirects, First
+core canonical redirects, TypedPress
 claims only its normalized route patterns. A matching readable managed
 object selects that route. A missing, draft or access-denied item becomes
-a real 404 with `nocache_headers()` and the First not-found body. An
+a real 404 with `nocache_headers()` and the TypedPress not-found body. An
 unclaimed URL remains the active theme's responsibility. The default
 `template_include` result for claimed routes is the plugin canvas; theme
 mode follows §4.6. Canonical links and redirects use §4.7's route map,
@@ -291,7 +291,7 @@ a collection declaration does not execute its trusted hooks/actions. A null
 viewer is never passed; an anonymous visitor is
 `Viewer(null)`, which `Db` already distinguishes from the trusted null. The
 loader's return value is the page's props and is memoized in
-`First\Pages\Request` for bindings and regions to read.
+`TypedPress\Pages\Request` for bindings and regions to read.
 
 **HTTP cache boundary.** V1 bypasses shared full-page caches for every managed
 page, including anonymous pages. It sends `Cache-Control: private, no-store`
@@ -324,7 +324,7 @@ managed items before any row reaches page loaders, bindings, excerpts or
 metadata, even if WordPress found the published post. They receive the same
 uncached not-found result. The query guard in §6 enforces this exclusion,
 including cached result adapters; it does not silently clear an existing
-`post_password`. Supported core REST, SCF, editor, sync and First write paths
+`post_password`. Supported core REST, SCF, editor, sync and TypedPress write paths
 refuse adding a password to a page-enabled managed item. Imported existing
 passwords remain stored and make the affected item non-servable. Full native
 password-cookie support is deferred until its request-specific authorization
@@ -337,7 +337,7 @@ error.
 ```tsx
 // pages/posts/page.tsx
 import { PostCard } from "../../components/PostCard";
-import type { Metadata, PageContext, PageProps } from "first/pages";
+import type { Metadata, PageContext, PageProps } from "tp/pages";
 
 export const route = { id: "posts.index" };
 export const metadata = { title: "Posts" } satisfies Metadata;
@@ -373,18 +373,18 @@ and item pages cannot disagree.
 ### 4.2 The component contract: React and WordPress
 
 **Decision.** One component source, two compilers. The React build uses the
-automatic JSX runtime and nothing First-specific. The WordPress build reads the
+automatic JSX runtime and nothing TypedPress-specific. The WordPress build reads the
 same source before any transform and lowers it to the IR (§4.3). A component
 is **universal** when it is a synchronous, deterministic function of
 serializable props and children that uses only: intrinsic HTML tags the
 Blocks mapping table accepts, primitives from
-`@spacefast/first-blocks/universal`, other universal components, fragments,
+`@typedpress/blocks/universal`, other universal components, fragments,
 conditionals (`? :`, `&&`, `||`, `??`, `if`), `.map` over arrays, template
-strings and the pure helpers First's subset already compiles. The check is
+strings and the pure helpers TypedPress's subset already compiles. The check is
 transitive through imports and branches; a filename or comment cannot claim
 it.
 
-`@spacefast/first-blocks/universal` exports real React implementations of
+`@typedpress/blocks/universal` exports real React implementations of
 `Group`, `Heading`, `Paragraph`, `Image`, `Buttons`, `Button`, `Columns`,
 `Column`, `List`, `ListItem`, `Separator`, `Spacer`, `Cover`, `Quote`,
 `RichText` (renders authorized, save-sanitized stored content) and the WordPress contextual
@@ -409,7 +409,7 @@ explicit island (§4.5) or not at all.
 
 ```tsx
 // components/PostCard.tsx
-import { Group, Heading, Paragraph, Buttons, Button } from "@spacefast/first-blocks/universal";
+import { Group, Heading, Paragraph, Buttons, Button } from "@typedpress/blocks/universal";
 import styles from "./PostCard.module.css";
 
 export type PostCardProps = { title: string; excerpt: string; href: string };
@@ -428,8 +428,8 @@ export function PostCard({ title, excerpt, href }: PostCardProps) {
 ```
 
 In an Astro, Vite or TanStack Start app this is an ordinary import; data
-comes from the generated client. First does not ship a React router, a data
-layer or hydration for those hosts; "First as an Astro island" is future work
+comes from the generated client. TypedPress does not ship a React router, a data
+layer or hydration for those hosts; "TypedPress as an Astro island" is future work
 by ruling 7.
 
 ### 4.3 The rendering pipeline: IR → blocks, bindings, PHP
@@ -446,15 +446,15 @@ node:
 | Node | Output | Rule |
 |---|---|---|
 | Literal element, literal text and attributes, universal primitive with literal props | **Static block markup.** The subtree is serialized once at build time by Blocks' pinned core serializer (`createBlock` + `serialize`, reparsed for validity). | Everything is static until proven otherwise. |
-| A supported scalar slot whose value is a `loader-field` or a `derived` string/URL over loader fields: `Heading`/`Paragraph` content, `Button` text and `url`, `Image` `url`/`alt` (only attributes registered as bindable by the pin) | **Block binding.** `metadata.bindings.<attr> = { source: "first/page-field", args: { route, field } }`. For a `derived` value the compiler emits a PHP accessor for the expression and registers the result as a named field of the route. | Pinned WordPress bindings replace only their supported attributes at render; the source reads only compiler-registered fields of the memoized request. |
-| A conditional whose test depends on the request, a `.map` over loader rows, a `derived` value in a non-bindable position, a contextual primitive with request-dependent props | **PHP region**: a generated dynamic block `first/r<k>-<n>` with `block.json` (`render: file:./render.php`, `supports.inserter: false`), `render.php` compiled by First's existing expression compiler, and a minimal `index.js` (`edit` shows a labelled placeholder, `save: () => null`). | Structure that changes per request is PHP by ruling 2. |
+| A supported scalar slot whose value is a `loader-field` or a `derived` string/URL over loader fields: `Heading`/`Paragraph` content, `Button` text and `url`, `Image` `url`/`alt` (only attributes registered as bindable by the pin) | **Block binding.** `metadata.bindings.<attr> = { source: "tp/page-field", args: { route, field } }`. For a `derived` value the compiler emits a PHP accessor for the expression and registers the result as a named field of the route. | Pinned WordPress bindings replace only their supported attributes at render; the source reads only compiler-registered fields of the memoized request. |
+| A conditional whose test depends on the request, a `.map` over loader rows, a `derived` value in a non-bindable position, a contextual primitive with request-dependent props | **PHP region**: a generated dynamic block `tp/r<k>-<n>` with `block.json` (`render: file:./render.php`, `supports.inserter: false`), `render.php` compiled by TypedPress's existing expression compiler, and a minimal `index.js` (`edit` shows a labelled placeholder, `save: () => null`). | Structure that changes per request is PHP by ruling 2. |
 
 Inside a PHP region the compiler keeps block markup as the output language:
 each branch of a conditional and the body of a loop is a serialized block
 template (built at build time by the same serializer) whose own scalar slots
-bind to `first/region-field`, a source that reads the region's current scope
+bind to `tp/region-field`, a source that reads the region's current scope
 (the loop item, the branch's locals). `render.php` evaluates the condition
-or iterates the array with First's JS semantics (`Js::truthy`, `Js::map`,
+or iterates the array with TypedPress's JS semantics (`Js::truthy`, `Js::map`,
 dense arrays per `docs/design-js-references.md`), sets the scope, and calls
 `do_blocks($template)`. Rendering therefore never concatenates HTML by hand
 for core-block-shaped nodes, and WordPress's own block filters, styles and
@@ -463,8 +463,8 @@ that map to no core block (`<time>`, `<span>` with text) are emitted through
 `core/html` for static parts and through a context-escaped `HtmlBuffer`
 (`text()`, `attribute()`) for dynamic text, as report 03 §7 specified.
 
-**Contextual primitives and field access.** On a First collection route the
-queried post is a First row whose columns carry First's read and field rules,
+**Contextual primitives and field access.** On a TypedPress collection route the
+queried post is a First row whose columns carry TypedPress's read and field rules,
 which `core/post-content`, `core/post-title` and friends do not know. So on
 such a route `PostTitle`, `PostContent`, `PostDate` and `PostFeaturedImage`
 compile to bindings and regions over the viewer-bound `item` (title → a
@@ -472,15 +472,15 @@ binding on `item.title`; `PostContent` and `RichText value={item.body}` → a
 region that renders the row-authorized, password-excluded, save-sanitized body through
 the qualified content pipeline under the current post context), never to `core/post-*`
 blocks. `core/post-*` blocks are emitted only when the queried post is a
-core type (a First Page record, or a core `post` inside an inherited
+core type (a TypedPress Page record, or a core `post` inside an inherited
 `QueryLoop`); their native `post_password_required()` behavior remains intact.
 Applying `the_content` filters to raw stored text is not that password check.
 `PostContent` targeting its own code-owned Page is refused
 to prevent recursively rendering the stored compiled body. `Navigation`
 and `QueryLoop inherit` compile to their core
-blocks unchanged. `QueryLoop` with an explicit First collection is refused in
+blocks unchanged. `QueryLoop` with an explicit TypedPress collection is refused in
 v1: a listing over First rows is `load()` plus `.map`, which is a region and
-therefore viewer-bound. Theme and plugin queries from outside First's pages
+therefore viewer-bound. Theme and plugin queries from outside TypedPress's pages
 are covered by the row filter in §6.
 
 **What the match-JS rule means here.** Expressions inside pages are compiled
@@ -493,8 +493,8 @@ preserved).
 **Build output for `pages/posts/[slug]/page.tsx`.** Source:
 
 ```tsx
-import { collectionPage, RichText, type CollectionPageProps, type Metadata } from "first/pages";
-import { posts } from "../../../first.config";
+import { collectionPage, RichText, type CollectionPageProps, type Metadata } from "tp/pages";
+import { posts } from "../../../typedpress.config";
 import { PostCard } from "../../../components/PostCard";
 import styles from "./post.module.css";
 
@@ -539,7 +539,7 @@ precompiled block templates. Unsupported attributes fail instead of being
 dropped. No handwritten substitute for a core block's `save()` markup is
 part of this contract.
 
-`first/page-field` and `first/region-field` callbacks accept only manifest-listed
+`tp/page-field` and `tp/region-field` callbacks accept only manifest-listed
 (route ID, field, block, attribute) tuples in the current request scope.
 Bindings follow the pinned block attribute's text, HTML or URL contract;
 the adapter applies its required escaping exactly once. Arbitrary field
@@ -560,12 +560,12 @@ replace. Canonical and `og:url` default to the route-map permalink under
 `home_url()`, never the request Host header. Resolve loaders and metadata
 before output. Editorial SEO values stay ordinary readable columns.
 
-Title calculation and title emission are separate contracts. First owns
+Title calculation and title emission are separate contracts. TypedPress owns
 exactly one unconditional `<title>` callback on `wp_head` for its routes in
-both canvas and theme modes. With no SEO provider it uses the resolved First
+both canvas and theme modes. With no SEO provider it uses the resolved TypedPress
 title or `wp_get_document_title()`. With a qualified provider it preserves
 that provider's calculated default and overrides it only for an explicit
-First title:
+TypedPress title:
 
 | Provider | Title calculation | Other field adapters |
 |---|---|---|
@@ -586,9 +586,9 @@ provider HTML entities), then the emitter escapes it once. TSF's
 It must work under a classic theme
 without `title-tag` support as well as core's block canvas.
 
-For other families, the active qualified provider emits; explicit First
+For other families, the active qualified provider emits; explicit TypedPress
 values pass through its field filters and unspecified values stay plugin-owned.
-Without a provider, First emits description, canonical, Open Graph, Twitter
+Without a provider, TypedPress emits description, canonical, Open Graph, Twitter
 and JSON-LD, uses `wp_robots`, and removes core `rel_canonical` only for
 claimed routes. Do not disable a provider's entire head to solve a title
 collision. Multiple active SEO providers or an unsupported emitting provider
@@ -644,18 +644,18 @@ still load. `<TemplatePart>` is refused in canvas mode.
 
 Owner-open theme output uses `pages/theme.config.ts` and Blocks'
 `defineTheme`. Each static route gets a unique custom template slug
-`first-r<k>`, emitted as `templates/first-r<k>.html` and declared in
+`typedpress-r<k>`, emitted as `templates/typedpress-r<k>.html` and declared in
 `theme.json.customTemplates` for `page`. The reconciler assigns that slug
 through `_wp_page_template`. Core adds the assigned name before
 `page-<slug>` in the hierarchy and resolves the block template. Therefore
 `/company/team` and `/support/team` cannot both select `page-team.html`.
-The collection's single route uses `single-first_<key>.html`; only one item
+The collection's single route uses `single-tp_<key>.html`; only one item
 route per collection is allowed. `index.html` is required; root and claimed
 404 selection explicitly prepend their route template through
 `frontpage_template_hierarchy` and `404_template_hierarchy`, ahead of generic
 front-page and 404 candidates. Template parts use `parts/<slug>.html`.
 
-Theme identity is the stable stylesheet `first-<app>`, never a digest-named
+Theme identity is the stable stylesheet `typedpress-<app>`, never a digest-named
 stylesheet that would abandon customizations on each publish. Theme payloads
 are immutable and paired with the app digest in the release manifest.
 Writable hosts stage both payloads, then the exclusive finalizer switches a
@@ -674,10 +674,10 @@ recovery compares the real installed theme digest with the operation's
 recorded pair. No request serves a mismatched app/theme pair. Clear theme
 file-discovery, `theme.json`, object-cache and opcache entries at cutover.
 
-First theme activation is explicit (`first publish --activate-theme`),
+TypedPress theme activation is explicit (`first publish --activate-theme`),
 authorized and recorded in the publish operation. While admissions are
 closed, finalization installs/selects the paired theme and calls
-`switch_theme('first-<app>')` when the stylesheet changes. It checkpoints
+`switch_theme('typedpress-<app>')` when the stylesheet changes. It checkpoints
 `theme_boot_required` and returns a continuation without reopening. A
 subsequent finalize request loads the selected theme from the start, runs
 WordPress's deferred `after_switch_theme` work and verifies `template`,
@@ -690,7 +690,7 @@ activates or overwrites one. Canvas mode leaves the theme alone.
 
 Site Editor customizations stay under the stable stylesheet and shadow
 theme files according to WordPress's model. Publish never overwrites their
-`wp_template`, `wp_template_part` or global-style posts. `first doctor`
+`wp_template`, `wp_template_part` or global-style posts. `typedpress doctor`
 reports drift; region references in customizations must remain available or
 publish refuses retirement until the customization is reset. Rollback
 restores the recorded app/theme pair and prior theme options under the same
@@ -702,10 +702,10 @@ proof, not a second routing convention.
 ### 4.7 Editing and Page records
 
 The route reconciler runs during closed-admission finalization and explicit
-`first doctor --fix`, never as an uncoordinated frontend repair. A unique
+`typedpress doctor --fix`, never as an uncoordinated frontend repair. A unique
 (site/blog, app, full route ID) mapping owns one static Page. Persist the
-mapping in a First control table with a unique key, plus `_first_app` and
-`_first_route` post meta for discovery. Post meta alone has no uniqueness
+mapping in a TypedPress control table with a unique key, plus `_tp_app` and
+`_tp_route` post meta for discovery. Post meta alone has no uniqueness
 constraint. Collection routes map to existing item posts.
 
 Code Pages store compiled `post_content`, its digest, a static navigation
@@ -745,13 +745,13 @@ Removed static routes move their records to trash with retirement metadata.
 with an explicit ID preserves the record and its navigation references.
 
 **Hidden means outside the editing workspace.** Code Pages are absent from
-the normal Pages list, its search and counts, editor pickers and First Admin
+the normal Pages list, its search and counts, editor pickers and TypedPress Admin
 content lists. Core REST `context=edit` lists and search omit them. Hide
 them at those scoped query/response boundaries, not by making the public
 post private or filtering every Page query. Frontend queries, public REST
 read contexts, navigation references and sitemaps retain their public
-identity. A First routes screen lists source paths and diagnostics under a
-separate view authorization; its links are generated by First, not
+identity. A TypedPress routes screen lists source paths and diagnostics under a
+separate view authorization; its links are generated by TypedPress, not
 `get_edit_post_link`, whose filter never runs when `edit_post` is denied.
 Existing menu references work; a route picker in that screen can supply
 public Page IDs and URLs without exposing a mutable code Page editor.
@@ -759,7 +759,7 @@ public Page IDs and URLs without exposing a mutable code Page editor.
 `map_meta_cap` denies core `edit_post` and `delete_post` on code Pages;
 route-specific REST, autosave, revision restore, XML-RPC and admin write
 paths also deny changes. Direct navigation to `post.php` fails. There is no
-First CRUD endpoint for these Pages. The defense at `wp_insert_post_data`
+TypedPress CRUD endpoint for these Pages. The defense at `wp_insert_post_data`
 returns the stored owned fields for unauthorized updates (and reports the
 refusal at API boundaries); this array filter cannot return `WP_Error`.
 Only a private, request-local reconciler authorization can change owned
@@ -773,7 +773,7 @@ TSX template is always code-owned. Collection sync policy is in §4.8.
 
 ### 4.8 Sync
 
-**Decision (ruling 3).** `first sync` extends the existing engine (UIDs,
+**Decision (ruling 3).** `typedpress sync` extends the existing engine (UIDs,
 per-site base, field-wise three-way merge, server body merge, stale-write
 rejection, conflict files, `resolve`) to pages. Nothing is replaced.
 
@@ -788,8 +788,8 @@ rejection, conflict files, `resolve`) to pages. Nothing is replaced.
   `422 not_representable` and the file is left alone, never flattened. Pulls
   take the stored `post_content`, never `the_content()` output; a dynamic
   block comes back as its self-closing reference.
-- **Identity.** The Page record's `_first_uid` (minted by the existing `Uid`
-  runtime) in front matter; `_first_route` ties it to the route. A renamed
+- **Identity.** The Page record's `_tp_uid` (minted by the existing `Uid`
+  runtime) in front matter; `_tp_route` ties it to the route. A renamed
   file keeps its UID and an explicit route ID when identity must survive.
   Directory paths own Page URLs; core slug/parent edits are locked, not
   silently interpreted as file renames. Collection slugs remain ordinary
@@ -804,17 +804,17 @@ rejection, conflict files, `resolve`) to pages. Nothing is replaced.
 - **Sync off.** With `pages.sync` off, content-owned Pages seed once and
   use §4.7's write lock. Collections with no sync history remain ordinarily
   editable. Removing a collection's sync declaration requires a clean
-  export (`first sync --check` exits 2 for unexported edits); its previously
+  export (`typedpress sync --check` exits 2 for unexported edits); its previously
   managed rows retain their management provenance and lock until an
   authorized ownership-release operation. This does not lock unrelated rows
-  or collections. All core and First write entries enforce the lock; First
+  or collections. All core and TypedPress write entries enforce the lock; TypedPress
   CRUD returns `409 managed_record`. An authenticated sync validates its
   base before receiving private write authorization. Turning page sync on
   establishes a base first; turning it off refuses unexported edits.
 
 ### 4.9 Build and publish, with runtime constraints
 
-`first build` writes `first/dist/wp-content/` locally. It never contacts or
+`typedpress build` writes `tp/dist/wp-content/` locally. It never contacts or
 mutates a site. With pages enabled it needs the pinned Node serializer;
 missing tools fail the build. Backend-only builds invoke no page tool.
 Platform plugins and the stable release bootstrap are installed and
@@ -849,7 +849,7 @@ Only stable control-schema code can answer status/recovery while release
 readiness is closed.
 
 **Authentication and signing.** HTTPS and a WP application password identify
-the publisher; `first_publish` authorizes the operation. During an explicit
+the publisher; `tp_publish` authorizes the operation. During an explicit
 initial enrollment that capability binds a publisher public key to the
 site/app. The CLI uses that enrolled key to sign an RFC 8785 canonical JSON manifest
 with Ed25519. The manifest binds site/blog ID, app ID, expected active
@@ -915,7 +915,7 @@ open; the CLI resumes the same operation key:
 
 **All consumers share the barrier.** The stable bootstrap checks uncached
 open/ready and generation before loading generated code. The host admits
-the invocation into the currently open process generation. First REST,
+the invocation into the currently open process generation. TypedPress REST,
 core REST collection reads and writes, SCF,
 wp-admin editors, frontend queries, abilities, cron, Action Scheduler, DM
 tools, sync and CLI/WP-CLI all enter here. Static provider code stays
@@ -1006,9 +1006,9 @@ uploads and is never `eval`ed.
 ### 4.10 Agents on Data Machine
 
 **Decision (ruling 6).** `defineConfig({ agents })` declares agents;
-Data Machine executes them. First's part is a compile-time manifest, a
-versioned adapter, action-level approval policy enforced in First's canonical
-invocation path, and `first doctor`. There is no First run ledger, no First
+Data Machine executes them. TypedPress's part is a compile-time manifest, a
+versioned adapter, action-level approval policy enforced in TypedPress's canonical
+invocation path, and `typedpress doctor`. There is no TypedPress run ledger, no TypedPress
 transcript store, no second agent loop.
 
 **Rename.** The boolean `agents` option on collections, globals, actions and
@@ -1021,8 +1021,8 @@ mechanism wrongly. No shim: unreleased. This supersedes #55's open question
 **Config API.**
 
 ```ts
-// first.config.ts (the pantry, excerpt)
-import { collection, text, integer, date, action, agent, db, HttpError, defineConfig } from "first";
+// typedpress.config.ts (the pantry, excerpt)
+import { collection, text, integer, date, action, agent, db, HttpError, defineConfig } from "typedpress";
 
 export const items = collection({
   name: text().notNull(),
@@ -1102,7 +1102,7 @@ principal, access, `agent_config` with `default_provider`, `default_model`,
 pipelines as DM `workflow` objects, flows with `scheduling_config`,
 approvals, and the runtime lock: adapter `dm-0.200.4`, DM source ref, Agents
 API ref, artifact SHA-256). The bundled adapter
-`First\Agents\Adapters\Dm02004` is the only code that names a DM class,
+`TypedPress\Agents\Adapters\Dm02004` is the only code that names a DM class,
 ability or filter.
 
 **Where the prompts go.** `instructions` is the bundled file's content and
@@ -1113,7 +1113,7 @@ converts into the step's prompt queue; DM re-runs the configured prompt on
 every scheduled occurrence. On update the adapter writes the step's
 `system_prompt` through `datamachine/update-pipeline-step` and the flow's
 `user_message` through `datamachine/configure-flow-steps`; both fields are
-First-owned and reconciled, other step and flow fields are left as DM holds
+TypedPress-owned and reconciled, other step and flow fields are left as DM holds
 them.
 
 **Adapter lifecycle.** These existing DM calls are the integration points,
@@ -1123,12 +1123,12 @@ not evidence that the proposed bridge already exists:
 |---|---|
 | Bootstrap | For agents **or approvals**, request full runtime before `plugins_loaded:20` on reconcile, dispatch, schedules, review and all action entry paths. Detection includes the current manifest and persisted owned-resource mappings, including retired resources after the last declaration is removed. Cover direct REST, abilities, MCP and admin. An approval-only app still installs DM, its SQL pending-action store, the adapter and bridge. |
 | Provision | Under an operator and a DB-backed reconcile lock, call `datamachine/create-agent` with explicit `agent_slug`, `owner_id`, `site_scope` and config. Persist the returned numeric `agent_id`. Pass that exact ID to `datamachine/create-pipeline`, its seeded flow and each additional `datamachine/create-flow`. A missing ID must not fall back to the provisioning operator's current agent. Create flows with manual scheduling. |
-| Verify and schedule | Read back every agent, pipeline and flow. Verify site scope, agent owner, pipeline `agent_id`, flow `agent_id`, pipeline/step IDs and the First resource key before recording the mapping and enabling schedules with `update-flow`. Ownership drift fails readiness; never adopt another agent's rows. |
-| Update | Read mapped resources first, then `update-agent`, `update-pipeline-step`, `configure-flow-steps`, `update-flow`. Preserve fields outside First's declared ownership. A crash after a non-idempotent create is reconciled through the deterministic owned key before retry; an ambiguous match stops. |
+| Verify and schedule | Read back every agent, pipeline and flow. Verify site scope, agent owner, pipeline `agent_id`, flow `agent_id`, pipeline/step IDs and the TypedPress resource key before recording the mapping and enabling schedules with `update-flow`. Ownership drift fails readiness; never adopt another agent's rows. |
+| Update | Read mapped resources first, then `update-agent`, `update-pipeline-step`, `configure-flow-steps`, `update-flow`. Preserve fields outside TypedPress's declared ownership. A crash after a non-idempotent create is reconciled through the deterministic owned key before retry; an ambiguous match stops. |
 | Retire | Diff desired keys against all persisted owned mappings under the publish barrier. Verify ownership, disable/pause removed flows, remove their recurring and one-time schedules through the pinned DM scheduler, and verify readback before readiness. Retain tombstones, history and memory; do not delete unrelated DM resources or infer ownership from a display name. Unresolved owned orphans fail readiness. |
-| Start | Authorize First `access` and dispatch `datamachine/run-flow` with the mapped ID and `respect_paused: true` under `PermissionHelper::run_as_system()` for that call only. DM's dispatch is non-idempotent. A DM-owned durable dispatch receipt must store intent and the resulting DM job ID; this requires a qualified adapter/DM integration capability rather than a presumed `run-flow` option. An uncertain result is held for DM reconciliation, never retried on timeout alone. No First run table is introduced. |
+| Start | Authorize TypedPress `access` and dispatch `datamachine/run-flow` with the mapped ID and `respect_paused: true` under `PermissionHelper::run_as_system()` for that call only. DM's dispatch is non-idempotent. A DM-owned durable dispatch receipt must store intent and the resulting DM job ID; this requires a qualified adapter/DM integration capability rather than a presumed `run-flow` option. An uncertain result is held for DM reconciliation, never retried on timeout alone. No TypedPress run table is introduced. |
 | Tools | `datamachine_engine_snapshot` supplies `job.ability_tools`, `job.mode_models` and a sealed scope only for verified, currently declared owned flows. Retired or stale-generation owned flows fail closed before dispatch, not by falling back to native DM tools. `datamachine_resolved_tools` intersects to the allowlist. Schemas come from registered abilities via DM's `AbilityToolSource`. Exclude management, resolution and memory-write tools when not explicitly permitted. |
-| Memory and admin | Use DM `AgentMemory` with the qualified private store described below. `datamachine_admin_pages` supplies operator discovery; First Admin supplies readiness, resource links and human review cards under First authorization. DM admin capabilities are not granted by an agent's `access`. |
+| Memory and admin | Use DM `AgentMemory` with the qualified private store described below. `datamachine_admin_pages` supplies operator discovery; TypedPress Admin supplies readiness, resource links and human review cards under TypedPress authorization. DM admin capabilities are not granted by an agent's `access`. |
 
 DM's AI step sets the WP current user to the DM agent's owner. The fixed
 non-admin service principal owns its shared memory. The initiating human,
@@ -1143,7 +1143,7 @@ second run ledger. It survives removing a flow, an entire agent or the final
 top-level `agents` declaration. Before reopening readiness, reconcile every
 previously owned mapping against the selected manifest. Disable removed
 flows and unschedule both recurring and one-time delivery; cancellation is
-not proved by deleting only a First declaration. Retries resume the same
+not proved by deleting only a TypedPress declaration. Retries resume the same
 retirement checkpoint and verify DM state before recording completion.
 
 Queued occurrences and direct native DM starts must pass a qualified
@@ -1157,14 +1157,14 @@ tombstone blocks new starts regardless. Keep runs, transcripts and memory
 for authorized operator history. Do not delete them to make doctor green.
 If the pinned integration cannot enforce these transitions at all dispatch
 and resume paths, removal cannot become ready. Unrelated native DM work
-keeps its behavior; only positively verified First-owned IDs are affected.
+keeps its behavior; only positively verified TypedPress-owned IDs are affected.
 
 **Memory privacy is readiness.** DM's default disk path under public WP
 uploads is not qualified merely because it is writable and persistent.
 Select a host-configured DM `AgentMemory` store outside every document root
 and public upload/CDN namespace, with storage permissions restricted to the
 service and an authorized DM access path. It must remain persistent and
-shared across all agent workers. This preserves DM's memory engine; First
+shared across all agent workers. This preserves DM's memory engine; TypedPress
 does not add another store protocol. A web-server rule or `.htaccess` file
 alone is not proof that another origin, server or CDN honors it.
 
@@ -1182,7 +1182,7 @@ rely on PHP authorization that the file server bypasses.
 **Approval is canonical, including without agents.** Every entry to an
 approval-bearing action stages through `PendingActionHelper::stage()` instead of executing.
 The normalized input, original principal, target identity/version fingerprint,
-policy digest, code/handler version and expiry are stored in DM. No First
+policy digest, code/handler version and expiry are stored in DM. No TypedPress
 approval table is added. If DM, SQL claims, full runtime or the qualified
 bridge is unavailable, invocation returns an explicit unready error and
 performs no mutation. `idempotent: true` alone does not make an approval safe.
@@ -1190,21 +1190,21 @@ performs no mutation. `idempotent: true` alone does not make an approval safe.
 DM's native pending-action scope is creator-bound by default; its public
 Agents API ability also has a permission gate. The facade
 `ResolvePendingActionAbility::execute()` calls the resolver function, so
-First must authorize its own internal dispatch rather than assume that calling
-the facade re-runs a public ability permission callback. First's review
+TypedPress must authorize its own internal dispatch rather than assume that calling
+the facade re-runs a public ability permission callback. TypedPress's review
 endpoint authenticates a human with cookie and nonce, checks `approval.by`,
 and creates a request-local signed reviewer context bound to the action ID,
 decision, policy version and expiry. It calls the facade under narrowly
 scoped `run_as_system()` with explicit `resolver: "user:<id>"` and
 `operator_wide: true` in internal context. This admits the operator scope;
-it is not itself approval authorization. The First handler's `can_resolve`
+it is not itself approval authorization. The TypedPress handler's `can_resolve`
 requires that signed context, rechecks the actual human and rejects an acting
 DM agent. DM's native route/tool cannot supply it. Never accept an inbound
 caller-supplied resolver, operator flag or reviewer signature as authority.
 
-**Required `FirstApprovalBridgeV1`, not stock DM behavior.** The bridge is a
+**Required `TypedPressApprovalBridgeV1`, not stock DM behavior.** The bridge is a
 versioned DM integration patch or upstream change. It extends DM's canonical
-resolver/store, not a parallel First approval engine, and must supply:
+resolver/store, not a parallel TypedPress approval engine, and must supply:
 
 1. **Atomic local application.** On one transactional DB connection, lock
    the pending action and the target row/version, recheck principal access,
@@ -1244,7 +1244,7 @@ reconciliation; `complete_claim` accepts accepted/rejected/failed, not a new
 `outcome_unknown` status. The bridge must retain the consumed action and
 write the metadata above through a supported store extension, then resolve
 only after outcome proof. Its transaction must encompass DM completion and
-defer DM's current resolution callbacks until commit. Wrapping only First's
+defer DM's current resolution callbacks until commit. Wrapping only TypedPress's
 handler would leave the stock effect/result gap open.
 
 Until this capability is installed and qualified, **every approval-bearing
@@ -1258,22 +1258,22 @@ artifact SHA-256, built with `composer install` from its committed lock) as a
 locked WordPress plugin like SCF and the MCP adapter. Business and Socials
 are not installed. DM bundles Agents API
 `952db6cb2b3ef49ab2e539993788d3e04bb6e783` and Action Scheduler
-3.9.3; First pins AS 4.2.0. **Decision:** one qualified AS version and runner
+3.9.3; TypedPress pins AS 4.2.0. **Decision:** one qualified AS version and runner
 policy for the combined platform, starting from 4.2.0, accepted only after
 co-install tests under both plugin load orders; DM's global queue tuning
 cooperates through a narrow tested opt-in, not two competing runners. This
 is the one-queue answer (report 07 §B6): two logical job domains, one
-physical backend, no First job that wraps a DM run and no DM flow that
-duplicates a First cron.
+physical backend, no TypedPress job that wraps a DM run and no DM flow that
+duplicates a TypedPress cron.
 
-**`first doctor`** gains an agents section, inspecting the running site, never
+**`typedpress doctor`** gains an agents section, inspecting the running site, never
 source strings:
 
 | Check | Evidence |
 |---|---|
 | Platform | DM active at the qualified artifact; WP 7.1 / PHP 8.2; vendor autoload and built admin assets present |
 | Agents API | loaded Agents API class source matches the lock; a second copy is a failure |
-| ABI | `datamachine/create-agent`, `create-pipeline`, `update-flow`, `run-flow` registered; `PendingActionHelper::stage` and `PendingActionAuthorizationReceipt::consume` exist; `FirstApprovalBridgeV1` qualified or all approval-bearing actions and flows marked unready |
+| ABI | `datamachine/create-agent`, `create-pipeline`, `update-flow`, `run-flow` registered; `PendingActionHelper::stage` and `PendingActionAuthorizationReceipt::consume` exist; `TypedPressApprovalBridgeV1` qualified or all approval-bearing actions and flows marked unready |
 | Persistence | DM tables current; SQL pending-action claims available; actual DM memory store writable, persistent, shared and private; origin/upload/CDN canary denial qualified for the current storage and host topology |
 | Principal and tools | service user exists and is not an administrator; agent owner and `site_scope` match; pipeline and every flow have the mapped numeric `agent_id`; resolved tool set equals the allowlist plus vetted plumbing; no management or self-resolution tool |
 | Prompts | the step's `system_prompt` digest equals the bundled instructions digest; each flow's `user_message` equals its declared prompt |
@@ -1348,7 +1348,7 @@ part of that identity, not consequences assumed from an inbound rewrite.
 Collection items retain their own posts.
 
 **Optional Blocks versus build/config integration.** The current ruling
-says First core never depends on Blocks and Blocks does not touch config.
+says TypedPress core never depends on Blocks and Blocks does not touch config.
 This proposal recommends an external serializer invoked only for page
 builds, shared universal exports, a pages sync config switch, and a
 page-derived viewability manifest. Even build-only dependency or indirect
@@ -1371,7 +1371,7 @@ A function may branch on `ctx.is()` only if every branch lowers to a
 boolean/filter with the same viewer semantics. A bare role or arbitrary
 non-filter function is refused. Title and body fields may have no stricter
 read policy than the row, because native blocks and plugins read those
-post fields directly. Other fields still use the ordinary First/SCF access
+post fields directly. Other fields still use the ordinary TypedPress/SCF access
 guards; direct trusted PHP meta access is outside the boundary.
 
 The existing front-end query bypass closes in the same change as
@@ -1397,16 +1397,16 @@ Result/short-circuit adapters must reauthorize cached `posts_pre_query`
 objects, including the native password exclusion; a cache keyed without
 viewer/policy generation cannot supply managed rows. Count and sitemap queries must apply the same predicate,
 not filter rows after pagination. Unknown query optimizations fail closed
-for managed types until adapted. Raw SQL and trusted plugins removing First's
+for managed types until adapted. Raw SQL and trusted plugins removing TypedPress's
 filters are not a supported security boundary. Explicit `QueryLoop` over
-First collections remains refused; use viewer-bound `load()` and `.map`.
+TypedPress collections remains refused; use viewer-bound `load()` and `.map`.
 This result-cache contract does not authorize shared HTML caching; §4.1's
 early host/drop-in bypass applies even if query authorization is correct.
 
 **Report 05's "one queue" vs Data Machine's job engine.** Decision: report
 07 §B6. Both already deliver through Action Scheduler; the requirement is one
-physical backend and one qualified runner, not one ledger. First jobs stay
-First jobs; DM runs stay DM runs; neither wraps the other.
+physical backend and one qualified runner, not one ledger. TypedPress jobs stay
+TypedPress jobs; DM runs stay DM runs; neither wraps the other.
 
 **The word "agents".** Decision: rename the exposure flag to `abilities`;
 `agents` is only the top-level definition key. Reason: the flag's effect is
@@ -1426,17 +1426,17 @@ things on one screen.
 - `collectionPage` over tables, over collections without a `slug()` column,
   over collections whose read rule is a bare role or a non-filter function,
   over collections whose title or body carries a stricter field rule, and a
-  second `collectionPage` for one collection. `QueryLoop` over a First
+  second `collectionPage` for one collection. `QueryLoop` over a TypedPress
   collection.
 - `<TemplatePart>` in canvas mode; Site Editor customization of canvas-mode
   templates.
 - Decompiling block markup to TSX; syncing code-owned pages or templates.
 - Media byte sync.
 - Tailwind and other CSS transforms; CSS-in-JS.
-- In-browser (wasm) `first build` of pages: the serializer needs Node. The
-  browser builder keeps `first check` of the page subset and builds
+- In-browser (wasm) `typedpress build` of pages: the serializer needs Node. The
+  browser builder keeps `typedpress check` of the page subset and builds
   backend-only projects.
-- A First-owned agent runtime, transcript store or run ledger; per-caller
+- A TypedPress-owned agent runtime, transcript store or run ledger; per-caller
   agent principals; agent timezones other than UTC; Data Machine Business
   and Socials as platform plugins; a model-callable approval resolver; code
   execution sandboxes.
@@ -1472,7 +1472,7 @@ that repeats a lower seam's proof. No source grep, fake provider assertions,
 
 ## 9. Rollout
 
-This is a dependency order, not authorization to implement. First obtain
+This is a dependency order, not authorization to implement. TypedPress obtain
 §10's owner rulings and align accepted #55 changes. Inventory existing test
 owners before touching them. Each PR extends the applicable checks and
 updates documentation without preserving obsolete names through negative
@@ -1523,16 +1523,16 @@ they do not block current backend compiler, native development or example work.
    in v1; `collectionPage` is the single declaration. A future standalone
    switch would need exactly the same public-query policy guard.
 5. **DM bridge delivery.** Approve a versioned integration patch versus an
-   upstream-only dependency for `FirstApprovalBridgeV1`. Recommended: qualify
+   upstream-only dependency for `TypedPressApprovalBridgeV1`. Recommended: qualify
    a pinned patch and offer it upstream; ship agents without approval
    dependencies first. Without the bridge, approval-bearing actions stay
    disabled on every entry path, including approval-only apps.
-6. **Action Scheduler qualification.** Recommended candidate: First's 4.2.0
+6. **Action Scheduler qualification.** Recommended candidate: TypedPress's 4.2.0
    with a cooperative DM runner policy. Accept only after real co-install
    proof in both load orders; no version is declared qualified here. If it
    fails, select another tested pair rather than install two runners.
 
-Fixed service-user principals, UTC-only schedules, separate First/DM admin
+Fixed service-user principals, UTC-only schedules, separate TypedPress/DM admin
 permissions, explicit rewrites and hidden code Pages are selected v1
 contracts above. The hidden Page boundary, hybrid renderer, optional sync,
 build/publish separation, immutable-host split and DM runtime ownership
@@ -1555,9 +1555,9 @@ name the APIs whose behavior constrains the design.
 | Same WP pin | [`wp-settings.php`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-settings.php#L98) loads `advanced-cache.php` before MU plugins. [`get_the_content`](https://github.com/WordPress/wordpress-develop/blob/7c9c8b624927f0d966fc28546712ddc01090a92b/src/wp-includes/post-template.php#L325) and native post-data bindings enforce `post_password_required()`; raw content filters do not replace it. |
 | Batcache `ed0e6b2d9bcbab3924c49a6c3247646fb87a0957` | [`advanced-cache.php`](https://github.com/Automattic/batcache/blob/ed0e6b2d9bcbab3924c49a6c3247646fb87a0957/advanced-cache.php#L620) can send cached HTML and exit before the page loader. Managed-page readiness requires a qualified early bypass, not only response headers. |
 | Data Machine `b07be213f70904f379d2c18204d3b36a003ba41f`, 0.200.4 baseline | [`composer.lock`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/composer.lock) resolves Agents API's exact development revision; [`data-machine.php`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/data-machine.php#L148) provides early full-runtime request. Core only, no Business or Socials requirement. |
-| Same DM pin | [`CreatePipelineAbility`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Abilities/Pipeline/CreatePipelineAbility.php#L140) falls back to execution context if `agent_id` is absent, and propagates explicit ownership to its first flow. First must pass and verify the returned agent's ID. |
+| Same DM pin | [`CreatePipelineAbility`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Abilities/Pipeline/CreatePipelineAbility.php#L140) falls back to execution context if `agent_id` is absent, and propagates explicit ownership to its first flow. TypedPress must pass and verify the returned agent's ID. |
 | Same DM pin | [`DirectoryManager`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Core/FilesRepository/DirectoryManager.php#L234) places default agent identity storage under WP uploads; that path is not private by virtue of WP authorization. Qualify the actual DM memory store and origin/upload/CDN denial. |
-| Same DM pin | [`FlowRoutines`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/Scheduling/FlowRoutines.php#L348) can unschedule and disable stored recurrence. Removing a First manifest key does not invoke retirement or prevent stale queued/native starts on its own. |
+| Same DM pin | [`FlowRoutines`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/Scheduling/FlowRoutines.php#L348) can unschedule and disable stored recurrence. Removing a TypedPress manifest key does not invoke retirement or prevent stale queued/native starts on its own. |
 | Same DM pin | [`PendingActionStore`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/AI/Actions/PendingActionStore.php#L418) documents at-most-once consumption and forbids automatic crash retry. [`PendingActionScope`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/AI/Actions/PendingActionScope.php#L122) binds callers; [`ResolvePendingActionAbility`](https://github.com/Extra-Chill/data-machine/blob/b07be213f70904f379d2c18204d3b36a003ba41f/plugins/data-machine/inc/Engine/AI/Actions/ResolvePendingActionAbility.php#L134) delegates to Agents API. These are integration seams, not the proposed atomic bridge. |
 | Agents API `952db6cb2b3ef49ab2e539993788d3e04bb6e783` | [`register-pending-action-abilities.php`](https://github.com/Automattic/agents-api/blob/952db6cb2b3ef49ab2e539993788d3e04bb6e783/src/Approvals/register-pending-action-abilities.php) registers canonical approval abilities, host store/resolver filters and the public permission callback. Pin this development revision, not a plugin version label or a second copy. |
 | Rank Math `50fc59587112316ad754ca3c9a26e1282795d49d` | [`Head`](https://github.com/rankmath/seo-by-rank-math/blob/50fc59587112316ad754ca3c9a26e1282795d49d/includes/frontend/class-head.php#L67) moves core's conditional title emitter to `rank_math/head` and optionally rewrites legacy title output. |
@@ -1569,4 +1569,4 @@ Blocks research used `@wordpress/blocks` 15.24.0,
 locks and rerun their editor proof against the chosen WP artifact rather
 than treating the report's platform label as a new runtime pin. DM's bundled
 AS provenance is 3.9.3 (`c58cdbab17651303d406cd3b22cf9d75c71c986c`);
-First's 4.2.0 is a qualification candidate, not proof of compatibility.
+TypedPress's 4.2.0 is a qualification candidate, not proof of compatibility.

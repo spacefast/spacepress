@@ -2,7 +2,7 @@
 # Prove a release binary can provision and stop WordPress after its build source is removed.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/../../.." && pwd)"
-work="$(mktemp -d "${TMPDIR:-/tmp}/first-installed-native.XXXXXXXX")"
+work="$(mktemp -d "${TMPDIR:-/tmp}/typedpress-installed-native.XXXXXXXX")"
 cleanup() {
   if [[ $? == 0 ]]; then
     rm -rf "$work"
@@ -20,17 +20,17 @@ rsync -a --exclude node_modules --exclude target \
 rsync -a "$repo/scripts/dev" "$repo/scripts/deploy" "$src/scripts/"
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" CARGO_TARGET_DIR="$target" \
   cargo build -q --release --locked --manifest-path "$src/Cargo.toml"
-cp "$target/release/first" "$bin/first"
+cp "$target/release/typedpress" "$bin/typedpress"
 rm -rf "$src"
-cat > "$project/first.config.ts" <<'CONFIG'
-import { defineConfig, table, text } from 'first';
+cat > "$project/typedpress.config.ts" <<'CONFIG'
+import { defineConfig, table, text } from 'typedpress';
 export const notes = table({ title: text() });
 export default defineConfig({});
 CONFIG
 cd "$work"
-env -u FIRST_WP_HARNESS HOME="$home" XDG_CACHE_HOME= \
-  FIRST_WP_PLUGIN_CACHE="${FIRST_WP_PLUGIN_CACHE:-$repo/.first/cache/plugins}" \
-  node --input-type=module - "$bin/first" "$project" <<'CHECK'
+env -u TP_WP_HARNESS HOME="$home" XDG_CACHE_HOME= \
+  TP_WP_PLUGIN_CACHE="${TP_WP_PLUGIN_CACHE:-$repo/.tp/cache/plugins}" \
+  node --input-type=module - "$bin/typedpress" "$project" <<'CHECK'
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -53,7 +53,7 @@ try {
   await run(['dev', project, '--port', String(port), '--no-watch']);
   const status = JSON.parse(await run(['dev', 'status', project]));
   assert.equal(status.isOnline, true);
-  const response = await fetch(`${status.siteUrl}/__first/api/v1`, { signal: AbortSignal.timeout(15000) });
+  const response = await fetch(`${status.siteUrl}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
   assert.equal(response.status, 200);
   const { data } = await response.json();
   assert.equal(data.name, 'project');
@@ -71,7 +71,7 @@ try {
 } finally {
   const errors = [];
   if (!stopped) await run(['dev', 'stop', project]).catch((error) => errors.push(error));
-  await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', 'delete', '--path', `${project}/.first/dev/wordpress`, '--no-files'], { timeout: 60000 })
+  await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', 'delete', '--path', `${project}/.tp/dev/wordpress`, '--no-files'], { timeout: 60000 })
     .catch((error) => errors.push(error));
   if (errors.length) {
     for (const error of errors) console.error('Cleanup:', error.message);

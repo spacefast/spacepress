@@ -29,7 +29,7 @@ impl Span {
 pub enum Code {
     #[serde(rename = "sync_files_too_large")]
     SyncFilesTooLarge,
-    #[serde(rename = "first_source_needs_local_capture")]
+    #[serde(rename = "tp_source_needs_local_capture")]
     SourceNeedsLocalCapture,
     #[serde(rename = "F0001")]
     General,
@@ -58,7 +58,7 @@ pub enum Code {
     /// A plugin package imports the app's modules or another plugin's package.
     #[serde(rename = "F1201")]
     PluginIsolation,
-    /// App source imports a file outside `first/` (docs/spec/spec.md §1).
+    /// App source imports a file outside `tp/` (docs/spec/spec.md §1).
     #[serde(rename = "F1210")]
     ImportFence,
     /// Two exports register the same name, or one kind, action or job under two (§1.1).
@@ -67,10 +67,10 @@ pub enum Code {
     /// A kind, global, bucket, action or job built in app source but not exported, so it has no name.
     #[serde(rename = "F1222")]
     Unexported,
-    /// A plugin's compiled code uses a capability its `first/_generated/plugins.lock.json` entry doesn't grant.
+    /// A plugin's compiled code uses a capability its `tp/_generated/plugins.lock.json` entry doesn't grant.
     #[serde(rename = "F4201")]
     PluginCapability,
-    /// App code names a WordPress option the runtime guard protects (runtime/First/Wp/guard.json).
+    /// App code names a WordPress option the runtime guard protects (runtime/TypedPress/Wp/guard.json).
     #[serde(rename = "F4301")]
     ProtectedWordPress,
 }
@@ -277,7 +277,7 @@ fn location(span: Span, root: &Path) -> Option<Location> {
     })
 }
 
-/// A span's file (relative to `root`), 1-based line and UTF-16 column, as `first check --json` reports them.
+/// A span's file (relative to `root`), 1-based line and UTF-16 column, as `typedpress check --json` reports them.
 pub fn position(span: Span, root: &Path) -> Option<(String, usize, usize)> {
     location(span, root).map(|l| (l.file, l.line, l.column))
 }
@@ -363,7 +363,7 @@ pub fn envelope<'a>(diagnostics: &'a [Diag], root: &Path) -> Envelope<'a> {
         });
     }
     Envelope {
-        schema: "first-diagnostics",
+        schema: "typedpress-diagnostics",
         version: 1,
         compiler_version: env!("CARGO_PKG_VERSION"),
         ok: diagnostics.is_empty(),

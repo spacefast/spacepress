@@ -2,12 +2,12 @@
 /**
  * Screenshot field definition for core theme fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Screenshot', 'first-admin' ),
+	'label'         => __( 'Screenshot', 'typedpress-admin' ),
 	'enableHiding'  => false,
 	'enableSorting' => false,
 	'filterBy'      => false,

@@ -1,7 +1,7 @@
-// Written by `first add api-reference`; yours to change. The app's API reference: every operation
-// of the OpenAPI document `first build` writes, by tag, each linking to its own page.
-import { Html, Link } from "first/app";
-import { apiReference } from "first/content";
+// Written by `typedpress add api-reference`; yours to change. The app's API reference: every operation
+// of the OpenAPI document `typedpress build` writes, by tag, each linking to its own page.
+import { Html, Link } from "typedpress/app";
+import { apiReference } from "typedpress/content";
 
 export const metadata = { title: "API reference", description: "Every operation of this app's HTTP API." };
 

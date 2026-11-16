@@ -1,7 +1,7 @@
-import { InputControl } from '@first-admin/design-system';
+import { InputControl } from '@typedpress-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@first-admin/dataviews';
+import type { Field } from '@typedpress-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< User > > = {
 	sort: ( a, b, direction ) => {
@@ -25,7 +25,7 @@ export const fieldExtensions: Partial< Field< User > > = {
 				} }
 				description={
 					! isEditable
-						? __( 'Usernames cannot be changed', 'first-admin' )
+						? __( 'Usernames cannot be changed', 'typedpress-admin' )
 						: ''
 				}
 			/>

@@ -1,4 +1,4 @@
-//! Finds, parses, and lowers every module reachable from `first.config.ts`.
+//! Finds, parses, and lowers every module reachable from `typedpress.config.ts`.
 //! Resolves local sources and installed source packages; never installs or executes package code.
 
 use crate::diag::{self, Diag, Result, Span};
@@ -11,22 +11,22 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-pub const FIRST_MODULE: &str = "first";
-/// Page and layout helpers for `first/app/` and components (docs/spec/rendering.md §2–§4).
-pub const APP_MODULE: &str = "first/app";
+pub const TP_MODULE: &str = "typedpress";
+/// Page and layout helpers for `tp/app/` and components (docs/spec/rendering.md §2–§4).
+pub const APP_MODULE: &str = "typedpress/app";
 /// Navigation for a hierarchical kind's pages: `nav`, `pager`, `headings` (src/compile/content.rs).
-pub const CONTENT_MODULE: &str = "first/content";
+pub const CONTENT_MODULE: &str = "typedpress/content";
 /// Hooks for `"use client"` components (docs/decisions/2026-11-08-tsx-to-php.md, generator B).
-pub const CLIENT_MODULE: &str = "first/client";
+pub const CLIENT_MODULE: &str = "typedpress/client";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
-/// The app's kinds, by registered name (docs/spec/spec.md §2.1); typed by `first/_generated/db.d.ts`.
-pub const DB_MODULE: &str = "first:db";
+/// The app's kinds, by registered name (docs/spec/spec.md §2.1); typed by `tp/_generated/db.d.ts`.
+pub const DB_MODULE: &str = "typedpress:db";
 
 /// Modules the compiler provides itself; nothing is loaded for them. Node built-ins come from the
 /// one lookup, `builtins::module`.
 pub fn builtin_module(spec: &str) -> bool {
-    spec == FIRST_MODULE
+    spec == TP_MODULE
         || spec == WORDPRESS_MODULE
         || spec == DB_MODULE
         || spec == APP_MODULE
@@ -48,7 +48,7 @@ pub trait Fs {
         true
     }
     /// A stored source bundle: frozen data captured by some earlier compiler, so layout rules that
-    /// came later (the `first/` import fence) don't apply to it. A live project is never frozen.
+    /// came later (the `tp/` import fence) don't apply to it. A live project is never frozen.
     fn frozen_capture(&self) -> bool {
         false
     }
@@ -71,7 +71,7 @@ pub trait Fs {
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf>;
 }
 
-/// A file system with one more file: a module First writes for the project and never puts on disk.
+/// A file system with one more file: a module TypedPress writes for the project and never puts on disk.
 struct Generated<'a> {
     inner: &'a dyn Fs,
     path: &'a Path,
@@ -150,7 +150,7 @@ impl Fs for Disk {
 }
 
 pub struct Program {
-    /// The directory that holds `first.config.ts`.
+    /// The directory that holds `typedpress.config.ts`.
     pub root: PathBuf,
     pub modules: Vec<Rc<Module>>,
     /// (module id, specifier) → resolved module id.
@@ -158,14 +158,14 @@ pub struct Program {
     pub entry: usize,
     /// The source of these modules; later passes that look beside them (sync directories) ask it.
     pub fs: Rc<dyn Fs>,
-    /// `first/wp-hooks/` handler files, in registration order (see [`wp_hook_files`]).
+    /// `tp/wp-hooks/` handler files, in registration order (see [`wp_hook_files`]).
     pub wp_hooks: Vec<WpHookFile>,
-    /// Every app module under `first/` (see [`app_files`]), in path order. Each one's exported kinds,
+    /// Every app module under `tp/` (see [`app_files`]), in path order. Each one's exported kinds,
     /// actions and jobs register by export name, whatever imports it.
     pub app_modules: Vec<usize>,
-    /// `first/components/**/*.tsx` beside the entry: (path relative to `first/`, module), sorted.
+    /// `tp/components/**/*.tsx` beside the entry: (path relative to `tp/`, module), sorted.
     pub components: Vec<(String, usize)>,
-    /// `first/app/`: the route table, and each route file's module by its path relative to `first/`.
+    /// `tp/app/`: the route table, and each route file's module by its path relative to `tp/`.
     pub app: crate::app::Table,
     pub app_files: Vec<(String, usize)>,
     /// Files components and pages import that are not code (`.css`, `.module.css`, images), by
@@ -173,7 +173,7 @@ pub struct Program {
     pub assets: HashMap<usize, crate::assets::Asset>,
 }
 
-/// One `first/wp-hooks/` file: `first/wp-hooks/<hook>.ts`, or `first/wp-hooks/<hook>/<file>.ts`.
+/// One `tp/wp-hooks/` file: `tp/wp-hooks/<hook>.ts`, or `tp/wp-hooks/<hook>/<file>.ts`.
 #[derive(Debug, Clone)]
 pub struct WpHookFile {
     pub hook: String,
@@ -213,8 +213,8 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         Ok(id) => program.entry = id,
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
-    // A checkout from before `first/_generated/` (a leftover `first/client/`, an old lock) is refused
-    // before any module under `first/` loads, so its message is the move, not whatever the stale
+    // A checkout from before `tp/_generated/` (a leftover `tp/client/`, an old lock) is refused
+    // before any module under `tp/` loads, so its message is the move, not whatever the stale
     // files fail on. A stored bundle reads those paths on the new layout instead.
     if !fs.frozen_capture()
         && let Some((message, help)) = crate::layout::old_in_checkout(|p| fs.exists(p), &program.root)
@@ -248,21 +248,21 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         Ok(None) => {}
         Err(d) => diagnostics.push(d),
     }
-    // Pages beside first.config.ts are from before `first/app/`: refuse them rather than build a
-    // site without them. (A converted 0.8 capsule's `pages/` is read by `first migrate`, not here.)
+    // Pages beside typedpress.config.ts are from before `tp/app/`: refuse them rather than build a
+    // site without them. (A converted 0.8 capsule's `pages/` is read by `typedpress migrate`, not here.)
     if !fs.frozen_capture() && fs.is_dir(&program.root.join("pages")) {
         let pages = program.root.join("pages");
         let file = diag::register_file(&pages, "");
         diagnostics.push(
             Diag::new(
                 Span { file, start: 0, end: 0 },
-                "pages/ beside first.config.ts is from the old pages renderer; nothing serves it",
+                "pages/ beside typedpress.config.ts is from the old pages renderer; nothing serves it",
             )
-            .help("TSX pages live in first/app/ now (docs/pages.md): move each pages/<path>/page.tsx to first/app/<path>/page.tsx, and replace load() with `await db.query…` in the page")
+            .help("TSX pages live in tp/app/ now (docs/pages.md): move each pages/<path>/page.tsx to tp/app/<path>/page.tsx, and replace load() with `await db.query…` in the page")
             .code(diag::Code::Import),
         );
     }
-    // Handlers beside first.config.ts are from before `first/wp-hooks/`: refuse them rather than
+    // Handlers beside typedpress.config.ts are from before `tp/wp-hooks/`: refuse them rather than
     // build without them, which would drop every filter they register.
     let old = program.root.join("wp-hooks");
     if fs.exists(&old) {
@@ -270,9 +270,9 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         diagnostics.push(
             Diag::new(
                 Span { file, start: 0, end: 0 },
-                "wp-hooks/ beside first.config.ts is from an earlier layout; its handlers would not register",
+                "wp-hooks/ beside typedpress.config.ts is from an earlier layout; its handlers would not register",
             )
-            .help("move it into the First root: mkdir -p first && git mv wp-hooks first/wp-hooks")
+            .help("move it into the TypedPress root: mkdir -p tp && git mv wp-hooks tp/wp-hooks")
             .code(diag::Code::Import),
         );
     }
@@ -288,13 +288,13 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
-    let first_dir = program.root.join(crate::layout::ROOT);
-    match component_files(&*fs, &first_dir.join(COMPONENTS_DIR)) {
+    let tp_dir = program.root.join(crate::layout::ROOT);
+    match component_files(&*fs, &tp_dir.join(COMPONENTS_DIR)) {
         Ok(files) => {
             for path in files {
                 match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
                     Ok(module) => {
-                        let relative = path.strip_prefix(&first_dir).unwrap_or(&path);
+                        let relative = path.strip_prefix(&tp_dir).unwrap_or(&path);
                         let relative = relative.to_string_lossy().replace('\\', "/");
                         program.components.push((relative, module));
                     }
@@ -304,9 +304,9 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
-    match crate::app::discover(&*fs, &first_dir) {
+    match crate::app::discover(&*fs, &tp_dir) {
         Ok(table) => {
-            for (relative, path) in crate::app::route_paths(&first_dir, &table) {
+            for (relative, path) in crate::app::route_paths(&tp_dir, &table) {
                 match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
                     Ok(module) => program.app_files.push((relative, module)),
                     Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
@@ -329,7 +329,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
     }
 }
 
-/// Folders under `first/` whose names First reads, or that it writes: no app module is loaded from
+/// Folders under `tp/` whose names TypedPress reads, or that it writes: no app module is loaded from
 /// them (docs/spec/spec.md §1.1).
 pub const RESERVED_DIRS: &[&str] = &[
     "app",
@@ -342,8 +342,8 @@ pub const RESERVED_DIRS: &[&str] = &[
     "node_modules",
 ];
 
-/// JSX belongs to components: a `.tsx` module that `first.config.ts`, an app module or a
-/// `first/wp-hooks/` handler reaches through its imports is refused, even if its JSX never runs at
+/// JSX belongs to components: a `.tsx` module that `typedpress.config.ts`, an app module or a
+/// `tp/wp-hooks/` handler reaches through its imports is refused, even if its JSX never runs at
 /// build time, and a `"use client"` file is refused until generator B compiles it.
 fn jsx_reachability(program: &Program) -> Vec<Diag> {
     let mut out = Vec::new();
@@ -365,9 +365,9 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
                         start: 0,
                         end: 0,
                     },
-                    "JSX files can't be part of a First config",
+                    "JSX files can't be part of a TypedPress config",
                 )
-                .help("JSX compiles in components (`first/components/`), which the config doesn't import")
+                .help("JSX compiles in components (`tp/components/`), which the config doesn't import")
                 .code(diag::Code::Import),
             );
             continue;
@@ -392,16 +392,24 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
         // Plugins can't ship browser code until a capability kind covers it (the TSX decision record).
         if module.path.components().any(|c| c.as_os_str() == "node_modules") {
             out.push(
-                Diag::new(at, format!("{} is a \"use client\" file inside an installed package", module.path.display()))
-                    .help("plugins can't ship client components yet; keep interactive components in the app's first/components/")
-                    .code(diag::Code::Import),
+                Diag::new(
+                    at,
+                    format!(
+                        "{} is a \"use client\" file inside an installed package",
+                        module.path.display()
+                    ),
+                )
+                .help(
+                    "plugins can't ship client components yet; keep interactive components in the app's tp/components/",
+                )
+                .code(diag::Code::Import),
             );
             continue;
         }
         if module.path.extension().is_none_or(|e| e != "tsx") {
             out.push(
                 Diag::new(at, "a \"use client\" file is a .tsx component")
-                    .help("rename it to .tsx under first/components/, or remove the directive")
+                    .help("rename it to .tsx under tp/components/, or remove the directive")
                     .code(diag::Code::Import),
             );
         }
@@ -409,7 +417,7 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
     out
 }
 
-/// Server components compiled to PHP, under the First root (`first/components/`).
+/// Server components compiled to PHP, under the TypedPress root (`tp/components/`).
 pub const COMPONENTS_DIR: &str = "components";
 
 /// Every `.tsx` file under `dir`, recursively, sorted. Other files (CSS, images, `.ts`
@@ -439,7 +447,7 @@ fn component_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-/// Every `.ts` file under `first/` outside [`RESERVED_DIRS`], in path order: app modules load whatever
+/// Every `.ts` file under `tp/` outside [`RESERVED_DIRS`], in path order: app modules load whatever
 /// their names are. Declaration files are types only, test files (`*.test.ts`, `*.spec.ts`) belong
 /// to the test runner, and dot-entries and symlinked directories are skipped, so editor and VCS
 /// state never become code. A test file that an app module imports still loads, as an import.
@@ -478,9 +486,9 @@ pub fn app_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// The WordPress hooks directory: one file or directory per hook name (docs/spec/spec.md §1).
-pub const WP_HOOKS_DIR: &str = "first/wp-hooks";
+pub const WP_HOOKS_DIR: &str = "tp/wp-hooks";
 
-/// `first/wp-hooks/<hook>.ts` and `first/wp-hooks/<hook>/*.ts` (tests aside), as `(hook, order, path)`
+/// `tp/wp-hooks/<hook>.ts` and `tp/wp-hooks/<hook>/*.ts` (tests aside), as `(hook, order, path)`
 /// sorted by hook, then by
 /// file name. Anything else in the directory is an error that names it: a non-`.ts` file would
 /// otherwise be silently skipped, and the author would wonder why their handler never runs.
@@ -499,12 +507,12 @@ pub fn wp_hook_files(fs: &dyn Fs, dir: &Path) -> Result<Vec<(String, usize, Path
     let refuse = |path: &Path, why: &str| {
         let file = diag::register_file(path, "");
         Diag::new(Span { file, start: 0, end: 0 }, why.to_string()).help(
-            "first/wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
+            "tp/wp-hooks/ holds <hook_name>.ts files, or <hook_name>/ directories of .ts files, each default-exporting its handler",
         )
     };
     let ts =
         |p: &Path| p.extension().is_some_and(|e| e == "ts") && !p.to_string_lossy().ends_with(".d.ts") && fs.is_file(p);
-    // Colocated tests belong to the test runner, as under the rest of `first/` (see [`app_files`]).
+    // Colocated tests belong to the test runner, as under the rest of `tp/` (see [`app_files`]).
     let test = |p: &Path| {
         let name = p.file_name().unwrap_or_default().to_string_lossy();
         name.ends_with(".test.ts") || name.ends_with(".spec.ts")
@@ -568,9 +576,9 @@ fn load_module(
     if let Some(alias) = fs.module_alias() {
         rename_module(&mut body, commonjs.as_mut(), alias);
     }
-    // `"first:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
+    // `"typedpress:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
     // them on under another module's name, which no evaluator path resolves.
-    // Locals bound by `import { x } from "first:db"`: exporting one again is the same re-export.
+    // Locals bound by `import { x } from "typedpress:db"`: exporting one again is the same re-export.
     let db_locals: std::collections::HashSet<&str> = body
         .iter()
         .filter_map(|s| match s {
@@ -595,11 +603,11 @@ fn load_module(
                 .strip_prefix(&program.root)
                 .is_ok_and(|rel| rel.components().any(|c| c.as_os_str() == "node_modules"));
             diagnostics.push(
-                Diag::new(*span, "\"first:db\" can't be re-exported")
+                Diag::new(*span, "\"typedpress:db\" can't be re-exported")
                     .help(if installed {
-                        "a plugin takes the app's kinds as options, e.g. seo({ posts }); it can't import \"first:db\""
+                        "a plugin takes the app's kinds as options, e.g. seo({ posts }); it can't import \"typedpress:db\""
                     } else {
-                        "import the kinds where they're used: `import { posts } from \"first:db\"`"
+                        "import the kinds where they're used: `import { posts } from \"typedpress:db\"`"
                     })
                     .code(diag::Code::Import),
             );
@@ -630,7 +638,7 @@ fn load_module(
         if program.modules[id].use_client && !spec.starts_with('.') {
             diagnostics.push(
                 Diag::new(span, format!("a \"use client\" component can't import \"{spec}\""))
-                    .help("client components run in the browser without a bundler: import \"first/client\" and relative modules only")
+                    .help("client components run in the browser without a bundler: import \"typedpress/client\" and relative modules only")
                     .code(diag::Code::Import),
             );
             continue;
@@ -715,8 +723,8 @@ fn load_asset(
     Ok(id)
 }
 
-/// App source loads code only from `first/` (docs/spec/spec.md §1, `F1210`): a relative import from
-/// `first.config.ts` or from a module under `first/` must resolve inside `first/`. Installed packages
+/// App source loads code only from `tp/` (docs/spec/spec.md §1, `F1210`): a relative import from
+/// `typedpress.config.ts` or from a module under `tp/` must resolve inside `tp/`. Installed packages
 /// keep their own relative imports, and `"first"`, `"php/wordpress"` and npm packages are always
 /// allowed.
 fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> Result<PathBuf> {
@@ -734,16 +742,16 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
     }
     let importer = from.strip_prefix(root).unwrap_or(from).display().to_string();
     let (shown, destination) = match target.strip_prefix(root) {
-        Ok(rel) => (rel.display().to_string(), format!("first/{}", rel.display())),
-        Err(_) => (target.display().to_string(), "first/".to_string()),
+        Ok(rel) => (rel.display().to_string(), format!("tp/{}", rel.display())),
+        Err(_) => (target.display().to_string(), "tp/".to_string()),
     };
     Err(Diag::new(
         span,
-        format!("{importer} imports \"{spec}\" ({shown}), which is outside first/"),
+        format!("{importer} imports \"{spec}\" ({shown}), which is outside tp/"),
     )
     .code(diag::Code::ImportFence)
     .help(format!(
-        "First loads app code only from first/: move {shown} to {destination} and import it from there, or install it as an npm package"
+        "TypedPress loads app code only from tp/: move {shown} to {destination} and import it from there, or install it as an npm package"
     )))
 }
 
@@ -756,14 +764,14 @@ fn rename_module(body: &mut [Stmt], commonjs: Option<&mut CommonJs>, alias: &str
             | Stmt::ExportAll { from: source, .. }
                 if source == alias =>
             {
-                *source = FIRST_MODULE.to_owned();
+                *source = TP_MODULE.to_owned();
             }
             _ => {}
         }
     }
     for (spec, _) in commonjs.into_iter().flat_map(|c| c.requires.iter_mut()) {
         if spec == alias {
-            *spec = FIRST_MODULE.to_owned();
+            *spec = TP_MODULE.to_owned();
         }
     }
 }
@@ -822,9 +830,9 @@ fn parse(
     if source_type.is_jsx() && !jsx_admitted(path.strip_prefix(root).unwrap_or(path), use_client) {
         return Err(Diag::new(
             Span { file, start: 0, end: 0 },
-            "JSX files can't be part of a First config",
+            "JSX files can't be part of a TypedPress config",
         )
-        .help("JSX compiles in components (`first/components/`), pages, and files that start with \"use client\""));
+        .help("JSX compiles in components (`tp/components/`), pages, and files that start with \"use client\""));
     }
     let mut syntax_failed = false;
     for err in ret.diagnostics.errors() {
@@ -850,6 +858,7 @@ fn parse(
         function_this: std::cell::Cell::new(false),
         reads_this: std::cell::Cell::new(false),
         this_reads: std::cell::RefCell::new(Vec::new()),
+        uses_arguments: std::cell::Cell::new(false),
         before_super: std::cell::Cell::new(false),
         // Only a source the module-syntax scan sees as a script can be CommonJS; the CommonJS
         // check after lowering decides, and an ESM module never reaches the evaluator binding.
@@ -1554,7 +1563,7 @@ fn resolve(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<PathBuf> 
 }
 
 /// `require("<spec>")` from a CommonJS source. The target must be CommonJS too: `require(esm)`
-/// returns a namespace object, which First doesn't model.
+/// returns a namespace object, which TypedPress doesn't model.
 fn resolve_require(fs: &dyn Fs, from: &Path, spec: &str, span: Span) -> Result<PathBuf> {
     let target = resolve_with(fs, from, spec, span, Conditions::Require)?;
     let extension = target.extension().and_then(|extension| extension.to_str());
@@ -1643,7 +1652,7 @@ fn package_error(spec: &str, span: Span, reason: &str) -> Diag {
         .help(if spec.starts_with("node:") {
             "handlers run in PHP: use the global fetch, process.env.NAME and \"node:crypto\""
         } else {
-            "install a source package locally; its TypeScript, ESM, or static CommonJS source must fit First's PHP compiler subset"
+            "install a source package locally; its TypeScript, ESM, or static CommonJS source must fit TypedPress's PHP compiler subset"
         })
 }
 
@@ -1808,31 +1817,31 @@ mod tests {
         )
     }
 
-    /// `app_files` loads every module under `first/` but the reserved folders, declaration files and
+    /// `app_files` loads every module under `tp/` but the reserved folders, declaration files and
     /// colocated tests, which the test runner owns (they import `vitest` and the like).
     #[test]
     fn app_modules_are_every_ts_file_under_zero_but_reserved_ones() {
         let fs = memory(&[
-            ("/p/first.config.ts", ""),
-            ("/p/first/index.ts", ""),
-            ("/p/first/server/likes.ts", ""),
-            ("/p/first/lib/fields.ts", ""),
-            ("/p/first/lib/fields.test.ts", "import { test } from 'vitest';"),
-            ("/p/first/lib/fields.spec.ts", "import { test } from 'vitest';"),
-            ("/p/first/types.d.ts", ""),
-            ("/p/first/notes.md", ""),
-            ("/p/first/app/page.ts", ""),
-            ("/p/first/components/card.ts", ""),
-            ("/p/first/wp-hooks/init.ts", ""),
-            ("/p/first/content/post.ts", ""),
-            ("/p/first/public/app.ts", ""),
-            ("/p/first/_generated/db.ts", ""),
-            ("/p/first/dist/x.ts", ""),
-            ("/p/first/node_modules/pkg/index.ts", ""),
+            ("/p/typedpress.config.ts", ""),
+            ("/p/tp/index.ts", ""),
+            ("/p/tp/server/likes.ts", ""),
+            ("/p/tp/lib/fields.ts", ""),
+            ("/p/tp/lib/fields.test.ts", "import { test } from 'vitest';"),
+            ("/p/tp/lib/fields.spec.ts", "import { test } from 'vitest';"),
+            ("/p/tp/types.d.ts", ""),
+            ("/p/tp/notes.md", ""),
+            ("/p/tp/app/page.ts", ""),
+            ("/p/tp/components/card.ts", ""),
+            ("/p/tp/wp-hooks/init.ts", ""),
+            ("/p/tp/content/post.ts", ""),
+            ("/p/tp/public/app.ts", ""),
+            ("/p/tp/_generated/db.ts", ""),
+            ("/p/tp/dist/x.ts", ""),
+            ("/p/tp/node_modules/pkg/index.ts", ""),
             // Only top-level folder names are reserved: a nested `app/` is ordinary.
-            ("/p/first/server/app/route.ts", ""),
+            ("/p/tp/server/app/route.ts", ""),
         ]);
-        let found: Vec<String> = app_files(&fs, Path::new("/p/first"))
+        let found: Vec<String> = app_files(&fs, Path::new("/p/tp"))
             .unwrap()
             .into_iter()
             .map(|p| p.to_string_lossy().into_owned())
@@ -1840,31 +1849,31 @@ mod tests {
         assert_eq!(
             found,
             [
-                "/p/first/index.ts",
-                "/p/first/lib/fields.ts",
-                "/p/first/server/app/route.ts",
-                "/p/first/server/likes.ts"
+                "/p/tp/index.ts",
+                "/p/tp/lib/fields.ts",
+                "/p/tp/server/app/route.ts",
+                "/p/tp/server/likes.ts"
             ]
         );
         // A project with a colocated test still loads.
         let ok = load_from(
             Rc::new(memory(&[
-                ("/p/first.config.ts", "export default {};"),
-                ("/p/first/lib/fields.ts", "export const a = 1;"),
+                ("/p/typedpress.config.ts", "export default {};"),
+                ("/p/tp/lib/fields.ts", "export const a = 1;"),
                 (
-                    "/p/first/lib/fields.test.ts",
+                    "/p/tp/lib/fields.test.ts",
                     "import { test } from 'vitest'; test('a', () => {});",
                 ),
             ])),
-            Path::new("/p/first.config.ts"),
+            Path::new("/p/typedpress.config.ts"),
         );
         assert!(ok.is_ok(), "{:?}", ok.err());
     }
 
-    /// App code loads only from `first/` (`F1210`); installed packages keep their own relative imports.
+    /// App code loads only from `tp/` (`F1210`); installed packages keep their own relative imports.
     #[test]
     fn app_imports_stay_inside_the_zero_root() {
-        let load = |files: &[(&str, &str)]| load_from(Rc::new(memory(files)), Path::new("/p/first.config.ts"));
+        let load = |files: &[(&str, &str)]| load_from(Rc::new(memory(files)), Path::new("/p/typedpress.config.ts"));
         let refused = |files: &[(&str, &str)]| {
             let diagnostics = load(files).err().expect("refused");
             assert!(
@@ -1873,19 +1882,16 @@ mod tests {
             );
             diagnostics.iter().map(|d| d.message.clone()).collect::<Vec<_>>()
         };
-        // Inside first/, from the config and between app modules, including type-only imports.
+        // Inside tp/, from the config and between app modules, including type-only imports.
         let ok = load(&[
             (
-                "/p/first.config.ts",
-                "import { a } from './first/a'; import type { T } from './first/types'; export default a;",
+                "/p/typedpress.config.ts",
+                "import { a } from './tp/a'; import type { T } from './tp/types'; export default a;",
             ),
-            ("/p/first/a.ts", "import { b } from './server/b'; export const a = b;"),
-            (
-                "/p/first/server/b.ts",
-                "import { c } from '../c.ts'; export const b = c;",
-            ),
-            ("/p/first/c.ts", "export const c = 1;"),
-            ("/p/first/types.ts", "export type T = number;"),
+            ("/p/tp/a.ts", "import { b } from './server/b'; export const a = b;"),
+            ("/p/tp/server/b.ts", "import { c } from '../c.ts'; export const b = c;"),
+            ("/p/tp/c.ts", "export const c = 1;"),
+            ("/p/tp/types.ts", "export type T = number;"),
             (
                 "/p/node_modules/pkg/package.json",
                 r#"{"type":"module","exports":"./src/index.js"}"#,
@@ -1894,9 +1900,9 @@ mod tests {
             ("/p/node_modules/pkg/lib/x.js", "export const x = 2;"),
         ]);
         assert!(ok.is_ok(), "{:?}", ok.err());
-        // An installed package's own relative imports leave first/ freely.
+        // An installed package's own relative imports leave tp/ freely.
         let ok = load(&[
-            ("/p/first.config.ts", "import { x } from 'pkg'; export default x;"),
+            ("/p/typedpress.config.ts", "import { x } from 'pkg'; export default x;"),
             (
                 "/p/node_modules/pkg/package.json",
                 r#"{"type":"module","exports":"./src/index.js"}"#,
@@ -1909,7 +1915,10 @@ mod tests {
         // keeps its own relative imports too.
         let hoisted = load_from(
             Rc::new(memory(&[
-                ("/w/app/first.config.ts", "import { x } from 'pkg'; export default x;"),
+                (
+                    "/w/app/typedpress.config.ts",
+                    "import { x } from 'pkg'; export default x;",
+                ),
                 (
                     "/w/node_modules/pkg/package.json",
                     r#"{"type":"module","exports":"./src/index.js"}"#,
@@ -1917,14 +1926,17 @@ mod tests {
                 ("/w/node_modules/pkg/src/index.js", "export { x } from '../lib/x.js';"),
                 ("/w/node_modules/pkg/lib/x.js", "export const x = 2;"),
             ])),
-            Path::new("/w/app/first.config.ts"),
+            Path::new("/w/app/typedpress.config.ts"),
         );
         assert!(hoisted.is_ok(), "{:?}", hoisted.err());
         // Outside the root, only node_modules marks a package: a module the hoisted package reached
         // in a plain directory (a linked package's real files) is fenced like app code.
         let linked = load_from(
             Rc::new(memory(&[
-                ("/w/app/first.config.ts", "import { x } from 'pkg'; export default x;"),
+                (
+                    "/w/app/typedpress.config.ts",
+                    "import { x } from 'pkg'; export default x;",
+                ),
                 (
                     "/w/node_modules/pkg/package.json",
                     r#"{"type":"module","exports":"./src/index.js"}"#,
@@ -1936,7 +1948,7 @@ mod tests {
                 ("/w/shared/s.js", "export { x } from './t.js';"),
                 ("/w/shared/t.js", "export const x = 2;"),
             ])),
-            Path::new("/w/app/first.config.ts"),
+            Path::new("/w/app/typedpress.config.ts"),
         )
         .err()
         .expect("refused");
@@ -1947,9 +1959,9 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(
                 diag::Code::ImportFence,
-                "/w/shared/s.js imports \"./t.js\" (/w/shared/t.js), which is outside first/",
+                "/w/shared/s.js imports \"./t.js\" (/w/shared/t.js), which is outside tp/",
                 Some(
-                    "First loads app code only from first/: move /w/shared/t.js to first/ and import it from there, or install it as an npm package"
+                    "TypedPress loads app code only from tp/: move /w/shared/t.js to tp/ and import it from there, or install it as an npm package"
                 ),
             )]
         );
@@ -1958,16 +1970,16 @@ mod tests {
         let escaped = load_from(
             Rc::new(memory(&[
                 (
-                    "/w/app/first.config.ts",
-                    "import { a } from './first/a'; export default a;",
+                    "/w/app/typedpress.config.ts",
+                    "import { a } from './tp/a'; export default a;",
                 ),
                 (
-                    "/w/app/first/a.ts",
+                    "/w/app/tp/a.ts",
                     "import { o } from '../../outside'; export const a = o;",
                 ),
                 ("/w/outside.ts", "export const o = 1;"),
             ])),
-            Path::new("/w/app/first.config.ts"),
+            Path::new("/w/app/typedpress.config.ts"),
         )
         .err()
         .expect("refused");
@@ -1975,11 +1987,14 @@ mod tests {
         // A project that itself lives under a node_modules directory is still fenced: only
         // node_modules below the project root marks a package.
         let nested = |files: &[(&str, &str)]| {
-            load_from(Rc::new(memory(files)), Path::new("/w/node_modules/app/first.config.ts"))
+            load_from(
+                Rc::new(memory(files)),
+                Path::new("/w/node_modules/app/typedpress.config.ts"),
+            )
         };
         let diagnostics = nested(&[
             (
-                "/w/node_modules/app/first.config.ts",
+                "/w/node_modules/app/typedpress.config.ts",
                 "import { a } from './lib/a'; export default a;",
             ),
             ("/w/node_modules/app/lib/a.ts", "export const a = 1;"),
@@ -1993,13 +2008,13 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(
                 diag::Code::ImportFence,
-                "first.config.ts imports \"./lib/a\" (lib/a.ts), which is outside first/"
+                "typedpress.config.ts imports \"./lib/a\" (lib/a.ts), which is outside tp/"
             )]
         );
         assert!(
             nested(&[
                 (
-                    "/w/node_modules/app/first.config.ts",
+                    "/w/node_modules/app/typedpress.config.ts",
                     "import { x } from 'pkg'; export default x;"
                 ),
                 (
@@ -2018,27 +2033,30 @@ mod tests {
         assert_eq!(
             refused(&[
                 (
-                    "/p/first.config.ts",
+                    "/p/typedpress.config.ts",
                     "import { a } from './lib/a'; import type { T } from './types'; export default a;"
                 ),
                 ("/p/lib/a.ts", "export const a = 1;"),
                 ("/p/types.ts", "export type T = number;"),
             ]),
             [
-                "first.config.ts imports \"./lib/a\" (lib/a.ts), which is outside first/",
-                "first.config.ts imports \"./types\" (types.ts), which is outside first/",
+                "typedpress.config.ts imports \"./lib/a\" (lib/a.ts), which is outside tp/",
+                "typedpress.config.ts imports \"./types\" (types.ts), which is outside tp/",
             ]
         );
         assert_eq!(
             refused(&[
-                ("/p/first.config.ts", "import { a } from './first/a'; export default a;"),
                 (
-                    "/p/first/a.ts",
-                    "import { b } from '../first-lib/b'; export const a = b;"
+                    "/p/typedpress.config.ts",
+                    "import { a } from './tp/a'; export default a;"
                 ),
-                ("/p/first-lib/b.ts", "export const b = 1;"),
+                (
+                    "/p/tp/a.ts",
+                    "import { b } from '../typedpress-lib/b'; export const a = b;"
+                ),
+                ("/p/typedpress-lib/b.ts", "export const b = 1;"),
             ]),
-            ["first/a.ts imports \"../first-lib/b\" (first-lib/b.ts), which is outside first/"]
+            ["tp/a.ts imports \"../typedpress-lib/b\" (typedpress-lib/b.ts), which is outside tp/"]
         );
     }
 
@@ -2046,7 +2064,7 @@ mod tests {
     fn installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports() {
         let fs = memory(&[
             (
-                "/p/first.config.ts",
+                "/p/typedpress.config.ts",
                 "import { value } from '@demo/helpers'; import { other } from '@demo/helpers/extra';",
             ),
             (
@@ -2074,7 +2092,8 @@ mod tests {
             ("/p/node_modules/shared/package.json", r#"{"module":"./index.mjs"}"#),
             ("/p/node_modules/shared/index.mjs", "export const value = 9;"),
         ]);
-        let program = load_from(Rc::new(fs), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let program =
+            load_from(Rc::new(fs), Path::new("/p/typedpress.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
         let paths: Vec<_> = program
             .modules
             .iter()
@@ -2084,7 +2103,7 @@ mod tests {
         assert!(paths.contains(&"/p/node_modules/@demo/helpers/src/value.ts".to_string()));
         assert!(paths.contains(&"/p/node_modules/@demo/helpers/node_modules/shared/lib/index.js".to_string()));
         assert_eq!(
-            resolve(&*program.fs, Path::new("/p/first.config.ts"), "shared", Span::NONE).unwrap(),
+            resolve(&*program.fs, Path::new("/p/typedpress.config.ts"), "shared", Span::NONE).unwrap(),
             PathBuf::from("/p/node_modules/shared/index.mjs")
         );
         for (main, file) in [
@@ -2092,12 +2111,12 @@ mod tests {
             ("./dist/lib.umd", "/p/node_modules/pkg/dist/lib.umd/index.js"),
         ] {
             let fs = memory(&[
-                ("/p/first.config.ts", ""),
+                ("/p/typedpress.config.ts", ""),
                 ("/p/node_modules/pkg/package.json", &format!(r#"{{"main":"{main}"}}"#)),
                 (file, "export const value = 1;"),
             ]);
             assert_eq!(
-                resolve(&fs, Path::new("/p/first.config.ts"), "pkg", Span::NONE).unwrap(),
+                resolve(&fs, Path::new("/p/typedpress.config.ts"), "pkg", Span::NONE).unwrap(),
                 PathBuf::from(file)
             );
         }
@@ -2135,13 +2154,13 @@ mod tests {
             ),
         ] {
             let fs = memory(&[
-                ("/p/first.config.ts", ""),
+                ("/p/typedpress.config.ts", ""),
                 ("/p/node_modules/pkg/package.json", manifest),
                 ("/p/node_modules/pkg/source.ts", "export const value = 1;"),
                 ("/p/node_modules/pkg/source.js", "module.exports = 1;"),
                 ("/p/node_modules/pkg/source.d.ts", "export declare const value: number;"),
             ]);
-            let error = resolve(&fs, Path::new("/p/first.config.ts"), spec, Span::NONE).unwrap_err();
+            let error = resolve(&fs, Path::new("/p/typedpress.config.ts"), spec, Span::NONE).unwrap_err();
             assert!(error.message.contains(reason), "{manifest}: {error:?}");
         }
     }
@@ -2150,8 +2169,8 @@ mod tests {
     fn static_commonjs_function_exports_evaluate_with_their_lexical_environment() {
         let fs = memory(&[
             (
-                "/p/first.config.ts",
-                "import add from 'anonymous'; import multiply from './first/local.cjs'; import subtract from 'local'; export default [add(4), multiply(5), subtract(6)];",
+                "/p/typedpress.config.ts",
+                "import add from 'anonymous'; import multiply from './tp/local.cjs'; import subtract from 'local'; export default [add(4), multiply(5), subtract(6)];",
             ),
             ("/p/node_modules/anonymous/package.json", "{}"),
             (
@@ -2159,7 +2178,7 @@ mod tests {
                 "'use strict'; const offset = 3; module.exports = function(value) { return value + offset; };",
             ),
             (
-                "/p/first/local.cjs",
+                "/p/tp/local.cjs",
                 "module.exports = multiply; function multiply(value) { const arguments = [value]; const read = () => arguments[0]; return read() * factor; } const factor = 2;",
             ),
             ("/p/node_modules/local/package.json", r#"{"main":"./source"}"#),
@@ -2168,7 +2187,8 @@ mod tests {
                 "const subtract = function(arguments) { return arguments - 1; }; module.exports = subtract;",
             ),
         ]);
-        let program = load_from(Rc::new(fs), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let program =
+            load_from(Rc::new(fs), Path::new("/p/typedpress.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
         let result = crate::eval::Evaluator::new(&program).run().unwrap();
         let crate::value::Value::Array(values) = result else {
             panic!("{result:?}");
@@ -2187,8 +2207,8 @@ mod tests {
     }
 
     fn evaluate(files: &[(&str, &str)]) -> crate::value::Value {
-        let program =
-            load_from(Rc::new(memory(files)), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let program = load_from(Rc::new(memory(files)), Path::new("/p/typedpress.config.ts"))
+            .unwrap_or_else(|ds| panic!("{ds:?}"));
         crate::eval::Evaluator::new(&program)
             .run()
             .unwrap_or_else(|d| panic!("{d:?}"))
@@ -2222,15 +2242,15 @@ mod tests {
         // `exports` later, `module.exports = { … }`, and a module required twice.
         let result = evaluate(&[
             (
-                "/p/first.config.ts",
-                "import esm from 'pm'; import pm from './first/entry.cjs'; import { log } from 'pm/log'; export default [esm, pm.answer, pm.isMatch, log.join(','), pm.same];",
+                "/p/typedpress.config.ts",
+                "import esm from 'pm'; import pm from './tp/entry.cjs'; import { log } from 'pm/log'; export default [esm, pm.answer, pm.isMatch, log.join(','), pm.same];",
             ),
             (
                 "/p/node_modules/pm/package.json",
                 r#"{"exports":{".":{"import":"./esm.mjs","require":"./index.js"},"./log":"./log.js"}}"#,
             ),
             ("/p/node_modules/pm/esm.mjs", "export default 'esm entry';"),
-            ("/p/first/entry.cjs", "module.exports = require('pm');"),
+            ("/p/tp/entry.cjs", "module.exports = require('pm');"),
             ("/p/node_modules/pm/log.js", "exports.log = [];"),
             (
                 "/p/node_modules/pm/index.js",
@@ -2252,15 +2272,15 @@ mod tests {
     fn commonjs_named_exports_follow_static_assignments_like_node() {
         let result = evaluate(&[
             (
-                "/p/first.config.ts",
-                "import a, { x } from './first/a.cjs'; import b, { y } from './first/b.cjs'; import * as c from './first/c.cjs'; export default [a, x, b, y, c.default.z];",
+                "/p/typedpress.config.ts",
+                "import a, { x } from './tp/a.cjs'; import b, { y } from './tp/b.cjs'; import * as c from './tp/c.cjs'; export default [a, x, b, y, c.default.z];",
             ),
             (
-                "/p/first/a.cjs",
+                "/p/tp/a.cjs",
                 "exports.x = 1; exports.default = 'ignored'; exports.x = 2;",
             ),
-            ("/p/first/b.cjs", "module.exports = { y: 3 }; module.exports.y = 4;"),
-            ("/p/first/c.cjs", "if (true) { module.exports.z = 5; }"),
+            ("/p/tp/b.cjs", "module.exports = { y: 3 }; module.exports.y = 4;"),
+            ("/p/tp/c.cjs", "if (true) { module.exports.z = 5; }"),
         ]);
         assert_eq!(json(&result), r#"[{x:2,default:"ignored"},2,{y:4},4,5]"#);
     }
@@ -2269,11 +2289,11 @@ mod tests {
     fn installed_typescript_erases_types_and_elides_type_only_imports_and_re_exports() {
         let fs = memory(&[
             (
-                "/p/first.config.ts",
-                "import { scale, Factor } from 'typed'; import { typeOnly } from './first/local'; export default [scale(2), typeOnly];",
+                "/p/typedpress.config.ts",
+                "import { scale, Factor } from 'typed'; import { typeOnly } from './tp/local'; export default [scale(2), typeOnly];",
             ),
             (
-                "/p/first/local.ts",
+                "/p/tp/local.ts",
                 "export type Local = { n: number }; export const typeOnly = 1;",
             ),
             (
@@ -2293,7 +2313,8 @@ mod tests {
                 "import { Shape } from './types.js'; declare const brand: unique symbol; export function scale<T extends number>(this: void, value: T, by?: number): number { assert(value); return (value as number) * (by ?? 3)!; } function assert(value: unknown): asserts value is number {}",
             ),
         ]);
-        let program = load_from(Rc::new(fs), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let program =
+            load_from(Rc::new(fs), Path::new("/p/typedpress.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
         let package: Vec<_> = program.modules.iter().filter(|m| m.dynamic).collect();
         assert_eq!(package.len(), 3);
         assert!(package.iter().any(|m| m.type_names.contains("Factor")));
@@ -2306,7 +2327,7 @@ mod tests {
         );
         let fs = memory(&[
             (
-                "/p/first.config.ts",
+                "/p/typedpress.config.ts",
                 "import { scale } from 'typed'; export default scale(2);",
             ),
             (
@@ -2318,7 +2339,8 @@ mod tests {
                 "export function scale<T>(value: T & number, by?: number): number { return value * (by ?? 3); }",
             ),
         ]);
-        let program = load_from(Rc::new(fs), Path::new("/p/first.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
+        let program =
+            load_from(Rc::new(fs), Path::new("/p/typedpress.config.ts")).unwrap_or_else(|ds| panic!("{ds:?}"));
         let result = crate::eval::Evaluator::new(&program).run().unwrap();
         assert!(matches!(result, crate::value::Value::Num(n) if n == 6.0), "{result:?}");
     }
@@ -2330,15 +2352,15 @@ mod tests {
         // module-level arrows; replacing `module.exports` later doesn't change it.
         let result = evaluate(&[
             (
-                "/p/first.config.ts",
-                "import helpers from './first/helpers.cjs'; import replaced from './first/replaced.cjs'; export default [helpers.picked, helpers.same, helpers.fromArrow, replaced.thisKeys, replaced.isOriginal];",
+                "/p/typedpress.config.ts",
+                "import helpers from './tp/helpers.cjs'; import replaced from './tp/replaced.cjs'; export default [helpers.picked, helpers.same, helpers.fromArrow, replaced.thisKeys, replaced.isOriginal];",
             ),
             (
-                "/p/first/helpers.cjs",
+                "/p/tp/helpers.cjs",
                 "'use strict'; var pick = (this && this.__pick) || function (v) { return v + 1; }; exports.picked = pick(1); exports.same = this === module.exports; const arrow = () => this; exports.fromArrow = arrow() === exports;",
             ),
             (
-                "/p/first/replaced.cjs",
+                "/p/tp/replaced.cjs",
                 "this.marker = 'kept'; const original = this; module.exports = { thisKeys: Object.keys(original).join(','), isOriginal: this === original };",
             ),
         ]);
@@ -2351,11 +2373,11 @@ mod tests {
         // the argument, not the module's exports. Writes through it are ordinary local writes.
         let result = evaluate(&[
             (
-                "/p/first.config.ts",
-                "import star from './first/star.cjs'; export default [star.copied, star.own, star.target.a, star.target.b, star.req];",
+                "/p/typedpress.config.ts",
+                "import star from './tp/star.cjs'; export default [star.copied, star.own, star.target.a, star.target.b, star.req];",
             ),
             (
-                "/p/first/star.cjs",
+                "/p/tp/star.cjs",
                 "var __exportStar = (this && this.__exportStar) || function (m, exports) { for (var p in m) if (p !== 'default' && !Object.hasOwn(exports, p)) exports[p] = m[p]; return exports; };\nconst target = { b: 2 };\n__exportStar({ a: 1, b: 9, default: 0 }, target);\nfunction pick(module, require) { return module.name + require; }\nexports.target = target;\nexports.copied = Object.keys(target).join(',');\nexports.own = Object.keys(module.exports).join(',');\nexports.req = pick({ name: 'm' }, '!');",
             ),
         ]);
@@ -2382,11 +2404,11 @@ mod tests {
             ),
         ] {
             let fs = memory(&[
-                ("/p/first.config.ts", "import * as m from 'pkg'; export default m;"),
+                ("/p/typedpress.config.ts", "import * as m from 'pkg'; export default m;"),
                 ("/p/node_modules/pkg/package.json", manifest),
                 (path, source),
             ]);
-            let diagnostics = load_from(Rc::new(fs), Path::new("/p/first.config.ts"))
+            let diagnostics = load_from(Rc::new(fs), Path::new("/p/typedpress.config.ts"))
                 .err()
                 .unwrap_or_else(|| panic!("accepted {path}: {source}"));
             assert!(
@@ -2512,7 +2534,7 @@ mod tests {
         ] {
             let target_path = format!("/p/node_modules/pkg/{target}");
             let fs = memory(&[
-                ("/p/first.config.ts", "import fn from 'pkg'; export default fn;"),
+                ("/p/typedpress.config.ts", "import fn from 'pkg'; export default fn;"),
                 ("/p/node_modules/pkg/package.json", manifest),
                 (&target_path, source),
                 ("/p/node_modules/pkg/x.js", "module.exports = 1;"),
@@ -2522,7 +2544,7 @@ mod tests {
                 ),
                 ("/p/node_modules/esm-only/index.js", "export default 1;"),
             ]);
-            let diagnostics = load_from(Rc::new(fs), Path::new("/p/first.config.ts"))
+            let diagnostics = load_from(Rc::new(fs), Path::new("/p/typedpress.config.ts"))
                 .err()
                 .unwrap_or_else(|| panic!("accepted {source}"));
             assert!(
@@ -2543,7 +2565,7 @@ mod tests {
         std::fs::write(temp.path().join("outside.ts"), "export const value = 1;").unwrap();
         std::fs::write(package.join("package.json"), r#"{"exports":"./source.ts"}"#).unwrap();
         std::os::unix::fs::symlink(temp.path().join("outside.ts"), package.join("source.ts")).unwrap();
-        let error = resolve(&Disk, &temp.path().join("first.config.ts"), "pkg", Span::NONE).unwrap_err();
+        let error = resolve(&Disk, &temp.path().join("typedpress.config.ts"), "pkg", Span::NONE).unwrap_err();
         assert!(error.message.contains("escapes its package"), "{error:?}");
     }
 }

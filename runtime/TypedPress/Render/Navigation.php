@@ -13,6 +13,8 @@ final class Navigation
 {
     public const NAMESPACE = 'tp/router';
     public const REGION = 'tp/main';
+    /** The router region's closing tag, marked so tools that read a page can find where it ends. */
+    public const END = '</div><!-- /tp/main -->';
     private static bool $used = false;
 
     public static function used(): void
@@ -25,10 +27,14 @@ final class Navigation
         self::$used = false;
     }
 
-    /** The router region's opening tag; the page's HTML follows it, then `</div>`. */
-    public static function region(): string
+    /**
+     * The router region's opening tag; the page's HTML follows it, then `</div>`. On its own it is
+     * the document's `wp-site-blocks`; inside a block template (which has that root already) it is
+     * the page's own box.
+     */
+    public static function region(string $class = 'wp-site-blocks'): string
     {
-        return '<div class="wp-site-blocks" data-wp-interactive="' . esc_attr(self::NAMESPACE) . '" data-wp-router-region="' . esc_attr(self::REGION) . '">';
+        return '<div class="' . esc_attr($class) . '" data-wp-interactive="' . esc_attr(self::NAMESPACE) . '" data-wp-router-region="' . esc_attr(self::REGION) . '">';
     }
 
     /**

@@ -42,6 +42,32 @@ final class Forms
 
     /** @var array<string, array<string, mixed>>|null the flash this request carries, by action */
     private static ?array $flash = null;
+    /** The flash cookie this request read, which its response expires. */
+    private static ?string $name = null;
+
+    /**
+     * Expires the flash cookie this request read (AppRouter::document, before its headers go, with
+     * the block template the page renders in), unless a JavaScript submit from a page in another
+     * template and at another address fetched it (client/router.js sends `X-TP-Template` and
+     * `X-TP-From`): that submit loads this page in full, which reads the flash then. Called once;
+     * later calls do nothing.
+     */
+    public static function expire(?string $template): void
+    {
+        $name = self::$name;
+        if ($name === null || headers_sent()) {
+            return;
+        }
+        self::$name = null;
+        // The page that submitted, and its template: the same check client/router.js makes.
+        $from = $_SERVER['HTTP_X_TP_TEMPLATE'] ?? null;
+        $page = $_SERVER['HTTP_X_TP_FROM'] ?? null;
+        if (is_string($from) && $from !== '' && $template !== null && $from !== $template
+            && is_string($page) && $page !== self::withoutMarker((string) ($_SERVER['REQUEST_URI'] ?? '/'))) {
+            return;
+        }
+        header('Set-Cookie: ' . $name . '=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax' . (is_ssl() ? '; Secure' : ''), false);
+    }
 
     /** The attributes `<form action={name}>` gets. */
     public static function attributes(string $action): array
@@ -264,9 +290,14 @@ final class Forms
         if (!is_string($sealed)) {
             return self::$flash;
         }
-        // Read once: the cookie goes with this response.
+        // Read once: the cookie goes with this response, unless the page that submitted the form is
+        // in another block template than this one (client/router.js sends `X-TP-Template`). That
+        // submit loads this page in full, which reads the flash then (Forms::keepFor()).
         if (!headers_sent()) {
-            header('Set-Cookie: ' . $name . '=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax' . (is_ssl() ? '; Secure' : ''), false);
+            self::$name = $name;
+            // The router expires it as it answers (AppRouter::document, once it knows the template);
+            // any other answer that read it (a page outside the router) expires it at shutdown.
+            add_action('shutdown', static fn () => self::expire(null), 0);
         }
         $flash = self::open($sealed);
         if ($flash !== null && is_string($flash['action'] ?? null) && (int) ($flash['at'] ?? 0) >= time() - self::TTL) {

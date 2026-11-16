@@ -491,6 +491,9 @@ pub fn render(schema: &Schema) -> String {
             "        'notFound' => {},",
             app.not_found.as_ref().map(route).unwrap_or_else(|| "null".into())
         );
+        if let Some(login) = &app.login {
+            let _ = writeln!(out, "        'login' => {},", route(login));
+        }
         let _ = writeln!(
             out,
             "        'reserved' => [{}],",
@@ -527,7 +530,11 @@ pub fn render(schema: &Schema) -> String {
                 f.static_params
                     .as_ref()
                     .map(|n| format!(", 'staticParams' => {}", php_str(n)))
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    + &f.template
+                        .as_ref()
+                        .map(|t| format!(", 'template' => {}", php_str(t)))
+                        .unwrap_or_default(),
             );
         }
         out.push_str("        ],\n");

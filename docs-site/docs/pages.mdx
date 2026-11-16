@@ -16,6 +16,7 @@ tp/app/
 ├── layout.tsx                    wraps every page: export const metadata, default component
 ├── page.tsx                      /
 ├── not-found.tsx                 the 404 for URLs no route serves, and for notFound()
+├── login.tsx                     wp-login.php's sign-in page, in the root layout
 ├── error.tsx                     a render error (logged; the page shows only this)
 ├── (site)/about/page.tsx         /about: a group adds no segment
 ├── colophon/page.md              /colophon: a WordPress Page an editor can change
@@ -34,6 +35,7 @@ tp/app/
 | `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page, with `access` or `signature` |
 | `layout.tsx` | Wraps every page below it, outermost first. May export `guard` |
 | `not-found.tsx` | At the root only |
+| `login.tsx` | At the root only: renders wp-login.php's sign-in page with `<LoginForm />`, which still posts to wp-login.php, so the second factor and attempt limits apply. See [the decision](https://github.com/spacefast/zero/blob/main/docs/decisions/2026-11-15-one-sign-in-page.md) |
 | `error.tsx` | The nearest one above a page renders when the page throws |
 | `[x]` / `[...x]` / `[[...x]]` | One segment / one or more / zero or more (last folder only) |
 | `(group)` / `_private` | No URL segment / never routed |

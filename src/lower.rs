@@ -2988,7 +2988,7 @@ mod tests {
     #[test]
     fn lone_surrogates_are_refused_wherever_a_string_is_spelled() {
         let tmp = tempfile::tempdir().unwrap();
-        let entry = tmp.path().join("first.config.ts");
+        let entry = tmp.path().join("typedpress.config.ts");
         for source in [
             r"export default '\uD800';",
             r"export default `a\uDC00b`;",

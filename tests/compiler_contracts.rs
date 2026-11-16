@@ -632,10 +632,10 @@ fn tagged_templates_refuse_lone_surrogates_except_under_string_raw() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
+            tmp.path().join("typedpress.config.ts"),
             format!(
                 r#"
-import {{ collection, text, action, defineConfig }} from "first";
+import {{ collection, text, action, defineConfig }} from "typedpress";
 const notes = collection({{ title: text() }}, {{ title: "title" }});
 const __raw = action({{ input: {{}}, handler: {handler} }});
 export {{ notes, __raw as raw }}; export default defineConfig({{}});

@@ -63,11 +63,37 @@ than invent an independent field-ownership mode.
 Defer `backorders`, `manageStock`, stock quantity, initial stock, `soldIndividually`, weight,
 dimensions, shipping class, tax class, catalog visibility controls and featured products from
 the writable/synced API. Sale pricing is also deferred: no `salePrice`, sale schedules or
-sale-specific storefront features in v1. Keep those settings available in Woo administration and
-preserve them on sync. Newly created products use Woo's normal defaults for omitted settings.
+sale-specific storefront features in v1. Omitted settings remain available in Woo administration
+and are preserved on sync except for the explicitly disabled capabilities below. Newly created
+products use Woo's normal defaults for other omitted settings.
 Read projections still expose current price, purchasability and availability so the storefront
 reflects Woo's actual state. Cart quantities, shipping rates and totals continue to be validated
 and calculated by Woo; omitting shipping dimensions from source does not remove checkout shipping.
+
+### Disabled capabilities in v1
+
+**Decision:** disable coupons, product reviews and star ratings, Woo customer signup,
+backorders and Woo tax calculation on the TypedPress commerce store. Keep guest checkout,
+stock management, shipping and order emails available.
+
+Use native Woo options and behavioral filters rather than only hiding controls:
+
+- Coupons: `woocommerce_enable_coupons = no` and the `woocommerce_coupons_enabled` filter.
+- Reviews/ratings: `woocommerce_enable_reviews = no` and `woocommerce_enable_review_rating = no`.
+- Customer signup: disable checkout registration, My Account registration and delayed account
+  creation; keep `woocommerce_enable_guest_checkout = yes`. This does not disable TypedPress
+  identity or merchant sign-in.
+- Backorders: set supported products to disallow backorders and enforce
+  `woocommerce_product_backorders_allowed = false` for them. Verify existing `onbackorder`
+  stock states and quantity validation; the filter alone must not be treated as stock repair.
+- Taxes: `woocommerce_calc_taxes = no` and `wc_tax_enabled = false`. Woo must not calculate or
+  add tax to new carts/orders in v1.
+
+These are enforced v1 restrictions, not initial defaults merchants can inadvertently re-enable
+through Woo settings. Settings UI must reflect the restrictions. Scope enforcement to the
+TypedPress commerce store; preserve historical order amounts, tax lines and coupon lines.
+Keep sale-price enforcement as a separate open implementation question: Woo has no equivalent
+single sale-pricing disable switch.
 
 ## Sync integration
 
@@ -222,14 +248,16 @@ mapping. Do not infer ownership from an email address supplied by the caller.
 Images use the existing media pipeline. Protected file ingestion, download grants, file retention
 and downloadable-product fulfillment are proposed follow-up scope, not v1 acceptance gates.
 The selected checkout must provide a receipt and preserve Woo order emails.
-Coupon application can use Woo's checkout integration; coupon CRUD and custom promotion engines are
-deferred. Shipping and tax settings remain in Woo administration; carts expose calculated results.
+Coupon application and tax calculation are disabled in v1. Coupon CRUD and custom promotion
+engines are deferred. Shipping settings remain in Woo administration; carts expose Woo's
+calculated results. Historical order reads retain their original tax and discount breakdowns.
 
 ### Shared value types and query contracts
 
 - **Money:** exact decimal strings with currency and precision at the containing resource;
   never floating-point arithmetic. Normalize Store API minor-unit strings at the adapter boundary.
-  Preserve Woo's tax-inclusive/exclusive display semantics and calculated totals.
+  Preserve Woo's calculated totals and historical order tax breakdowns; new v1 checkout does
+  not calculate tax.
 - **Identity:** source files use persistent sync UIDs for products, terms and references, never
   site-local auto-increment product or term IDs. Reuse the existing UID format and mapping;
   native Woo IDs remain local runtime identifiers. Preserve explicit UIDs when renaming or
@@ -358,6 +386,10 @@ Prove file-to-Woo updates, Woo-to-file updates, conflicting edits, preserved sto
 partial-sync retry, removal behavior and preview isolation. Verify authorized order reads and
 refusal of unauthorized reads. Then qualify the stock gateway with a payment and refund. Compatibility claims
 must come from those flows, not merely successful plugin installation.
+
+Verify that coupons cannot be applied, reviews/ratings and customer signup are disabled,
+guest checkout works, insufficient tracked stock cannot be backordered, and new checkout totals
+contain no calculated tax. Historical order reads must remain unchanged by these restrictions.
 
 Variations, subscriptions, bookings, customer-account flows, a new commerce dashboard and custom
 payment infrastructure are deferred. Downloads and custom email templates are proposed follow-up

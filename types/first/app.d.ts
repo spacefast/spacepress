@@ -84,6 +84,14 @@ export interface Metadata {
 export type Guard = "anyone" | "authenticated" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: { user: User | null }) => boolean);
 
 /**
+ * `export const template` in a page or layout: the WordPress block template the page renders in.
+ * `"theme"` (the default) is First's template with the theme's header and footer parts; `"blank"`
+ * has none, for a layout that draws its own; any other value is a template's slug (one the theme,
+ * a plugin or the Site Editor provides). The page nearest wins, then the nearest layout.
+ */
+export type Template = "theme" | "blank" | (string & {});
+
+/**
  * `export async function staticParams(): Promise<StaticParams<"blog/[slug]">>` in a prebuilt dynamic
  * page: one entry per page to build, with a value for each folder parameter (Astro's `getStaticPaths`).
  */
@@ -138,6 +146,12 @@ export declare function Pagination(props: { page: number; pages: number; param?:
  * (default true) adds "Register" (when open) and "Lost your password?".
  */
 export declare function LoginForm(props: { className?: string; submitLabel?: string; notices?: boolean; links?: boolean }): JSX.Element;
+/**
+ * One of the active theme's template parts (`core/template-part`), as the Site Editor holds it:
+ * `<TemplatePart slug="header" />`. A layout that places parts itself renders in the blank
+ * template unless it exports a `template` of its own.
+ */
+export declare function TemplatePart(props: { slug: string; tagName?: string; className?: string }): JSX.Element;
 /** A post body (block markup) rendered through `the_content`. */
 export declare function Content(props: { value: string | null | undefined }): JSX.Element;
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */

@@ -5258,3 +5258,119 @@ fn one_sign_in_page_on_wordpress() {
 fn json<T: serde::Serialize>(v: T) -> serde_json::Value {
     serde_json::to_value(v).unwrap()
 }
+
+/// `first/app/` pages inside the active block theme's templates (docs/pages.md "Block templates",
+/// tests/php/block_templates.php): the theme's header and footer wrap each page, a layout that
+/// places `<TemplatePart>` or a page that picks `"blank"` draws its own, the templates are listed
+/// in the Site Editor, and the 404 and sign-in pages are templates the owner edits.
+#[test]
+fn pages_render_in_block_templates() {
+    let project = fixture("block-templates", "serve");
+    build(&project);
+    let schema = std::fs::read_to_string(
+        project.join("first/dist/wp-content/plugins/first-app-blocktemplates/first/app/schema.php"),
+    )
+    .unwrap();
+    // `export const template` reaches the route table; a layout placing <TemplatePart> is blank.
+    assert!(schema.contains("'app/bare/page.tsx' => [") && schema.contains("'template' => 'blank'"), "{schema}");
+    assert!(schema.lines().any(|l| l.contains("'app/studio/layout.tsx'") && l.contains("'template' => 'blank'")), "{schema}");
+    assert!(schema.lines().any(|l| l.contains("'app/layout.tsx'") && !l.contains("'template'")), "{schema}");
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/block_templates.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    assert_eq!(seen["block theme"], true, "{seen}");
+    // The default: the theme's header and footer parts around the page, one wp-site-blocks, the
+    // router region inside it, the root layout's chrome not doubled, WordPress's title and styles.
+    let home = &seen["home"];
+    for (key, want) in [
+        ("status", json(200)),
+        ("title", json("Home · Field Notes")),
+        ("titles", json(1)),
+        ("description", json("Notes.")),
+        ("canonicals", json(1)),
+        ("theme header", json(1)),
+        ("theme footer", json(1)),
+        ("site blocks", json(1)),
+        ("region in template", json(1)),
+        ("page", json("Home")),
+        ("root layout", json(0)),
+        ("global styles", json(true)),
+        ("router module", json(true)),
+        ("cache", json("public, max-age=0, s-maxage=300, must-revalidate")),
+    ] {
+        assert_eq!(home[key], want, "home {key}: {seen}");
+    }
+    assert_eq!(seen["home list"], true, "{seen}");
+    assert_eq!((&seen["notes"]["title"], &seen["notes"]["theme header"]), (&json("Notes · Field Notes"), &json(1)), "{seen}");
+    // A layout that places the theme's header itself: blank template, its own footer, the root layout's chrome.
+    let studio = &seen["studio"];
+    assert_eq!(
+        (&studio["theme header"], &studio["theme footer"], &studio["own footer"], &studio["root layout"], &studio["region in template"]),
+        (&json(1), &json(0), &json(true), &json(1), &json(1)),
+        "{seen}"
+    );
+    // `template = "blank"`: no theme parts; the root layout draws the page.
+    let bare = &seen["bare"];
+    assert_eq!(
+        (&bare["theme header"], &bare["theme footer"], &bare["root layout"], &bare["page"]),
+        (&json(0), &json(0), &json(1), &json("Bare")),
+        "{seen}"
+    );
+    // A guard still sends a signed-out visitor to sign in.
+    assert_eq!(seen["guard"]["status"], 302, "{seen}");
+    assert!(seen["guard"]["location"].as_str().unwrap_or_default().contains("/wp-login.php?redirect_to="), "{seen}");
+    // not-found.tsx in the theme's 404 template.
+    let missing = &seen["404"];
+    assert_eq!(
+        (&missing["status"], &missing["title"], &missing["page"], &missing["theme header"], &missing["theme footer"]),
+        (&json(404), &json("Not found · Field Notes"), &json("No such page"), &json(1), &json(1)),
+        "{seen}"
+    );
+    // The Site Editor lists First's templates and the theme's 404, each holding the page block.
+    assert_eq!(
+        seen["templates"],
+        serde_json::json!({
+            "404": { "source": "theme", "page block": true },
+            "first-page": { "source": "plugin", "page block": true },
+            "first-blank": { "source": "plugin", "page block": true },
+            "first-login": { "source": "plugin", "page block": true },
+        }),
+        "{seen}"
+    );
+    // wp-login.php renders login.tsx inside the sign-in template, posting to wp-login.php.
+    let login = &seen["login"];
+    assert_eq!(
+        (&login["status"], &login["app"], &login["wordpress page"], &login["theme header"], &login["title"]),
+        (&json(200), &json(true), &json(false), &json(1), &json("Sign in · Field Notes")),
+        "{seen}"
+    );
+    assert!(login["posts to"].as_str().unwrap_or_default().ends_with("/wp-login.php"), "{seen}");
+    assert_eq!((&seen["login wrong password"]["error"], &seen["login wrong password"]["theme header"]), (&json(true), &json(1)), "{seen}");
+    // Saving the template through REST (as the Site Editor does) changes what wp-login.php shows.
+    assert_eq!(seen["login saved"], 200, "{seen}");
+    let edited = &seen["login edited"];
+    assert_eq!((&edited["owner text"], &edited["app"], &edited["theme header"]), (&json(true), &json(true), &json(0)), "{seen}");
+    assert_eq!((&seen["login edited wrong password"]["error"], &seen["login edited wrong password"]["owner text"]), (&json(true), &json(true)), "{seen}");
+    // The Login form block alone: same form, still posting to wp-login.php, wrong password shown, sign-in works.
+    let block = &seen["login block"];
+    assert_eq!((&block["owner text"], &block["app"], &block["button"]), (&json(true), &json(false), &json(true)), "{seen}");
+    assert!(block["posts to"].as_str().unwrap_or_default().ends_with("/wp-login.php"), "{seen}");
+    assert_eq!(seen["login block wrong password"]["error"], true, "{seen}");
+    assert_eq!(seen["login block sign in"]["status"], 302, "{seen}");
+    assert!(seen["login block sign in"]["location"].as_str().unwrap_or_default().ends_with("/account"), "{seen}");
+    // The owner's 404 template around the app's not-found page.
+    assert_eq!(seen["404 edited"], serde_json::json!({ "status": 404, "owner text": true, "page": "No such page" }), "{seen}");
+}

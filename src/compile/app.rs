@@ -364,6 +364,7 @@ impl Compiler<'_, '_> {
             "LoginForm" => &["className", "submitLabel", "notices", "links"],
             "Pagination" => &["page", "pages", "param", "className", "aria-label"],
             "Search" => &["action", "label", "placeholder", "className"],
+            "TemplatePart" => &["slug", "tagName", "className"],
             "SearchResults" => &["kind", "q", "page", "perPage", "className"],
             "Link" => &[
                 "href",
@@ -470,6 +471,45 @@ impl Compiler<'_, '_> {
                 ))
             }
             "Search" | "SearchResults" => self.search_component(name, &named, span),
+            "TemplatePart" => {
+                if self.client.is_some() {
+                    return err_help(
+                        span,
+                        "`<TemplatePart>` is for server components",
+                        "place the theme's parts in a layout or page",
+                    );
+                }
+                let mut arg = |k: &str, want: Ty| -> Result<Option<String>> {
+                    match get(k) {
+                        None => Ok(None),
+                        Some(v) => {
+                            let out = self.expr(v)?;
+                            let out = self.finish_value(out, v.span)?;
+                            if !assignable(&out.ty, &want) {
+                                return err(
+                                    v.span,
+                                    format!("`<TemplatePart {k}>` takes {}, not {}", want.describe(), out.ty.describe()),
+                                );
+                            }
+                            Ok(Some(out.php))
+                        }
+                    }
+                };
+                let Some(slug) = arg("slug", Ty::Str)? else {
+                    return err_help(
+                        span,
+                        "`<TemplatePart>` needs `slug`",
+                        "write `<TemplatePart slug=\"header\" />`: the slug of one of the theme's template parts",
+                    );
+                };
+                let optional = Ty::union([Ty::Str, Ty::Null, Ty::Undefined]);
+                let tag = arg("tagName", optional.clone())?.unwrap_or_else(|| "null".into());
+                let class = arg("className", optional)?.unwrap_or_else(|| "null".into());
+                Ok(Out::atom(
+                    format!("\\First\\Wp\\BlockTemplates::part({slug}, {tag}, {class})"),
+                    Ty::Html,
+                ))
+            }
             "LoginForm" => {
                 let mut arg = |k: &str, want: Ty| -> Result<String> {
                     match get(k) {

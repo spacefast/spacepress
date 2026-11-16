@@ -61,16 +61,20 @@ final class AppRouter
         if ($app['legacyRoutes'] ?? false) {
             return;
         }
-        // `login.tsx`: wp-login.php's sign-in view, once wp-login.php has decided what it shows.
-        if (is_array($app['login'] ?? null)) {
-            add_filter('wp_login_errors', [self::$instance, 'login'], PHP_INT_MAX, 2);
-        }
+        // wp-login.php's sign-in view, once wp-login.php has decided what it shows: `login.tsx`, or
+        // the sign-in block template an owner edited in the Site Editor.
+        add_filter('wp_login_errors', [self::$instance, 'login'], PHP_INT_MAX, 2);
         // After the frontend-mode gate (-1) and a kind URL's old-slug redirect (0).
         add_action('template_redirect', [self::$instance, 'claim'], 1);
         add_filter('redirect_canonical', static fn (string|false $redirect): string|false => self::$instance?->serving ? false : $redirect, 10, 1);
     }
 
     private bool $serving = false;
+    /**
+     * The block template document() renders in (a slug, BlockTemplates): First's page template
+     * until a route chooses another. Null only with a classic theme, where First prints the document.
+     */
+    private ?string $template = BlockTemplates::PAGE;
     /** @var list<string> the stylesheets of the route being rendered, linked by document() */
     private array $styles = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
@@ -179,6 +183,31 @@ final class AppRouter
     private function file(?string $path): ?array
     {
         return $path === null ? null : ($this->app['files'][$path] ?? null);
+    }
+
+    /**
+     * A route's layouts, root first, each with its file's spec and `path`. Under First's default
+     * template the theme's header and footer replace the root layout's chrome: `app/layout.tsx`
+     * keeps its metadata and guard and doesn't render (`chrome` false), unless it chose a template
+     * itself or the route renders in another template (docs/pages.md "Block templates").
+     *
+     * @param array<string, mixed> $route
+     * @return list<array<string, mixed>>
+     */
+    private function layouts(array $route): array
+    {
+        $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts'] ?? []);
+        if ($layouts !== [] && $layouts[0]['path'] === 'app/layout.tsx' && ($layouts[0]['template'] ?? null) === null
+            && BlockTemplates::choice($route, $this->app['files'] ?? []) === 'theme' && self::themed()) {
+            $layouts[0]['chrome'] = false;
+        }
+        return $layouts;
+    }
+
+    /** Whether pages render in block templates: the active theme is a block theme. */
+    public static function themed(): bool
+    {
+        return function_exists('wp_is_block_theme') && wp_is_block_theme();
     }
 
     // ------------------------------------------------------------------ HTTP handlers
@@ -373,6 +402,8 @@ final class AppRouter
         $route = $this->app['notFound'] ?? null;
         $viewer = CoreAccess::viewer() ?? new Viewer(null);
         if (!is_array($route)) {
+            // The theme's own 404 template, as WordPress renders it.
+            $this->template = BlockTemplates::NOT_FOUND;
             $this->document(404, ['title' => __('Page not found')], '<h1>' . esc_html__('Page not found') . '</h1>');
         }
         $this->serve($route, [], $viewer, 404);
@@ -397,7 +428,11 @@ final class AppRouter
             || $this->plugin->unavailable() !== null) {
             return $errors;
         }
-        $route = $this->app['login'];
+        $route = $this->app['login'] ?? null;
+        // Without login.tsx, WordPress's own page stays until the owner edits the sign-in template.
+        if (!is_array($route) && !BlockTemplates::loginCustomized()) {
+            return $errors;
+        }
         $this->plugin->app();
         $login = '';
         if (isset($_POST['log']) && is_string($_POST['log']) && in_array($errors->get_error_code(), ['incorrect_password', 'empty_password'], true)) {
@@ -405,11 +440,17 @@ final class AppRouter
         }
         \First\Render\LoginView::capture($errors, is_string($redirectTo) ? $redirectTo : '', $login);
         $viewer = CoreAccess::viewer() ?? new Viewer(null);
-        $page = $this->file($route['page']);
-        // The root layouts wrap the page; their `guard` doesn't apply to the page that signs people in.
-        $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
+        $this->template = BlockTemplates::LOGIN;
         try {
-            [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, \First\Render\LoginView::props()));
+            if (is_array($route)) {
+                $page = $this->file($route['page']);
+                // The root layouts wrap the page; their `guard` doesn't apply to the page that signs people in.
+                $layouts = $this->layouts($route);
+                [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, \First\Render\LoginView::props()));
+            } else {
+                // The owner's sign-in template, with the `first/login-form` block in it.
+                [$head, $body] = [['title' => __('Log In')], ''];
+            }
         } catch (Halt $halt) {
             if ($halt->location === null) {
                 return $errors;
@@ -430,7 +471,7 @@ final class AppRouter
             [$path] = explode('?', wp_unslash((string) ($_SERVER['REQUEST_URI'] ?? '')));
             setcookie($reset, ' ', time() - YEAR_IN_SECONDS, $path, COOKIE_DOMAIN, is_ssl(), true);
         }
-        $this->styles = $route['styles'] ?? [];
+        $this->styles = is_array($route) ? ($route['styles'] ?? []) : [];
         // What plugins load for the sign-in form's own fields (a captcha, Two Factor's scripts), as
         // login_header() fires it.
         do_action('login_enqueue_scripts');
@@ -449,7 +490,10 @@ final class AppRouter
         $this->plugin->app(); // the compiled page functions live in the app's functions.php
         $this->styles = $route['styles'] ?? [];
         $page = $this->file($route['page']);
-        $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
+        $layouts = $this->layouts($route);
+        // The 404 renders in the theme's own `404` template (BlockTemplates), every other page in
+        // the template its files chose.
+        $this->template = $status === 404 ? BlockTemplates::NOT_FOUND : BlockTemplates::slug(BlockTemplates::choice($route, $this->app['files'] ?? []));
         try {
             foreach ($layouts as $layout) {
                 if (($layout['guard'] ?? null) !== null && !$this->allowed($layout['guard'], $viewer)) {
@@ -743,7 +787,7 @@ final class AppRouter
         $route = $match['route'];
         $this->plugin->app();
         $page = $this->file($route['page']);
-        $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
+        $layouts = $this->layouts($route);
         foreach ($layouts as $layout) {
             if (($layout['guard'] ?? null) !== null && !$this->allowed($layout['guard'], $viewer)) {
                 throw $viewer->user === null
@@ -806,7 +850,7 @@ final class AppRouter
         $file = $this->file($route['error'] ?? null);
         if ($file !== null) {
             try {
-                $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
+                $layouts = $this->layouts($route);
                 [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($file, $layouts, new JsObject(['params' => new JsObject([])])));
                 $this->document(500, $head, $body);
             } catch (\Throwable $again) {
@@ -872,6 +916,9 @@ final class AppRouter
         $fn = '\\FirstApp\\' . $page['component'];
         $html = Html::component($fn(...), $props);
         foreach ($wrap ? array_reverse($layouts) : [] as $layout) {
+            if (($layout['chrome'] ?? true) === false) {
+                continue;
+            }
             $layoutProps = new JsObject(['params' => $props->p['params'], 'children' => $html]);
             $layoutFn = '\\FirstApp\\' . $layout['component'];
             $html = Html::component($layoutFn(...), $layoutProps);
@@ -1013,6 +1060,40 @@ final class AppRouter
         exit;
     }
 
+    /**
+     * The page inside a block template, as `template-canvas.php` prints one: the template's blocks
+     * render first (so their styles reach `wp_head`), then the document around them. WordPress
+     * writes the `<title>` from the page's metadata (`pre_get_document_title`); First adds the
+     * description, canonical and social tags to `wp_head`. The router region holds the page only,
+     * so `<Link>` navigation swaps it and the theme's header and footer stay.
+     *
+     * @param array<string, mixed> $head
+     */
+    private function templated(\WP_Block_Template $template, array $head, string $body): never
+    {
+        add_filter('pre_get_document_title', static fn (): string => (string) $head['title'], PHP_INT_MAX);
+        add_action('wp_head', '_block_template_viewport_meta_tag', 0);
+        add_action('wp_head', '_block_template_render_title_tag', 1);
+        add_action('wp_head', static function () use ($head): void {
+            if (is_string($head['description'] ?? null) && $head['description'] !== '') {
+                echo '<meta name="description" content="' . esc_attr($head['description']) . "\">\n";
+            }
+            if (is_string($head['canonical'] ?? null) && $head['canonical'] !== '') {
+                echo '<link rel="canonical" href="' . esc_url(self::absolute($head['canonical'])) . "\">\n";
+            }
+            echo self::social($head);
+        }, 2);
+        $html = BlockTemplates::html($template, Navigation::region('first-page') . $body . Navigation::END);
+        echo "<!DOCTYPE html>\n<html " . get_language_attributes() . ">\n<head>\n<meta charset=\"" . esc_attr((string) get_option('blog_charset')) . "\">\n";
+        wp_head();
+        echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('first-app'))) . "\">\n";
+        wp_body_open();
+        echo $html, "\n";
+        wp_footer();
+        echo "</body>\n</html>\n";
+        exit;
+    }
+
     /** @param array<string, mixed> $head */
     private function document(int $status, array $head, string $body): never
     {
@@ -1059,6 +1140,10 @@ final class AppRouter
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {
             exit;
         }
+        $template = $this->template !== null && self::themed() ? BlockTemplates::resolve($this->template) : null;
+        if ($template !== null) {
+            $this->templated($template, $head, $body);
+        }
         echo "<!DOCTYPE html>\n<html " . get_language_attributes() . ">\n<head>\n<meta charset=\"" . esc_attr((string) get_option('blog_charset')) . "\">\n";
         echo "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
         echo '<title>' . esc_html((string) $head['title']) . "</title>\n";
@@ -1072,7 +1157,7 @@ final class AppRouter
         wp_head();
         echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('first-app'))) . "\">\n";
         wp_body_open();
-        echo Navigation::region() . $body . "</div>\n";
+        echo Navigation::region() . $body . Navigation::END . "\n";
         wp_footer();
         echo "</body>\n</html>\n";
         exit;

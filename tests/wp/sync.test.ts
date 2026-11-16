@@ -148,12 +148,15 @@ test("sync on WordPress", async (t) => {
   await t.test("trash is reversible: no delete hook, dependent rows kept, a restore brings back what was there", async () => {
     // `summary: "keep"` makes beforeDelete refuse: a trash never asks it.
     const kept = { uid: uidOf(4), fields: { ...record.fields, title: `Kept ${run}`, slug: `kept-${run}`, summary: "keep", status: "published" }, body: null };
-    const { digest: keptDigest } = (await push(kept, "absent")).json.data;
+    await push(kept, "absent");
+    // Publishing stamps publishedAt: the stored record is what a pull shows.
+    const stored = (await pull("guides")).get(kept.uid);
+    const keptDigest = stored.digest;
     const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_tp_uid' AND meta_value = '${kept.uid}'`);
     const id = Number(ID);
     // Rows that depend on it (onDelete: cascade), a revision, and a published row's update hook.
-    first("insert", "guideNotes", JSON.stringify({ guideId: id, note: `depends on ${run}` }));
-    const notes = () => first("find", "guideNotes", JSON.stringify({ where: { guideId: id } })).map((n: any) => n.note);
+    first("insert", "guide_notes", JSON.stringify({ guideId: id, note: `depends on ${run}` }));
+    const notes = () => first("find", "guide_notes", JSON.stringify({ where: { guideId: id } })).map((n: any) => n.note);
     const revisions = () => Number(sql(`SELECT COUNT(*) AS n FROM wp_posts WHERE post_parent = ${id} AND post_type = 'revision'`)[0].n);
     const before = revisions();
     assert.ok(before > 0, "the published guide has revisions");
@@ -165,11 +168,11 @@ test("sync on WordPress", async (t) => {
     assert.equal(revisions(), before, "its revisions are kept");
 
     // Pushing the file back restores it in place, published, with everything that pointed at it.
-    const restored = await push(kept, "absent");
+    const restored = await push(stored.record, "absent");
     assert.equal(restored.status, 200, JSON.stringify(restored.json));
     assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${id}`)[0].post_status, "publish", "restored as it was");
     assert.deepEqual(notes(), [`depends on ${run}`], "the dependent row is still there after the restore");
-    assert.deepEqual((await pull("guides")).get(kept.uid), { record: kept, digest: keptDigest, trashed: false }, "the restored record is the one that was trashed");
+    assert.deepEqual((await pull("guides")).get(kept.uid), stored, "the restored record is the one that was trashed");
 
     // Only a person deleting it from the trash for good runs the delete lifecycle: here its veto.
     await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: kept.uid, expect: keptDigest } });
@@ -201,11 +204,13 @@ test("sync on WordPress", async (t) => {
 
   await t.test("a failure after the post is trashed rolls the trash back", async () => {
     const regret = { uid: uidOf(6), fields: { ...record.fields, title: `Regret ${run}`, slug: `regret-${run}`, summary: "regret", status: "published" }, body: null };
-    const { digest: regretDigest } = (await push(regret, "absent")).json.data;
-    await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: regret.uid, expect: regretDigest } }, { status: 409, code: "regretted", pointer: undefined });
+    await push(regret, "absent");
+    // Publishing stamps publishedAt: the record as stored is what a pull shows.
+    const published = (await pull("guides")).get(regret.uid);
+    await problem("POST", "/sync/guides/trash", { as: "editor", body: { uid: regret.uid, expect: published.digest } }, { status: 409, code: "regretted", pointer: undefined });
     const [post] = sql(`SELECT p.post_status FROM wp_posts p JOIN wp_postmeta u ON u.post_id = p.ID AND u.meta_key = '_tp_uid' AND u.meta_value = '${regret.uid}'`);
     assert.equal(post.post_status, "publish");
-    assert.deepEqual((await pull("guides")).get(regret.uid), { record: regret, digest: regretDigest, trashed: false }, "the cached read is the restored post too");
+    assert.deepEqual((await pull("guides")).get(regret.uid), published, "the cached read is the restored post too");
   });
 
   await t.test("a trashed post keeps its uid: nobody else can take it", async () => {

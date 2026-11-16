@@ -121,3 +121,52 @@ that's WP login, and one system."
   session.
 - **The hosted screen no longer shows its own password form to a signed-out browser.** A site
   without `login.tsx` sends that browser to WordPress's stock sign-in page.
+
+## Revision after the security review (2026-11-16)
+
+The project is TypedPress now (`tp/app/login.tsx`, `TypedPress\Identity\TwoFactorProvider`). A
+review of the first version found ways the WordPress session and the identity session could
+disagree. These rules replace the matching bullets above.
+
+- **Only Identity's factor counts for an account with Identity MFA.**
+  - Its only Two Factor method is Identity's (`two_factor_enabled_providers_for_user`): no emailed
+    code or Two Factor TOTP as a weaker second factor.
+  - A WordPress session opens an identity session for such an account only when that session
+    records Identity's factor (`two-factor-provider` is `TypedPress_Identity_TwoFactorProvider`,
+    with `two-factor-login`). The provider's Two Factor key has no backslashes, because WordPress
+    unslashes the user meta and session data it is stored in. A session made any other way gets no identity session: another Two
+    Factor method, or a plugin that calls `wp_set_auth_cookie` without `wp_login` (User Switching
+    and the like).
+- **The identity session is tied to the WordPress session it came from.**
+  - It stores the WordPress session's verifier (`sessions.wp_token`, the SHA-256 WordPress itself
+    stores; schema version 4).
+  - When that WordPress session ends, the identity session and the application tokens minted from
+    it are revoked on their next use. That covers sign-out, "log out everywhere else"
+    (`destroy_others`), an administrator ending sessions, and expiry. `Sessions::find`,
+    `OAuth::live` and access-token checks all apply this.
+  - Revoking the identity session ends the WordPress session.
+  - A browser that loses its identity cookie gets the same row back with a new secret, so there is
+    no new row per request.
+- **WordPress's sign-in wins.** An identity cookie for a different user than the browser's
+  WordPress session (a planted or stale cookie, a guest handoff) is dropped, and the identity
+  session comes from the WordPress one.
+- **RP logout.**
+  - With an unexpired `id_token_hint` naming the browser's WordPress user, `/identity/logout` ends
+    both sessions.
+  - Without one, or with an expired hint, it shows a confirmation form instead (POST, a
+    WordPress nonce, this site's Origin). A link alone never signs anyone out of the site.
+- **The sign-in page and plugins.**
+  - On `login.tsx`'s page, `login_head` and `login_footer` fire from `wp_head` and `wp_footer`.
+    Core's own callbacks on them are left out, since the document prints those already.
+  - The `login_message` notice reaches the page with WordPress's messages, so captcha and anti-bot
+    plugins work.
+  - If the app's boot or Identity's storage fails, WordPress's own page shows.
+- **`<LoginForm />` elsewhere.**
+  - Its form carries no `testcookie`. Only wp-login.php's own page sets the test cookie, so a
+    first-time visitor would otherwise fail the first attempt.
+  - A page whose form prints `login_form` output (a captcha challenge, a nonce) is
+    `private, no-store`.
+- **Subdirectory installs.** The way back to `/identity` is built from the request's own path, so
+  the subdirectory appears once.
+
+**Left as is.** One low-severity finding of that review (L4) is deliberately not changed here.

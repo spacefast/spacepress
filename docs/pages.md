@@ -197,7 +197,10 @@ export default function Login({ messages, errors, registerUrl }: LoginProps) {
   - `className` and `submitLabel`;
   - `notices={false}`: leaves the errors and messages to your page;
   - `links={false}`: drops "Lost your password?" and "Register".
-  Anywhere other than `login.tsx` it is a sign-in form that comes back to its page.
+  Anywhere other than `login.tsx` it is a sign-in form that comes back to its page. When
+  plugins add fields to the form (a captcha, a nonce), that page is `private, no-store`.
+- **Plugins on the page.** `login_head`, `login_footer`, `login_form` and the `login_message`
+  notice work on `login.tsx`'s page as on WordPress's own, so captcha and anti-bot plugins apply.
 - **Exports.** `login.tsx` exports `default` and `metadata` only. It has no URL of its own and no
   `guard`.
 - **Caching and errors.** The page is `private, no-store` and `noindex`. If it throws, WordPress's

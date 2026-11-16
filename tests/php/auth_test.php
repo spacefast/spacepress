@@ -275,9 +275,9 @@ $twin = wp_insert_user(['user_login' => 'twin@example.test', 'user_email' => 'tw
 eq('a login that is also the same user\'s email is checked once, not by both of core\'s checks', [$cost('twin@example.test', 'guess'), $cost('twin@example.test', $pass)[0]], [['incorrect_password', 1], 'signed in']);
 eq('the right password still signs in, by username or email', [$cost('known@example.test', $pass)[0], $cost('known', $pass)[0]], ['signed in', 'signed in']);
 
-// typedpress-identity's second factor: outside wp-login.php (here, a direct wp_authenticate) a password alone
-// is refused, and only after it checks out, so a wrong password doesn't reveal the account or its factor.
-// On wp-login.php it leads to Two Factor's second step instead (tests/php/login_page.php).
+// typedpress-identity's second factor: outside wp-login.php (here, a direct wp_authenticate) a password
+// alone is refused, and only after it checks out, so a wrong password doesn't reveal the account or its
+// factor. On wp-login.php it leads to Two Factor's second step instead (tests/php/login_page.php).
 \TypedPress\Identity\Plugin::$accounts->ensure($known);
 $mfa = new \TypedPress\Identity\Mfa(\TypedPress\Identity\Plugin::$db, \TypedPress\Identity\Plugin::$security);
 $totp = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($known, 'Login errors')['secret']);

@@ -6,7 +6,7 @@ namespace TypedPress\Identity;
 
 final class Schema
 {
-    public const VERSION = 3;
+    public const VERSION = 4;
     public static function migrate(DB $db): void
     {
         $database = $db->row("SELECT DATABASE() AS name");
@@ -37,7 +37,7 @@ final class Schema
             "providers" =>
                 "id bigint unsigned NOT NULL AUTO_INCREMENT, wp_user_id bigint unsigned NOT NULL, identity_key binary(64) NOT NULL, issuer varchar(255) NOT NULL, subject varchar(512) NOT NULL, created_at bigint NOT NULL, PRIMARY KEY  (id), UNIQUE KEY identity_key (identity_key), KEY account (wp_user_id)",
             "sessions" =>
-                "id char(32) NOT NULL, wp_user_id bigint unsigned NOT NULL, secret_hash char(64) NOT NULL, csrf char(64) NOT NULL, created_at bigint NOT NULL, expires_at bigint NOT NULL, verified_at bigint NOT NULL, revoked_at bigint NULL, label varchar(200) NOT NULL, PRIMARY KEY  (id), UNIQUE KEY secret_hash (secret_hash), KEY account (wp_user_id)",
+                "id char(32) NOT NULL, wp_user_id bigint unsigned NOT NULL, secret_hash char(64) NOT NULL, csrf char(64) NOT NULL, created_at bigint NOT NULL, expires_at bigint NOT NULL, verified_at bigint NOT NULL, revoked_at bigint NULL, label varchar(200) NOT NULL, wp_token char(64) NULL, PRIMARY KEY  (id), UNIQUE KEY secret_hash (secret_hash), KEY account (wp_user_id), KEY wp_token (wp_token)",
             "challenges" =>
                 'id char(32) NOT NULL, purpose varchar(32) NOT NULL, wp_user_id bigint unsigned NOT NULL DEFAULT 0, session_id char(32) NOT NULL DEFAULT \'\', secret_hash char(64) NOT NULL, payload longtext NOT NULL, attempts int NOT NULL DEFAULT 0, expires_at bigint NOT NULL, consumed_at bigint NULL, PRIMARY KEY  (id), KEY expiry (expires_at)',
             "applications" =>

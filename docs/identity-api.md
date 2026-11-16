@@ -15,7 +15,10 @@ render ([Pages](pages.md#the-sign-in-page)).
   `/identity/authorize` without a session redirects to `wp_login_url(<where it was>)`. WordPress
   then sends the browser back, and an authorization continues to consent.
 - **A WordPress login is an identity session.** A browser with a valid WordPress login cookie and
-  no identity session gets one for the same user. The session:
+  no identity session gets one for the same user (for an account with Identity MFA, only when that
+  WordPress sign-in passed Identity's factor). The session is tied to the WordPress session it came
+  from: when that ends, so do the identity session and the application tokens minted from it, and
+  revoking the identity session ends the WordPress session. The session:
   - is never fresher than the WordPress sign-in (`verified_at` is its `login` time);
   - never outlives it (`expires_at` is at most its expiration).
   Consent, `max_age`, the account screens and this API work as before.
@@ -23,9 +26,10 @@ render ([Pages](pages.md#the-sign-in-page)).
   with `reauth=1` and sets its identity session aside.
 - **One sign-out.** `sign-out` also ends the browser's WordPress session for the same user.
   Signing out of WordPress, or signing in there as someone else, ends the identity session. RP
-  logout with a matching `id_token_hint` ends both.
+  logout with an unexpired `id_token_hint` naming the browser's user ends both; without one it
+  shows a confirmation form first.
 - **MFA.** An account with Identity MFA signs in on wp-login.php. After the password, Two Factor
-  asks for the authenticator or a recovery code (provider `TypedPress\Identity\TwoFactorProvider`),
+  asks for the authenticator or a recovery code (Two Factor provider key `TypedPress_Identity_TwoFactorProvider`),
   and sends no cookie until it checks out. A password alone never signs such an account in
   anywhere else (`identity_mfa_required`).
 - **Sign-ins without a WordPress password.** When wp-login.php signs in for Identity, it links to

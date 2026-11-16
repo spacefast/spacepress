@@ -14,10 +14,20 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('login-page', ['wpContent' => $argv[1], 'identity' => true, 'users' => ['reader' => 'subscriber'], 'muPlugins' => ['identity-http' => <<<'PHP'
+// LOGIN_PAGE_BASE=/blog runs only the subdirectory checks, on a site served below that path.
+$base = (string) getenv('LOGIN_PAGE_BASE');
+$site = wpSite('login-page', ['wpContent' => $argv[1], 'identity' => true, 'base' => $base, 'users' => ['reader' => 'subscriber'], 'muPlugins' => ['identity-http' => <<<'PHP'
     <?php
     // php -S speaks HTTP only; Identity allows that on a local site with this switch.
     define('TP_IDENTITY_DEV_HTTP', true);
+    PHP, 'captcha' => <<<'PHP'
+    <?php
+    // A captcha-style plugin: it adds a field to the form, a script in the head and the foot, and a
+    // notice above the form, only on the sign-in page (what anti-bot plugins hook).
+    add_action('login_form', static function (): void { echo '<input type="hidden" name="probe" value="' . esc_attr(wp_create_nonce('probe')) . '">'; });
+    add_action('login_head', static function (): void { echo "<meta name=\"probe-head\" content=\"1\">\n"; });
+    add_action('login_footer', static function (): void { echo "<script id=\"probe-foot\">1</script>\n"; });
+    add_filter('login_message', static fn (string $m): string => $m . '<p class="probe-notice">Members only</p>');
     PHP]]);
 $url = $site->url();
 $password = 'correct horse battery stapler';
@@ -28,6 +38,14 @@ $mfa = new \TypedPress\Identity\Mfa(\TypedPress\Identity\Plugin::$db, \TypedPres
 $totp = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($mfaUser, 'Login page')['secret']);
 $mfa->verify($mfaUser, $totp->now(), true) || throw new RuntimeException('MFA setup failed');
 $recovery = $mfa->recoveryCodes($mfaUser);
+// Two Factor's emailed codes are on for the site: an account with Identity MFA must still be asked
+// for Identity's factor only, and a WordPress session made another way never counts for Identity.
+$emailUser = $site->addUser('em', 'subscriber', $password);
+\TypedPress\Identity\Plugin::$accounts->ensure($emailUser);
+$emailTotp = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($emailUser, 'Email too')['secret']);
+$mfa->verify($emailUser, $emailTotp->now(), true) || throw new RuntimeException('MFA setup failed');
+update_user_meta($emailUser, Two_Factor_Core::ENABLED_PROVIDERS_USER_META_KEY, ['Two_Factor_Email']);
+update_user_meta($emailUser, Two_Factor_Core::PROVIDER_USER_META_KEY, 'Two_Factor_Email');
 $app = \TypedPress\Identity\Applications::add('Login page app', 'http://127.0.0.1:18999/callback', 'http://127.0.0.1:18999', 'app_login_page');
 $site->actAs(null);
 $site->startServer();
@@ -37,6 +55,7 @@ final class Browser
 {
     /** @var array<string, string> */
     public array $cookies = ['wordpress_test_cookie' => 'WP Cookie check'];
+    public string $token = '';
 
     public function __construct(private readonly string $base) {}
 
@@ -109,11 +128,57 @@ function view(array $r): array
         'robots' => str_contains($r['body'], 'noindex'),
         'cache' => $r['headers']['cache-control'][0] ?? null,
         'methods link' => $texts("//p[@class='typedpress-identity-methods']/a")[0] ?? null,
+        'probes' => [
+            'field' => isset($inputs['probe']),
+            'head' => str_contains($r['body'], 'name="probe-head"'),
+            'foot' => str_contains($r['body'], 'id="probe-foot"'),
+            'notice' => str_contains($r['body'], 'Members only'),
+        ],
+        'testcookie field' => isset($inputs['testcookie']),
     ];
+}
+
+/** A browser holding a WordPress session for $uid that no wp-login.php sign-in made (`wp_set_auth_cookie` only). */
+function planted(string $url, int $uid, array $extra = []): Browser
+{
+    $b = new Browser($url);
+    $expires = time() + 3600;
+    $token = WP_Session_Tokens::get_instance($uid)->create($expires);
+    if ($extra !== []) {
+        $tokens = WP_Session_Tokens::get_instance($uid);
+        $tokens->update($token, $extra + $tokens->get($token));
+    }
+    $b->cookies[LOGGED_IN_COOKIE] = rawurlencode(wp_generate_auth_cookie($uid, $expires, 'logged_in', $token));
+    $b->token = $token;
+    return $b;
+}
+
+/** WordPress's view of $uid's session $token, after what the web server wrote: no stale caches. */
+function wpSession(int $uid, string $token): bool
+{
+    wp_cache_flush();
+    return WP_Session_Tokens::get_instance($uid)->verify($token);
+}
+
+/** The identity sessions open for a user, newest first. */
+function identitySessions(int $uid): array
+{
+    wp_cache_flush();
+    $db = \TypedPress\Identity\Plugin::$db;
+    return $db->rows("SELECT id, wp_token, revoked_at FROM {$db->prefix}sessions WHERE wp_user_id=%d ORDER BY created_at DESC", $uid);
 }
 
 $out = [];
 $login = "$url/wp-login.php";
+if ($base !== '') {
+    // L1: the way back after signing in is this page, not the subdirectory twice.
+    $r = (new Browser($url))->go('/identity/account?tab=1');
+    parse_str((string) parse_url((string) $r['location'], PHP_URL_QUERY), $q);
+    $out['subdirectory'] = ['status' => $r['status'], 'login' => strtok((string) $r['location'], '?'), 'back' => $q['redirect_to'] ?? null, 'url' => $url];
+    echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
+    $site->destroy();
+    exit;
+}
 
 // ---------------------------------------------------------------- (a) login.tsx is wp-login.php's sign-in view
 $b = new Browser($url);
@@ -135,7 +200,13 @@ $out['lost password'] = view($b->go('/wp-login.php?action=lostpassword'));
 $out['checkemail'] = view($b->go('/wp-login.php?checkemail=confirm'));
 // <LoginForm /> on any other page signs in and comes back to that page.
 $home = view((new Browser($url))->go('/?from=home'));
-$out['form elsewhere'] = ['action' => $home['action'], 'redirect_to' => $home['inputs']['redirect_to'] ?? null, 'cache' => $home['cache']];
+$out['form elsewhere'] = ['action' => $home['action'], 'redirect_to' => $home['inputs']['redirect_to'] ?? null, 'cache' => $home['cache'], 'testcookie field' => $home['testcookie field'], 'probe field' => $home['probes']['field']];
+// A first-time visitor signs in from that form: no wp-login.php visit before it, so no test cookie.
+$fresh = new Browser($url);
+$fresh->cookies = [];
+$fields = ['log' => 'ana', 'pwd' => $password, 'redirect_to' => html_entity_decode((string) ($home['inputs']['redirect_to'] ?? ''))];
+$fromHome = $fresh->go('/wp-login.php', $fields);
+$out['form elsewhere sign in'] = ['status' => $fromHome['status'], 'location' => $fromHome['location'], 'signed in' => $fresh->signedIn()];
 $guard = (new Browser($url))->go('/account');
 $out['guard'] = ['status' => $guard['status'], 'to login' => str_starts_with((string) $guard['location'], $login)];
 
@@ -157,6 +228,8 @@ $out['mfa wrong code'] = ['status' => $wrong['status'], 'signed in' => $m->signe
 delete_user_meta($mfaUser, Two_Factor_Core::USER_RATE_LIMIT_KEY);
 $done = $m->go('/wp-login.php?action=validate_2fa', ['wp-auth-id' => (string) $mfaUser, 'wp-auth-nonce' => $nonce[1] ?? '', 'provider' => html_entity_decode($provider[1] ?? ''), 'authcode' => $recovery[0], 'redirect_to' => "$url/account"]);
 $out['mfa recovery code'] = ['status' => $done['status'], 'location' => $done['location'], 'signed in' => $m->signedIn()];
+// That real sign-in (password, then Identity's factor through Two Factor) is an identity sign-in.
+$out['mfa identity'] = $m->go('/identity/account')['status'];
 $out['mfa recovery code reused'] = (static function () use ($url, $password, $mfaUser, $recovery): array {
     $again = new Browser($url);
     $step = $again->go('/wp-login.php', ['log' => 'mo', 'pwd' => $password, 'testcookie' => '1']);
@@ -220,6 +293,99 @@ $signout = $anon->go('/wp-json/typedpress-identity/v1/sign-out', [], ["Origin: $
 $out['identity sign-out'] = ['status' => $signout['status'], 'wordpress signed in' => $anon->signedIn(), 'identity cookie' => isset($anon->cookies['zi_session'])];
 $after = $anon->go('/identity/account');
 $out['after sign-out'] = ['status' => $after['status'], 'to login' => str_starts_with((string) $after['location'], $login)];
+
+// ---------------------------------------------------------------- Identity counts only its own second factor (H1)
+// The MFA account's methods are Identity's only, whatever Two Factor's settings: the Email account is asked
+// for Identity's factor, never sent an emailed code.
+$step = (new Browser($url))->go('/wp-login.php', ['log' => 'em', 'pwd' => $password, 'testcookie' => '1']);
+preg_match('#name="provider"[^>]*value="([^"]+)"#', $step['body'], $p);
+$out['mfa methods'] = ['provider' => html_entity_decode($p[1] ?? ''), 'emailed' => str_contains($step['body'], 'Two_Factor_Email')];
+// A WordPress session that another Two Factor method made, or that a plugin set with wp_set_auth_cookie
+// alone (no wp-login.php, no second step), is a WordPress session but not an identity one.
+$byEmail = planted($url, $emailUser, ['two-factor-provider' => 'Two_Factor_Email', 'two-factor-login' => time()]);
+$plain = planted($url, $mfaUser);
+$withFactor = planted($url, $mfaUser, ['two-factor-provider' => \TypedPress\Identity\Plugin::TWO_FACTOR_KEY, 'two-factor-login' => time()]);
+$out['bridge'] = [
+    'other method' => $byEmail->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'other method page' => str_starts_with((string) $byEmail->go('/identity/account')['location'], $login),
+    'cookie only' => $plain->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'identity factor' => $withFactor->go('/identity/account')['status'],
+    'no factor, no password' => $plain->signedIn(),
+];
+
+// ---------------------------------------------------------------- the identity session follows its WordPress session (H2, L3)
+$wpUser = $site->addUser('wu', 'subscriber', $password);
+$h2 = planted($url, $wpUser);
+$h2->go('/identity/account');
+$first = identitySessions($wpUser);
+// Losing the identity cookie gives the same session back, not a new row.
+unset($h2->cookies['zi_session']);
+$h2->go('/identity/account');
+$again = identitySessions($wpUser);
+$out['reuse'] = ['rows' => count($again), 'same' => ($first[0]['id'] ?? null) === ($again[0]['id'] ?? null), 'linked' => ($first[0]['wp_token'] ?? null) === hash('sha256', $h2->token)];
+// An application's tokens minted from that session.
+$grant = (static function () use ($h2, $url, $app): array {
+    $verifier = bin2hex(random_bytes(32));
+    $q = ['response_type' => 'code', 'client_id' => $app['id'], 'redirect_uri' => 'http://127.0.0.1:18999/callback', 'scope' => 'openid', 'state' => 'st-' . bin2hex(random_bytes(12)), 'nonce' => 'n-' . bin2hex(random_bytes(12)), 'code_challenge_method' => 'S256', 'code_challenge' => rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=')];
+    $page = $h2->go('/identity/authorize?' . http_build_query($q));
+    preg_match('#name="csrf" value="([0-9a-f]{64})"#', $page['body'], $c);
+    $ok = $h2->go('/identity/authorize', [...$q, 'csrf' => $c[1] ?? ''], ["Origin: $url"]);
+    parse_str((string) parse_url((string) $ok['location'], PHP_URL_QUERY), $back);
+    $t = (new Browser($url))->go('/identity/token', ['grant_type' => 'authorization_code', 'client_id' => $app['id'], 'redirect_uri' => 'http://127.0.0.1:18999/callback', 'code' => $back['code'] ?? '', 'code_verifier' => $verifier]);
+    return json_decode($t['body'], true) ?? [];
+})();
+$refresh = static fn (string $r) => (new Browser($url))->go('/identity/token', ['grant_type' => 'refresh_token', 'client_id' => $app['id'], 'refresh_token' => $r]);
+$out['h2 tokens'] = ['access' => isset($grant['access_token']), 'refresh' => isset($grant['refresh_token'])];
+// "Log out everywhere else" in WordPress (destroy_others from another session) ends this browser's WordPress
+// session, and with it the identity session and the application's tokens.
+wp_cache_flush();
+$other = WP_Session_Tokens::get_instance($wpUser)->create(time() + 3600);
+WP_Session_Tokens::get_instance($wpUser)->destroy_others($other);
+$userinfo = (new Browser($url))->go('/identity/userinfo', null, ['Authorization: Bearer ' . ($grant['access_token'] ?? '')]);
+$out['destroy others'] = [
+    'identity rest' => $h2->go('/wp-json/typedpress-identity/v1/account')['status'],
+    'userinfo' => $userinfo['status'],
+    'refresh' => $refresh((string) ($grant['refresh_token'] ?? ''))['status'],
+    'session revoked' => array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $h2->token)))[0]['revoked_at'] !== null,
+];
+WP_Session_Tokens::get_instance($wpUser)->destroy_all();
+// Revoking the identity session (its own sessions list, another device) ends the WordPress session it came from.
+$h3 = planted($url, $wpUser);
+$h3->go('/identity/account');
+$row = array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $h3->token)))[0];
+wp_cache_flush();
+\TypedPress\Identity\Plugin::$sessions->revoke($wpUser, $row['id']);
+$out['revoke identity'] = [
+    'wordpress session' => wpSession($wpUser, $h3->token),
+    'page' => str_starts_with((string) $h3->go('/identity/account')['location'], $login),
+];
+
+// ---------------------------------------------------------------- a mismatched identity cookie gives way to WordPress's sign-in (M5)
+// A guest's identity session planted in a browser that is signed in to WordPress as someone else.
+$guest = wp_insert_user(['user_login' => 'tp_guest_probe', 'user_pass' => wp_generate_password(32), 'role' => 'tp_guest']);
+\TypedPress\Identity\Plugin::$accounts->ensure($guest);
+$guestSession = \TypedPress\Identity\Plugin::$sessions->create($guest);
+$m5 = planted($url, $wpUser);
+$m5->cookies['zi_session'] = $guestSession['secret'];
+$me5 = json_decode($m5->go('/wp-json/typedpress-identity/v1/account')['body'], true);
+$page5 = $m5->go('/identity/account');
+$me5 = json_decode($m5->go('/wp-json/typedpress-identity/v1/account')['body'], true);
+$out['mismatch'] = ['page' => $page5['status'], 'account' => (string) ($me5['data']['account']['id'] ?? ''), 'wu' => (string) $wpUser];
+
+// ---------------------------------------------------------------- RP logout ends both, and a bare link only asks (M3)
+$l = planted($url, $wpUser);
+$l->go('/identity/account');
+$bare = $l->go('/identity/logout');
+preg_match('#name="csrf" value="([^"]+)"#', $bare['body'], $n);
+$out['logout link'] = ['status' => $bare['status'], 'asks' => str_contains($bare['body'], 'name="confirm"'), 'still signed in' => wpSession($wpUser, $l->token)];
+$forged = $l->go('/identity/logout', ['confirm' => '1', 'csrf' => 'nope'], ["Origin: $url"]);
+$out['logout forged'] = ['status' => $forged['status'], 'still signed in' => wpSession($wpUser, $l->token)];
+$confirmed = $l->go('/identity/logout', ['confirm' => '1', 'csrf' => html_entity_decode($n[1] ?? '')], ["Origin: $url"]);
+$out['logout confirmed'] = [
+    'status' => $confirmed['status'],
+    'wordpress session' => wpSession($wpUser, $l->token),
+    'identity revoked' => array_values(array_filter(identitySessions($wpUser), static fn (array $r): bool => $r['wp_token'] === hash('sha256', $l->token)))[0]['revoked_at'] !== null,
+];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

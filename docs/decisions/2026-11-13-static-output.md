@@ -102,9 +102,13 @@ It needs the same credentials as `first sync` and `first pull`: an editor's appl
   - Nothing is served while the site hides itself from the public: `blog_public` below 0, or
     WordPress.com's coming-soon options set. Another plugin that gates the site (membership,
     private site) says no through the `first_prebuilt_serve` filter.
-  - Only the spelling a file was written under is served: `/%61bout` is not `/about`.
-  - A host whose web server can serve files before PHP may serve the same directory, since its
-    layout is the URL's path. It must then apply its own access gates first.
+  - Only the spelling a file was written under is served: `/%61bout` is not `/about`, and neither
+    are `/a//b`, `/./about` or `/.md`. Cookie names are matched exactly (`zi_session`, not any name
+    starting with it).
+  - On multisite each site has its own directory, `…/sites/<blog id>/<build hash>/`.
+  - PHP serves these files, and hosts must not: a host neither serves the folder from its web
+    server nor exposes it over HTTP (docs/host-contract.md, "Prebuilt pages"). Serving before PHP
+    is deferred to the engine work; see "Serving prebuilt files before PHP" below.
 - **On-demand regeneration (ISR).** A committed write that would purge a prebuilt URL deletes that
   URL's files at once and schedules `first_prebuild` for it.
   - Such a write is a First write that read the row or listed the kind, or a WordPress post or term
@@ -113,6 +117,9 @@ It needs the same credentials as `first sync` and `first pull`: an editor's appl
     doesn't see content older than such a write.
   - A render that started before the write is not written. The check reads the write marks from
     the database, not the object cache, and runs again just before the rename.
+  - `forget()` (a site-wide change) records when it ran, before it removes the files. A render that
+    started before that writes nothing, and a full build that began before it doesn't record
+    itself as built, so the next request schedules the full build again.
 - **What no write announces.** An option a page reads, a menu, another plugin's data or the time can
   change without naming any URL.
   - A file is never served past an hour (`MAX_AGE`), and the action rebuilds every file after 45
@@ -231,9 +238,53 @@ What this means:
   - the first request after a deploy or an edit, which Batcache would render uncached and which a
     prebuilt file answers at once;
   - hosts without a full-page cache;
-  - a host that serves `wp-content/cache/first-prebuilt/` itself, before PHP, at the static-file
-    speed in the last row.
+  - later, a host engine that serves these files before PHP at the static-file speed in the last
+    row, once that work is done (see "Serving prebuilt files before PHP: deferred").
 - The edge cache is unchanged: prebuilt answers carry the same `Cache-Control` as a cacheable render.
+
+## Serving prebuilt files before PHP: deferred
+
+A host could answer prebuilt files from its web server before PHP starts, at the static-file speed
+measured above (0.3 ms instead of 12.3 ms). That waits on the engine work in the monorepo. Until
+then PHP serves these files and hosts must not.
+
+A first attempt published a pointer file (`current.json`) naming the build and the headers to send,
+plus host rules copied from `serve()`. Three reviews kept finding requests where a host following
+those rules would answer differently from `serve()`. The attempt was removed. The design for the
+engine work starts from option 1 below, plus the host rules this section lists.
+
+**Option 1: PHP marks each response as safe.** `serve()` writes, next to each file, the headers it
+actually sent. It does that only from a real front-end request, and only when nothing in that
+response depended on the request. A host serves a file only while that record exists and is fresh.
+`stale()` and `forget()` remove the records with the files. This answers cases 2 and 4 below,
+because the check and the `Link` header come from the response itself.
+
+**Cases the design must handle** (from the third review of the pointer attempt):
+
+1. **The build's own renders.** A request with an `X-First-Prerender` header or the
+   `wordpress_first_prerender` cookie goes to PHP. Otherwise a host answers each rebuild render with
+   the old file, the render has no `X-First-Prerendered: 1`, and every rebuild fails.
+   `first export` would get the old files too. (Host rule.)
+2. **The `Link` header's URL.** `serve()` builds `Link` from `home_url()`, which follows `WP_HOME`
+   and switches to https for a request over TLS. The raw database `home` can differ from both. The
+   headers a host sends must be the ones `serve()` sent.
+3. **Cookie names as PHP reads them.** PHP turns `.` and space into `_`, drops leading spaces, and
+   cuts a name at `[`: `zi_session[a]` and `zi[session` both arrive as `zi_session`. A cookie name
+   containing `[` goes to PHP, and names are compared after PHP's rewriting. (Host rule.)
+4. **Where the check runs.** A check run in the Action Scheduler or CLI process misses filters that
+   plugins add only on the front end (Polylang chooses its admin setup under cron and CLI). A code
+   edit without a version bump keeps the same build id. The check must come from a front-end
+   request, and a host drops what it serves on any code deploy, not only on a new build id.
+5. **The home path.** With `home` at `/blog`, a request for `/blogabout` is not the site's: the
+   path equals `home` or starts with `home/`, and `/blog` maps to `index.html`. (Host rule.)
+
+**Smaller points:**
+- `pre_option`, `alloptions`, `set_url_scheme` and `default_option_blog_public` also change what
+  `serve()` reads.
+- On multisite, the host needs a stated way to map a request to its blog id, for example the host
+  name recorded with the files and required to match.
+- Behind a read-replica database layer (VIP's HyperDB), a direct `SELECT` can read an old value; a
+  check that must see the latest write reads the primary.
 
 ## Alternatives not taken
 

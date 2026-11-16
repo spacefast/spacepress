@@ -81,11 +81,6 @@ pub const HOOKS: &[(&str, &str, &str)] = &[
         "the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: \"server\"` with `prerender`)",
     ),
     (
-        "first_prebuilt_http_only",
-        "filter",
-        "true when the host serves the site on http alone, so prebuilt pages' links are the same for every request and `current.json` may be written for an `http://` home",
-    ),
-    (
         "first_identity_providers",
         "filter",
         "OpenID Connect sign-in providers First Identity offers",
@@ -139,48 +134,9 @@ pub const MOUNT: &[(&str, &str)] = &[
 pub const SEALED: &str = "When the app sets `sealed: true`, the hosted manifest and the build manifest carry `sealed`: the plugin directory names that may load (First's own, the platform pins, and the plugins the config declares). The key is absent when the app isn't sealed. First itself only refuses new activations and reports what else is loaded, because WordPress loads drop-ins, must-use plugins and active plugins before First's app plugin. A host that wants the list enforced does it in its own early code (a must-use plugin of the host's, or `sunrise.php`): it filters `option_active_plugins` with `First\\Loader\\Loader::allowedPlugins($active, $sealed)`, keeps the hidden entries stored with `First\\Loader\\Loader::keepUnlisted($new, $stored, $sealed)` on `pre_update_option_active_plugins`, ships no must-use plugin or drop-in beyond its own, and defines `FIRST_SEALED_ENFORCED` so the app reports `enforced: \"host\"`. `allowedPlugins` never passes `vip-block-data-api` or `vip-decoupled-bundle`, whatever list it is given: each serves stored content around the app's read rules. Nothing changes for sites that don't serve a First app. docs/sealed.md has the example.";
 
 /// Prebuilt pages (`prerender = true` with `output: "server"`; docs/decisions/2026-11-13-static-output.md):
-/// when a host may answer a URL from its file before PHP, and what it must send. Every rule is what
-/// `First\Render\Prebuilt::serve()` checks at `plugins_loaded`, which answers the same files when the
-/// host doesn't; a host that serves them sooner must decide the same way, and send anything it can't
-/// decide to PHP.
-pub const PREBUILT: &[(&str, &str)] = &[
-    (
-        "Where",
-        "`WP_CONTENT_DIR/cache/first-prebuilt/` (on multisite, `…/sites/<blog id>/`) holds one directory per build, named by 16 hex characters, and `current.json`. Only the directory `current.json` names (`build`) is served. When `current.json` is absent, nothing is: the site has no complete build yet, it hides itself from the public, a site-wide change dropped every file, or what `serve()` reads could differ per request. That last case covers a filter on `first_prebuilt_serve`, `first_app_cache_window`, `first_content_signal`, `first_prebuilt_dir`, `home_url`, the `home` or `blog_charset` options, or the `blog_public` or coming-soon options, and a stored `home` that isn't `https://` (core switches links to https per request), unless the host says it serves the site on http alone (`first_prebuilt_http_only`). A host removes `current.json` when it deploys a new build; PHP also removes a pointer that names another build, or any pointer when the build serves no prebuilt pages, on its next request",
-    ),
-    (
-        "Request",
-        "`GET` or `HEAD`, with no query string, whose path starts with `home` from `current.json` (`\"\"` at the domain root). The rules below apply to the raw request target as received (nginx `$request_uri`, not the decoded and normalized `$uri`). A request target starting with `//`, any other method or a query string goes to PHP",
-    ),
-    (
-        "Cookies",
-        "none whose name starts with `wordpress_logged_in_`, `wordpress_sec_`, `wp-postpass_` or `comment_author_`, and none named exactly `wp_lang`, `zi_session` or `__Host-zi_session`, comparing names after replacing `.` and space with `_` (as PHP reads them). Any of them goes to PHP",
-    ),
-    (
-        "Accept",
-        "a request whose `Accept` contains `text/markdown` (compared without case) goes to PHP, whatever its path, `.md` URLs included",
-    ),
-    (
-        "Path to file",
-        "the path below `home`: `/` is `index.html`, `/x/y` is `x/y.html`, `/x/y.md` is `x/y.md`, and `/index.md` is the home page's twin (`index.md`). A path that is `/index` or `/.md`, ends in `/` (other than `/`), has an empty or `.` segment, contains `..`, NUL or `\\` anywhere once percent-decoded, or has a segment that isn't in its one spelling goes to PHP. The one spelling is RFC 3986 percent-encoding of the decoded segment's UTF-8 bytes with every byte outside `A-Z a-z 0-9 - _ . ~` encoded as `%` and two uppercase hex digits (PHP's `rawurlencode(rawurldecode(segment))`); the file's name is that spelling",
-    ),
-    (
-        "Age",
-        "a file whose modification time is more than `maxAge` seconds ago (`current.json`; 3600) goes to PHP. Files are rewritten well within that window",
-    ),
-    (
-        "Missing file",
-        "goes to PHP: the page isn't prebuilt, or a write removed its file and its rebuild hasn't run",
-    ),
-    (
-        "Response",
-        "`200` with the file's bytes (none for `HEAD`) and `Content-Length`, and these headers, which are the ones First sets (PHP or other plugins may add their own, such as `X-Powered-By`, which a host need not copy): `Cache-Control: <cacheControl>`; `X-First-Prebuilt: 1`; for `.html`, `Content-Type: text/html; charset=<charset>` and `Link: <homeUrl><path>.md; rel=\"alternate\"; type=\"text/markdown\"` (`<homeUrl>/index.md` for `/`); for `.md`, `Content-Type: text/markdown; charset=UTF-8`, `X-Content-Type-Options: nosniff` and `Link: <homeUrl><html path>; rel=\"canonical\"` (`<homeUrl>/` for the home page); and `Content-Signal: <contentSignal>` when it is not empty. `cacheControl`, `charset`, `contentSignal` and `homeUrl` (scheme, host, home path, no trailing slash) are in `current.json`",
-    ),
-    (
-        "Purges and rebuilds",
-        "a write that changes a prebuilt page removes its files at once, before the write's purge is announced on `first_purge_urls`, and schedules the rebuild (the `first_prebuild` Action Scheduler action, run by the host's jobs worker like any other). Until it has run, the URL has no file and goes to PHP. A host's page cache is purged as for any page; the files need no purge of their own. A full rebuild writes `current.json` when its last batch completes. It runs after a deploy, after a site-wide change, and on the first PHP request or jobs tick 45 minutes after the last one",
-    ),
-];
+/// who serves their files. Serving them before PHP is deferred to the engine work; the decision
+/// record lists what that design must meet.
+pub const PREBUILT: &str = "A build with prebuilt pages writes their HTML and Markdown below `wp-content/cache/first-prebuilt/` (moved by the `first_prebuilt_dir` filter), and PHP serves them: `First\\Render\\Prebuilt::serve()` answers at `plugins_loaded` when the request, its cookies, the site's visibility and the file's age allow it, and lets WordPress render otherwise. A host must not serve these files directly, from its web server or any cache of its own, and must not expose the folder over HTTP: deny requests to it as it does for other private paths. Whether a file may be served is decided per request, and only `serve()` decides it. A host's page cache stores and purges these answers as it does any other page. The rebuild runs as the `first_prebuild` Action Scheduler action, on the host's jobs worker like any other.";
 
 /// The table-prefix rule.
 pub const TABLE_PREFIX: &str = "First puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}first_<table>`, system tables `{prefix}first__<name>`, identity tables `{prefix}first_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads.";
@@ -201,7 +157,6 @@ pub fn manifest_host() -> Value {
         "mount": "First\\Loader\\Loader::load",
         "jobsCommand": "wp first jobs tick",
         "maxTablePrefix": 64 - MAX_SUFFIX,
-        "prebuilt": {"dir": "wp-content/cache/first-prebuilt", "pointer": "current.json", "pointerFields": ["build", "maxAge", "cacheControl", "charset", "contentSignal", "home", "homeUrl"]},
     })
 }
 
@@ -230,11 +185,7 @@ pub fn render_doc() -> String {
     }
     out.push_str(&format!("\n### Background work\n\n`{JOBS_COMMAND}`\n\n"));
     out.push_str(&format!("### Sealed mode\n\n{SEALED}\n\n"));
-    out.push_str("### Prebuilt pages\n\nA host may answer a prebuilt page's URL from its file before PHP. It must decide as `First\\Render\\Prebuilt::serve()` does, and send every request it can't decide to PHP, which answers the same files at `plugins_loaded`.\n\n| Rule | What |\n|---|---|\n");
-    for (rule, what) in PREBUILT {
-        out.push_str(&format!("| {rule} | {what} |\n"));
-    }
-    out.push('\n');
+    out.push_str(&format!("### Prebuilt pages\n\n{PREBUILT}\n\n"));
     out.push_str(&format!("### Table prefix\n\n{TABLE_PREFIX} The longest name First adds after it is {MAX_SUFFIX} characters, so a prefix may be at most {} characters.\n\n", 64 - MAX_SUFFIX));
     out.push_str("### Manifest `host` object\n\n```json\n");
     out.push_str(&serde_json::to_string_pretty(&manifest_host()).unwrap());

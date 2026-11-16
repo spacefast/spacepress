@@ -1225,41 +1225,10 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     // `Accept: text/markdown` on the HTML URL is never answered with the HTML file: the file lane
     // steps aside for the Markdown negotiation, which a host's engine runs.
     assert_eq!(seen["accept markdown"], json!([false, true]));
-    // current.json, for a host serving the files before PHP: this build's directory and the headers to
-    // send; gone with the files, and not written while the site hides itself from the public.
-    assert_eq!(
-        seen["pointer"],
-        json!([
-            true,
-            3600,
-            "public, max-age=0, s-maxage=300, must-revalidate",
-            "UTF-8",
-            "",
-            true
-        ])
-    );
-    assert_eq!(seen["pointer after forget"], false);
-    assert_eq!(seen["pointer while private"], json!([false, false]));
-    assert!(
-        seen["pointer homeUrl"]
-            .as_str()
-            .is_some_and(|u| u.starts_with("http://127.0.0.1:") && !u.ends_with('/')),
-        "{seen}"
-    );
-    // The pointer never names a build other than the current one, never comes back after a forget()
-    // from a build that started before it, and isn't written where a plugin decides per request.
-    assert_eq!(seen["pointer of another build"], false);
-    assert_eq!(seen["pointer after a forget mid-build"], false);
-    assert_eq!(seen["pointer with a serve filter"], false);
+    // More spellings of a prebuilt path that aren't its URL: `/notes//hello`, `/./about`, `/.md`.
     assert_eq!(seen["spellings"], json!([false, false, false]));
-    // No pointer where a filter could change what serve() decides, or where links follow the
-    // request's scheme; an obsolete chain of batches leaves a newer pointer alone.
-    assert_eq!(seen["pointer with a privacy filter"], false);
-    assert_eq!(seen["pointer on an http site"], false);
-    assert_eq!(
-        (&seen["newer pointer written"], &seen["newer pointer kept"]),
-        (&json!(true), &json!(true))
-    );
+    // A render that began before forget() leaves no file behind.
+    assert_eq!(seen["forget race"], json!([false, false]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.

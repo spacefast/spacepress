@@ -1,0 +1,474 @@
+{
+  "version": 2,
+  "tables": {
+    "bins": {
+      "editor": true,
+      "drafts": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "location": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "photo": {
+          "type": "media",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "status": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ],
+          "default": "published",
+          "references": null
+        },
+        "publishedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "id",
+        "ownerId"
+      ]
+    },
+    "things": {
+      "editor": true,
+      "drafts": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "kind": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "cable",
+            "adapter",
+            "charger",
+            "tool",
+            "book",
+            "other"
+          ],
+          "default": "other",
+          "references": null
+        },
+        "connectorA": {
+          "type": "text",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "connectorB": {
+          "type": "text",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "lengthCm": {
+          "type": "integer",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "wattage": {
+          "type": "integer",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "binId": {
+          "type": "integer",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "bins",
+            "column": "id",
+            "onDelete": "set null",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "quantity": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": 1,
+          "references": null
+        },
+        "photo": {
+          "type": "media",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "tags": {
+          "type": "json",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "status": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ],
+          "default": "published",
+          "references": null
+        },
+        "publishedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "id",
+        "name",
+        "ownerId"
+      ]
+    },
+    "people": {
+      "editor": true,
+      "drafts": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "contact": {
+          "type": "text",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "status": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ],
+          "default": "published",
+          "references": null
+        },
+        "publishedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "id",
+        "ownerId"
+      ]
+    },
+    "loans": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "thingId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "things",
+            "column": "id",
+            "onDelete": "restrict",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "personId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "people",
+            "column": "id",
+            "onDelete": "restrict",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "lentOn": {
+          "type": "date",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "dueOn": {
+          "type": "date",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "returnedOn": {
+          "type": "date",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "overdueAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "dueOn",
+        "id",
+        "lentOn",
+        "overdueAt",
+        "ownerId",
+        "personId",
+        "returnedOn",
+        "thingId"
+      ]
+    }
+  }
+}

@@ -1,0 +1,610 @@
+{
+  "version": 2,
+  "tables": {
+    "pets": {
+      "editor": true,
+      "drafts": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "species": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "birthday": {
+          "type": "date",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "weightKg": {
+          "type": "real",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "dailyGrams": {
+          "type": "real",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "photo": {
+          "type": "media",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "status": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ],
+          "default": "published",
+          "references": null
+        },
+        "publishedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "id",
+        "ownerId"
+      ]
+    },
+    "foods": {
+      "editor": true,
+      "drafts": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "product": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "brand": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "kind": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "dry",
+            "wet",
+            "treat"
+          ],
+          "default": "dry",
+          "references": null
+        },
+        "bagGrams": {
+          "type": "real",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "costCents": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "photo": {
+          "type": "media",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "status": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ],
+          "default": "published",
+          "references": null
+        },
+        "publishedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "id",
+        "ownerId"
+      ]
+    },
+    "vet_notes": {
+      "editor": true,
+      "drafts": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "title": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "petId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "pets",
+            "column": "id",
+            "onDelete": "restrict",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "body": {
+          "type": "richText",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "status": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "draft",
+            "published",
+            "scheduled"
+          ],
+          "default": "published",
+          "references": null
+        },
+        "publishedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "ownerId"
+      ]
+    },
+    "stock": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "foodId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "foods",
+            "column": "id",
+            "onDelete": "restrict",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "gramsLeft": {
+          "type": "real",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "openedOn": {
+          "type": "date",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "expiresOn": {
+          "type": "date",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "expiresOn",
+        "foodId",
+        "gramsLeft",
+        "id",
+        "ownerId"
+      ]
+    },
+    "feedings": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "petId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "pets",
+            "column": "id",
+            "onDelete": "restrict",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "foodId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "foods",
+            "column": "id",
+            "onDelete": "restrict",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "grams": {
+          "type": "real",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "fedAt": {
+          "type": "timestamp",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "costCents": {
+          "type": "real",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "fedAt",
+        "foodId",
+        "ownerId",
+        "petId"
+      ]
+    },
+    "shopping_list": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "foodId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": true,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "foods",
+            "column": "id",
+            "onDelete": "cascade",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "needed": {
+          "type": "boolean",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": false,
+          "references": null
+        },
+        "checkedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "foodId",
+        "ownerId"
+      ]
+    }
+  }
+}

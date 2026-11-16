@@ -1,0 +1,292 @@
+{
+  "version": 2,
+  "tables": {
+    "subscriptions": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": 0,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 100.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "vendor": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 100.0,
+          "enum": null,
+          "default": "",
+          "references": null
+        },
+        "amount": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "currency": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": "USD",
+          "references": null
+        },
+        "cycle": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "weekly",
+            "monthly",
+            "yearly"
+          ],
+          "default": "monthly",
+          "references": null
+        },
+        "nextRenewal": {
+          "type": "date",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "category": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 60.0,
+          "enum": null,
+          "default": "Other",
+          "references": null
+        },
+        "paymentMethod": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 100.0,
+          "enum": null,
+          "default": "",
+          "references": null
+        },
+        "cancelUrl": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 2000.0,
+          "enum": null,
+          "default": "",
+          "references": null
+        },
+        "notes": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 4000.0,
+          "enum": null,
+          "default": "",
+          "references": null
+        },
+        "status": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "active",
+            "paused",
+            "cancelled"
+          ],
+          "default": "active",
+          "references": null
+        },
+        "remindedAt": {
+          "type": "timestamp",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "id",
+        "nextRenewal",
+        "ownerId",
+        "status"
+      ]
+    },
+    "charges": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": 0,
+          "references": null
+        },
+        "subscriptionId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": {
+            "table": "subscriptions",
+            "column": "id",
+            "onDelete": "cascade",
+            "onUpdate": null,
+            "unsigned": true
+          }
+        },
+        "amount": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "chargedOn": {
+          "type": "date",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "ownerId",
+        "subscriptionId"
+      ]
+    },
+    "categories": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": 0,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 60.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "ownerId"
+      ]
+    }
+  }
+}

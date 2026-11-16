@@ -879,10 +879,8 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     $db->update('bulletins', ['title' => 'published, edited'], ['id' => $draft['id']]);
     $later = $db->insert('bulletins', ['title' => 'later', 'status' => 'scheduled', 'publishedAt' => gmdate('Y-m-d\\TH:i:s.000\\Z', time() + 3600)], true)[0];
     $db->promoteDue();
-    // Moved into the past with SQL, past First: the next scan finds it (`force`, as `wp first
-    // publish-due` asks; a request scans at most a minute later, tests/php/due_test.php).
     $wp->exec("UPDATE {prefix}first_ap_bulletins SET `publishedAt` = '" . gmdate('Y-m-d\\TH:i:s.000\\Z', time() - 60) . "' WHERE `id` = " . (int) $later['id']);
-    $db->promoteDue(force: true);
+    $db->promoteDue();
     eq('afterPublish runs once per item that became published, scheduled ones when they come due', $seen, ['live', 'draft, edited', 'later']);
 })();
 

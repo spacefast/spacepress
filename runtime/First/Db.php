@@ -144,29 +144,12 @@ final class Db
      *
      * @return array<string, list<int|string>> collection => promoted pks (only non-empty)
      */
-    public function promoteDue(bool $force = false): array
+    public function promoteDue(): array
     {
         $now = Js::iso(Js::now());
         $out = [];
-        // On WordPress only table-backed kinds are scanned (posts are published by core's cron), and
-        // only once the site's recorded next-due time has come (Wp\DueRows); `$force` scans anyway.
-        $wp = $this->store instanceof Wp\CompositeStore ? $this->store : null;
-        $scanned = [];
-        foreach ($this->schema->collections() as $name => $spec) {
-            if ($wp !== null && ($spec['drafts'] ?? false) && !$wp->isPostBacked((string) $name) && !isset($this->schema->taxonomies()[$name])
-                && ($this->schema->auth()['collection'] ?? null) !== $name) {
-                $scanned[] = (string) $name;
-            }
-        }
-        $throttled = $wp !== null && $scanned !== [];
-        if ($throttled && !$force && !Wp\DueRows::due($this->schema->name(), $now)) {
-            return [];
-        }
         foreach ($this->schema->collections() as $name => $spec) {
             if ($spec['drafts'] ?? false) {
-                if ($wp !== null && !in_array((string) $name, $scanned, true)) {
-                    continue;
-                }
                 $pks = $this->store->promoteDue((string) $name, $now);
                 if ($pks !== []) {
                     $out[$name] = $pks;
@@ -176,17 +159,6 @@ final class Db
                     }
                 }
             }
-        }
-        if ($throttled) {
-            $earliest = null;
-            foreach ($scanned as $name) {
-                $next = $wp->tables->nextScheduled($name);
-                $earliest = $next !== null && ($earliest === null || $next < $earliest) ? $next : $earliest;
-            }
-            // After the request's commit: no lock on the option row while a handler runs, and nothing
-            // recorded when the promotions roll back (the rows are then still due).
-            $app = $this->schema->name();
-            $wp->db->afterCommit(static fn () => Wp\DueRows::scanned($wp->db, $app, $now, $earliest));
         }
 
         return $out;

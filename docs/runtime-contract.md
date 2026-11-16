@@ -500,18 +500,12 @@ requires handle-based compiled callbacks; schemas from the `0.2` compiler
 cannot load under this runtime. `Schema::version()` and
 `Schema::runtime()` report the loaded contract. New feature metadata passes
 through unchanged; feature modules own its behavior. Lazy scheduled promotion
-remains at the start of requests/commands. On WordPress it scans only
-table-backed kinds with drafts (core's cron publishes post-backed ones), and only
-once the autoloaded `first_<app>_due_at` time has come (`Wp\DueRows`): a row
-scheduled through First lowers that time when its write commits, so it is
-visible from the first request at or after its `publishedAt`; each scan sets the
-time to the earliest row still scheduled or one minute ahead, whichever is
-sooner, so a row scheduled another way (SQL, an import) is published at most a
-minute late. `wp first publish-due` always scans.
+remains at the start of requests/commands, so due records are visible in that
+same request.
 
 `App::dispatch(method, path, query, rawBody, Viewer, headers = [], files = [],
 form = []): Response` is the shared operation entry point for HTTP and Abilities.
-It opens or joins a transaction, promotes due rows (throttled as above), binds the explicit viewer
+It opens or joins a transaction, promotes due rows, binds the explicit viewer
 as hook actor, and restores the previous actor even on failure. It does not
 resolve credentials or convert exceptions to HTTP problems. `App::invoke(method,
 path, query, body, Viewer)` is its data-only convenience for JSON operations;

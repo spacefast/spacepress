@@ -380,6 +380,20 @@ The [Spacefast host checklist](spacefast-host-checklist.md) records the existing
 runtime integration gap. Its upgrade and Woo integration need a coordinated implementation;
 the local source review does not establish the current production deployment state.
 
+### Preview databases
+
+**Decision:** each preview gets its own isolated WordPress SQLite database, preseeded from that
+preview's initial source configuration, including declared products and taxonomy terms. Previews
+do not share the live store's database or each other's database, and do not copy live orders,
+customers or inventory. Preview catalog edits and test orders stay in that preview.
+
+This is the intended host design, not a claim that Spacefast already implements it. Reuse the
+normal seed and Woo initialization paths, and qualify Woo plus the supported plugin set against
+SQLite. Promotion publishes source/code through the production deployment path; it does not
+promote preview database contents into the live store. Verify that preview payment configuration,
+email delivery and callbacks cannot perform live commerce side effects. Preview provisioning,
+retention and cleanup belong to the host lifecycle rather than a separate commerce staging system.
+
 ### Checkout presentation
 
 TypedPress's [client bindings](pages.md#client-components) make an interactive product page,
@@ -407,8 +421,6 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **Previews:** previews must not alter the live catalog or enable test purchases against live
-  operational data. Choose read-only previews or an isolated staging store.
 - **Permissions and administration:** who can manage products and read orders, how TypedPress
   identities map to Woo capabilities, and which native admin surfaces the integration supports.
 - **API scope:** confirm the proposed resource table, especially inventory

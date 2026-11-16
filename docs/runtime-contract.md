@@ -480,14 +480,24 @@ Action Scheduler groups and recurring actions, route and content Pages, Polylang
 languages, the search index shape, the runtime-schema capability) run until one
 request finds them all in place. That request records the autoloaded option
 `first_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
-`schema.php`, the system-tables version, the runtime version and hash, and the
-UTC day. While it matches, requests skip those checks, as a managed build always
-does (`Runtime::installs()`). It is recorded at the end of `wp_loaded` only after
-each check is read again and passes, so a failed, refused or held install never
-records it. A new build, a runtime update or a new day finds no match. Activating,
-deactivating or migrating the app, a change to an option those checks keep, to
-the active plugins or to an app route's Page, and a cancelled Action Scheduler
-action delete it. `Store` exposes `afterCommit(callable)` and
+`schema.php`, the system-tables version, the runtime version and hash, the UTC
+day and the active plugins (the site's and, on multisite, the network's). On
+multisite each site keeps its own. While it matches, requests skip those checks,
+as a managed build always does (`Runtime::installs()`); a managed site never
+records it. It is recorded at the end of `wp_loaded` only after each check is
+read again and passes, so a failed, refused or held install never records it. A
+new build, a runtime update, a plugin change or a new day finds no match.
+Activating, deactivating or migrating the app, a change to an option those checks
+keep or to an app route's Page, and a cancelled Action Scheduler action delete it.
+
+What it deliberately no longer re-checks on every request, until the marker is
+gone (at the latest the next UTC day): storage changed without WordPress's
+option hooks, such as the migration ledger or system tables rewritten by hand, a
+database restored from a backup taken before an install step, or an option
+those checks keep edited with SQL. After such a change, drop the marker so the
+next request checks everything: `wp option delete first_installed` (or
+`DELETE FROM <prefix>options WHERE option_name = 'first_installed'`, then flush
+the object cache). `Store` exposes `afterCommit(callable)` and
 `applySystemStatements(list<string>)` for these seams.
 
 `Wp\Scf::fieldFilter(fn)` transforms each fully-built field, including nested

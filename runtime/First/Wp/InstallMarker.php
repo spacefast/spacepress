@@ -12,12 +12,15 @@ namespace First\Wp;
  * none of those checks ({@see Runtime::installs()}), as a managed build never does on a request.
  *
  * Its value is a digest of the build (the loaded `schema.php`), the runtime tables version, the
- * runtime's own hash, the app and the UTC day, so a new build, a runtime update, another app or a new
- * day finds no marker and checks again. It is recorded at the end of `wp_loaded`, only after every
- * check has been read again and passed; a failed, refused or held install leaves it unrecorded, so the
- * next request retries as before. Anything that changes what it covers drops it: an option those
- * checks keep ({@see watches()}), the active plugins, activating, deactivating or migrating the app,
- * and a change to one of the app's route Pages.
+ * runtime's own hash, the app, the UTC day and the active plugins (the site's and, on multisite, the
+ * network's), so a new build, a runtime update, another app, a plugin change or a new day finds no
+ * marker and checks again. On multisite each site has its own marker and its own answer.
+ *
+ * It is recorded at the end of `wp_loaded`, only after every check has been read again and passed;
+ * a failed, refused or held install leaves it unrecorded, so the next request retries as before.
+ * Anything that changes what it covers drops it: an option those checks keep ({@see watches()}), the
+ * active plugins, activating, deactivating or migrating the app, and a change to one of the app's
+ * route Pages. What it deliberately no longer re-checks on each request is in docs/runtime-contract.md.
  */
 final class InstallMarker
 {
@@ -29,7 +32,8 @@ final class InstallMarker
         'first_polylang_languages', 'first_schema_apply_granted', 'first_upload_namespace', 'active_plugins', 'active_sitewide_plugins',
     ];
 
-    private static ?bool $current = null;
+    /** @var array<int, bool> blog id => whether the marker matched, read once per site per request */
+    private static array $current = [];
 
     public static function register(): void
     {
@@ -44,21 +48,23 @@ final class InstallMarker
     /** Whether this request may skip the install checks: the marker matches this build. */
     public static function current(): bool
     {
-        if (self::$current !== null) {
-            return self::$current;
+        // Per site: on multisite, after switch_to_blog() another site's options decide.
+        $blog = get_current_blog_id();
+        if (isset(self::$current[$blog])) {
+            return self::$current[$blog];
         }
         $plugin = Plugin::instance();
         if ($plugin === null || Runtime::managed()) {
             return false;
         }
 
-        return self::$current = get_option(self::OPTION) === self::key($plugin);
+        return self::$current[$blog] = get_option(self::OPTION) === self::key($plugin);
     }
 
     /** Drop the marker: the next check runs every install step again. Returns true, for use in expressions. */
     public static function forget(): bool
     {
-        self::$current = false;
+        self::$current[get_current_blog_id()] = false;
         if (get_option(self::OPTION) !== false) {
             delete_option(self::OPTION);
         }
@@ -74,7 +80,7 @@ final class InstallMarker
             return;
         }
         update_option(self::OPTION, self::key($plugin), true);
-        self::$current = true;
+        self::$current[get_current_blog_id()] = true;
     }
 
     private static function watches(string $option): bool
@@ -84,9 +90,16 @@ final class InstallMarker
 
     private static function key(Plugin $plugin): string
     {
+        // The active plugins are part of it: a plugin the install depends on (activated, deactivated,
+        // or network-activated, which on multisite changes sitemeta and fires no option hook of this
+        // site) means checking again. Both lists are already loaded on every request.
+        $network = is_multisite() ? array_keys((array) get_site_option('active_sitewide_plugins', [])) : [];
+        sort($network);
+
         return substr(hash('sha256', implode("\0", [
             $plugin->schema->name(), $plugin->buildHash(), Runtime::tablesVersion(), Runtime::VERSION,
             defined('FIRST_RUNTIME_HASH') ? (string) FIRST_RUNTIME_HASH : '', gmdate('Y-m-d'),
+            implode(',', (array) get_option('active_plugins', [])), implode(',', $network),
         ])), 0, 32);
     }
 

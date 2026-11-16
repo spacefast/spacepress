@@ -140,7 +140,32 @@ $wp->writeSchema($schema);
 request($url, '/');
 check('once the build is fixed, the marker is recorded again', $marker() !== null, $marker());
 
+// ---- per site, and the active plugins are part of the key ----------------------------------------------
+// (Review 1, item 6.) This process holds the marker's answer for blog 1. Another blog's answer is its
+// own: on multisite, switch_to_blog() changes get_current_blog_id() and the options read. The harness has
+// no multisite network, so the blog id is moved the way switch_to_blog() moves it.
+request($url, '/');
+wp_cache_flush();
+// This process cached blog 1's answer when the test began (forget()); start from no cached answer.
+(new ReflectionProperty(\First\Wp\InstallMarker::class, 'current'))->setValue(null, is_array((new ReflectionProperty(\First\Wp\InstallMarker::class, 'current'))->getValue()) ? [] : null);
+check('this site matches its marker', \First\Wp\InstallMarker::current(), [$marker(), get_current_blog_id()]);
+$GLOBALS['blog_id'] = 2;
+delete_option('first_installed'); // the options this process reads now stand for blog 2's, which has none
+wp_cache_flush();
+eq('after switching blogs, the answer is read for that blog, not reused', \First\Wp\InstallMarker::current(), false);
+$GLOBALS['blog_id'] = 1;
+// A plugin activated or deactivated outside First's hooks (a network activation on multisite changes
+// sitemeta, which fires no option hook of the site): the key no longer matches.
+[$status] = request($url, '/');
+$recorded = $marker()[1] ?? null;
+$wp->sql("UPDATE {prefix}options SET option_value = ? WHERE option_name = 'active_plugins'", [serialize([...get_option('active_plugins'), 'hello-not-installed/hello.php'])]);
+wp_cache_flush();
+[$status, $statements] = request($url, '/');
+check('a changed plugin list is checked again on the next request, without any option hook', $status === 200 && in_array('ledger', checks($statements), true), checks($statements));
+check('and recorded under a new key', ($marker()[1] ?? null) !== null && $marker()[1] !== $recorded, [$recorded, $marker()]);
+
 // ---- a managed build never records one ---------------------------------------------------------------
+// (tests/wp/store-install-run.sh checks a managed site after initialize and its first requests.)
 eq('a plugin-installed site is not managed', \First\Wp\Runtime::managed(), false);
 
 finish('install_marker');

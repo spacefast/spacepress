@@ -1,7 +1,7 @@
 # Disposable WordPress + MariaDB + Mailpit for the first-identity acceptance suite (design §3, §9.5).
 # Credentials are intentionally tracked: they apply only to this throwaway local stack, which holds
 # no customer data and is deleted after every run.
-name: ${IDENTITY_PROJECT:-first-identity-test}
+name: ${IDENTITY_PROJECT:-typedpress-identity-test}
 services:
   database:
     image: mariadb:11.4

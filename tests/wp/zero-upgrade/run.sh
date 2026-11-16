@@ -11,7 +11,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 wp="$(cd "$here/.." && pwd)"
 repo="$(cd "$wp/../.." && pwd)"
 cd "$repo"
-export TP_WP_PROJECT="${TP_WP_ZERO_UPGRADE_PROJECT:-first-wp-zero-upgrade}"
+export TP_WP_PROJECT="${TP_WP_ZERO_UPGRADE_PROJECT:-typedpress-wp-zero-upgrade}"
 export TP_WP_PORT="${TP_WP_ZERO_UPGRADE_PORT:-8797}"
 work="$(mktemp -d "$here/.run.XXXXXX")"
 cleanup() {

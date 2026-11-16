@@ -239,10 +239,10 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   // The read rule is "self", so the answer carries no row: the member is in wp_users.
   assert.deepEqual([made.status, made.json.data], [201, null], "an administrator creates a member with an email");
   assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_users WHERE user_email = 'free-${run}@example.test'`)[0].n, "1");
-  const taken = JSON.parse(wpTry("first", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ handle: `cy-${run}` })));
+  const taken = JSON.parse(wpTry("typedpress", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ handle: `cy-${run}` })));
   assert.deepEqual([taken.error.status, taken.error.code, taken.error.pointer], [409, "unique_violation", "/handle"], "trusted writes still enforce unique usermeta");
   // Uniqueness compares the stored (SCF) form: a date is kept as Ymd.
-  const sameDay = JSON.parse(wpTry("first", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ joined: "2026-01-02" })));
+  const sameDay = JSON.parse(wpTry("typedpress", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ joined: "2026-01-02" })));
   assert.deepEqual([sameDay.error.status, sameDay.error.pointer], [409, "/joined"]);
   // A member's role is the one TypedPress authenticates them with: a contributor is an author.
   wp("user", "set-role", String(dupe.id), "contributor");
@@ -451,7 +451,7 @@ async function profileMember(tag: string) {
 test("structured member fields render on the member's own profile, but not on the add-user form", async () => {
   const gu = await profileMember("gu");
   const page = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: gu.cookie } })).text();
-  for (const name of ["first_address", "tp_links", "tp_sections"]) assert.match(page, new RegExp(`data-name="${name}"`), name);
+  for (const name of ["tp_address", "tp_links", "tp_sections"]) assert.match(page, new RegExp(`data-name="${name}"`), name);
   assert.deepEqual(successfulControls(page).find(([name]) => name === acf("address", "address_source")), [acf("address", "address_source"), "signup"], "new groups render their non-boolean defaults");
   assert.doesNotMatch(page, /data-name="tp_notes"/, "a group holding a sub-field the member can't read isn't rendered");
   // The collection's read rule ("self") decides the form too: an admin editing this member sees none of its fields.
@@ -495,7 +495,7 @@ test("a profile save writes structured fields through TypedPress, in TypedPress'
     assert.deepEqual(JSON.parse(wp("typedpress", "find", "member_updates", JSON.stringify({ where: { memberId: hu.id } }))).data.map(({ name, city }: { name: string; city: string | null }) => ({ name, city })),
       [{ name: "Profile name", city: "Oslo" }], "afterUpdate sees the new core and structured fields together");
     assert.equal(row.addressBy, hu.id, "the member hook saw the signed-in member as ctx.user");
-    assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'first_address'`)[0].meta_value),
+    assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'tp_address'`)[0].meta_value),
       { city: "Oslo", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: false, optional: true, prefs: null, district: null }, "one usermeta row in TypedPress's storage form, as the API writes it");
     // The form shows the saved values back in site time, so saving it again unchanged is a no-op.
     const again = await saveProfile(hu.cookie, "profile.php");

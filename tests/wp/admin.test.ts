@@ -53,7 +53,7 @@ test("the built artifact ships typedpress-admin and the harness activated it aft
 test("/wp-admin/new/ asks anonymous visitors to sign in and serves the committed build to users", async () => {
   // WP-CLI activated the plugin; the first web request writes the rule into .htaccess.
   assert.equal((await fetch(`${site}/`)).status, 200);
-  assert.equal(wp("option", "get", "tp_admin_rewrite"), JSON.parse(readFileSync(`${content}typedpress-manifest.json`, "utf8")).tp);
+  assert.equal(wp("option", "get", "tp_admin_rewrite"), JSON.parse(readFileSync(`${content}typedpress-manifest.json`, "utf8")).typedpress);
   assert.match(wp("eval", "echo file_get_contents(ABSPATH . '.htaccess');"), /^RewriteRule \^wp-admin\/new\(\/\.\*\)\?\$ \/?wp-admin\/admin\.php\?page=typedpress-admin \[L\]$/m);
   const anon = await fetch(`${site}/wp-admin/new/`, { redirect: "manual" });
   assert.equal(anon.status, 302);

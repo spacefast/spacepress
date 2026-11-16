@@ -274,7 +274,7 @@ test("existing passwords keep working exactly as before; grant and revoke act on
   assert.equal((await call(header, "GET", `${api}/notes`)).status, 401);
   // `--abilities` with no list is an error, never "every ability".
   const before = JSON.parse(wp("typedpress", "identity", "agent", "list", "author")).data.length;
-  const refused = JSON.parse(wpTry("first", "identity", "agent", "add", "author", `--name=noval-${run}`, "--abilities"));
+  const refused = JSON.parse(wpTry("typedpress", "identity", "agent", "add", "author", `--name=noval-${run}`, "--abilities"));
   assert.equal(refused.error.code, "invalid_command", JSON.stringify(refused));
   assert.equal(JSON.parse(wp("typedpress", "identity", "agent", "list", "author")).data.length, before, "no password was created");
 });

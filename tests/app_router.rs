@@ -4759,3 +4759,74 @@ fn refuses_route_ids_it_cannot_keep() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The script modules with fixed names (`first-client.js`, the runtime's `live.js` and
+/// `router.js`) carry a version that changes with what they are, so a browser never keeps one
+/// from an earlier build; the content-hashed client files are served with an immutable cache header
+/// (tests/php/script_versions.php).
+#[test]
+fn fixed_script_modules_carry_a_build_version() {
+    let project = fixture("client-components", "versions");
+    let page = project.join("first/app/page.tsx");
+    let source = std::fs::read_to_string(&page).unwrap();
+    std::fs::write(
+        &page,
+        source
+            .replacen("import ", "import { Link } from \"first/app\";\nimport ", 1)
+            .replace("<main>", "<main>\n      <Link href=\"/\">home</Link>"),
+    )
+    .unwrap();
+    build(&project);
+    let content = project.join("first/dist/wp-content");
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/script_versions.php"))
+        .arg(&content)
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let plugins = content.join("plugins");
+    let runtime = std::fs::read_to_string(plugins.join("first-runtime/first-runtime.php")).unwrap();
+    let runtime_hash = runtime
+        .split("define('FIRST_RUNTIME_HASH', '")
+        .nth(1)
+        .unwrap()
+        .split('\'')
+        .next()
+        .unwrap()
+        .to_string();
+    let client = std::fs::read(plugins.join("first-app-clients/first/app/client/first-client.js")).unwrap();
+    let client_hash: String = {
+        use sha2::Digest;
+        sha2::Sha256::digest(&client)[..6]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    };
+    assert_eq!(seen["router.js"], runtime_hash.as_str(), "{seen}");
+    assert_eq!(seen["live.js"], runtime_hash.as_str(), "{seen}");
+    assert_eq!(seen["first-client.js"], client_hash.as_str(), "{seen}");
+    // Content-hashed island stores need no version.
+    assert!(
+        seen.as_object()
+            .unwrap()
+            .iter()
+            .filter(|(name, _)| name.matches('.').count() == 2)
+            .all(|(_, ver)| ver.is_null()),
+        "{seen}"
+    );
+    // The hashed client files get the assets' immutable cache header; first-client.js has none.
+    let htaccess = std::fs::read_to_string(plugins.join("first-app-clients/first/app/client/.htaccess")).unwrap();
+    assert!(htaccess.contains("immutable"), "{htaccess}");
+    assert!(htaccess.contains(r#"<FilesMatch "\.[0-9a-f]{12}\.js$">"#), "{htaccess}");
+    let version = std::fs::read_to_string(plugins.join("first-app-clients/first/app/client-version.php")).unwrap();
+    assert!(version.contains(&format!("return '{client_hash}';")), "{version}");
+    let _ = std::fs::remove_dir_all(project);
+}

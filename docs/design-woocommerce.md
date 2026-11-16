@@ -9,9 +9,9 @@ TypedPress provides the authoring and typed API; WooCommerce supplies the commer
 The immediate target is TypedPress on Spacefast. A separate Astro commerce product,
 standalone distribution milestone, or open-source release plan is not part of this work.
 
-The proposed v1 store sells simple physical products through an interactive TypedPress
-storefront backed by Woo. Downloadable products are proposed for deferral; confirm that scope
-before implementation. Checkout uses Woo's native Checkout Block inside a TypedPress page.
+The v1 store sells simple physical and downloadable products through an interactive TypedPress
+storefront backed by Woo. Downloads use Woo's native permissions and delivery mechanism;
+additional file-access protection outside Woo is deferred. Checkout uses Woo's native Checkout Block inside a TypedPress page.
 Products, inventory, carts, orders and payment processing remain
 native Woo objects. TypedPress must use Woo's APIs rather than maintain a second commerce
 database or write directly to Woo tables.
@@ -54,8 +54,11 @@ not just the fields shown in a minimal example:
 | `images` | Ordered media references using existing collection media semantics; first image is primary |
 | `categories` | Product category UIDs |
 | `tags` | Product tag UIDs |
+| `virtual` | Whether the product requires no shipping; independent of downloadability |
+| `downloadable` | Enables Woo's native downloadable-product behavior |
+| `downloads` | Named file references with stable Woo download identities; proposed shape below |
 
-Products created through this interface are simple physical products. A source file supplies
+Products created through this interface are simple products, physical or downloadable. A source file supplies
 `name` and may supply an explicit `uid`; a product offered for sale needs a valid price. Exact required-field validation
 for unpublished drafts follows Woo. Reuse existing sync omission/clearing semantics rather
 than invent an independent field-ownership mode.
@@ -214,9 +217,9 @@ for application dashboards. These are proposed boundaries; names below are illus
 | Orders | Authorized list/get, including line and refund details | Status, currency, timestamps, historical line items, totals, billing/shipping snapshots, optional customer reference, payment method label and refund summaries |
 | Store information | Read safe configuration and supported capabilities | Currency precision, display conventions, measurement units, supported product types and whether checkout is available; no gateway secrets |
 
-Use simple physical products for the proposed first proof. Virtual and downloadable are independent
-Woo flags, not mutually exclusive product types; their authoring and fulfillment are outside that
-proof. Reject unsupported variable, grouped, external or extension-defined
+Use simple physical and downloadable products for the first proof. Virtual and downloadable are
+independent Woo flags, not mutually exclusive product types: a digital-only download normally
+sets both. Reject unsupported variable, grouped, external or extension-defined
 product writes explicitly. Read projections should identify unsupported types without pretending
 they are simple products. Variation authoring and sync are deferred.
 
@@ -258,8 +261,31 @@ and authorized billing/shipping information on orders; guest orders need no regi
 Account management, customer search and buyer order history can follow with an explicit identity
 mapping. Do not infer ownership from an email address supplied by the caller.
 
-Images use the existing media pipeline. Protected file ingestion, download grants, file retention
-and downloadable-product fulfillment are proposed follow-up scope, not v1 acceptance gates.
+Images use the existing media pipeline. Downloadable products use Woo's native file declarations,
+order download permissions, delivery handler, receipts and email links in v1. TypedPress does not
+add an entitlement service or its own download endpoint.
+
+Proposed download fields for a digital product (exact nested field names remain to be finalized):
+
+```yaml
+virtual: true
+downloadable: true
+downloads:
+  - id: 84a5b6c7d8e90123456789abcdef0123
+    name: Field guide PDF
+    file: https://files.example.com/field-guide.pdf
+```
+
+The download ID is a stable opaque string, not an auto-increment ID. Preserve it during repeated
+sync and updates so existing Woo permissions are not detached from their download entry.
+Use Woo-supported file references; automatic local-file upload/protection is not part of this
+first contract. Download limits and expiry remain native Woo settings rather than new TypedPress
+fields for now.
+
+Additional protection of backing files outside Woo, private storage provisioning, direct-origin
+access checks and retention/versioning policy are deferred. Native Woo authorization of its
+download endpoint does not establish that a backing URL is inaccessible directly; v1 makes no
+such protection claim. Do not add anonymous backing-URL denial as a v1 acceptance gate.
 The selected checkout must provide a receipt and preserve Woo order emails.
 Coupon application and tax calculation are disabled in v1. Coupon CRUD and custom promotion
 engines are deferred. Shipping settings remain in Woo administration; carts expose Woo's
@@ -371,7 +397,6 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **V1 product scope:** confirm the proposed physical-only proof and downloadable-product deferral.
 - **Removal:** explicit retirement and reintroduction. Prefer retirement over destructive
   deletion, but settle this separately from
   current sync's no-delete behavior. Preserve order history.
@@ -383,14 +408,17 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
   identities map to Woo capabilities, and which native admin surfaces the integration supports.
 - **API scope:** confirm the proposed resource table, especially inventory
   mutations, order detail depth and the first dashboard's reporting needs.
-- **Follow-up assets and emails:** when downloads are added, define protection, retention and
-  replacements; decide custom email authoring separately from v1 Woo default emails.
+- **Download declaration:** finalize the nested file-reference shape and how new stable download
+  IDs are assigned. Reuse native Woo permissions; additional backing-file protection, retention
+  and versioning are future improvements. Custom email authoring is separate from v1 Woo defaults.
 
 ## First implementation proof
 
-Under the proposed physical-only scope, build one TypedPress example on Spacefast. Prove product
+Build one TypedPress example with a physical product and a digital download on Spacefast. Prove product
 and taxonomy creation and repeat deployment, live product reads, quantity changes, shipping,
-cart continuity, the embedded Woo Checkout Block and a real dummy-gateway Woo order.
+cart continuity, the embedded Woo Checkout Block and a real dummy-gateway Woo order. Prove that
+the digital order receives a native Woo download grant and a working authorized link in its
+receipt/email rendering, and that unchanged sync preserves the download identity and grant.
 
 Prove file-to-Woo updates, Woo-to-file updates, conflicting edits, preserved stock and orders,
 partial-sync retry, removal behavior and preview isolation. Verify authorized order reads and
@@ -402,6 +430,6 @@ guest checkout works, insufficient tracked stock cannot be backordered, and new 
 contain no calculated tax. Historical order reads must remain unchanged by these restrictions.
 
 Variations, subscriptions, bookings, customer-account flows, a new commerce dashboard and custom
-payment infrastructure are deferred. Downloads and custom email templates are proposed follow-up
-scope. Reuse native product operations and existing checkout integration where they fit the
+payment infrastructure are deferred. Additional download-file protection outside Woo and custom
+email templates are follow-up scope. Reuse native product operations and existing checkout integration where they fit the
 selected presentation; no catalog-wide source ownership restriction is needed.

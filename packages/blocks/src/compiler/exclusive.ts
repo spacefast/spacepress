@@ -77,7 +77,7 @@ function release(): void {
   if (first === undefined) return;
   const group: Group = { kind: first.kind, token: {}, active: 0 };
   current = group;
-  const batch = [typedpress];
+  const batch = [first];
   for (let index = 0; index < waiting.length; ) {
     if (waiting[index]!.kind === group.kind) batch.push(...waiting.splice(index, 1));
     else index += 1;

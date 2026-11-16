@@ -3009,7 +3009,7 @@ export default defineConfig({ name: "kindurls", sealed: true });
     // `locales`).
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "typedpress", "typedpress-admin", "typedpress-app-kindurls", "typedpress-identity", "typedpress-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
+        serde_json::json!({"plugins": ["action-scheduler", "mcp-adapter", "secure-custom-fields", "two-factor", "typedpress", "typedpress-admin", "typedpress-app-kindurls", "typedpress-identity", "typedpress-runtime"]})
     );
     let built = schema(
         r#"import { defineConfig } from "typedpress";
@@ -3018,7 +3018,7 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
     );
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "typedpress", "typedpress-admin", "typedpress-app-kindurls", "typedpress-identity", "typedpress-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
+        serde_json::json!({"plugins": ["action-scheduler", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor", "typedpress", "typedpress-admin", "typedpress-app-kindurls", "typedpress-identity", "typedpress-runtime"]})
     );
     // A sealed site can't declare a plugin that hands content out around TypedPress's read rules.
     for slug in ["vip-block-data-api", "vip-decoupled-bundle"] {

@@ -4,7 +4,7 @@
     "ping": {
       "package": "typedpress-plugin-ping",
       "version": "2.0.0",
-      "integrity": "sha256-8e7d4483c38223958e80c413b261eabac69dbc62f3f72cc180ed0486309bf532",
+      "integrity": "sha256-e18f022ecf3b1129d0e61f9ddab3aff9466290137a981ffbd442f43b9185921e",
       "grant": {
         "read": [],
         "write": [],

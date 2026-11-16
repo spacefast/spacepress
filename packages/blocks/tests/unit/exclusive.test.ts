@@ -57,7 +57,7 @@ test("work of the same kind overlaps", async () => {
   const first = exclusive("dom", async () => {
     order.push("first:start");
     await hold.closed;
-    order.push("typedpress:end");
+    order.push("first:end");
   });
   const second = exclusive("dom", async () => {
     order.push("second");

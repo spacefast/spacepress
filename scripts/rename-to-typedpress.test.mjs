@@ -43,3 +43,23 @@ test('the rename is idempotent across module, path, selector and generic snippet
     assert.equal(rename(once, 'tests/compiler.rs'), once);
   }
 });
+
+
+test('ordinal arrays, traces and multiline titles are ordinary content', () => {
+  for (const text of ['const batch = [first];', 'order.push("first:end");', 'title: First post\ntopics: [first]\n', 'First light · Journal']) {
+    assert.equal(rename(text, 'packages/blocks/src/compiler/exclusive.ts'), text);
+  }
+  assert.equal(rename('error_log("[first] problem");', 'runtime/First/App.php'), 'error_log("[typedpress] problem");');
+  assert.equal(rename('<!-- first:end -->', 'src/commands/init.rs'), '<!-- typedpress:end -->');
+});
+
+test('escaped package resolver patterns follow the public package rename', () => {
+  assert.equal(rename(String.raw`const runtime = /^@spacefast\/first-blocks/;`, 'packages/blocks/src/compiler/module.ts'), String.raw`const runtime = /^@typedpress\/blocks/;`);
+});
+
+
+test('mixed hidden-state and app-root arrays need only one pass', () => {
+  const once = rename('for generated in [".first", "first"]', 'tests/compiler.rs');
+  assert.equal(once, 'for generated in [".tp", "tp"]');
+  assert.equal(rename(once, 'tests/compiler.rs'), once);
+});

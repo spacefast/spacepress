@@ -780,7 +780,7 @@ A fetch URL with a written https://host/ prefix (string, template or concatenati
 
 Status: **refused**. Diagnostic: `F1201`.
 
-A plugin package imports its own modules, "first" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
+A plugin package imports its own modules, "typedpress" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin.
 
 [Evidence](../tests/fixtures/reject-plugin-isolation)
 

@@ -40,7 +40,7 @@ const KEEP = [
   /\bFirst (?=commit callback|heading|paragraph|item|row|column|line|name|argument|parameter|step|attempt|pass|request|response|version:)/g,
   /\bfirstName\b/g,
   /(?<=[?&](?:q|search)=)First\b/g,
-  /\bFirst (?:note|post|dek|light)(?=[.,<"'`\\]|$)/g,
+  /\bFirst (?:note|post|dek|light)(?=[.,<"'`\\]| ·|$)/gm,
   /\bFirst (?=page contained|overdue check)/g,
   // Third-party CSS utilities and original story slugs.
   /\bfirst-light(?:\.[a-z]+)?\b/g,
@@ -117,6 +117,7 @@ export function rename(text, path = '') {
   if (/^(?:runtime\/(?:First|TypedPress)\/(?:RuntimeSchema\/Kinds|Wp\/Runtime)\.php|docs\/(?:config-api|spacefast-host-checklist|design-wp-parity)\.md)$/.test(path)) {
     text = text.replace(/MAX_COLLECTION_NAME = 14/g, 'MAX_COLLECTION_NAME = 17').replace(/14 characters/g, '17 characters').replace(/longer than 14\n/g, 'longer than 17\n');
   }
+  text = text.replaceAll('@spacefast\\/first-blocks', '@typedpress\\/blocks').replace(/(?<=<!-- )first:(begin|end)\b/g, 'typedpress:$1');
   text = text.replace(/\bdebug\/tp\b/g, 'debug/typedpress')
     .replace(/agent-skills\/(?:first|tp)\//g, 'agent-skills/typedpress/')
     .replace(/@spacefast\/tp\b/g, 'typedpress')
@@ -151,7 +152,7 @@ export function rename(text, path = '') {
     return Buffer.from(raw).toString('base64') + (text.endsWith('\n') ? '\n' : '');
   }
   text = text.replace(/\bdata-first-/g, 'data-tp-').replace(/data-wp-each--first-/g, 'data-wp-each--tp-')
-    .replace(/\bwordpress_first_/g, 'wordpress_tp_').replace(/\[first\]/g, '[typedpress]')
+    .replace(/\bwordpress_first_/g, 'wordpress_tp_').replace(/(["'])\[first\]/g, '$1[typedpress]')
     .replace(/v1:first,/g, 'v1:typedpress,');
   if (path === 'runtime/TypedPress/Wp/Migrator.php' || path === 'runtime/First/Wp/Migrator.php') text = text.replace(/'first:'/g, "'typedpress:'");
   if (/^runtime\/(?:first|typedpress)-plugin\/src\/Deployments\.php$/.test(path)) text = text.replace(/'first'/g, "'typedpress'");
@@ -169,7 +170,7 @@ export function rename(text, path = '') {
   if (path === 'src/extract.rs') text = text.replace(/theme, or (?:first|typedpress)\/app/g, 'theme, or tp/app');
   if (path === 'src/layout.rs' || path === 'tests/compiler.rs') text = text.replace(/(?:first|typedpress)\/client/g, 'tp/client');
   if (path === 'tests/compiler.rs') {
-    text = text.replace(/\["\.tp", "first"\]/g, '[".tp", "tp"]').replace(/"action-scheduler", "first"/g, '"action-scheduler", "typedpress"');
+    text = text.replace(/\["\.(?:first|tp)", "first"\]/g, '[".tp", "tp"]').replace(/"action-scheduler", "first"/g, '"action-scheduler", "typedpress"');
   }
   if (/(^|\/)tsconfig\.json$/.test(path)) {
     text = text.replace(/"(?:first|tp)\/\*"\s*:/g, '"typedpress/*":')
@@ -299,7 +300,7 @@ export function rename(text, path = '') {
     out = out.replace(/(['"])(?:first|tp)\1(?= \. substr\()/g, '$1typedpress$1');
   }
   if (path === 'src/config_migrate/app/omitted.rs') out = out.replace(/(\["app", )"first"/g, '$1"tp"');
-  out = out.replace(/\bfirst:(?=db\b|pages\b|begin\b|end\b|(?:first|tp)_jobs_maintain\b)/g, 'typedpress:');
+  out = out.replace(/\bfirst:(?=db\b|pages\b|(?:first|tp)_jobs_maintain\b)/g, 'typedpress:');
   if (/^runtime\/admin\/lib\/api\/view-config\.php$/.test(path)) out = out.replace(/(['"])first\1/g, '$1typedpress$1');
   if (/^(?:packages\/astro\/src\/index\.js|runtime\/admin\/apps\/packages\/schema\/src\/media\.tsx)$/.test(path)) {
     out = out.split('\n').map((line) => /^\s*(?:\/\/|\*|\/\*)/.test(line) ? line : line.replace(/\bfirst\b/g, 'tp')).join('\n');
@@ -312,6 +313,14 @@ export function rename(text, path = '') {
   // Hidden state/app roots use short names, including literal ROOT and .join calls.
   if (path === 'src/layout.rs') out = out.replace(/(ROOT[^=]*=\s*)"typedpress"/g, '$1"tp"');
   out = out.replace(/(?<=types\/)tp(?=\/|["'`\s])/g, 'typedpress');
+  if (path === 'tests/compiler.rs') {
+    out = out.replace(/"plugins": \[([^\]\n]+)\]/g, (match, items) => {
+      try {
+        const names = JSON.parse(`[${items}]`);
+        return names.every((name) => typeof name === 'string') ? `"plugins": [${names.sort().map((name) => JSON.stringify(name)).join(', ')}]` : match;
+      } catch { return match; }
+    });
+  }
   return unshield(out, slots);
 }
 
@@ -324,6 +333,28 @@ export function renamePath(path) {
     if (part === '.first') return '.tp';
     return rename(part);
   }).join('/');
+}
+
+// These fixture packages reach exactly the listed modules. Update their source digests
+// while retaining the deliberately narrowed grants that rejection tests exercise.
+const fixturePluginSources = {
+  'reject-plugin-write': ['node_modules/typedpress-plugin-x/src/fill.ts', 'node_modules/typedpress-plugin-x/src/index.ts'],
+  'reject-plugin-http': ['node_modules/typedpress-plugin-ping/src/index.ts'],
+  'plugin-seo': ['node_modules/typedpress-plugin-seo/src/index.ts', 'node_modules/typedpress-plugin-seo/src/summarize.ts'],
+};
+
+function fixturePluginLock(text, path, read) {
+  const match = /^tests\/fixtures\/([^/]+)\/tp\/_generated\/plugins\.lock\.json$/.exec(path);
+  const modules = match && fixturePluginSources[match[1]];
+  if (!modules) return text;
+  const hash = createHash('sha256');
+  for (const module of modules) {
+    const file = `tests/fixtures/${match[1]}/${module}`;
+    hash.update(module).update('\0').update(rename(read(file), file)).update('\0');
+  }
+  const lock = JSON.parse(text);
+  for (const plugin of Object.values(lock.plugins)) plugin.integrity = `sha256-${hash.copy().digest('hex')}`;
+  return JSON.stringify(lock, null, 2) + (text.endsWith('\n') ? '\n' : '');
 }
 
 function main() {
@@ -371,6 +402,7 @@ function main() {
   }
   const changed = [];
   const destinations = new Map(moves);
+  const originals = new Map(moves.map(([from, to]) => [to, from]));
   for (const source of files) {
     const path = destinations.get(source) ?? source;
     if (skipped(path)) continue;
@@ -379,7 +411,7 @@ function main() {
     const bytes = readFileSync(full);
     if (bytes.subarray(0, 8000).includes(0)) continue;
     const before = bytes.toString('utf8');
-    const after = rename(before, path);
+    const after = fixturePluginLock(rename(before, path), path, (file) => readFileSync(join(root, dry ? originals.get(file) ?? file : file), 'utf8'));
     if (before === after) continue;
     changed.push(path);
     if (!dry) writeFileSync(full, after);

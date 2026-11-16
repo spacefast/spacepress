@@ -4,7 +4,7 @@
     "seo": {
       "package": "typedpress-plugin-x",
       "version": "0.1.0",
-      "integrity": "sha256-d6a3a6b6c5489d155ce736006ae89a76c91a5baae887407b4be70de70ca924d3",
+      "integrity": "sha256-326e5d92d0be8e31a6947f168a2c279e96241ef3f6d7dcada9b732dea7ce8274",
       "grant": {
         "read": [
           "posts"

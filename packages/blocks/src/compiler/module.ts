@@ -28,7 +28,7 @@ import type { ContentNode, SourceLocation } from "../nodes.ts";
 
 const requireFromHere = createRequire(import.meta.url);
 
-const RUNTIME_SPECIFIER = /^@spacefast\/typedpress-blocks(?:\/(?:jsx-runtime|jsx-dev-runtime))?$/;
+const RUNTIME_SPECIFIER = /^@typedpress\/blocks(?:\/(?:jsx-runtime|jsx-dev-runtime))?$/;
 
 function runtimePlugin(): Plugin {
   return {

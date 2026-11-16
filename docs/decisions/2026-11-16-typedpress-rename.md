@@ -52,3 +52,7 @@ cases accepting 17 and refusing 18; the runtime limit and docs match the compile
 The live-region browser assertion allows repeated unchanged polls before a write
 completes. It still verifies the first subscription, the changed response,
 retained DOM nodes and input state; slower concurrent runs can cross a poll.
+
+Plugin fixture digests are refreshed for renamed package paths and imports while
+retaining their deliberate capability restrictions. The compiler-contract registry
+checks that those packages are still refused when they exceed their grants.

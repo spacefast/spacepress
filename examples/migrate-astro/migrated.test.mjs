@@ -70,7 +70,7 @@ test("the migrated journal serves the Astro site's pages, and its island counts 
   assert.deepEqual(await page.$$eval("main time", (ts) => ts.map((t) => t.textContent)), ["2026-04-11", "2026-03-02"]);
 
   await page.goto(`${url}/blog/first-light`, { waitUntil: "networkidle" });
-  assert.equal(await page.title(), "TypedPress light · Journal");
+  assert.equal(await page.title(), "First light · Journal");
   assert.equal(await page.textContent("article b, article strong"), "crocuses");
   // The hero image moved to public/, which the host serves as files (this harness serves WordPress only).
   assert.equal(await page.$eval("article img", (img) => img.getAttribute("src")), "/images/first-light.svg");

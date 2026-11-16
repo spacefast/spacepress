@@ -157,15 +157,15 @@ test("sync on WordPress", async (t) => {
     // Rows that depend on it (onDelete: cascade), a revision, and a published row's update hook.
     first("insert", "guide_notes", JSON.stringify({ guideId: id, note: `depends on ${run}` }));
     const notes = () => first("find", "guide_notes", JSON.stringify({ where: { guideId: id } })).map((n: any) => n.note);
-    const revisions = () => Number(sql(`SELECT COUNT(*) AS n FROM wp_posts WHERE post_parent = ${id} AND post_type = 'revision'`)[0].n);
+    const revisions = () => sql(`SELECT ID FROM wp_posts WHERE post_parent = ${id} AND post_type = 'revision'`).map((r: any) => r.ID);
     const before = revisions();
-    assert.ok(before > 0, "the published guide has revisions");
+    assert.ok(before.length > 0, "the published guide has revisions");
 
     const trashed = await ok("POST", "/sync/guides/trash", { as: "editor", body: { uid: kept.uid, expect: keptDigest } });
     assert.equal(trashed.status, "applied", "a beforeDelete veto does not stop a trash: no delete lifecycle ran");
     assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${id}`)[0].post_status, "trash");
     assert.deepEqual(notes(), [`depends on ${run}`], "the cascade did not run: the dependent row is still there");
-    assert.equal(revisions(), before, "its revisions are kept");
+    assert.deepEqual(revisions().filter((r: string) => before.includes(r)), before, "every revision it had is kept");
 
     // Pushing the file back restores it in place, published, with everything that pointed at it.
     const restored = await push(stored.record, "absent");

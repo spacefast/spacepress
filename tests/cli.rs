@@ -1489,6 +1489,23 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     );
 }
 
+/// The added pages build in a static site (`output: "static"`) too: the operation page lists one
+/// page per operation in `staticParams`, as a prebuilt dynamic page must.
+#[test]
+fn add_api_reference_builds_in_a_static_site() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let config = project.join("first.config.ts");
+    let source = std::fs::read_to_string(&config).unwrap();
+    let static_source = source.replacen("defineConfig({", "defineConfig({\n  output: \"static\",", 1);
+    assert_ne!(source, static_source, "the scaffold's config calls defineConfig({{");
+    std::fs::write(&config, static_source).unwrap();
+    let added = add(&project, &["api-reference"]);
+    assert_eq!(added.status.code(), Some(0), "{}{}", text(&added.stdout), text(&added.stderr));
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
+}
+
 /// A project from the scaffolder, as `npm create @spacefast/first` writes it, without the npm
 /// install. Its directory name has a space, as a real one may.
 fn scaffold(parent: &Path) -> PathBuf {

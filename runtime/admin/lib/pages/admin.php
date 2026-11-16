@@ -1,10 +1,10 @@
 <?php
 /**
- * First Admin SPA
+ * TypedPress Admin SPA
  *
- * This file serves as the entry point for the First Admin SPA.
+ * This file serves as the entry point for the TypedPress Admin SPA.
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 set_current_screen();
 
-// Do this action to populate the admin bar menu items. This is needed because the admin bar is not shown in FirstAdmin, so its items won't be populated by default.
+// Do this action to populate the admin bar menu items. This is needed because the admin bar is not shown in TypedPressAdmin, so its items won't be populated by default.
 // Core only builds `$wp_admin_bar` when the bar is shown; a host that hides it
 // still needs the object to collect the menu items this page reads.
 global $wp_admin_bar;
@@ -36,38 +36,38 @@ foreach ( wp_styles()->queue as $style ) {
 	wp_dequeue_style( $style );
 }
 
-// Run `first_admin_init`.
-do_action( 'first_admin_init' );
+// Run `tp_admin_init`.
+do_action( 'tp_admin_init' );
 
 // Always enable the experimental DataViews media modal. The Gutenberg plugin
 // is optional here: fall back to the core WordPress version for cache busting.
-wp_register_script( 'first-admin-gutenberg-experiments', '', array(), defined( 'GUTENBERG_VERSION' ) ? GUTENBERG_VERSION : get_bloginfo( 'version' ), false );
-wp_add_inline_script( 'first-admin-gutenberg-experiments', 'window.__experimentalDataViewsMediaModal = true' );
-wp_enqueue_script( 'first-admin-gutenberg-experiments' );
+wp_register_script( 'typedpress-admin-gutenberg-experiments', '', array(), defined( 'GUTENBERG_VERSION' ) ? GUTENBERG_VERSION : get_bloginfo( 'version' ), false );
+wp_add_inline_script( 'typedpress-admin-gutenberg-experiments', 'window.__experimentalDataViewsMediaModal = true' );
+wp_enqueue_script( 'typedpress-admin-gutenberg-experiments' );
 
 // The boot module dependencies come from the committed module build.
-$asset_file = is_file( FIRST_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php' )
-	? include FIRST_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php'
+$asset_file = is_file( TP_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php' )
+	? include TP_ADMIN_PLUGIN_DIR . 'build/packages/boot/index.asset.php'
 	: array(
 		'dependencies' => array(),
-		'version'      => FIRST_ADMIN_VERSION,
+		'version'      => TP_ADMIN_VERSION,
 	);
 
 // This script serves two purposes:
 // 1. It ensures all the globals that are made available to the modules are loaded.
 // 2. It initializes the boot module as an inline script.
-wp_register_script( 'first-admin-prerequisites', '', $asset_file['dependencies'], $asset_file['version'], true );
+wp_register_script( 'typedpress-admin-prerequisites', '', $asset_file['dependencies'], $asset_file['version'], true );
 
 // Pass data to script module via global variables.
 wp_add_inline_script(
-	'first-admin-prerequisites',
+	'typedpress-admin-prerequisites',
 	sprintf(
-		'import( "@first-admin/boot" ).then( mod => mod.init( %s, %s, %s, %s, %s ) );',
-		wp_json_encode( first_admin_get_admin_routes(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( first_admin_get_admin_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( first_admin_get_admin_meta_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( first_admin_get_init_modules(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
-		wp_json_encode( first_admin_get_boot_context(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
+		'import( "@typedpress-admin/boot" ).then( mod => mod.init( %s, %s, %s, %s, %s ) );',
+		wp_json_encode( tp_admin_get_admin_routes(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( tp_admin_get_admin_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( tp_admin_get_admin_meta_menu_items(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( tp_admin_get_init_modules(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ),
+		wp_json_encode( tp_admin_get_boot_context(), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
 	)
 );
 
@@ -76,40 +76,40 @@ wp_add_inline_script(
  *
  * @return array
  */
-function first_admin_get_boot_context() {
+function tp_admin_get_boot_context() {
 	return apply_filters(
-		'first_admin_boot_context',
-		array_merge( first_admin_get_dashboard_context(), array(
+		'tp_admin_boot_context',
+		array_merge( tp_admin_get_dashboard_context(), array(
 			'logout_url' => html_entity_decode( wp_logout_url() ),
-			'dashboard_widget_types' => first_admin_get_dashboard_widgets(),
-			'dashboard_default_layout' => apply_filters( 'first_admin_dashboard_widgets', array() ),
+			'dashboard_widget_types' => tp_admin_get_dashboard_widgets(),
+			'dashboard_default_layout' => apply_filters( 'tp_admin_dashboard_widgets', array() ),
 			// Where this admin is mounted and where wp-admin is: a WordPress installed below the
 			// origin root (`/blog/`) routes and frames correctly only if the app learns both here.
-			'mount_url'  => first_admin_url( '/' ),
+			'mount_url'  => tp_admin_url( '/' ),
 			'admin_url'  => admin_url(),
 		) )
 	);
 }
 
 // Transport comes from registered native types, independently of editor preferences.
-$first_admin_native = array();
-foreach ( \First\Wp\Runtime::plugin()->schema->collections() as $name => $collection ) {
+$tp_admin_native = array();
+foreach ( \TypedPress\Wp\Runtime::plugin()->schema->collections() as $name => $collection ) {
     $type = isset( $collection['wp']['postType'] ) ? get_post_type_object( $collection['wp']['postType'] ) : null;
     if ( $type && $type->show_in_rest ) {
-        $first_admin_native[ $name ] = array( 'postType' => $type->name, 'metaPrefix' => $collection['wp']['metaPrefix'] ?? 'first_', 'path' => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ) );
+        $tp_admin_native[ $name ] = array( 'postType' => $type->name, 'metaPrefix' => $collection['wp']['metaPrefix'] ?? 'tp_', 'path' => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ) );
     }
 }
-wp_add_inline_script( 'wp-api-fetch', 'window.firstAdmin = ' . wp_json_encode( array(
-    'native' => $first_admin_native,
-    'readable' => first_admin_navigation(),
-    'role' => \First\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
-    'mount' => first_admin_url(),
-    // First's API (/__first/api/v1): the admin's own reads and writes go through it, as every client's do.
-    'api' => \First\Wp\Facade::url(),
+wp_add_inline_script( 'wp-api-fetch', 'window.tpAdmin = ' . wp_json_encode( array(
+    'native' => $tp_admin_native,
+    'readable' => tp_admin_navigation(),
+    'role' => \TypedPress\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
+    'mount' => tp_admin_url(),
+    // TypedPress's API (/__tp/api/v1): the admin's own reads and writes go through it, as every client's do.
+    'api' => \TypedPress\Wp\Facade::url(),
 ), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';', 'after' );
 
 // Preload endpoints used by `getEntityRecord` (entity configs) and by the root route loader.
-$first_admin_preload_paths = array(
+$tp_admin_preload_paths = array(
 	// Config for the `postType` entity kind (fetched by Gutenberg `loadPostTypeEntities`).
 	'/wp/v2/types?context=view',
 	// Config for the `taxonomy` entity kind (fetched by Gutenberg `loadTaxonomyEntities`).
@@ -138,8 +138,8 @@ $first_admin_preload_paths = array(
 	),
 );
 
-$first_admin_preload_data = array_reduce(
-	$first_admin_preload_paths,
+$tp_admin_preload_data = array_reduce(
+	$tp_admin_preload_paths,
 	'rest_preload_api_request',
 	array()
 );
@@ -148,7 +148,7 @@ wp_add_inline_script(
 	'wp-api-fetch',
 	sprintf(
 		'wp.apiFetch.use( wp.apiFetch.createPreloadingMiddleware( %s ) );',
-		wp_json_encode( $first_admin_preload_data, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
+		wp_json_encode( $tp_admin_preload_data, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
 	),
 	'after'
 );
@@ -157,13 +157,13 @@ wp_add_inline_script(
 $boot_dependencies = array(
 	array(
 		'import' => 'static',
-		'id'     => '@first-admin/boot',
+		'id'     => '@typedpress-admin/boot',
 	),
 );
 
 
 // Add all registered routes as dependencies.
-foreach ( first_admin_get_admin_routes() as $route ) {
+foreach ( tp_admin_get_admin_routes() as $route ) {
 	if ( isset( $route['route_module'] ) ) {
 		$boot_dependencies[] = array(
 			'import' => ! empty( $route['before_load'] ) ? 'static' : 'dynamic',
@@ -179,7 +179,7 @@ foreach ( first_admin_get_admin_routes() as $route ) {
 }
 
 // Native widgets are lazy script modules and need entries in the import map.
-foreach ( first_admin_get_dashboard_widgets() as $widget ) {
+foreach ( tp_admin_get_dashboard_widgets() as $widget ) {
     foreach ( array( 'render_module', 'widget_module' ) as $key ) {
         if ( ! empty( $widget[$key] ) ) {
             $boot_dependencies[] = array( 'import' => 'dynamic', 'id' => $widget[$key] );
@@ -188,7 +188,7 @@ foreach ( first_admin_get_dashboard_widgets() as $widget ) {
 }
 
 // Add all registered init modules as dependencies.
-foreach ( first_admin_get_init_modules() as $init_module ) {
+foreach ( tp_admin_get_init_modules() as $init_module ) {
 	$boot_dependencies[] = array(
 		'import' => 'static',
 		'id'     => $init_module,
@@ -196,7 +196,7 @@ foreach ( first_admin_get_init_modules() as $init_module ) {
 }
 
 // Add all field collection modules as dependencies.
-foreach ( first_admin_get_all_field_collections() as $collection ) {
+foreach ( tp_admin_get_all_field_collections() as $collection ) {
 	if ( isset( $collection['fields_module'] ) ) {
 		$boot_dependencies[] = array(
 			'import' => 'dynamic',
@@ -205,10 +205,10 @@ foreach ( first_admin_get_all_field_collections() as $collection ) {
 	}
 }
 
-// This just an empty script to ensure @first-admin/boot is added to the import map.
+// This just an empty script to ensure @typedpress-admin/boot is added to the import map.
 wp_register_script_module(
-	'first-admin-boot',
-	FIRST_ADMIN_PLUGIN_URL . 'routes.js',
+	'typedpress-admin-boot',
+	TP_ADMIN_PLUGIN_URL . 'routes.js',
 	$boot_dependencies
 );
 
@@ -216,9 +216,9 @@ wp_register_script_module(
 wp_enqueue_style( 'wp-components' );
 wp_enqueue_style( 'wp-commands' );
 
-// Enqueue the First Admin SPA itself.
-wp_enqueue_script( 'first-admin-prerequisites' );
-wp_enqueue_script_module( 'first-admin-boot' );
+// Enqueue the TypedPress Admin SPA itself.
+wp_enqueue_script( 'typedpress-admin-prerequisites' );
+wp_enqueue_script_module( 'typedpress-admin-boot' );
 
 // Output the admin page.
 ?><!DOCTYPE html>
@@ -226,9 +226,9 @@ wp_enqueue_script_module( 'first-admin-boot' );
 <head>
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>First Admin</title>
+	<title>TypedPress Admin</title>
 	<style>
-		/* First: the router starts view transitions on navigation; without the document's opt-in
+		/* TypedPress: the router starts view transitions on navigation; without the document's opt-in
 		   the browser aborts each one with an error. */
 		@media (prefers-reduced-motion: no-preference) {
 			@view-transition {
@@ -253,7 +253,7 @@ wp_enqueue_script_module( 'first-admin-boot' );
 global $hook_suffix;
 
 // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
-$hook_suffix = 'first-admin';
+$hook_suffix = 'typedpress-admin';
 
 // BEGIN see wp-admin/admin-header.php.
 
@@ -281,8 +281,8 @@ do_action( 'admin_head' );
 
 ?>
 </head>
-<body class="<?php echo esc_attr( apply_filters( 'first_admin_body_class', 'first-admin' ) ); ?>">
-	<div id="first-admin-app" style="height: 100vh;box-sizing: border-box;"></div>
+<body class="<?php echo esc_attr( apply_filters( 'tp_admin_body_class', 'typedpress-admin' ) ); ?>">
+	<div id="typedpress-admin-app" style="height: 100vh;box-sizing: border-box;"></div>
 <?php
 
 // BEGIN see wp-admin/admin-footer.php.
@@ -296,7 +296,7 @@ do_action( 'admin_head' );
  */
 do_action( 'admin_footer', '' );
 
-first_admin_print_import_map();
+tp_admin_print_import_map();
 print_footer_scripts();
 wp_script_modules()->print_enqueued_script_modules();
 wp_script_modules()->print_script_module_preloads();

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
 /**
  * A helper providing autocompletion for available JsonSerializableNormalizer options.

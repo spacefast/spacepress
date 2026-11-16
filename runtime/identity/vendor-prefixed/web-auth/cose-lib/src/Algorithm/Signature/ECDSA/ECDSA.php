@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA;
+namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA;
 
-use First\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
-use First\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
-use First\Identity\Vendor\Cose\Algorithm\Signature\OpenSslError;
-use First\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use First\Identity\Vendor\Cose\Key\Ec2Key;
-use First\Identity\Vendor\Cose\Key\Key;
+use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
+use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
+use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\OpenSslError;
+use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use TypedPress\Identity\Vendor\Cose\Key\Ec2Key;
+use TypedPress\Identity\Vendor\Cose\Key\Key;
 use InvalidArgumentException;
 use function openssl_pkey_get_private;
 use function openssl_pkey_get_public;

@@ -9,7 +9,7 @@ publishedAt: 2026-11-15T21:51:50.000Z
 Each guide covers one part of an app, with the code that uses it.
 
 - [Pages](/docs/guides/pages)
-- [First Admin](/docs/guides/admin)
+- [TypedPress Admin](/docs/guides/admin)
 - [Live updates](/docs/guides/live-updates)
 - [Uploads](/docs/guides/uploads)
 - [Staged versions](/docs/guides/staged-versions)

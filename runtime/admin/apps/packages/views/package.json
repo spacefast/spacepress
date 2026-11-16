@@ -1,7 +1,7 @@
 {
-	"name": "@first-admin/views",
+	"name": "@typedpress-admin/views",
 	"version": "1.0.0",
-	"description": "First Admin list views: @wordpress/views with First's view config and DataViews layout",
+	"description": "TypedPress Admin list views: @wordpress/views with TypedPress's view config and DataViews layout",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
@@ -11,10 +11,10 @@
 		"build"
 	],
 	"dependencies": {
-		"@first-admin/core-data-next": "workspace:*",
+		"@typedpress-admin/core-data-next": "workspace:*",
 		"@wordpress/base-styles": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
 		"@wordpress/views": "catalog:",
 		"@wordpress/data": "catalog:",
 		"@wordpress/element": "catalog:"

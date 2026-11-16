@@ -1,5 +1,5 @@
 import { __, sprintf } from '@wordpress/i18n';
-import { EmptyState } from '@first-admin/design-system';
+import { EmptyState } from '@typedpress-admin/design-system';
 
 interface UserListEmptyStateProps {
 	slug: string;
@@ -10,26 +10,26 @@ export function UserListEmptyState( { slug }: UserListEmptyStateProps ) {
 	let description: string;
 
 	if ( slug === 'all' ) {
-		title = __( 'No users', 'first-admin' );
-		description = __( 'Any users will appear here.', 'first-admin' );
+		title = __( 'No users', 'typedpress-admin' );
+		description = __( 'Any users will appear here.', 'typedpress-admin' );
 	} else {
 		// Get translatable role name
 		const getRoleName = ( role: string ) => {
 			switch ( role ) {
 				case 'administrator':
-					return __( 'administrator', 'first-admin' );
+					return __( 'administrator', 'typedpress-admin' );
 				case 'shop_manager':
-					return __( 'store manager', 'first-admin' );
+					return __( 'store manager', 'typedpress-admin' );
 				case 'customer':
-					return __( 'customer', 'first-admin' );
+					return __( 'customer', 'typedpress-admin' );
 				case 'subscriber':
-					return __( 'subscriber', 'first-admin' );
+					return __( 'subscriber', 'typedpress-admin' );
 				case 'contributor':
-					return __( 'contributor', 'first-admin' );
+					return __( 'contributor', 'typedpress-admin' );
 				case 'author':
-					return __( 'author', 'first-admin' );
+					return __( 'author', 'typedpress-admin' );
 				case 'editor':
-					return __( 'editor', 'first-admin' );
+					return __( 'editor', 'typedpress-admin' );
 				default:
 					// Fallback for custom roles
 					return role.replace( /_/g, ' ' );
@@ -39,12 +39,12 @@ export function UserListEmptyState( { slug }: UserListEmptyStateProps ) {
 		const roleName = getRoleName( slug );
 		title = sprintf(
 			/* translators: %s: role name (e.g., administrator, shop manager) */
-			__( 'No %s', 'first-admin' ),
+			__( 'No %s', 'typedpress-admin' ),
 			roleName
 		);
 		description = sprintf(
 			/* translators: %s: role name (e.g., administrator, shop manager) */
-			__( 'Any users with the %s role will appear here.', 'first-admin' ),
+			__( 'Any users with the %s role will appear here.', 'typedpress-admin' ),
 			roleName
 		);
 	}

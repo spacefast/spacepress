@@ -1,4 +1,4 @@
-import { unlock } from '@first-admin/admin-toolkit';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { IconButton } from '@wordpress/ui';
 import { privateApis as componentsPrivateApis } from '@wordpress/components';
 import { moreVertical } from '@wordpress/icons';
@@ -26,7 +26,7 @@ export function MoreActionsDropdown( {
 						icon={ moreVertical }
 						variant="minimal"
 						size="compact"
-						label={ __( 'More actions', 'first-admin' ) }
+						label={ __( 'More actions', 'typedpress-admin' ) }
 					/>
 				}
 			/>

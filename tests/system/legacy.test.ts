@@ -1,9 +1,9 @@
 // The system suite's second site: an ORIGINAL Zero (0.8) site moved onto the new Zero the way
 // docs/migrating-from-zero.md tells an owner to. run.sh boots a fresh WordPress for it after the
-// publication journey (one First app per site) and replays the content the original kernel wrote
-// (tests/wp/legacy/site.json). Here the owner converts the capsule with `first migrate config`, opens
+// publication journey (one TypedPress app per site) and replays the content the original kernel wrote
+// (tests/wp/legacy/site.json). Here the owner converts the capsule with `typedpress migrate config`, opens
 // access (step 2), builds and installs the plugins (step 3), copies the uploads (step 3½), dry-runs
-// and runs `wp first migrate-legacy` (steps 4 and 5), then reads everything through the generated client.
+// and runs `wp typedpress migrate-legacy` (steps 4 and 5), then reads everything through the generated client.
 // tests/wp/legacy holds the migration's edge cases; this file proves the documented path end to end.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -20,14 +20,14 @@ const receipt: { url: string; users: Record<"admin" | "editor", { appPassword: s
 const wpContent = join(repo, "tests/system/.wp-content-legacy");
 const harness = join(repo, "tests/wp/harness.sh");
 const project = join(work, "legacy-app");
-const api = `${receipt.url}/__first/api/v1`;
+const api = `${receipt.url}/__tp/api/v1`;
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const migrate = (...flags: string[]) => {
-  const r = spawnSync(harness, ["wp", "first", "migrate-legacy", "-", ...flags], { input: readFileSync(join(legacy, "content-model.php")), encoding: "utf8" });
+  const r = spawnSync(harness, ["wp", "typedpress", "migrate-legacy", "-", ...flags], { input: readFileSync(join(legacy, "content-model.php")), encoding: "utf8" });
   return { code: r.status, out: JSON.parse(r.stdout) };
 };
 
-// The generated client of the app `first migrate config` made, loaded as a frontend imports it.
+// The generated client of the app `typedpress migrate config` made, loaded as a frontend imports it.
 type Row = Record<string, any> & { id: number };
 interface Collection { list(q?: object): Promise<Row[]>; get(id: number, q?: object): Promise<Row>; update(id: number, patch: object): Promise<Row> }
 let client: (role: "anonymous" | "editor") => { projects: Collection; tasks: Collection };
@@ -35,16 +35,16 @@ let client: (role: "anonymous" | "editor") => { projects: Collection; tasks: Col
 before(async () => {
   rmSync(project, { recursive: true, force: true });
   // Step 1: the capsule becomes a first.config.ts.
-  first("migrate", "config", "--from", "zero", join(legacy, "capsule.ts"), "--out", join(project, "first.config.ts"));
+  first("migrate", "config", "--from", "zero", join(legacy, "capsule.ts"), "--out", join(project, "typedpress.config.ts"));
   // Step 2: the importer denies every write; the owner opens them to editors.
-  const config = join(project, "first.config.ts");
+  const config = join(project, "typedpress.config.ts");
   writeFileSync(config, readFileSync(config, "utf8").replaceAll(`"create":false,"update":false,"delete":false`, `"create":"editor","update":"editor","delete":"editor"`));
   // Step 3: build, upload the plugins, activate dependencies, then the runtime, then the app.
   first("build", project, "--quiet");
-  const built = join(project, "first/dist/wp-content/plugins");
+  const built = join(project, "tp/dist/wp-content/plugins");
   for (const name of readdirSync(built).filter((n) => !n.endsWith(".zip"))) cpSync(join(built, name), join(wpContent, "plugins", name), { recursive: true });
-  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "first-runtime", "first-identity", "first-app-legacy");
-  const mod = await import(pathToFileURL(join(project, "first/_generated/client/index.ts")).href);
+  wp("plugin", "activate", "secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "typedpress-runtime", "typedpress-identity", "typedpress-app-legacy");
+  const mod = await import(pathToFileURL(join(project, "tp/_generated/client/index.ts")).href);
   const basic = (role: "editor") => ({ Authorization: "Basic " + btoa(`${role}:${receipt.users[role].appPassword}`) });
   client = (role) => mod.createClient({ url: api, headers: role === "anonymous" ? {} : basic(role) });
 });

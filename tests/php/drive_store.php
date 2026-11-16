@@ -3,17 +3,17 @@
 declare(strict_types=1);
 
 /*
- * examples/drive-store, the shop that shows most of First at once, on WordPress-on-SQLite: built by
- * `first build`, seeded from its content/drives/ the way a publish seeds it, served with php -S and
+ * examples/drive-store, the shop that shows most of TypedPress at once, on WordPress-on-SQLite: built by
+ * `typedpress build`, seeded from its content/drives/ the way a publish seeds it, served with php -S and
  * used the way a browser with scripts off uses it. Prints one JSON object of what each step saw
  * (tests/app_router.rs `drive_store_example_sells_on_wordpress`).
  *
- *   FIRST_WP_THEMES=1 php tests/php/drive_store.php <wp-content dir> <seed records dir>
+ *   TP_WP_THEMES=1 php tests/php/drive_store.php <wp-content dir> <seed records dir>
  */
 
 // WordPress loads in this process as an API request would: Polylang sets up a context for one
-// (it sets up none for a page on a site with no languages yet), and First then adds `locales`.
-$_SERVER['REQUEST_URI'] = '/__first/api/v1';
+// (it sets up none for a page on a site with no languages yet), and TypedPress then adds `locales`.
+$_SERVER['REQUEST_URI'] = '/__tp/api/v1';
 require __DIR__ . '/wp.php';
 
 // Core's flood check (one comment per author per 15 seconds) would refuse the test's quick succession.
@@ -22,8 +22,8 @@ $site = wpSite('drive-store', ['wpContent' => $argv[1], 'users' => ['ann' => 'su
     add_filter('wp_is_comment_flood', '__return_false', PHP_INT_MAX);
     PHP]]);
 wp_set_current_user(1);
-$out = ['seed' => \First\Sync\Seed::run(\First\Wp\Runtime::plugin(), $argv[2])['drives'] ?? null];
-$out['rows'] = array_map(static fn (array $r): array => [$r['locale'], $r['slug'], array_keys((array) $r['translations'])], \First\db()->findMany('drives', ['locale' => '*', 'orderBy' => ['slug' => 'asc']]));
+$out = ['seed' => \TypedPress\Sync\Seed::run(\TypedPress\Wp\Runtime::plugin(), $argv[2])['drives'] ?? null];
+$out['rows'] = array_map(static fn (array $r): array => [$r['locale'], $r['slug'], array_keys((array) $r['translations'])], \TypedPress\db()->findMany('drives', ['locale' => '*', 'orderBy' => ['slug' => 'asc']]));
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -118,7 +118,7 @@ $out['catalog'] = [
     'title' => texts($home['body'], '//title'),
     'names' => texts($home['body'], "$cards//h2"),
     'links' => texts($home['body'], "$cards//h2/a/@href"),
-    'feed link' => texts($home['body'], "//link[@type='application/rss+xml' and contains(@href,'first_drives')]/@href") !== [],
+    'feed link' => texts($home['body'], "//link[@type='application/rss+xml' and contains(@href,'tp_drives')]/@href") !== [],
 ];
 $tr = fetch("$url/?language=tr");
 $out['catalog tr'] = ['summaries' => texts($tr['body'], "$cards/p[2]"), 'links' => texts($tr['body'], "$cards//h2/a/@href"), 'stock' => texts($tr['body'], "$cards//span[@class='muted']")];
@@ -140,7 +140,7 @@ $pageTr = fetch("$url/drives/wd-red-plus-4tb-tr");
 $out['product tr'] = ['status' => $pageTr['status'], 'lede' => texts($pageTr['body'], "//p[@class='lede']"), 'facts' => texts($pageTr['body'], "//dl[@class='facts']/dt"), 'switch' => texts($pageTr['body'], "//p[@class='lang']/a/@href")];
 $twinTr = fetch("$url/drives/wd-red-plus-4tb-tr.md");
 $out['twin tr'] = [$twinTr['status'], strtok($twinTr['body'], "\n")];
-$trId = (int) array_values(array_filter(\First\db()->findMany('drives', ['locale' => '*']), static fn (array $r): bool => $r['slug'] === 'wd-red-plus-4tb-tr'))[0]['id'];
+$trId = (int) array_values(array_filter(\TypedPress\db()->findMany('drives', ['locale' => '*']), static fn (array $r): bool => $r['slug'] === 'wd-red-plus-4tb-tr'))[0]['id'];
 $out['permalink tr'] = parse_url((string) get_permalink($trId), PHP_URL_PATH);
 $out['polylang prefix'] = fetch("$url/tr/drives/wd-red-plus-4tb-tr/")['status'];
 $out['untranslated tr'] = texts(fetch("$url/drives/crucial-p3-2tb?language=tr")['body'], "//p[@class='lede']");
@@ -152,7 +152,7 @@ $out['guest buy'] = [$sold['status'], $sold['path'], preg_replace('/[0-9A-F]{8}/
 $out['stock after'] = texts(fetch("$url/drives/wd-red-plus-4tb")['body'], "//aside[@class='buybox']//p[@class='muted']");
 $out['over stock'] = texts(submit($buy, ['buyerName' => 'Greedy', 'buyerEmail' => 'g@example.test', 'quantity' => '3'])['body'], "//p[@class='error']");
 // The buyer never sends a price: the action takes none (an unknown field is refused), and the hook sets it.
-$priced = fetch("$url/__first/api/v1/actions/buy", 'POST', ['Content-Type: application/json'], '{"drive":1,"buyerName":"X","buyerEmail":"x@example.test","total":1}');
+$priced = fetch("$url/__tp/api/v1/actions/buy", 'POST', ['Content-Type: application/json'], '{"drive":1,"buyerName":"X","buyerEmail":"x@example.test","total":1}');
 $out['price from buyer'] = $priced['status'];
 
 // A signed-in customer buys, then finds the order under My orders; nobody else sees it.
@@ -175,22 +175,22 @@ $out['staff'] = ['status' => $staff['status'], 'to ship' => count(texts($staff['
 $out['ship'] = preg_replace('/[0-9A-F]{8}/', 'CODE', texts(submit(form($staff['body'], '/actions/markShipped'), [], $editor)['body'], "//p[@class='ok']")[0] ?? '');
 $out['restock'] = texts(submit(form($staff['body'], '/actions/restock'), ['quantity' => '4'], $editor)['body'], "//p[@class='ok']");
 $out['movements'] = texts(fetch("$url/staff", headers: ["Cookie: $editor"])['body'], '//table[last()]//tbody/tr/td[4]');
-$restock = fetch("$url/__first/api/v1/actions/restock", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('ann'))], '{"drive":1,"quantity":1}');
+$restock = fetch("$url/__tp/api/v1/actions/restock", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('ann'))], '{"drive":1,"quantity":1}');
 $out['restock as customer'] = $restock['status'];
-$orders = fetch("$url/__first/api/v1/orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('ann'))]);
+$orders = fetch("$url/__tp/api/v1/orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('ann'))]);
 $out['orders api as ann'] = array_column(json_decode($orders['body'], true)['data'] ?? [], 'buyerName');
 
 // Reviews: a customer's first review is held and shown only to them; a signed-out visitor gets a link.
 $seagate = fetch("$url/drives/seagate-exos-x16", headers: ["Cookie: $ann"]);
 $review = submit(form($seagate['body'], '/comments'), ['content' => 'Arrived well packed, SMART clean.'], $ann);
-$out['review'] = [$review['status'], texts($review['body'], "//section[@class='reviews']//div[@class='first-comment-body']")];
+$out['review'] = [$review['status'], texts($review['body'], "//section[@class='reviews']//div[@class='typedpress-comment-body']")];
 $out['review signed out'] = [
-    texts(fetch("$url/drives/seagate-exos-x16")['body'], "//section[@class='reviews']//div[@class='first-comment-body']"),
+    texts(fetch("$url/drives/seagate-exos-x16")['body'], "//section[@class='reviews']//div[@class='typedpress-comment-body']"),
     texts(fetch("$url/drives/seagate-exos-x16")['body'], "//section[@class='reviews']//a"),
 ];
 
 // WordPress's own RSS feed of the drives post type, linked from every page.
-$feed = fetch("$url/?feed=rss2&post_type=first_drives");
+$feed = fetch("$url/?feed=rss2&post_type=tp_drives");
 $xml = @simplexml_load_string($feed['body']);
 $sorted = static function (array $list): array {
     sort($list);
@@ -204,16 +204,16 @@ $out['feed'] = [
 ];
 
 // The shop settings global: the notice banner and the currency.
-\First\db()->globalUpdate('shop', ['notice' => 'Demo shop: orders are fake.', 'currency' => 'EUR']);
+\TypedPress\db()->globalUpdate('shop', ['notice' => 'Demo shop: orders are fake.', 'currency' => 'EUR']);
 $after = fetch("$url/");
 $out['settings'] = [texts($after['body'], "//p[@class='notice']"), texts($after['body'], "$cards//strong[@class='price']")[0] ?? null];
 
 // The price rule holds on the API too.
-$bad = fetch("$url/__first/api/v1/drives", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('editor'))], '{"name":"X","brand":"B","model":"M","capacityGb":10,"price":1.234}');
+$bad = fetch("$url/__tp/api/v1/drives", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('editor'))], '{"name":"X","brand":"B","model":"M","capacityGb":10,"price":1.234}');
 $out['bad price'] = [$bad['status'], json_decode($bad['body'], true)['detail'] ?? $bad['body']];
 
-// First Admin's classic list screen for a table labels its columns from `.ui({ label })`.
-$screen = fetch("$url/wp-json/first-admin/v1/screens/table-orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('editor'))]);
+// TypedPress Admin's classic list screen for a table labels its columns from `.ui({ label })`.
+$screen = fetch("$url/wp-json/typedpress-admin/v1/screens/table-orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('editor'))]);
 $fields = json_decode($screen['body'], true)['view']['fields'] ?? [];
 $out['orders screen'] = [$screen['status'], json_decode($screen['body'], true)['title'] ?? null, array_column($fields, 'label', 'id')];
 

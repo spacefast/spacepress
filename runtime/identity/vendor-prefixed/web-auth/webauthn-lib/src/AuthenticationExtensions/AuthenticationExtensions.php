@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AuthenticationExtensions;
+namespace TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions;
 
 use function array_key_exists;
 use ArrayAccess;
@@ -14,7 +14,7 @@ use function is_string;
 use Iterator;
 use IteratorAggregate;
 use function sprintf;
-use First\Identity\Vendor\Webauthn\Exception\AuthenticationExtensionException;
+use TypedPress\Identity\Vendor\Webauthn\Exception\AuthenticationExtensionException;
 
 /**
  * @implements IteratorAggregate<string, AuthenticationExtension>

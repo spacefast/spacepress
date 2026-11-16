@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"dependencies": {
-		"@first-admin/dashboard": "workspace:*",
+		"@typedpress-admin/dashboard": "workspace:*",
 		"@wordpress/i18n": "catalog:"
 	}
 }

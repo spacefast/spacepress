@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Pdo;
+namespace TypedPress\Identity\Vendor\Pdo;
 
 use PDO;
 

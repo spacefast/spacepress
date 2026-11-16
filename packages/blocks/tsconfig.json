@@ -16,11 +16,11 @@
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@spacefast/first-blocks",
+    "jsxImportSource": "@typedpress/blocks",
     "baseUrl": ".",
     "paths": {
-      "@spacefast/first-blocks": ["./src/index.ts"],
-      "@spacefast/first-blocks/*": ["./src/*.ts"]
+      "@typedpress/blocks": ["./src/index.ts"],
+      "@typedpress/blocks/*": ["./src/*.ts"]
     }
   },
   "include": ["src", "scripts", "tests", "bin"]

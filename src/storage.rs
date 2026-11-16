@@ -15,7 +15,7 @@ use crate::schema::{ColType, Collection, Column, DefaultKind, Schema};
 use indexmap::IndexMap;
 use serde_json::{Map, Value as Json, json};
 
-pub const FORMAT: &str = "first.storage.v1";
+pub const FORMAT: &str = "typedpress.storage.v1";
 pub const FILE: &str = "storage.json";
 
 /// The canonical bytes: sorted keys, no whitespace, a trailing newline.
@@ -36,7 +36,7 @@ pub fn describe(schema: &Schema) -> Json {
     }
     let mut globals = Map::new();
     for g in schema.globals.values() {
-        let prefix = format!("first_global_{}_", g.name);
+        let prefix = format!("tp_global_{}_", g.name);
         let fields = g
             .fields
             .iter()
@@ -52,7 +52,7 @@ pub fn describe(schema: &Schema) -> Json {
         .map(|(key, def)| {
             (
                 key.clone(),
-                json!({ "table": format!("first_{key}"), "owner": def["join"]["owner"], "target": def["join"]["target"],
+                json!({ "table": format!("tp_{key}"), "owner": def["join"]["owner"], "target": def["join"]["target"],
                     "columns": ["owner_id", "target_id", "position"], "indexes": indexes(key, &snapshot) }),
             )
         })
@@ -68,7 +68,7 @@ fn kind(c: &Collection, snapshot: &Json) -> Json {
     } else {
         "table"
     };
-    let table = c.existing_table.clone().unwrap_or_else(|| format!("first_{}", c.table));
+    let table = c.existing_table.clone().unwrap_or_else(|| format!("tp_{}", c.table));
     let mut fields = Map::new();
     for (name, col) in &c.columns {
         // Computed on read, never stored.
@@ -80,7 +80,7 @@ fn kind(c: &Collection, snapshot: &Json) -> Json {
     let mut out = json!({ "in": place, "fields": fields });
     match place {
         "posts" => {
-            out["postType"] = format!("first_{}", c.table).into();
+            out["postType"] = format!("tp_{}", c.table).into();
             out["hierarchical"] = c.hierarchical.into();
             out["localized"] = c.localized.into();
         }
@@ -123,11 +123,11 @@ fn at(c: &Collection, place: &str, table: &str, name: &str, col: &Column) -> Jso
             } else if col.system && name == "publishedAt" {
                 core("post_date_gmt")
             } else if col.system && name == "uid" {
-                json!({ "meta": "_first_uid" })
+                json!({ "meta": "_tp_uid" })
             } else if col.system && matches!(name, "locale" | "translationGroup") {
                 json!({ "polylang": name })
             } else {
-                json!({ "meta": format!("first_{name}") })
+                json!({ "meta": format!("tp_{name}") })
             }
         }
         _ => {
@@ -139,15 +139,15 @@ fn at(c: &Collection, place: &str, table: &str, name: &str, col: &Column) -> Jso
             } else if name == "name" {
                 core("display_name")
             } else if name == "role" {
-                json!({ "meta": "first_role" })
+                json!({ "meta": "tp_role" })
             } else if name == "guest" {
-                json!({ "capabilities": "first_guest" })
+                json!({ "capabilities": "tp_guest" })
             } else if name == "passwordHash" {
                 json!({ "identity": "password" })
             } else if name == "suspendedAt" {
                 json!({ "identity": "status" })
             } else {
-                json!({ "meta": format!("first_{name}") })
+                json!({ "meta": format!("tp_{name}") })
             }
         }
     }

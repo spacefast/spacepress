@@ -1,7 +1,7 @@
-import type { View, Action } from '@first-admin/dataviews';
-import { Page, unlock } from '@first-admin/admin-toolkit';
-import { usePostFields } from '@first-admin/fields-next';
-import { useView, DataViews } from '@first-admin/views';
+import type { View, Action } from '@typedpress-admin/dataviews';
+import { Page, unlock } from '@typedpress-admin/admin-toolkit';
+import { usePostFields } from '@typedpress-admin/fields-next';
+import { useView, DataViews } from '@typedpress-admin/views';
 import { Button } from '@wordpress/ui';
 import {
 	useNavigate,
@@ -10,7 +10,7 @@ import {
 } from '@wordpress/route';
 import { privateApis as coreDataPrivateApis } from '@wordpress/core-data';
 import { useCallback, useMemo, useState } from '@wordpress/element';
-import { serializeFilters, usePageView } from '@first-admin/telemetry';
+import { serializeFilters, usePageView } from '@typedpress-admin/telemetry';
 import type { Post } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
@@ -131,7 +131,7 @@ function NavigationList() {
 	return (
 		<>
 			<Page
-				title={ __( 'Navigation', 'first-admin' ) }
+				title={ __( 'Navigation', 'typedpress-admin' ) }
 				className="navigation-page"
 				hasPadding={ false }
 				actions={
@@ -140,7 +140,7 @@ function NavigationList() {
 						size="compact"
 						onClick={ () => setShowAddModal( true ) }
 					>
-						{ __( 'Add New', 'first-admin' ) }
+						{ __( 'Add New', 'typedpress-admin' ) }
 					</Button>
 				}
 			>

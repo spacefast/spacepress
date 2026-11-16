@@ -1,6 +1,6 @@
 # Deploy the framework website
 
-`www/` is a First app. It needs WordPress for docs, blog posts, shared playground
+`www/` is a TypedPress app. It needs WordPress for docs, blog posts, shared playground
 edits, the examples table and Action Scheduler jobs.
 
 Use a dedicated nonproduction WordPress site to qualify a destination first.
@@ -19,8 +19,8 @@ cargo build --locked --release
 (cd examples/reading-list && npm ci --ignore-scripts)
 (cd www && bun install --frozen-lockfile && bun run build)
 cd www
-../target/release/first check
-../target/release/first plugin --out first.zip
+../target/release/typedpress check
+../target/release/typedpress plugin --out typedpress.zip
 ```
 
 Set `PLUGINS_URL` when building to the URL that will serve `/files/plugins/`.
@@ -29,30 +29,30 @@ preserves the public-file CORS headers.
 
 ## Prepare WordPress
 
-Upload and activate `first.zip` in wp-admin. The plugin installs its pinned
+Upload and activate `typedpress.zip` in wp-admin. The plugin installs its pinned
 requirements. Application passwords and file modifications must be enabled.
 On a network, activate it for the network; super administrators deploy one app
 per site.
 
 Prefer a private build-store directory outside the web root, configured through
-`FIRST_STORE_DIR`. The default store writes an Apache access rule; nginx does
+`TP_STORE_DIR`. The default store writes an Apache access rule; nginx does
 not enforce `.htaccess`. Verify that a browser cannot fetch private build files.
 
 Authenticate from `www/`, then inspect the plan:
 
 ```sh
-../target/release/first login https://chosen-site.example
-../target/release/first push --dry-run
+../target/release/typedpress login https://chosen-site.example
+../target/release/typedpress push --dry-run
 ```
 
-A human starts a production release. The deployment command is `first push`.
+A human starts a production release. The deployment command is `typedpress push`.
 A push seeds the synced Markdown on an empty site. Later edits to existing content
-use `first sync --site <url> --no-commit`; it currently needs credentials through
-`FIRST_APP_PASSWORD` or `FIRST_TOKEN`, separately from `first login`. Supply those
+use `typedpress sync --site <url> --no-commit`; it currently needs credentials through
+`TP_APP_PASSWORD` or `TP_TOKEN`, separately from `typedpress login`. Supply those
 through a secure environment mechanism.
 
 After the build and initial deployment, run `SITE_URL=<site-url> bun run seed`
-with `FIRST_APP_PASSWORD` supplied through the environment. It adds the featured
+with `TP_APP_PASSWORD` supplied through the environment. It adds the featured
 examples through the app API and retains existing rows and star counts.
 See [website build and seeding work](https://github.com/spacefast/zero/issues/500)
 and [Pressable qualification and sync credentials](https://github.com/spacefast/zero/issues/501).

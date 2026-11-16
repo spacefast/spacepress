@@ -1,4 +1,4 @@
-import { unlock } from '@first-admin/admin-toolkit';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { Link } from '@wordpress/ui';
 import { __ } from '@wordpress/i18n';
 import type { Theme } from '@wordpress/core-data';
@@ -37,7 +37,7 @@ export default function ThemeDetailModal( {
 		<div className="theme-details-preview">
 			<img
 				src={ theme.screenshot }
-				alt={ __( 'Theme screenshot', 'first-admin' ) }
+				alt={ __( 'Theme screenshot', 'typedpress-admin' ) }
 			/>
 		</div>
 	) : null;
@@ -46,13 +46,13 @@ export default function ThemeDetailModal( {
 		if ( theme.auto_updates.forced === false ) {
 			return (
 				<Text variant="muted">
-					{ __( 'Auto-updates disabled', 'first-admin' ) }
+					{ __( 'Auto-updates disabled', 'typedpress-admin' ) }
 				</Text>
 			);
 		} else if ( theme.auto_updates.forced ) {
 			return (
 				<Text variant="muted">
-					{ __( 'Auto-updates enabled', 'first-admin' ) }
+					{ __( 'Auto-updates enabled', 'typedpress-admin' ) }
 				</Text>
 			);
 		} else if ( theme.auto_updates.enabled ) {
@@ -64,7 +64,7 @@ export default function ThemeDetailModal( {
 					onClick={ toggleAutoUpdates }
 					variant="link"
 				>
-					{ __( 'Disable auto-updates', 'first-admin' ) }
+					{ __( 'Disable auto-updates', 'typedpress-admin' ) }
 				</Button>
 			);
 		}
@@ -77,7 +77,7 @@ export default function ThemeDetailModal( {
 				onClick={ toggleAutoUpdates }
 				variant="link"
 			>
-				{ __( 'Enable auto-updates', 'first-admin' ) }
+				{ __( 'Enable auto-updates', 'typedpress-admin' ) }
 			</Button>
 		);
 	};
@@ -90,7 +90,7 @@ export default function ThemeDetailModal( {
 		return (
 			<Text variant="muted">
 				<strong className="theme-details-tags-label">
-					{ __( 'Tags:', 'first-admin' ) }
+					{ __( 'Tags:', 'typedpress-admin' ) }
 				</strong>
 				{ tags.rendered }
 			</Text>
@@ -117,7 +117,7 @@ export default function ThemeDetailModal( {
 					<VStack spacing={ 4 } className="theme-details-info">
 						{ isActive && (
 							<div>
-								<Badge>{ __( 'Active', 'first-admin' ) }</Badge>
+								<Badge>{ __( 'Active', 'typedpress-admin' ) }</Badge>
 							</div>
 						) }
 
@@ -128,13 +128,13 @@ export default function ThemeDetailModal( {
 						) }
 
 						<Text variant="muted">
-							{ __( 'By', 'first-admin' ) }{ ' ' }
+							{ __( 'By', 'typedpress-admin' ) }{ ' ' }
 							{ ( () => {
 								const authorName =
 									theme?.author?.raw &&
 									theme.author.raw !== ''
 										? decodeEntities( theme.author.raw )
-										: __( 'Anonymous', 'first-admin' );
+										: __( 'Anonymous', 'typedpress-admin' );
 								return theme?.author_uri?.raw ? (
 									<Link
 										href={ decodeEntities(
@@ -152,7 +152,7 @@ export default function ThemeDetailModal( {
 						{ theme.version && (
 							<Text variant="muted">
 								<span className="theme-details-version-label">
-									{ __( 'Version:', 'first-admin' ) }
+									{ __( 'Version:', 'typedpress-admin' ) }
 								</span>
 								{ theme.version }
 							</Text>

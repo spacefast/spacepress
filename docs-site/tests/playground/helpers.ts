@@ -1,4 +1,4 @@
-// What both Playground tests need: public/files/ over HTTP for First's plugin zips, and a browser
+// What both Playground tests need: public/files/ over HTTP for TypedPress's plugin zips, and a browser
 // that keeps Playground's sign-in cookie.
 import { createReadStream, existsSync } from "node:fs";
 import http from "node:http";
@@ -8,7 +8,7 @@ import { site } from "../unit/helpers.ts";
 
 const files = path.join(site, "public/files");
 
-/** public/files/ over HTTP, for the blueprint's First plugin zips. */
+/** public/files/ over HTTP, for the blueprint's TypedPress plugin zips. */
 export function serveFiles(): Promise<http.Server> {
 	const server = http.createServer((request, response) => {
 		const file = path.join(files, decodeURIComponent(new URL(request.url ?? "/", "http://x").pathname).replace(/^\/files\//, ""));

@@ -1,6 +1,6 @@
 // Untyped JavaScript for tests/differential/language/host-platform.ts: platform detection as npm
 // packages write it. `navigator.platform` and `process.platform` are read when PHP runs, from
-// First\Host; `typeof navigator` and `typeof process` are "object".
+// TypedPress\Host; `typeof navigator` and `typeof process` are "object".
 
 // picomatch 4.0.7 lib/utils.js, verbatim.
 const isWindows = () => {
@@ -64,5 +64,5 @@ export function shadowed() {
 }
 
 export function withEnv() {
-  return [process.platform, process.env.FIRST_HOST_PLATFORM_UNSET ?? 'unset'];
+  return [process.platform, process.env.TP_HOST_PLATFORM_UNSET ?? 'unset'];
 }

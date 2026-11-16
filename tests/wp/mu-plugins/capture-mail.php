@@ -1,8 +1,8 @@
 <?php
 // Test stack only: keep outgoing mail in the uploads dir instead of sending it, so suites can read
-// sign-in codes (first-identity, §6.2) without an SMTP server.
+// sign-in codes (typedpress-identity, §6.2) without an SMTP server.
 add_filter('pre_wp_mail', static function ($short, array $atts) {
-    $dir = WP_CONTENT_DIR . '/first-test-mail';
+    $dir = WP_CONTENT_DIR . '/typedpress-test-mail';
     wp_mkdir_p($dir);
     // Apache and WP-CLI share these disposable captures but can run as different users.
     if ((fileperms($dir) & 0777) !== 0777) {

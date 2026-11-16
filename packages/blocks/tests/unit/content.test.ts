@@ -66,7 +66,7 @@ test("a stack frame naming a longer path that ends with the bundle's path is not
 });
 
 test("compiling from inside withBlockApi is refused, since the module would see the DOM, and the globals are still restored", async () => {
-  const scratchRoot = mkdtempSync(path.join(tmpdir(), "first-blocks-scratch-"));
+  const scratchRoot = mkdtempSync(path.join(tmpdir(), "typedpress-blocks-scratch-"));
   const before = process.env.TMPDIR;
   process.env.TMPDIR = scratchRoot;
   try {

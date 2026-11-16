@@ -1,6 +1,6 @@
 // The generated client for a collection whose type name would collide with the built-in PrivateFile,
 // plus the files and media surfaces (phase 2 §7.2). Compiled with tsc by tests/compiler.rs.
-import { createClient, type PrivateFile, type PrivateFileRow } from "./first/_generated/client/index.ts";
+import { createClient, type PrivateFile, type PrivateFileRow } from "./tp/_generated/client/index.ts";
 
 async function check() {
   const first = createClient();

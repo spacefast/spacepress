@@ -1,11 +1,11 @@
-//! `first/app/` end to end (docs/spec/rendering.md §1–§3): the route conventions compile, the
+//! `tp/app/` end to end (docs/spec/rendering.md §1–§3): the route conventions compile, the
 //! generated `routes.d.ts` types links and params, and the router serves every page, layout,
 //! guard, catch-all, handler and error state on a real WordPress (tests/php/app_router.php).
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_first"))
+    Command::new(env!("CARGO_BIN_EXE_typedpress"))
 }
 
 fn root() -> PathBuf {
@@ -26,7 +26,7 @@ fn copy(from: &Path, to: &Path) {
 }
 
 fn fixture(name: &str, test: &str) -> PathBuf {
-    let tmp = std::env::temp_dir().join(format!("first-{name}-{test}-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("typedpress-{name}-{test}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     copy(&root().join("tests/fixtures").join(name), &tmp);
     tmp
@@ -45,8 +45,8 @@ fn app_router_serves_pages_on_wordpress() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_router.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -79,7 +79,7 @@ fn app_router_serves_pages_on_wordpress() {
         "public, max-age=0, s-maxage=300, must-revalidate"
     );
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
-    assert!(body.contains(r#"/notes" data-wp-interactive="first/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
+    assert!(body.contains(r#"/notes" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
     assert_eq!(seen["router module"], true);
     // Reads run as the visitor: the draft is missing for anonymous visitors, masked fields absent.
     assert_eq!(page("note").0, 200);
@@ -252,7 +252,7 @@ fn app_router_serves_pages_on_wordpress() {
         seen["styles"],
         serde_json::json!({ "theme preset": true, "core preset": true, "project preset": true, "global styles": true, "additional css": true, "site icon": true })
     );
-    // What `first styles pull` writes: the project's palette with the owner's color for `brand`.
+    // What `typedpress styles pull` writes: the project's palette with the owner's color for `brand`.
     assert_eq!(
         seen["styles export"],
         serde_json::json!([["version", "settings"], ["brand #123456", "code #0000aa"]])
@@ -266,15 +266,15 @@ fn app_router_serves_pages_on_wordpress() {
 /// item's path does not, so the two are compared without it.
 #[test]
 fn app_router_serves_item_pages_under_a_subdirectory() {
-    let project = std::env::temp_dir().join(format!("first-full-site-subdir-{}", std::process::id()));
+    let project = std::env::temp_dir().join(format!("typedpress-full-site-subdir-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&project);
     copy(&root().join("examples/full-site"), &project);
     build(&project);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_router_subdirectory.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -298,38 +298,38 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
     let _ = std::fs::remove_dir_all(project);
 }
 
-/// `first build` writes `first/_generated/routes.d.ts`; with it, TypeScript checks every `<Link href>`
+/// `typedpress build` writes `tp/_generated/routes.d.ts`; with it, TypeScript checks every `<Link href>`
 /// and `PageProps<"route">` against the app's own routes.
 #[test]
 fn generated_routes_type_links_and_params() {
     let project = fixture("app-router", "types");
     build(&project);
-    let routes = std::fs::read_to_string(project.join("first/_generated/routes.d.ts")).unwrap();
+    let routes = std::fs::read_to_string(project.join("tp/_generated/routes.d.ts")).unwrap();
     assert!(
         routes.contains(r#""notes/[slug]": { path: `/notes/${string}`; params: { slug: string } };"#),
         "{routes}"
     );
-    let types = root().join("types/first");
+    let types = root().join("types/typedpress");
     std::fs::write(
         project.join("tsconfig.json"),
         serde_json::json!({
             "compilerOptions": {
                 "target": "ES2022", "lib": ["ES2022", "DOM"], "module": "ESNext", "moduleResolution": "bundler",
-                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "first",
+                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "typedpress",
                 "allowImportingTsExtensions": true,
                 "paths": {
-                    "first": [types.join("index.d.ts")],
-                    "first/*": [types.join("*.d.ts")],
+                    "typedpress": [types.join("index.d.ts")],
+                    "typedpress/*": [types.join("*.d.ts")],
                 },
             },
-            "include": ["first.config.ts", "first"],
+            "include": ["typedpress.config.ts", "tp"],
         })
         .to_string(),
     )
     .unwrap();
     std::fs::write(
-        project.join("first/app/_lib/links.tsx"),
-        r#"import { Link, type PageProps } from "first/app";
+        project.join("tp/app/_lib/links.tsx"),
+        r#"import { Link, type PageProps } from "typedpress/app";
 export const ok = [<Link href="/notes/anything">x</Link>, <Link href="/docs">x</Link>, <Link href="/docs/a/b">x</Link>, <Link href="https://example.com">x</Link>];
 // @ts-expect-error: no route serves /nowhere
 export const missing = <Link href="/nowhere">x</Link>;
@@ -358,7 +358,7 @@ fn page_md_is_a_wordpress_page() {
     build(&project);
     // A later build of the same app: one file changed in each of three ways, one removed, one added.
     let second = fixture("app-router", "content-second");
-    let app = second.join("first/app");
+    let app = second.join("tp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::create_dir_all(app.join("news")).unwrap();
     std::fs::write(app.join("news/page.md"), "# News\n\nNothing yet.\n").unwrap();
@@ -374,7 +374,7 @@ fn page_md_is_a_wordpress_page() {
     build(&second);
     // A third build takes two pages away from visitors: one becomes a draft, one moves under a guard.
     let third = fixture("app-router", "content-third");
-    let app = third.join("first/app");
+    let app = third.join("tp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::remove_dir_all(app.join("colophon")).unwrap();
     std::fs::create_dir_all(app.join("account/colophon")).unwrap();
@@ -395,9 +395,9 @@ fn page_md_is_a_wordpress_page() {
     // A fourth: the guide, still `status: draft`, moves to another route group (same URL) and
     // gets a typo fixed; /colophon is now a page.tsx route.
     let fourth = fixture("app-router", "content-fourth");
-    std::fs::remove_dir_all(fourth.join("first/app")).unwrap();
-    copy(&third.join("first/app"), &fourth.join("first/app"));
-    let app = fourth.join("first/app");
+    std::fs::remove_dir_all(fourth.join("tp/app")).unwrap();
+    copy(&third.join("tp/app"), &fourth.join("tp/app"));
+    let app = fourth.join("tp/app");
     std::fs::create_dir_all(app.join("(docs)")).unwrap();
     std::fs::rename(app.join("(site)/guide"), app.join("(docs)/guide")).unwrap();
     let guide = app.join("(docs)/guide/page.md");
@@ -422,11 +422,11 @@ fn page_md_is_a_wordpress_page() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_content.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .arg(second.join("first/dist/wp-content"))
-        .arg(third.join("first/dist/wp-content"))
-        .arg(fourth.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .arg(second.join("tp/dist/wp-content"))
+        .arg(third.join("tp/dist/wp-content"))
+        .arg(fourth.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     for dir in [&project, &second, &third, &fourth] {
@@ -470,8 +470,8 @@ fn page_md_is_a_wordpress_page() {
     );
     assert!(body.contains(r#"<a href="https://example.com/map">map</a>"#), "{body}");
     assert!(
-        // Rendered as First renders every code block (First\Content\Code).
-        body.contains(r#"<pre class="first-code language-sh"><code><span class="first-code-line">first build</span>"#),
+        // Rendered as TypedPress renders every code block (TypedPress\Content\Code).
+        body.contains(r#"<pre class="typedpress-code language-sh"><code><span class="typedpress-code-line">typedpress build</span>"#),
         "{body}"
     );
     let stored = &seen["guide stored"];
@@ -504,7 +504,7 @@ fn page_md_is_a_wordpress_page() {
         seen["guide twin"],
         serde_json::json!([
             200,
-            "# Field guide\n\nNotes are kept in **plain text**, one per walk.\n\n## What to carry\n\n- A pencil\n- A [map](https://example.com/map)\n\n```sh\nfirst build\n```\n",
+            "# Field guide\n\nNotes are kept in **plain text**, one per walk.\n\n## What to carry\n\n- A pencil\n- A [map](https://example.com/map)\n\n```sh\ntypedpress build\n```\n",
             "text/markdown; charset=UTF-8"
         ])
     );
@@ -646,8 +646,8 @@ fn rejects(dir: &Path, files: &[(&str, &str)], message: &str, at: &str) {
     let _ = std::fs::remove_dir_all(dir);
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(
-        dir.join("first.config.ts"),
-        "import { defineConfig } from \"first\";\nexport default defineConfig({});\n",
+        dir.join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
     )
     .unwrap();
     for (path, source) in files {
@@ -669,71 +669,71 @@ fn rejects(dir: &Path, files: &[(&str, &str)], message: &str, at: &str) {
 /// build errors at the line, with the fix.
 #[test]
 fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
-    let dir = std::env::temp_dir().join(format!("first-app-css-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-app-css-{}", std::process::id()));
     let page = |import: &str| format!("{import}\nexport default function P() {{ return <p/>; }}\n");
     let styled = page("import \"./x.css\";");
     let module = page("import s from \"./x.module.css\";");
     rejects(
         &dir,
         &[
-            ("first/app/page.tsx", &styled),
-            ("first/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
+            ("tp/app/page.tsx", &styled),
+            ("tp/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
         ],
         "`@import` in an imported stylesheet isn't supported",
-        "first/app/x.css:1:1",
+        "tp/app/x.css:1:1",
     );
     rejects(
         &dir,
         &[
-            ("first/app/page.tsx", &styled),
-            ("first/app/x.css", ".a {\n  background: url(./bg.png);\n}\n"),
+            ("tp/app/page.tsx", &styled),
+            ("tp/app/x.css", ".a {\n  background: url(./bg.png);\n}\n"),
         ],
         "`url(./bg.png)` is relative to the stylesheet",
-        "first/app/x.css:2:15",
+        "tp/app/x.css:2:15",
     );
     rejects(
         &dir,
         &[
-            ("first/app/page.tsx", &module),
-            ("first/app/x.module.css", ":global(.a) {}\n"),
+            ("tp/app/page.tsx", &module),
+            ("tp/app/x.module.css", ":global(.a) {}\n"),
         ],
         "`:global` isn't supported in CSS modules",
-        "first/app/x.module.css:1:1",
+        "tp/app/x.module.css:1:1",
     );
     rejects(
         &dir,
         &[
-            ("first/app/page.tsx", &module),
-            ("first/app/x.module.css", ".a { composes: b; }\n"),
+            ("tp/app/page.tsx", &module),
+            ("tp/app/x.module.css", ".a { composes: b; }\n"),
         ],
         "`composes` isn't supported in CSS modules",
-        "first/app/x.module.css:1:6",
+        "tp/app/x.module.css:1:6",
     );
     rejects(
         &dir,
         &[
-            ("first/app/page.tsx", &page("import data from \"./x.json\";")),
-            ("first/app/x.json", "{}"),
+            ("tp/app/page.tsx", &page("import data from \"./x.json\";")),
+            ("tp/app/x.json", "{}"),
         ],
         "can't import \"./x.json\": expected TypeScript or JavaScript source",
-        "first/app/page.tsx:1:1",
+        "tp/app/page.tsx:1:1",
     );
     // A client component renders in the browser too; an image URL comes in as a prop.
     rejects(
         &dir,
         &[
             (
-                "first/app/page.tsx",
+                "tp/app/page.tsx",
                 "import { C } from \"../components/C\";\nexport default function P() { return <C />; }\n",
             ),
             (
-                "first/components/C.tsx",
+                "tp/components/C.tsx",
                 "\"use client\";\nimport logo from \"./logo.svg\";\nexport function C() { return <img src={logo} />; }\n",
             ),
-            ("first/components/logo.svg", "<svg/>"),
+            ("tp/components/logo.svg", "<svg/>"),
         ],
-        "a \"use client\" component can't import first/components/logo.svg",
-        "first/components/C.tsx",
+        "a \"use client\" component can't import tp/components/logo.svg",
+        "tp/components/C.tsx",
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -742,222 +742,219 @@ fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
 /// errors at the file, with the fix.
 #[test]
 fn refuses_route_shapes_and_exports_with_a_fix() {
-    let dir = std::env::temp_dir().join(format!("first-app-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-app-reject-{}", std::process::id()));
     let page = "export default function P() { return <p/>; }\n";
     rejects(
         &dir,
-        &[("first/app/(a)/x/page.tsx", page), ("first/app/(b)/x/page.tsx", page)],
+        &[("tp/app/(a)/x/page.tsx", page), ("tp/app/(b)/x/page.tsx", page)],
         "app/(b)/x/page.tsx and app/(a)/x/page.tsx both serve /x",
-        "first/app/(b)/x/page.tsx",
+        "tp/app/(b)/x/page.tsx",
     );
     rejects(
         &dir,
         &[
-            ("first/app/blog/[id]/page.tsx", page),
-            ("first/app/blog/[slug]/page.tsx", page),
+            ("tp/app/blog/[id]/page.tsx", page),
+            ("tp/app/blog/[slug]/page.tsx", page),
         ],
         "both serve /blog/:",
-        "first/app/blog/",
+        "tp/app/blog/",
     );
     rejects(
         &dir,
-        &[("first/app/post-[slug]/page.tsx", page)],
+        &[("tp/app/post-[slug]/page.tsx", page)],
         "`post-[slug]` mixes text and a parameter",
-        "first/app/post-[slug]",
+        "tp/app/post-[slug]",
     );
     rejects(
         &dir,
-        &[("first/app/@modal/page.tsx", page)],
+        &[("tp/app/@modal/page.tsx", page)],
         "parallel route slot",
-        "first/app/@modal",
+        "tp/app/@modal",
     );
     // `apiReference()` reads a JSON file of the app's `public/`, named as a literal.
     rejects(
         &dir,
         &[(
-            "first/app/api/page.tsx",
-            "import { apiReference } from \"first/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
+            "tp/app/api/page.tsx",
+            "import { apiReference } from \"typedpress/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
         )],
         "`apiReference()` takes the path of a JSON file in `public/`, as a string literal",
-        "first/app/api/page.tsx:3",
+        "tp/app/api/page.tsx:3",
     );
     rejects(
         &dir,
         &[(
-            "first/app/api/page.tsx",
-            "import { apiReference } from \"first/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
+            "tp/app/api/page.tsx",
+            "import { apiReference } from \"typedpress/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
         )],
         "`apiReference()` takes the path of a JSON file in `public/`",
-        "first/app/api/page.tsx:2",
+        "tp/app/api/page.tsx:2",
     );
     rejects(
         &dir,
-        &[("first/app/docs/[...rest]/more/page.tsx", page)],
+        &[("tp/app/docs/[...rest]/more/page.tsx", page)],
         "more/ is below a catch-all segment",
-        "first/app/docs/[...rest]/more",
+        "tp/app/docs/[...rest]/more",
     );
     rejects(
         &dir,
-        &[("first/app/wp-admin/page.tsx", page)],
+        &[("tp/app/wp-admin/page.tsx", page)],
         "would shadow /wp-admin",
-        "first/app/wp-admin",
+        "tp/app/wp-admin",
     );
     // page.md: one page with one URL, a title, and only the front matter keys it reads.
     rejects(
         &dir,
-        &[("first/app/docs/[slug]/page.md", "# Doc\n")],
+        &[("tp/app/docs/[slug]/page.md", "# Doc\n")],
         "app/docs/[slug]/page.md is below `[slug]`: a page.md is one page with one URL",
-        "first/app/docs/[slug]/page.md:1:1",
+        "tp/app/docs/[slug]/page.md:1:1",
     );
     rejects(
         &dir,
-        &[("first/app/about/page.md", "---\ntitle: About\ndescripton: Us\n---\n")],
+        &[("tp/app/about/page.md", "---\ntitle: About\ndescripton: Us\n---\n")],
         "page.md has no front matter key `descripton`",
-        "first/app/about/page.md:3:1",
+        "tp/app/about/page.md:3:1",
     );
     rejects(
         &dir,
-        &[("first/app/about/page.md", "Just text.\n")],
+        &[("tp/app/about/page.md", "Just text.\n")],
         "app/about/page.md has no title",
-        "first/app/about/page.md:1:1",
+        "tp/app/about/page.md:1:1",
     );
     rejects(
         &dir,
-        &[("first/app/about/page.md", "---\ntitle: About\nstatus: private\n---\n")],
+        &[("tp/app/about/page.md", "---\ntitle: About\nstatus: private\n---\n")],
         "`status` must be published or draft",
-        "first/app/about/page.md:3:1",
+        "tp/app/about/page.md:3:1",
     );
     rejects(
         &dir,
-        &[
-            ("first/app/about/page.md", "# About\n"),
-            ("first/app/about/page.tsx", page),
-        ],
+        &[("tp/app/about/page.md", "# About\n"), ("tp/app/about/page.tsx", page)],
         "app/about has both page.tsx and page.md",
-        "first/app/about/page.md",
+        "tp/app/about/page.md",
     );
     rejects(
         &dir,
-        &[("first/app/about/page.mdx", "# About\n")],
+        &[("tp/app/about/page.mdx", "# About\n")],
         "page.mdx isn't a route file",
-        "first/app/about/page.mdx",
+        "tp/app/about/page.mdx",
     );
     rejects(
         &dir,
-        &[("first/app/about/page.ts", "export default 1;\n")],
+        &[("tp/app/about/page.ts", "export default 1;\n")],
         "page.ts isn't a route file",
-        "first/app/about/page.ts",
+        "tp/app/about/page.ts",
     );
     rejects(
         &dir,
-        &[("first/app/about/loading.tsx", page)],
+        &[("tp/app/about/loading.tsx", page)],
         "loading.tsx isn't a route file",
-        "first/app/about/loading.tsx",
+        "tp/app/about/loading.tsx",
     );
     rejects(
         &dir,
         &[
-            ("first/app/x/page.tsx", page),
-            ("first/app/x/route.ts", "export async function GET() { return {}; }\n"),
+            ("tp/app/x/page.tsx", page),
+            ("tp/app/x/route.ts", "export async function GET() { return {}; }\n"),
         ],
         "has both page.tsx and route.ts",
-        "first/app/x/route.ts",
+        "tp/app/x/route.ts",
     );
     rejects(
         &dir,
-        &[("first/app/x/not-found.tsx", page)],
-        "not-found.tsx works only at the root of first/app/",
-        "first/app/x/not-found.tsx",
+        &[("tp/app/x/not-found.tsx", page)],
+        "not-found.tsx works only at the root of tp/app/",
+        "tp/app/x/not-found.tsx",
     );
     rejects(
         &dir,
         &[(
-            "first/app/page.tsx",
+            "tp/app/page.tsx",
             "export const metdata = { title: \"x\" };\nexport default function P() { return <p/>; }\n",
         )],
         "app/page.tsx can't export `metdata`",
-        "first/app/page.tsx",
+        "tp/app/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "first/app/page.tsx",
+            "tp/app/page.tsx",
             "export function Card() { return <p/>; }\nexport default function P() { return <Card/>; }\n",
         )],
-        "move components into first/components/",
-        "first/app/page.tsx",
+        "move components into tp/components/",
+        "tp/app/page.tsx",
     );
     rejects(
         &dir,
-        &[("first/app/page.tsx", "export const metadata = { title: \"x\" };\n")],
+        &[("tp/app/page.tsx", "export const metadata = { title: \"x\" };\n")],
         "needs a default-exported component",
-        "first/app/page.tsx",
+        "tp/app/page.tsx",
     );
     rejects(
         &dir,
-        &[("first/app/blog/layout.tsx", page)],
+        &[("tp/app/blog/layout.tsx", page)],
         "app/blog/layout.tsx wraps no page",
-        "first/app/blog/layout.tsx",
+        "tp/app/blog/layout.tsx",
     );
     rejects(
         &dir,
-        &[("first/app/api/route.ts", "export const x = 1;\n")],
+        &[("tp/app/api/route.ts", "export const x = 1;\n")],
         "can't export `x`",
-        "first/app/api/route.ts",
+        "tp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
-            "first/app/api/route.ts",
+            "tp/app/api/route.ts",
             "export const access = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
         )],
         "GET in app/api/route.ts returns",
-        "first/app/api/route.ts",
+        "tp/app/api/route.ts",
     );
     rejects(
         &dir,
-        &[("first/app/api/route.ts", "export async function GET() { return {}; }\n")],
+        &[("tp/app/api/route.ts", "export async function GET() { return {}; }\n")],
         "app/api/route.ts has HTTP handlers but no `access`",
-        "first/app/api/route.ts",
+        "tp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
-            "first/app/api/route.ts",
-            "import { env } from \"first\";\nexport const access = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
+            "tp/app/api/route.ts",
+            "import { env } from \"typedpress\";\nexport const access = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
         )],
         "exports both `access` and `signature`",
-        "first/app/api/route.ts",
+        "tp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
-            "first/app/page.tsx",
+            "tp/app/page.tsx",
             "export const access = \"anyone\";\nexport default function P() { return <p/>; }\n",
         )],
         "exports `access` or `signature` but no HTTP handler",
-        "first/app/page.tsx",
+        "tp/app/page.tsx",
     );
     rejects(
         &dir,
         &[
             (
-                "first/app/layout.tsx",
+                "tp/app/layout.tsx",
                 "export const guard = \"members\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
             ),
-            ("first/app/page.tsx", page),
+            ("tp/app/page.tsx", page),
         ],
         "`guard` is",
-        "first/app/layout.tsx",
+        "tp/app/layout.tsx",
     );
     rejects(
         &dir,
         &[(
-            "first/app/page.tsx",
+            "tp/app/page.tsx",
             "export const metadata = { title: 1 };\nexport default function P() { return <p/>; }\n",
         )],
         "`metadata.title` must be",
-        "first/app/page.tsx",
+        "tp/app/page.tsx",
     );
     for (metadata, message) in [
         (
@@ -983,30 +980,30 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         rejects(
             &dir,
             &[(
-                "first/app/page.tsx",
+                "tp/app/page.tsx",
                 &format!("export const metadata = {metadata};\nexport default function P() {{ return <p/>; }}\n"),
             )],
             message,
-            "first/app/page.tsx",
+            "tp/app/page.tsx",
         );
     }
     rejects(
         &dir,
         &[(
-            "first/app/page.tsx",
-            "import { redirect } from \"first/app\";\nexport default function P() { redirect(\"javascript:alert(1)\"); }\n",
+            "tp/app/page.tsx",
+            "import { redirect } from \"typedpress/app\";\nexport default function P() { redirect(\"javascript:alert(1)\"); }\n",
         )],
         "isn't a URL a page can redirect to",
-        "first/app/page.tsx:2:",
+        "tp/app/page.tsx:2:",
     );
     rejects(
         &dir,
         &[(
-            "first/app/page.tsx",
-            "import { Link } from \"first/app\";\nexport default function P() { return <Link href=\"//evil.example\">x</Link>; }\n",
+            "tp/app/page.tsx",
+            "import { Link } from \"typedpress/app\";\nexport default function P() { return <Link href=\"//evil.example\">x</Link>; }\n",
         )],
         "isn't a URL a link can point to",
-        "first/app/page.tsx:2:",
+        "tp/app/page.tsx:2:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -1016,144 +1013,144 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
 /// page, with the fix.
 #[test]
 fn refuses_prebuilt_pages_that_depend_on_the_request() {
-    let dir = std::env::temp_dir().join(format!("first-app-prerender-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-app-prerender-{}", std::process::id()));
     let page = "export default function P() { return <p/>; }\n";
     let static_config = (
-        "first.config.ts",
-        "import { defineConfig } from \"first\";\nexport default defineConfig({ output: \"static\" });\n",
+        "typedpress.config.ts",
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ output: \"static\" });\n",
     );
     rejects(
         &dir,
         &[(
-            "first.config.ts",
-            "import { defineConfig } from \"first\";\nexport default defineConfig({ output: \"hybrid\" });\n",
+            "typedpress.config.ts",
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ output: \"hybrid\" });\n",
         )],
         "`output` is \"server\" or \"static\", not \"hybrid\"",
-        "first.config.ts:2:",
+        "typedpress.config.ts:2:",
     );
     rejects(
         &dir,
         &[(
-            "first.config.ts",
-            "import { defineConfig } from \"first\";\nexport default defineConfig({ output: \"static\", frontend: \"https://example.com\" });\n",
+            "typedpress.config.ts",
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ output: \"static\", frontend: \"https://example.com\" });\n",
         )],
         "`frontend` hands it to another site",
-        "first.config.ts:2:",
+        "typedpress.config.ts:2:",
     );
     rejects(
         &dir,
         &[(
-            "first/app/page.tsx",
+            "tp/app/page.tsx",
             "export const prerender = \"yes\";\nexport default function P() { return <p/>; }\n",
         )],
         "`prerender` is \"yes\", not true or false",
-        "first/app/page.tsx",
+        "tp/app/page.tsx",
     );
     rejects(
         &dir,
         &[
             static_config,
             (
-                "first/app/about/page.tsx",
+                "tp/app/about/page.tsx",
                 "export const prerender = false;\nexport default function P() { return <p/>; }\n",
             ),
         ],
         "app/about/page.tsx says `prerender = false`, and `output: \"static\"` prebuilds every page",
-        "first/app/about/page.tsx",
+        "tp/app/about/page.tsx",
     );
     rejects(
         &dir,
-        &[static_config, ("first/app/blog/[slug]/page.tsx", page)],
+        &[static_config, ("tp/app/blog/[slug]/page.tsx", page)],
         "app/blog/[slug]/page.tsx is prebuilt (`output: \"static\"` prebuilds every page), and nothing lists its URLs",
-        "first/app/blog/[slug]/page.tsx",
+        "tp/app/blog/[slug]/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "first/app/blog/[slug]/page.tsx",
+            "tp/app/blog/[slug]/page.tsx",
             "export const prerender = true;\nexport default function P() { return <p/>; }\n",
         )],
         "export `async function staticParams() { return [{ slug: \"…\" }]; }`",
-        "first/app/blog/[slug]/page.tsx",
+        "tp/app/blog/[slug]/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "first/app/blog/[slug]/page.tsx",
+            "tp/app/blog/[slug]/page.tsx",
             "export async function staticParams() { return [{ slug: \"a\" }]; }\nexport default function P() { return <p/>; }\n",
         )],
         "exports `staticParams`, but it isn't prebuilt",
-        "first/app/blog/[slug]/page.tsx",
+        "tp/app/blog/[slug]/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "first/app/about/page.tsx",
+            "tp/app/about/page.tsx",
             "export const prerender = true;\nexport async function staticParams() { return []; }\nexport default function P() { return <p/>; }\n",
         )],
         "exports `staticParams`, and its URL has no parameter",
-        "first/app/about/page.tsx",
+        "tp/app/about/page.tsx",
     );
     rejects(
         &dir,
         &[(
-            "first/app/blog/[slug]/page.tsx",
+            "tp/app/blog/[slug]/page.tsx",
             "export const prerender = true;\nexport async function staticParams() { return [{ id: \"a\" }]; }\nexport default function P() { return <p/>; }\n",
         )],
         "staticParams in app/blog/[slug]/page.tsx returns",
-        "first/app/blog/[slug]/page.tsx:2:",
+        "tp/app/blog/[slug]/page.tsx:2:",
     );
     rejects(
         &dir,
         &[(
-            "first/app/find/page.tsx",
-            "import { text } from \"first\";\nexport const prerender = true;\nexport const search = { q: text().optional() };\nexport default function P() { return <p/>; }\n",
+            "tp/app/find/page.tsx",
+            "import { text } from \"typedpress\";\nexport const prerender = true;\nexport const search = { q: text().optional() };\nexport default function P() { return <p/>; }\n",
         )],
         "app/find/page.tsx is prebuilt (it says `prerender = true`), and it reads `search`",
-        "first/app/find/page.tsx",
+        "tp/app/find/page.tsx",
     );
     rejects(
         &dir,
         &[
             (
-                "first/app/account/layout.tsx",
+                "tp/app/account/layout.tsx",
                 "export const guard = \"subscriber\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
             ),
             (
-                "first/app/account/page.tsx",
+                "tp/app/account/page.tsx",
                 "export const prerender = true;\nexport default function P() { return <p/>; }\n",
             ),
         ],
         "app/account/page.tsx is prebuilt (it says `prerender = true`), and app/account/layout.tsx guards it",
-        "first/app/account/page.tsx",
+        "tp/app/account/page.tsx",
     );
     rejects(
         &dir,
         &[
             static_config,
             (
-                "first/app/form/page.tsx",
+                "tp/app/form/page.tsx",
                 "export const access = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
             ),
         ],
         "app/form/page.tsx has HTTP handlers, and a static site has no server to answer them",
-        "first/app/form/page.tsx",
+        "tp/app/form/page.tsx",
     );
     // Through an imported helper too: the check follows the page's imports.
     rejects(
         &dir,
         &[
             (
-                "first/app/_lib/who.ts",
+                "tp/app/_lib/who.ts",
                 "import { is_user_logged_in } from \"php/wordpress\";\nexport function who(): string { return is_user_logged_in() ? \"you\" : \"guest\"; }\n",
             ),
             (
-                "first/app/hello/page.tsx",
+                "tp/app/hello/page.tsx",
                 "import { who } from \"../_lib/who\";\nexport const prerender = true;\nexport default function P() { return <p>{who()}</p>; }\n",
             ),
         ],
         "app/hello/page.tsx is prebuilt, and `is_user_logged_in` asks who the visitor is",
-        "first/app/_lib/who.ts:2:",
+        "tp/app/_lib/who.ts:2:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -1170,25 +1167,25 @@ fn prerender_and_static_params_reach_the_route_table() {
         std::fs::write(path, source).unwrap();
     };
     write(
-        "first.config.ts",
-        "import { defineConfig, collection, text, slug } from \"first\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport { notes }; export default defineConfig({ name: \"hybrid\" });\n",
+        "typedpress.config.ts",
+        "import { defineConfig, collection, text, slug } from \"typedpress\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport { notes }; export default defineConfig({ name: \"hybrid\" });\n",
     );
-    write("first/app/page.tsx", "export default function P() { return <p/>; }\n");
+    write("tp/app/page.tsx", "export default function P() { return <p/>; }\n");
     write(
-        "first/app/about/page.tsx",
+        "tp/app/about/page.tsx",
         "export const prerender = true;\nexport default function P() { return <p/>; }\n",
     );
     write(
-        "first/app/notes/[slug]/page.tsx",
+        "tp/app/notes/[slug]/page.tsx",
         "export const prerender = true;\nexport default function P() { return <p/>; }\n",
     );
     write(
-        "first/app/tags/[tag]/page.tsx",
-        "import type { PageProps, StaticParams } from \"first/app\";\nexport const prerender = true;\nexport async function staticParams(): Promise<StaticParams<\"tags/[tag]\">> { return [\"news\", \"notes\"].map((tag) => ({ tag })); }\nexport default function P({ params }: PageProps<\"tags/[tag]\">) { return <p>{params.tag}</p>; }\n",
+        "tp/app/tags/[tag]/page.tsx",
+        "import type { PageProps, StaticParams } from \"typedpress/app\";\nexport const prerender = true;\nexport async function staticParams(): Promise<StaticParams<\"tags/[tag]\">> { return [\"news\", \"notes\"].map((tag) => ({ tag })); }\nexport default function P({ params }: PageProps<\"tags/[tag]\">) { return <p>{params.tag}</p>; }\n",
     );
     build(project);
     let schema =
-        std::fs::read_to_string(project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/schema.php"))
+        std::fs::read_to_string(project.join("tp/dist/wp-content/plugins/typedpress-app-hybrid/tp/app/schema.php"))
             .unwrap();
     let route = |id: &str| {
         schema
@@ -1206,10 +1203,10 @@ fn prerender_and_static_params_reach_the_route_table() {
     let out = Command::new("php")
         .arg("-r")
         .arg(format!(
-            "require '{}/runtime/First/bootstrap.php'; require '{}'; $s = require '{}'; $fn = '\\\\FirstApp\\\\' . $s['app']['files']['app/tags/[tag]/page.tsx']['staticParams']; echo \\First\\Js::jsonStringify($fn());",
+            "require '{}/runtime/TypedPress/bootstrap.php'; require '{}'; $s = require '{}'; $fn = '\\\\TypedPressApp\\\\' . $s['app']['files']['app/tags/[tag]/page.tsx']['staticParams']; echo \\TypedPress\\Js::jsonStringify($fn());",
             root().display(),
-            project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/functions.php").display(),
-            project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/schema.php").display(),
+            project.join("tp/dist/wp-content/plugins/typedpress-app-hybrid/tp/app/functions.php").display(),
+            project.join("tp/dist/wp-content/plugins/typedpress-app-hybrid/tp/app/schema.php").display(),
         ))
         .output()
         .unwrap();
@@ -1225,7 +1222,7 @@ fn prerender_and_static_params_reach_the_route_table() {
 /// Action Scheduler action renders each prebuilt URL as a signed-out visitor and writes its HTML and
 /// Markdown; the app serves them before WordPress parses the request; a write deletes the files of
 /// the URLs it changed and schedules their rebuild, so a visitor never gets stale content. The
-/// listing `first export` reads is an editor's.
+/// listing `typedpress export` reads is an editor's.
 #[test]
 fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     let project = fixture("app-prebuilt", "serve");
@@ -1233,8 +1230,8 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_prebuilt.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -1343,11 +1340,11 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
 fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value {
     let project = fixture("frontend-modes", variant);
     if app {
-        copy(&project.join("app/first/app"), &project.join("first/app"));
+        copy(&project.join("app/tp/app"), &project.join("tp/app"));
     }
     let _ = std::fs::remove_dir_all(project.join("app"));
     if let Some(frontend) = frontend {
-        let config = project.join("first.config.ts");
+        let config = project.join("typedpress.config.ts");
         let text = std::fs::read_to_string(&config).unwrap();
         std::fs::write(
             &config,
@@ -1368,9 +1365,9 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/frontend_modes.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
-        .env("FIRST_TEST_BROWSER", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .env("TP_TEST_BROWSER", "1")
         .output()
         .unwrap();
     assert!(
@@ -1385,7 +1382,7 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
 }
 
 /// spec §2.7 and §5 on WordPress: a kind's `url` is how WordPress resolves and links its items in
-/// every mode; with no first/app/ the theme renders them, a first/app/ page that matches the
+/// every mode; with no tp/app/ the theme renders them, a first/app/ page that matches the
 /// pattern takes the URL over, `frontend: false` serves no public HTML, and an external frontend
 /// gets every front-end URL. wp-admin's REST and feeds keep working throughout, and a slug change
 /// (or a stale placeholder like a wrong year) 301s to the item's own URL.
@@ -1396,7 +1393,7 @@ fn frontend_modes_on_wordpress() {
     let off = modes("off", Some("false"), false);
     let external = modes("external", Some(r#""https://front.example""#), false);
     // In every mode wp-admin and sign-in work in a browser (spec §5): signed out, wp-admin is the
-    // login screen; signing in lands on First Admin, the default admin; classic pages open framed in
+    // login screen; signing in lands on TypedPress Admin, the default admin; classic pages open framed in
     // it until the user turns developer mode on, then classic wp-admin's dashboard and a list screen
     // render beside it; wp-admin's REST nonce works; signing out ends the session.
     for (mode, seen) in [("theme", &theme), ("app", &app), ("off", &off), ("external", &external)] {
@@ -1416,7 +1413,7 @@ fn frontend_modes_on_wordpress() {
             "{mode}"
         );
     }
-    // With no first/app/, WordPress renders the whole site with its block theme: the home page,
+    // With no tp/app/, WordPress renders the whole site with its block theme: the home page,
     // core posts, kind URLs and its own 404 template. The app router adds nothing to any of them.
     let by_theme = |status: u64| serde_json::json!({ "status": status, "theme": true, "router": false });
     for (key, status) in [
@@ -1460,7 +1457,7 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(theme["about"][0], 404);
     assert_eq!(theme["home"], 200);
 
-    // With first/app/, its page renders the note through the router; a kind URL without a page and
+    // With tp/app/, its page renders the note through the router; a kind URL without a page and
     // a core post keep the theme.
     assert_eq!(app["note rendered"]["router"], true, "{app}");
     assert_eq!(
@@ -1525,7 +1522,7 @@ fn frontend_modes_on_wordpress() {
     );
 
     // One sitemap, through core's (`wp-sitemap.xml`): core's own files for posts, pages, terms and
-    // authors, and First's provider with a file per kind that has a `url` and readable items. Only
+    // authors, and TypedPress's provider with a file per kind that has a `url` and readable items. Only
     // what a signed-out visitor may read is in it: no draft, no private or password-protected item,
     // no row a filter rule hides (`briefs`), no kind readers must sign in for (`drafts`), and no
     // kind without a `url` (`memos`).
@@ -1538,10 +1535,10 @@ fn frontend_modes_on_wordpress() {
             "/wp-sitemap-posts-page-1.xml",
             "/wp-sitemap-taxonomies-category-1.xml",
             "/wp-sitemap-users-1.xml",
-            "/wp-sitemap-first-notes-1.xml",
-            "/wp-sitemap-first-journal-1.xml",
-            "/wp-sitemap-first-briefs-1.xml",
-            "/wp-sitemap-first-vault-1.xml"
+            "/wp-sitemap-typedpress-notes-1.xml",
+            "/wp-sitemap-typedpress-journal-1.xml",
+            "/wp-sitemap-typedpress-briefs-1.xml",
+            "/wp-sitemap-typedpress-vault-1.xml"
         ]),
         "{sitemap}"
     );
@@ -1554,11 +1551,11 @@ fn frontend_modes_on_wordpress() {
             // Both admin and the editor have a published post; the users kind's read rule shows a
             // visitor the editor's row only, so only that author archive is listed.
             "/wp-sitemap-users-1.xml": ["/author/editor/"],
-            "/wp-sitemap-first-notes-1.xml": ["/notes/renamed-note/"],
-            "/wp-sitemap-first-journal-1.xml": ["/journal/2026/day-one/"],
-            "/wp-sitemap-first-briefs-1.xml": ["/briefs/open-brief/"],
+            "/wp-sitemap-typedpress-notes-1.xml": ["/notes/renamed-note/"],
+            "/wp-sitemap-typedpress-journal-1.xml": ["/journal/2026/day-one/"],
+            "/wp-sitemap-typedpress-briefs-1.xml": ["/briefs/open-brief/"],
             // With no app page in front of it, WordPress renders a vault item for anyone.
-            "/wp-sitemap-first-vault-1.xml": ["/members/vault/vault-item/"]
+            "/wp-sitemap-typedpress-vault-1.xml": ["/members/vault/vault-item/"]
         }),
         "{sitemap}"
     );
@@ -1569,7 +1566,7 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(
         sitemap["with a post password"],
         serde_json::json!({
-            "/wp-sitemap-first-notes-1.xml": ["/notes/renamed-note/"],
+            "/wp-sitemap-typedpress-notes-1.xml": ["/notes/renamed-note/"],
             "/wp-sitemap-posts-post-1.xml": ["/hello-world/", "/by-the-editor/"]
         }),
         "{sitemap}"
@@ -1584,8 +1581,8 @@ fn frontend_modes_on_wordpress() {
     // which file lists it depends on rows other readers can't see.
     let briefs_files = serde_json::json!([
         "/wp-sitemap.xml",
-        "/wp-sitemap-first-briefs-1.xml",
-        "/wp-sitemap-first-briefs-2.xml"
+        "/wp-sitemap-typedpress-briefs-1.xml",
+        "/wp-sitemap-typedpress-briefs-2.xml"
     ]);
     assert_eq!(sitemap["purged"], briefs_files);
     // So does a write that only changes who may read the row, and then the row is gone: the file
@@ -1614,17 +1611,17 @@ fn frontend_modes_on_wordpress() {
         "{}",
         app["sitemap"]
     );
-    // With first/app/, its public pages are listed too: not the guarded one, not the one whose
+    // With tp/app/, its public pages are listed too: not the guarded one, not the one whose
     // metadata says `robots: { index: false }`, and not a route with parameters.
     assert_eq!(
-        app["sitemap"]["urls"]["/wp-sitemap-first-app-pages-1.xml"],
+        app["sitemap"]["urls"]["/wp-sitemap-typedpress-app-pages-1.xml"],
         serde_json::json!(["/about/"]),
         "{}",
         app["sitemap"]
     );
     assert_eq!(
-        app["sitemap"]["urls"]["/wp-sitemap-first-notes-1.xml"],
-        sitemap["urls"]["/wp-sitemap-first-notes-1.xml"]
+        app["sitemap"]["urls"]["/wp-sitemap-typedpress-notes-1.xml"],
+        sitemap["urls"]["/wp-sitemap-typedpress-notes-1.xml"]
     );
     // `frontend: false` has no public pages, so no sitemap; an external frontend's sitemap is
     // answered here, with every entry at that site.
@@ -1672,10 +1669,10 @@ fn frontend_modes_on_wordpress() {
 fn client_components_compile_to_interactivity_stores() {
     let project = fixture("client-components", "stores");
     build(&project);
-    let plugin = project.join("first/dist/wp-content/plugins/first-app-clients");
+    let plugin = project.join("tp/dist/wp-content/plugins/typedpress-app-clients");
     let schema = Command::new("php")
         .args(["-r", "echo json_encode((require $argv[1])['islands']);"])
-        .arg(plugin.join("first/app/schema.php"))
+        .arg(plugin.join("tp/app/schema.php"))
         .output()
         .unwrap();
     let islands: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
@@ -1691,7 +1688,7 @@ fn client_components_compile_to_interactivity_stores() {
         let file = islands[namespace]["file"].as_str().unwrap();
         let out = Command::new("node")
             .arg(root().join("tests/differential/client/drive.mjs"))
-            .arg(plugin.join("first/app/client").join(file))
+            .arg(plugin.join("tp/app/client").join(file))
             .arg(root().join("tests/differential/client").join(script))
             .output()
             .unwrap();
@@ -1708,7 +1705,7 @@ fn client_components_compile_to_interactivity_stores() {
     assert_eq!(like["label2"], "142 likes");
     assert_eq!(
         like["calls"],
-        serde_json::json!([{ "url": "/__first/api/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
+        serde_json::json!([{ "url": "/__tp/api/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
     );
     let effects = drive("clients/Effects", "effects.mjs");
     assert_eq!(
@@ -1716,7 +1713,7 @@ fn client_components_compile_to_interactivity_stores() {
         serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true } })
     );
     // The server HTML carries the directives the store answers to.
-    let functions = std::fs::read_to_string(plugin.join("first/app/functions.php")).unwrap();
+    let functions = std::fs::read_to_string(plugin.join("tp/app/functions.php")).unwrap();
     // A server component a client component renders stays a server component: Badge (in a file
     // that sorts before Switch.tsx) binds none of the Switch's state, though both have an `on`.
     let badge = functions
@@ -1744,80 +1741,81 @@ fn client_components_compile_to_interactivity_stores() {
 /// What generator B can't compile is a build error at the line, with the subset's alternative.
 #[test]
 fn refuses_client_code_outside_the_subset() {
-    let dir = std::env::temp_dir().join(format!("first-client-reject-{}", std::process::id()));
-    let component = |body: &str| format!("\"use client\";\nimport {{ useState }} from \"first/client\";\n{body}\n");
+    let dir = std::env::temp_dir().join(format!("typedpress-client-reject-{}", std::process::id()));
+    let component =
+        |body: &str| format!("\"use client\";\nimport {{ useState }} from \"typedpress/client\";\n{body}\n");
     rejects(
         &dir,
         &[(
-            "first/components/A.tsx",
+            "tp/components/A.tsx",
             &component("export function A() { const [n] = useState(0); return <><b>{n}</b></>; }"),
         )],
         "a client component returns one element",
-        "first/components/A.tsx:3:",
+        "tp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "first/components/A.tsx",
+            "tp/components/A.tsx",
             &component("import dayjs from \"dayjs\";\nexport function A() { return <b/>; }"),
         )],
         "a \"use client\" component can't import \"dayjs\"",
-        "first/components/A.tsx:3:",
+        "tp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "first/components/A.tsx",
+            "tp/components/A.tsx",
             &component(
                 "export function A() { const [n, setN] = useState(0); return <b onClick={() => { n = 2; }}>{n}</b>; }",
             ),
         )],
         "`n` changes through `setN`",
-        "first/components/A.tsx:3:",
+        "tp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "first/components/A.tsx",
+            "tp/components/A.tsx",
             &component(
                 "const secret = 1;\nexport function A() { const [n, setN] = useState(0); return <b onClick={() => setN(secret)}>{n}</b>; }",
             ),
         )],
         "`secret` isn't available in the browser",
-        "first/components/A.tsx:4:",
+        "tp/components/A.tsx:4:",
     );
     rejects(
         &dir,
         &[(
-            "first/components/A.tsx",
+            "tp/components/A.tsx",
             &component("export function A() { const [n, setN] = useState(0); return <b onClick=\"go()\">{n}</b>; }"),
         )],
         "with a string is inline script",
-        "first/components/A.tsx:3:",
+        "tp/components/A.tsx:3:",
     );
     rejects(
         &dir,
         &[
             (
-                "first/components/A.tsx",
+                "tp/components/A.tsx",
                 &component("export function Same() { return <b/>; }"),
             ),
             (
-                "first/components/B.tsx",
+                "tp/components/B.tsx",
                 &component("export function Same() { return <i/>; }"),
             ),
         ],
         "two \"use client\" components are named `Same`",
-        "first/components/B.tsx:3:",
+        "tp/components/B.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "first/components/A.tsx",
+            "tp/components/A.tsx",
             &component("export function A() { const [n, setN] = useState(0); if (n) { setN(1); } return <b>{n}</b>; }"),
         )],
         "returns its element",
-        "first/components/A.tsx:3:",
+        "tp/components/A.tsx:3:",
     );
     // Reactive lists and conditionals: the item is one keyed element, and each branch is one element.
     let shelf = |markup: &str| {
@@ -1845,48 +1843,48 @@ fn refuses_client_code_outside_the_subset() {
     ] {
         rejects(
             &dir,
-            &[("first/components/A.tsx", &shelf(markup))],
+            &[("tp/components/A.tsx", &shelf(markup))],
             refusal,
-            "first/components/A.tsx:3:",
+            "tp/components/A.tsx:3:",
         );
     }
     // `useLive`: a query the server and the browser both have (props and literals), and no `seed`.
     let live = |body: &str| {
         component(&format!(
-            "import {{ useLive }} from \"first/client\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
+            "import {{ useLive }} from \"typedpress/client\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
         ))
     };
     rejects(
         &dir,
         &[
             (
-                "first/schema.ts",
-                "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+                "tp/schema.ts",
+                "import { table, text } from \"typedpress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
             ),
             (
-                "first/components/A.tsx",
+                "tp/components/A.tsx",
                 &live(
                     "const [k, setK] = useState(5); const xs = useLive(\"notes\", { limit: k }); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;",
                 ),
             ),
         ],
         "a `useLive` query reads props and literals only",
-        "first/components/A.tsx:4:",
+        "tp/components/A.tsx:4:",
     );
     rejects(
         &dir,
         &[
             (
-                "first/schema.ts",
-                "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+                "tp/schema.ts",
+                "import { table, text } from \"typedpress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
             ),
             (
-                "first/components/A.tsx",
+                "tp/components/A.tsx",
                 &live("const xs = useLive(\"notes\", { limit: n }, { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;"),
             ),
         ],
         "`useLive` options are `{ enabled }`",
-        "first/components/A.tsx:4:",
+        "tp/components/A.tsx:4:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -1900,25 +1898,25 @@ fn forms_work_without_javascript() {
     let project = fixture("forms", "serve");
     build(&project);
     // `useFormState(action)` is typed with the action's result.
-    let types = root().join("types/first");
+    let types = root().join("types/typedpress");
     std::fs::write(
         project.join("tsconfig.json"),
         serde_json::json!({
             "compilerOptions": {
                 "target": "ES2022", "lib": ["ES2022", "DOM"], "module": "ESNext", "moduleResolution": "bundler",
-                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "first",
+                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "typedpress",
                 "allowImportingTsExtensions": true,
-                "paths": { "first": [types.join("index.d.ts")], "first/*": [types.join("*.d.ts")] },
+                "paths": { "typedpress": [types.join("index.d.ts")], "typedpress/*": [types.join("*.d.ts")] },
             },
-            "include": ["first.config.ts", "first", "typed.ts"],
+            "include": ["typedpress.config.ts", "tp", "typed.ts"],
         })
         .to_string(),
     )
     .unwrap();
     std::fs::write(
         project.join("typed.ts"),
-        r#"import { useFormState } from "first/app";
-import { subscribe } from "./first/server";
+        r#"import { useFormState } from "typedpress/app";
+import { subscribe } from "./tp/server";
 const state = useFormState(subscribe);
 export const seats: number | undefined = state.result?.seats;
 // @ts-expect-error: the result has no `nope`
@@ -1935,8 +1933,8 @@ export const nope = state.result?.nope;
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/forms.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -1951,8 +1949,8 @@ export const nope = state.result?.nope;
         seen["form"],
         serde_json::json!({
             "method": "post",
-            "action": "/__first/api/v1/actions/subscribe",
-            "hidden": [["_first_return", "hidden", "/?ref=nav"]],
+            "action": "/__tp/api/v1/actions/subscribe",
+            "hidden": [["_tp_return", "hidden", "/?ref=nav"]],
             "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
         }),
         "an anonymous page with a form stays shared and carries no nonce: {seen}"
@@ -2044,9 +2042,9 @@ fn forms_submit_in_place_in_the_browser() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
-        .env("FIRST_WP_SCRIPT_DEBUG", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .env("TP_WP_SCRIPT_DEBUG", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -2074,7 +2072,7 @@ fn forms_submit_in_place_in_the_browser() {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     assert_eq!(
         seen["directive"],
-        serde_json::json!(["first/router", "actions.submit"]),
+        serde_json::json!(["tp/router", "actions.submit"]),
         "{seen}"
     );
     assert_eq!(
@@ -2090,7 +2088,7 @@ fn forms_submit_in_place_in_the_browser() {
     // A second submit while the first was in flight sent nothing.
     assert_eq!(
         success["posts"],
-        serde_json::json!(["/__first/api/v1/actions/subscribe"]),
+        serde_json::json!(["/__tp/api/v1/actions/subscribe"]),
         "{seen}"
     );
     // The same document: the window marker survives and no navigation entry was added.
@@ -2157,7 +2155,7 @@ fn forms_submit_in_place_in_the_browser() {
     assert_eq!(
         seen["failed"],
         serde_json::json!({
-            "posts": ["/__first/api/v1/actions/subscribe"],
+            "posts": ["/__tp/api/v1/actions/subscribe"],
             "message": ["alert", true],
             "afterPending": { "busy": null, "disabled": [false] },
             "marker": "same document",
@@ -2166,7 +2164,7 @@ fn forms_submit_in_place_in_the_browser() {
     );
     assert_eq!(
         seen["dropped"],
-        serde_json::json!({ "posts": ["/__first/api/v1/actions/subscribe"], "message": true, "marker": "same document" }),
+        serde_json::json!({ "posts": ["/__tp/api/v1/actions/subscribe"], "message": true, "marker": "same document" }),
         "{seen}"
     );
     // A `<Link>` click during a submit: the linked page stays; the late answer isn't rendered.
@@ -2210,8 +2208,8 @@ fn comments_follow_the_kind_policy_on_every_path() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/comments.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -2226,7 +2224,7 @@ fn comments_follow_the_kind_policy_on_every_path() {
     assert_eq!(
         seen["signed out"],
         serde_json::json!({
-            "status": 200, "thread": ["First!"], "forms": 0, "sign in": "Sign in to comment",
+            "status": 200, "thread": ["TypedPress!"], "forms": 0, "sign in": "Sign in to comment",
             "cache": "public, max-age=0, s-maxage=300, must-revalidate",
         }),
         "{seen}"
@@ -2242,7 +2240,7 @@ fn comments_follow_the_kind_policy_on_every_path() {
         seen["first comment"],
         serde_json::json!({
             "status": 303, "stored": "unapproved", "notice": "Your comment is awaiting moderation.",
-            "ann sees": ["First!", "Hello from Ann (held)"], "others see": ["First!"], "bo sees": ["First!"],
+            "ann sees": ["TypedPress!", "Hello from Ann (held)"], "others see": ["TypedPress!"], "bo sees": ["TypedPress!"],
             "page cache": "private, no-store, max-age=0", "nonce": true,
         }),
         "{seen}"
@@ -2266,7 +2264,13 @@ fn comments_follow_the_kind_policy_on_every_path() {
     );
     assert_eq!(
         depth["thread"],
-        serde_json::json!(["First!", ">depth two", ">>depth three", "Hello from Ann", "Ann again"])
+        serde_json::json!([
+            "TypedPress!",
+            ">depth two",
+            ">>depth three",
+            "Hello from Ann",
+            "Ann again"
+        ])
     );
     assert!(
         !depth["reply forms on"]
@@ -2342,8 +2346,8 @@ fn search_pages_answer_as_the_visitor() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/search_pages.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -2458,45 +2462,45 @@ fn search_pages_answer_as_the_visitor() {
 /// this site. Anything else is a build error at the prop, with the fix.
 #[test]
 fn refuses_search_it_cannot_link() {
-    let dir = std::env::temp_dir().join(format!("first-search-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-search-reject-{}", std::process::id()));
     let schema = (
-        "first/schema.ts",
-        "import { collection, text } from \"first\";\nexport const memos = collection({ title: text() }, { title: \"title\", access: { read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" } });\n",
+        "tp/schema.ts",
+        "import { collection, text } from \"typedpress\";\nexport const memos = collection({ title: text() }, { title: \"title\", access: { read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" } });\n",
     );
     let page = |body: &str| {
         format!(
-            "import {{ Search, SearchResults }} from \"first/app\";\nexport default function P() {{\n  return {body};\n}}\n"
+            "import {{ Search, SearchResults }} from \"typedpress/app\";\nexport default function P() {{\n  return {body};\n}}\n"
         )
     };
     rejects(
         &dir,
         &[
             schema,
-            ("first/app/page.tsx", &page("<SearchResults kind=\"memos\" q=\"x\" />")),
+            ("tp/app/page.tsx", &page("<SearchResults kind=\"memos\" q=\"x\" />")),
         ],
         "`memos` has no url for a result to link to",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             schema,
-            ("first/app/page.tsx", &page("<SearchResults kind=\"nope\" q=\"x\" />")),
+            ("tp/app/page.tsx", &page("<SearchResults kind=\"nope\" q=\"x\" />")),
         ],
         "there is no kind `nope` to search",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             schema,
             (
-                "first/app/page.tsx",
+                "tp/app/page.tsx",
                 &page("<Search action=\"https://elsewhere.example/\" />"),
             ),
         ],
         "`<Search action>` is a path on this site",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -2505,34 +2509,34 @@ fn refuses_search_it_cannot_link() {
 /// error at the prop.
 #[test]
 fn refuses_comments_without_the_kind_option() {
-    let dir = std::env::temp_dir().join(format!("first-comments-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-comments-reject-{}", std::process::id()));
     let schema = (
-        "first/schema.ts",
-        "import { collection, text, slug } from \"first\";\nexport const memos = collection({ title: text(), slug: slug({ source: \"title\" }).optional() }, { title: \"title\", url: \"/memos/:slug\" });\n",
+        "tp/schema.ts",
+        "import { collection, text, slug } from \"typedpress\";\nexport const memos = collection({ title: text(), slug: slug({ source: \"title\" }).optional() }, { title: \"title\", url: \"/memos/:slug\" });\n",
     );
     rejects(
         &dir,
         &[
             schema,
             (
-                "first/app/memos/[slug]/page.tsx",
-                "import { Comments, type PageProps } from \"first/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
+                "tp/app/memos/[slug]/page.tsx",
+                "import { Comments, type PageProps } from \"typedpress/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
             ),
         ],
         "`memos` has comments off",
-        "first/app/memos/[slug]/page.tsx:3:",
+        "tp/app/memos/[slug]/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             schema,
             (
-                "first/app/page.tsx",
-                "import { Comments } from \"first/app\";\nexport default function Home() {\n  return <Comments for={{ id: 1 }} />;\n}\n",
+                "tp/app/page.tsx",
+                "import { Comments } from \"typedpress/app\";\nexport default function Home() {\n  return <Comments for={{ id: 1 }} />;\n}\n",
             ),
         ],
         "`<Comments for>` takes a row of a collection",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -2540,51 +2544,51 @@ fn refuses_comments_without_the_kind_option() {
 /// What a form with an action can't be is a build error at the line, with the fix.
 #[test]
 fn refuses_forms_it_cannot_post() {
-    let dir = std::env::temp_dir().join(format!("first-forms-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-forms-reject-{}", std::process::id()));
     let server = (
-        "first/server.ts",
-        "import { action, text } from \"first\";\nexport const send = action({ input: { name: text() }, access: \"anyone\", async handler({ name }) { return name; } });\n",
+        "tp/server.ts",
+        "import { action, text } from \"typedpress\";\nexport const send = action({ input: { name: text() }, access: \"anyone\", async handler({ name }) { return name; } });\n",
     );
     let page = |body: &str| {
-        format!("import {{ useFormState }} from \"first/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
+        format!("import {{ useFormState }} from \"typedpress/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
     };
     rejects(
         &dir,
         &[
             server,
             (
-                "first/app/page.tsx",
+                "tp/app/page.tsx",
                 &page("export default function Page() { return <form action={send} method=\"get\"><button/></form>; }"),
             ),
         ],
         "a form with an action posts it form-encoded",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[
             server,
             (
-                "first/app/page.tsx",
+                "tp/app/page.tsx",
                 &page(
                     "const other = 1;\nexport default function Page() { const s = useFormState(other); return <b>{String(s.pending)}</b>; }",
                 ),
             ),
         ],
         "`useFormState()` takes an action imported from your server code",
-        "first/app/page.tsx:4:",
+        "tp/app/page.tsx:4:",
     );
     rejects(
         &dir,
         &[
             server,
             (
-                "first/components/Box.tsx",
+                "tp/components/Box.tsx",
                 "\"use client\";\nimport { send } from \"../server\";\nexport function Box() { return <form action={send}><button/></form>; }\n",
             ),
         ],
         "a \"use client\" component's form calls its action from a handler",
-        "first/components/Box.tsx:3:",
+        "tp/components/Box.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -2602,8 +2606,8 @@ fn live_regions_answer_page_reads() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/live_regions.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -2679,11 +2683,11 @@ fn live_regions_update_in_the_browser() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
-        .env("FIRST_WP_SCRIPT_DEBUG", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .env("TP_WP_SCRIPT_DEBUG", "1")
         .env(
-            "FIRST_SERVE_MU",
+            "TP_SERVE_MU",
             root().join("tests/differential/client/live-regions-mu.php"),
         )
         .stdout(std::process::Stdio::piped())
@@ -2731,10 +2735,14 @@ fn live_regions_update_in_the_browser() {
         ),
         "{seen}"
     );
-    assert_eq!(
-        seen["answers"],
-        serde_json::json!([["unchanged"], ["changed"]]),
-        "an unchanged answer swaps nothing: {seen}"
+    let answers = seen["answers"].as_array().unwrap();
+    assert!(
+        answers.len() >= 2
+            && answers.last() == Some(&serde_json::json!(["changed"]))
+            && answers[..answers.len() - 1]
+                .iter()
+                .all(|answer| *answer == serde_json::json!(["unchanged"])),
+        "unchanged polls swap nothing before the write arrives: {seen}"
     );
     // A background tab costs nothing until it is shown; then one request carries its region and a
     // stale region updates.
@@ -2781,21 +2789,21 @@ fn live_regions_update_in_the_browser() {
 /// `<Live>` without a literal id, or inside a client component, is a build error at the element.
 #[test]
 fn refuses_live_regions_it_cannot_name() {
-    let dir = std::env::temp_dir().join(format!("first-live-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-live-reject-{}", std::process::id()));
     let page = |body: &str| {
-        format!("import {{ Live }} from \"first/app\";\nexport default function Home() {{\n  return {body};\n}}\n")
+        format!("import {{ Live }} from \"typedpress/app\";\nexport default function Home() {{\n  return {body};\n}}\n")
     };
     rejects(
         &dir,
-        &[("first/app/page.tsx", &page("<Live><p>x</p></Live>"))],
+        &[("tp/app/page.tsx", &page("<Live><p>x</p></Live>"))],
         "`<Live>` needs an `id`",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     rejects(
         &dir,
-        &[("first/app/page.tsx", &page("<Live id=\"Not Ok\"><p>x</p></Live>"))],
+        &[("tp/app/page.tsx", &page("<Live id=\"Not Ok\"><p>x</p></Live>"))],
         "`<Live id>` is a literal id",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -2803,32 +2811,32 @@ fn refuses_live_regions_it_cannot_name() {
 /// `<Pagination>` without the numbers it needs, or with the wrong types, is a build error at the prop.
 #[test]
 fn refuses_pagination_without_its_numbers() {
-    let dir = std::env::temp_dir().join(format!("first-pagination-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-pagination-reject-{}", std::process::id()));
     let page = |body: &str| {
         format!(
-            "import {{ Pagination }} from \"first/app\";\nexport default function Home() {{\n  return {body};\n}}\n"
+            "import {{ Pagination }} from \"typedpress/app\";\nexport default function Home() {{\n  return {body};\n}}\n"
         )
     };
     rejects(
         &dir,
-        &[("first/app/page.tsx", &page("<Pagination page={1} />"))],
+        &[("tp/app/page.tsx", &page("<Pagination page={1} />"))],
         "`<Pagination>` needs `pages`",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     rejects(
         &dir,
-        &[("first/app/page.tsx", &page("<Pagination page={\"2\"} pages={4} />"))],
+        &[("tp/app/page.tsx", &page("<Pagination page={\"2\"} pages={4} />"))],
         "`<Pagination page>` takes a number",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     rejects(
         &dir,
         &[(
-            "first/app/page.tsx",
+            "tp/app/page.tsx",
             &page("<Pagination page={1} pages={4} href=\"/x\" />"),
         )],
         "`<Pagination>` has no prop `href`",
-        "first/app/page.tsx:3:",
+        "tp/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -2852,9 +2860,9 @@ fn client_components_hydrate_in_the_browser() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
-        .env("FIRST_WP_SCRIPT_DEBUG", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .env("TP_WP_SCRIPT_DEBUG", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -2934,8 +2942,8 @@ fn client_components_hydrate_in_the_browser() {
     );
 }
 
-/// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening
-/// on `first_purge_urls`: an anonymous visitor's page is cacheable at the edge, a signed-in,
+/// rendering.md §6.1 and §6.2 for `tp/app/` pages, on WordPress with a stand-in host listening
+/// on `tp_purge_urls`: an anonymous visitor's page is cacheable at the edge, a signed-in,
 /// guarded or missing one is private; each cacheable render records what it read; an edit to one
 /// row purges exactly the URLs that read it or listed its kind, with their `.md` twins.
 #[test]
@@ -2945,8 +2953,8 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_cache.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3053,7 +3061,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
 
 /// One committed write, one announcement (docs/runtime-contract.md, "Purges"): a kind with a `url` is
 /// purged from two sources, the post hooks and the page cache's read index, and a write names the
-/// union once on `first_purge_urls` and once to the prebuilt pages, under the address WordPress
+/// union once on `tp_purge_urls` and once to the prebuilt pages, under the address WordPress
 /// serves the page at, whichever spelling a visitor fetched. A row recorded under the old spelling
 /// still purges; a rolled-back write announces nothing; over the limit across both is one `/*`.
 #[test]
@@ -3063,8 +3071,8 @@ fn one_write_announces_its_purges_once() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_purges.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3150,8 +3158,8 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_assets.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3208,7 +3216,7 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
 }
 
-/// `first doctor --site <url> --links` on a served First site: every link and `#anchor` the docs
+/// `typedpress doctor --site <url> --links` on a served TypedPress site: every link and `#anchor` the docs
 /// pages make, from Markdown content, TSX and WordPress, is followed; the broken ones are reported
 /// with the page they are on.
 #[test]
@@ -3248,9 +3256,9 @@ fn doctor_finds_broken_links_and_anchors_on_a_site() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("first/dist/wp-content"))
+        .arg(project.join("tp/dist/wp-content"))
         .arg(compiled.join("seed"))
-        .env("FIRST_WP_THEMES", "1")
+        .env("TP_WP_THEMES", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -3296,7 +3304,7 @@ fn doctor_finds_broken_links_and_anchors_on_a_site() {
     );
 }
 
-/// `apiReference()` from "first/content": the app's own OpenAPI document, and one in `public/`,
+/// `apiReference()` from "typedpress/content": the app's own OpenAPI document, and one in `public/`,
 /// rendered by pages as an API reference, on WordPress over HTTP (tests/php/api_reference.php).
 #[test]
 fn api_reference_renders_openapi_as_pages() {
@@ -3305,8 +3313,8 @@ fn api_reference_renders_openapi_as_pages() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/api_reference.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3323,7 +3331,7 @@ fn api_reference_renders_openapi_as_pages() {
     assert_eq!(index["status"], 200);
     assert_eq!(index["h1"], serde_json::json!(["Apiref API"]));
     assert!(
-        index["server"][0].as_str().unwrap().ends_with("/__first/api/v1"),
+        index["server"][0].as_str().unwrap().ends_with("/__tp/api/v1"),
         "{index}"
     );
     assert_eq!(index["tags"][0], "notes");
@@ -3409,7 +3417,7 @@ fn api_reference_renders_openapi_as_pages() {
     );
 }
 
-/// A hierarchical kind at the site root (`url: "/:path"`), rendered by `first/app/[...path]` beside the
+/// A hierarchical kind at the site root (`url: "/:path"`), rendered by `tp/app/[...path]` beside the
 /// app's own pages, on WordPress over HTTP (tests/php/docs_root.php).
 #[test]
 fn docs_at_the_site_root() {
@@ -3437,9 +3445,9 @@ fn docs_at_the_site_root() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/docs_root.php"))
-        .arg(project.join("first/dist/wp-content"))
+        .arg(project.join("tp/dist/wp-content"))
         .arg(compiled.join("seed"))
-        .env("FIRST_WP_THEMES", "1")
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3486,7 +3494,7 @@ fn docs_at_the_site_root() {
         assert_eq!(answer, &serde_json::json!([404, false]), "{path}");
     }
     assert_eq!(seen["hidden"].as_object().unwrap().len(), 10);
-    // An item under a first segment WordPress or First owns (`/auth`) has no URL of its own.
+    // An item under a first segment WordPress or TypedPress owns (`/auth`) has no URL of its own.
     assert!(
         seen["reserved permalink"].as_str().unwrap().contains("?post_type="),
         "{seen}"
@@ -3509,8 +3517,8 @@ fn public_files_serve_at_the_site_root() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/public_root.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3537,14 +3545,14 @@ fn public_files_serve_at_the_site_root() {
             "/it's.txt": [200, "text/plain; charset=utf-8", 1]
         })
     );
-    // robots.txt, llms.txt, feeds and First Identity's discovery document stay WordPress's.
+    // robots.txt, llms.txt, feeds and TypedPress Identity's discovery document stay WordPress's.
     for (path, kept) in seen["wordpress"].as_object().unwrap() {
         assert_eq!(kept, true, "{path}");
     }
     // A `[slug]` route at the root doesn't take a file's path.
     assert_eq!(seen["beside a dynamic route"], 200);
     assert_eq!(seen["home"], false);
-    // `first/app/about/page.tsx` wins over `public/about`.
+    // `tp/app/about/page.tsx` wins over `public/about`.
     assert_eq!(seen["about"], serde_json::json!([200, true, false]));
     // Never a file's bytes for a dotfile, PHP (as Windows would read `run.php.`, `run.php `,
     // `run.php::$DATA`, or in capitals), a path out of the folder, or a link that leaves it.
@@ -3565,7 +3573,7 @@ fn public_files_serve_at_the_site_root() {
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
 /// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
-/// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
+/// `nav`, `pager` and `headings` from "typedpress/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {
     let project = fixture("docs-kind", "serve");
@@ -3591,9 +3599,9 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/docs_kind.php"))
-        .arg(project.join("first/dist/wp-content"))
+        .arg(project.join("tp/dist/wp-content"))
         .arg(compiled.join("seed"))
-        .env("FIRST_WP_THEMES", "1")
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -3698,7 +3706,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!([
             "#why Why depth-2",
             "#small-print Small print depth-3",
-            "#whats-firstapp What's first/app/? depth-3",
+            "#whats-tpapp What's tp/app/? depth-3",
             "#why-1 Why depth-2",
             "#step-1---install Step 1 - Install depth-3",
             "#the---force-flag The --force flag depth-3",
@@ -3712,7 +3720,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!([
             "h2#why",
             "h3#small-print",
-            "h3#whats-firstapp",
+            "h3#whats-tpapp",
             "h2#why-1",
             "h3#step-1---install",
             "h3#the---force-flag",
@@ -3770,7 +3778,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             [
                 "#why Why depth-2",
                 "#small-print Small print depth-3",
-                "#whats-firstapp What's first/app/? depth-3",
+                "#whats-tpapp What's tp/app/? depth-3",
                 "#why-1 Why depth-2",
                 "#step-1---install Step 1 - Install depth-3",
                 "#the---force-flag The --force flag depth-3",
@@ -3780,7 +3788,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             [
                 "h2#why",
                 "h3#small-print",
-                "h3#whats-firstapp",
+                "h3#whats-tpapp",
                 "h2#why-1",
                 "h3#step-1---install",
                 "h3#the---force-flag",
@@ -3847,7 +3855,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // plain text escaped and unhighlighted, one stylesheet with a dark theme, and no script.
     let code = &seen["code"];
     assert_eq!(code["status"], 200);
-    assert_eq!(code["titles"], serde_json::json!(["first.config.ts", "pnpm"]));
+    assert_eq!(code["titles"], serde_json::json!(["typedpress.config.ts", "pnpm"]));
     assert_eq!(
         code["keywords"],
         serde_json::json!(["import", "from", "export", "default"])
@@ -3870,7 +3878,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // Written back, each fence keeps its title, marked lines and group.
     assert_eq!(
         seen["code back"],
-        "Edit the config.\n\n```ts title=\"first.config.ts\" {2}\nimport { defineConfig } from \"first\";\nexport default defineConfig({ name: \"docs\" });\n```\n\n```sh group=\"install\"\nnpm install first\n```\n\n```sh title=\"pnpm\" group=\"install\"\npnpm add first\n```\n\n```text\nplain <b>text</b>\n```\n"
+        "Edit the config.\n\n```ts title=\"typedpress.config.ts\" {2}\nimport { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"docs\" });\n```\n\n```sh group=\"install\"\nnpm install first\n```\n\n```sh title=\"pnpm\" group=\"install\"\npnpm add first\n```\n\n```text\nplain <b>text</b>\n```\n"
     );
     // The query API reads parent and order like any field.
     assert_eq!(
@@ -3882,10 +3890,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
 /// A folder-tree sync and a hierarchical kind refuse what they can't serve, at the line.
 #[test]
 fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
-    let dir = std::env::temp_dir().join(format!("first-docs-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-docs-reject-{}", std::process::id()));
     let kind = |fields: &str, options: &str| {
         format!(
-            "import {{ collection, table, text, slug, richText }} from \"first\";\nexport const docs = collection({{ title: text(), body: richText().optional(), {fields} }}, {{ content: \"body\", {options} }});\n"
+            "import {{ collection, table, text, slug, richText }} from \"typedpress\";\nexport const docs = collection({{ title: text(), body: richText().optional(), {fields} }}, {{ content: \"body\", {options} }});\n"
         )
     };
     let cases = [
@@ -3894,24 +3902,24 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
         (kind("parent: text().optional()", "hierarchical: true"), "`parent` is reserved: hierarchical kinds add `parent` and `order`"),
         (kind("slug: slug({ source: \"title\" })", "url: \"/docs/:path\""), "`:path` in \"/docs/:path\" needs a hierarchical kind"),
         (
-            "import { table, text } from \"first\";\nexport const docs = table({ title: text() }, { hierarchical: true });\n".to_string(),
+            "import { table, text } from \"typedpress\";\nexport const docs = table({ title: text() }, { hierarchical: true });\n".to_string(),
             "only collection() kinds can be hierarchical",
         ),
     ];
     for (schema, message) in cases {
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("first")).unwrap();
+        std::fs::create_dir_all(dir.join("tp")).unwrap();
         std::fs::write(
-            dir.join("first.config.ts"),
-            "import { defineConfig } from \"first\";\nexport default defineConfig({});\n",
+            dir.join("typedpress.config.ts"),
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
         )
         .unwrap();
-        std::fs::write(dir.join("first/schema.ts"), &schema).unwrap();
+        std::fs::write(dir.join("tp/schema.ts"), &schema).unwrap();
         let out = first().arg("check").arg(&dir).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(1), "{message}: should fail:\n{stderr}");
         assert!(stderr.contains(message), "expected {message:?} in:\n{stderr}");
-        assert!(stderr.contains("--> first/schema.ts:"), "{stderr}");
+        assert!(stderr.contains("--> tp/schema.ts:"), "{stderr}");
     }
     // At capture: two files with one slug, and a folder without its index file.
     for (files, message) in [
@@ -3930,14 +3938,14 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
         ),
     ] {
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("first")).unwrap();
+        std::fs::create_dir_all(dir.join("tp")).unwrap();
         std::fs::write(
-            dir.join("first.config.ts"),
-            "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"docsreject\" });\n",
+            dir.join("typedpress.config.ts"),
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"docsreject\" });\n",
         )
         .unwrap();
         std::fs::write(
-            dir.join("first/schema.ts"),
+            dir.join("tp/schema.ts"),
             kind(
                 "slug: slug({ source: \"title\" })",
                 "hierarchical: true, sync: \"content/docs/**/*.md\"",
@@ -3975,7 +3983,7 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// A root catch-all answers every path of the app, and never one WordPress, First or the host
+/// A root catch-all answers every path of the app, and never one WordPress, TypedPress or the host
 /// owns: on Spacefast `/__spacefast/connectors/*` and `/__spacefast/client.js` are the host's.
 #[test]
 fn a_root_catch_all_leaves_reserved_paths_alone() {
@@ -3984,8 +3992,8 @@ fn a_root_catch_all_leaves_reserved_paths_alone() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_router_reserved.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -4015,7 +4023,7 @@ fn a_root_catch_all_leaves_reserved_paths_alone() {
 /// the file's own components; each refusal is at the component file.
 #[test]
 fn content_blocks_refuse_props_a_tag_cannot_write() {
-    let dir = std::env::temp_dir().join(format!("first-blocks-reject-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-blocks-reject-{}", std::process::id()));
     for (component, message) in [
         (
             "export const blocks = [\"Card\"];\nexport function Card({ links }: { links: string[] }) { return <div>{links.length}</div>; }\n",
@@ -4031,18 +4039,18 @@ fn content_blocks_refuse_props_a_tag_cannot_write() {
         ),
     ] {
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("first/components")).unwrap();
+        std::fs::create_dir_all(dir.join("tp/components")).unwrap();
         std::fs::write(
-            dir.join("first.config.ts"),
-            "import { defineConfig } from \"first\";\nexport default defineConfig({});\n",
+            dir.join("typedpress.config.ts"),
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({});\n",
         )
         .unwrap();
-        std::fs::write(dir.join("first/components/Card.tsx"), component).unwrap();
+        std::fs::write(dir.join("tp/components/Card.tsx"), component).unwrap();
         let out = first().arg("check").arg(&dir).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(1), "{message}: should fail:\n{stderr}");
         assert!(stderr.contains(message), "expected {message:?} in:\n{stderr}");
-        assert!(stderr.contains("--> first/components/Card.tsx"), "{stderr}");
+        assert!(stderr.contains("--> tp/components/Card.tsx"), "{stderr}");
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -4065,8 +4073,8 @@ fn component_blocks_edit_in_the_block_editor() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -4161,9 +4169,9 @@ fn docs_example_reads_in_the_browser() {
     let mut server = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/serve_built.php"))
-        .arg(project.join("first/dist/wp-content"))
+        .arg(project.join("tp/dist/wp-content"))
         .arg(compiled.join("seed"))
-        .env("FIRST_WP_THEMES", "1")
+        .env("TP_WP_THEMES", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -4179,7 +4187,7 @@ fn docs_example_reads_in_the_browser() {
     docs_read_as_published(&seen, &url, &url);
 }
 
-/// `first export` (docs/decisions/2026-11-13-static-output.md): examples/docs (`output: "static"`),
+/// `typedpress export` (docs/decisions/2026-11-13-static-output.md): examples/docs (`output: "static"`),
 /// its content from content/docs/, rendered by a throwaway WordPress on SQLite, written as files and
 /// read in Chromium from a plain static server: the same pages a visitor reads on WordPress, with no
 /// WordPress at all. The draft is in no file, Markdown twins sit beside their pages, and llms.txt,
@@ -4210,7 +4218,7 @@ fn docs_example_exports_to_a_static_site() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let dist = project.join("first/dist/static");
+    let dist = project.join("tp/dist/static");
     let mut files: Vec<String> = Vec::new();
     fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
         for entry in std::fs::read_dir(dir).unwrap() {
@@ -4229,11 +4237,11 @@ fn docs_example_exports_to_a_static_site() {
         .map(String::as_str)
         .filter(|f| !f.starts_with("wp-"))
         .collect();
-    // `.first-export` marks the folder as an export, the only kind of folder a later export replaces.
+    // `.typedpress-export` marks the folder as an export, the only kind of folder a later export replaces.
     assert_eq!(
         pages,
         [
-            ".first-export",
+            ".typedpress-export",
             "404.html",
             "about.html",
             "about.md",
@@ -4258,7 +4266,7 @@ fn docs_example_exports_to_a_static_site() {
     for module in [
         "wp-includes/js/dist/script-modules/interactivity/index.min.js",
         "wp-includes/js/dist/script-modules/interactivity-router/index.min.js",
-        "wp-content/plugins/first-runtime/first/Render/client/router.js",
+        "wp-content/plugins/typedpress-runtime/tp/Render/client/router.js",
     ] {
         assert!(files.iter().any(|f| f == module), "{module} in {files:?}");
     }
@@ -4351,7 +4359,7 @@ fn docs_example_exports_to_a_static_site() {
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
 }
 
-/// `first export --site` (docs/decisions/2026-11-13-static-output.md): WordPress as the CMS somewhere
+/// `typedpress export --site` (docs/decisions/2026-11-13-static-output.md): WordPress as the CMS somewhere
 /// else. The hosted site (WordPress on SQLite, `tests/php/wp.php serve`) has a published and a draft
 /// note; the export renders its published content with an editor's application password, and the
 /// static page's client component calls the hosted site's public action across origins. The sign-in
@@ -4370,9 +4378,9 @@ fn static_export_from_a_hosted_site() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join("first/dist/wp-content"))
+        .arg(project.join("tp/dist/wp-content"))
         .arg("chief=editor")
-        .env("FIRST_WP_THEMES", "1")
+        .env("TP_WP_THEMES", "1")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -4394,7 +4402,7 @@ fn static_export_from_a_hosted_site() {
                 "-d",
             ])
             .arg(body.to_string())
-            .arg(format!("{site}/__first/api/v1{path}"))
+            .arg(format!("{site}/__tp/api/v1{path}"))
             .output()
             .unwrap();
         String::from_utf8_lossy(&out.stdout).into_owned()
@@ -4414,7 +4422,7 @@ fn static_export_from_a_hosted_site() {
             .arg("export")
             .arg(&project)
             .args(["--site", site_arg])
-            .env("FIRST_APP_PASSWORD", &editor)
+            .env("TP_APP_PASSWORD", &editor)
             .output()
             .unwrap()
     };
@@ -4425,7 +4433,7 @@ fn static_export_from_a_hosted_site() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let dist = project.join("first/dist/static");
+    let dist = project.join("tp/dist/static");
     assert!(dist.join("notes/hello.html").is_file());
     assert!(!dist.join("notes/secret.html").exists(), "the draft is never exported");
     let mut server = Command::new("node")
@@ -4451,9 +4459,9 @@ fn static_export_from_a_hosted_site() {
     let counted = call("GET", "/cheers", serde_json::json!({}));
     // A checkout that differs from what the site runs is refused before anything is written, even
     // when only markup changed (the schema is the same; the compiled page is not).
-    let page = std::fs::read_to_string(project.join("first/app/page.tsx")).unwrap();
+    let page = std::fs::read_to_string(project.join("tp/app/page.tsx")).unwrap();
     std::fs::write(
-        project.join("first/app/page.tsx"),
+        project.join("tp/app/page.tsx"),
         page.replace("className=\"notes\"", "className=\"notes changed\""),
     )
     .unwrap();
@@ -4497,19 +4505,19 @@ fn static_export_refuses_what_needs_a_server() {
         std::fs::write(path, source).unwrap();
     };
     write(
-        "first.config.ts",
-        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"refused\", output: \"static\" });\n",
+        "typedpress.config.ts",
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"refused\", output: \"static\" });\n",
     );
     write(
-        "first/actions.ts",
-        "import { action } from \"first\";\nexport const ping = action({ input: {}, access: \"anyone\", async handler() { return 1; } });\n",
+        "tp/actions.ts",
+        "import { action } from \"typedpress\";\nexport const ping = action({ input: {}, access: \"anyone\", async handler() { return 1; } });\n",
     );
     write(
-        "first/components/Ping.tsx",
-        "\"use client\";\nimport { useState } from \"first/client\";\nimport { ping } from \"../actions\";\nexport function Ping() { const [n, setN] = useState(0); return <button type=\"button\" onClick={async () => setN(await ping({}))}>{n}</button>; }\n",
+        "tp/components/Ping.tsx",
+        "\"use client\";\nimport { useState } from \"typedpress/client\";\nimport { ping } from \"../actions\";\nexport function Ping() { const [n, setN] = useState(0); return <button type=\"button\" onClick={async () => setN(await ping({}))}>{n}</button>; }\n",
     );
     write(
-        "first/app/page.tsx",
+        "tp/app/page.tsx",
         "import { Ping } from \"../components/Ping\";\nexport default function Home() { return <main><Ping /></main>; }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
@@ -4520,13 +4528,13 @@ fn static_export_refuses_what_needs_a_server() {
         "{stderr}"
     );
     assert!(
-        !project.join("first/dist/static").exists(),
+        !project.join("tp/dist/static").exists(),
         "a refused export writes nothing"
     );
     // A link to a page the export doesn't contain.
     write(
-        "first/app/page.tsx",
-        "import { Link } from \"first/app\";\nexport default function Home() { return <main><Link href=\"/elsewhere\">x</Link></main>; }\n",
+        "tp/app/page.tsx",
+        "import { Link } from \"typedpress/app\";\nexport default function Home() { return <main><Link href=\"/elsewhere\">x</Link></main>; }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -4537,7 +4545,7 @@ fn static_export_refuses_what_needs_a_server() {
     );
     // A page that asks WordPress who the visitor is: refused at build, at the call.
     write(
-        "first/app/page.tsx",
+        "tp/app/page.tsx",
         "import { is_user_logged_in } from \"php/wordpress\";\nexport default function Home() { return <main>{is_user_logged_in() ? \"you\" : \"guest\"}</main>; }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
@@ -4549,8 +4557,8 @@ fn static_export_refuses_what_needs_a_server() {
     );
     // A page that redirects.
     write(
-        "first/app/page.tsx",
-        "import { redirect } from \"first/app\";\nexport default function Home() { redirect(\"/elsewhere\"); }\n",
+        "tp/app/page.tsx",
+        "import { redirect } from \"typedpress/app\";\nexport default function Home() { redirect(\"/elsewhere\"); }\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -4559,8 +4567,8 @@ fn static_export_refuses_what_needs_a_server() {
     // --out never replaces the project, its sources, or a folder that isn't an export.
     for (out_dir, message) in [
         (project.to_path_buf(), "holds the project"),
-        (project.join("first"), "is inside the project"),
-        (project.join("first/dist"), "is where `first build` writes"),
+        (project.join("tp"), "is inside the project"),
+        (project.join("tp/dist"), "is where `typedpress build` writes"),
     ] {
         let out = first()
             .arg("export")
@@ -4587,21 +4595,21 @@ fn static_export_refuses_what_needs_a_server() {
         std::fs::read_to_string(elsewhere.path().join("notes.txt")).unwrap(),
         "mine"
     );
-    assert!(project.join("first.config.ts").is_file() && project.join("first/app").is_dir());
+    assert!(project.join("typedpress.config.ts").is_file() && project.join("tp/app").is_dir());
     // `output: "server"` is told what export is for.
     write(
-        "first.config.ts",
-        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"refused\" });\n",
+        "typedpress.config.ts",
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"refused\" });\n",
     );
     let out = first().arg("export").arg(project).output().unwrap();
     assert!(
-        String::from_utf8_lossy(&out.stderr).contains("set `output: \"static\"` in first.config.ts"),
+        String::from_utf8_lossy(&out.stderr).contains("set `output: \"static\"` in typedpress.config.ts"),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
 }
 
-/// The drive-store example (examples/drive-store), the shop that shows most of First at once, on
+/// The drive-store example (examples/drive-store), the shop that shows most of TypedPress at once, on
 /// WordPress: built as committed, seeded from the records a hosted compile writes for its
 /// content/drives/, and used as a browser with scripts off would (tests/php/drive_store.php):
 /// translations, search, the buy form and its stock rule, guarded pages, staff actions, reviews,
@@ -4611,8 +4619,8 @@ fn drive_store_example_sells_on_wordpress() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("drive-store");
     copy(&root().join("examples/drive-store"), &project);
-    let _ = std::fs::remove_dir_all(project.join(".first"));
-    let _ = std::fs::remove_dir_all(project.join("first/dist"));
+    let _ = std::fs::remove_dir_all(project.join(".tp"));
+    let _ = std::fs::remove_dir_all(project.join("tp/dist"));
     build(&project);
     let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
     for args in [
@@ -4635,9 +4643,9 @@ fn drive_store_example_sells_on_wordpress() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/drive_store.php"))
-        .arg(project.join("first/dist/wp-content"))
+        .arg(project.join("tp/dist/wp-content"))
         .arg(compiled.join("seed"))
-        .env("FIRST_WP_THEMES", "1")
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     assert!(
@@ -4716,7 +4724,7 @@ fn drive_store_example_sells_on_wordpress() {
         }),
         "{seen}"
     );
-    // A translated slug is a URL of the kind (runtime/First/Wp/AppRouter.php reads the item in every
+    // A translated slug is a URL of the kind (runtime/TypedPress/Wp/AppRouter.php reads the item in every
     // locale), its twin too, and WordPress's permalink for it is the kind's pattern.
     assert_eq!(seen["twin tr"], json!([200, "# WD Red Plus 4 TB"]), "{seen}");
     assert_eq!(seen["permalink tr"], "/drives/wd-red-plus-4tb-tr/");
@@ -4792,7 +4800,7 @@ fn drive_store_example_sells_on_wordpress() {
     // The settings global: the notice banner on every page, and the currency on every price.
     assert_eq!(seen["settings"], json!([["Demo shop: orders are fake."], "€48.00"]));
     assert_eq!(seen["bad price"], json!([422, "A price has two decimals at most."]));
-    // First Admin's classic table screen: the kind's label, and each field's `.ui({ label })`.
+    // TypedPress Admin's classic table screen: the kind's label, and each field's `.ui({ label })`.
     assert_eq!(
         seen["orders screen"],
         json!([200, "Orders", {
@@ -4826,7 +4834,7 @@ fn read_docs(url: &str) -> serde_json::Value {
 fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
-    assert_eq!(seen["home"], "First docs");
+    assert_eq!(seen["home"], "TypedPress docs");
     // The router region is processed as core processes a block theme's: core/router's state.url
     // comes from the server, follows a <Link> click that swapped the region in the same document,
     // and core's loading bar is in the footer with its styles.
@@ -4841,7 +4849,7 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) 
     );
     assert_eq!(
         seen["intro"],
-        serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · First docs", "h1": "Introduction" })
+        serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · TypedPress docs", "h1": "Introduction" })
     );
     assert_eq!(
         seen["tree"],
@@ -4892,7 +4900,10 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) 
     // The draft is a 404 and in no tree; the Markdown page is a page.
     assert_eq!(seen["draft"], 404);
     assert_eq!(seen["draftInTree"], false);
-    assert_eq!(seen["about"], serde_json::json!(["About · First docs", "First"]));
+    assert_eq!(
+        seen["about"],
+        serde_json::json!(["About · TypedPress docs", "TypedPress"])
+    );
     // Every page's Markdown twin; none for the draft, and it isn't listed.
     assert_eq!(seen["twins"]["install"][0], 200);
     assert!(
@@ -4907,9 +4918,9 @@ fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) 
     assert!(llms.contains("/about.md") && !llms.contains("Roadmap"), "{llms}");
 }
 
-/// Issue #311: every read a `first/app/` page can make runs as the visitor, on WordPress over
+/// Issue #311: every read a `tp/app/` page can make runs as the visitor, on WordPress over
 /// HTTP. A collection whose read rule shows drafts to staff only, read through each path a page
-/// has (tests/php/page_reads.php): a page's and a layout's `db.query`, the `"first:db"` kind API,
+/// has (tests/php/page_reads.php): a page's and a layout's `db.query`, the `"typedpress:db"` kind API,
 /// the Markdown twin, a `route.ts` handler, and the two kinds of read in an action a `"use client"`
 /// component calls. A signed-out visitor never sees the draft; an editor does. An editor's render
 /// is never shared, so the anonymous page after it is still the anonymous one.
@@ -4920,8 +4931,8 @@ fn page_reads_run_as_the_visitor() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/page_reads.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -4980,8 +4991,8 @@ fn static_routes_have_code_owned_pages() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/route_pages.php"))
-        .arg(project.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&project);
@@ -5074,7 +5085,7 @@ fn route_ids_keep_pages_when_files_move() {
     let first = fixture("route-ids", "first");
     build(&first);
     let second = fixture("route-ids", "second");
-    let app = second.join("first/app");
+    let app = second.join("tp/app");
     std::fs::create_dir_all(app.join("company")).unwrap();
     for page in ["about", "colophon"] {
         std::fs::rename(app.join(page), app.join("company").join(page)).unwrap();
@@ -5083,9 +5094,9 @@ fn route_ids_keep_pages_when_files_move() {
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/route_ids.php"))
-        .arg(first.join("first/dist/wp-content"))
-        .arg(second.join("first/dist/wp-content"))
-        .env("FIRST_WP_THEMES", "1")
+        .arg(first.join("tp/dist/wp-content"))
+        .arg(second.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
     let _ = std::fs::remove_dir_all(&first);
@@ -5123,32 +5134,32 @@ fn route_ids_keep_pages_when_files_move() {
 /// A route id is a literal, and two pages can't share one; the error is at the export.
 #[test]
 fn refuses_route_ids_it_cannot_keep() {
-    let dir = std::env::temp_dir().join(format!("first-route-ids-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("typedpress-route-ids-{}", std::process::id()));
     let page =
         |id: &str| format!("export const route = {{ id: {id} }};\nexport default function P() {{ return <p/>; }}\n");
     rejects(
         &dir,
         &[
-            ("first/app/a/page.tsx", &page("\"site.page\"")),
-            ("first/app/b/page.tsx", &page("\"site.page\"")),
+            ("tp/app/a/page.tsx", &page("\"site.page\"")),
+            ("tp/app/b/page.tsx", &page("\"site.page\"")),
         ],
         "route id `site.page` is already app/a/page.tsx's",
-        "first/app/b/page.tsx:1:14",
+        "tp/app/b/page.tsx:1:14",
     );
     rejects(
         &dir,
-        &[("first/app/a/page.tsx", &page("\"site page\""))],
+        &[("tp/app/a/page.tsx", &page("\"site page\""))],
         "`route` must be `{ id: \"…\" }` with a literal id",
-        "first/app/a/page.tsx:1:14",
+        "tp/app/a/page.tsx:1:14",
     );
     rejects(
         &dir,
         &[
-            ("first/app/a/page.tsx", &page("\"site.page\"")),
-            ("first/app/b/page.md", "---\nid: site.page\ntitle: B\n---\n\nText.\n"),
+            ("tp/app/a/page.tsx", &page("\"site.page\"")),
+            ("tp/app/b/page.md", "---\nid: site.page\ntitle: B\n---\n\nText.\n"),
         ],
         "id `site.page` is already app/a/page.tsx's",
-        "first/app/b/page.md:2:",
+        "tp/app/b/page.md:2:",
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

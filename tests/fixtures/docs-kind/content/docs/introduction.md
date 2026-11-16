@@ -1,10 +1,10 @@
 ---
 title: Introduction
 order: 1
-summary: What First is.
+summary: What TypedPress is.
 ---
 
-First turns TypeScript into WordPress.
+TypedPress turns TypeScript into WordPress.
 
 ## Why
 
@@ -14,7 +14,7 @@ Because.
 
 None.
 
-### What's `first/app/`?
+### What's `tp/app/`?
 
 Its punctuation goes; its words stay.
 

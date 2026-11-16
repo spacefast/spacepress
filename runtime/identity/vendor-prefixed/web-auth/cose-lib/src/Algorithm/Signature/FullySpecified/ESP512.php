@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified;
+namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\FullySpecified;
 
-use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ECDSA;
-use First\Identity\Vendor\Cose\Key\Ec2Key;
+use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ECDSA;
+use TypedPress\Identity\Vendor\Cose\Key\Ec2Key;
 use const OPENSSL_ALGO_SHA512;
 
 /**

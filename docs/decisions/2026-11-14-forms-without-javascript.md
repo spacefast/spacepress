@@ -12,7 +12,7 @@ comes next and must not need any of this undone.
 ## Decision
 
 **The form posts to the action's facade URL.** `<form action={subscribe}>`
-renders `method="post" action="/__first/api/v1/actions/subscribe"`. The request's
+renders `method="post" action="/__tp/api/v1/actions/subscribe"`. The request's
 content type picks the answer: form-encoded gets `303 See Other`, JSON is
 unchanged (`{ data }` or a problem document). The JavaScript submit will fetch
 the URL the markup already carries.
@@ -72,7 +72,7 @@ nonce.
 - Without the nonce, a signed-in cookie is not the user: the action runs signed
   out, as a JSON call without `X-WP-Nonce` does.
 
-**`useFormState(action)` from `"first/app"`** returns
+**`useFormState(action)` from `"typedpress/app"`** returns
 `{ pending, error: { code, message, fields } | null, result, values }`.
 
 - `result` is typed with the action's result.
@@ -107,12 +107,12 @@ on the result.
 Restock on a staff page expected it to update in place, as a `<Link>` does.
 
 **The submit is the router's.** `<form action={name}>` and the comments form
-render `data-wp-interactive="first/router" data-wp-on--submit="actions.submit"`,
+render `data-wp-interactive="tp/router" data-wp-on--submit="actions.submit"`,
 and the router module is enqueued on any page with one, not only on pages with a
 `<Link>`. `actions.submit` sits next to `navigate` and `prefetch` in
-runtime/First/Render/client/router.js. It takes a plain submit: a form-encoded
+runtime/TypedPress/Render/client/router.js. It takes a plain submit: a form-encoded
 post, in this tab, to this site, from inside the router region. It sends the
-same body with `fetch` (`credentials: "same-origin"`; `_first_return`,
+same body with `fetch` (`credentials: "same-origin"`; `_tp_return`,
 `_wpnonce` and the pressed button's name and value exactly as the browser sends
 them) and lets `fetch` follow the 303. The HTML of the page it comes back to
 goes to `@wordpress/interactivity-router`'s `actions.navigate(url, { html,
@@ -145,9 +145,9 @@ shares. Reloading afterwards shows the page without the flash, which is right
 for a read-once result.
 
 **Pending is an attribute, not state.** While the post is in flight the form
-has `aria-busy="true"` and `data-first-pending`. Its enabled submit buttons,
+has `aria-busy="true"` and `data-tp-pending`. Its enabled submit buttons,
 including ones outside it with `form="id"`, are disabled and get
-`data-first-pending`, and only those are enabled again afterwards. A button the
+`data-tp-pending`, and only those are enabled again afterwards. A button the
 page disabled stays disabled. A second submit of the form while one is in
 flight does nothing. Authors style `form[aria-busy="true"]`.
 `useFormState().pending` stays `false`: the page is server-rendered, and a
@@ -159,8 +159,8 @@ back if the swap dropped it.
 run. Any failure after that does not post again. That covers a rejected
 `fetch`, an answer that isn't a 2xx page from this site (a 500, a 503 problem),
 and a body that can't be read. The form is enabled again and a message
-appears in an `aria-live` alert inside it (`.first-form-error`, translatable,
-passed through `wp_interactivity_config('first/router')`). The browser posts
+appears in an `aria-live` alert inside it (`.tp-form-error`, translatable,
+passed through `wp_interactivity_config('tp/router')`). The browser posts
 the form itself only when the router module fails to load, because nothing has
 been sent at that point; the form stays busy while that page loads. The script
 also leaves the submit to the browser for:
@@ -189,14 +189,14 @@ waits while a submit is in flight. If a submit's page rendered while it waited,
 that page is newer than its answer, so it drops the answer and applies the next
 one in full. A submit waits for a `<Live>` swap in progress before rendering.
 The copy of the document a `<Live>` swap builds has the pending markers
-(`data-first-pending`, the form's `aria-busy`, the disabled buttons) taken out.
-The shared counters live on `globalThis[Symbol.for("first/forms")]`, which
+(`data-tp-pending`, the form's `aria-busy`, the disabled buttons) taken out.
+The shared counters live on `globalThis[Symbol.for("tp/forms")]`, which
 router.js and live-region.js both read.
 
 **Costs.**
 
 - A form must be inside the root layout's router region to submit in place.
-  First Admin and wp-login.php pages have no region, so their forms post as
+  TypedPress Admin and wp-login.php pages have no region, so their forms post as
   before.
 - File inputs aren't supported: action forms are form-encoded, and an upload
   already answers 415.

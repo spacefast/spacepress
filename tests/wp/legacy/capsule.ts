@@ -1,6 +1,6 @@
 // An original @spacefast/zero 0.8.1 capsule. `content-model.php` beside it is the original
 // compiler's output for these collections (see capture.ts); the WordPress suite seeds a site the way
-// the original kernel stored it, then migrates that site to the config `first migrate config` makes.
+// the original kernel stored it, then migrates that site to the config `typedpress migrate config` makes.
 import { capsule } from "@spacefast/zero/server";
 
 export default capsule({

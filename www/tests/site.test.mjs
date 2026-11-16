@@ -64,7 +64,7 @@ test("docs: /docs opens the first doc, with navigation, contents and highlighted
   assert.equal(await page.locator("h1").textContent(), "Introduction");
   assert.ok(await page.locator(".sidebar a").count() >= 10);
   assert.ok(await page.locator(".onpage a").count() >= 1);
-  assert.ok(await page.locator(".first-code-block .hljs-keyword").count() >= 1, "the code fence is not highlighted");
+  assert.ok(await page.locator(".typedpress-code-block .hljs-keyword").count() >= 1, "the code fence is not highlighted");
   await page.locator(".sidebar a", { hasText: "Pages" }).click();
   await page.waitForURL(/\/docs\/guides\/pages$/);
   assert.equal(await page.locator("h1").textContent(), "Pages");
@@ -81,7 +81,7 @@ test("playground: an edit builds a migration, and a shared edit opens for someon
   await page.keyboard.press("End");
   await page.keyboard.type("\n  priority: integer().default(0),", { delay: 15 });
   await page.waitForFunction(() => /differ from the previous build/.test(document.querySelector(".tp-status")?.textContent ?? ""), null, { timeout: 15_000 });
-  assert.match(await page.evaluate(() => document.querySelector("tp-play").outputs["first/_generated/migrations/0002_update.sql"]), /ADD COLUMN `priority`/);
+  assert.match(await page.evaluate(() => document.querySelector("tp-play").outputs["tp/_generated/migrations/0002_update.sql"]), /ADD COLUMN `priority`/);
   await page.getByRole("button", { name: "Share" }).click();
   await page.waitForSelector(".tp-shared a", { timeout: 15_000 });
   const link = await page.locator(".tp-shared a").getAttribute("href");
@@ -91,7 +91,7 @@ test("playground: an edit builds a migration, and a shared edit opens for someon
 
   const other = await open(new URL(link).pathname + new URL(link).search);
   await built(other.page);
-  assert.equal(await other.page.evaluate(() => document.querySelector("tp-play").files["first.config.ts"].includes("priority: integer().default(0)")), true);
+  assert.equal(await other.page.evaluate(() => document.querySelector("tp-play").files["typedpress.config.ts"].includes("priority: integer().default(0)")), true);
   await other.close();
 });
 
@@ -105,7 +105,7 @@ test("playground: a syntax error is announced with its place", async () => {
   await page.keyboard.type(" ((", { delay: 15 });
   await page.waitForSelector(".tp-problems li", { timeout: 15_000 });
   assert.equal(await page.locator(".tp-problems").getAttribute("role"), "alert");
-  assert.match(await page.locator(".tp-problems li").first().textContent(), /^first\.config\.ts:\d+:\d+ /);
+  assert.match(await page.locator(".tp-problems li").first().textContent(), /^typedpress\.config\.ts:\d+:\d+ /);
   await close();
 });
 
@@ -142,11 +142,11 @@ test("blog: the menu links to it, and a post renders in the site's layout", asyn
 });
 
 test("the star job can only be started by an admin", async () => {
-  const response = await fetch(`${base}/__first/api/v1/actions/refreshStarsNow`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  const response = await fetch(`${base}/__tp/api/v1/actions/refreshStarsNow`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   assert.ok([401, 403].includes(response.status), `POST refreshStarsNow answered ${response.status}`);
 });
 
 test("saved edits cannot be listed by a visitor", async () => {
-  const response = await fetch(`${base}/__first/api/v1/shares`);
+  const response = await fetch(`${base}/__tp/api/v1/shares`);
   assert.ok([401, 403].includes(response.status), `GET /shares answered ${response.status}`);
 });

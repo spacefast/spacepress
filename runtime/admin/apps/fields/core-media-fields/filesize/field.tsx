@@ -1,5 +1,5 @@
 import { __, sprintf, _x } from '@wordpress/i18n';
-import type { Field } from '@first-admin/dataviews';
+import type { Field } from '@typedpress-admin/dataviews';
 import type { MediaItem } from '../types';
 
 const KB_IN_BYTES = 1024;
@@ -18,7 +18,7 @@ function getBytesString(
 ): string {
 	return sprintf(
 		// translators: 1: Actual bytes of a file. 2: The unit symbol (e.g. MB).
-		_x( '%1$s %2$s', 'file size', 'first-admin' ),
+		_x( '%1$s %2$s', 'file size', 'typedpress-admin' ),
 		bytes.toLocaleString( undefined, {
 			minimumFractionDigits: 0,
 			maximumFractionDigits: decimals,
@@ -40,29 +40,29 @@ function formatFileSize( bytes: number, decimals = 2 ): string {
 	if ( bytes === 0 ) {
 		return getBytesString(
 			0,
-			_x( 'B', 'unit symbol', 'first-admin' ),
+			_x( 'B', 'unit symbol', 'typedpress-admin' ),
 			decimals
 		);
 	}
 	const quant = {
 		/* translators: Unit symbol for yottabyte. */
-		[ _x( 'YB', 'unit symbol', 'first-admin' ) ]: YB_IN_BYTES,
+		[ _x( 'YB', 'unit symbol', 'typedpress-admin' ) ]: YB_IN_BYTES,
 		/* translators: Unit symbol for zettabyte. */
-		[ _x( 'ZB', 'unit symbol', 'first-admin' ) ]: ZB_IN_BYTES,
+		[ _x( 'ZB', 'unit symbol', 'typedpress-admin' ) ]: ZB_IN_BYTES,
 		/* translators: Unit symbol for exabyte. */
-		[ _x( 'EB', 'unit symbol', 'first-admin' ) ]: EB_IN_BYTES,
+		[ _x( 'EB', 'unit symbol', 'typedpress-admin' ) ]: EB_IN_BYTES,
 		/* translators: Unit symbol for petabyte. */
-		[ _x( 'PB', 'unit symbol', 'first-admin' ) ]: PB_IN_BYTES,
+		[ _x( 'PB', 'unit symbol', 'typedpress-admin' ) ]: PB_IN_BYTES,
 		/* translators: Unit symbol for terabyte. */
-		[ _x( 'TB', 'unit symbol', 'first-admin' ) ]: TB_IN_BYTES,
+		[ _x( 'TB', 'unit symbol', 'typedpress-admin' ) ]: TB_IN_BYTES,
 		/* translators: Unit symbol for gigabyte. */
-		[ _x( 'GB', 'unit symbol', 'first-admin' ) ]: GB_IN_BYTES,
+		[ _x( 'GB', 'unit symbol', 'typedpress-admin' ) ]: GB_IN_BYTES,
 		/* translators: Unit symbol for megabyte. */
-		[ _x( 'MB', 'unit symbol', 'first-admin' ) ]: MB_IN_BYTES,
+		[ _x( 'MB', 'unit symbol', 'typedpress-admin' ) ]: MB_IN_BYTES,
 		/* translators: Unit symbol for kilobyte. */
-		[ _x( 'KB', 'unit symbol', 'first-admin' ) ]: KB_IN_BYTES,
+		[ _x( 'KB', 'unit symbol', 'typedpress-admin' ) ]: KB_IN_BYTES,
 		/* translators: Unit symbol for byte. */
-		[ _x( 'B', 'unit symbol', 'first-admin' ) ]: 1,
+		[ _x( 'B', 'unit symbol', 'typedpress-admin' ) ]: 1,
 	};
 
 	for ( const [ unit, mag ] of Object.entries( quant ) ) {

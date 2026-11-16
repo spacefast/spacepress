@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\MetadataService\Service;
+namespace TypedPress\Identity\Vendor\Webauthn\MetadataService\Service;
 
 use function array_key_exists;
 use function is_array;
@@ -13,23 +13,23 @@ use Jose\Component\Signature\Algorithm\RS256;
 use Jose\Component\Signature\JWSVerifier;
 use Jose\Component\Signature\Serializer\CompactSerializer;
 use LogicException;
-use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
 use function sprintf;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\JsonEncoder;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Throwable;
-use First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
-use First\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory;
-use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use First\Identity\Vendor\Webauthn\Event\MetadataStatementFound;
-use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use First\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
-use First\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
-use First\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateChainValidator;
-use First\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
-use First\Identity\Vendor\Webauthn\MetadataService\Statement\StatusReport;
+use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use TypedPress\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory;
+use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use TypedPress\Identity\Vendor\Webauthn\Event\MetadataStatementFound;
+use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use TypedPress\Identity\Vendor\Webauthn\Exception\MetadataStatementLoadingException;
+use TypedPress\Identity\Vendor\Webauthn\Exception\MissingMetadataStatementException;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateChainValidator;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\CertificateChain\CertificateToolbox;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\Statement\StatusReport;
 
 final class FidoAllianceCompliantMetadataService implements MetadataService, CanDispatchEvents
 {

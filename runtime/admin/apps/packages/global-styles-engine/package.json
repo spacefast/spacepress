@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/global-styles-engine",
+	"name": "@typedpress-admin/global-styles-engine",
 	"version": "1.0.0",
 	"description": "A library for processing global styles objects",
 	"type": "module",

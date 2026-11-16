@@ -13,11 +13,11 @@ pub(super) fn compile(project: &Path) -> Result<crate::schema::Schema, Diag> {
 
 /// Runs the whole pipeline in memory.
 pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
-    let entry = project.join("first.config.ts");
+    let entry = project.join("typedpress.config.ts");
     if !entry.is_file() {
         return Err(Diag::new(
             Span::NONE,
-            format!("no first.config.ts in {}", project.display()),
+            format!("no typedpress.config.ts in {}", project.display()),
         ));
     }
     let program = loader::load(&entry)?;
@@ -109,7 +109,7 @@ fn write_new(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
     file.write_all(content.as_ref())
 }
 
-/// Compiles the project and writes `first/_generated/` only: what `first pull` runs after it
+/// Compiles the project and writes `tp/_generated/` only: what `typedpress pull` runs after it
 /// changes the runtime schema lock, so the types and the typed client follow the lock. The error
 /// is the rendered diagnostic.
 pub(super) fn refresh(project: &Path) -> Result<(), String> {
@@ -117,7 +117,7 @@ pub(super) fn refresh(project: &Path) -> Result<(), String> {
     emit_project(project, &built).map_err(|e| e.to_string())
 }
 
-/// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks, the typed
+/// Writes `tp/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks, the typed
 /// client and `openapi.json`.
 pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
@@ -208,7 +208,7 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
         root.file_name()
             .ok_or_else(|| std::io::Error::other("output needs a directory name"))?,
     );
-    if project.starts_with(&root) || project.join("first").starts_with(&root) {
+    if project.starts_with(&root) || project.join("tp").starts_with(&root) {
         return Err(std::io::Error::other(
             "wp-content output cannot contain the project or its dependency lock",
         ));
@@ -231,11 +231,11 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
     let lock = project.join(layout::WP_PLUGINS_LOCK);
     std::fs::create_dir_all(lock.parent().unwrap())?;
     // Serialize the project lockfile and publication to a shared output root. The guard lives in
-    // the First root, which no output may contain (checked above), so publication never renames it
+    // the TypedPress root, which no output may contain (checked above), so publication never renames it
     // away while a build holds it.
     let _project_guard = guard(project.join(layout::ROOT).join(".wp-plugins.build.lock"))?;
     let _output_guard = guard(parent.join(format!(
-        ".{}.first-build.lock",
+        ".{}.typedpress-build.lock",
         root.file_name().unwrap().to_string_lossy()
     )))?;
     let mut prepared = wp_plugins::Prepared::acquire(&plan, &lock, &platform::cache(project))?;
@@ -254,23 +254,23 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
     }
     prepared.install_into(&stage.join("plugins"))?;
     let plugins = stage.join("plugins");
-    let generated = crate::app_plugin::first_plugins(&built.schema);
+    let generated = crate::app_plugin::tp_plugins(&built.schema);
     let revision = crate::store::runtime_revision();
-    let previous_revision = std::fs::read(stage.join("first-manifest.json"))
+    let previous_revision = std::fs::read(stage.join("typedpress-manifest.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
         .and_then(|manifest| manifest["runtimeRevision"].as_str().map(str::to_string));
     // Admin is also owned here when its opt-in is removed.
     if !built.schema.admin {
-        remove_plugin(&plugins.join("first-admin"))?;
+        remove_plugin(&plugins.join("typedpress-admin"))?;
     }
     let (schema_php, app) = app_files(project, &migrations_dir(project), built)?;
     let mut versions = serde_json::Map::new();
     for slug in generated {
         let directory = plugins.join(&slug);
-        if slug.starts_with("first-app-") {
+        if slug.starts_with("typedpress-app-") {
             let changed = write_app_plugin(&plugins, &directory, &app)?;
-            // The app plugin is generated from the project: its changed PHP files are linted. First's
+            // The app plugin is generated from the project: its changed PHP files are linted. TypedPress's
             // own plugins are the same bytes for every app (embedded from runtime/);
             // tests/php/runtime_lint.php lints those once, so a build doesn't run `php -l` on
             // hundreds of unchanged files.
@@ -303,15 +303,14 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
         .into_iter()
         .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
         .collect();
-    let mut manifest = serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"runtimeRevision":revision,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
+    let mut manifest = serde_json::json!({"typedpress":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"runtimeRevision":revision,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
     // Sealed mode (docs/sealed.md): the plugin slugs this site runs, for a host to enforce. No key
     // when the app isn't sealed.
-    if let Some(sealed) = crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::first_plugins(&built.schema))
-    {
+    if let Some(sealed) = crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::tp_plugins(&built.schema)) {
         manifest["sealed"] = sealed.into();
     }
     write(
-        &stage.join("first-manifest.json"),
+        &stage.join("typedpress-manifest.json"),
         serde_json::to_string_pretty(&manifest)? + "\n",
     )?;
 
@@ -338,7 +337,7 @@ pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std
         }
         return Err(e.error);
     }
-    let legacy = project.join(".first/wp");
+    let legacy = project.join(".tp/wp");
     if !root.starts_with(&legacy) && legacy.is_dir() {
         std::fs::remove_dir_all(legacy)?;
     }
@@ -456,7 +455,7 @@ fn write_app_plugin(plugins: &Path, directory: &Path, files: &[(String, Vec<u8>)
     if directory.exists() {
         let mut existing = Vec::new();
         if listing(directory, directory, &mut existing).is_err() {
-            // Not a tree First wrote: start it again.
+            // Not a tree TypedPress wrote: start it again.
             std::fs::remove_dir_all(directory)?;
         } else {
             for (rel, _) in existing {
@@ -470,7 +469,7 @@ fn write_app_plugin(plugins: &Path, directory: &Path, files: &[(String, Vec<u8>)
         }
     }
     // The migrations directory exists even when the ledger has no SQL yet, as it always has.
-    std::fs::create_dir_all(directory.join("first/app/migrations"))?;
+    std::fs::create_dir_all(directory.join("tp/app/migrations"))?;
     for (rel, bytes) in files {
         let path = plugins.join(rel);
         if write(&path, bytes)? {
@@ -493,10 +492,10 @@ fn remove_empty_dirs(dir: &Path) -> std::io::Result<bool> {
     Ok(empty)
 }
 
-/// What `first check --json` answers: the `first-diagnostics` envelope, and the build when it has
+/// What `typedpress check --json` answers: the `typedpress-diagnostics` envelope, and the build when it has
 /// no diagnostics. Compiles in memory and writes nothing.
 pub(crate) fn check(project: &Path, frozen: bool) -> (serde_json::Value, Option<Built>) {
-    let built = match loader::load_all(&project.join("first.config.ts")) {
+    let built = match loader::load_all(&project.join("typedpress.config.ts")) {
         Err(diagnostics) => Err(diagnostics),
         Ok(program) => build_program(project, &program, frozen).map_err(|d| vec![d]),
     };
@@ -549,7 +548,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     for w in &built.unsupported_plugins {
         eprintln!("warning: {w}");
     }
-    // A project that ran `first init`: its agent files follow the config and the compiler.
+    // A project that ran `typedpress init`: its agent files follow the config and the compiler.
     let agent_files = (!args.quiet)
         .then(|| super::init::stale_hint(&project, &built.schema))
         .flatten();
@@ -588,7 +587,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         eprintln!("error: couldn't write migrations or the client: {e}");
         return ExitCode::from(1);
     }
-    // A project that syncs commits its sync bases, and nothing else under .first (design §5.4).
+    // A project that syncs commits its sync bases, and nothing else under .tp (design §5.4).
     if built.schema.collections.values().any(|c| c.sync.is_some())
         && let Err(e) = crate::sync::git::ignore_build_output(&project)
     {
@@ -643,7 +642,7 @@ mod tests {
         assert!(
             error
                 .message
-                .starts_with("can't read first/_generated/migrations/snapshot.json: "),
+                .starts_with("can't read tp/_generated/migrations/snapshot.json: "),
             "{}",
             error.message
         );
@@ -674,10 +673,10 @@ mod tests {
     #[test]
     fn a_ledger_still_at_the_old_path_is_refused_not_built_as_a_first_build() {
         let project = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(project.path().join("first/migrations")).unwrap();
-        std::fs::write(project.path().join("first/migrations/snapshot.json"), "{}").unwrap();
+        std::fs::create_dir_all(project.path().join("tp/migrations")).unwrap();
+        std::fs::write(project.path().join("tp/migrations/snapshot.json"), "{}").unwrap();
         let error = read_previous(project.path()).unwrap_err();
-        assert_eq!(error.message, "first/migrations/ moved to first/_generated/migrations/");
+        assert_eq!(error.message, "tp/migrations/ moved to tp/_generated/migrations/");
     }
 
     /// Every changed file is linted, not only the first: a syntax error anywhere fails the build.

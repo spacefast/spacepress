@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag;
+namespace TypedPress\Identity\Vendor\CBOR\Tag;
 
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthListObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
-use First\Identity\Vendor\CBOR\ListObject;
-use First\Identity\Vendor\CBOR\Normalizable;
-use First\Identity\Vendor\CBOR\Tag;
-use First\Identity\Vendor\CBOR\TextStringObject;
+use TypedPress\Identity\Vendor\CBOR\CBORObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthListObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
+use TypedPress\Identity\Vendor\CBOR\ListObject;
+use TypedPress\Identity\Vendor\CBOR\Normalizable;
+use TypedPress\Identity\Vendor\CBOR\Tag;
+use TypedPress\Identity\Vendor\CBOR\TextStringObject;
 use function count;
 use InvalidArgumentException;
 

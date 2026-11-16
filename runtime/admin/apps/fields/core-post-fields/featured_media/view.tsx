@@ -2,7 +2,7 @@ import { MediaLoading } from '../../../packages/boot/src/media-loading';
 import { useMediaResource } from '../../../packages/boot/src/use-media-url';
 import { useSelect } from '@wordpress/data';
 import { type Attachment, store as coreStore, type Post } from '@wordpress/core-data';
-import type { DataViewRenderFieldProps } from '@first-admin/dataviews';
+import type { DataViewRenderFieldProps } from '@typedpress-admin/dataviews';
 
 export const FeaturedImageView = ({ item, config }: DataViewRenderFieldProps<Post>) => {
 	const mediaId = item.featured_media;

@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge;
 
 use function defined;
 use RuntimeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto\OpenSSLCrypto;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\CipherAlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto\OpenSSLCrypto;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Cipher\CipherAlgorithmIdentifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\AlgorithmIdentifier\Feature\SignatureAlgorithmIdentifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PrivateKeyInfo;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Asymmetric\PublicKeyInfo;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoTypes\Signature\Signature;
 
 /**
  * Base class for crypto engine implementations.

@@ -6,7 +6,7 @@ import { __ } from '@wordpress/i18n';
 import type {
 	GlobalStylesConfig,
 	StyleVariation,
-} from '@first-admin/global-styles-engine';
+} from '@typedpress-admin/global-styles-engine';
 import PreviewStyles from './preview-styles';
 import Variation from './variations/variation';
 import { GlobalStylesContext } from './context';
@@ -49,7 +49,7 @@ function StyleVariationsContainer( {
 	const themeVariations = useMemo( () => {
 		const withEmptyVariation: StyleVariation[] = [
 			{
-				title: __( 'Default', 'first-admin' ),
+				title: __( 'Default', 'typedpress-admin' ),
 				settings: {},
 				styles: {},
 			},
@@ -65,7 +65,7 @@ function StyleVariationsContainer( {
 				// when switching variations.
 				if ( userStyles?.blocks ) {
 					Object.keys( userStyles.blocks ).forEach( ( blockName ) => {
-						// First get any block specific custom CSS from the current user styles and merge with any custom CSS for
+						// TypedPress get any block specific custom CSS from the current user styles and merge with any custom CSS for
 						// that block in the variation.
 						if ( userStyles.blocks?.[ blockName ]?.css ) {
 							const variationBlockStyles =
@@ -122,7 +122,7 @@ function StyleVariationsContainer( {
 	return (
 		<Grid
 			columns={ 2 }
-			className="first-admin-global-styles-style-variations-container"
+			className="typedpress-admin-global-styles-style-variations-container"
 			gap={ gap }
 		>
 			{ themeVariations.map(

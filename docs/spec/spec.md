@@ -1,4 +1,4 @@
-# First: the complete authoring surface
+# TypedPress: the complete authoring surface
 
 Canonical spec, 2026-11-08, third revision. Rendering, interactivity and
 caching are in [rendering.md](rendering.md). External frontends are in
@@ -10,10 +10,10 @@ from today's v2 API, with no aliases.
 
 ```text
 my-project/                  # the project root: your app, if you have one
-├── first.config.ts           # always here; imports only from ./first/** and npm packages
+├── typedpress.config.ts           # always here; imports only from ./tp/** and npm packages
 ├── package.json
-├── src/                     # e.g. Next.js, Astro, TanStack Start (optional; First never reads it)
-└── first/                    # the First root
+├── src/                     # e.g. Next.js, Astro, TanStack Start (optional; TypedPress never reads it)
+└── tp/                    # the TypedPress root
     ├── schema.ts            # convention: data (§2). Any file name works (§1.1)
     ├── server/              # convention: actions and jobs (§4)
     ├── app/                 # pages and HTTP routes (rendering.md)
@@ -22,30 +22,30 @@ my-project/                  # the project root: your app, if you have one
     ├── content/             # markdown/JSON synced into kinds
     ├── public/              # static files, served as-is
     ├── theme.json           # optional: theme.json settings and styles over the active theme (pages.md, Styles)
-    ├── _generated/          # written by First, committed: db.d.ts, routes.d.ts, client, schema ledger, plugins.lock.json, runtime-schema.json (§2.10), theme.css
-    └── dist/                # written by `first build`, gitignored: the deployable output (§7)
+    ├── _generated/          # written by TypedPress, committed: db.d.ts, routes.d.ts, client, schema ledger, plugins.lock.json, runtime-schema.json (§2.10), theme.css
+    └── dist/                # written by `typedpress build`, gitignored: the deployable output (§7)
 ```
 
-- `first dev`, `first build` and `sf publish` start from the directory that holds
-  `first.config.ts`. The First root is always `./first`.
-- `first.config.ts` resolves relative imports only inside `./first/`. Anything
+- `typedpress dev`, `typedpress build` and `sf publish` start from the directory that holds
+  `typedpress.config.ts`. The TypedPress root is always `./tp`.
+- `typedpress.config.ts` resolves relative imports only inside `./tp/`. Anything
   else, such as `../src/lib/x`, is build error `F1210`. Package imports
-  (`"first"`, First plugin packages) are allowed. That exception is my call;
+  (`"first"`, TypedPress plugin packages) are allowed. That exception is my call;
   the rule otherwise couldn't load `defineConfig`.
-- Code in `first/` imports nothing from outside `first/` except npm packages.
-  The app may import `first/_generated/client`.
+- Code in `tp/` imports nothing from outside `tp/` except npm packages.
+  The app may import `tp/_generated/client`.
 
 ### 1.1 No required file names
 
-First loads `first.config.ts` and every `.ts` file under `first/`, except the
+TypedPress loads `typedpress.config.ts` and every `.ts` file under `tp/`, except the
 folders that have their own meaning (`app/`, `components/`, `wp-hooks/`,
 `content/`, `public/`, `_generated/`, `dist/`). Every exported kind, action and
 job in those files is registered under its export name. File names and folders
 are up to you:
 
-- **One file:** a whole backend can live in `first/index.ts`, with kinds,
+- **One file:** a whole backend can live in `tp/index.ts`, with kinds,
   hooks, actions and jobs side by side.
-- **The convention** `first init` writes and the docs use: `schema.ts` for
+- **The convention** `typedpress init` writes and the docs use: `schema.ts` for
   kinds and `server/*.ts` for actions and jobs. When a project grows, split
   `schema.ts` into `schema/*.ts`.
 - **Moving code never changes the API.** Names come from exports, not paths,
@@ -57,11 +57,11 @@ are up to you:
 - An export that isn't a kind, action or job is ignored, so helper modules need
   no special place.
 - `app/`, `components/`, `wp-hooks/`, `content/` and `public/` are the only
-  folders whose names First reads.
+  folders whose names TypedPress reads.
 
 ```ts
-// first/index.ts: a complete app in one file
-import { wp, table, ref, action, job } from "first";
+// tp/index.ts: a complete app in one file
+import { wp, table, ref, action, job } from "typedpress";
 
 export const posts = wp.posts.extend({}, { url: "/blog/:slug", comments: true });
 export const likes = table({ post: ref(posts).onDelete("cascade") }, { access: { create: "subscriber", read: "anyone" } });
@@ -78,13 +78,13 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });
 
 ### 2.1 WordPress kinds are built in
 
-Every First site has these kinds without declaring anything. They are the real
-WordPress objects, so the theme, plugins, wp-admin, REST and First all see the
+Every TypedPress site has these kinds without declaring anything. They are the real
+WordPress objects, so the theme, plugins, wp-admin, REST and TypedPress all see the
 same rows.
 
 | Kind | WordPress | Always-present fields |
 |---|---|---|
-| `users` | `wp_users` + usermeta + First Identity | `id`, `email`, `name`, `username`, `roles`, `avatar`, `url`, `locale`, `createdAt` |
+| `users` | `wp_users` + usermeta + TypedPress Identity | `id`, `email`, `name`, `username`, `roles`, `avatar`, `url`, `locale`, `createdAt` |
 | `comments` | `wp_comments` + comment meta | `id`, `on` (the item), `parent`, `author` (user or null), `authorName`, `authorEmail`, `content`, `status`, `type`, `createdAt` |
 | `posts` | core `post` type | collection fields (§2.3) + `categories`, `tags`, `excerpt`, `featuredImage`, `sticky` |
 | `pages` | core `page` type | collection fields + `parent`, `order`, `template` |
@@ -94,18 +94,18 @@ same rows.
 | `settings` | core options | `title`, `tagline`, `timezone`, `locale`, `icon`, `logo`, `frontPage` |
 
 Every kind, built-in or yours, is imported from one place:
-`import { posts, users, comments } from "first:db"`. The types live in
+`import { posts, users, comments } from "typedpress:db"`. The types live in
 `_generated/db.d.ts`. Inside `schema.ts`, the base built-ins are on `wp`:
 
 ```ts
-import { wp, collection, table, taxonomy, text, select, integer, ref, media } from "first";
+import { wp, collection, table, taxonomy, text, select, integer, ref, media } from "typedpress";
 
 // Extend a built-in by exporting its name. Fields become meta; options compile to WordPress settings.
 export const users = wp.users.extend({
   plan: select(["free", "pro"]).default("free"),
   bio: text({ multiline: true }).optional(),
 }, {
-  signIn: ["email", "passkey", "google"],        // First Identity methods; Spacefast Access adds its own on Spacefast
+  signIn: ["email", "passkey", "google"],        // TypedPress Identity methods; Spacefast Access adds its own on Spacefast
   guests: true,                                  // anonymous visitors get a guest user on first write
   roles: { member: "subscriber", moderator: { from: "author", can: ["moderateComments"] } },
 });
@@ -128,12 +128,12 @@ export const likes = table({ post: ref(posts).onDelete("cascade") }).index(["pos
 
 An export named after a built-in must be that built-in's `.extend()`. Anything
 else fails the build (`F1220`), so there is never a second users table or a
-`first_posts` beside core `post`.
+`tp_posts` beside core `post`.
 
 ### 2.2 Users
 
 - **One identity.** `users` is WordPress's own users table, so wp-admin,
-  plugins, First Identity, Spacefast Access and the typed client all share one
+  plugins, TypedPress Identity, Spacefast Access and the typed client all share one
   `id`. There are no projections and no copies.
 - **Sign-in** (`signIn`): methods are `email` (code), `password`, `passkey`,
   `google`, and any OIDC provider (`{ oidc: { issuer, clientId: env(…) } }`).
@@ -141,12 +141,12 @@ else fails the build (`F1220`), so there is never a second users table or a
   On Spacefast, Spacefast Access adds Sign in with Spacefast and WordPress.com.
   It is additive and needs no config.
 - **Guests** (`guests: true`): the first rejected write creates a guest user.
-  Signing in later upgrades that same user id in place (First Identity's
+  Signing in later upgrades that same user id in place (TypedPress Identity's
   behavior), so nothing has to move.
 - **Roles**: the core ladder is `subscriber < contributor < author < editor < admin`.
   `roles` adds custom roles (`add_role`), each built from an existing one,
   optionally with extra capabilities. Every access rule accepts these names.
-- **Organizations** (`organizations: true`): exposes First Identity
+- **Organizations** (`organizations: true`): exposes TypedPress Identity
   organizations as the `orgs` kind (`name`, `members`, member `role`). Any kind
   can declare `org: ref(orgs)`, and the `"org"` access value then means "rows
   in an org I belong to".
@@ -158,7 +158,7 @@ else fails the build (`F1220`), so there is never a second users table or a
 - **Reads and writes:** `users.me()`, `users.get(id)`, `users.list(...)` (editors and up),
   `users.update("me", { bio })`. `email` is readable only by the user and admins.
   Identity operations (sessions, passkeys, MFA, emails, export, delete) are in
-  the client: `first.auth.*`.
+  the client: `typedpress.auth.*`.
 
 ### 2.3 Comments
 
@@ -166,7 +166,7 @@ else fails the build (`F1220`), so there is never a second users table or a
   on any collection or built-in post kind. Defaults: signed-in users only,
   `moderation: "first-time"`, threaded to depth 3, never closed.
   This compiles to post type `comments` support plus per-type discussion
-  settings, which First enforces in its write path.
+  settings, which TypedPress enforces in its write path.
 - **One kind for all threads:** `comments` covers every commentable kind. `on`
   is the item and `parent` the reply. Filter with `comments.list({ where: { on: post.id, status: "approved" } })`.
 - **Comment types** for other threaded data: `wp.comments.type("review", fields, { on, access })`
@@ -179,7 +179,7 @@ else fails the build (`F1220`), so there is never a second users table or a
 - **Access defaults:** anyone reads `approved`; the comment's author also sees
   their own `pending`; create follows the item's `comments` options, and the
   item must be readable and open; update/delete by the author within 15 minutes or `moderateComments`.
-- **Rendering:** `<Comments for={item} />` from `first/app` renders the thread and an
+- **Rendering:** `<Comments for={item} />` from `typedpress/app` renders the thread and an
   interactive form (rendering.md). In WordPress-rendered mode, the core
   comment blocks work unchanged.
 
@@ -195,7 +195,7 @@ else fails the build (`F1220`), so there is never a second users table or a
 
 Storage is chosen only by the builder. `collection()` is always WordPress
 posts and `table()` is always a SQL table; no option moves a kind from one to
-the other. A new project has content only, and `first add db` adds example
+the other. A new project has content only, and `typedpress add db` adds example
 tables, a note on migrations and typed client calls.
 
 Fields every kind gets:
@@ -227,7 +227,7 @@ Fields every kind gets:
 - Fields are **required** unless `.optional()` or `.default(v)`. On post kinds, a
   draft may be incomplete; required fields are checked at publish.
 - `.many()` makes a list (`select`, `media`, `file`, `ref`). A many-ref gets a
-  join table that First owns.
+  join table that TypedPress owns.
 - Constraints: `.unique()`, `.min()`, `.max()`, `.pattern()`, `.validate((v, ctx) => true | "message")`.
 - `.access({ read?, write? })` hides or locks a field. A hidden field is absent
   from results and can't be filtered or sorted on.
@@ -275,7 +275,7 @@ first term (`:topics.slug`), and `:path` for hierarchical kinds.
   `item.url`, canonical URLs, feeds, sitemaps and every WordPress-generated
   link all come from these filters, so they follow the pattern.
 - **Who renders it:** an `app/` route whose path matches the pattern renders
-  with First. Without one, WordPress renders through the template hierarchy. So
+  with TypedPress. Without one, WordPress renders through the template hierarchy. So
   a URL alone gives WordPress rendering, and adding a page takes it over.
 
 ### 2.8 Hooks
@@ -296,8 +296,8 @@ first term (`:topics.slug`), and `:path` for hierarchical kinds.
 
 - **Indexes** are inferred from refs, `.unique()`, `author`, and every
   `where`/`orderBy` key the compiler sees. Add compound ones with
-  `.index(fields, { unique? })`. `first check --json` lists each index and why it exists.
-- **No migration files.** First generates the SQL and keeps a ledger in
+  `.index(fields, { unique? })`. `typedpress check --json` lists each index and why it exists.
+- **No migration files.** TypedPress generates the SQL and keeps a ledger in
   `_generated/`. Deploy checks each change against live data:
   - Additive changes apply.
   - A new required field on rows that lack it fails with the count and the fix.
@@ -335,8 +335,8 @@ build. The full design and what was measured are in
   additions, read from one autoloaded option. Nothing compiles or validates at
   request time. Where a build and a version declare the same name, the build's
   declaration is used; only a label and a field's presentation are replaced.
-- **Git.** `first pull` writes the site's newest version, resolved, to
-  `first/_generated/runtime-schema.json`. `first build` reads it and declares
+- **Git.** `typedpress pull` writes the site's newest version, resolved, to
+  `tp/_generated/runtime-schema.json`. `typedpress build` reads it and declares
   those fields and kinds, so the next build contains them and the site's
   additions become no-ops. Deploying a build that lacks the site's runtime
   changes never drops them: the deploy-time check lists them and they stay
@@ -347,8 +347,8 @@ build. The full design and what was measured are in
   or a collection without its stored body, under a runtime collection's name.
 - **Surfaces.** Abilities `<app>/schema-read`, `<app>/schema-propose` (validate
   and return the diff, apply nothing) and `<app>/schema-apply` (its own
-  capability, so a credential can be denied it); `first schema list | diff |
-  apply | rollback`; the active version in `GET /__first/api/v1`; a wp-admin
+  capability, so a credential can be denied it); `typedpress schema list | diff |
+  apply | rollback`; the active version in `GET /__tp/api/v1`; a wp-admin
   screen that lists versions with their diffs.
 - A runtime field or kind is registered by the same code as a compiled one,
   so it gets the same protection from edits in wp-admin and over core REST.
@@ -375,8 +375,8 @@ await users.me();  await settings.get();  await menus.get("primary");
 ## 3a. HTTP: core routes underneath, one clean facade on top
 
 **One implementation.** Each kind is served by the core REST route WordPress
-already has (`/wp/v2/posts`, `/wp/v2/comments`, `/wp/v2/users`, ...). First
-makes those routes enforce First's rules, as `runtime/First/Wp/CoreAccess.php`
+already has (`/wp/v2/posts`, `/wp/v2/comments`, `/wp/v2/users`, ...). TypedPress
+makes those routes enforce TypedPress's rules, as `runtime/TypedPress/Wp/CoreAccess.php`
 already does for collections:
 - access rules and field masks;
 - validation;
@@ -384,7 +384,7 @@ already does for collections:
 
 The block editor, wp-admin and other plugins keep working against them unchanged.
 
-**One clean shape: `/__first/api/v1`.** It's a thin facade: every request is
+**One clean shape: `/__tp/api/v1`.** It's a thin facade: every request is
 dispatched internally to the core route with `rest_do_request()`, and only the
 input and output are mapped. There is no second permission check, no second
 query path and no second write path, so the facade can't disagree with core.
@@ -394,22 +394,22 @@ pagination in headers.
 
 | Facade | Dispatched to | Mapping |
 |---|---|---|
-| `GET /__first/api/v1/posts?where=…&with=…&limit=…&cursor=…` | `GET /wp/v2/posts` | First rows (`title`, `body`, fields flat, `status: "pending"`), `{ data, cursor }` |
-| `GET /__first/api/v1/posts/42` (`/posts/slug:hello`) | `GET /wp/v2/posts/42` | one row; `?format=md` gives markdown |
-| `POST /__first/api/v1/posts`, `PATCH …/42`, `DELETE …/42` | `POST /wp/v2/posts[/42]`, `DELETE` | First input → core input (`meta`, `status`) |
-| `/__first/api/v1/<kind>` for every kind (comments, users, media, your collections, taxonomies, tables) | the matching core route; tables use the one new `wp/v2/<table>` controller | same |
-| `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | the user row with extended fields |
-| `GET/PATCH /__first/api/v1/settings`, `/__first/api/v1/<global>` | settings, or the read-only Ability for public fields | flat object |
-| `POST /__first/api/v1/actions/<name>` (`GET` if `readonly`) | `/wp-abilities/v1/abilities/<app>/<name>/run` | `{ data }` |
-| `GET /__first/api/v1` | `/wp-json` index + Abilities list | the app's schema as the site runs it (the active runtime version included, §2.10): kinds, fields, actions (what `first pull` reads) |
-| `GET /__first/api/v1/openapi.json` | the build's `_generated/openapi.json` (§7) | the API as an OpenAPI 3.1 document, with the site's address |
+| `GET /__tp/api/v1/posts?where=…&with=…&limit=…&cursor=…` | `GET /wp/v2/posts` | First rows (`title`, `body`, fields flat, `status: "pending"`), `{ data, cursor }` |
+| `GET /__tp/api/v1/posts/42` (`/posts/slug:hello`) | `GET /wp/v2/posts/42` | one row; `?format=md` gives markdown |
+| `POST /__tp/api/v1/posts`, `PATCH …/42`, `DELETE …/42` | `POST /wp/v2/posts[/42]`, `DELETE` | TypedPress input → core input (`meta`, `status`) |
+| `/__tp/api/v1/<kind>` for every kind (comments, users, media, your collections, taxonomies, tables) | the matching core route; tables use the one new `wp/v2/<table>` controller | same |
+| `GET /__tp/api/v1/me` | `GET /wp/v2/users/me` | the user row with extended fields |
+| `GET/PATCH /__tp/api/v1/settings`, `/__tp/api/v1/<global>` | settings, or the read-only Ability for public fields | flat object |
+| `POST /__tp/api/v1/actions/<name>` (`GET` if `readonly`) | `/wp-abilities/v1/abilities/<app>/<name>/run` | `{ data }` |
+| `GET /__tp/api/v1` | `/wp-json` index + Abilities list | the app's schema as the site runs it (the active runtime version included, §2.10): kinds, fields, actions (what `typedpress pull` reads) |
+| `GET /__tp/api/v1/openapi.json` | the build's `_generated/openapi.json` (§7) | the API as an OpenAPI 3.1 document, with the site's address |
 
 - **Errors:** RFC 9457 problem documents (`code`, `detail`, `pointer`), mapped
   from core's `WP_Error`.
 - **Auth:** what core accepts: the cookie with `X-WP-Nonce`, application
-  passwords, and First Identity bearer tokens.
+  passwords, and TypedPress Identity bearer tokens.
 - **Location:** the facade sits outside `/wp-json`, like `/__spacefast/`. It's
-  served by First's front-controller route, before the theme loads, so it costs
+  served by TypedPress's front-controller route, before the theme loads, so it costs
   one internal REST dispatch.
 - **Who uses which:**
   - the typed client, the framework adapters, `curl` and agents use the facade;
@@ -430,9 +430,9 @@ check, so a public action runs anonymously.
 ## 4. Server code
 
 ```ts
-// first/server/posts.ts (any file under first/ works) → first.feature(), notifySubscribers.enqueue(...)
-import { action, job } from "first";
-import { posts } from "first:db";
+// tp/server/posts.ts (any file under tp/ works) → first.feature(), notifySubscribers.enqueue(...)
+import { action, job } from "typedpress";
+import { posts } from "typedpress:db";
 
 export const feature = action({ access: "editor" }, async ({ id }: { id: number }) => posts.update(id, { sticky: true }));
 export const notifySubscribers = job(async ({ postId }: { postId: number }) => { /* … */ }, { retries: 3 });
@@ -442,7 +442,7 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 - **`action`** takes its types from the handler signature. Options: `access`
   (default `editor`), `idempotent`, `readonly`, `signature`, `abilities`,
   `name`. Each action is an Ability `<app>/<name>` (core's run route and MCP),
-  `POST /__first/api/v1/actions/<name>` on the facade (§3a), and a typed client
+  `POST /__tp/api/v1/actions/<name>` on the facade (§3a), and a typed client
   method `first.<name>()`. The name is the export name (§1.1). A `signature` action
   (an inbound webhook) is an `app/**/route.ts` instead, since its caller signs
   the raw body.
@@ -459,24 +459,24 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 | Setup | Public URLs |
 |---|---|
 | no `app/` (default) | WordPress renders with the block theme: post and term URLs, home, archives, search, comments |
-| `app/` exists | First owns the front end. `app/` routes render; kind URLs without a page fall back to the theme template; everything else gets `app/not-found.tsx` |
+| `app/` exists | TypedPress owns the front end. `app/` routes render; kind URLs without a page fall back to the theme template; everything else gets `app/not-found.tsx` |
 | `frontend: false` | backend only: no public HTML |
 | `frontend: "https://…"` | an external site renders (04). Front-end URLs, permalinks, previews and feeds point there |
 
-In every mode, wp-admin, login, First sign-in, `/wp-json`, Action Scheduler,
+In every mode, wp-admin, login, TypedPress sign-in, `/wp-json`, Action Scheduler,
 media, the markdown versions of pages and `llms.txt` keep working.
 
 The sitemap is core's (`/wp-sitemap.xml`): core's providers for posts, terms and
-users, plus one First provider for `app/` pages and kinds with a `url`. It lists
-only what a signed-out visitor may read under First's access rules. `frontend:
+users, plus one TypedPress provider for `app/` pages and kinds with a `url`. It lists
+only what a signed-out visitor may read under TypedPress's access rules. `frontend:
 false` has no sitemap; with an external frontend its entries point there.
 
 ## 6. Config and the opinionated WordPress
 
 ```ts
-// first.config.ts (project root)
-import { defineConfig, env } from "first";
-import seo from "first-plugin-seo";
+// typedpress.config.ts (project root)
+import { defineConfig, env } from "typedpress";
+import seo from "typedpress-plugin-seo";
 
 export default defineConfig({
   name: "blog",
@@ -491,12 +491,12 @@ export default defineConfig({
 });
 ```
 
-First's release pins the WordPress it runs on. Users cannot remove any of the following.
+TypedPress's release pins the WordPress it runs on. Users cannot remove any of the following.
 
 - **Always installed:**
   - Secure Custom Fields, Action Scheduler, MCP Adapter;
   - Two Factor (enforced per `mfa`);
-  - First's own plugins;
+  - TypedPress's own plugins;
   - Polylang when `locales` is set.
 - **As WordPress ships them, unless the config turns them off:** XML-RPC
   (`xmlrpc: false`) and pingbacks and trackbacks (`pings: false`). Left on,
@@ -511,41 +511,41 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
     archives, the users sitemap and oEmbed author fields, unless
     `publicAuthors: true` or the users kind is readable by anyone (a users
     kind whose read rule gives a visitor some users keeps those as authors);
-  - changing the app's schema on the site: `first.config.ts` is the only way to
+  - changing the app's schema on the site: `typedpress.config.ts` is the only way to
     change the field groups, post types, taxonomies, meta, roles and
-    capabilities First generates (`docs/config-api.md`, "Schema lock");
+    capabilities TypedPress generates (`docs/config-api.md`, "Schema lock");
   - telling a visitor which accounts exist when they sign in or reset a
     password: one error for an unknown account and a wrong password;
   - the theme front end when `app/` or `frontend` takes over.
-- **Sealed mode** (`sealed: true`, opt-in): only First's plugins, the pinned
+- **Sealed mode** (`sealed: true`, opt-in): only TypedPress's plugins, the pinned
   platform plugins, the `plugins` the config declares and `use` plugin packages
   run as plugins. Other activations are refused and anything else loaded is
   reported; a host that mounts the build store can enforce the list before
   any plugin loads ([sealed.md](../sealed.md)).
-- **Spam checks:** First uses the Akismet a site sets up through Jetpack. While it
+- **Spam checks:** TypedPress uses the Akismet a site sets up through Jetpack. While it
   has a key (Jetpack's connection or `WPCOM_API_KEY`), Akismet checks every
   comment create. Without Akismet or a key, spam checks are off, the app
-  still runs, and `first doctor` says so.
+  still runs, and `typedpress doctor` says so.
 - **Always configured:** pretty permalinks, the Space's timezone, the object
-  cache, Batcache and edge cache (rendering.md), and a block theme (First's
+  cache, Batcache and edge cache (rendering.md), and a block theme (TypedPress's
   minimal default when none is chosen).
 
-## 7. Build output (`first/dist/`)
+## 7. Build output (`tp/dist/`)
 
-`first build` prebuilds everything that doesn't depend on the request or the content (prebuilt
+`typedpress build` prebuilds everything that doesn't depend on the request or the content (prebuilt
 pages need the content, so they are made where it is: see the third row):
 
 | Output | At request time |
 |---|---|
 | Compiled PHP for kinds, hooks, actions, jobs and pages | OPcache'd files in the build store; no parsing or reflection |
 | Route table, URL patterns, post types, taxonomies, field groups and roles as PHP arrays | Registered from arrays; no JSON or database reads. With `runtimeSchema`, the active version's additions come from one autoloaded option (§2.10) |
-| Pages that export `prerender = true`, as HTML plus `.md` (not written by `first build`) | With `output: "server"`: written on the site after a deploy, after each write that changes them, and at least hourly; served before WordPress parses the request. With `output: "static"`: written only by `first export`, as a static site (rendering.md §6.1) |
+| Pages that export `prerender = true`, as HTML plus `.md` (not written by `typedpress build`) | With `output: "server"`: written on the site after a deploy, after each write that changes them, and at least hourly; served before WordPress parses the request. With `output: "static"`: written only by `typedpress export`, as a static site (rendering.md §6.1) |
 | Interactive component stores, CSS and assets, content-hashed | Immutable files, cached for a year |
 | `llms.txt` and the sitemap skeleton | Files |
 | `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients; the site also serves `openapi.json` (§3a) |
 
 Client bundling uses Rolldown. It is Rust, built on the same OXC family as
-First's parser, and powers Vite. That keeps the build free of Node, so it can
+TypedPress's parser, and powers Vite. That keeps the build free of Node, so it can
 run on a box or in wasm. Check its crate API before depending on it.
 
 ## 8. Deleted from the current v2 API
@@ -559,10 +559,10 @@ run on a box or in wasm. Check its crate API before depending on it.
 - **Server and client APIs:**
   - `jobs.x.enqueue`;
   - `db.query`, `db.insert`, `db.update` and `db.delete`;
-  - review of `first/_generated/migrations/*.sql`;
-  - the generated `first/client/` source.
-- **Pages:** the `first_<name>` post types for kinds WordPress already has.
-  Deleted: `@spacefast/first-pages`, `first/pages.json`, `load()`, `<Show>`,
+  - review of `tp/_generated/migrations/*.sql`;
+  - the generated `tp/client/` source.
+- **Pages:** the `tp_<name>` post types for kinds WordPress already has.
+  Deleted: `@typedpress/pages`, `tp/pages.json`, `load()`, `<Show>`,
   `orElse()`, `count()`, `collectionPage()` and `<Island>`.
 
 ## 9. Zero 0.8 and Lakebed → this

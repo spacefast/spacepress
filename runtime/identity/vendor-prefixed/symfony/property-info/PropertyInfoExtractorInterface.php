@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo;
 
 /**
  * Gets info about PHP class properties.

@@ -1,7 +1,7 @@
 [package]
 # Stands in for crates.io `oxc-browserslist` through `[patch.crates-io]` in the root Cargo.toml.
 # oxc_compat (under oxc_transformer) needs its `Version` type, but only calls `resolve` for a
-# browserslist query, which First never passes. The real crate links js-sys and wasm-bindgen on
+# browserslist query, which TypedPress never passes. The real crate links js-sys and wasm-bindgen on
 # wasm32, whose imports the compiler's wasm hosts don't provide, so the browser build could not
 # compile 0.8 client apps. This crate keeps the types and refuses every query.
 name = "oxc-browserslist"

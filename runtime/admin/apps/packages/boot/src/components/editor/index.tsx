@@ -1,9 +1,9 @@
-import { entityEditorPath } from '@first-admin/schema';
+import { entityEditorPath } from '@typedpress-admin/schema';
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLinkProps } from '@wordpress/route';
-import { unlock, SiteIconBackButton } from '@first-admin/admin-toolkit';
-import { withEditor, withStylesId } from '@first-admin/lazy-editor';
+import { unlock, SiteIconBackButton } from '@typedpress-admin/admin-toolkit';
+import { withEditor, withStylesId } from '@typedpress-admin/lazy-editor';
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
 import { __ } from '@wordpress/i18n';
 import { useMergeRefs, useRefEffect, usePrevious } from '@wordpress/compose';
@@ -94,7 +94,7 @@ function SiteEditor( {
 		return null;
 	}
 	return (
-		<div className="first-admin-site-editor">
+		<div className="typedpress-admin-site-editor">
 			<Editor
 				postType={ postType }
 				postId={ postId }
@@ -119,10 +119,10 @@ function SiteEditor( {
 				<a
 					{ ...linkProps }
 					className={ clsx(
-						'first-admin-site-editor__hyperlink',
+						'typedpress-admin-site-editor__hyperlink',
 						linkProps.className
 					) }
-					aria-label={ __( 'Edit', 'first-admin' ) }
+					aria-label={ __( 'Edit', 'typedpress-admin' ) }
 					ref={ linkRef }
 				/>
 			) }

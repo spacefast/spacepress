@@ -7,17 +7,17 @@ function ScreenStyleVariations() {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'Browse styles', 'first-admin' ) }
+				title={ __( 'Browse styles', 'typedpress-admin' ) }
 				description={ __(
 					'Choose a variation to change the look of the site.',
-					'first-admin'
+					'typedpress-admin'
 				) }
 			/>
 
 			<Card
 				size="small"
 				isBorderless
-				className="first-admin-global-styles-screen-style-variations"
+				className="typedpress-admin-global-styles-screen-style-variations"
 			>
 				<CardBody>
 					<StyleVariationsContent />

@@ -3,14 +3,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { submitSignIn } from './sign-in';
 
-const harness = JSON.parse(readFileSync(process.env.FIRST_WP_HARNESS ??
+const harness = JSON.parse(readFileSync(process.env.TP_WP_HARNESS ??
 	fileURLToPath(new URL('../../../../tests/wp/.harness.json', import.meta.url)), 'utf8'));
 const site: string = harness.url;
 const headers = { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` };
 
 async function signIn(page: Page, role: 'admin' | 'editor' = 'admin') {
 	await page.goto(`${site}/wp-login.php`);
-	await submitSignIn(page, role, `first-test-${role}`);
+	await submitSignIn(page, role, `typedpress-test-${role}`);
 	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
 }
 
@@ -49,7 +49,7 @@ async function newSession(browser: Browser, path: string, label: string, hidden:
 }
 
 test.beforeAll(async ({ request }) => {
-	const author = await request.post(`${site}/__first/api/v1/authors`, {
+	const author = await request.post(`${site}/__tp/api/v1/authors`, {
 		headers, data: { name: `View author ${Date.now()}`, email: `views-${Date.now()}@example.test` },
 	});
 	expect(author.status(), await author.text()).toBe(201);
@@ -58,9 +58,9 @@ test.beforeAll(async ({ request }) => {
 		data: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'),
 	});
 	expect(image.status(), await image.text()).toBe(201);
-	const post = await request.post(`${site}/__first/api/v1/posts`, { headers, data: { title: `View post ${Date.now()}` } });
+	const post = await request.post(`${site}/__tp/api/v1/posts`, { headers, data: { title: `View post ${Date.now()}` } });
 	expect(post.status(), await post.text()).toBe(201);
-	const comment = await request.post(`${site}/__first/api/v1/comments`, {
+	const comment = await request.post(`${site}/__tp/api/v1/comments`, {
 		headers: { Authorization: `Basic ${Buffer.from(`subscriber:${harness.users.subscriber.appPassword}`).toString('base64')}` },
 		data: { postId: (await post.json()).data.id, name: 'View reader', body: `View comment ${Date.now()}` },
 	});
@@ -108,12 +108,12 @@ test('media remembers columns and sends its saved page size to WordPress after r
 	await newSession(browser, path, 'Alt text', true);
 });
 
-test('custom screens share saved columns between First and classic admin', async ({ page, browser }) => {
+test('custom screens share saved columns between TypedPress and classic admin', async ({ page, browser }) => {
 	await signIn(page);
 	await page.goto(`${site}/wp-admin/new/screens/test-comments`);
 	await resetView(page);
 	await hideColumn(page, 'Approved');
-	const classic = '/wp-admin/admin.php?page=first-screen-test-comments';
+	const classic = '/wp-admin/admin.php?page=typedpress-screen-test-comments';
 	await page.goto(`${site}${classic}`);
 	await expect(page.getByRole('button', { name: 'View options', exact: true })).toBeVisible();
 	await expect(page.getByRole('columnheader', { name: 'Approved', exact: true })).toHaveCount(0);

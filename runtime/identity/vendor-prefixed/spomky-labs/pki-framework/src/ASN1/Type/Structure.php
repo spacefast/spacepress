@@ -4,7 +4,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
 
 use ArrayIterator;
 use function count;
@@ -12,11 +12,11 @@ use Countable;
 use IteratorAggregate;
 use LogicException;
 use OutOfBoundsException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
 use function sprintf;
 
 /**

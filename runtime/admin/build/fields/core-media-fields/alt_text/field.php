@@ -2,13 +2,13 @@
 /**
  * Alt text field definition for core media fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'placeholder'   => __( 'No alt text', 'first-admin' ),
-	'label'         => __( 'Alt text', 'first-admin' ),
+	'placeholder'   => __( 'No alt text', 'typedpress-admin' ),
+	'label'         => __( 'Alt text', 'typedpress-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 );

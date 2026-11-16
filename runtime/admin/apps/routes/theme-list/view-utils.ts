@@ -1,4 +1,4 @@
-import type { View } from '@first-admin/dataviews';
+import type { View } from '@typedpress-admin/dataviews';
 
 const DEFAULT_VIEW: View = {
 	type: 'grid',

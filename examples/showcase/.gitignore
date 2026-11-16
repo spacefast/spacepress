@@ -1,3 +1,3 @@
 # Only db.d.ts is committed here; build-app.mjs regenerates the rest.
-/first/_generated/*
-!/first/_generated/db.d.ts
+/tp/_generated/*
+!/tp/_generated/db.d.ts

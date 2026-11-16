@@ -1,9 +1,9 @@
 {
 	"pages": {
 		"/agents": {
-			"title": "Agents - First",
+			"title": "Agents - TypedPress",
 			"h1": "Agents",
-			"description": "Set a project up for coding agents with first init and first mcp, and connect an agent to a running app's MCP endpoint.",
+			"description": "Set a project up for coding agents with typedpress init and typedpress mcp, and connect an agent to a running app's MCP endpoint.",
 			"canonical": "/agents",
 			"markdown": "/agents.md",
 			"ogImage": "/og/agents.png",
@@ -36,14 +36,14 @@
 				}
 			],
 			"social": {
-				"title": "Agents - First",
+				"title": "Agents - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/agents.mdx",
 			"toc": [
-				"set-a-project-up-for-coding-agents-first-init",
-				"develop-a-project-with-a-coding-agent-first-mcp",
+				"set-a-project-up-for-coding-agents-typedpress-init",
+				"develop-a-project-with-a-coding-agent-typedpress-mcp",
 				"run-the-dev-site-from-an-agent",
 				"use-the-running-app-the-sites-mcp-endpoint",
 				"find-the-endpoint-and-tools",
@@ -58,9 +58,9 @@
 			"sidebar": true
 		},
 		"/changelog/astro": {
-			"title": "@first/astro - First",
-			"h1": "@first/astro",
-			"description": "Changes to @first/astro, from its CHANGELOG.md.",
+			"title": "@typedpress/astro - TypedPress",
+			"h1": "@typedpress/astro",
+			"description": "Changes to @typedpress/astro, from its CHANGELOG.md.",
 			"canonical": "/changelog/astro",
 			"markdown": "/changelog/astro.md",
 			"ogImage": "/og/changelog/astro.png",
@@ -93,7 +93,7 @@
 				}
 			],
 			"social": {
-				"title": "@first/astro - First",
+				"title": "@typedpress/astro - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -107,9 +107,9 @@
 			"sidebar": true
 		},
 		"/changelog/blocks": {
-			"title": "@spacefast/first-blocks - First",
-			"h1": "@spacefast/first-blocks",
-			"description": "Changes to @spacefast/first-blocks, from its CHANGELOG.md.",
+			"title": "@typedpress/blocks - TypedPress",
+			"h1": "@typedpress/blocks",
+			"description": "Changes to @typedpress/blocks, from its CHANGELOG.md.",
 			"canonical": "/changelog/blocks",
 			"markdown": "/changelog/blocks.md",
 			"ogImage": "/og/changelog/blocks.png",
@@ -142,7 +142,7 @@
 				}
 			],
 			"social": {
-				"title": "@spacefast/first-blocks - First",
+				"title": "@typedpress/blocks - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -156,9 +156,9 @@
 			"sidebar": true
 		},
 		"/changelog": {
-			"title": "Changelogs - First",
+			"title": "Changelogs - TypedPress",
 			"h1": "Changelogs",
-			"description": "The changes in each First package.",
+			"description": "The changes in each TypedPress package.",
 			"canonical": "/changelog",
 			"markdown": "/changelog.md",
 			"ogImage": "/og/changelog.png",
@@ -191,7 +191,7 @@
 				}
 			],
 			"social": {
-				"title": "Changelogs - First",
+				"title": "Changelogs - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -202,9 +202,9 @@
 			"sidebar": true
 		},
 		"/compiler": {
-			"title": "TypeScript to PHP - First",
+			"title": "TypeScript to PHP - TypedPress",
 			"h1": "TypeScript to PHP",
-			"description": "How first build turns your hooks, actions, jobs, routes, access rules and the npm code they import into PHP that runs inside WordPress.",
+			"description": "How typedpress build turns your hooks, actions, jobs, routes, access rules and the npm code they import into PHP that runs inside WordPress.",
 			"canonical": "/compiler",
 			"markdown": "/compiler.md",
 			"ogImage": "/og/compiler.png",
@@ -237,7 +237,7 @@
 				}
 			],
 			"social": {
-				"title": "TypeScript to PHP - First",
+				"title": "TypeScript to PHP - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -256,7 +256,7 @@
 			"sidebar": true
 		},
 		"/examples/blog": {
-			"title": "Blog - First",
+			"title": "Blog - TypedPress",
 			"h1": "Blog",
 			"description": "A publication. Posts in two languages, authors, moderated comments, member accounts, image sizes, private files and signed webhooks.",
 			"canonical": "/examples/blog",
@@ -291,7 +291,7 @@
 				}
 			],
 			"social": {
-				"title": "Blog - First",
+				"title": "Blog - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -302,7 +302,7 @@
 			"sidebar": true
 		},
 		"/examples/full-site": {
-			"title": "Full site - First",
+			"title": "Full site - TypedPress",
 			"h1": "Full site",
 			"description": "A small editorial site. Pages written in TSX, rendered by WordPress, with one button that runs on the Interactivity API.",
 			"canonical": "/examples/full-site",
@@ -337,7 +337,7 @@
 				}
 			],
 			"social": {
-				"title": "Full site - First",
+				"title": "Full site - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -350,9 +350,9 @@
 			"sidebar": true
 		},
 		"/examples": {
-			"title": "Examples - First",
+			"title": "Examples - TypedPress",
 			"h1": "Examples",
-			"description": "Small First apps, each with every file it is built from and every file first build writes for it.",
+			"description": "Small TypedPress apps, each with every file it is built from and every file typedpress build writes for it.",
 			"canonical": "/examples",
 			"markdown": "/examples.md",
 			"ogImage": "/og/examples.png",
@@ -385,7 +385,7 @@
 				}
 			],
 			"social": {
-				"title": "Examples - First",
+				"title": "Examples - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -396,7 +396,7 @@
 			"sidebar": true
 		},
 		"/examples/pantry": {
-			"title": "Pantry - First",
+			"title": "Pantry - TypedPress",
 			"h1": "Pantry",
 			"description": "A pantry tracker. Three SQL tables, a hook that writes the shopping list, two actions and a background job.",
 			"canonical": "/examples/pantry",
@@ -431,7 +431,7 @@
 				}
 			],
 			"social": {
-				"title": "Pantry - First",
+				"title": "Pantry - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -442,7 +442,7 @@
 			"sidebar": true
 		},
 		"/examples/reading-list": {
-			"title": "Reading list - First",
+			"title": "Reading list - TypedPress",
 			"h1": "Reading list",
 			"description": "A reading log in 94 lines. Books are WordPress posts, reads are a SQL table, and each reader sees only their own.",
 			"canonical": "/examples/reading-list",
@@ -477,7 +477,7 @@
 				}
 			],
 			"social": {
-				"title": "Reading list - First",
+				"title": "Reading list - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -492,9 +492,9 @@
 			"sidebar": true
 		},
 		"/getting-started": {
-			"title": "Get started - First",
+			"title": "Get started - TypedPress",
 			"h1": "Get started",
-			"description": "Create a First app, run it on WordPress on your machine, and call its REST API.",
+			"description": "Create a TypedPress app, run it on WordPress on your machine, and call its REST API.",
 			"canonical": "/getting-started",
 			"markdown": "/getting-started.md",
 			"ogImage": "/og/getting-started.png",
@@ -527,7 +527,7 @@
 				}
 			],
 			"social": {
-				"title": "Get started - First",
+				"title": "Get started - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -548,9 +548,9 @@
 			"sidebar": true
 		},
 		"/": {
-			"title": "First",
-			"h1": "First",
-			"description": "First turns one TypeScript file into a WordPress backend. You get database tables, a REST API, sign-in, an admin and a typed client.",
+			"title": "TypedPress",
+			"h1": "TypedPress",
+			"description": "TypedPress turns one TypeScript file into a WordPress backend. You get database tables, a REST API, sign-in, an admin and a typed client.",
 			"canonical": "/",
 			"markdown": "/index.md",
 			"ogImage": "/og/index.png",
@@ -583,7 +583,7 @@
 				}
 			],
 			"social": {
-				"title": "First",
+				"title": "TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -601,9 +601,9 @@
 			"sidebar": true
 		},
 		"/pages": {
-			"title": "Pages in TSX and the Interactivity API - First",
+			"title": "Pages in TSX and the Interactivity API - TypedPress",
 			"h1": "Pages in TSX and the Interactivity API",
-			"description": "Render a First app's front end from first/app/ in TSX, compiled to PHP and rendered by WordPress.",
+			"description": "Render a TypedPress app's front end from tp/app/ in TSX, compiled to PHP and rendered by WordPress.",
 			"canonical": "/pages",
 			"markdown": "/pages.md",
 			"ogImage": "/og/pages.png",
@@ -636,13 +636,13 @@
 				}
 			],
 			"social": {
-				"title": "Pages in TSX and the Interactivity API - First",
+				"title": "Pages in TSX and the Interactivity API - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/pages.mdx",
 			"toc": [
-				"firstapp",
+				"tpapp",
 				"a-layout",
 				"a-page-with-its-own-form-handler",
 				"forms-that-post-to-an-action",
@@ -663,9 +663,9 @@
 			"sidebar": true
 		},
 		"/playground": {
-			"title": "Playground · First",
+			"title": "Playground \u00b7 TypedPress",
 			"h1": "Playground",
-			"description": "Edit a First config and see the PHP, SQL migrations and TypeScript client it compiles to. The compiler runs in your browser.",
+			"description": "Edit a TypedPress config and see the PHP, SQL migrations and TypeScript client it compiles to. The compiler runs in your browser.",
 			"canonical": "/playground",
 			"markdown": null,
 			"ogImage": "/og/playground.png",
@@ -693,7 +693,7 @@
 				}
 			],
 			"social": {
-				"title": "Playground · First",
+				"title": "Playground \u00b7 TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [
@@ -705,9 +705,9 @@
 			"next": null
 		},
 		"/publishing/other-platforms": {
-			"title": "Other platforms - First",
+			"title": "Other platforms - TypedPress",
 			"h1": "Other platforms",
-			"description": "Running a First app on a WordPress host other than Spacefast.",
+			"description": "Running a TypedPress app on a WordPress host other than Spacefast.",
 			"canonical": "/publishing/other-platforms",
 			"markdown": "/publishing/other-platforms.md",
 			"ogImage": "/og/publishing/other-platforms.png",
@@ -740,7 +740,7 @@
 				}
 			],
 			"social": {
-				"title": "Other platforms - First",
+				"title": "Other platforms - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -751,9 +751,9 @@
 			"sidebar": true
 		},
 		"/publishing/content-in-git": {
-			"title": "Content in git - First",
+			"title": "Content in git - TypedPress",
 			"h1": "Content in git",
-			"description": "Edits made on a First site come back to the repository as a pull request, and content merged in git goes to the site, through first sync.",
+			"description": "Edits made on a TypedPress site come back to the repository as a pull request, and content merged in git goes to the site, through typedpress sync.",
 			"canonical": "/publishing/content-in-git",
 			"markdown": "/publishing/content-in-git.md",
 			"ogImage": "/og/publishing/content-in-git.png",
@@ -786,7 +786,7 @@
 				}
 			],
 			"social": {
-				"title": "Content in git - First",
+				"title": "Content in git - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -803,9 +803,9 @@
 			"sidebar": true
 		},
 		"/publishing/spacefast": {
-			"title": "Publish on Spacefast - First",
+			"title": "Publish on Spacefast - TypedPress",
 			"h1": "Publish on Spacefast",
-			"description": "Putting a First app online on Spacefast with sf publish. Not available yet; no released CLI publishes a First app.",
+			"description": "Putting a TypedPress app online on Spacefast with sf publish. Not available yet; no released CLI publishes a TypedPress app.",
 			"canonical": "/publishing/spacefast",
 			"markdown": "/publishing/spacefast.md",
 			"ogImage": "/og/publishing/spacefast.png",
@@ -838,7 +838,7 @@
 				}
 			],
 			"social": {
-				"title": "Publish on Spacefast - First",
+				"title": "Publish on Spacefast - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -855,9 +855,9 @@
 			"sidebar": true
 		},
 		"/reference/cli": {
-			"title": "CLI - First",
+			"title": "CLI - TypedPress",
 			"h1": "CLI",
-			"description": "Every first command and every wp first command, with its arguments.",
+			"description": "Every typedpress command and every wp typedpress command, with its arguments.",
 			"canonical": "/reference/cli",
 			"markdown": "/reference/cli.md",
 			"ogImage": "/og/reference/cli.png",
@@ -890,7 +890,7 @@
 				}
 			],
 			"social": {
-				"title": "CLI - First",
+				"title": "CLI - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -905,9 +905,9 @@
 			"sidebar": true
 		},
 		"/reference/client": {
-			"title": "JavaScript client - First",
+			"title": "JavaScript client - TypedPress",
 			"h1": "JavaScript client",
-			"description": "The typed client first build writes to first/_generated/client/, and every function it exports.",
+			"description": "The typed client typedpress build writes to tp/_generated/client/, and every function it exports.",
 			"canonical": "/reference/client",
 			"markdown": "/reference/client.md",
 			"ogImage": "/og/reference/client.png",
@@ -940,7 +940,7 @@
 				}
 			],
 			"social": {
-				"title": "JavaScript client - First",
+				"title": "JavaScript client - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -962,9 +962,9 @@
 			"sidebar": true
 		},
 		"/reference/config": {
-			"title": "Config API - First",
+			"title": "Config API - TypedPress",
 			"h1": "Config API",
-			"description": "Every option of defineConfig and every function first.config.ts can import from \"first\".",
+			"description": "Every option of defineConfig and every function typedpress.config.ts can import from \"typedpress\".",
 			"canonical": "/reference/config",
 			"markdown": "/reference/config.md",
 			"ogImage": "/og/reference/config.png",
@@ -997,7 +997,7 @@
 				}
 			],
 			"social": {
-				"title": "Config API - First",
+				"title": "Config API - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1048,9 +1048,9 @@
 			"sidebar": true
 		},
 		"/reference/diagnostics": {
-			"title": "Diagnostic codes - First",
+			"title": "Diagnostic codes - TypedPress",
 			"h1": "Diagnostic codes",
-			"description": "Every code first check can report, and the refusals the test suite runs for each one.",
+			"description": "Every code typedpress check can report, and the refusals the test suite runs for each one.",
 			"canonical": "/reference/diagnostics",
 			"markdown": "/reference/diagnostics.md",
 			"ogImage": "/og/reference/diagnostics.png",
@@ -1083,7 +1083,7 @@
 				}
 			],
 			"social": {
-				"title": "Diagnostic codes - First",
+				"title": "Diagnostic codes - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1097,9 +1097,9 @@
 			"sidebar": true
 		},
 		"/reference": {
-			"title": "Reference - First",
+			"title": "Reference - TypedPress",
 			"h1": "Reference",
-			"description": "Every API First provides, generated from the code.",
+			"description": "Every API TypedPress provides, generated from the code.",
 			"canonical": "/reference",
 			"markdown": "/reference.md",
 			"ogImage": "/og/reference.png",
@@ -1132,7 +1132,7 @@
 				}
 			],
 			"social": {
-				"title": "Reference - First",
+				"title": "Reference - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1143,7 +1143,7 @@
 			"sidebar": true
 		},
 		"/reference/language-support": {
-			"title": "Language support - First",
+			"title": "Language support - TypedPress",
 			"h1": "Language support",
 			"description": "Every TypeScript and JavaScript construct the compiler has a test for: what compiles, what differs from JavaScript, and what is refused.",
 			"canonical": "/reference/language-support",
@@ -1178,7 +1178,7 @@
 				}
 			],
 			"social": {
-				"title": "Language support - First",
+				"title": "Language support - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1193,9 +1193,9 @@
 			"sidebar": true
 		},
 		"/reference/wordpress-plugins": {
-			"title": "WordPress plugins - First",
+			"title": "WordPress plugins - TypedPress",
 			"h1": "WordPress plugins",
-			"description": "The WordPress plugins First installs, and the plugins it supports.",
+			"description": "The WordPress plugins TypedPress installs, and the plugins it supports.",
 			"canonical": "/reference/wordpress-plugins",
 			"markdown": "/reference/wordpress-plugins.md",
 			"ogImage": "/og/reference/wordpress-plugins.png",
@@ -1228,13 +1228,13 @@
 				}
 			],
 			"social": {
-				"title": "WordPress plugins - First",
+				"title": "WordPress plugins - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/wordpress-plugins.mdx",
 			"toc": [
-				"plugins-first-supports",
+				"plugins-typedpress-supports",
 				"add-another-plugin",
 				"pinned-checksums"
 			],
@@ -1243,9 +1243,9 @@
 			"sidebar": true
 		},
 		"/rest/account/auth-config": {
-			"title": "Sign-in settings - First",
+			"title": "Sign-in settings - TypedPress",
 			"h1": "Sign-in settings",
-			"description": "Where First Identity signs users in (null without it), and whether guests are allowed. Reference for the GET /auth/config endpoint in the First REST API.",
+			"description": "Where TypedPress Identity signs users in (null without it), and whether guests are allowed. Reference for the GET /auth/config endpoint in the TypedPress REST API.",
 			"canonical": "/rest/account/auth-config",
 			"markdown": "/rest/account/auth-config.md",
 			"ogImage": "/og/rest/account/auth-config.png",
@@ -1278,7 +1278,7 @@
 				}
 			],
 			"social": {
-				"title": "Sign-in settings - First",
+				"title": "Sign-in settings - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1290,9 +1290,9 @@
 			"sidebar": true
 		},
 		"/rest/account/auth-guest": {
-			"title": "Start a guest session - First",
+			"title": "Start a guest session - TypedPress",
 			"h1": "Start a guest session",
-			"description": "Creates a guest user and signs them in. A 404 when First Identity is not installed or… Reference for the POST /auth/guest endpoint in the First REST API.",
+			"description": "Creates a guest user and signs them in. A 404 when TypedPress Identity is not installed or\u2026 Reference for the POST /auth/guest endpoint in the TypedPress REST API.",
 			"canonical": "/rest/account/auth-guest",
 			"markdown": "/rest/account/auth-guest.md",
 			"ogImage": "/og/rest/account/auth-guest.png",
@@ -1325,7 +1325,7 @@
 				}
 			],
 			"social": {
-				"title": "Start a guest session - First",
+				"title": "Start a guest session - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1337,9 +1337,9 @@
 			"sidebar": true
 		},
 		"/rest/account/auth-me": {
-			"title": "The signed-in user - First",
+			"title": "The signed-in user - TypedPress",
 			"h1": "The signed-in user",
-			"description": "The user making the request, with their role; null when nobody is signed in. Reference for the GET /me endpoint in the First REST API.",
+			"description": "The user making the request, with their role; null when nobody is signed in. Reference for the GET /me endpoint in the TypedPress REST API.",
 			"canonical": "/rest/account/auth-me",
 			"markdown": "/rest/account/auth-me.md",
 			"ogImage": "/og/rest/account/auth-me.png",
@@ -1372,7 +1372,7 @@
 				}
 			],
 			"social": {
-				"title": "The signed-in user - First",
+				"title": "The signed-in user - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1384,9 +1384,9 @@
 			"sidebar": true
 		},
 		"/rest/account/auth-sign-out": {
-			"title": "Sign out - First",
+			"title": "Sign out - TypedPress",
 			"h1": "Sign out",
-			"description": "Ends the First Identity session the request's access token belongs to. A cookie or… Reference for the DELETE /auth/session endpoint in the First REST API.",
+			"description": "Ends the TypedPress Identity session the request's access token belongs to. A cookie or\u2026 Reference for the DELETE /auth/session endpoint in the TypedPress REST API.",
 			"canonical": "/rest/account/auth-sign-out",
 			"markdown": "/rest/account/auth-sign-out.md",
 			"ogImage": "/og/rest/account/auth-sign-out.png",
@@ -1419,7 +1419,7 @@
 				}
 			],
 			"social": {
-				"title": "Sign out - First",
+				"title": "Sign out - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1431,9 +1431,9 @@
 			"sidebar": true
 		},
 		"/rest/live/live-refresh": {
-			"title": "Refresh subscribed reads - First",
+			"title": "Refresh subscribed reads - TypedPress",
 			"h1": "Refresh subscribed reads",
-			"description": "Takes up to 20 reads, each with the token of the answer the caller last got, and answers each… Reference for the POST /_live endpoint in the First REST API.",
+			"description": "Takes up to 20 reads, each with the token of the answer the caller last got, and answers each\u2026 Reference for the POST /_live endpoint in the TypedPress REST API.",
 			"canonical": "/rest/live/live-refresh",
 			"markdown": "/rest/live/live-refresh.md",
 			"ogImage": "/og/rest/live/live-refresh.png",
@@ -1466,7 +1466,7 @@
 				}
 			],
 			"social": {
-				"title": "Refresh subscribed reads - First",
+				"title": "Refresh subscribed reads - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1478,9 +1478,9 @@
 			"sidebar": true
 		},
 		"/rest/actions/actions-approve-comment": {
-			"title": "Call approveComment - First",
+			"title": "Call approveComment - TypedPress",
 			"h1": "Call approveComment",
-			"description": "Runs the approveComment action with the input sent and returns its result. Reference for the POST /actions/approveComment endpoint in the First REST API.",
+			"description": "Runs the approveComment action with the input sent and returns its result. Reference for the POST /actions/approveComment endpoint in the TypedPress REST API.",
 			"canonical": "/rest/actions/actions-approve-comment",
 			"markdown": "/rest/actions/actions-approve-comment.md",
 			"ogImage": "/og/rest/actions/actions-approve-comment.png",
@@ -1513,7 +1513,7 @@
 				}
 			],
 			"social": {
-				"title": "Call approveComment - First",
+				"title": "Call approveComment - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1525,9 +1525,9 @@
 			"sidebar": true
 		},
 		"/rest/actions/actions-published-count": {
-			"title": "Call publishedCount - First",
+			"title": "Call publishedCount - TypedPress",
 			"h1": "Call publishedCount",
-			"description": "Runs the publishedCount action with the input sent and returns its result. Reference for the POST /actions/publishedCount endpoint in the First REST API.",
+			"description": "Runs the publishedCount action with the input sent and returns its result. Reference for the POST /actions/publishedCount endpoint in the TypedPress REST API.",
 			"canonical": "/rest/actions/actions-published-count",
 			"markdown": "/rest/actions/actions-published-count.md",
 			"ogImage": "/og/rest/actions/actions-published-count.png",
@@ -1560,7 +1560,7 @@
 				}
 			],
 			"social": {
-				"title": "Call publishedCount - First",
+				"title": "Call publishedCount - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1572,9 +1572,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-compare": {
-			"title": "Compare staged and live authors - First",
+			"title": "Compare staged and live authors - TypedPress",
 			"h1": "Compare staged and live authors",
-			"description": "The staged fields whose value differs from the live row, with both values,… Reference for the GET /authors/{id}/staged/compare endpoint in the First REST API.",
+			"description": "The staged fields whose value differs from the live row, with both values,\u2026 Reference for the GET /authors/{id}/staged/compare endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-compare",
 			"markdown": "/rest/authors/authors-compare.md",
 			"ogImage": "/og/rest/authors/authors-compare.png",
@@ -1607,7 +1607,7 @@
 				}
 			],
 			"social": {
-				"title": "Compare staged and live authors - First",
+				"title": "Compare staged and live authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1619,9 +1619,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-create": {
-			"title": "Create in authors - First",
+			"title": "Create in authors - TypedPress",
 			"h1": "Create in authors",
-			"description": "Creates one authors row and returns it. Reference for the POST /authors endpoint in the First REST API.",
+			"description": "Creates one authors row and returns it. Reference for the POST /authors endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-create",
 			"markdown": "/rest/authors/authors-create.md",
 			"ogImage": "/og/rest/authors/authors-create.png",
@@ -1654,7 +1654,7 @@
 				}
 			],
 			"social": {
-				"title": "Create in authors - First",
+				"title": "Create in authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1666,9 +1666,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-delete": {
-			"title": "Delete from authors - First",
+			"title": "Delete from authors - TypedPress",
 			"h1": "Delete from authors",
-			"description": "Deletes one authors row for good and returns the row as it was. Reference for the DELETE /authors/{id} endpoint in the First REST API.",
+			"description": "Deletes one authors row for good and returns the row as it was. Reference for the DELETE /authors/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-delete",
 			"markdown": "/rest/authors/authors-delete.md",
 			"ogImage": "/og/rest/authors/authors-delete.png",
@@ -1701,7 +1701,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete from authors - First",
+				"title": "Delete from authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1713,9 +1713,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-discard": {
-			"title": "Discard the staged version of authors - First",
+			"title": "Discard the staged version of authors - TypedPress",
 			"h1": "Discard the staged version of authors",
-			"description": "Ends the staged version. The live row is untouched; the discarded version stays… Reference for the DELETE /authors/{id}/staged endpoint in the First REST API.",
+			"description": "Ends the staged version. The live row is untouched; the discarded version stays\u2026 Reference for the DELETE /authors/{id}/staged endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-discard",
 			"markdown": "/rest/authors/authors-discard.md",
 			"ogImage": "/og/rest/authors/authors-discard.png",
@@ -1748,7 +1748,7 @@
 				}
 			],
 			"social": {
-				"title": "Discard the staged version of authors - First",
+				"title": "Discard the staged version of authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1760,9 +1760,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-get": {
-			"title": "Get one of authors - First",
+			"title": "Get one of authors - TypedPress",
 			"h1": "Get one of authors",
-			"description": "One authors row. Reference for the GET /authors/{id} endpoint in the First REST API.",
+			"description": "One authors row. Reference for the GET /authors/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-get",
 			"markdown": "/rest/authors/authors-get.md",
 			"ogImage": "/og/rest/authors/authors-get.png",
@@ -1795,7 +1795,7 @@
 				}
 			],
 			"social": {
-				"title": "Get one of authors - First",
+				"title": "Get one of authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1807,9 +1807,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-list": {
-			"title": "List authors - First",
+			"title": "List authors - TypedPress",
 			"h1": "List authors",
-			"description": "The authors rows the caller may read, one page at a time. limit is 50 unless given, and at… Reference for the GET /authors endpoint in the First REST API.",
+			"description": "The authors rows the caller may read, one page at a time. limit is 50 unless given, and at\u2026 Reference for the GET /authors endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-list",
 			"markdown": "/rest/authors/authors-list.md",
 			"ogImage": "/og/rest/authors/authors-list.png",
@@ -1842,7 +1842,7 @@
 				}
 			],
 			"social": {
-				"title": "List authors - First",
+				"title": "List authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1854,9 +1854,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-preview-link": {
-			"title": "Preview link for staged authors - First",
+			"title": "Preview link for staged authors - TypedPress",
 			"h1": "Preview link for staged authors",
-			"description": "A signed link to the staged version that works without signing in until… Reference for the POST /authors/{id}/staged/preview endpoint in the First REST API.",
+			"description": "A signed link to the staged version that works without signing in until\u2026 Reference for the POST /authors/{id}/staged/preview endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-preview-link",
 			"markdown": "/rest/authors/authors-preview-link.md",
 			"ogImage": "/og/rest/authors/authors-preview-link.png",
@@ -1889,7 +1889,7 @@
 				}
 			],
 			"social": {
-				"title": "Preview link for staged authors - First",
+				"title": "Preview link for staged authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1901,9 +1901,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-promote": {
-			"title": "Promote the staged version of authors - First",
+			"title": "Promote the staged version of authors - TypedPress",
 			"h1": "Promote the staged version of authors",
-			"description": "Makes the staged version live, as an update of the row by the caller: its… Reference for the POST /authors/{id}/staged/promote endpoint in the First REST API.",
+			"description": "Makes the staged version live, as an update of the row by the caller: its\u2026 Reference for the POST /authors/{id}/staged/promote endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-promote",
 			"markdown": "/rest/authors/authors-promote.md",
 			"ogImage": "/og/rest/authors/authors-promote.png",
@@ -1936,7 +1936,7 @@
 				}
 			],
 			"social": {
-				"title": "Promote the staged version of authors - First",
+				"title": "Promote the staged version of authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1948,9 +1948,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-revisions-get": {
-			"title": "Get a revision of authors - First",
+			"title": "Get a revision of authors - TypedPress",
 			"h1": "Get a revision of authors",
-			"description": "The row as this revision saved it. Reference for the GET /authors/{id}/revisions/{revision} endpoint in the First REST API.",
+			"description": "The row as this revision saved it. Reference for the GET /authors/{id}/revisions/{revision} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-revisions-get",
 			"markdown": "/rest/authors/authors-revisions-get.md",
 			"ogImage": "/og/rest/authors/authors-revisions-get.png",
@@ -1983,7 +1983,7 @@
 				}
 			],
 			"social": {
-				"title": "Get a revision of authors - First",
+				"title": "Get a revision of authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -1995,9 +1995,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-revisions-list": {
-			"title": "Revisions of authors - First",
+			"title": "Revisions of authors - TypedPress",
 			"h1": "Revisions of authors",
-			"description": "Each saved version of the row, with its time and who saved it. Reference for the GET /authors/{id}/revisions endpoint in the First REST API.",
+			"description": "Each saved version of the row, with its time and who saved it. Reference for the GET /authors/{id}/revisions endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-revisions-list",
 			"markdown": "/rest/authors/authors-revisions-list.md",
 			"ogImage": "/og/rest/authors/authors-revisions-list.png",
@@ -2030,7 +2030,7 @@
 				}
 			],
 			"social": {
-				"title": "Revisions of authors - First",
+				"title": "Revisions of authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2042,9 +2042,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-revisions-restore": {
-			"title": "Restore a revision of authors - First",
+			"title": "Restore a revision of authors - TypedPress",
 			"h1": "Restore a revision of authors",
-			"description": "Makes the revision the current row, as an update of the row. Reference for the POST /authors/{id}/revisions/{revision}/restore endpoint in the First REST API.",
+			"description": "Makes the revision the current row, as an update of the row. Reference for the POST /authors/{id}/revisions/{revision}/restore endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-revisions-restore",
 			"markdown": "/rest/authors/authors-revisions-restore.md",
 			"ogImage": "/og/rest/authors/authors-revisions-restore.png",
@@ -2077,7 +2077,7 @@
 				}
 			],
 			"social": {
-				"title": "Restore a revision of authors - First",
+				"title": "Restore a revision of authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2089,9 +2089,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-stage": {
-			"title": "Stage a change to authors - First",
+			"title": "Stage a change to authors - TypedPress",
 			"h1": "Stage a change to authors",
-			"description": "Saves the fields sent into the row's staged version. The live row stays as it is… Reference for the PATCH /authors/{id}/staged endpoint in the First REST API.",
+			"description": "Saves the fields sent into the row's staged version. The live row stays as it is\u2026 Reference for the PATCH /authors/{id}/staged endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-stage",
 			"markdown": "/rest/authors/authors-stage.md",
 			"ogImage": "/og/rest/authors/authors-stage.png",
@@ -2124,7 +2124,7 @@
 				}
 			],
 			"social": {
-				"title": "Stage a change to authors - First",
+				"title": "Stage a change to authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2136,9 +2136,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-staged": {
-			"title": "Staged version of authors - First",
+			"title": "Staged version of authors - TypedPress",
 			"h1": "Staged version of authors",
-			"description": "The row as it would be once promoted, the fields that are staged, and who staged… Reference for the GET /authors/{id}/staged endpoint in the First REST API.",
+			"description": "The row as it would be once promoted, the fields that are staged, and who staged\u2026 Reference for the GET /authors/{id}/staged endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-staged",
 			"markdown": "/rest/authors/authors-staged.md",
 			"ogImage": "/og/rest/authors/authors-staged.png",
@@ -2171,7 +2171,7 @@
 				}
 			],
 			"social": {
-				"title": "Staged version of authors - First",
+				"title": "Staged version of authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2183,9 +2183,9 @@
 			"sidebar": true
 		},
 		"/rest/authors/authors-update": {
-			"title": "Update in authors - First",
+			"title": "Update in authors - TypedPress",
 			"h1": "Update in authors",
-			"description": "Changes the fields sent on one authors row and returns the row. Reference for the PATCH /authors/{id} endpoint in the First REST API.",
+			"description": "Changes the fields sent on one authors row and returns the row. Reference for the PATCH /authors/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/authors/authors-update",
 			"markdown": "/rest/authors/authors-update.md",
 			"ogImage": "/og/rest/authors/authors-update.png",
@@ -2218,7 +2218,7 @@
 				}
 			],
 			"social": {
-				"title": "Update in authors - First",
+				"title": "Update in authors - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2230,9 +2230,9 @@
 			"sidebar": true
 		},
 		"/rest/comments/comments-create": {
-			"title": "Create in comments - First",
+			"title": "Create in comments - TypedPress",
 			"h1": "Create in comments",
-			"description": "Creates one comments row and returns it. Reference for the POST /comments endpoint in the First REST API.",
+			"description": "Creates one comments row and returns it. Reference for the POST /comments endpoint in the TypedPress REST API.",
 			"canonical": "/rest/comments/comments-create",
 			"markdown": "/rest/comments/comments-create.md",
 			"ogImage": "/og/rest/comments/comments-create.png",
@@ -2265,7 +2265,7 @@
 				}
 			],
 			"social": {
-				"title": "Create in comments - First",
+				"title": "Create in comments - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2277,9 +2277,9 @@
 			"sidebar": true
 		},
 		"/rest/comments/comments-delete": {
-			"title": "Delete from comments - First",
+			"title": "Delete from comments - TypedPress",
 			"h1": "Delete from comments",
-			"description": "Deletes one comments row for good and returns the row as it was. Reference for the DELETE /comments/{id} endpoint in the First REST API.",
+			"description": "Deletes one comments row for good and returns the row as it was. Reference for the DELETE /comments/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/comments/comments-delete",
 			"markdown": "/rest/comments/comments-delete.md",
 			"ogImage": "/og/rest/comments/comments-delete.png",
@@ -2312,7 +2312,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete from comments - First",
+				"title": "Delete from comments - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2324,9 +2324,9 @@
 			"sidebar": true
 		},
 		"/rest/comments/comments-get": {
-			"title": "Get one of comments - First",
+			"title": "Get one of comments - TypedPress",
 			"h1": "Get one of comments",
-			"description": "One comments row. Reference for the GET /comments/{id} endpoint in the First REST API.",
+			"description": "One comments row. Reference for the GET /comments/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/comments/comments-get",
 			"markdown": "/rest/comments/comments-get.md",
 			"ogImage": "/og/rest/comments/comments-get.png",
@@ -2359,7 +2359,7 @@
 				}
 			],
 			"social": {
-				"title": "Get one of comments - First",
+				"title": "Get one of comments - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2371,9 +2371,9 @@
 			"sidebar": true
 		},
 		"/rest/comments/comments-list": {
-			"title": "List comments - First",
+			"title": "List comments - TypedPress",
 			"h1": "List comments",
-			"description": "The comments rows the caller may read, one page at a time. limit is 50 unless given, and at… Reference for the GET /comments endpoint in the First REST API.",
+			"description": "The comments rows the caller may read, one page at a time. limit is 50 unless given, and at\u2026 Reference for the GET /comments endpoint in the TypedPress REST API.",
 			"canonical": "/rest/comments/comments-list",
 			"markdown": "/rest/comments/comments-list.md",
 			"ogImage": "/og/rest/comments/comments-list.png",
@@ -2406,7 +2406,7 @@
 				}
 			],
 			"social": {
-				"title": "List comments - First",
+				"title": "List comments - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2418,9 +2418,9 @@
 			"sidebar": true
 		},
 		"/rest/comments/comments-update": {
-			"title": "Update in comments - First",
+			"title": "Update in comments - TypedPress",
 			"h1": "Update in comments",
-			"description": "Changes the fields sent on one comments row and returns the row. Reference for the PATCH /comments/{id} endpoint in the First REST API.",
+			"description": "Changes the fields sent on one comments row and returns the row. Reference for the PATCH /comments/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/comments/comments-update",
 			"markdown": "/rest/comments/comments-update.md",
 			"ogImage": "/og/rest/comments/comments-update.png",
@@ -2453,7 +2453,7 @@
 				}
 			],
 			"social": {
-				"title": "Update in comments - First",
+				"title": "Update in comments - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2465,9 +2465,9 @@
 			"sidebar": true
 		},
 		"/rest/files/files-decks-delete": {
-			"title": "Delete a decks file - First",
+			"title": "Delete a decks file - TypedPress",
 			"h1": "Delete a decks file",
-			"description": "Deletes the file. Fields that held it become null. Reference for the DELETE /files/decks/{id} endpoint in the First REST API.",
+			"description": "Deletes the file. Fields that held it become null. Reference for the DELETE /files/decks/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/files/files-decks-delete",
 			"markdown": "/rest/files/files-decks-delete.md",
 			"ogImage": "/og/rest/files/files-decks-delete.png",
@@ -2500,7 +2500,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete a decks file - First",
+				"title": "Delete a decks file - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2512,9 +2512,9 @@
 			"sidebar": true
 		},
 		"/rest/files/files-decks-download": {
-			"title": "Download a decks file - First",
+			"title": "Download a decks file - TypedPress",
 			"h1": "Download a decks file",
-			"description": "The file's bytes. The link is the permission: exp and sig come from the… Reference for the GET /files/decks/{id}/download endpoint in the First REST API.",
+			"description": "The file's bytes. The link is the permission: exp and sig come from the\u2026 Reference for the GET /files/decks/{id}/download endpoint in the TypedPress REST API.",
 			"canonical": "/rest/files/files-decks-download",
 			"markdown": "/rest/files/files-decks-download.md",
 			"ogImage": "/og/rest/files/files-decks-download.png",
@@ -2547,7 +2547,7 @@
 				}
 			],
 			"social": {
-				"title": "Download a decks file - First",
+				"title": "Download a decks file - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2559,9 +2559,9 @@
 			"sidebar": true
 		},
 		"/rest/files/files-decks-get": {
-			"title": "Get a decks file - First",
+			"title": "Get a decks file - TypedPress",
 			"h1": "Get a decks file",
-			"description": "The file's details, with a fresh signed link in url. Reference for the GET /files/decks/{id} endpoint in the First REST API.",
+			"description": "The file's details, with a fresh signed link in url. Reference for the GET /files/decks/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/files/files-decks-get",
 			"markdown": "/rest/files/files-decks-get.md",
 			"ogImage": "/og/rest/files/files-decks-get.png",
@@ -2594,7 +2594,7 @@
 				}
 			],
 			"social": {
-				"title": "Get a decks file - First",
+				"title": "Get a decks file - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2606,9 +2606,9 @@
 			"sidebar": true
 		},
 		"/rest/files/files-decks-upload": {
-			"title": "Upload to decks - First",
+			"title": "Upload to decks - TypedPress",
 			"h1": "Upload to decks",
-			"description": "Stores one file of at most 20000000 bytes in the decks bucket. Accepts application/pdf. Reference for the POST /files/decks endpoint in the First REST API.",
+			"description": "Stores one file of at most 20000000 bytes in the decks bucket. Accepts application/pdf. Reference for the POST /files/decks endpoint in the TypedPress REST API.",
 			"canonical": "/rest/files/files-decks-upload",
 			"markdown": "/rest/files/files-decks-upload.md",
 			"ogImage": "/og/rest/files/files-decks-upload.png",
@@ -2641,7 +2641,7 @@
 				}
 			],
 			"social": {
-				"title": "Upload to decks - First",
+				"title": "Upload to decks - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2653,9 +2653,9 @@
 			"sidebar": true
 		},
 		"/rest/globals/globals-settings-get": {
-			"title": "Read Site settings - First",
+			"title": "Read Site settings - TypedPress",
 			"h1": "Read Site settings",
-			"description": "The global's values. A field never set reads as its default. Reference for the GET /settings endpoint in the First REST API.",
+			"description": "The global's values. A field never set reads as its default. Reference for the GET /settings endpoint in the TypedPress REST API.",
 			"canonical": "/rest/globals/globals-settings-get",
 			"markdown": "/rest/globals/globals-settings-get.md",
 			"ogImage": "/og/rest/globals/globals-settings-get.png",
@@ -2688,7 +2688,7 @@
 				}
 			],
 			"social": {
-				"title": "Read Site settings - First",
+				"title": "Read Site settings - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2700,9 +2700,9 @@
 			"sidebar": true
 		},
 		"/rest/globals/globals-settings-update": {
-			"title": "Update Site settings - First",
+			"title": "Update Site settings - TypedPress",
 			"h1": "Update Site settings",
-			"description": "Changes the fields sent and returns every value. Reference for the PATCH /settings endpoint in the First REST API.",
+			"description": "Changes the fields sent and returns every value. Reference for the PATCH /settings endpoint in the TypedPress REST API.",
 			"canonical": "/rest/globals/globals-settings-update",
 			"markdown": "/rest/globals/globals-settings-update.md",
 			"ogImage": "/og/rest/globals/globals-settings-update.png",
@@ -2735,7 +2735,7 @@
 				}
 			],
 			"social": {
-				"title": "Update Site settings - First",
+				"title": "Update Site settings - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2747,9 +2747,9 @@
 			"sidebar": true
 		},
 		"/rest": {
-			"title": "First REST API - First",
-			"h1": "First REST API",
-			"description": "This is the API of the blog example, as first build describes it. Every First app gets the same routes for its own kinds, globals, actions and file buckets,…",
+			"title": "TypedPress REST API - TypedPress",
+			"h1": "TypedPress REST API",
+			"description": "This is the API of the blog example, as typedpress build describes it. Every TypedPress app gets the same routes for its own kinds, globals, actions and file\u2026",
 			"canonical": "/rest",
 			"markdown": "/rest.md",
 			"ogImage": "/og/rest.png",
@@ -2782,7 +2782,7 @@
 				}
 			],
 			"social": {
-				"title": "First REST API - First",
+				"title": "TypedPress REST API - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2808,9 +2808,9 @@
 			"sidebar": true
 		},
 		"/rest/media/media-delete": {
-			"title": "Delete a media item - First",
+			"title": "Delete a media item - TypedPress",
 			"h1": "Delete a media item",
-			"description": "Deletes the item and its files. Fields that pointed at it become null. Reference for the DELETE /media/{id} endpoint in the First REST API.",
+			"description": "Deletes the item and its files. Fields that pointed at it become null. Reference for the DELETE /media/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/media/media-delete",
 			"markdown": "/rest/media/media-delete.md",
 			"ogImage": "/og/rest/media/media-delete.png",
@@ -2843,7 +2843,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete a media item - First",
+				"title": "Delete a media item - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2855,9 +2855,9 @@
 			"sidebar": true
 		},
 		"/rest/media/media-get": {
-			"title": "Get a media item - First",
+			"title": "Get a media item - TypedPress",
 			"h1": "Get a media item",
-			"description": "One media item. Reference for the GET /media/{id} endpoint in the First REST API.",
+			"description": "One media item. Reference for the GET /media/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/media/media-get",
 			"markdown": "/rest/media/media-get.md",
 			"ogImage": "/og/rest/media/media-get.png",
@@ -2890,7 +2890,7 @@
 				}
 			],
 			"social": {
-				"title": "Get a media item - First",
+				"title": "Get a media item - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2902,9 +2902,9 @@
 			"sidebar": true
 		},
 		"/rest/media/media-list": {
-			"title": "List media - First",
+			"title": "List media - TypedPress",
 			"h1": "List media",
-			"description": "Media library items, one page at a time. Reference for the GET /media endpoint in the First REST API.",
+			"description": "Media library items, one page at a time. Reference for the GET /media endpoint in the TypedPress REST API.",
 			"canonical": "/rest/media/media-list",
 			"markdown": "/rest/media/media-list.md",
 			"ogImage": "/og/rest/media/media-list.png",
@@ -2937,7 +2937,7 @@
 				}
 			],
 			"social": {
-				"title": "List media - First",
+				"title": "List media - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2949,9 +2949,9 @@
 			"sidebar": true
 		},
 		"/rest/media/media-update": {
-			"title": "Update a media item - First",
+			"title": "Update a media item - TypedPress",
 			"h1": "Update a media item",
-			"description": "Changes the alt text, the caption or the focal point. Any other field is refused. Reference for the PATCH /media/{id} endpoint in the First REST API.",
+			"description": "Changes the alt text, the caption or the focal point. Any other field is refused. Reference for the PATCH /media/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/media/media-update",
 			"markdown": "/rest/media/media-update.md",
 			"ogImage": "/og/rest/media/media-update.png",
@@ -2984,7 +2984,7 @@
 				}
 			],
 			"social": {
-				"title": "Update a media item - First",
+				"title": "Update a media item - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -2996,9 +2996,9 @@
 			"sidebar": true
 		},
 		"/rest/media/media-upload": {
-			"title": "Upload media - First",
+			"title": "Upload media - TypedPress",
 			"h1": "Upload media",
-			"description": "Uploads one file to the media library. Reference for the POST /media endpoint in the First REST API.",
+			"description": "Uploads one file to the media library. Reference for the POST /media endpoint in the TypedPress REST API.",
 			"canonical": "/rest/media/media-upload",
 			"markdown": "/rest/media/media-upload.md",
 			"ogImage": "/og/rest/media/media-upload.png",
@@ -3031,7 +3031,7 @@
 				}
 			],
 			"social": {
-				"title": "Upload media - First",
+				"title": "Upload media - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3043,9 +3043,9 @@
 			"sidebar": true
 		},
 		"/rest/members/members-create": {
-			"title": "Create in members - First",
+			"title": "Create in members - TypedPress",
 			"h1": "Create in members",
-			"description": "Creates one members row and returns it. Reference for the POST /members endpoint in the First REST API.",
+			"description": "Creates one members row and returns it. Reference for the POST /members endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/members-create",
 			"markdown": "/rest/members/members-create.md",
 			"ogImage": "/og/rest/members/members-create.png",
@@ -3078,7 +3078,7 @@
 				}
 			],
 			"social": {
-				"title": "Create in members - First",
+				"title": "Create in members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3090,9 +3090,9 @@
 			"sidebar": true
 		},
 		"/rest/members/members-delete": {
-			"title": "Delete from members - First",
+			"title": "Delete from members - TypedPress",
 			"h1": "Delete from members",
-			"description": "Deletes one members row for good and returns the row as it was. Reference for the DELETE /members/{id} endpoint in the First REST API.",
+			"description": "Deletes one members row for good and returns the row as it was. Reference for the DELETE /members/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/members-delete",
 			"markdown": "/rest/members/members-delete.md",
 			"ogImage": "/og/rest/members/members-delete.png",
@@ -3125,7 +3125,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete from members - First",
+				"title": "Delete from members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3137,9 +3137,9 @@
 			"sidebar": true
 		},
 		"/rest/members/members-get": {
-			"title": "Get one of members - First",
+			"title": "Get one of members - TypedPress",
 			"h1": "Get one of members",
-			"description": "One members row. Reference for the GET /members/{id} endpoint in the First REST API.",
+			"description": "One members row. Reference for the GET /members/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/members-get",
 			"markdown": "/rest/members/members-get.md",
 			"ogImage": "/og/rest/members/members-get.png",
@@ -3172,7 +3172,7 @@
 				}
 			],
 			"social": {
-				"title": "Get one of members - First",
+				"title": "Get one of members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3184,9 +3184,9 @@
 			"sidebar": true
 		},
 		"/rest/members/members-list": {
-			"title": "List members - First",
+			"title": "List members - TypedPress",
 			"h1": "List members",
-			"description": "The members rows the caller may read, one page at a time. limit is 50 unless given, and at… Reference for the GET /members endpoint in the First REST API.",
+			"description": "The members rows the caller may read, one page at a time. limit is 50 unless given, and at\u2026 Reference for the GET /members endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/members-list",
 			"markdown": "/rest/members/members-list.md",
 			"ogImage": "/og/rest/members/members-list.png",
@@ -3219,7 +3219,7 @@
 				}
 			],
 			"social": {
-				"title": "List members - First",
+				"title": "List members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3231,9 +3231,9 @@
 			"sidebar": true
 		},
 		"/rest/members/members-update": {
-			"title": "Update in members - First",
+			"title": "Update in members - TypedPress",
 			"h1": "Update in members",
-			"description": "Changes the fields sent on one members row and returns the row. Reference for the PATCH /members/{id} endpoint in the First REST API.",
+			"description": "Changes the fields sent on one members row and returns the row. Reference for the PATCH /members/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/members-update",
 			"markdown": "/rest/members/members-update.md",
 			"ogImage": "/og/rest/members/members-update.png",
@@ -3266,7 +3266,7 @@
 				}
 			],
 			"social": {
-				"title": "Update in members - First",
+				"title": "Update in members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3278,9 +3278,9 @@
 			"sidebar": true
 		},
 		"/rest/members/users-create": {
-			"title": "Create in members - First",
+			"title": "Create in members - TypedPress",
 			"h1": "Create in members",
-			"description": "Creates one members row and returns it. Reference for the POST /users endpoint in the First REST API.",
+			"description": "Creates one members row and returns it. Reference for the POST /users endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/users-create",
 			"markdown": "/rest/members/users-create.md",
 			"ogImage": "/og/rest/members/users-create.png",
@@ -3313,7 +3313,7 @@
 				}
 			],
 			"social": {
-				"title": "Create in members - First",
+				"title": "Create in members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3325,9 +3325,9 @@
 			"sidebar": true
 		},
 		"/rest/members/users-delete": {
-			"title": "Delete from members - First",
+			"title": "Delete from members - TypedPress",
 			"h1": "Delete from members",
-			"description": "Deletes one members row for good and returns the row as it was. Reference for the DELETE /users/{id} endpoint in the First REST API.",
+			"description": "Deletes one members row for good and returns the row as it was. Reference for the DELETE /users/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/users-delete",
 			"markdown": "/rest/members/users-delete.md",
 			"ogImage": "/og/rest/members/users-delete.png",
@@ -3360,7 +3360,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete from members - First",
+				"title": "Delete from members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3372,9 +3372,9 @@
 			"sidebar": true
 		},
 		"/rest/members/users-get": {
-			"title": "Get one of members - First",
+			"title": "Get one of members - TypedPress",
 			"h1": "Get one of members",
-			"description": "One members row. Reference for the GET /users/{id} endpoint in the First REST API.",
+			"description": "One members row. Reference for the GET /users/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/users-get",
 			"markdown": "/rest/members/users-get.md",
 			"ogImage": "/og/rest/members/users-get.png",
@@ -3407,7 +3407,7 @@
 				}
 			],
 			"social": {
-				"title": "Get one of members - First",
+				"title": "Get one of members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3419,9 +3419,9 @@
 			"sidebar": true
 		},
 		"/rest/members/users-list": {
-			"title": "List members - First",
+			"title": "List members - TypedPress",
 			"h1": "List members",
-			"description": "The members rows the caller may read, one page at a time. limit is 50 unless given, and at most… Reference for the GET /users endpoint in the First REST API.",
+			"description": "The members rows the caller may read, one page at a time. limit is 50 unless given, and at most\u2026 Reference for the GET /users endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/users-list",
 			"markdown": "/rest/members/users-list.md",
 			"ogImage": "/og/rest/members/users-list.png",
@@ -3454,7 +3454,7 @@
 				}
 			],
 			"social": {
-				"title": "List members - First",
+				"title": "List members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3466,9 +3466,9 @@
 			"sidebar": true
 		},
 		"/rest/members/users-update": {
-			"title": "Update in members - First",
+			"title": "Update in members - TypedPress",
 			"h1": "Update in members",
-			"description": "Changes the fields sent on one members row and returns the row. Reference for the PATCH /users/{id} endpoint in the First REST API.",
+			"description": "Changes the fields sent on one members row and returns the row. Reference for the PATCH /users/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/members/users-update",
 			"markdown": "/rest/members/users-update.md",
 			"ogImage": "/og/rest/members/users-update.png",
@@ -3501,7 +3501,7 @@
 				}
 			],
 			"social": {
-				"title": "Update in members - First",
+				"title": "Update in members - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3513,9 +3513,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-compare": {
-			"title": "Compare staged and live posts - First",
+			"title": "Compare staged and live posts - TypedPress",
 			"h1": "Compare staged and live posts",
-			"description": "The staged fields whose value differs from the live row, with both values,… Reference for the GET /posts/{id}/staged/compare endpoint in the First REST API.",
+			"description": "The staged fields whose value differs from the live row, with both values,\u2026 Reference for the GET /posts/{id}/staged/compare endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-compare",
 			"markdown": "/rest/posts/posts-compare.md",
 			"ogImage": "/og/rest/posts/posts-compare.png",
@@ -3548,7 +3548,7 @@
 				}
 			],
 			"social": {
-				"title": "Compare staged and live posts - First",
+				"title": "Compare staged and live posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3560,9 +3560,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-create": {
-			"title": "Create in posts - First",
+			"title": "Create in posts - TypedPress",
 			"h1": "Create in posts",
-			"description": "Creates one posts row and returns it. Reference for the POST /posts endpoint in the First REST API.",
+			"description": "Creates one posts row and returns it. Reference for the POST /posts endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-create",
 			"markdown": "/rest/posts/posts-create.md",
 			"ogImage": "/og/rest/posts/posts-create.png",
@@ -3595,7 +3595,7 @@
 				}
 			],
 			"social": {
-				"title": "Create in posts - First",
+				"title": "Create in posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3607,9 +3607,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-delete": {
-			"title": "Delete from posts - First",
+			"title": "Delete from posts - TypedPress",
 			"h1": "Delete from posts",
-			"description": "Deletes one posts row for good and returns the row as it was. Reference for the DELETE /posts/{id} endpoint in the First REST API.",
+			"description": "Deletes one posts row for good and returns the row as it was. Reference for the DELETE /posts/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-delete",
 			"markdown": "/rest/posts/posts-delete.md",
 			"ogImage": "/og/rest/posts/posts-delete.png",
@@ -3642,7 +3642,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete from posts - First",
+				"title": "Delete from posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3654,9 +3654,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-discard": {
-			"title": "Discard the staged version of posts - First",
+			"title": "Discard the staged version of posts - TypedPress",
 			"h1": "Discard the staged version of posts",
-			"description": "Ends the staged version. The live row is untouched; the discarded version stays… Reference for the DELETE /posts/{id}/staged endpoint in the First REST API.",
+			"description": "Ends the staged version. The live row is untouched; the discarded version stays\u2026 Reference for the DELETE /posts/{id}/staged endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-discard",
 			"markdown": "/rest/posts/posts-discard.md",
 			"ogImage": "/og/rest/posts/posts-discard.png",
@@ -3689,7 +3689,7 @@
 				}
 			],
 			"social": {
-				"title": "Discard the staged version of posts - First",
+				"title": "Discard the staged version of posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3701,9 +3701,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-get": {
-			"title": "Get one of posts - First",
+			"title": "Get one of posts - TypedPress",
 			"h1": "Get one of posts",
-			"description": "One posts row. Reference for the GET /posts/{id} endpoint in the First REST API.",
+			"description": "One posts row. Reference for the GET /posts/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-get",
 			"markdown": "/rest/posts/posts-get.md",
 			"ogImage": "/og/rest/posts/posts-get.png",
@@ -3736,7 +3736,7 @@
 				}
 			],
 			"social": {
-				"title": "Get one of posts - First",
+				"title": "Get one of posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3748,9 +3748,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-list": {
-			"title": "List posts - First",
+			"title": "List posts - TypedPress",
 			"h1": "List posts",
-			"description": "The posts rows the caller may read, one page at a time. limit is 50 unless given, and at most… Reference for the GET /posts endpoint in the First REST API.",
+			"description": "The posts rows the caller may read, one page at a time. limit is 50 unless given, and at most\u2026 Reference for the GET /posts endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-list",
 			"markdown": "/rest/posts/posts-list.md",
 			"ogImage": "/og/rest/posts/posts-list.png",
@@ -3783,7 +3783,7 @@
 				}
 			],
 			"social": {
-				"title": "List posts - First",
+				"title": "List posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3795,9 +3795,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-preview-link": {
-			"title": "Preview link for staged posts - First",
+			"title": "Preview link for staged posts - TypedPress",
 			"h1": "Preview link for staged posts",
-			"description": "A signed link to the staged version that works without signing in until it… Reference for the POST /posts/{id}/staged/preview endpoint in the First REST API.",
+			"description": "A signed link to the staged version that works without signing in until it\u2026 Reference for the POST /posts/{id}/staged/preview endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-preview-link",
 			"markdown": "/rest/posts/posts-preview-link.md",
 			"ogImage": "/og/rest/posts/posts-preview-link.png",
@@ -3830,7 +3830,7 @@
 				}
 			],
 			"social": {
-				"title": "Preview link for staged posts - First",
+				"title": "Preview link for staged posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3842,9 +3842,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-promote": {
-			"title": "Promote the staged version of posts - First",
+			"title": "Promote the staged version of posts - TypedPress",
 			"h1": "Promote the staged version of posts",
-			"description": "Makes the staged version live, as an update of the row by the caller: its… Reference for the POST /posts/{id}/staged/promote endpoint in the First REST API.",
+			"description": "Makes the staged version live, as an update of the row by the caller: its\u2026 Reference for the POST /posts/{id}/staged/promote endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-promote",
 			"markdown": "/rest/posts/posts-promote.md",
 			"ogImage": "/og/rest/posts/posts-promote.png",
@@ -3877,7 +3877,7 @@
 				}
 			],
 			"social": {
-				"title": "Promote the staged version of posts - First",
+				"title": "Promote the staged version of posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3889,9 +3889,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-revisions-get": {
-			"title": "Get a revision of posts - First",
+			"title": "Get a revision of posts - TypedPress",
 			"h1": "Get a revision of posts",
-			"description": "The row as this revision saved it. Reference for the GET /posts/{id}/revisions/{revision} endpoint in the First REST API.",
+			"description": "The row as this revision saved it. Reference for the GET /posts/{id}/revisions/{revision} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-revisions-get",
 			"markdown": "/rest/posts/posts-revisions-get.md",
 			"ogImage": "/og/rest/posts/posts-revisions-get.png",
@@ -3924,7 +3924,7 @@
 				}
 			],
 			"social": {
-				"title": "Get a revision of posts - First",
+				"title": "Get a revision of posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3936,9 +3936,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-revisions-list": {
-			"title": "Revisions of posts - First",
+			"title": "Revisions of posts - TypedPress",
 			"h1": "Revisions of posts",
-			"description": "Each saved version of the row, with its time and who saved it. Reference for the GET /posts/{id}/revisions endpoint in the First REST API.",
+			"description": "Each saved version of the row, with its time and who saved it. Reference for the GET /posts/{id}/revisions endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-revisions-list",
 			"markdown": "/rest/posts/posts-revisions-list.md",
 			"ogImage": "/og/rest/posts/posts-revisions-list.png",
@@ -3971,7 +3971,7 @@
 				}
 			],
 			"social": {
-				"title": "Revisions of posts - First",
+				"title": "Revisions of posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -3983,9 +3983,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-revisions-restore": {
-			"title": "Restore a revision of posts - First",
+			"title": "Restore a revision of posts - TypedPress",
 			"h1": "Restore a revision of posts",
-			"description": "Makes the revision the current row, as an update of the row. Reference for the POST /posts/{id}/revisions/{revision}/restore endpoint in the First REST API.",
+			"description": "Makes the revision the current row, as an update of the row. Reference for the POST /posts/{id}/revisions/{revision}/restore endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-revisions-restore",
 			"markdown": "/rest/posts/posts-revisions-restore.md",
 			"ogImage": "/og/rest/posts/posts-revisions-restore.png",
@@ -4018,7 +4018,7 @@
 				}
 			],
 			"social": {
-				"title": "Restore a revision of posts - First",
+				"title": "Restore a revision of posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4030,9 +4030,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-stage": {
-			"title": "Stage a change to posts - First",
+			"title": "Stage a change to posts - TypedPress",
 			"h1": "Stage a change to posts",
-			"description": "Saves the fields sent into the row's staged version. The live row stays as it is… Reference for the PATCH /posts/{id}/staged endpoint in the First REST API.",
+			"description": "Saves the fields sent into the row's staged version. The live row stays as it is\u2026 Reference for the PATCH /posts/{id}/staged endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-stage",
 			"markdown": "/rest/posts/posts-stage.md",
 			"ogImage": "/og/rest/posts/posts-stage.png",
@@ -4065,7 +4065,7 @@
 				}
 			],
 			"social": {
-				"title": "Stage a change to posts - First",
+				"title": "Stage a change to posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4077,9 +4077,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-staged": {
-			"title": "Staged version of posts - First",
+			"title": "Staged version of posts - TypedPress",
 			"h1": "Staged version of posts",
-			"description": "The row as it would be once promoted, the fields that are staged, and who staged… Reference for the GET /posts/{id}/staged endpoint in the First REST API.",
+			"description": "The row as it would be once promoted, the fields that are staged, and who staged\u2026 Reference for the GET /posts/{id}/staged endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-staged",
 			"markdown": "/rest/posts/posts-staged.md",
 			"ogImage": "/og/rest/posts/posts-staged.png",
@@ -4112,7 +4112,7 @@
 				}
 			],
 			"social": {
-				"title": "Staged version of posts - First",
+				"title": "Staged version of posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4124,9 +4124,9 @@
 			"sidebar": true
 		},
 		"/rest/posts/posts-update": {
-			"title": "Update in posts - First",
+			"title": "Update in posts - TypedPress",
 			"h1": "Update in posts",
-			"description": "Changes the fields sent on one posts row and returns the row. Reference for the PATCH /posts/{id} endpoint in the First REST API.",
+			"description": "Changes the fields sent on one posts row and returns the row. Reference for the PATCH /posts/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/posts/posts-update",
 			"markdown": "/rest/posts/posts-update.md",
 			"ogImage": "/og/rest/posts/posts-update.png",
@@ -4159,7 +4159,7 @@
 				}
 			],
 			"social": {
-				"title": "Update in posts - First",
+				"title": "Update in posts - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4171,9 +4171,9 @@
 			"sidebar": true
 		},
 		"/rest/schema/openapi": {
-			"title": "This document - First",
+			"title": "This document - TypedPress",
 			"h1": "This document",
-			"description": "The app's API as an OpenAPI 3.1 document: what first build wrote to… Reference for the GET /openapi.json endpoint in the First REST API.",
+			"description": "The app's API as an OpenAPI 3.1 document: what typedpress build wrote to\u2026 Reference for the GET /openapi.json endpoint in the TypedPress REST API.",
 			"canonical": "/rest/schema/openapi",
 			"markdown": "/rest/schema/openapi.md",
 			"ogImage": "/og/rest/schema/openapi.png",
@@ -4206,7 +4206,7 @@
 				}
 			],
 			"social": {
-				"title": "This document - First",
+				"title": "This document - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4218,9 +4218,9 @@
 			"sidebar": true
 		},
 		"/rest/schema/schema": {
-			"title": "Describe the app - First",
+			"title": "Describe the app - TypedPress",
 			"h1": "Describe the app",
-			"description": "The app's kinds with the WordPress route behind each, their fields and access rules, its globals and… Reference for the GET / endpoint in the First REST API.",
+			"description": "The app's kinds with the WordPress route behind each, their fields and access rules, its globals and\u2026 Reference for the GET / endpoint in the TypedPress REST API.",
 			"canonical": "/rest/schema/schema",
 			"markdown": "/rest/schema/schema.md",
 			"ogImage": "/og/rest/schema/schema.png",
@@ -4253,7 +4253,7 @@
 				}
 			],
 			"social": {
-				"title": "Describe the app - First",
+				"title": "Describe the app - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4265,9 +4265,9 @@
 			"sidebar": true
 		},
 		"/rest/search/search": {
-			"title": "Search the site - First",
+			"title": "Search the site - TypedPress",
 			"h1": "Search the site",
-			"description": "Runs the kinds' search on every kind with a searchable field, as the caller. A kind the caller… Reference for the GET /search endpoint in the First REST API.",
+			"description": "Runs the kinds' search on every kind with a searchable field, as the caller. A kind the caller\u2026 Reference for the GET /search endpoint in the TypedPress REST API.",
 			"canonical": "/rest/search/search",
 			"markdown": "/rest/search/search.md",
 			"ogImage": "/og/rest/search/search.png",
@@ -4300,7 +4300,7 @@
 				}
 			],
 			"social": {
-				"title": "Search the site - First",
+				"title": "Search the site - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4312,9 +4312,9 @@
 			"sidebar": true
 		},
 		"/rest/sync/sync-posts-apply": {
-			"title": "Apply a posts sync record - First",
+			"title": "Apply a posts sync record - TypedPress",
 			"h1": "Apply a posts sync record",
-			"description": "Creates or updates one row from a content file, when the row still matches expect. A row… Reference for the POST /sync/posts endpoint in the First REST API.",
+			"description": "Creates or updates one row from a content file, when the row still matches expect. A row\u2026 Reference for the POST /sync/posts endpoint in the TypedPress REST API.",
 			"canonical": "/rest/sync/sync-posts-apply",
 			"markdown": "/rest/sync/sync-posts-apply.md",
 			"ogImage": "/og/rest/sync/sync-posts-apply.png",
@@ -4347,7 +4347,7 @@
 				}
 			],
 			"social": {
-				"title": "Apply a posts sync record - First",
+				"title": "Apply a posts sync record - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4359,9 +4359,9 @@
 			"sidebar": true
 		},
 		"/rest/sync/sync-posts-convert": {
-			"title": "Convert posts content between formats - First",
+			"title": "Convert posts content between formats - TypedPress",
 			"h1": "Convert posts content between formats",
-			"description": "Converts a body between block markup, Markdown and HTML, as the site's own… Reference for the POST /sync/posts/convert endpoint in the First REST API.",
+			"description": "Converts a body between block markup, Markdown and HTML, as the site's own\u2026 Reference for the POST /sync/posts/convert endpoint in the TypedPress REST API.",
 			"canonical": "/rest/sync/sync-posts-convert",
 			"markdown": "/rest/sync/sync-posts-convert.md",
 			"ogImage": "/og/rest/sync/sync-posts-convert.png",
@@ -4394,7 +4394,7 @@
 				}
 			],
 			"social": {
-				"title": "Convert posts content between formats - First",
+				"title": "Convert posts content between formats - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4406,9 +4406,9 @@
 			"sidebar": true
 		},
 		"/rest/sync/sync-posts-merge": {
-			"title": "Three-way merge posts content - First",
+			"title": "Three-way merge posts content - TypedPress",
 			"h1": "Three-way merge posts content",
-			"description": "Merges two versions of a body over their common base. One item, or up to a batch… Reference for the POST /sync/posts/merge endpoint in the First REST API.",
+			"description": "Merges two versions of a body over their common base. One item, or up to a batch\u2026 Reference for the POST /sync/posts/merge endpoint in the TypedPress REST API.",
 			"canonical": "/rest/sync/sync-posts-merge",
 			"markdown": "/rest/sync/sync-posts-merge.md",
 			"ogImage": "/og/rest/sync/sync-posts-merge.png",
@@ -4441,7 +4441,7 @@
 				}
 			],
 			"social": {
-				"title": "Three-way merge posts content - First",
+				"title": "Three-way merge posts content - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4453,9 +4453,9 @@
 			"sidebar": true
 		},
 		"/rest/sync/sync-posts-read": {
-			"title": "Read posts for sync - First",
+			"title": "Read posts for sync - TypedPress",
 			"h1": "Read posts for sync",
-			"description": "Rows as sync records with their digests, in pages by id. Reference for the GET /sync/posts endpoint in the First REST API.",
+			"description": "Rows as sync records with their digests, in pages by id. Reference for the GET /sync/posts endpoint in the TypedPress REST API.",
 			"canonical": "/rest/sync/sync-posts-read",
 			"markdown": "/rest/sync/sync-posts-read.md",
 			"ogImage": "/og/rest/sync/sync-posts-read.png",
@@ -4488,7 +4488,7 @@
 				}
 			],
 			"social": {
-				"title": "Read posts for sync - First",
+				"title": "Read posts for sync - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4500,9 +4500,9 @@
 			"sidebar": true
 		},
 		"/rest/sync/sync-posts-trash": {
-			"title": "Trash a synced posts row - First",
+			"title": "Trash a synced posts row - TypedPress",
 			"h1": "Trash a synced posts row",
-			"description": "Moves the row of a deleted content file to the trash, when the row still matches… Reference for the POST /sync/posts/trash endpoint in the First REST API.",
+			"description": "Moves the row of a deleted content file to the trash, when the row still matches\u2026 Reference for the POST /sync/posts/trash endpoint in the TypedPress REST API.",
 			"canonical": "/rest/sync/sync-posts-trash",
 			"markdown": "/rest/sync/sync-posts-trash.md",
 			"ogImage": "/og/rest/sync/sync-posts-trash.png",
@@ -4535,7 +4535,7 @@
 				}
 			],
 			"social": {
-				"title": "Trash a synced posts row - First",
+				"title": "Trash a synced posts row - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4547,9 +4547,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/categories-create": {
-			"title": "Create in categories - First",
+			"title": "Create in categories - TypedPress",
 			"h1": "Create in categories",
-			"description": "Creates one of WordPress's categories and returns it. Reference for the POST /categories endpoint in the First REST API.",
+			"description": "Creates one of WordPress's categories and returns it. Reference for the POST /categories endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/categories-create",
 			"markdown": "/rest/word-press/categories-create.md",
 			"ogImage": "/og/rest/word-press/categories-create.png",
@@ -4582,7 +4582,7 @@
 				}
 			],
 			"social": {
-				"title": "Create in categories - First",
+				"title": "Create in categories - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4594,9 +4594,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/categories-delete": {
-			"title": "Delete one of categories - First",
+			"title": "Delete one of categories - TypedPress",
 			"h1": "Delete one of categories",
-			"description": "Deletes the row for good and returns it as it was. Reference for the DELETE /categories/{id} endpoint in the First REST API.",
+			"description": "Deletes the row for good and returns it as it was. Reference for the DELETE /categories/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/categories-delete",
 			"markdown": "/rest/word-press/categories-delete.md",
 			"ogImage": "/og/rest/word-press/categories-delete.png",
@@ -4629,7 +4629,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete one of categories - First",
+				"title": "Delete one of categories - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4641,9 +4641,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/categories-get": {
-			"title": "Get one of categories - First",
+			"title": "Get one of categories - TypedPress",
 			"h1": "Get one of categories",
-			"description": "One of WordPress's categories. Reference for the GET /categories/{id} endpoint in the First REST API.",
+			"description": "One of WordPress's categories. Reference for the GET /categories/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/categories-get",
 			"markdown": "/rest/word-press/categories-get.md",
 			"ogImage": "/og/rest/word-press/categories-get.png",
@@ -4676,7 +4676,7 @@
 				}
 			],
 			"social": {
-				"title": "Get one of categories - First",
+				"title": "Get one of categories - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4688,9 +4688,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/categories-list": {
-			"title": "List categories - First",
+			"title": "List categories - TypedPress",
 			"h1": "List categories",
-			"description": "WordPress's categories, one page at a time. The route's other WordPress filters (status,… Reference for the GET /categories endpoint in the First REST API.",
+			"description": "WordPress's categories, one page at a time. The route's other WordPress filters (status,\u2026 Reference for the GET /categories endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/categories-list",
 			"markdown": "/rest/word-press/categories-list.md",
 			"ogImage": "/og/rest/word-press/categories-list.png",
@@ -4723,7 +4723,7 @@
 				}
 			],
 			"social": {
-				"title": "List categories - First",
+				"title": "List categories - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4735,9 +4735,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/categories-update": {
-			"title": "Update one of categories - First",
+			"title": "Update one of categories - TypedPress",
 			"h1": "Update one of categories",
-			"description": "Changes the fields sent and returns the row. Reference for the PATCH /categories/{id} endpoint in the First REST API.",
+			"description": "Changes the fields sent and returns the row. Reference for the PATCH /categories/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/categories-update",
 			"markdown": "/rest/word-press/categories-update.md",
 			"ogImage": "/og/rest/word-press/categories-update.png",
@@ -4770,7 +4770,7 @@
 				}
 			],
 			"social": {
-				"title": "Update one of categories - First",
+				"title": "Update one of categories - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4782,9 +4782,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/menus-get": {
-			"title": "Get a menu - First",
+			"title": "Get a menu - TypedPress",
 			"h1": "Get a menu",
-			"description": "The menu in one theme location. Reference for the GET /menus/{location} endpoint in the First REST API.",
+			"description": "The menu in one theme location. Reference for the GET /menus/{location} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/menus-get",
 			"markdown": "/rest/word-press/menus-get.md",
 			"ogImage": "/og/rest/word-press/menus-get.png",
@@ -4817,7 +4817,7 @@
 				}
 			],
 			"social": {
-				"title": "Get a menu - First",
+				"title": "Get a menu - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4829,9 +4829,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/menus-list": {
-			"title": "List menus - First",
+			"title": "List menus - TypedPress",
 			"h1": "List menus",
-			"description": "The menu in each theme location, as a tree. Reference for the GET /menus endpoint in the First REST API.",
+			"description": "The menu in each theme location, as a tree. Reference for the GET /menus endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/menus-list",
 			"markdown": "/rest/word-press/menus-list.md",
 			"ogImage": "/og/rest/word-press/menus-list.png",
@@ -4864,7 +4864,7 @@
 				}
 			],
 			"social": {
-				"title": "List menus - First",
+				"title": "List menus - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4876,9 +4876,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/pages-create": {
-			"title": "Create in pages - First",
+			"title": "Create in pages - TypedPress",
 			"h1": "Create in pages",
-			"description": "Creates one of WordPress's pages and returns it. Reference for the POST /pages endpoint in the First REST API.",
+			"description": "Creates one of WordPress's pages and returns it. Reference for the POST /pages endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/pages-create",
 			"markdown": "/rest/word-press/pages-create.md",
 			"ogImage": "/og/rest/word-press/pages-create.png",
@@ -4911,7 +4911,7 @@
 				}
 			],
 			"social": {
-				"title": "Create in pages - First",
+				"title": "Create in pages - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4923,9 +4923,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/pages-delete": {
-			"title": "Delete one of pages - First",
+			"title": "Delete one of pages - TypedPress",
 			"h1": "Delete one of pages",
-			"description": "Deletes the row for good and returns it as it was. Reference for the DELETE /pages/{id} endpoint in the First REST API.",
+			"description": "Deletes the row for good and returns it as it was. Reference for the DELETE /pages/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/pages-delete",
 			"markdown": "/rest/word-press/pages-delete.md",
 			"ogImage": "/og/rest/word-press/pages-delete.png",
@@ -4958,7 +4958,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete one of pages - First",
+				"title": "Delete one of pages - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -4970,9 +4970,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/pages-get": {
-			"title": "Get one of pages - First",
+			"title": "Get one of pages - TypedPress",
 			"h1": "Get one of pages",
-			"description": "One of WordPress's pages. Reference for the GET /pages/{id} endpoint in the First REST API.",
+			"description": "One of WordPress's pages. Reference for the GET /pages/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/pages-get",
 			"markdown": "/rest/word-press/pages-get.md",
 			"ogImage": "/og/rest/word-press/pages-get.png",
@@ -5005,7 +5005,7 @@
 				}
 			],
 			"social": {
-				"title": "Get one of pages - First",
+				"title": "Get one of pages - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -5017,9 +5017,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/pages-list": {
-			"title": "List pages - First",
+			"title": "List pages - TypedPress",
 			"h1": "List pages",
-			"description": "WordPress's pages, one page at a time. The route's other WordPress filters (status, author,… Reference for the GET /pages endpoint in the First REST API.",
+			"description": "WordPress's pages, one page at a time. The route's other WordPress filters (status, author,\u2026 Reference for the GET /pages endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/pages-list",
 			"markdown": "/rest/word-press/pages-list.md",
 			"ogImage": "/og/rest/word-press/pages-list.png",
@@ -5052,7 +5052,7 @@
 				}
 			],
 			"social": {
-				"title": "List pages - First",
+				"title": "List pages - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -5064,9 +5064,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/pages-update": {
-			"title": "Update one of pages - First",
+			"title": "Update one of pages - TypedPress",
 			"h1": "Update one of pages",
-			"description": "Changes the fields sent and returns the row. Reference for the PATCH /pages/{id} endpoint in the First REST API.",
+			"description": "Changes the fields sent and returns the row. Reference for the PATCH /pages/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/pages-update",
 			"markdown": "/rest/word-press/pages-update.md",
 			"ogImage": "/og/rest/word-press/pages-update.png",
@@ -5099,7 +5099,7 @@
 				}
 			],
 			"social": {
-				"title": "Update one of pages - First",
+				"title": "Update one of pages - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -5111,9 +5111,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/tags-create": {
-			"title": "Create in tags - First",
+			"title": "Create in tags - TypedPress",
 			"h1": "Create in tags",
-			"description": "Creates one of WordPress's tags and returns it. Reference for the POST /tags endpoint in the First REST API.",
+			"description": "Creates one of WordPress's tags and returns it. Reference for the POST /tags endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/tags-create",
 			"markdown": "/rest/word-press/tags-create.md",
 			"ogImage": "/og/rest/word-press/tags-create.png",
@@ -5146,7 +5146,7 @@
 				}
 			],
 			"social": {
-				"title": "Create in tags - First",
+				"title": "Create in tags - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -5158,9 +5158,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/tags-delete": {
-			"title": "Delete one of tags - First",
+			"title": "Delete one of tags - TypedPress",
 			"h1": "Delete one of tags",
-			"description": "Deletes the row for good and returns it as it was. Reference for the DELETE /tags/{id} endpoint in the First REST API.",
+			"description": "Deletes the row for good and returns it as it was. Reference for the DELETE /tags/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/tags-delete",
 			"markdown": "/rest/word-press/tags-delete.md",
 			"ogImage": "/og/rest/word-press/tags-delete.png",
@@ -5193,7 +5193,7 @@
 				}
 			],
 			"social": {
-				"title": "Delete one of tags - First",
+				"title": "Delete one of tags - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -5205,9 +5205,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/tags-get": {
-			"title": "Get one of tags - First",
+			"title": "Get one of tags - TypedPress",
 			"h1": "Get one of tags",
-			"description": "One of WordPress's tags. Reference for the GET /tags/{id} endpoint in the First REST API.",
+			"description": "One of WordPress's tags. Reference for the GET /tags/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/tags-get",
 			"markdown": "/rest/word-press/tags-get.md",
 			"ogImage": "/og/rest/word-press/tags-get.png",
@@ -5240,7 +5240,7 @@
 				}
 			],
 			"social": {
-				"title": "Get one of tags - First",
+				"title": "Get one of tags - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -5252,9 +5252,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/tags-list": {
-			"title": "List tags - First",
+			"title": "List tags - TypedPress",
 			"h1": "List tags",
-			"description": "WordPress's tags, one page at a time. The route's other WordPress filters (status, author,… Reference for the GET /tags endpoint in the First REST API.",
+			"description": "WordPress's tags, one page at a time. The route's other WordPress filters (status, author,\u2026 Reference for the GET /tags endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/tags-list",
 			"markdown": "/rest/word-press/tags-list.md",
 			"ogImage": "/og/rest/word-press/tags-list.png",
@@ -5287,7 +5287,7 @@
 				}
 			],
 			"social": {
-				"title": "List tags - First",
+				"title": "List tags - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -5299,9 +5299,9 @@
 			"sidebar": true
 		},
 		"/rest/word-press/tags-update": {
-			"title": "Update one of tags - First",
+			"title": "Update one of tags - TypedPress",
 			"h1": "Update one of tags",
-			"description": "Changes the fields sent and returns the row. Reference for the PATCH /tags/{id} endpoint in the First REST API.",
+			"description": "Changes the fields sent and returns the row. Reference for the PATCH /tags/{id} endpoint in the TypedPress REST API.",
 			"canonical": "/rest/word-press/tags-update",
 			"markdown": "/rest/word-press/tags-update.md",
 			"ogImage": "/og/rest/word-press/tags-update.png",
@@ -5334,7 +5334,7 @@
 				}
 			],
 			"social": {
-				"title": "Update one of tags - First",
+				"title": "Update one of tags - TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -5346,7 +5346,7 @@
 			"sidebar": true
 		},
 		"/tour/blog": {
-			"title": "The blog: access, sync, members, media, jobs and translations · First",
+			"title": "The blog: access, sync, members, media, jobs and translations \u00b7 TypedPress",
 			"h1": "The blog: access, sync, members, media, jobs and translations",
 			"description": "examples/blog is the CMS tour: every feature a content site needs, in one config. The stops below pick out the parts that go beyond tables and hooks.",
 			"canonical": "/tour/blog",
@@ -5376,7 +5376,7 @@
 				}
 			],
 			"social": {
-				"title": "The blog: access, sync, members, media, jobs and translations · First",
+				"title": "The blog: access, sync, members, media, jobs and translations \u00b7 TypedPress",
 				"card": "summary"
 			},
 			"stops": [
@@ -5393,9 +5393,9 @@
 			"next": null
 		},
 		"/tour": {
-			"title": "Tour · First",
+			"title": "Tour \u00b7 TypedPress",
 			"h1": "Tour",
-			"description": "Each piece of an example's first.config.ts next to what first build turns it into.",
+			"description": "Each piece of an example's typedpress.config.ts next to what typedpress build turns it into.",
 			"canonical": "/tour",
 			"markdown": null,
 			"ogImage": "/og/tour.png",
@@ -5423,7 +5423,7 @@
 				}
 			],
 			"social": {
-				"title": "Tour · First",
+				"title": "Tour \u00b7 TypedPress",
 				"card": "summary_large_image"
 			},
 			"stops": [],
@@ -5433,9 +5433,9 @@
 			"next": null
 		},
 		"/tour/pantry": {
-			"title": "The pantry: tables, hooks, actions and a job · First",
+			"title": "The pantry: tables, hooks, actions and a job \u00b7 TypedPress",
 			"h1": "The pantry: tables, hooks, actions and a job",
-			"description": "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its first.config.ts next to what first build turned it into.",
+			"description": "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its first.config.ts next to what typedpress build turned it into.",
 			"canonical": "/tour/pantry",
 			"markdown": null,
 			"ogImage": null,
@@ -5463,7 +5463,7 @@
 				}
 			],
 			"social": {
-				"title": "The pantry: tables, hooks, actions and a job · First",
+				"title": "The pantry: tables, hooks, actions and a job \u00b7 TypedPress",
 				"card": "summary"
 			},
 			"stops": [
@@ -5528,7 +5528,7 @@
 				"group": "Changelog"
 			},
 			{
-				"label": "@spacefast/first-blocks",
+				"label": "@typedpress/blocks",
 				"href": "/changelog/blocks",
 				"group": "Changelog"
 			}
@@ -6327,7 +6327,7 @@
 		]
 	},
 	"markdown": [
-		"/.well-known/agent-skills/first/SKILL.md",
+		"/.well-known/agent-skills/typedpress/SKILL.md",
 		"/agents.md",
 		"/changelog.md",
 		"/changelog/astro.md",
@@ -7024,7 +7024,7 @@
 		"/rest/search/search",
 		"/rest/schema/schema",
 		"/rest/schema/openapi",
-		"/.well-known/agent-skills/first/SKILL.md",
+		"/.well-known/agent-skills/typedpress/SKILL.md",
 		"/llms-full.txt",
 		"/index.md",
 		"/api/docs/pages.json",

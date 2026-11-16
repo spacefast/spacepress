@@ -10,7 +10,7 @@ module.exports = {
 	testPathIgnorePatterns: [ '/node_modules/', '<rootDir>/packages/design-system/src/tabs/test/index.tsx' ],
 	setupFiles: [ '<rootDir>/test/globals.cjs' ],
 	setupFilesAfterEnv: [ '<rootDir>/test/setup.cjs' ],
-	// A cold run transforms the pinned ESM packages on first import; a single test must not time out on that.
+	// A cold run transforms the pinned ESM packages on typedpress import; a single test must not time out on that.
 	testTimeout: 20000,
 	moduleFileExtensions: [ 'js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'json', 'node' ],
 	transform: { '\\.m?[jt]sx?$': require.resolve( 'babel-jest' ) },

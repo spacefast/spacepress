@@ -3,20 +3,20 @@
 declare(strict_types=1);
 
 /*
- * Staged versions of post kinds (First\Wp\Staged) on a real WordPress (tests/php/wp.php): a change
+ * Staged versions of post kinds (TypedPress\Wp\Staged) on a real WordPress (tests/php/wp.php): a change
  * staged beside a published item, what every reader of the item keeps getting meanwhile, compare,
  * promote through the update pipeline, a scheduled promote on core's cron event, discard, signed
  * preview links, and who may learn that a staged version exists. In-process through the API's own
  * router and the abilities, and over HTTP through php -S for what an anonymous client is served.
  */
 
-use First\App;
-use First\HttpError;
-use First\Viewer;
-use First\Wp\Facade;
-use First\Wp\Staged;
+use TypedPress\App;
+use TypedPress\HttpError;
+use TypedPress\Viewer;
+use TypedPress\Wp\Facade;
+use TypedPress\Wp\Staged;
 
-putenv('FIRST_WP_THEMES=1'); // the served site renders pages (the preview link's HTML)
+putenv('TP_WP_THEMES=1'); // the served site renders pages (the preview link's HTML)
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
@@ -36,7 +36,7 @@ unset($kind);
 $fixed = $schema['collections']['authors'];
 $fixed['key'] = 'fixed';
 $fixed['staged'] = false;
-$fixed['wp'] = ['postType' => 'first_fixed', 'groupKey' => 'group_first_fixed', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_fixed_'];
+$fixed['wp'] = ['postType' => 'tp_fixed', 'groupKey' => 'group_tp_fixed', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_fixed_'];
 $fixed['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'editor']);
 $schema['collections']['fixed'] = $fixed;
 // Anyone may update a guestbook entry; its `mood` only an admin may set. And `riddles`: an update
@@ -44,35 +44,35 @@ $schema['collections']['fixed'] = $fixed;
 foreach (['guestbook' => ['role' => 'anyone'], 'riddles' => ['fn' => 'riddles__access__update']] as $key => $update) {
     $extra = $schema['collections']['authors'];
     $extra['key'] = $key;
-    $extra['wp'] = ['postType' => "first_$key", 'groupKey' => "group_first_$key", 'metaPrefix' => 'first_', 'fieldKeyPrefix' => "field_first_{$key}_"];
+    $extra['wp'] = ['postType' => "tp_$key", 'groupKey' => "group_tp_$key", 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => "field_tp_{$key}_"];
     $extra['access'] = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => $update, 'delete' => ['role' => 'editor']];
     $extra['columns']['mood'] = ['type' => 'text', 'access' => ['read' => ['role' => 'admin'], 'update' => ['role' => 'admin']]];
     $extra['columns']['email']['unique'] = false;
     $schema['collections'][$key] = $extra;
 }
-$schema['webhooks'] = [['url' => ['env' => 'FIRST_HOOK_URL'], 'secret' => ['env' => 'FIRST_HOOK_SECRET'], 'events' => ['posts.updated']]];
-putenv('FIRST_HOOK_URL=http://127.0.0.1:9/hook');
-putenv('FIRST_HOOK_SECRET=whsec_test');
+$schema['webhooks'] = [['url' => ['env' => 'TP_HOOK_URL'], 'secret' => ['env' => 'TP_HOOK_SECRET'], 'events' => ['posts.updated']]];
+putenv('TP_HOOK_URL=http://127.0.0.1:9/hook');
+putenv('TP_HOOK_SECRET=whsec_test');
 $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
     /** Every update of a post leaves one comment naming the change and who made it. */
     /** Editors only; and a rule that is handed `bio: "boom"` throws, as a buggy rule might. */
-    function riddles__access__update(\First\JsObject $ctx)
+    function riddles__access__update(\TypedPress\JsObject $ctx)
     {
-        $data = \First\Js::prop($ctx, 'data');
-        if ($data !== null && \First\Js::prop($data, 'bio') === 'boom') {
+        $data = \TypedPress\Js::prop($ctx, 'data');
+        if ($data !== null && \TypedPress\Js::prop($data, 'bio') === 'boom') {
             throw new \RuntimeException('the rule could not read this data');
         }
-        $user = \First\Js::prop($ctx, 'user');
+        $user = \TypedPress\Js::prop($ctx, 'user');
 
-        return $user !== null && in_array(\First\Js::prop($user, 'role'), ['editor', 'admin'], true);
+        return $user !== null && in_array(\TypedPress\Js::prop($user, 'role'), ['editor', 'admin'], true);
     }
 
-    function posts__afterUpdate(\First\JsObject $row, \First\JsObject $previous, \First\JsObject $ctx)
+    function posts__afterUpdate(\TypedPress\JsObject $row, \TypedPress\JsObject $previous, \TypedPress\JsObject $ctx)
     {
-        $user = \First\Js::prop($ctx, 'user');
-        \First\db()->insert('comments', ['postId' => $row->p['id'], 'name' => 'afterUpdate',
-            'body' => $previous->p['title'] . ' -> ' . $row->p['title'] . ' by ' . ($user === null ? 'nobody' : \First\Js::prop($user, 'name'))]);
+        $user = \TypedPress\Js::prop($ctx, 'user');
+        \TypedPress\db()->insert('comments', ['postId' => $row->p['id'], 'name' => 'afterUpdate',
+            'body' => $previous->p['title'] . ' -> ' . $row->p['title'] . ' by ' . ($user === null ? 'nobody' : \TypedPress\Js::prop($user, 'name'))]);
     }
     PHP;
 $site = wpSite('staged', [
@@ -84,14 +84,14 @@ $site = wpSite('staged', [
         <?php
         add_filter('template_include', static function () {
             $file = WP_CONTENT_DIR . '/staged-template.php';
-            file_put_contents($file, '<?php while (have_posts()) { the_post(); echo "<h1>", get_the_title(), "</h1><main>", get_the_content(), "</main><p id=\"excerpt\">", esc_html((string) get_post_meta(get_the_ID(), "first_excerpt", true)), "</p><p id=\"kicker\">", esc_html((string) get_post_meta(get_the_ID(), "first_kicker", true)), "</p><p id=\"memo\">", esc_html((string) get_post_meta(get_the_ID(), "first_memo", true)), "</p>"; }');
+            file_put_contents($file, '<?php while (have_posts()) { the_post(); echo "<h1>", get_the_title(), "</h1><main>", get_the_content(), "</main><p id=\"excerpt\">", esc_html((string) get_post_meta(get_the_ID(), "tp_excerpt", true)), "</p><p id=\"kicker\">", esc_html((string) get_post_meta(get_the_ID(), "tp_kicker", true)), "</p><p id=\"memo\">", esc_html((string) get_post_meta(get_the_ID(), "tp_memo", true)), "</p>"; }');
 
             return $file;
         }, PHP_INT_MAX);
         PHP],
 ]);
 $plugin = $site->plugin();
-$db = \First\db();
+$db = \TypedPress\db();
 $url = $site->url();
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {
@@ -108,7 +108,7 @@ function api(string $method, string $path, mixed $body = null, ?string $as = nul
         $json = json_decode((string) $out, true);
 
         return [$code, $json['data'] ?? null];
-    } catch (HttpError | \First\JsError $e) {
+    } catch (HttpError | \TypedPress\JsError $e) {
         $problem = App::problem($e);
 
         return [$problem['status'], $problem];
@@ -146,7 +146,7 @@ function fetch(string $url, array $headers = [], string $method = 'GET', ?string
 }
 $basic = static fn (string $name): string => 'Authorization: Basic ' . base64_encode($site->appPassword($name));
 $notes = static fn (int $item): array => array_column($db->findMany('comments', ['where' => ['postId' => $item, 'name' => 'afterUpdate'], 'orderBy' => ['id' => 'asc']]), 'body');
-$webhooks = static fn (): int => (int) $site->scalar("SELECT COUNT(*) FROM {prefix}first__jobs WHERE job = 'first.webhook'");
+$webhooks = static fn (): int => (int) $site->scalar("SELECT COUNT(*) FROM {prefix}tp__jobs WHERE job = 'typedpress.webhook'");
 $stagedPosts = static fn (int $item): array => array_map('intval', array_column(
     $site->sql("SELECT ID FROM {prefix}posts WHERE post_parent = ? AND post_name = ? ORDER BY ID", [$item, "$item-autosave-staged-v1"]), 'ID'));
 
@@ -163,26 +163,26 @@ $stagedBody = '<!-- wp:paragraph --><p>Staged body, findable as stagedmarker.</p
 
 /** Everything a reader who may not update the item can get about it, by surface. */
 $public = static function () use ($url, $pid, $basic): array {
-    $item = json_decode(fetch("$url/wp-json/wp/v2/first_posts/$pid")['body'], true);
+    $item = json_decode(fetch("$url/wp-json/wp/v2/tp_posts/$pid")['body'], true);
 
     return [
-        'api item' => fetch("$url/__first/api/v1/posts/$pid")['body'],
-        'api item, subscriber' => fetch("$url/__first/api/v1/posts/$pid", [$basic('sub')])['body'],
-        'api list' => fetch("$url/__first/api/v1/posts")['body'],
-        'api search' => fetch("$url/__first/api/v1/posts?search=stagedmarker")['body'],
-        'site-wide search' => fetch("$url/__first/api/v1/search?q=stagedmarker")['body'],
-        'api markdown' => fetch("$url/__first/api/v1/posts/$pid?format=md")['body'],
+        'api item' => fetch("$url/__tp/api/v1/posts/$pid")['body'],
+        'api item, subscriber' => fetch("$url/__tp/api/v1/posts/$pid", [$basic('sub')])['body'],
+        'api list' => fetch("$url/__tp/api/v1/posts")['body'],
+        'api search' => fetch("$url/__tp/api/v1/posts?search=stagedmarker")['body'],
+        'site-wide search' => fetch("$url/__tp/api/v1/search?q=stagedmarker")['body'],
+        'api markdown' => fetch("$url/__tp/api/v1/posts/$pid?format=md")['body'],
         'core item' => [$item['title'] ?? null, $item['content'] ?? null, $item['slug'] ?? null, $item['modified_gmt'] ?? null, $item['meta'] ?? null],
         'core item links' => [$item['_links']['version-history'] ?? null, $item['_links']['predecessor-version'] ?? null],
-        'core list search' => fetch("$url/wp-json/wp/v2/first_posts?search=stagedmarker")['body'],
+        'core list search' => fetch("$url/wp-json/wp/v2/tp_posts?search=stagedmarker")['body'],
         'core search' => fetch("$url/wp-json/wp/v2/search?search=stagedmarker")['body'],
-        'core revisions' => fetch("$url/wp-json/wp/v2/first_posts/$pid/revisions")['status'],
-        'core autosaves' => fetch("$url/wp-json/wp/v2/first_posts/$pid/autosaves")['status'],
+        'core revisions' => fetch("$url/wp-json/wp/v2/tp_posts/$pid/revisions")['status'],
+        'core autosaves' => fetch("$url/wp-json/wp/v2/tp_posts/$pid/autosaves")['status'],
         'page' => fetch("$url/blog/live-post/")['body'],
         'twin' => fetch("$url/blog/live-post.md")['body'],
         'staged slug page' => fetch("$url/blog/staged-post/")['status'],
         'staged slug twin' => fetch("$url/blog/staged-post.md")['status'],
-        'feed' => preg_replace('#<lastBuildDate>.*?</lastBuildDate>#', '', fetch("$url/?feed=rss2&post_type=first_posts")['body']),
+        'feed' => preg_replace('#<lastBuildDate>.*?</lastBuildDate>#', '', fetch("$url/?feed=rss2&post_type=tp_posts")['body']),
         'site search' => fetch("$url/?s=stagedmarker")['body'],
         'llms.txt' => fetch("$url/llms.txt")['body'],
         'sitemap' => fetch("$url/wp-sitemap.xml")['body'],
@@ -231,7 +231,7 @@ eq('core\'s own autosave slot is untouched', wp_get_post_autosave($pid), false);
 // newer autosave (core-data getAutosave), and wp-admin's revision screen offers every revision to
 // restore: the staged version must be in neither.
 $site->actAs('ed');
-$listedAutosaves = rest_do_request(new \WP_REST_Request('GET', "/wp/v2/first_posts/$pid/autosaves"))->get_data();
+$listedAutosaves = rest_do_request(new \WP_REST_Request('GET', "/wp/v2/tp_posts/$pid/autosaves"))->get_data();
 wp_set_current_user(0);
 eq('the autosaves route lists no staged version', array_column((array) $listedAutosaves, 'id'), []);
 eq('… so the editor finds no autosave of the last stager\'s to offer', array_values(array_filter((array) $listedAutosaves, static fn (array $a): bool => (int) $a['author'] === $users['alice']['id'])), []);
@@ -270,8 +270,8 @@ foreach ([null, 'sub', 'bob'] as $actor) {
     }
 }
 eq('refused actors changed nothing', api('GET', "/posts/$pid/staged", as: 'ed')[1]['row']['title'], 'Staged title');
-eq('over HTTP an anonymous client gets the 404 too', [fetch("$url/__first/api/v1/posts/$pid/staged")['status'], fetch("$url/__first/api/v1/posts/$pid/staged/compare", [$basic('sub')])['status']], [404, 404]);
-$served = json_decode(fetch("$url/__first/api/v1/posts/$pid/staged", [$basic('ed')])['body'], true);
+eq('over HTTP an anonymous client gets the 404 too', [fetch("$url/__tp/api/v1/posts/$pid/staged")['status'], fetch("$url/__tp/api/v1/posts/$pid/staged/compare", [$basic('sub')])['status']], [404, 404]);
+$served = json_decode(fetch("$url/__tp/api/v1/posts/$pid/staged", [$basic('ed')])['body'], true);
 eq('an application password of an editor reads the staged version over HTTP', [$served['data']['row']['title'] ?? null, $served['data']['fields'] ?? null], ['Staged title', ['title', 'slug', 'body', 'excerpt']]);
 
 // ================================================================ compare
@@ -304,7 +304,7 @@ eq('the refused promote changed nothing and kept the staged version', [$db->find
 // ================================================================ preview links
 
 [, $link] = api('POST', "/posts/$pid/staged/preview", as: 'ed');
-check('a preview link names the API read and the page', str_starts_with($link['api'], "$url/__first/api/v1/posts/$pid/staged?preview=") && str_starts_with((string) $link['url'], "$url/blog/live-post/?first_preview="), $link);
+check('a preview link names the API read and the page', str_starts_with($link['api'], "$url/__tp/api/v1/posts/$pid/staged?preview=") && str_starts_with((string) $link['url'], "$url/blog/live-post/?tp_preview="), $link);
 $preview = json_decode(fetch($link['api'])['body'], true)['data'] ?? null;
 eq('the link reads the staged row without signing in', [$preview['row']['title'] ?? null, $preview['row']['body'] ?? null], ['Staged title', $stagedBody]);
 check('… through an anonymous visitor\'s field masks, without who staged it', !array_key_exists('memo', $preview['row']) && !in_array('memo', $preview['fields'], true) && !array_key_exists('by', $preview), $preview);
@@ -318,14 +318,14 @@ $db->update('posts', ['kicker' => 'Live kicker'], ['id' => $pid]);
 check('a previewed page is never stored by a cache, indexed, or named in a Referer', str_contains(implode(',', $html['headers']['cache-control'] ?? []), 'no-store')
     && ($html['headers']['x-robots-tag'] ?? null) === ['noindex, nofollow'] && ($html['headers']['referrer-policy'] ?? null) === ['no-referrer'], $html['headers']);
 eq('the page without the link is the live page', fetch("$url/blog/live-post/")['body'], $before['page']);
-eq('the twin ignores a preview link', fetch("$url/blog/live-post.md?first_preview=" . $link['token'])['body'], $before['twin']);
+eq('the twin ignores a preview link', fetch("$url/blog/live-post.md?tp_preview=" . $link['token'])['body'], $before['twin']);
 $tampered = substr($link['token'], 0, -2) . (str_ends_with($link['token'], 'AA') ? 'BB' : 'AA');
-eq('a tampered link is not a link', [fetch("$url/__first/api/v1/posts/$pid/staged?preview=$tampered")['status'], fetch("$url/blog/live-post/?first_preview=$tampered")['body']], [404, $before['page']]);
-eq('a link names one item only', fetch("$url/__first/api/v1/posts/{$other['id']}/staged?preview=" . $link['token'])['status'], 404);
+eq('a tampered link is not a link', [fetch("$url/__tp/api/v1/posts/$pid/staged?preview=$tampered")['status'], fetch("$url/blog/live-post/?tp_preview=$tampered")['body']], [404, $before['page']]);
+eq('a link names one item only', fetch("$url/__tp/api/v1/posts/{$other['id']}/staged?preview=" . $link['token'])['status'], 404);
 check('a link is valid now', Staged::previewed('posts', $pid, $link['token']) !== null);
-putenv('FIRST_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 3601));
+putenv('TP_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 3601));
 eq('a link expires after an hour by default', Staged::previewed('posts', $pid, $link['token']), null);
-putenv('FIRST_NOW');
+putenv('TP_NOW');
 isProblem('a link lives a day at most', api('POST', "/posts/$pid/staged/preview", ['ttl' => 86401], 'ed'), 422, 'invalid_input', '/ttl');
 
 // ================================================================ scheduled promote, on core's cron event
@@ -348,9 +348,9 @@ api('PATCH', "/posts/{$other['id']}/staged", ['title' => 'Scheduled by Alice'], 
 $db->update('posts', ['authorId' => $profile['id']], ['id' => $other['id']]);
 [, $hers] = api('POST', "/posts/{$other['id']}/staged/promote", ['at' => $at], 'alice');
 $db->update('posts', ['authorId' => null], ['id' => $other['id']]); // the post is no longer hers
-putenv('FIRST_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 7201));
+putenv('TP_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 7201));
 do_action('publish_future_post', $hers['id']);
-putenv('FIRST_NOW');
+putenv('TP_NOW');
 [, $stuck] = api('GET', "/posts/{$other['id']}/staged", as: 'ed');
 eq('a scheduled promote its scheduler may no longer make changes nothing and says why',
     [$db->findFirst('posts', ['where' => ['id' => $other['id']]])['title'], $stuck['promoteAt'], $stuck['error']['code'] ?? null, get_current_user_id()], ['Untouched', null, 'not_found', 0]);
@@ -383,12 +383,12 @@ eq('the refused promote rolled back whole', [$db->findFirst('posts', ['where' =>
 $db->delete('posts', ['id' => $squatter['id']]);
 
 $announced = [];
-add_action('first_purge_urls', static function (array $paths) use (&$announced): void {
+add_action('tp_purge_urls', static function (array $paths) use (&$announced): void {
     $announced[] = $paths;
 });
 $history = count(api('GET', "/posts/$pid/revisions", as: 'admin')[1]);
 [$code, $promoted] = api('POST', "/posts/$pid/staged/promote", as: 'admin');
-\First\Wp\Purges::flush();
+\TypedPress\Wp\Purges::flush();
 eq('promote makes the staged version live and returns the row', [$code, $promoted['title'], $promoted['slug'], $promoted['excerpt'], $promoted['memo'], $promoted['body']],
     [200, 'Staged title', 'staged-post', 'Staged excerpt, again', 'staged memo', $stagedBody]);
 eq('the update\'s afterUpdate hook ran once, as the promoter', array_slice($notes($pid), count($traces)), ['Live title -> Staged title by ' . $users['admin']['name']]);
@@ -409,9 +409,9 @@ check('… and find it by its new text', str_contains($live['api search'], 'Stag
 // A scheduled promote that is due runs as the user who scheduled it.
 api('PATCH', "/posts/$pid/staged", ['title' => 'Promoted by cron'], 'ed');
 [, $due] = api('POST', "/posts/$pid/staged/promote", ['at' => $at], 'ed');
-putenv('FIRST_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 7201));
+putenv('TP_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 7201));
 do_action('publish_future_post', $due['id']);
-putenv('FIRST_NOW');
+putenv('TP_NOW');
 eq('a due scheduled promote makes the staged version live', [$db->findFirst('posts', ['where' => ['id' => $pid]])['title'], $stagedPosts($pid), get_current_user_id()], ['Promoted by cron', [], 0]);
 eq('… as an update by its scheduler, hooks included', array_slice($notes($pid), -1), ['Staged title -> Promoted by cron by ' . $users['ed']['name']]);
 
@@ -451,7 +451,7 @@ $tools = static function (?string $as) use ($site): array {
     $site->actAs($as);
     try {
         $all = array_map(static fn (string $n): object => new class (str_replace('/', '-', $n)) { public function __construct(private string $n) {} public function getName(): string { return $this->n; } },
-            array_column(\First\Wp\Abilities\Register::operations(), 'name'));
+            array_column(\TypedPress\Wp\Abilities\Register::operations(), 'name'));
 
         return array_values(array_filter(array_map(static fn (object $t): string => $t->getName(), apply_filters('mcp_adapter_tools_list', $all, null, null)), static fn (string $n) => str_contains($n, '-stage')));
     } finally {
@@ -477,10 +477,10 @@ eq('… reads it', $run('blog/posts-staged-get', ['id' => $pid], 'ed')['row']['t
 eq('… compares it', $run('blog/posts-staged-compare', ['id' => $pid], 'ed')['changes'] ?? null, [['field' => 'title', 'live' => 'Promoted by cron', 'staged' => 'Staged by an agent']]);
 check('… gets a preview link', str_contains((string) ($run('blog/posts-staged-preview', ['id' => $pid], 'ed')['api'] ?? ''), '/staged?preview='));
 foreach (['blog/posts-staged-get', 'blog/posts-staged-compare', 'blog/posts-staged-promote', 'blog/posts-staged-discard', 'blog/posts-staged-preview'] as $ability) {
-    eq("$ability as a subscriber is the missing item's 404", $run($ability, ['id' => $pid], 'sub'), [404, 'first_not_found']);
-    eq("$ability as nobody is the missing item's 404", $run($ability, ['id' => $pid], null), [404, 'first_not_found']);
+    eq("$ability as a subscriber is the missing item's 404", $run($ability, ['id' => $pid], 'sub'), [404, 'tp_not_found']);
+    eq("$ability as nobody is the missing item's 404", $run($ability, ['id' => $pid], null), [404, 'tp_not_found']);
 }
-eq('blog/posts-stage as a subscriber is the missing item\'s 404', $run('blog/posts-stage', ['id' => $pid, 'patch' => ['title' => 'x']], 'sub'), [404, 'first_not_found']);
+eq('blog/posts-stage as a subscriber is the missing item\'s 404', $run('blog/posts-stage', ['id' => $pid, 'patch' => ['title' => 'x']], 'sub'), [404, 'tp_not_found']);
 // A credential held to staging: a site policy on core's own permission filter refuses the promote ability by name.
 $stageOnly = static fn (mixed $allowed, string $name): mixed => $name === 'blog/posts-staged-promote' ? false : $allowed;
 add_filter('wp_ability_permission_result', $stageOnly, 10, 2);
@@ -493,28 +493,28 @@ eq('the promote ability makes it live', $run('blog/posts-staged-promote', ['id' 
 $run('blog/posts-stage', ['id' => $pid, 'patch' => ['title' => 'To discard']], 'ed');
 eq('the discard ability ends the staged version', [array_keys((array) $run('blog/posts-staged-discard', ['id' => $pid], 'ed')), $stagedPosts($pid)], [['revision'], []]);
 
-// ================================================================ `wp first staged`, the trusted CLI
+// ================================================================ `wp typedpress staged`, the trusted CLI
 
 [$code, $out] = $site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"Staged from the CLI","memo":"cli memo"}');
-eq('wp first staged stage', [$code, $out['data']['row']['title'] ?? null, $out['data']['row']['memo'] ?? null, array_key_exists('by', $out['data']) ? $out['data']['by'] : 'unset'], [0, 'Staged from the CLI', 'cli memo', null]);
+eq('wp typedpress staged stage', [$code, $out['data']['row']['title'] ?? null, $out['data']['row']['memo'] ?? null, array_key_exists('by', $out['data']) ? $out['data']['by'] : 'unset'], [0, 'Staged from the CLI', 'cli memo', null]);
 [, $out] = $site->cli('staged', 'list');
-eq('wp first staged list', array_map(static fn (array $r) => [$r['kind'], $r['id'], $r['fields']], $out['data']), [['posts', $pid, ['title', 'memo']]]);
-eq('wp first staged list <kind>', count($site->cli('staged', 'list', 'authors')[1]['data']), 0);
-eq('wp first staged compare', array_column($site->cli('staged', 'compare', 'posts', (string) $pid)[1]['data']['changes'], 'field'), ['title', 'memo']);
-eq('wp first staged show', $site->cli('staged', 'show', 'posts', (string) $pid)[1]['data']['row']['title'], 'Staged from the CLI');
+eq('wp typedpress staged list', array_map(static fn (array $r) => [$r['kind'], $r['id'], $r['fields']], $out['data']), [['posts', $pid, ['title', 'memo']]]);
+eq('wp typedpress staged list <kind>', count($site->cli('staged', 'list', 'authors')[1]['data']), 0);
+eq('wp typedpress staged compare', array_column($site->cli('staged', 'compare', 'posts', (string) $pid)[1]['data']['changes'], 'field'), ['title', 'memo']);
+eq('wp typedpress staged show', $site->cli('staged', 'show', 'posts', (string) $pid)[1]['data']['row']['title'], 'Staged from the CLI');
 [$code, $out] = $site->cli('staged', 'promote', 'posts', (string) $pid, "--at=$at");
-eq('wp first staged promote --at schedules', [$code, $out['data']['promoteAt'] ?? null], [0, $at]);
-eq('wp first staged promote --cancel', $site->cli('staged', 'promote', 'posts', (string) $pid, '--cancel')[1]['data']['promoteAt'], null);
+eq('wp typedpress staged promote --at schedules', [$code, $out['data']['promoteAt'] ?? null], [0, $at]);
+eq('wp typedpress staged promote --cancel', $site->cli('staged', 'promote', 'posts', (string) $pid, '--cancel')[1]['data']['promoteAt'], null);
 [$code, $out] = $site->cli('staged', 'promote', 'posts', (string) $pid);
-eq('wp first staged promote', [$code, $out['data']['title'] ?? null, $out['data']['memo'] ?? null, array_slice($notes($pid), -1)], [0, 'Staged from the CLI', 'cli memo', ['Staged by an agent -> Staged from the CLI by nobody']]);
+eq('wp typedpress staged promote', [$code, $out['data']['title'] ?? null, $out['data']['memo'] ?? null, array_slice($notes($pid), -1)], [0, 'Staged from the CLI', 'cli memo', ['Staged by an agent -> Staged from the CLI by nobody']]);
 $site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"x"}');
-eq('wp first staged discard', [$site->cli('staged', 'discard', 'posts', (string) $pid)[0], $stagedPosts($pid)], [0, []]);
+eq('wp typedpress staged discard', [$site->cli('staged', 'discard', 'posts', (string) $pid)[0], $stagedPosts($pid)], [0, []]);
 $site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"cli rev"}');
 [, $shown] = $site->cli('staged', 'show', 'posts', (string) $pid);
 $token = $shown['data']['_rev'];
 $site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"cli rev, again"}');
 [$code, $out] = $site->cli('staged', 'promote', 'posts', (string) $pid, "--rev=$token");
-eq('wp first staged promote --rev refuses a stale token', [$code, $out['error']['code'] ?? null], [1, 'stale_revision']);
+eq('wp typedpress staged promote --rev refuses a stale token', [$code, $out['error']['code'] ?? null], [1, 'stale_revision']);
 [, $shown] = $site->cli('staged', 'show', 'posts', (string) $pid);
 eq('… and takes the current one', $site->cli('staged', 'discard', 'posts', (string) $pid, '--rev=' . $shown['data']['_rev'])[0], 0);
 [$code, $out] = $site->cli('staged', 'frobnicate', 'posts', (string) $pid);
@@ -610,12 +610,12 @@ isProblem('a subscriber learns of no lock: the missing row\'s 404 whatever is lo
 // Core REST and abilities are refused the same way.
 $site->actAs('ed');
 $abilityLocked = wp_get_ability('blog/posts-update')->execute(['id' => $rev, 'patch' => ['excerpt' => 'via agent']]);
-$core = new \WP_REST_Request('POST', "/wp/v2/first_posts/$rev");
+$core = new \WP_REST_Request('POST', "/wp/v2/tp_posts/$rev");
 $core->set_param('excerpt', 'via core');
 $coreLocked = rest_do_request($core);
 wp_set_current_user(0);
-eq('core REST\'s update of the item is refused while it is locked', [$coreLocked->get_status(), $coreLocked->as_error()?->get_error_code()], [409, 'first_locked']);
-eq('… and so is the update ability', is_wp_error($abilityLocked) ? [$abilityLocked->get_error_code(), $abilityLocked->get_error_data()['status'] ?? null] : $abilityLocked, ['first_locked', 409]);
+eq('core REST\'s update of the item is refused while it is locked', [$coreLocked->get_status(), $coreLocked->as_error()?->get_error_code()], [409, 'tp_locked']);
+eq('… and so is the update ability', is_wp_error($abilityLocked) ? [$abilityLocked->get_error_code(), $abilityLocked->get_error_data()['status'] ?? null] : $abilityLocked, ['tp_locked', 409]);
 eq('nothing of either was written', $db->findFirst('posts', ['where' => ['id' => $rev]])['excerpt'], 'holder');
 // Taking over: the editor's "Take over".
 [$code, $taken] = api('PATCH', "/posts/$rev", ['excerpt' => 'taken over', 'takeover' => true], 'ed');
@@ -656,9 +656,9 @@ eq('… recorded as anonymous, never as the trusted CLI', json_decode((string) g
 $site->cli('staged', 'stage', 'guestbook', (string) $guest, '{"mood":"furious"}');
 eq('… the schedule survives the trusted stage', json_decode((string) get_post_meta($rid, Staged::META, true), true)['promoteBy'] ?? null, 'anonymous');
 $due = static function () use ($rid): void {
-    putenv('FIRST_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 7201));
+    putenv('TP_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 7201));
     do_action('publish_future_post', $rid);
-    putenv('FIRST_NOW');
+    putenv('TP_NOW');
 };
 $due();
 $row = $db->findFirst('guestbook', ['where' => ['id' => $guest]]);
@@ -675,7 +675,7 @@ $site->cli('staged', 'discard', 'guestbook', (string) $guest);
 $traceless = $db->insert('posts', ['title' => 'Traceless', 'slug' => 'traceless'], true)[0]['id'];
 $db->update('posts', ['excerpt' => 'an ordinary update'], ['id' => $traceless]);
 $reader = static function () use ($url, $traceless): array {
-    $item = json_decode(fetch("$url/wp-json/wp/v2/first_posts/$traceless")['body'], true);
+    $item = json_decode(fetch("$url/wp-json/wp/v2/tp_posts/$traceless")['body'], true);
 
     return [$item['_links']['version-history'][0]['count'] ?? null, $item['_links']['predecessor-version'][0]['id'] ?? null, $item['modified_gmt'] ?? null, $item['date_gmt'] ?? null];
 };
@@ -695,7 +695,7 @@ check('… and the predecessor is the promote\'s own revision, not the staged on
 $masked = $db->insert('posts', ['title' => 'Masked', 'slug' => 'masked', 'excerpt' => 'public excerpt', 'memo' => 'live memo'], true)[0]['id'];
 api('PATCH', "/posts/$masked/staged", ['excerpt' => 'staged excerpt', 'memo' => 'staged secret memo'], 'admin');
 [, $maskedLink] = api('POST', "/posts/$masked/staged/preview", as: 'admin');
-$pageBody = fetch((string) $maskedLink['url'])['body']; // the template prints first_memo too
+$pageBody = fetch((string) $maskedLink['url'])['body']; // the template prints tp_memo too
 check('the preview page renders the staged field anyone may read', str_contains($pageBody, 'staged excerpt'), $pageBody);
 check('… and never the admin-only one, staged or live', !str_contains($pageBody, 'staged secret memo') && !str_contains($pageBody, 'live memo'), $pageBody);
 
@@ -710,7 +710,7 @@ eq('… which is the 404', $withThrow[0], 404);
 
 // 5. A promote fires the REST hooks an API update fires.
 $restSeen = [];
-foreach (['rest_insert_first_posts', 'rest_after_insert_first_posts'] as $hook) {
+foreach (['rest_insert_tp_posts', 'rest_after_insert_tp_posts'] as $hook) {
     add_action($hook, static function (\WP_Post $post, \WP_REST_Request $request, bool $creating) use (&$restSeen, $hook): void {
         $restSeen[] = [$hook, $post->ID, $request->get_param('title'), $creating];
     }, 10, 3);
@@ -719,7 +719,7 @@ $hooked = $db->insert('posts', ['title' => 'Hooked', 'slug' => 'hooked'], true)[
 api('PATCH', "/posts/$hooked/staged", ['title' => 'Hooked promoted'], 'ed');
 api('POST', "/posts/$hooked/staged/promote", null, 'ed');
 eq('a promote fires rest_insert_ and rest_after_insert_ with the update', $restSeen,
-    [['rest_insert_first_posts', $hooked, 'Hooked promoted', false], ['rest_after_insert_first_posts', $hooked, 'Hooked promoted', false]]);
+    [['rest_insert_tp_posts', $hooked, 'Hooked promoted', false], ['rest_after_insert_tp_posts', $hooked, 'Hooked promoted', false]]);
 
 // Listeners on core's post hooks: staging writes a revision post, which must not look like a change
 // to the live item to anything that purges or pings it.
@@ -733,15 +733,15 @@ foreach (['save_post', 'clean_post_cache', 'publish_future_post', 'transition_po
 }
 $announced = [];
 $purge = static function (array $paths) use (&$announced): void { $announced[] = $paths; };
-add_action('first_purge_urls', $purge);
+add_action('tp_purge_urls', $purge);
 $quiet = $db->insert('posts', ['title' => 'Quiet', 'slug' => 'quiet'], true)[0]['id'];
-\First\Wp\Purges::flush();
+\TypedPress\Wp\Purges::flush();
 [$livePosts, $announced] = [[], []];
 api('PATCH', "/posts/$quiet/staged", ['title' => 'Quiet staged'], 'ed');
-\First\Wp\Purges::flush();
+\TypedPress\Wp\Purges::flush();
 eq('staging announces no URL purge', $announced, []);
 eq('… and every post hook it fires is for the revision post, never the live item', array_values(array_unique($livePosts)), ['revision']);
-remove_action('first_purge_urls', $purge);
+remove_action('tp_purge_urls', $purge);
 
 // wp-admin's save (edit_post) runs core's revision upgrade when the oldest revision core lists has
 // no version it reads; an item that has no revision of its own yet (one made by an import) has
@@ -762,7 +762,7 @@ $spy = static function (string $option) use (&$upgrades): void {
 add_action('update_option', $spy);
 require_once ABSPATH . 'wp-admin/includes/post.php';
 $site->actAs('admin');
-edit_post(['post_ID' => $bare, 'post_title' => 'Bare', 'post_type' => 'first_posts', 'post_status' => 'publish']);
+edit_post(['post_ID' => $bare, 'post_title' => 'Bare', 'post_type' => 'tp_posts', 'post_status' => 'publish']);
 wp_set_current_user(0);
 remove_action('update_option', $spy);
 eq('a wp-admin save of the item runs no revision upgrade', $upgrades, []);
@@ -776,9 +776,9 @@ $site->sql("UPDATE {prefix}posts SET post_status = 'inherit' WHERE ID = ?", [$ol
 clean_post_cache($oldStaged['id']);
 $statuses = static fn (): array => array_column($site->sql("SELECT ID, post_status FROM {prefix}posts WHERE post_type = 'revision' ORDER BY ID"), 'post_status', 'ID');
 $before = $statuses();
-\First\Wp\WpPostStore::upgradeStagedStatus($db->store());
-\First\Wp\WpPostStore::upgradeStagedStatus($db->store());
-eq('the upgrade gives an old staged revision the staged status, and changes no other revision', array_diff_assoc($statuses(), $before), [$oldStaged['id'] => 'first-staged']);
+\TypedPress\Wp\WpPostStore::upgradeStagedStatus($db->store());
+\TypedPress\Wp\WpPostStore::upgradeStagedStatus($db->store());
+eq('the upgrade gives an old staged revision the staged status, and changes no other revision', array_diff_assoc($statuses(), $before), [$oldStaged['id'] => 'typedpress-staged']);
 eq('… which still reads as the staged version', api('GET', "/posts/$old/staged", as: 'ed')[1]['row']['title'] ?? null, 'Old staged');
 
 finish('staged');

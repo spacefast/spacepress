@@ -1,7 +1,7 @@
-import { entityEditorPath } from '@first-admin/schema';
+import { entityEditorPath } from '@typedpress-admin/schema';
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, privateApis as routePrivateApis } from '@wordpress/route';
-import { unlock } from '@first-admin/admin-toolkit';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 
 const { useRouter, useCanGoBack } = unlock( routePrivateApis );
 

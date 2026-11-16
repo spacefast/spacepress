@@ -1,1 +1,1 @@
-<?php return array('name' => '@first-admin/global-styles-engine', 'dependencies' => array('wp-blocks', 'wp-data', 'wp-i18n', 'wp-style-engine'), 'moduleDependencies' => array(), 'version' => 'b1f307ac4483bc8d6eb9');
+<?php return array('name' => '@typedpress-admin/global-styles-engine', 'dependencies' => array('wp-blocks', 'wp-data', 'wp-i18n', 'wp-style-engine'), 'moduleDependencies' => array(), 'version' => '0e03843ad6f0e863b0d4');

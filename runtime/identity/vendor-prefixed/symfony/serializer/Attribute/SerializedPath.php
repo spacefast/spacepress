@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Attribute;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute;
 
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
 
 /**
  * @author Tobias Bönner <tobi@boenner.family>
@@ -42,6 +42,6 @@ class SerializedPath
     }
 }
 
-if (!class_exists(\First\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedPath::class, false)) {
-    class_alias(SerializedPath::class, \First\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedPath::class);
+if (!class_exists(\TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedPath::class, false)) {
+    class_alias(SerializedPath::class, \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Annotation\SerializedPath::class);
 }

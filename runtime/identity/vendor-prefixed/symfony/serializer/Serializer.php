@@ -9,24 +9,24 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\ChainDecoder;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\ChainEncoder;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\ContextAwareDecoderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\ContextAwareEncoderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\DecoderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Encoder\EncoderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\PartialDenormalizationException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\UnsupportedFormatException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\ChainDecoder;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\ChainEncoder;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\ContextAwareDecoderInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\ContextAwareEncoderInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\DecoderInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder\EncoderInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\PartialDenormalizationException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\UnsupportedFormatException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 
 /**
  * Serializer serializes and deserializes data.

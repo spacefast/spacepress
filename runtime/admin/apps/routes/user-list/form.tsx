@@ -5,9 +5,9 @@ import {
 	__experimentalSpacer as Spacer,
 } from '@wordpress/components';
 import type { User } from '@wordpress/core-data';
-import type { Form, Field } from '@first-admin/dataviews';
-import { useFieldCollections } from '@first-admin/core-data-next';
-import { DataForm } from '@first-admin/dataviews';
+import type { Form, Field } from '@typedpress-admin/dataviews';
+import { useFieldCollections } from '@typedpress-admin/core-data-next';
+import { DataForm } from '@typedpress-admin/dataviews';
 import { useUserForm } from '../user/hooks';
 
 export default function UserForm( {

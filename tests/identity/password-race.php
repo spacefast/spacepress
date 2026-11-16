@@ -3,7 +3,7 @@
 // committed, must not leave a live session behind (two connections).
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use First\Identity\{Plugin, Security};
+use TypedPress\Identity\{Plugin, Security};
 
 $tag = bin2hex(random_bytes(4));
 $email = "race-pw-$tag@example.test";

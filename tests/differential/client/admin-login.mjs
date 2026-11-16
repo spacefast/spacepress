@@ -1,7 +1,7 @@
 // Usage: node admin-login.mjs <site url>
 // wp-admin and sign-in in a front-end mode (tests/app_router.rs `frontend_modes_on_wordpress`), in
 // Chromium (playwright-core, pinned by tests/differential/client/package.json): the login screen
-// renders, signing in lands on First Admin (the default admin), classic pages open in First Admin until
+// renders, signing in lands on TypedPress Admin (the default admin), classic pages open in TypedPress Admin until
 // the user turns developer mode on, then classic wp-admin's dashboard and a list screen render as wp-admin
 // (not the app, not a theme), `/wp-admin/` while signed out goes to the login screen, the REST nonce
 // wp-admin uses works, and signing out ends the session. Prints JSON.
@@ -20,21 +20,21 @@ try {
   out.signedOut = { at: new URL(page.url()).pathname, redirectTo: new URL(page.url()).searchParams.get("redirect_to") !== null };
   out.loginForm = await page.locator("#loginform").count();
 
-  // Signing in as the harness's admin lands on First Admin, the default admin (at `/wp-admin/new/`;
-  // `admin.php?page=first-admin` where the server applies no rewrite rule).
+  // Signing in as the harness's admin lands on TypedPress Admin, the default admin (at `/wp-admin/new/`;
+  // `admin.php?page=typedpress-admin` where the server applies no rewrite rule).
   // wp-login.php focuses and selects its username field 200 ms after it loads; a fill that lands on
   // that moment types the password over the username. Fill until both fields hold their text.
   for (let attempt = 0; ; attempt++) {
     await page.fill("#user_login", "admin");
-    await page.fill("#user_pass", "first-test-admin");
-    if ((await page.inputValue("#user_login")) === "admin" && (await page.inputValue("#user_pass")) === "first-test-admin") break;
+    await page.fill("#user_pass", "typedpress-test-admin");
+    if ((await page.inputValue("#user_login")) === "admin" && (await page.inputValue("#user_pass")) === "typedpress-test-admin") break;
     if (attempt === 20) throw new Error("the WordPress sign-in form would not keep its values");
   }
   await Promise.all([page.waitForNavigation(), page.click("#wp-submit")]);
   const landed = new URL(page.url());
-  out.signedIn = landed.pathname === "/wp-admin/new/" || (landed.pathname === "/wp-admin/admin.php" && landed.searchParams.get("page") === "first-admin") ? "first admin" : landed.pathname + landed.search;
-  // Without developer mode (the default) classic wp-admin's pages open in First Admin: its dashboard
-  // is First Admin's home route, and a list screen is framed at /classic/<slug>.
+  out.signedIn = landed.pathname === "/wp-admin/new/" || (landed.pathname === "/wp-admin/admin.php" && landed.searchParams.get("page") === "typedpress-admin") ? "first admin" : landed.pathname + landed.search;
+  // Without developer mode (the default) classic wp-admin's pages open in TypedPress Admin: its dashboard
+  // is TypedPress Admin's home route, and a list screen is framed at /classic/<slug>.
   const route = () => {
     const at = new URL(page.url());
     return at.pathname.startsWith("/wp-admin/new/") ? at.pathname.slice("/wp-admin/new".length) : at.searchParams.get("p");
@@ -46,8 +46,8 @@ try {
   // Developer mode on (the user's own setting, saved through core's user route): classic wp-admin opens as itself.
   out.developerMode = await page.evaluate(async () => {
     const nonce = await (await fetch("/wp-admin/admin-ajax.php?action=rest-nonce", { credentials: "same-origin" })).text();
-    const r = await fetch("/wp-json/wp/v2/users/me", { method: "POST", headers: { "X-WP-Nonce": nonce, "content-type": "application/json" }, body: JSON.stringify({ first_admin_developer_mode: true }), credentials: "same-origin" });
-    return (await r.json()).first_admin_developer_mode ?? r.status;
+    const r = await fetch("/wp-json/wp/v2/users/me", { method: "POST", headers: { "X-WP-Nonce": nonce, "content-type": "application/json" }, body: JSON.stringify({ tp_admin_developer_mode: true }), credentials: "same-origin" });
+    return (await r.json()).tp_admin_developer_mode ?? r.status;
   });
   // Classic wp-admin stays beside it: its dashboard renders as wp-admin.
   await page.goto(`${url}/wp-admin/index.php`);

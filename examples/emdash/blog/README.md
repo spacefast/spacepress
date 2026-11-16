@@ -3,15 +3,15 @@
 An original Zero counterpart of [EmDash blog](https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0/templates/blog), [blog-cloudflare](https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0/templates/blog-cloudflare), and [demos/simple](https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0/demos/simple), all pinned to `1824902c0c383c052b623528799427b8a5ff75d0`. Their actual seed schema, page handlers and base layout informed the behavior mapping. Upstream's MIT notice is retained in `LICENSE.upstream`; no upstream seed prose, artwork or infrastructure is copied.
 
 ```sh
-# Repository root; Node.js 22+ and an existing matching First binary.
-FIRST_BIN="$PWD/target/debug/first" node examples/emdash/blog/run.mjs
+# Repository root; Node.js 22+ and an existing matching TypedPress binary.
+TP_BIN="$PWD/target/debug/typedpress" node examples/emdash/blog/run.mjs
 ```
 
-The launcher creates a unique `/tmp/first-emdash-blog-*` project, chooses a free port, starts native First dev/Studio, installs the shared WordPress theme and seeds eight original stories, an About page, editable primary navigation, categories and tags. It prints URLs, the exact project path and cleanup command. Initial local-only login: `admin / first-test-admin` for this disposable site. It never uses or changes an existing site's credentials.
+The launcher creates a unique `/tmp/typedpress-emdash-blog-*` project, chooses a free port, starts native TypedPress dev/Studio, installs the shared WordPress theme and seeds eight original stories, an About page, editable primary navigation, categories and tags. It prints URLs, the exact project path and cleanup command. Initial local-only login: `admin / typedpress-test-admin` for this disposable site. It never uses or changes an existing site's credentials.
 
-| Upstream publishing behavior | First counterpart |
+| Upstream publishing behavior | TypedPress counterpart |
 | --- | --- |
-| Live posts/pages with rich content | Native First collections, WordPress block editor and SCF; real `/wp/v2/first_posts` and `first_pages` saves |
+| Live posts/pages with rich content | Native TypedPress collections, WordPress block editor and SCF; real `/wp/v2/tp_posts` and `tp_pages` saves |
 | Homepage and all-posts archive | `/` shows seven newest posts; `/posts` paginates 20 saved posts with `?page=2` |
 | Detail and page routes | `/posts/{slug}`, `/pages/{slug}`, seeded `/pages/about`; unpublished/missing entries return 404 |
 | Category/tag archives | Native taxonomies, assignment via editor/REST and `/category/{slug}`, `/tag/{slug}` |
@@ -28,9 +28,9 @@ The [shared implementation README](../starter/README.md) explains the native the
 ## Acceptance
 
 ```sh
-FIRST_BIN="$PWD/target/debug/first" node --test examples/emdash/starter/acceptance.test.mjs
+TP_BIN="$PWD/target/debug/typedpress" node --test examples/emdash/starter/acceptance.test.mjs
 # Existing site Playwright dependency + Chromium required for this browser check:
-FIRST_BIN="$PWD/target/debug/first" node --test examples/emdash/starter/browser.test.mjs
+TP_BIN="$PWD/target/debug/typedpress" node --test examples/emdash/starter/browser.test.mjs
 ```
 
 The native acceptance command includes all three publishing counterparts and deletes only their owned sites. Blog's case proves native REST + SCF saves appear publicly; saved taxonomies; real upload bytes and a featured image; the actual 20-post page boundary; RSS after edits; real public comment submission, moderation and approved/pending visibility; draft access and anonymous write denial; saved site appearance; and data plus unrelated-plugin preservation across stop/restart. It prints a `/tmp` evidence directory with served responses and exact cleanup receipts. The browser check drives native admin Quick Edit and public search/theme controls, records desktop/mobile screenshots and cleans up its own site. See the shared README for dependency setup.
@@ -38,7 +38,7 @@ The native acceptance command includes all three publishing counterparts and del
 Manually launched sites remain running until the exact printed command is used:
 
 ```sh
-node examples/emdash/blog/run.mjs cleanup /tmp/first-emdash-blog-EXACT
+node examples/emdash/blog/run.mjs cleanup /tmp/typedpress-emdash-blog-EXACT
 ```
 
 Cloudflare's variant shares the publishing behavior; this qualification is WordPress/SQLite only. It makes no claim about Workers, D1/R2, PostgreSQL, provider behavior or EmDash plugin sandboxing. Native block content replaces PortableText. WordPress search does not reproduce EmDash FTS ranking/stemming or its live-search component. Numbered pages replace opaque cursors. Single native authors replace EmDash's multiple/guest bylines. The sidebar reads live taxonomy and recent-post records; EmDash widget composition, section/newsletter blocks, exact locale formatting and inline editing are not implemented. No newsletter delivery is inferred from a seeded call-to-action. Agents/Abilities and unrelated package demonstrations have their own owners and are not qualified by these publication tests.

@@ -1,6 +1,6 @@
 <?php
 
-namespace First\Identity\Vendor\Psr\Log;
+namespace TypedPress\Identity\Vendor\Psr\Log;
 
 /**
  * This is a simple Logger implementation that other Loggers can inherit from.

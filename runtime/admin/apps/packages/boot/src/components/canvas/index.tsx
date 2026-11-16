@@ -3,9 +3,9 @@ import { store as coreStore } from '@wordpress/core-data';
 import { privateApis as routePrivateApis } from '@wordpress/route';
 import { useEffect, useState } from '@wordpress/element';
 import { ProgressBar } from '@wordpress/components';
-// eslint-disable-next-line @first-admin/design-system/use-new-components
-import { Stack } from '@first-admin/design-system';
-import { unlock } from '@first-admin/admin-toolkit';
+// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
+import { Stack } from '@typedpress-admin/design-system';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import type {
 	FrontPageCanvas,
 	PostCanvas,

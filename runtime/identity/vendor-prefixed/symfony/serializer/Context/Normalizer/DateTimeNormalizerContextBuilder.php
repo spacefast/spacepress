@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 
 /**
  * A helper providing autocompletion for available DateTimeNormalizer options.

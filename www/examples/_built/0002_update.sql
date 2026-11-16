@@ -1,1 +1,1 @@
-ALTER TABLE `{prefix}first_cheers` ADD COLUMN `lastCheeredAt` CHAR(24);
+ALTER TABLE `{prefix}tp_cheers` ADD COLUMN `lastCheeredAt` CHAR(24);

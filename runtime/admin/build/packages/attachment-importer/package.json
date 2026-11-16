@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/attachment-importer",
+	"name": "@typedpress-admin/attachment-importer",
 	"version": "1.0.0",
 	"description": "Attachment importer",
 	"type": "module",

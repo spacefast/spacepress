@@ -3,16 +3,16 @@
 declare(strict_types=1);
 
 /*
- * Route query strings (runtime/First/QueryString.php) parse like URLSearchParams, not like PHP's
+ * Route query strings (runtime/TypedPress/QueryString.php) parse like URLSearchParams, not like PHP's
  * parse_str: names are byte-exact, repeated names keep every value in order, get() is the first.
  */
 
-require __DIR__ . '/../../runtime/First/bootstrap.php';
+require __DIR__ . '/../../runtime/TypedPress/bootstrap.php';
 require __DIR__ . '/harness.php';
 
-use First\QueryString;
+use TypedPress\QueryString;
 
-$q = static fn (string $raw): \First\JsObject => QueryString::toJs(QueryString::parse($raw));
+$q = static fn (string $raw): \TypedPress\JsObject => QueryString::toJs(QueryString::parse($raw));
 $get = static fn (string $raw, string $name): ?string => ($q($raw)->p['get'])($name);
 $all = static fn (string $raw, string $name): array => ($q($raw)->p['getAll'])($name)->a;
 

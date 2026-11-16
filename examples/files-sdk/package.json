@@ -1,5 +1,5 @@
 {
-  "name": "first-files-sdk-probe",
+  "name": "typedpress-files-sdk-probe",
   "private": true,
   "type": "module",
   "scripts": {

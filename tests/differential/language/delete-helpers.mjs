@@ -1,4 +1,4 @@
-// Untyped JavaScript for tests/differential/language/delete.ts: these run through First's checked
+// Untyped JavaScript for tests/differential/language/delete.ts: these run through TypedPress's checked
 // JavaScript dispatch rather than typed TypeScript compilation.
 
 function attempt(label, remove) {

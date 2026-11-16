@@ -1,9 +1,9 @@
 import { createClient } from "./client/index.js";
 
-const root = document.getElementById("first-classic-pantry");
-const content = document.getElementById("first-pantry-content");
-const notice = document.getElementById("first-pantry-notice");
-const refresh = document.getElementById("first-pantry-refresh");
+const root = document.getElementById("typedpress-classic-pantry");
+const content = document.getElementById("typedpress-pantry-content");
+const notice = document.getElementById("typedpress-pantry-notice");
+const refresh = document.getElementById("typedpress-pantry-refresh");
 const section = root.dataset.section;
 const client = createClient({
   url: root.dataset.apiUrl,
@@ -144,7 +144,7 @@ function field(form, label, name, value, options = {}) {
   const row = node("tr");
   const heading = node("th");
   heading.scope = "row";
-  const id = `first-pantry-${name}`;
+  const id = `typedpress-pantry-${name}`;
   const caption = node("label", label);
   caption.htmlFor = id;
   heading.append(caption);
@@ -189,9 +189,9 @@ function choose(id) {
   dirty = false;
   render();
   document
-    .getElementById("first-pantry-form")
+    .getElementById("typedpress-pantry-form")
     ?.scrollIntoView({ block: "start" });
-  document.getElementById("first-pantry-name")?.focus();
+  document.getElementById("typedpress-pantry-name")?.focus();
 }
 
 function editorForm() {
@@ -219,7 +219,7 @@ function editorForm() {
         ? "location"
         : "shopping entry";
   const form = node("form");
-  form.id = "first-pantry-form";
+  form.id = "typedpress-pantry-form";
   form.append(node("h2", `${record ? "Edit" : "Add"} ${title}`));
   const fields = node("table", undefined, "form-table");
   fields.append(node("tbody"));

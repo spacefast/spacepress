@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/schema",
+	"name": "@typedpress-admin/schema",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
@@ -12,11 +12,11 @@
 		"@wordpress/api-fetch": "catalog:",
 		"@wordpress/components": "catalog:",
 		"@wordpress/route": "catalog:",
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/admin-toolkit": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"react": "catalog:",
 		"@wordpress/data": "catalog:",
-		"@first-admin/attachment-importer": "workspace:*",
-		"@first-admin/views": "workspace:*"
+		"@typedpress-admin/attachment-importer": "workspace:*",
+		"@typedpress-admin/views": "workspace:*"
 	}
 }

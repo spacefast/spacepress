@@ -1,11 +1,11 @@
 import { Link, useNavigate } from '@wordpress/route';
 import React, { useState } from 'react';
 import { IconButton } from '@wordpress/ui';
-import { unlock } from '@first-admin/admin-toolkit';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { useSelect } from '@wordpress/data';
 import { __, sprintf } from '@wordpress/i18n';
 import { privateApis as componentsPrivateApis } from '@wordpress/components';
-import { store as firstAdminStore } from '../../store';
+import { store as tpAdminStore } from '../../store';
 import type { MenuItem } from '../../store/types';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -79,7 +79,7 @@ function renderMenuItem(
 	return (
 		<Menu.Item
 			key={ item.id }
-			className="first-admin-site-hub_help-menu-item"
+			className="typedpress-admin-site-hub_help-menu-item"
 			onClick={ createClickHandler( item, navigate ) }
 		>
 			{ item.label ? (
@@ -130,7 +130,7 @@ function renderSubmenu(
 	}
 	return (
 		<Menu key={ `submenu-${ item.id }` }>
-			<Menu.SubmenuTriggerItem className="first-admin-site-hub_help-menu-item">
+			<Menu.SubmenuTriggerItem className="typedpress-admin-site-hub_help-menu-item">
 				<Menu.ItemLabel>{ item.label }</Menu.ItemLabel>
 			</Menu.SubmenuTriggerItem>
 			<Menu.Popover>
@@ -203,7 +203,7 @@ function SingleItemButton( {
 			disabled={ isLoading }
 			loadingAnnouncement={ sprintf(
 				/* translators: %s: The label of the menu item */
-				__( 'Loading %s…', 'first-admin' ),
+				__( 'Loading %s…', 'typedpress-admin' ),
 				item.label
 			) }
 			icon={ icon }
@@ -224,7 +224,7 @@ export function MetaMenu( {
 	label: string;
 } ) {
 	const menuItems = useSelect(
-		( select ) => select( firstAdminStore ).getMetaMenuItems( parent ),
+		( select ) => select( tpAdminStore ).getMetaMenuItems( parent ),
 		[ parent ]
 	);
 	const itemCount = menuItems.length;
@@ -255,7 +255,7 @@ export function MetaMenu( {
 					/>
 				}
 			/>
-			<Menu.Popover className="first-admin-site-hub_help-menu">
+			<Menu.Popover className="typedpress-admin-site-hub_help-menu">
 				{ renderMenuItems( menuItems, navigate ) }
 			</Menu.Popover>
 		</Menu>

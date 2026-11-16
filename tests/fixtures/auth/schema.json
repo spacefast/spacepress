@@ -14,7 +14,7 @@
         "wp-sitemap.xml",
         "xmlrpc.php",
         "feed",
-        "__first",
+        "__tp",
         "__spacefast",
         "llms.txt",
         "robots.txt",
@@ -39,7 +39,7 @@
         "identity",
         "index.php",
         "wp-config.php",
-        "first-admin",
+        "typedpress-admin",
         "auth"
     ],
     "site": {
@@ -128,7 +128,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "first_notes"
+            "table": "tp_notes"
         },
         "members": {
             "key": "members",
@@ -288,7 +288,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "first_members"
+            "table": "tp_members"
         }
     },
     "globals": [],

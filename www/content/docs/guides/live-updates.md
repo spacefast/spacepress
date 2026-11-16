@@ -10,7 +10,7 @@ A page can keep a read current while other people write. Subscribe to it, and th
 the result now and again each time it changes, always as the signed-in visitor reads it:
 
 ```ts
-import { createClient } from "./first/_generated/client/index.ts";
+import { createClient } from "./tp/_generated/client/index.ts";
 
 const first = createClient();
 const stop = first.todos.list({ where: { done: false }, orderBy: { createdAt: "asc" } }).subscribe(
@@ -51,7 +51,7 @@ For a read that isn't a kind query, such as an action's result or a global, use 
 `watch` helper with the kinds the read depends on. It re-runs the read itself:
 
 ```ts
-import { createClient, watch } from "./first/_generated/client/index.ts";
+import { createClient, watch } from "./tp/_generated/client/index.ts";
 
 const first = createClient();
 watch(first, ["todos"], () => first.actions.openCount(), (count) => badge(count));
@@ -95,23 +95,23 @@ This is not a socket. On hosting without a push transport, another visitor's wri
 under about two seconds, and a quiet page can be 30 seconds behind. If you need updates faster
 than that, your host has to supply a transport.
 
-## React hooks, for a React frontend outside First
+## React hooks, for a React frontend outside TypedPress
 
-First's own pages (`first/app/`) never run React: they compile to PHP and the Interactivity API,
+TypedPress's own pages (`tp/app/`) never run React: they compile to PHP and the Interactivity API,
 and keep data live with `<Live>` and `useLive`. The hooks here are for a React app that runs
-somewhere else and uses First as its backend: Next.js, TanStack Start, an Astro island, Vite.
+somewhere else and uses TypedPress as its backend: Next.js, TanStack Start, an Astro island, Vite.
 
-`first build` writes them to `first/_generated/client/react.ts`. The file imports nothing from
+`typedpress build` writes them to `tp/_generated/client/react.ts`. The file imports nothing from
 `"react"`. You hand it your React, so a project that never imports it needs no React, and the
 hooks use the React your app already bundles:
 
 ```tsx
 // first.ts
 import * as React from "react";
-import { createClient } from "./first/_generated/client/index.ts";
-import { createHooks } from "./first/_generated/client/react.ts";
+import { createClient } from "./tp/_generated/client/index.ts";
+import { createHooks } from "./tp/_generated/client/react.ts";
 
-export const first = createClient({ url: "https://example.com/__first/api/v1" });
+export const first = createClient({ url: "https://example.com/__tp/api/v1" });
 export const { useQuery, useMutation } = createHooks(React);
 ```
 
@@ -153,16 +153,16 @@ one request for your own.
 
 ## Transports
 
-First ships no realtime transport. A host delivers change notices with one. While it is live, a
+TypedPress ships no realtime transport. A host delivers change notices with one. While it is live, a
 notice refreshes the subscriptions that read the kinds it names at once, and the interval becomes
 a slow safety poll.
 
 ```ts
-import { createClient, registerRealtimeTransport, type RealtimeTransport } from "./first/_generated/client/index.ts";
+import { createClient, registerRealtimeTransport, type RealtimeTransport } from "./tp/_generated/client/index.ts";
 
 const transport: RealtimeTransport = {
   connect(deliver, status) {
-    const socket = new WebSocket("wss://relay.example/first");
+    const socket = new WebSocket("wss://relay.example/tp");
     socket.onopen = () => status("live");
     socket.onclose = () => status("down");
     socket.onmessage = (event) => deliver(JSON.parse(event.data));
@@ -184,19 +184,19 @@ A client connects its transport only while something is subscribed. When the tra
 down to live, subscriptions refresh once to catch up. A notice only says which kinds to ask
 about: the data always comes from the visitor's own read.
 
-Spacefast's Cast transport does not register for First builds yet: its engine still runs the 0.3.0
+Spacefast's Cast transport does not register for TypedPress builds yet: its engine still runs the 0.3.0
 compiler, and the names it uses are the 0.3.0 ones
 (host checklist, item 7). Until that changes, subscriptions on
 Spacefast poll like on any other host.
 
 ## Server side: the subscription endpoint
 
-Polling without a transport does not repeat each read. One request, `POST /__first/api/v1/_live`,
+Polling without a transport does not repeat each read. One request, `POST /__tp/api/v1/_live`,
 carries every read a page is subscribed to with the token of the answer it last got, and answers
 each with "not modified" or the fresh result, evaluated as the caller:
 
 ```http
-POST /__first/api/v1/_live
+POST /__tp/api/v1/_live
 { "queries": [{ "kind": "todos", "op": "list", "args": { "where": { "done": false } }, "token": "…" }] }
 
 { "data": { "results": [{ "changed": false, "token": "…" }], "poll": { "minMs": 2000, "maxMs": 30000 } } }
@@ -207,19 +207,19 @@ is `{ changed: true, token, data }`, `{ changed: false, token }`, `{ error }` (t
 document) or `{ pending: true }` (the request ran out of time; ask again). A request takes at most
 20 queries. Tokens are opaque: keep the latest one per query and send it back.
 
-First keeps a change counter per kind, written in the same transaction as every write through its
+TypedPress keeps a change counter per kind, written in the same transaction as every write through its
 write path, including wp-admin and core REST saves of your kinds. A read whose kinds the caller
 may read in full is answered from the counters without running. Any other read (a kind with a
 field hidden from the caller, a rule that gives them only some rows) runs on each poll and is
 compared with what the caller last got, so an answer never says that something changed which the
-caller may not read. A write made outside First's write path, such as another plugin's SQL, is
+caller may not read. A write made outside TypedPress's write path, such as another plugin's SQL, is
 seen within five minutes.
 
 PHP code can ask the same question without HTTP, for example to render a read and hand its token
 to the browser:
 
 ```php
-$results = \First\Live\Module::evaluate($db, $viewer, [['kind' => 'todos', 'op' => 'list', 'args' => ['limit' => 20]]]);
+$results = \TypedPress\Live\Module::evaluate($db, $viewer, [['kind' => 'todos', 'op' => 'list', 'args' => ['limit' => 20]]]);
 // [['changed' => true, 'token' => '…', 'data' => …, 'json' => '…']]
 ```
 
@@ -232,7 +232,7 @@ After a transaction commits, the runtime fires one WordPress action for the
 whole transaction:
 
 ```php
-add_action('first_realtime_changes', static function (array $notice): void {
+add_action('tp_realtime_changes', static function (array $notice): void {
     // ['id' => '…', 'at' => '2026-11-07T10:00:00.000Z', 'changes' => [
     //   ['collection' => 'todos', 'ops' => ['create', 'update'], 'ids' => [12, 13]],
     // ]]
@@ -256,7 +256,7 @@ comment held for moderation, or spam that was never approved, reports nothing.
 A host can register a transport in PHP instead of hooking the action:
 
 ```php
-\First\Realtime\Module::publish(new class implements \First\Realtime\Publisher {
+\TypedPress\Realtime\Module::publish(new class implements \TypedPress\Realtime\Publisher {
     public function publish(array $notice): void { /* send it */ }
 });
 ```
@@ -268,7 +268,7 @@ publisher and no listener on the action, the runtime collects nothing.
 ### Shared rooms
 
 A host that sends one notice to every viewer of a site should call
-`\First\Realtime\Module::shared($notice)` first. It keeps ids only for
+`\TypedPress\Realtime\Module::shared($notice)` first. It keeps ids only for
 collections any visitor can list: read rule `anyone` and no drafts. For other
 collections `ids` becomes `null`, so a viewer learns that the collection
 changed, not which rows. Clients refresh the same way in both cases.

@@ -1,8 +1,8 @@
 import { Link } from '@wordpress/route';
 import { __experimentalHeading as Heading } from '@wordpress/components';
 import { Link as DSLink } from '@wordpress/ui';
-// eslint-disable-next-line @first-admin/design-system/use-new-components
-import { Stack } from '@first-admin/design-system';
+// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
+import { Stack } from '@typedpress-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import './style.scss';
 import type {
@@ -45,8 +45,8 @@ export const Breadcrumbs = ( { items }: BreadcrumbsProps ) => {
 
 	return (
 		<nav
-			className="first-admin-breadcrumbs"
-			aria-label={ __( 'Breadcrumbs', 'first-admin' ) }
+			className="typedpress-admin-breadcrumbs"
+			aria-label={ __( 'Breadcrumbs', 'typedpress-admin' ) }
 		>
 			<Stack
 				className="admin-tookit-breadcrumbs__list"

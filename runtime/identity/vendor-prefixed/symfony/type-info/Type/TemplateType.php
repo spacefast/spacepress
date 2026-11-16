@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * Represents a template placeholder, such as "T" in "Collection<T>".

@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext;
+namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext;
 
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\LogicException;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * Type resolving context.

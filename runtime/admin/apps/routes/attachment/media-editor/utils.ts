@@ -18,7 +18,7 @@ export function getMediaTypeFromMimeType( mimeType: string ): MediaType {
 	if ( mimeType.startsWith( 'image/' ) ) {
 		return {
 			type: 'image',
-			label: __( 'Image', 'first-admin' ),
+			label: __( 'Image', 'typedpress-admin' ),
 			icon: image,
 		};
 	}
@@ -26,7 +26,7 @@ export function getMediaTypeFromMimeType( mimeType: string ): MediaType {
 	if ( mimeType.startsWith( 'video/' ) ) {
 		return {
 			type: 'video',
-			label: __( 'Video', 'first-admin' ),
+			label: __( 'Video', 'typedpress-admin' ),
 			icon: video,
 		};
 	}
@@ -34,14 +34,14 @@ export function getMediaTypeFromMimeType( mimeType: string ): MediaType {
 	if ( mimeType.startsWith( 'audio/' ) ) {
 		return {
 			type: 'audio',
-			label: __( 'Audio', 'first-admin' ),
+			label: __( 'Audio', 'typedpress-admin' ),
 			icon: audio,
 		};
 	}
 
 	return {
 		type: 'application',
-		label: __( 'Application', 'first-admin' ),
+		label: __( 'Application', 'typedpress-admin' ),
 		icon: file,
 	};
 }

@@ -9,20 +9,20 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\Context;
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap;
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups;
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth;
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName;
-use First\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Context;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\DiscriminatorMap;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Groups;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\MaxDepth;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedName;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\SerializedPath;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
 /**
  * Loader for PHP attributes.

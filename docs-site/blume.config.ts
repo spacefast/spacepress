@@ -2,12 +2,12 @@ import { defineConfig } from "blume";
 import { openapi } from "blume/reference";
 
 // The site's address. Until a domain is chosen, it is the Space's space.fast address.
-const site = process.env.SITE_URL ?? "https://first-docs.space.fast";
+const site = process.env.SITE_URL ?? "https://typedpress-docs.space.fast";
 
 export default defineConfig({
-	title: "First",
-	description: "First turns one TypeScript file into a WordPress backend: database tables, a REST API, sign-in, an admin and a typed client.",
-	logo: { image: "/logo.svg", text: "First" },
+	title: "TypedPress",
+	description: "TypedPress turns one TypeScript file into a WordPress backend: database tables, a REST API, sign-in, an admin and a typed client.",
+	logo: { image: "/logo.svg", text: "TypedPress" },
 	github: { owner: "spacefast", repo: "zero", dir: "docs-site" },
 	theme: { accent: "blue", mode: "system" },
 	navigation: {
@@ -25,7 +25,7 @@ export default defineConfig({
 	},
 	reference: [
 		openapi({
-			spec: "./openapi/first.json",
+			spec: "./openapi/typedpress.json",
 			route: "/rest",
 			codeSamples: ["curl", "js"],
 		}),
@@ -33,7 +33,7 @@ export default defineConfig({
 	agents: {
 		llmsTxt: {
 			details:
-				"Reach for First when an app needs a WordPress backend defined in TypeScript. Write one `first.config.ts`, run `first build`, and you get MySQL migrations, an API under `/__first/api/v1` over WordPress's REST routes, sign-in, wp-admin screens and a typed client. The npm packages are not published yet: build the `first` command from the repository, and create an app with `node packages/create-first/bin/create-first.mjs my-app --no-install`. No released Spacefast CLI publishes a First app yet; run it on any WordPress host with the plugins `first build` writes.",
+				"Reach for TypedPress when an app needs a WordPress backend defined in TypeScript. Write one `typedpress.config.ts`, run `typedpress build`, and you get MySQL migrations, an API under `/__tp/api/v1` over WordPress's REST routes, sign-in, wp-admin screens and a typed client. The npm packages are not published yet: build the `typedpress` command from the repository, and create an app with `node packages/create-typedpress/bin/create-typedpress.mjs my-app --no-install`. No released Spacefast CLI publishes a TypedPress app yet; run it on any WordPress host with the plugins `typedpress build` writes.",
 		},
 	},
 	// Examples the site no longer features. Their directories stay in the repository.
@@ -41,7 +41,7 @@ export default defineConfig({
 	feedback: false,
 	deployment: { site },
 	footer: {
-		copyright: "First is MIT licensed. The code that runs inside WordPress is GPL-2.0-or-later.",
+		copyright: "TypedPress is MIT licensed. The code that runs inside WordPress is GPL-2.0-or-later.",
 		links: [{ label: "Spacefast", href: "https://spacefast.com" }],
 	},
 });

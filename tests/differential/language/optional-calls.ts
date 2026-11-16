@@ -3,7 +3,7 @@
 // call and its arguments; a member callee keeps its receiver. Every action runs under Node and as
 // compiled PHP; the JSON results must be byte-identical. Typed TypeScript refuses optional calls
 // (tests/fixtures/reject-optional-call-typed).
-import { action, defineConfig } from "first";
+import { action, defineConfig } from "typedpress";
 import { classMethods, optionalCalls } from "./optional-calls-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

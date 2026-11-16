@@ -1,5 +1,5 @@
 import { IconButton, Link, Stack } from '@wordpress/ui';
-import { SiteIconLink } from '@first-admin/admin-toolkit';
+import { SiteIconLink } from '@typedpress-admin/admin-toolkit';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
 import { store as coreStore } from '@wordpress/core-data';
@@ -40,30 +40,30 @@ function SiteHub() {
 	const { open: openCommandCenter } = useDispatch( commandsStore ) as {
 		open: () => void;
 	};
-	const label = __( 'Open command palette', 'first-admin' );
+	const label = __( 'Open command palette', 'typedpress-admin' );
 
 	return (
-		<div className="first-admin-site-hub">
+		<div className="typedpress-admin-site-hub">
 			<SiteIconLink
 				to="/"
-				aria-label={ __( 'Go to the Dashboard', 'first-admin' ) }
+				aria-label={ __( 'Go to the Dashboard', 'typedpress-admin' ) }
 			/>
 			<Link
 				href={ homeUrl ?? '/' }
 				openInNewTab
-				className="first-admin-site-hub__title"
+				className="typedpress-admin-site-hub__title"
 			>
 				{ /* The stylesheet sizes the first span child: @wordpress/ui's Link no longer adds one. */ }
 				<span>
-					<div className="first-admin-site-hub__title-text">
+					<div className="typedpress-admin-site-hub__title-text">
 						{ siteTitle && decodeEntities( siteTitle ) }
 					</div>
-					<div className="first-admin-site-hub__url">
+					<div className="typedpress-admin-site-hub__url">
 						{ homeUrl ? filterURLForDisplay( homeUrl ) : '/' }
 					</div>
 				</span>
 			</Link>
-			<Stack direction="row" className="first-admin-site-hub__actions">
+			<Stack direction="row" className="typedpress-admin-site-hub__actions">
 				<IconButton
 					variant="minimal"
 					tone="neutral"

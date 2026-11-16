@@ -1,6 +1,6 @@
 //! Executable joins between compatibility claims, diagnostics, authoring and PHP behavior.
 
-// Runs the `first` binary: only with the cli feature (the browser build of the core has none).
+// Runs the `typedpress` binary: only with the cli feature (the browser build of the core has none).
 #![cfg(feature = "cli")]
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -11,7 +11,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Writes an app module, creating its directory (app code lives under `first/`).
+/// Writes an app module, creating its directory (app code lives under `tp/`).
 fn write_app(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     std::fs::create_dir_all(path.as_ref().parent().unwrap())?;
     std::fs::write(path, contents)
@@ -23,10 +23,10 @@ fn copy_app(from: impl AsRef<Path>, to: impl AsRef<Path>) -> std::io::Result<u64
     std::fs::copy(from, to)
 }
 
-/// A project whose app is `source` and the files beside it: the sources go under `first/` (the only
-/// place app code loads from) and the root `first.config.ts` re-exports `source`'s config.
+/// A project whose app is `source` and the files beside it: the sources go under `tp/` (the only
+/// place app code loads from) and the root `typedpress.config.ts` re-exports `source`'s config.
 fn project_from(project: &Path, source: &Path, siblings: &[&Path]) {
-    let app = project.join("first");
+    let app = project.join("tp");
     std::fs::create_dir_all(&app).unwrap();
     for sibling in siblings {
         std::fs::copy(sibling, app.join(sibling.file_name().unwrap())).unwrap();
@@ -34,14 +34,14 @@ fn project_from(project: &Path, source: &Path, siblings: &[&Path]) {
     let name = source.file_name().unwrap().to_str().unwrap();
     std::fs::copy(source, app.join(name)).unwrap();
     std::fs::write(
-        project.join("first.config.ts"),
-        format!("export {{ default }} from \"./first/{name}\";\n"),
+        project.join("typedpress.config.ts"),
+        format!("export {{ default }} from \"./tp/{name}\";\n"),
     )
     .unwrap();
 }
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_first"))
+    Command::new(env!("CARGO_BIN_EXE_typedpress"))
 }
 
 fn checked(project: &Path) -> (Output, Value) {
@@ -65,7 +65,7 @@ fn php(script: &str, args: &[&Path]) -> Value {
 }
 
 fn build_wp(project: &Path) -> PathBuf {
-    let output = project.join("first/dist/wp-content");
+    let output = project.join("tp/dist/wp-content");
     let out = first().arg("build").arg(project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     output
@@ -114,16 +114,16 @@ fn registered_refusals_have_live_codes_and_no_stale_fixture_links() {
 #[test]
 fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
     let tmp = tempfile::tempdir().unwrap();
-    let source = "import './a';\nimport './b';\n/*😀*/ abstract class First {}\nabstract class Second {}\nconst clock = Date.now();\n";
-    let source = source.replace("'./a'", "'./first/a'").replace("'./b'", "'./first/b'");
+    let source = "import './a';\nimport './b';\n/*😀*/ abstract class TypedPress {}\nabstract class Second {}\nconst clock = Date.now();\n";
+    let source = source.replace("'./a'", "'./tp/a'").replace("'./b'", "'./tp/b'");
     let source = source.as_str();
-    std::fs::write(tmp.path().join("first.config.ts"), source).unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), source).unwrap();
     for name in ["a.ts", "b.ts"] {
-        write_app(tmp.path().join("first").join(name), "abstract class Imported {}\n").unwrap();
+        write_app(tmp.path().join("tp").join(name), "abstract class Imported {}\n").unwrap();
     }
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
-    assert_eq!(report["schema"], "first-diagnostics");
+    assert_eq!(report["schema"], "typedpress-diagnostics");
     assert_eq!(report["version"], 1);
     assert_eq!(report["offsetEncoding"], "utf-8");
     assert_eq!(report["positionEncoding"], "utf-16");
@@ -138,13 +138,13 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
             .all(|d| d["code"] == "F1101")
     );
     let loc = &report["diagnostics"][0]["location"];
-    assert_eq!(loc["file"], "first.config.ts");
-    assert_eq!(loc["start"], source.find("abstract class First").unwrap());
+    assert_eq!(loc["file"], "typedpress.config.ts");
+    assert_eq!(loc["start"], source.find("abstract class TypedPress").unwrap());
     assert_eq!(loc["column"], "/*😀*/ ".encode_utf16().count() + 1);
     assert_eq!(loc["line"], 3);
     assert_eq!(report, checked(tmp.path()).1, "diagnostics must be deterministic");
-    assert!(!tmp.path().join("first/_generated").exists() && !tmp.path().join("first/dist").exists());
-    assert!(!tmp.path().join(".first").exists());
+    assert!(!tmp.path().join("tp/_generated").exists() && !tmp.path().join("tp/dist").exists());
+    assert!(!tmp.path().join(".tp").exists());
     // A partially lowered program must never run the Date.now() declaration.
     assert!(!report.to_string().contains("F2101"));
     let human = first().arg("check").arg(tmp.path()).output().unwrap();
@@ -155,7 +155,7 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
 #[test]
 fn successful_json_check_and_the_reusable_recipe_write_nothing() {
     let tmp = tempfile::tempdir().unwrap();
-    for file in ["first.config.ts", "first/seo.ts"] {
+    for file in ["typedpress.config.ts", "tp/seo.ts"] {
         copy_app(root().join("examples/recipes").join(file), tmp.path().join(file)).unwrap();
     }
     let (out, report) = checked(tmp.path());
@@ -166,20 +166,20 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
     assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 2);
 }
 
-/// `first check --json` lists each SQL index the deploy keeps and why it exists (spec §2.9).
-/// `.index(fields, { unique? })` (spec §2.9): a compound index the migration creates and `first check
+/// `typedpress check --json` lists each SQL index the deploy keeps and why it exists (spec §2.9).
+/// `.index(fields, { unique? })` (spec §2.9): a compound index the migration creates and `typedpress check
 /// --json` lists with its reason; a field the kind doesn't have is refused where it is written.
 #[test]
 fn a_declared_index_is_created_and_listed() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("first.config.ts"),
-        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"likes\" });\n",
+        tmp.path().join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"likes\" });\n",
     )
     .unwrap();
     write_app(
-        tmp.path().join("first/schema.ts"),
-        "import { table, integer } from \"first\";\nexport const likes = table({ post: integer(), author: integer() }).index([\"post\", \"author\"], { unique: true });\n",
+        tmp.path().join("tp/schema.ts"),
+        "import { table, integer } from \"typedpress\";\nexport const likes = table({ post: integer(), author: integer() }).index([\"post\", \"author\"], { unique: true });\n",
     )
     .unwrap();
     let (out, report) = checked(tmp.path());
@@ -190,12 +190,12 @@ fn a_declared_index_is_created_and_listed() {
     );
     let built = first().args(["build", "--quiet"]).arg(tmp.path()).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let sql = std::fs::read_to_string(tmp.path().join("first/_generated/migrations/0001_init.sql")).unwrap();
+    let sql = std::fs::read_to_string(tmp.path().join("tp/_generated/migrations/0001_init.sql")).unwrap();
     assert!(sql.contains("UNIQUE KEY `idx_post_author` (`post`, `author`)"), "{sql}");
 
     write_app(
-        tmp.path().join("first/schema.ts"),
-        "import { table, integer } from \"first\";\nexport const likes = table({ post: integer() }).index([\"psot\"]);\n",
+        tmp.path().join("tp/schema.ts"),
+        "import { table, integer } from \"typedpress\";\nexport const likes = table({ post: integer() }).index([\"psot\"]);\n",
     )
     .unwrap();
     let (out, report) = checked(tmp.path());
@@ -212,13 +212,13 @@ fn a_declared_index_is_created_and_listed() {
 fn json_check_lists_each_index_with_its_reason() {
     let tmp = tempfile::tempdir().unwrap();
     copy_app(
-        root().join("examples/pantry/first.config.ts"),
-        tmp.path().join("first.config.ts"),
+        root().join("examples/pantry/typedpress.config.ts"),
+        tmp.path().join("typedpress.config.ts"),
     )
     .unwrap();
     copy_app(
-        root().join("examples/pantry/first/lib/fields.ts"),
-        tmp.path().join("first/lib/fields.ts"),
+        root().join("examples/pantry/tp/lib/fields.ts"),
+        tmp.path().join("tp/lib/fields.ts"),
     )
     .unwrap();
     let (out, report) = checked(tmp.path());
@@ -237,7 +237,7 @@ fn json_check_lists_each_index_with_its_reason() {
         json!({ "table": "items", "name": "slug_unique", "unique": true, "columns": ["slug"], "reason": "`slug` is .unique()" })
     );
     assert_eq!(
-        find("items", "first_items_locationId_fk")["reason"],
+        find("items", "tp_items_locationId_fk")["reason"],
         "`locationId` references locations: MySQL indexes a foreign key"
     );
     // Inferred (spec §2.9): a field a compiled `where` or `orderBy` names gets an index, unless one
@@ -266,7 +266,7 @@ fn json_check_lists_each_index_with_its_reason() {
 #[test]
 fn nested_presentation_reaches_scf_and_public_schema_without_storage_migrations() {
     let tmp = tempfile::tempdir().unwrap();
-    let config = r#"import { collection, defineConfig, text, group, repeater, blocks, json } from "first";
+    let config = r#"import { collection, defineConfig, text, group, repeater, blocks, json } from "typedpress";
 const notes = collection({
   title: text(),
   seo: group({ summary: text().ui({ label: "Display name", help: "<b>Plain text</b>", placeholder: "Jane", width: 50 }).optional() }).ui({ label: "SEO" }).optional(),
@@ -275,19 +275,19 @@ const notes = collection({
   metadata: json().optional(),
 }, { title: "title" });
 export { notes }; export default defineConfig({ name: "presentation" });"#;
-    std::fs::write(tmp.path().join("first.config.ts"), config).unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), config).unwrap();
     let content = build_wp(tmp.path());
-    let schema = content.join("plugins/first-app-presentation/first/app/schema.php");
+    let schema = content.join("plugins/typedpress-app-presentation/tp/app/schema.php");
     let got = php(
         r#"
         require $argv[1];
-        $schema = \First\Schema::load($argv[2]);
+        $schema = \TypedPress\Schema::load($argv[2]);
         $columns = $schema->collection('notes')['columns'];
-        $field = \First\Wp\Scf::fieldFor($schema, 'field_seo', 'first_seo', 'seo', $columns['seo'], []);
-        $json = \First\Wp\Scf::fieldFor($schema, 'field_metadata', 'first_metadata', 'metadata', $columns['metadata'], []);
+        $field = \TypedPress\Wp\Scf::fieldFor($schema, 'field_seo', 'tp_seo', 'seo', $columns['seo'], []);
+        $json = \TypedPress\Wp\Scf::fieldFor($schema, 'field_metadata', 'tp_metadata', 'metadata', $columns['metadata'], []);
         echo json_encode(['columns' => $columns, 'public' => $schema->describe()['collections']['notes']['columns'], 'field' => $field, 'json' => $json]);
     "#,
-        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &schema],
+        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &schema],
     );
     let ui = json!({"label": "Display name", "help": "<b>Plain text</b>", "placeholder": "Jane", "width": 50});
     assert_eq!(got["columns"]["seo"]["fields"]["summary"]["ui"], ui);
@@ -308,10 +308,10 @@ export { notes }; export default defineConfig({ name: "presentation" });"#;
     assert_eq!(field["placeholder"], "Jane");
     assert_eq!(field["wrapper"]["width"], 50);
     assert_eq!(got["json"]["instructions"], "Enter valid JSON.");
-    let snapshot = tmp.path().join("first/_generated/migrations/snapshot.json");
+    let snapshot = tmp.path().join("tp/_generated/migrations/snapshot.json");
     let before = std::fs::read(&snapshot).unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
+        tmp.path().join("typedpress.config.ts"),
         config.replace("width: 50", "width: 100"),
     )
     .unwrap();
@@ -322,7 +322,7 @@ export { notes }; export default defineConfig({ name: "presentation" });"#;
         "presentation changes cannot change storage"
     );
     assert_eq!(
-        std::fs::read_dir(tmp.path().join("first/_generated/migrations"))
+        std::fs::read_dir(tmp.path().join("tp/_generated/migrations"))
             .unwrap()
             .filter(|entry| entry.as_ref().unwrap().path().extension().is_some_and(|e| e == "sql"))
             .count(),
@@ -343,8 +343,8 @@ fn malformed_ui_is_rejected_including_unknown_keys_nulls_and_fractional_widths()
         "{ help: () => 'effect' }",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!(
-            "import {{ collection, text, defineConfig }} from 'first'; const notes = collection({{ title: text().ui({ui}).optional() }}, {{ title: 'title' }}); export {{ notes }}; export default defineConfig({{}});"
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!(
+            "import {{ collection, text, defineConfig }} from 'typedpress'; const notes = collection({{ title: text().ui({ui}).optional() }}, {{ title: 'title' }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{ui}: {report}");
@@ -361,33 +361,33 @@ fn uri_vectors_agree_in_node_pure_evaluation_and_generated_php() {
     assert!(node.status.success());
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
-import {{ collection, text, json, action, defineConfig }} from "first";
+    std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
+import {{ collection, text, json, action, defineConfig }} from "typedpress";
 const values = {values};
 const encoded = values.map(value => [encodeURI(value), encodeURIComponent(value)]);
 const notes = collection({{ title: text(), result: json().default(encoded).optional() }}, {{ title: "title" }});
 export {{ notes }}; const __encode = action({{ input: {{}}, handler: () => values.map(value => [encodeURI(value), encodeURIComponent(value)]) }}); export {{ __encode as encode }}; export default defineConfig({{ name: "uri" }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/first-app-uri/first/app");
+    let app = content.join("plugins/typedpress-app-uri/tp/app");
     let result = php(
         r#"
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\FirstApp\\' . $schema['actions']['encode']['handler'];
-        echo \First\Js::jsonStringify([\First\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]))]);
+        $fn = '\\TypedPressApp\\' . $schema['actions']['encode']['handler'];
+        echo \TypedPress\Js::jsonStringify([\TypedPress\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]))]);
     "#,
-        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
+        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
     );
     assert_eq!(result, json!([expected, expected]));
     let invalid = php(
         r#"
         require $argv[1];
-        try { \First\Js::encodeURI("\xC0\xAF"); echo json_encode('accepted'); }
-        catch (\First\JsError $e) { echo json_encode($e->jsName); }
+        try { \TypedPress\Js::encodeURI("\xC0\xAF"); echo json_encode('accepted'); }
+        catch (\TypedPress\JsError $e) { echo json_encode($e->jsName); }
     "#,
-        &[&root().join("runtime/First/bootstrap.php")],
+        &[&root().join("runtime/TypedPress/bootstrap.php")],
     );
     assert_eq!(invalid, "URIError");
 }
@@ -397,25 +397,25 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
     // A timer still pending when the handler returns would fire after the response in Node; the PHP
     // request ends first, so the runtime refuses at handler end and names the creation site.
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("first/timers.js"),
+    write_app(tmp.path().join("tp/timers.js"),
         "export function pending(){ setTimeout(() => {}, 5); return 1; }\nexport function cleared(){ const h = setTimeout(() => {}, 5); clearTimeout(h); AbortSignal.timeout(5); return 2; }\nexport function late(){ const h = setTimeout(() => {}, 'x'); return typeof h; }",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {pending,cleared,late} from './first/timers.js';const __pending = action({handler:()=>pending()}); export { __pending as pending }; const __cleared = action({handler:()=>cleared()}); export { __cleared as cleared }; const __late = action({handler:()=>late()}); export { __late as late }; export default defineConfig({ name:'timers' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {pending,cleared,late} from './tp/timers.js';const __pending = action({handler:()=>pending()}); export { __pending as pending }; const __cleared = action({handler:()=>cleared()}); export { __cleared as cleared }; const __late = action({handler:()=>late()}); export { __late as late }; export default defineConfig({ name:'timers' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';
         $out=[];
         foreach (['pending','cleared','late'] as $a) {
-            $fn='\\FirstApp\\'.$s['actions'][$a]['handler'];
-            try { $out[]=['ok', \First\Timers::run(fn() => $fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])))]; }
-            catch (\First\JsError $e) { $out[]=[$e->jsName, $e->getMessage()]; }
-            $out[]=\First\Timers::pending();
+            $fn='\\TypedPressApp\\'.$s['actions'][$a]['handler'];
+            try { $out[]=['ok', \TypedPress\Timers::run(fn() => $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])))]; }
+            catch (\TypedPress\JsError $e) { $out[]=[$e->jsName, $e->getMessage()]; }
+            $out[]=\TypedPress\Timers::pending();
         }
         echo json_encode($out);"#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-timers/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-timers/tp/app"),
         ],
     );
     assert_eq!(
@@ -439,23 +439,23 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
     // (due, creation) order, and refuses waits past the request budget.
     let order = php(
         r#"require $argv[1];
-        putenv('FIRST_NOW=1000'); putenv('FIRST_TIMER_BUDGET_MS=100');
+        putenv('TP_NOW=1000'); putenv('TP_TIMER_BUDGET_MS=100');
         $log=[];
-        \First\Timers::set(function() use (&$log) { $log[]='b'; }, 20);
-        \First\Timers::set(function() use (&$log) { $log[]='a'; }, 10);
-        \First\Timers::set(function() use (&$log) { $log[]='c'; }, 20);
-        $signal = \First\JsAbortSignal::timeout(15);
-        while (\First\Timers::runNext()) { $log[] = \First\Timers::clock(); }
-        \First\Timers::set(function() {}, 500);
-        try { \First\Timers::runNext(); $log[]='slept'; } catch (\First\JsError $e) { $log[]=$e->jsName; }
+        \TypedPress\Timers::set(function() use (&$log) { $log[]='b'; }, 20);
+        \TypedPress\Timers::set(function() use (&$log) { $log[]='a'; }, 10);
+        \TypedPress\Timers::set(function() use (&$log) { $log[]='c'; }, 20);
+        $signal = \TypedPress\JsAbortSignal::timeout(15);
+        while (\TypedPress\Timers::runNext()) { $log[] = \TypedPress\Timers::clock(); }
+        \TypedPress\Timers::set(function() {}, 500);
+        try { \TypedPress\Timers::runNext(); $log[]='slept'; } catch (\TypedPress\JsError $e) { $log[]=$e->jsName; }
         // A throwing abort listener: dispatch continues (as in Node), then the error ends the
         // request where Node would report it as uncaught.
-        $faulty = new \First\JsAbortController(); $seen = [];
-        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 1; throw new \First\JsError('listener'); });
+        $faulty = new \TypedPress\JsAbortController(); $seen = [];
+        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 1; throw new \TypedPress\JsError('listener'); });
         $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 2; });
-        try { $faulty->abort(); } catch (\First\JsError $e) { $seen[] = $e->getMessage(); }
+        try { $faulty->abort(); } catch (\TypedPress\JsError $e) { $seen[] = $e->getMessage(); }
         echo json_encode([$log, $signal->aborted, $signal->reason->jsName, $seen]);"#,
-        &[&root().join("runtime/First/bootstrap.php")],
+        &[&root().join("runtime/TypedPress/bootstrap.php")],
     );
     assert_eq!(
         order,
@@ -494,18 +494,18 @@ fn url_vectors_agree_in_node_and_generated_php() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    copy_app(dir.join("url.js"), tmp.path().join("first/url.js")).unwrap();
+    copy_app(dir.join("url.js"), tmp.path().join("tp/url.js")).unwrap();
     std::fs::write(tmp.path().join("cases.json"), Value::Array(cases).to_string()).unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
-        r#"import { action, defineConfig } from "first";
-import { parseAll, searchParams, invalid } from "./first/url.js";
+        tmp.path().join("typedpress.config.ts"),
+        r#"import { action, defineConfig } from "typedpress";
+import { parseAll, searchParams, invalid } from "./tp/url.js";
 const __probe = action({ input: {}, handler: () => [searchParams(), invalid()] }); export { __probe as probe }; export default defineConfig({ name: "url" });
 "#,
     )
     .unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/first-app-url/first/app");
+    let app = content.join("plugins/typedpress-app-url/tp/app");
     // parseAll takes a data argument the action input can't carry at this size; call the compiled
     // module function directly with the decoded cases.
     let result = php(
@@ -513,23 +513,23 @@ const __probe = action({ input: {}, handler: () => [searchParams(), invalid()] }
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\FirstApp\\' . $schema['actions']['probe']['handler'];
-        $probe = $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]));
-        $cases = \First\Js::decodeJson(file_get_contents($argv[3]));
+        $fn = '\\TypedPressApp\\' . $schema['actions']['probe']['handler'];
+        $probe = $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]));
+        $cases = \TypedPress\Js::decodeJson(file_get_contents($argv[3]));
         $parse = static function ($cases) {
             $props = ['href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'];
             $out = [];
             foreach ($cases->a as $c) {
-                $base = \First\Js::dynamicGet($c, 'base');
-                $parsed = \First\Js::dynamicStaticCall('URL', 'parse', new \First\JsArray($base === null ? [\First\Js::dynamicGet($c, 'input')] : [\First\Js::dynamicGet($c, 'input'), $base]));
-                $out[] = $parsed === null ? null : new \First\JsArray(array_map(static fn ($p) => \First\Js::dynamicGet($parsed, $p), $props));
+                $base = \TypedPress\Js::dynamicGet($c, 'base');
+                $parsed = \TypedPress\Js::dynamicStaticCall('URL', 'parse', new \TypedPress\JsArray($base === null ? [\TypedPress\Js::dynamicGet($c, 'input')] : [\TypedPress\Js::dynamicGet($c, 'input'), $base]));
+                $out[] = $parsed === null ? null : new \TypedPress\JsArray(array_map(static fn ($p) => \TypedPress\Js::dynamicGet($parsed, $p), $props));
             }
-            return new \First\JsArray($out);
+            return new \TypedPress\JsArray($out);
         };
-        echo \First\Js::jsonStringify(new \First\JsArray([$parse($cases), ...$probe->a]));
+        echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray([$parse($cases), ...$probe->a]));
     "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
             &app,
             &tmp.path().join("cases.json"),
         ],
@@ -598,7 +598,7 @@ fn syntax_and_environment_failures_also_produce_a_complete_json_envelope() {
                 .contains(project.to_str().unwrap())
         );
     }
-    std::fs::write(tmp.path().join("first.config.ts"), "const x = ;").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "const x = ;").unwrap();
     let (out, syntax) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(syntax["diagnostics"][0]["code"], "F1001");
@@ -634,8 +634,8 @@ fn uri_encoding_refuses_coercion_and_discarded_arguments() {
             } else {
                 expression.to_string()
             };
-            std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
-import {{ collection, text, action, defineConfig }} from "first";
+            std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
+import {{ collection, text, action, defineConfig }} from "typedpress";
 const result = {invocation};
 const notes = collection({{ title: text() }}, {{ title: "title" }});
 export {{ notes }}; const __encode = action({{ input: {{}}, handler: {handler_body} }}); export {{ __encode as encode }}; export default defineConfig({{}});
@@ -643,7 +643,7 @@ export {{ notes }}; const __encode = action({{ input: {{}}, handler: {handler_bo
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
             assert_eq!(report["ok"], false);
-            assert!(!tmp.path().join(".first").exists());
+            assert!(!tmp.path().join(".tp").exists());
         }
     }
 }
@@ -695,10 +695,10 @@ fn type_guards_validate_their_domains_and_boolean_returns() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
+            tmp.path().join("typedpress.config.ts"),
             format!(
                 r#"
-import {{ action, defineConfig }} from "first";
+import {{ action, defineConfig }} from "typedpress";
 {helper}
 const __probe = action({{ input: {{}}, handler: () => guard }}); export {{ __probe as probe }}; export default defineConfig({{}});
 "#
@@ -764,7 +764,7 @@ export function objects(value) {
   return holder.value;
 }
 "#;
-    write_app(tmp.path().join("first/helpers.mjs"), helper).unwrap();
+    write_app(tmp.path().join("tp/helpers.mjs"), helper).unwrap();
     let mutation = r#"
 function mutation() { const object = { count: 1 }; replaceCount(object); return object.count + 1; }
 function copiedSlots(): number { const object = { count: 1 }; replaceCopiedSlot(object); return object.count + 1; }
@@ -800,13 +800,13 @@ function nonempty() {
     let expression = r#"({ nullish: nullishValues(), mutation: mutation(), copiedSlots: copiedSlots(), nonempty: nonempty(), method: methodOrder(), errors: errorEffects(), missingKinds: missingKinds(), number: combine(2, 3), string: combine('2', 3), missing: typeof absent(), object: objects({ count: 1 }), trimmed: read('  text  ') })"#;
     let node = Command::new("node")
         .current_dir(tmp.path())
-        .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects}} from './first/helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])
+        .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects}} from './tp/helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])
         .output().unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
-import {{ action, defineConfig }} from 'first';
-import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './first/helpers.mjs';
+    std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
+import {{ action, defineConfig }} from 'typedpress';
+import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './tp/helpers.mjs';
 {mutation}
 function nullable(value: string | null) {{ return value.trim(); }}
 const __probe = action({{ input: {{}}, handler: () => {expression} }}); export {{ __probe as probe }}; const __dynamicError = action({{ input: {{}}, handler: () => {{ try {{ read(2); return false; }} catch {{ return true; }} }} }}); export {{ __dynamicError as dynamicError }}; const __nullableError = action({{ input: {{}}, handler: () => {{ try {{ nullable(null); return false; }} catch {{ return true; }} }} }}); export {{ __nullableError as nullableError }}; export default defineConfig({{ name: 'js-values' }});
@@ -819,23 +819,23 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $result = [];
 foreach (['probe', 'dynamicError', 'nullableError'] as $key) {
-  $fn = '\\FirstApp\\' . $schema['actions'][$key]['handler'];
-  $result[] = $fn(new \First\JsObject(), new \First\JsObject());
+  $fn = '\\TypedPressApp\\' . $schema['actions'][$key]['handler'];
+  $result[] = $fn(new \TypedPress\JsObject(), new \TypedPress\JsObject());
 }
-echo \First\Js::jsonStringify($result);
+echo \TypedPress\Js::jsonStringify($result);
 "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-js-values/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-js-values/tp/app"),
         ],
     );
     assert_eq!(actual, json!([expected, true, true]));
 
     // The nonempty proof belongs to the container and must disappear through aliases.
     std::fs::write(
-        tmp.path().join("first.config.ts"),
+        tmp.path().join("typedpress.config.ts"),
         r#"
-import { action, defineConfig } from 'first';
+import { action, defineConfig } from 'typedpress';
 const __probe = action({ input: {}, handler: (): string => {
   const values = Array.from(['first']);
   const alias = values;
@@ -858,15 +858,15 @@ const __probe = action({ input: {}, handler: (): string => {
 
     // Borrowed mutators cannot bypass a typed caller's array element domain.
     write_app(
-        tmp.path().join("first/helpers.mjs"),
+        tmp.path().join("tp/helpers.mjs"),
         "export function change(values) { const push = [].push; push.call(values, 'x'); }",
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
+        tmp.path().join("typedpress.config.ts"),
         r#"
-import { action, defineConfig } from 'first';
-import { change } from './first/helpers.mjs';
+import { action, defineConfig } from 'typedpress';
+import { change } from './tp/helpers.mjs';
 const __probe = action({ input: {}, handler: (): number => {
   const values: number[] = [1];
   change(values);
@@ -895,15 +895,15 @@ const __probe = action({ input: {}, handler: (): number => {
         ("", "[].slice.call(arguments)", "[0].count", "...values"),
         ("first, value", "[].slice.call([value])", "[0].count", "...values"),
     ] {
-        write_app(tmp.path().join("first/helpers.mjs"),
+        write_app(tmp.path().join("tp/helpers.mjs"),
             format!("function mutate({parameters}) {{ const method = 'apply'; const copied = {copied}; copied{field} = 'x'; }} export function change(values) {{ mutate({argument}); }}"),
         )
         .unwrap();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
+            tmp.path().join("typedpress.config.ts"),
             r#"
-import { action, defineConfig } from 'first';
-import { change } from './first/helpers.mjs';
+import { action, defineConfig } from 'typedpress';
+import { change } from './tp/helpers.mjs';
 const __probe = action({ input: {}, handler: (): number => {
   const object = { count: 1 };
   const values = [object, object];
@@ -934,7 +934,7 @@ fn binary_data_matches_node_through_generated_php() {
     for file in ["binary.mjs", "files-sdk-md5.mjs"] {
         copy_app(
             root().join("tests/differential").join(file),
-            tmp.path().join("first").join(file),
+            tmp.path().join("tp").join(file),
         )
         .unwrap();
     }
@@ -943,7 +943,7 @@ fn binary_data_matches_node_through_generated_php() {
         .args([
             "--input-type=module",
             "-e",
-            "import * as cases from './first/binary.mjs'; const out = {}; for (const [name, run] of Object.entries(cases)) out[name] = await run(); process.stdout.write(JSON.stringify(out));",
+            "import * as cases from './tp/binary.mjs'; const out = {}; for (const [name, run] of Object.entries(cases)) out[name] = await run(); process.stdout.write(JSON.stringify(out));",
         ])
         .output()
         .unwrap();
@@ -958,9 +958,9 @@ fn binary_data_matches_node_through_generated_php() {
         })
         .collect();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
+        tmp.path().join("typedpress.config.ts"),
         format!(
-            "import {{ action, defineConfig }} from 'first';\nimport * as cases from './first/binary.mjs';\n{}\nexport default defineConfig({{ name: 'binary-tests' }});\n",
+            "import {{ action, defineConfig }} from 'typedpress';\nimport * as cases from './tp/binary.mjs';\n{}\nexport default defineConfig({{ name: 'binary-tests' }});\n",
             actions.join("\n")
         ),
     )
@@ -973,15 +973,15 @@ fn binary_data_matches_node_through_generated_php() {
         require $argv[2] . '/functions.php';
         $out = [];
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\\FirstApp\\' . $action['handler'];
-            try { $out[$name] = $fn(new \First\JsObject(), new \First\JsObject()); }
+            $fn = '\\TypedPressApp\\' . $action['handler'];
+            try { $out[$name] = $fn(new \TypedPress\JsObject(), new \TypedPress\JsObject()); }
             catch (\Throwable $e) { $out[$name] = get_class($e) . ': ' . $e->getMessage(); }
         }
-        echo \First\Js::jsonStringify(new \First\JsObject($out));
+        echo \TypedPress\Js::jsonStringify(new \TypedPress\JsObject($out));
     "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-binary-tests/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-binary-tests/tp/app"),
         ],
     );
     for name in &names {
@@ -995,11 +995,11 @@ fn binary_data_matches_node_through_generated_php() {
     let refused = php(
         r#"
         require $argv[1];
-        $bytes = \First\JsTypedArray::fromBytes('ab');
-        try { \First\JsBinary::refuseWire(new \First\JsObject(['v' => new \First\JsArray([$bytes])]), 'action a'); echo 'null'; }
-        catch (\First\JsError $e) { echo json_encode([$e->jsName, $e->getMessage()]); }
+        $bytes = \TypedPress\JsTypedArray::fromBytes('ab');
+        try { \TypedPress\JsBinary::refuseWire(new \TypedPress\JsObject(['v' => new \TypedPress\JsArray([$bytes])]), 'action a'); echo 'null'; }
+        catch (\TypedPress\JsError $e) { echo json_encode([$e->jsName, $e->getMessage()]); }
     "#,
-        &[&content.join("plugins/first-runtime/first/bootstrap.php")],
+        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php")],
     );
     assert_eq!(refused[0], "TypeError");
     let message = refused[1].as_str().unwrap();
@@ -1056,10 +1056,10 @@ fn binary_globals_refuse_shared_memory_and_typed_code_with_fixes() {
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        write_app(tmp.path().join("first").join(file), source).unwrap();
+        write_app(tmp.path().join("tp").join(file), source).unwrap();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\nimport {{ make }} from './first/{file}';\nconst __probe = action({{ handler: () => {{ make(); return 1; }} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            tmp.path().join("typedpress.config.ts"),
+            format!("import {{ action, defineConfig }} from 'typedpress';\nimport {{ make }} from './tp/{file}';\nconst __probe = action({{ handler: () => {{ make(); return 1; }} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -1090,11 +1090,11 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
     let tmp = tempfile::tempdir().unwrap();
     copy_app(
         root().join("tests/differential/async.mjs"),
-        tmp.path().join("first/async.mjs"),
+        tmp.path().join("tp/async.mjs"),
     )
     .unwrap();
     let script = format!(
-        "import * as m from './first/async.mjs'; const out = []; for (const name of {cases:?}) out.push(await m[name]()); await new Promise((r) => setTimeout(r, 0)); process.stdout.write(JSON.stringify(out));"
+        "import * as m from './tp/async.mjs'; const out = []; for (const name of {cases:?}) out.push(await m[name]()); await new Promise((r) => setTimeout(r, 0)); process.stdout.write(JSON.stringify(out));"
     );
     let node = Command::new("node")
         .current_dir(tmp.path())
@@ -1111,9 +1111,9 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::write(
-        tmp.path().join("first.config.ts"),
+        tmp.path().join("typedpress.config.ts"),
         format!(
-            "import {{ action, defineConfig }} from 'first';\nimport * as cases from './first/async.mjs';\n{actions}\nexport default defineConfig({{ name: 'async-diff' }});\n"
+            "import {{ action, defineConfig }} from 'typedpress';\nimport * as cases from './tp/async.mjs';\n{actions}\nexport default defineConfig({{ name: 'async-diff' }});\n"
         ),
     )
     .unwrap();
@@ -1126,28 +1126,28 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $result = [];
 foreach ({} as $key) {{
-  $fn = '\\FirstApp\\' . $schema['actions'][$key]['handler'];
-  $result[] = $fn(new \First\JsObject(), new \First\JsObject());
+  $fn = '\\TypedPressApp\\' . $schema['actions'][$key]['handler'];
+  $result[] = $fn(new \TypedPress\JsObject(), new \TypedPress\JsObject());
 }}
-echo \First\Js::jsonStringify(new \First\JsArray($result));
+echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray($result));
 "#,
             serde_json::to_string(&cases).unwrap()
         ),
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-async-diff/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-async-diff/tp/app"),
         ],
     );
     assert_eq!(actual, expected);
 
     // Handler end: an unhandled rejection and a promise nothing can settle are runtime errors.
-    write_app(tmp.path().join("first/async.mjs"),
+    write_app(tmp.path().join("tp/async.mjs"),
         "export async function lost() { Promise.reject(new Error('lost')); return 1; }\nexport async function stuck() { await new Promise(() => {}); }\n",
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
-        "import { action, defineConfig } from 'first';\nimport * as cases from './first/async.mjs';\nexport const lost = action({ input: {}, handler: async () => await cases.lost() });\nexport const stuck = action({ input: {}, handler: async () => await cases.stuck() });\nexport default defineConfig({ name: 'async-diff' });\n",
+        tmp.path().join("typedpress.config.ts"),
+        "import { action, defineConfig } from 'typedpress';\nimport * as cases from './tp/async.mjs';\nexport const lost = action({ input: {}, handler: async () => await cases.lost() });\nexport const stuck = action({ input: {}, handler: async () => await cases.stuck() });\nexport default defineConfig({ name: 'async-diff' });\n",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -1158,22 +1158,22 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $result = [];
 foreach (['lost', 'stuck'] as $key) {
-  $fn = '\\FirstApp\\' . $schema['actions'][$key]['handler'];
-  try { $fn(new \First\JsObject(), new \First\JsObject()); $result[] = 'completed'; }
-  catch (\First\JsError $e) { $result[] = $e->getMessage(); }
+  $fn = '\\TypedPressApp\\' . $schema['actions'][$key]['handler'];
+  try { $fn(new \TypedPress\JsObject(), new \TypedPress\JsObject()); $result[] = 'completed'; }
+  catch (\TypedPress\JsError $e) { $result[] = $e->getMessage(); }
 }
 echo json_encode($result);
 "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-async-diff/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-async-diff/tp/app"),
         ],
     );
     assert_eq!(
         errors,
         json!([
             "lost",
-            "This promise can never settle: nothing left to run (awaited at first.config.ts:4:63)"
+            "This promise can never settle: nothing left to run (awaited at typedpress.config.ts:4:63)"
         ])
     );
 }
@@ -1191,8 +1191,8 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
         json!([{"nested":{"keep":1},"slots":[null]}, "undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"])
     );
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
-import {{ collection, text, json, action, defineConfig }} from "first";
+    std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
+import {{ collection, text, json, action, defineConfig }} from "typedpress";
 const measured = {expression};
 const notes = collection({{ title: text(), result: json().default(measured).optional() }}, {{ title: "title" }});
 export {{ notes }}; const __measure = action({{ input: {{}}, handler: () => {expression} }}); export {{ __measure as measure }}; export default defineConfig({{ name: "differences" }});
@@ -1203,12 +1203,12 @@ export {{ notes }}; const __measure = action({{ input: {{}}, handler: () => {exp
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\FirstApp\\' . $schema['actions']['measure']['handler'];
-        echo \First\Js::jsonStringify([\First\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]))]);
+        $fn = '\\TypedPressApp\\' . $schema['actions']['measure']['handler'];
+        echo \TypedPress\Js::jsonStringify([\TypedPress\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]))]);
     "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-differences/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-differences/tp/app"),
         ],
     );
     assert_eq!(
@@ -1218,7 +1218,11 @@ export {{ notes }}; const __measure = action({{ input: {{}}, handler: () => {exp
             [{"nested":{"keep":1},"slots":[null]}, "undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"]
         ])
     );
-    std::fs::write(tmp.path().join("first.config.ts"), r#"const half = "🙂a".slice(1);"#).unwrap();
+    std::fs::write(
+        tmp.path().join("typedpress.config.ts"),
+        r#"const half = "🙂a".slice(1);"#,
+    )
+    .unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
     assert!(
@@ -1268,7 +1272,7 @@ fn static_commonjs_packages_match_node_through_generated_php() {
             "exports.limit = 3;\nexports.label = 'items';\n",
         ),
         (
-            "first/probe.cjs",
+            "tp/probe.cjs",
             "const toSource = require('glob-lite');\nconst { log } = require('glob-lite/lib/log');\nconst { limit, label } = require('counts');\nfunction run(glob) { return { source: toSource(glob), order: log.join(','), limit, label }; }\nmodule.exports = run;\n",
         ),
     ];
@@ -1279,7 +1283,7 @@ fn static_commonjs_packages_match_node_through_generated_php() {
     }
     std::fs::write(
         tmp.path().join("node.cjs"),
-        "process.stdout.write(JSON.stringify(require('./first/probe.cjs')('src/*.test.js')));",
+        "process.stdout.write(JSON.stringify(require('./tp/probe.cjs')('src/*.test.js')));",
     )
     .unwrap();
     let node = Command::new("node").arg(tmp.path().join("node.cjs")).output().unwrap();
@@ -1290,10 +1294,10 @@ fn static_commonjs_packages_match_node_through_generated_php() {
         json!({"source": "src/[^/]*\\.test\\.js", "order": "index,constants,escape,after", "limit": 3, "label": "items"})
     );
     std::fs::write(
-        tmp.path().join("first.config.ts"),
+        tmp.path().join("typedpress.config.ts"),
         r#"
-import { action, defineConfig, text } from "first";
-import run from "./first/probe.cjs";
+import { action, defineConfig, text } from "typedpress";
+import run from "./tp/probe.cjs";
 const __probe = action({ access: "anyone", input: { glob: text() }, handler: (input) => run(input.glob) }); export { __probe as probe }; export default defineConfig({ name: "commonjs" });
 "#,
     )
@@ -1304,12 +1308,12 @@ const __probe = action({ access: "anyone", input: { glob: text() }, handler: (in
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\FirstApp\\' . $schema['actions']['probe']['handler'];
-        echo \First\Js::jsonStringify($fn(new \First\JsObject(['glob' => 'src/*.test.js']), \First\Seam::ctx(['user' => null])));
+        $fn = '\\TypedPressApp\\' . $schema['actions']['probe']['handler'];
+        echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(['glob' => 'src/*.test.js']), \TypedPress\Seam::ctx(['user' => null])));
     "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-commonjs/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-commonjs/tp/app"),
         ],
     );
     assert_eq!(result, expected);
@@ -1319,7 +1323,7 @@ const __probe = action({ access: "anyone", input: { glob: text() }, handler: (in
 fn classes_match_node_through_generated_php_and_wire_client_types() {
     let tmp = tempfile::tempdir().unwrap();
     let config = root().join("tests/differential/classes.ts");
-    std::fs::copy(&config, tmp.path().join("first.config.ts")).unwrap();
+    std::fs::copy(&config, tmp.path().join("typedpress.config.ts")).unwrap();
     let js = tmp.path().join("node");
     let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
@@ -1345,8 +1349,8 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
     assert_eq!(cases.len(), 5);
     assert!(cases.values().all(|result| result.get("data").is_some()), "{expected}");
     let content = build_wp(tmp.path());
-    let runtime = content.join("plugins/first-runtime/first/bootstrap.php");
-    let app = content.join("plugins/first-app-class-tests/first/app");
+    let runtime = content.join("plugins/typedpress-runtime/tp/bootstrap.php");
+    let app = content.join("plugins/typedpress-app-class-tests/tp/app");
     let actual = php(
         r#"
         require $argv[1];
@@ -1354,11 +1358,11 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
         require $argv[2] . '/functions.php';
         $out = [];
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\\FirstApp\\' . $action['handler'];
+            $fn = '\\TypedPressApp\\' . $action['handler'];
             try { $out[$name] = ['data' => $fn()]; }
             catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
         }
-        echo \First\Js::jsonStringify($out);
+        echo \TypedPress\Js::jsonStringify($out);
     "#,
         &[&runtime, &app],
     );
@@ -1369,13 +1373,13 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\FirstApp\\' . $schema['actions']['classesWire']['handler'];
+        $fn = '\\TypedPressApp\\' . $schema['actions']['classesWire']['handler'];
         $instance = $fn();
-        $stored = \First\Seam::toPhp($instance, ['type' => 'json']);
-        $input = \First\Seam::toJs($stored, ['type' => 'json']);
+        $stored = \TypedPress\Seam::toPhp($instance, ['type' => 'json']);
+        $input = \TypedPress\Seam::toJs($stored, ['type' => 'json']);
         $stored->p['count'] = 99;
-        echo \First\Js::jsonStringify([
-            'wire' => \First\Seam::toWire($instance),
+        echo \TypedPress\Js::jsonStringify([
+            'wire' => \TypedPress\Seam::toWire($instance),
             'identity' => [$instance->class !== null, $stored->class === null, $input->class === null],
             'detached' => [$instance->p['count'], $stored->p['count'], $input->p['count']],
         ]);
@@ -1388,7 +1392,7 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
     std::fs::write(
         tmp.path().join("class-client.ts"),
         r#"
-import type { Actions } from './first/_generated/client/types';
+import type { Actions } from './tp/_generated/client/types';
 declare const instance: Actions['classesWire']['output'];
 const count: number = instance.count;
 const label: string = instance.label;
@@ -1471,15 +1475,15 @@ fn private_names_accessors_and_imported_javascript_classes_match_node() {
         require $argv[2] . '/functions.php';
         $out = [];
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\\FirstApp\\' . $action['handler'];
+            $fn = '\\TypedPressApp\\' . $action['handler'];
             try { $out[$name] = ['data' => $fn()]; }
             catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
         }
-        echo \First\Js::jsonStringify($out);
+        echo \TypedPress\Js::jsonStringify($out);
     "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-class-private/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-class-private/tp/app"),
         ],
     );
     assert_eq!(
@@ -1598,7 +1602,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         } else {
             "{}"
         };
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{ table, json, action, defineConfig }} from 'first';\n{declarations}\nconst __n = table({{}}); export {{ __n as n }}; const __test = action({{input: {input}, handler: () => {handler} }}); export {{ __test as test }}; export default defineConfig({{}});\n")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{ table, json, action, defineConfig }} from 'typedpress';\n{declarations}\nconst __n = table({{}}); export {{ __n as n }}; const __test = action({{input: {input}, handler: () => {handler} }}); export {{ __test as test }}; export default defineConfig({{}});\n")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{message}: {report}");
         let diagnostic = report["diagnostics"]
@@ -1607,7 +1611,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
             .iter()
             .find(|d| d["message"].as_str().unwrap().contains(message))
             .unwrap_or_else(|| panic!("expected {message}: {report}"));
-        assert_eq!(diagnostic["location"]["file"], "first.config.ts", "{report}");
+        assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts", "{report}");
         assert!(diagnostic["location"]["line"].as_u64().unwrap() >= 2);
     }
 }
@@ -1658,12 +1662,12 @@ fn host_globals_match_node_through_generated_php() {
     );
     // The config imports its CommonJS helper, which Node loads with its own require.
     let module = std::fs::read_to_string(js.join("host-globals.js")).unwrap();
-    std::fs::write(js.join("first.config.mjs"), module).unwrap();
+    std::fs::write(js.join("typedpress.config.mjs"), module).unwrap();
     std::fs::copy(dir.join("host-crypto.cjs"), js.join("host-crypto.cjs")).unwrap();
     // Node reads the origin directly; the PHP side sees the same answers through the stub.
     let node = Command::new("node")
         .arg(dir.join("run-node.mjs"))
-        .arg(js.join("first.config.mjs"))
+        .arg(js.join("typedpress.config.mjs"))
         .env("HOST_URL", format!("http://127.0.0.1:{port}"))
         .env("HOST_SECRET", secret)
         .env_remove("HOST_UNSET")
@@ -1692,15 +1696,15 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $out = [];
 foreach ($schema['actions'] as $name => $action) {
-    $fn = '\\FirstApp\\' . $action['handler'];
-    try { $out[$name] = ['data' => $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]))]; }
+    $fn = '\\TypedPressApp\\' . $action['handler'];
+    try { $out[$name] = ['data' => $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]))]; }
     catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
 }
-echo \First\Js::jsonStringify($out);
+echo \TypedPress\Js::jsonStringify($out);
 "#,
         ])
-        .arg(content.join("plugins/first-runtime/first/bootstrap.php"))
-        .arg(content.join("plugins/first-app-host-globals/first/app"))
+        .arg(content.join("plugins/typedpress-runtime/tp/bootstrap.php"))
+        .arg(content.join("plugins/typedpress-app-host-globals/tp/app"))
         .arg(dir.join("host-wp-http.php"))
         // The PHP side fetches the public name; the policy checks it, the stub connects locally.
         .env("HOST_URL", format!("https://origin.example:{port}"))
@@ -1715,28 +1719,28 @@ echo \First\Js::jsonStringify($out);
     assert_eq!(actual, expected, "generated PHP differs from Node");
 }
 
-/// `first check --json` reports each plugin's package, integrity, locked and inferred grant, and
+/// `typedpress check --json` reports each plugin's package, integrity, locked and inferred grant, and
 /// the handlers that read data and send it out. A report, not a refusal: the check succeeds.
 #[test]
 fn check_reports_plugin_grants_and_read_to_send_flows() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(tmp.path().join("node_modules/first-plugin-sync/src")).unwrap();
+    std::fs::create_dir_all(tmp.path().join("node_modules/typedpress-plugin-sync/src")).unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
-        r#"import { collection, defineConfig, text } from "first";
-import sync from "first-plugin-sync";
+        tmp.path().join("typedpress.config.ts"),
+        r#"import { collection, defineConfig, text } from "typedpress";
+import sync from "typedpress-plugin-sync";
 const posts = collection({ title: text() }, { title: "title" });
 export { posts }; export default defineConfig({ name: "flows", use: [sync()] });"#,
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("node_modules/first-plugin-sync/package.json"),
-        r#"{ "name": "first-plugin-sync", "version": "3.1.0", "exports": "./src/index.ts" }"#,
+        tmp.path().join("node_modules/typedpress-plugin-sync/package.json"),
+        r#"{ "name": "typedpress-plugin-sync", "version": "3.1.0", "exports": "./src/index.ts" }"#,
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("node_modules/first-plugin-sync/src/index.ts"),
-        r#"import { action, db, definePlugin } from "first";
+        tmp.path().join("node_modules/typedpress-plugin-sync/src/index.ts"),
+        r#"import { action, db, definePlugin } from "typedpress";
 import { abilities, esc_html } from "php/wordpress";
 import { createHmac } from "node:crypto";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
@@ -1769,7 +1773,7 @@ export default () => definePlugin({
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(out.status.success(), "{report}");
     let plugin = &report["plugins"][0];
-    assert_eq!(plugin["package"], "first-plugin-sync");
+    assert_eq!(plugin["package"], "typedpress-plugin-sync");
     assert_eq!(plugin["version"], "3.1.0");
     assert!(plugin["integrity"].as_str().unwrap().starts_with("sha256-"));
     assert_eq!(plugin["status"], "added");
@@ -1794,7 +1798,7 @@ export default () => definePlugin({
             "sends": ["http: hooks.example.com"],
         }])
     );
-    assert!(!tmp.path().join("first/_generated").exists(), "check writes no lock");
+    assert!(!tmp.path().join("tp/_generated").exists(), "check writes no lock");
     let frozen = first()
         .args(["check", "--json", "--frozen"])
         .arg(tmp.path())
@@ -1807,7 +1811,7 @@ export default () => definePlugin({
         report["diagnostics"][0]["message"]
             .as_str()
             .unwrap()
-            .contains("plugin \"sync\" (first-plugin-sync@3.1.0) isn't in first/_generated/plugins.lock.json"),
+            .contains("plugin \"sync\" (typedpress-plugin-sync@3.1.0) isn't in tp/_generated/plugins.lock.json"),
         "{report}"
     );
 }
@@ -1822,7 +1826,7 @@ fn installed_package_typescript_is_type_erased_like_javascript_and_matches_node(
         r#"{"name":"typed-lib","type":"module","exports":{".":{"types":"./src/index.d.ts","import":"./src/index.ts"}}}"#,
     )
     .unwrap();
-    // Every type-level construct here is refused in authored code or exceeds First's type subset.
+    // Every type-level construct here is refused in authored code or exceeds TypedPress's type subset.
     std::fs::write(
         package.join("src/index.ts"),
         r#"import type { Shape } from "./shape.js";
@@ -1907,9 +1911,9 @@ export const describe = (shape: Shape): string => (shape.kind === "circle" ? `r=
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
+        tmp.path().join("typedpress.config.ts"),
         r#"
-import { action, defineConfig, text } from 'first';
+import { action, defineConfig, text } from 'typedpress';
 import { run } from 'typed-lib';
 const __probe = action({ input: { key: text() }, handler: (input) => run(input.key) }); export { __probe as probe }; export default defineConfig({ name: 'typed-lib' });
 "#,
@@ -1921,14 +1925,14 @@ const __probe = action({ input: { key: text() }, handler: (input) => run(input.k
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\FirstApp\\' . $schema['actions']['probe']['handler'];
-$input = new \First\JsObject();
+$fn = '\\TypedPressApp\\' . $schema['actions']['probe']['handler'];
+$input = new \TypedPress\JsObject();
 $input->p['key'] = 'hi';
-echo \First\Js::jsonStringify($fn($input, new \First\JsObject()));
+echo \TypedPress\Js::jsonStringify($fn($input, new \TypedPress\JsObject()));
 "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-typed-lib/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-typed-lib/tp/app"),
         ],
     );
     assert_eq!(actual, expected);
@@ -1942,17 +1946,17 @@ echo \First\Js::jsonStringify($fn($input, new \First\JsObject()));
         ),
         (
             "import { run, Mapper } from 'typed-lib'; const read = (key: string) => run(key);",
-            "`Mapper` comes from an installed package or JavaScript module, whose types First erases",
+            "`Mapper` comes from an installed package or JavaScript module, whose types TypedPress erases",
         ),
         (
             "import { run, type Mapper } from 'typed-lib'; const read = (key: string) => { const map: Mapper | null = null; return run(key); };",
-            "`Mapper` comes from an installed package or JavaScript module, whose types First erases",
+            "`Mapper` comes from an installed package or JavaScript module, whose types TypedPress erases",
         ),
     ] {
         std::fs::write(
-            tmp.path().join("first.config.ts"),
+            tmp.path().join("typedpress.config.ts"),
             format!(
-                "import {{ action, defineConfig, text }} from 'first'; {source} const __probe = action({{ input: {{ key: text() }}, handler: (input) => read(input.key) }}); export {{ __probe as probe }}; export default defineConfig({{}});"
+                "import {{ action, defineConfig, text }} from 'typedpress'; {source} const __probe = action({{ input: {{ key: text() }}, handler: (input) => read(input.key) }}); export {{ __probe as probe }}; export default defineConfig({{}});"
             ),
         )
         .unwrap();
@@ -1973,7 +1977,7 @@ echo \First\Js::jsonStringify($fn($input, new \First\JsObject()));
 fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("first/helper.js"),
+        tmp.path().join("tp/helper.js"),
         r#"
         class C { m() { return 4; } }
         class D extends C {}
@@ -1991,23 +1995,23 @@ fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     "#,
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first'; import {test} from './first/helper.js'; const __test = action({input:{},handler:()=>test()}); export { __test as test }; export default defineConfig({ name:'classboundary' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress'; import {test} from './tp/helper.js'; const __test = action({input:{},handler:()=>test()}); export { __test as test }; export default defineConfig({ name:'classboundary' });").unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/first-app-classboundary/first/app");
+    let app = content.join("plugins/typedpress-app-classboundary/tp/app");
     let actual = php(
         r#"
         require $argv[1];
         require $argv[2] . '/functions.php';
-        echo \First\Js::jsonStringify(\FirstApp\action__test());
+        echo \TypedPress\Js::jsonStringify(\TypedPressApp\action__test());
     "#,
-        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
+        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
     );
     let node = Command::new("node")
         .current_dir(tmp.path())
         .args([
             "--input-type=module",
             "-e",
-            "import {test} from './first/helper.js'; process.stdout.write(JSON.stringify(test()));",
+            "import {test} from './tp/helper.js'; process.stdout.write(JSON.stringify(test()));",
         ])
         .output()
         .unwrap();
@@ -2033,7 +2037,7 @@ const attempt = (f) => { try { return f(); } catch (e) { return e.name; } };
 export function brand(target) { Object.defineProperty(target, BRAND, { value: true }); return target; }
 export function isBranded(value) { return isObject(value) && Object.hasOwn(value, BRAND) && value[BRAND] === true; }
 export function local() { return LOCAL; }
-// Built-in prototypes carry well-known symbol methods First doesn't model: refused, not guessed.
+// Built-in prototypes carry well-known symbol methods TypedPress doesn't model: refused, not guessed.
 export function unmodeled() {
   const list = [1];
   return [() => Symbol.iterator in list, () => list[Symbol.iterator], () => Symbol.hasInstance in isObject].map((f) => { try { return f(); } catch (e) { return [e.name, e.message]; } });
@@ -2067,21 +2071,21 @@ export function probe() {
   };
 }
 "#;
-    write_app(tmp.path().join("first/helpers.mjs"), helper).unwrap();
+    write_app(tmp.path().join("tp/helpers.mjs"), helper).unwrap();
     let node = Command::new("node")
         .current_dir(tmp.path())
         .args([
             "--input-type=module",
             "-e",
-            "import {probe} from './first/helpers.mjs'; process.stdout.write(JSON.stringify(probe()));",
+            "import {probe} from './tp/helpers.mjs'; process.stdout.write(JSON.stringify(probe()));",
         ])
         .output()
         .unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
-        "import { action, defineConfig } from 'first'; import { probe, unmodeled } from './first/helpers.mjs'; const __probe = action({ input: {}, handler: () => probe() }); export { __probe as probe }; const __unmodeled = action({ input: {}, handler: () => unmodeled() }); export { __unmodeled as unmodeled }; export default defineConfig({ name: 'symbols' });",
+        tmp.path().join("typedpress.config.ts"),
+        "import { action, defineConfig } from 'typedpress'; import { probe, unmodeled } from './tp/helpers.mjs'; const __probe = action({ input: {}, handler: () => probe() }); export { __probe as probe }; const __unmodeled = action({ input: {}, handler: () => unmodeled() }); export { __unmodeled as unmodeled }; export default defineConfig({ name: 'symbols' });",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -2090,12 +2094,12 @@ export function probe() {
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$run = fn ($name) => ('\\FirstApp\\' . $schema['actions'][$name]['handler'])(new \First\JsObject(), new \First\JsObject());
-echo \First\Js::jsonStringify(new \First\JsArray([$run('probe'), $run('unmodeled')]));
+$run = fn ($name) => ('\\TypedPressApp\\' . $schema['actions'][$name]['handler'])(new \TypedPress\JsObject(), new \TypedPress\JsObject());
+echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray([$run('probe'), $run('unmodeled')]));
 "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-symbols/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-symbols/tp/app"),
         ],
     );
     let refused = json!([
@@ -2144,13 +2148,13 @@ echo \First\Js::jsonStringify(new \First\JsArray([$run('probe'), $run('unmodeled
         ),
         (
             "const __a = action({ input: {}, handler: () => globalThis.Bun() }); export { __a as a }; export default defineConfig({});",
-            "`globalThis.Bun` is undefined in First",
+            "`globalThis.Bun` is undefined in TypedPress",
         ),
     ] {
-        std::fs::remove_file(tmp.path().join("first/helpers.mjs")).ok();
+        std::fs::remove_file(tmp.path().join("tp/helpers.mjs")).ok();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\n{source}"),
+            tmp.path().join("typedpress.config.ts"),
+            format!("import {{ action, defineConfig }} from 'typedpress';\n{source}"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -2177,7 +2181,7 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
         let expression = v["expression"].as_str().unwrap();
         if let Some(files) = v["files"].as_object() {
             for (name, source) in files {
-                write_app(tmp.path().join("first").join(name), source.as_str().unwrap()).unwrap();
+                write_app(tmp.path().join("tp").join(name), source.as_str().unwrap()).unwrap();
             }
         }
 
@@ -2202,13 +2206,13 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
             ));
         }
     }
-    write_app(tmp.path().join("first/helper.js"), javascript).unwrap();
-    // The app and its helper modules live under first/; the root config re-exports it.
-    let entry = tmp.path().join("first/app.ts");
-    std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'first';\n{declarations}\n{}\nexport default defineConfig({{name: 'builtinparity'}});", actions.join("\n"))).unwrap();
+    write_app(tmp.path().join("tp/helper.js"), javascript).unwrap();
+    // The app and its helper modules live under tp/; the root config re-exports it.
+    let entry = tmp.path().join("tp/app.ts");
+    std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'typedpress';\n{declarations}\n{}\nexport default defineConfig({{name: 'builtinparity'}});", actions.join("\n"))).unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
-        "export { default } from './first/app.ts';\n",
+        tmp.path().join("typedpress.config.ts"),
+        "export { default } from './tp/app.ts';\n",
     )
     .unwrap();
     let node = Command::new("node")
@@ -2219,20 +2223,20 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/first-app-builtinparity/first/app");
+    let app = content.join("plugins/typedpress-app-builtinparity/tp/app");
     let actual = php(
         r#"
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $out = new \First\JsObject();
+        $out = new \TypedPress\JsObject();
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\FirstApp\\' . $action['handler'];
-            $out->p[$name] = new \First\JsObject(['data' => $fn(new \First\JsObject(), \First\Seam::ctx(['user' => null]))]);
+            $fn = '\TypedPressApp\\' . $action['handler'];
+            $out->p[$name] = new \TypedPress\JsObject(['data' => $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]))]);
         }
-        echo \First\Js::jsonStringify($out);
+        echo \TypedPress\Js::jsonStringify($out);
     "#,
-        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
+        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
     );
     assert_eq!(actual, expected["cases"]);
 }
@@ -2337,7 +2341,7 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
             } else {
                 (format!("const folded = {expression};"), "folded".into())
             };
-            std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\n{declaration}\nconst __probe = action({{input:{{}},handler:()=>{result}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'refusal' }});")).unwrap();
+            std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\n{declaration}\nconst __probe = action({{input:{{}},handler:()=>{result}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'refusal' }});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -2362,7 +2366,7 @@ fn javascript_invalid_regex_literals_receive_syntax_diagnostics() {
         assert!(!node.status.success(), "{expression}");
         assert!(String::from_utf8_lossy(&node.stderr).contains("SyntaxError"));
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>{expression}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>{expression}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2372,7 +2376,7 @@ fn javascript_invalid_regex_literals_receive_syntax_diagnostics() {
             diagnostic["message"].as_str().unwrap().starts_with("syntax error:"),
             "{report}"
         );
-        assert_eq!(diagnostic["location"]["file"], "first.config.ts");
+        assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts");
     }
 }
 
@@ -2404,7 +2408,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst __probe = action({{input:{{}},handler:()=>{{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'diagnostics' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\nconst __probe = action({{input:{{}},handler:()=>{{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'diagnostics' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2422,7 +2426,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
         "'a,b,c'.split(',', {valueOf: () => 2})",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst result = {expression};\nconst __probe = action({{input:{{}},handler:()=>result}}); export {{ __probe as probe }}; export default defineConfig({{ name:'coercion' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\nconst result = {expression};\nconst __probe = action({{input:{{}},handler:()=>result}}); export {{ __probe as probe }}; export default defineConfig({{ name:'coercion' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2436,7 +2440,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
 fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
     for method in ["findMany", "findFirst"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, db}} from 'first';\nconst notes = table({{}});\nexport {{ notes }}; const __probe = action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'queryarity' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig, table, db}} from 'typedpress';\nconst notes = table({{}});\nexport {{ notes }}; const __probe = action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'queryarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2469,7 +2473,7 @@ fn database_builders_refuse_discarded_arguments_at_the_call_site() {
         "(n++, db.insert(notes).values({count: 1}))",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, integer, db}} from 'first';\nconst notes=table({{count:integer().optional()}});\nexport {{ notes }}; const __probe = action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'builderarity' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig, table, integer, db}} from 'typedpress';\nconst notes=table({{count:integer().optional()}});\nexport {{ notes }}; const __probe = action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'builderarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2488,13 +2492,13 @@ fn dynamic_large_radix_values_fail_as_an_explicit_runtime_refusal() {
         r#"
         require $argv[1];
         try {
-            \First\Js::parseInt('120101100002111211120012010111012200200201', 3);
+            \TypedPress\Js::parseInt('120101100002111211120012010111012200200201', 3);
             echo json_encode(['accepted']);
-        } catch (\First\JsError $error) {
+        } catch (\TypedPress\JsError $error) {
             echo json_encode([$error->jsName, $error->getMessage()]);
         }
     "#,
-        &[&root().join("runtime/First/bootstrap.php")],
+        &[&root().join("runtime/TypedPress/bootstrap.php")],
     );
     assert_eq!(
         actual,
@@ -2511,7 +2515,7 @@ fn configuration_validates_callbacks_before_empty_input_shortcuts() {
         "[].map(Math)",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nconst __probe = action({{input:{{}},handler:()=>value}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nconst __probe = action({{input:{{}},handler:()=>value}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2533,7 +2537,7 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
         "new HttpError(400, 'bad', 'message')",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{text, json, select, action, defineConfig, HttpError}} from 'first';\nconst invalid = {expression};\nconst __probe = action({{handler:()=>1}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{text, json, select, action, defineConfig, HttpError}} from 'typedpress';\nconst invalid = {expression};\nconst __probe = action({{handler:()=>1}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2561,7 +2565,7 @@ fn configuration_refuses_calls_that_lose_an_extracted_method_receiver() {
         "const methods=[' abc '.trim]; const result=methods['0']();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\n{source}\nconst __probe = action({{handler:()=>result}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\n{source}\nconst __probe = action({{handler:()=>result}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2594,7 +2598,7 @@ fn prototype_setter_literals_are_refused_in_configuration_and_handlers() {
         } else {
             format!("Object.hasOwn({expression}, '__proto__')")
         };
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\n{declaration}\nconst __probe = action({{handler:()=>{body}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\n{declaration}\nconst __probe = action({{handler:()=>{body}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2621,7 +2625,7 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
         "typeof [1, 2]['+1']",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst folded={expression};\nconst __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\nconst folded={expression};\nconst __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2638,8 +2642,8 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
 #[test]
 fn console_results_preserve_undefined_and_emit_the_log() {
     let tmp = tempfile::tempdir().unwrap();
-    let entry = tmp.path().join("first.config.ts");
-    std::fs::write(&entry, "import {action,defineConfig} from 'first'; const __probe = action({input:{},handler:()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}}); export { __probe as probe }; export default defineConfig({ name:'logresult' });").unwrap();
+    let entry = tmp.path().join("typedpress.config.ts");
+    std::fs::write(&entry, "import {action,defineConfig} from 'typedpress'; const __probe = action({input:{},handler:()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}}); export { __probe as probe }; export default defineConfig({ name:'logresult' });").unwrap();
     let node = Command::new("node")
         .arg(root().join("tests/differential/run-node.mjs"))
         .arg(&entry)
@@ -2649,8 +2653,8 @@ fn console_results_preserve_undefined_and_emit_the_log() {
     assert!(String::from_utf8_lossy(&node.stderr).contains("builtin-return-marker"));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/first-app-logresult/first/app");
-    let actual = Command::new("php").args(["-r", r#"require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\FirstApp\\'.$schema['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn());"#]).arg(content.join("plugins/first-runtime/first/bootstrap.php")).arg(app).output().unwrap();
+    let app = content.join("plugins/typedpress-app-logresult/tp/app");
+    let actual = Command::new("php").args(["-r", r#"require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\TypedPressApp\\'.$schema['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn());"#]).arg(content.join("plugins/typedpress-runtime/tp/bootstrap.php")).arg(app).output().unwrap();
     assert!(actual.status.success(), "{}", String::from_utf8_lossy(&actual.stderr));
     assert!(String::from_utf8_lossy(&actual.stderr).contains("builtin-return-marker"));
     assert_eq!(
@@ -2662,13 +2666,13 @@ fn console_results_preserve_undefined_and_emit_the_log() {
 #[test]
 fn dynamic_engine_dependent_math_fails_explicitly() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); const __probe = action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}}); export { __probe as probe }; export default defineConfig({ name:'powerrefusal' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); const __probe = action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}}); export { __probe as probe }; export default defineConfig({ name:'powerrefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\FirstApp\\'.$schema['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn());"#,
+        r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\TypedPressApp\\'.$schema['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn());"#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-powerrefusal/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-powerrefusal/tp/app"),
         ],
     );
     assert_eq!(result, json!(["power", "reciprocal", "log", "exp"]));
@@ -2684,7 +2688,7 @@ fn configuration_refuses_unmodeled_inherited_properties() {
         "typeof ({}).hasOwnProperty",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst folded={expression};\nconst __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\nconst folded={expression};\nconst __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2707,7 +2711,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
         "Date",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{json,action,defineConfig}} from 'first';\nconst __probe = action({{input:{{values:json<{annotation}>()}},handler:(input)=>input.values}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{json,action,defineConfig}} from 'typedpress';\nconst __probe = action({{input:{{values:json<{annotation}>()}},handler:(input)=>input.values}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2724,7 +2728,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
 fn action_results_refuse_implicit_typed_date_serialization() {
     for expression in ["new Date(0)", "({date: new Date(0)})", "[new Date(0)]"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst __probe = action({{handler:()=>({expression})}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\nconst __probe = action({{handler:()=>({expression})}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2745,7 +2749,7 @@ fn typed_date_coercion_requires_explicit_formatting() {
         "new Date(0) + ''",
         "''.concat(new Date(0))",
     ] {
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst __probe = action({{handler:()=>({expression})}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';\nconst __probe = action({{handler:()=>({expression})}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         assert_eq!(
@@ -2759,14 +2763,14 @@ fn typed_date_coercion_requires_explicit_formatting() {
 #[test]
 fn dynamic_array_prototype_writes_are_refused() {
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("first/helper.js"), "export function probe(){const key='__proto__';const a=[];try {a[key]=1;} catch(e) {return [e.name,Object.hasOwn(a,key)];} return ['accepted'];}").unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'prototyperefusal' });").unwrap();
+    write_app(tmp.path().join("tp/helper.js"), "export function probe(){const key='__proto__';const a=[];try {a[key]=1;} catch(e) {return [e.name,Object.hasOwn(a,key)];} return ['accepted'];}").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'prototyperefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-prototyperefusal/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-prototyperefusal/tp/app"),
         ],
     );
     assert_eq!(result, json!(["TypeError", false]));
@@ -2775,7 +2779,7 @@ fn dynamic_array_prototype_writes_are_refused() {
 #[test]
 fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nconst __probe = action({handler:()=>String(()=>1)}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';\nconst __probe = action({handler:()=>String(()=>1)}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
@@ -2783,17 +2787,17 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
         "function string coercion isn't supported"
     );
     assert_eq!(report["diagnostics"][0]["location"]["line"], 2);
-    write_app(tmp.path().join("first/helper.js"),
+    write_app(tmp.path().join("tp/helper.js"),
         "function convert(value){return String(value);} export function probe(){try{return convert(()=>1);}catch(e){return e.name;}}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'functionrefusal' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'functionrefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(),\First\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(),\TypedPress\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-functionrefusal/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-functionrefusal/tp/app"),
         ],
     );
     assert_eq!(result, "TypeError");
@@ -2802,17 +2806,17 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
 #[test]
 fn non_iso_date_literals_are_refused_at_the_call() {
     for text in ["2020-1-1", "-000000-01-01"] {
-        for name in ["first.config.ts", "first/helper.js"] {
+        for name in ["typedpress.config.ts", "tp/helper.js"] {
             let tmp = tempfile::tempdir().unwrap();
-            if name == "first/helper.js" {
+            if name == "tp/helper.js" {
                 write_app(
                     tmp.path().join(name),
                     format!("export const probe=()=>new Date({text:?}).getTime();"),
                 )
                 .unwrap();
-                std::fs::write(tmp.path().join("first.config.ts"),"import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});").unwrap();
+                std::fs::write(tmp.path().join("typedpress.config.ts"),"import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});").unwrap();
             } else {
-                std::fs::write(tmp.path().join(name),format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>new Date({text:?}).getTime()}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+                std::fs::write(tmp.path().join(name),format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>new Date({text:?}).getTime()}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             }
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{report}");
@@ -2828,15 +2832,15 @@ fn non_iso_date_literals_are_refused_at_the_call() {
 #[test]
 fn native_error_inspection_is_refused_during_configuration_evaluation() {
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("first/helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const folded=probe();const __probe = action({handler:()=>folded}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    write_app(tmp.path().join("tp/helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const folded=probe();const __probe = action({handler:()=>folded}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
         report["diagnostics"][0]["message"],
         "restricted arguments properties aren't supported during configuration evaluation"
     );
-    assert_eq!(report["diagnostics"][0]["location"]["file"], "first/helper.js");
+    assert_eq!(report["diagnostics"][0]["location"]["file"], "tp/helper.js");
 }
 
 #[test]
@@ -2851,7 +2855,7 @@ fn undefined_cannot_be_narrowed_through_a_null_annotation_or_conditional_var() {
         "try {if(true) throw Error('stop'); var x=1;} catch {} return String(x+1);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';\nconst __probe = action({{input:{{}},handler:()=>{{{body}}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'undefinedflow' }});" )).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';\nconst __probe = action({{input:{{}},handler:()=>{{{body}}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'undefinedflow' }});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{body}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2913,12 +2917,12 @@ fn engine_dependent_properties_and_unmodeled_flat_depths_are_located_refusals() 
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst __probe = action({{input:{{}},handler:()=>{{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'boundaries' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\nconst __probe = action({{input:{{}},handler:()=>{{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'boundaries' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let d = &report["diagnostics"][0];
         assert!(d["message"].as_str().unwrap().contains(message), "{source}: {report}");
-        assert_eq!(d["location"]["file"], "first.config.ts");
+        assert_eq!(d["location"]["file"], "typedpress.config.ts");
         assert!(!d["help"].as_str().unwrap().is_empty(), "{report}");
     }
 }
@@ -2931,7 +2935,7 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
             let body = format!("const a=null;let n=0;try{{{expression};}}catch{{}}return n;");
             let handler = if javascript {
                 write_app(
-                    tmp.path().join("first/helper.js"),
+                    tmp.path().join("tp/helper.js"),
                     format!("export function probe(){{{body}}}"),
                 )
                 .unwrap();
@@ -2940,11 +2944,11 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
                 format!("()=>{{{body}}}")
             };
             let import = if javascript {
-                "import {probe} from './first/helper.js';"
+                "import {probe} from './tp/helper.js';"
             } else {
                 ""
             };
-            std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';{import}const __probe = action({{handler:{handler}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+            std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';{import}const __probe = action({{handler:{handler}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -2980,7 +2984,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
         "function g(a:{x:number}|null){f(a?.['x']);}g(null);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2999,14 +3003,14 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 #[test]
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("first/helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'nativeproperties' });").unwrap();
+    write_app(tmp.path().join("tp/helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'nativeproperties' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-nativeproperties/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-nativeproperties/tp/app"),
         ],
     );
     assert_eq!(
@@ -3024,8 +3028,8 @@ fn unsupported_native_properties_are_not_fabricated_as_undefined() {
 #[test]
 fn typed_data_reads_refuse_unmodeled_inherited_values() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), r#"
-import {action,defineConfig} from 'first';
+    std::fs::write(tmp.path().join("typedpress.config.ts"), r#"
+import {action,defineConfig} from 'typedpress';
 const __probe = action({handler:()=>{
     const o:Record<string,undefined>={};
     const key='to'+'String';
@@ -3036,10 +3040,10 @@ const __probe = action({handler:()=>{
 "#).unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-typeddatareads/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-typeddatareads/tp/app"),
         ],
     );
     assert_eq!(
@@ -3066,7 +3070,7 @@ process.stdout.write(JSON.stringify(methods));
     assert!(methods.len() > 100, "unexpected native inventory: {}", methods.len());
     for (surface, name) in methods {
         assert!(
-            first::builtins::contract(&surface, &name).is_some(),
+            typedpress::builtins::contract(&surface, &name).is_some(),
             "native {surface}.{name} needs an accepted or explicitly refused shared contract"
         );
     }
@@ -3087,19 +3091,19 @@ fn parameter_default_scope_limits_are_located_refusals() {
             let tmp = tempfile::tempdir().unwrap();
             let body = if javascript {
                 write_app(
-                    tmp.path().join("first/helper.js"),
+                    tmp.path().join("tp/helper.js"),
                     format!("export function probe(){{{source}return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
+                "import {probe} from './tp/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
                 format!(
                     "{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});"
                 )
             };
             std::fs::write(
-                tmp.path().join("first.config.ts"),
-                format!("import {{action,defineConfig}} from 'first';{body}"),
+                tmp.path().join("typedpress.config.ts"),
+                format!("import {{action,defineConfig}} from 'typedpress';{body}"),
             )
             .unwrap();
             let (out, report) = checked(tmp.path());
@@ -3126,7 +3130,7 @@ fn missing_string_compound_reads_do_not_fabricate_a_string_result_type() {
         ("const o:string[]=[];", "o[0]"),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3152,32 +3156,32 @@ fn undefined_bindings_are_located_refusals_in_all_runtime_binding_forms() {
         "for(const undefined of [3]){String(undefined);}",
         "function undefined(){return 3;}undefined();",
         "class undefined{};new undefined();",
-        "import {n as undefined} from './first/binding-helper.js';String(undefined);",
-        "import undefined from './first/binding-helper.js';String(undefined);",
-        "import * as undefined from './first/binding-helper.js';String(undefined);",
+        "import {n as undefined} from './tp/binding-helper.js';String(undefined);",
+        "import undefined from './tp/binding-helper.js';String(undefined);",
+        "import * as undefined from './tp/binding-helper.js';String(undefined);",
     ] {
         for javascript in [false, true] {
             let tmp = tempfile::tempdir().unwrap();
             write_app(
-                tmp.path().join("first/binding-helper.js"),
+                tmp.path().join("tp/binding-helper.js"),
                 "export const n=3;export default 3;",
             )
             .unwrap();
             let body = if javascript {
                 write_app(
-                    tmp.path().join("first/binding-probe.js"),
+                    tmp.path().join("tp/binding-probe.js"),
                     format!("{source}export function probe(){{return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './first/binding-probe.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
+                "import {probe} from './tp/binding-probe.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
                 format!(
                     "{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});"
                 )
             };
             std::fs::write(
-                tmp.path().join("first.config.ts"),
-                format!("import {{action,defineConfig}} from 'first';{body}"),
+                tmp.path().join("typedpress.config.ts"),
+                format!("import {{action,defineConfig}} from 'typedpress';{body}"),
             )
             .unwrap();
             let (out, report) = checked(tmp.path());
@@ -3223,7 +3227,7 @@ fn deferred_lexical_captures_and_missing_required_callback_slots_are_located_ref
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>{{{source}}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{action,defineConfig}} from 'typedpress';const __probe = action({{handler:()=>{{{source}}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3257,7 +3261,7 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
             } else {
                 (format!("const folded=(()=>{{{body}}})();"), "folded".into())
             };
-            std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{declaration}const __probe = action({{handler:()=>{result}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+            std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';{declaration}const __probe = action({{handler:()=>{result}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{body}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -3279,17 +3283,17 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
 #[test]
 fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("first/helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {read} from './first/helper.js';class Base {cause(){}} class Options extends Base {} const __test = action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}}); export { __test as test }; export default defineConfig({ name:'errorcause' });").unwrap();
+    write_app(tmp.path().join("tp/helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {read} from './tp/helper.js';class Base {cause(){}} class Options extends Base {} const __test = action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}}); export { __test as test }; export default defineConfig({ name:'errorcause' });").unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/first-app-errorcause/first/app");
+    let app = content.join("plugins/typedpress-app-errorcause/tp/app");
     let actual = php(
         r#"
         require $argv[1];
         require $argv[2] . '/functions.php';
-        echo \First\Js::jsonStringify(\FirstApp\action__test());
+        echo \TypedPress\Js::jsonStringify(\TypedPressApp\action__test());
     "#,
-        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
+        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
     );
     assert_eq!(
         actual,
@@ -3304,29 +3308,29 @@ fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
 fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
     for (file, source, import) in [
         (
-            "first/counter.js",
+            "tp/counter.js",
             "export let value=0;export function inc(){value++;}",
-            "import {value,inc} from './first/counter.js';",
+            "import {value,inc} from './tp/counter.js';",
         ),
         (
-            "first/counter.ts",
+            "tp/counter.ts",
             "let counter=0;export {counter as value};export function inc(){counter++;}",
-            "import {value,inc} from './first/counter.ts';",
+            "import {value,inc} from './tp/counter.ts';",
         ),
         (
-            "first/counter.js",
+            "tp/counter.js",
             "export var value=0;export function inc(){value++;}",
-            "import * as counter from './first/counter.js';const {value,inc}=counter;",
+            "import * as counter from './tp/counter.js';const {value,inc}=counter;",
         ),
         (
-            "first/counter.js",
+            "tp/counter.js",
             "let value=0;export {value as default};export function inc(){value++;}",
-            "import value,{inc} from './first/counter.js';",
+            "import value,{inc} from './tp/counter.js';",
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         write_app(tmp.path().join(file), source).unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{import}inc();const folded=value;const __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';{import}inc();const folded=value;const __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3346,20 +3350,20 @@ fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
 fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("first/array-overrides.js"),
+        tmp.path().join("tp/array-overrides.js"),
         "export function installArrayOverrides(a,b){a.map=()=>[99];b.join=()=>'own';}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {installArrayOverrides} from './first/array-overrides.js';const __test = action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}}); export { __test as test }; export default defineConfig({ name:'arraynative' });").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';import {installArrayOverrides} from './tp/array-overrides.js';const __test = action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}}); export { __test as test }; export default defineConfig({ name:'arraynative' });").unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/first-app-arraynative/first/app");
+    let app = content.join("plugins/typedpress-app-arraynative/tp/app");
     let actual = php(
         r#"
         require $argv[1];
         require $argv[2] . '/functions.php';
-        echo \First\Js::jsonStringify(\FirstApp\action__test());
+        echo \TypedPress\Js::jsonStringify(\TypedPressApp\action__test());
     "#,
-        &[&content.join("plugins/first-runtime/first/bootstrap.php"), &app],
+        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
     );
     assert_eq!(
         actual,
@@ -3379,7 +3383,7 @@ fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
 #[test]
 fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();const __probe = action({handler:()=>folded}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();const __probe = action({handler:()=>folded}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3387,7 +3391,7 @@ fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
         diagnostic["message"], "destructured var loops aren't supported yet",
         "{report}"
     );
-    assert_eq!(diagnostic["location"]["file"], "first.config.ts", "{report}");
+    assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts", "{report}");
     assert_eq!(
         diagnostic["help"], "use const or let for loop destructuring",
         "{report}"
@@ -3402,13 +3406,13 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
         "const x=7;const folded=()=> (function x(){return typeof x;})();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{declaration}const __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action,defineConfig}} from 'typedpress';{declaration}const __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(0), "{declaration}: {report}");
     }
     // Strict JavaScript throws on a write to the name, so it is refused where it is written.
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nconst f=function g(){ g = () => 1; return 1; };\nconst __probe = action({handler:()=>f()}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';\nconst f=function g(){ g = () => 1; return 1; };\nconst __probe = action({handler:()=>f()}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3427,11 +3431,11 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
     // A parameter default runs where the name is still the function, so writing it is refused too.
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("first/h.mjs"),
+        tmp.path().join("tp/h.mjs"),
         "export const run = () => { const fn = function f(x = (f = () => 1)) { return x; }; return fn(); };\n",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nimport { run } from './first/h.mjs';\nconst __probe = action({handler:()=>run()}); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {action,defineConfig} from 'typedpress';\nimport { run } from './tp/h.mjs';\nconst __probe = action({handler:()=>run()}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert!(
@@ -3444,7 +3448,7 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
 }
 
 /// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the
-/// compiler and for tsc (first/_generated/db.d.ts), and the compiled handler calls `Call::run` with the input as
+/// compiler and for tsc (tp/_generated/db.d.ts), and the compiled handler calls `Call::run` with the input as
 /// a JS value, using the typed result. `Call::run` itself runs on WordPress in tests/php/abilities_test.php.
 #[test]
 fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
@@ -3452,18 +3456,18 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
     let project = tmp.path().join("calls");
     copy_dir(&root().join("tests/fixtures/abilities-call"), &project);
     let content = build_wp(&project);
-    let plugin = content.join("plugins/first-app-calls/first/app/functions.php");
+    let plugin = content.join("plugins/typedpress-app-calls/tp/app/functions.php");
     // Stand in for WordPress: record each call and answer as the ability would.
     let stub = tmp.path().join("call.php");
     std::fs::write(
         &stub,
         r#"<?php
-        namespace First\Wp\Abilities;
+        namespace TypedPress\Wp\Abilities;
         final class Call {
             public static array $seen = [];
             public static function run(string $name, mixed $input): mixed {
-                self::$seen[] = [$name, \First\Js::jsonStringify($input)];
-                return $name === 'acme/site-info' ? new \First\JsObject(['value' => 'first site']) : 'hi ada';
+                self::$seen[] = [$name, \TypedPress\Js::jsonStringify($input)];
+                return $name === 'acme/site-info' ? new \TypedPress\JsObject(['value' => 'first site']) : 'hi ada';
             }
         }"#,
     )
@@ -3471,11 +3475,11 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
     let got = php(
         r#"
         require $argv[1]; require $argv[2]; require $argv[3];
-        $out = \FirstApp\action__relay(new \First\JsObject(['who' => 'ada']), null);
-        echo json_encode(['out' => \First\Js::jsonTree($out), 'seen' => \First\Wp\Abilities\Call::$seen]);
+        $out = \TypedPressApp\action__relay(new \TypedPress\JsObject(['who' => 'ada']), null);
+        echo json_encode(['out' => \TypedPress\Js::jsonTree($out), 'seen' => \TypedPress\Wp\Abilities\Call::$seen]);
     "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
             &stub,
             &plugin,
         ],
@@ -3490,9 +3494,9 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
         serde_json::to_vec(&json!({
             "compilerOptions": {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "types": [],
-                "paths": { "first": [root().join("types/first/index.d.ts")], "php/wordpress": [root().join("types/first/wordpress.d.ts")] }
+                "paths": { "typedpress": [root().join("types/typedpress/index.d.ts")], "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")] }
             },
-            "files": ["first.config.ts", "first/_generated/db.d.ts"]
+            "files": ["typedpress.config.ts", "tp/_generated/db.d.ts"]
         }))
         .unwrap(),
     )
@@ -3507,9 +3511,9 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
     let out = tsc();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
     // tsc refuses the same wrong input the compiler refuses.
-    let config = std::fs::read_to_string(project.join("first.config.ts")).unwrap();
+    let config = std::fs::read_to_string(project.join("typedpress.config.ts")).unwrap();
     std::fs::write(
-        project.join("first.config.ts"),
+        project.join("typedpress.config.ts"),
         config.replace("field: \"name\"", "field: \"title\""),
     )
     .unwrap();
@@ -3533,7 +3537,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 /// An app with no registries in `defineConfig` (docs/spec/spec.md §1.1): `notes` and `like` register
-/// from their exports under `first/`, `like` reaches `notes` through `"first:db"`, and on an
+/// from their exports under `tp/`, `like` reaches `notes` through `"typedpress:db"`, and on an
 /// in-process WordPress the action's write lands in the table the export declared.
 #[test]
 fn exported_kinds_and_actions_register_by_name_and_run() {
@@ -3548,7 +3552,7 @@ fn exported_kinds_and_actions_register_by_name_and_run() {
         .arg(&content)
         .arg(
             r#"
-            $row = $app->db->insert('notes', ['title' => 'First'], true)[0];
+            $row = $app->db->insert('notes', ['title' => 'TypedPress'], true)[0];
             $first = $wp->call('POST', '/actions/like', ['id' => $row['id']]);
             $second = $wp->call('POST', '/actions/like', ['id' => $row['id']]);
             $stored = $app->db->findFirst('notes', ['where' => ['id' => $row['id']]]);
@@ -3585,7 +3589,7 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
         .arg(&content)
         .arg(
             r#"
-            $log = tempnam(sys_get_temp_dir(), 'first-hooks');
+            $log = tempnam(sys_get_temp_dir(), 'typedpress-hooks');
             ini_set('error_log', $log);
             $content = apply_filters('the_content', "  body  ");
             $title = apply_filters('the_title', 'Kept', 7);
@@ -3613,8 +3617,8 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
             "title": "Kept",
             "saved": true,
             "errors": [
-                "[first] first/wp-hooks/the_title: First\\JsError: broken title filter",
-                "[first] first/wp-hooks/save_post: First\\JsError: saw Draft one #true",
+                "[typedpress] tp/wp-hooks/the_title: TypedPress\\JsError: broken title filter",
+                "[typedpress] tp/wp-hooks/save_post: TypedPress\\JsError: saw Draft one #true",
             ],
         })
     );
@@ -3674,16 +3678,22 @@ fn wordpress_functions_run_as_the_signed_in_user() {
 
 /// The compiler's own-app ability types and the runtime's registered abilities come from the same
 /// schema; this runs both and compares names, input properties and required inputs, so a new
-/// operation in runtime/First/Wp/Abilities/Register.php can't go untyped.
+/// operation in runtime/TypedPress/Wp/Abilities/Register.php can't go untyped.
 #[test]
 fn wordpress_own_abilities_match_the_registered_ones() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("own");
     copy_dir(&root().join("tests/fixtures/abilities-own"), &project);
     let content = build_wp(&project);
-    let program = first::loader::load(&project.join("first.config.ts")).unwrap();
-    let built = first::pipeline::build(&project, &program, || Ok(first::pipeline::Previous::none()), |_| None).unwrap();
-    let compiled: Value = serde_json::to_value(first::wordpress::abilities::own_inputs(&built.schema)).unwrap();
+    let program = typedpress::loader::load(&project.join("typedpress.config.ts")).unwrap();
+    let built = typedpress::pipeline::build(
+        &project,
+        &program,
+        || Ok(typedpress::pipeline::Previous::none()),
+        |_| None,
+    )
+    .unwrap();
+    let compiled: Value = serde_json::to_value(typedpress::wordpress::abilities::own_inputs(&built.schema)).unwrap();
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
@@ -3692,7 +3702,7 @@ fn wordpress_own_abilities_match_the_registered_ones() {
         .arg(
             r#"
             $out = [];
-            foreach (\First\Wp\Abilities\Register::operations() as $op) {
+            foreach (\TypedPress\Wp\Abilities\Register::operations() as $op) {
                 $keys = array_map('strval', array_keys($op['input']['properties'] ?? []));
                 $required = array_map('strval', $op['input']['required'] ?? []);
                 sort($keys);
@@ -3724,7 +3734,7 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// Language constructs live Zero 0.8 apps use (first#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
-/// A helper, class, namespace receiver or captured collection that First refuses is reported
+/// A helper, class, namespace receiver or captured collection that TypedPress refuses is reported
 /// wherever it is first compiled: in a sibling method that reads `this`, in an `if`, a ternary or
 /// a `for await` array, or behind an `instanceof` check. The checks that type a branch never leave
 /// it registered without code, so the build never calls a function PHP never got.
@@ -3801,8 +3811,8 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: {handler} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            tmp.path().join("typedpress.config.ts"),
+            format!("import {{ action, defineConfig }} from 'typedpress';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: {handler} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3825,8 +3835,8 @@ fn a_method_replaced_by_a_later_property_is_not_callable() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\nconst __probe = action({{ input: {{}}, handler: () => {body} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            tmp.path().join("typedpress.config.ts"),
+            format!("import {{ action, defineConfig }} from 'typedpress';\nconst __probe = action({{ input: {{}}, handler: () => {body} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3851,7 +3861,7 @@ fn language_constructs_match_node_through_generated_php() {
     for config in apps {
         let name = config.file_stem().unwrap().to_str().unwrap();
         let tmp = tempfile::tempdir().unwrap();
-        // The helper modules beside it, not the other cases: every module under first/ registers
+        // The helper modules beside it, not the other cases: every module under tp/ registers
         // its exported actions (spec §1.1), so another case's file would add its actions here.
         let siblings: Vec<PathBuf> = std::fs::read_dir(&dir)
             .unwrap()
@@ -3882,8 +3892,8 @@ fn language_constructs_match_node_through_generated_php() {
             "{name}: {expected}"
         );
         let content = build_wp(tmp.path());
-        let runtime = content.join("plugins/first-runtime/first/bootstrap.php");
-        let app = content.join(format!("plugins/first-app-language-{name}/first/app"));
+        let runtime = content.join("plugins/typedpress-runtime/tp/bootstrap.php");
+        let app = content.join(format!("plugins/typedpress-app-language-{name}/tp/app"));
         let out = Command::new("php")
             .arg("-r")
             .arg(
@@ -3893,13 +3903,13 @@ fn language_constructs_match_node_through_generated_php() {
             require $argv[2] . '/functions.php';
             $out = [];
             foreach ($schema['actions'] as $name => $action) {
-                $fn = '\\FirstApp\\' . $action['handler'];
-                try { $out[$name] = ['data' => \First\Seam::toWire($fn(new \First\JsObject()))]; }
+                $fn = '\\TypedPressApp\\' . $action['handler'];
+                try { $out[$name] = ['data' => \TypedPress\Seam::toWire($fn(new \TypedPress\JsObject()))]; }
                 catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
             }
             // Node lists a module's exports in name order (run-node.mjs reads them from the module).
             ksort($out, SORT_STRING);
-            echo \First\Js::jsonStringify(['schema' => 'first-differential', 'version' => 1, 'complete' => true, 'cases' => $out]);
+            echo \TypedPress\Js::jsonStringify(['schema' => 'typedpress-differential', 'version' => 1, 'complete' => true, 'cases' => $out]);
         "#,
             )
             .arg(&runtime)
@@ -3926,7 +3936,7 @@ fn language_constructs_match_node_through_generated_php() {
 
 /// `process.platform` and `navigator.platform` are read when PHP runs, never decided on the build
 /// machine: two builds of tests/differential/language/host-platform.ts emit the same PHP, and that
-/// PHP answers with whatever `First\Host` reports on the server. A stand-in `First\Host` for a
+/// PHP answers with whatever `TypedPress\Host` reports on the server. A stand-in `TypedPress\Host` for a
 /// Windows and a macOS server makes picomatch's `isWindows` flip without rebuilding.
 #[test]
 fn host_platform_is_read_on_the_server_not_the_build_machine() {
@@ -3938,16 +3948,16 @@ fn host_platform_is_read_on_the_server_not_the_build_machine() {
             let tmp = tempfile::tempdir().unwrap();
             project_from(tmp.path(), &config, &[helpers.as_path()]);
             let content = build_wp(tmp.path());
-            let app = content.join("plugins/first-app-language-host-platform/first/app");
+            let app = content.join("plugins/typedpress-app-language-host-platform/tp/app");
             let functions = std::fs::read(app.join("functions.php")).unwrap();
             (tmp, content, app, functions)
         })
         .collect();
     assert_eq!(builds[0].3, builds[1].3, "two builds emitted different PHP");
     let (_, content, app, _) = &builds[0];
-    let runtime = content.join("plugins/first-runtime/first/bootstrap.php");
+    let runtime = content.join("plugins/typedpress-runtime/tp/bootstrap.php");
     let script = r#"
-        namespace First { final class Host {
+        namespace TypedPress { final class Host {
             public static function platform(): string { return getenv('FAKE_PLATFORM'); }
             public static function navigatorPlatform(): string { return getenv('FAKE_NAVIGATOR'); }
         } }
@@ -3957,8 +3967,8 @@ fn host_platform_is_read_on_the_server_not_the_build_machine() {
             require $argv[2] . '/functions.php';
             $out = [];
             foreach (['picomatch', 'platforms', 'typedPlatforms'] as $name) {
-                $fn = '\\FirstApp\\' . $schema['actions'][$name]['handler'];
-                $out[$name] = \First\Seam::toWire($fn(new \First\JsObject()));
+                $fn = '\\TypedPressApp\\' . $schema['actions'][$name]['handler'];
+                $out[$name] = \TypedPress\Seam::toWire($fn(new \TypedPress\JsObject()));
             }
             echo json_encode($out);
         }
@@ -3992,7 +4002,7 @@ fn host_platform_is_read_on_the_server_not_the_build_machine() {
 /// widening check could see it: on this program the previous solver took more than 90 s and
 /// 2.9 GB in a debug build. The solver now numbers each place once and widens a binding whose group
 /// runs away inside a pass (docs/decisions/2026-11-12-effects-event-scale.md). Debug builds count
-/// path projections (`FIRST_DEBUG_EFFECTS_WORK`); the solve must stay a small multiple of its
+/// path projections (`TP_DEBUG_EFFECTS_WORK`); the solve must stay a small multiple of its
 /// result, widen the same bindings on every run, and the PHP must compute what Node computes.
 #[test]
 fn effects_on_an_object_graph_stay_bounded_and_keep_php_equal_to_node() {
@@ -4020,13 +4030,13 @@ fn effects_on_an_object_graph_stay_bounded_and_keep_php_equal_to_node() {
 }
 ",
     );
-    std::fs::create_dir(tmp.path().join("first")).unwrap();
-    std::fs::write(tmp.path().join("first/run.mjs"), body).unwrap();
+    std::fs::create_dir(tmp.path().join("tp")).unwrap();
+    std::fs::write(tmp.path().join("tp/run.mjs"), body).unwrap();
     std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
-        r#"import { action, defineConfig, text } from "first";
-import { run } from "./first/run.mjs";
+        tmp.path().join("typedpress.config.ts"),
+        r#"import { action, defineConfig, text } from "typedpress";
+import { run } from "./tp/run.mjs";
 const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "graph" });
 "#,
     )
@@ -4039,8 +4049,8 @@ const __a = action({ access: "anyone", input: { s: text() }, async handler(input
             let out = first()
                 .args(["check", "--json"])
                 .arg(tmp.path())
-                .env("FIRST_DEBUG_EFFECTS", &dump)
-                .env("FIRST_DEBUG_EFFECTS_WORK", &work)
+                .env("TP_DEBUG_EFFECTS", &dump)
+                .env("TP_DEBUG_EFFECTS_WORK", &work)
                 .output()
                 .unwrap();
             assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
@@ -4075,7 +4085,7 @@ const __a = action({ access: "anyone", input: { s: text() }, async handler(input
         .current_dir(tmp.path())
         .args(["--input-type=module", "-e"])
         .arg(format!(
-            "import {{ run }} from './first/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
+            "import {{ run }} from './tp/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
             serde_json::to_string(&inputs).unwrap()
         ))
         .output()
@@ -4089,20 +4099,20 @@ const __a = action({ access: "anyone", input: { s: text() }, async handler(input
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\FirstApp\\' . $schema['actions']['a']['handler'];
+$fn = '\\TypedPressApp\\' . $schema['actions']['a']['handler'];
 $out = [];
 foreach (json_decode('{}') as $s) {{
-    $input = new \First\JsObject();
+    $input = new \TypedPress\JsObject();
     $input->p['s'] = $s;
-    $out[] = json_decode(\First\Js::jsonStringify($fn($input, new \First\JsObject())));
+    $out[] = json_decode(\TypedPress\Js::jsonStringify($fn($input, new \TypedPress\JsObject())));
 }}
 echo json_encode($out);
 "#,
             serde_json::to_string(&inputs).unwrap()
         ),
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-graph/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-graph/tp/app"),
         ],
     );
     assert_eq!(actual, expected);
@@ -4112,7 +4122,7 @@ echo json_encode($out);
 /// `prev.prev` and `prev.prev.prev`, so the effect places below those bindings multiply past
 /// the solver's widening threshold. The solve restarts with them widened
 /// (docs/decisions/2026-11-08-effects-widening.md). Debug builds name the widened bindings in
-/// the `FIRST_DEBUG_EFFECTS` dump, which must be the same on every run, and the generated PHP
+/// the `TP_DEBUG_EFFECTS` dump, which must be the same on every run, and the generated PHP
 /// must still compute what Node computes.
 #[test]
 fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
@@ -4149,13 +4159,13 @@ fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
 }
 ",
     );
-    std::fs::create_dir(tmp.path().join("first")).unwrap();
-    std::fs::write(tmp.path().join("first/run.mjs"), body).unwrap();
+    std::fs::create_dir(tmp.path().join("tp")).unwrap();
+    std::fs::write(tmp.path().join("tp/run.mjs"), body).unwrap();
     std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
-        r#"import { action, defineConfig, text } from "first";
-import { run } from "./first/run.mjs";
+        tmp.path().join("typedpress.config.ts"),
+        r#"import { action, defineConfig, text } from "typedpress";
+import { run } from "./tp/run.mjs";
 const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "tokens" });
 "#,
     )
@@ -4167,7 +4177,7 @@ const __a = action({ access: "anyone", input: { s: text() }, async handler(input
             let out = first()
                 .args(["check", "--json"])
                 .arg(tmp.path())
-                .env("FIRST_DEBUG_EFFECTS", &file)
+                .env("TP_DEBUG_EFFECTS", &file)
                 .output()
                 .unwrap();
             assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
@@ -4192,7 +4202,7 @@ const __a = action({ access: "anyone", input: { s: text() }, async handler(input
         .current_dir(tmp.path())
         .args(["--input-type=module", "-e"])
         .arg(format!(
-            "import {{ run }} from './first/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
+            "import {{ run }} from './tp/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
             serde_json::to_string(&inputs).unwrap()
         ))
         .output()
@@ -4206,20 +4216,20 @@ const __a = action({ access: "anyone", input: { s: text() }, async handler(input
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\FirstApp\\' . $schema['actions']['a']['handler'];
+$fn = '\\TypedPressApp\\' . $schema['actions']['a']['handler'];
 $out = [];
 foreach (json_decode('{}') as $s) {{
-    $input = new \First\JsObject();
+    $input = new \TypedPress\JsObject();
     $input->p['s'] = $s;
-    $out[] = json_decode(\First\Js::jsonStringify($fn($input, new \First\JsObject())));
+    $out[] = json_decode(\TypedPress\Js::jsonStringify($fn($input, new \TypedPress\JsObject())));
 }}
 echo json_encode($out);
 "#,
             serde_json::to_string(&inputs).unwrap()
         ),
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-tokens/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-tokens/tp/app"),
         ],
     );
     assert_eq!(actual, expected);
@@ -4269,8 +4279,8 @@ fn language_construct_type_rules() {
     for (declarations, handler, refusal) in cases {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: () => {handler} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'rules' }});"),
+            tmp.path().join("typedpress.config.ts"),
+            format!("import {{ action, defineConfig }} from 'typedpress';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: () => {handler} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'rules' }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4293,7 +4303,7 @@ fn build_time_namespaces_resolve_members_and_refuse_whole_values() {
     // object, and helper objects called as `utils.f(x)` from another module.
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("first/utils.mjs"),
+        tmp.path().join("tp/utils.mjs"),
         r#"
 export const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const constants = { REGEX_SLASH: /\//g, DEFAULT: { depth: 1 } };
@@ -4315,19 +4325,19 @@ export default main;
         .args([
             "--input-type=module",
             "-e",
-            &format!("import match from './first/utils.mjs'; import * as utils from './first/utils.mjs'; process.stdout.write(JSON.stringify({expression}));"),
+            &format!("import match from './tp/utils.mjs'; import * as utils from './tp/utils.mjs'; process.stdout.write(JSON.stringify({expression}));"),
         ])
         .output()
         .unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
-        tmp.path().join("first.config.ts"),
+        tmp.path().join("typedpress.config.ts"),
         format!(
             r#"
-import {{ action, defineConfig }} from 'first';
-import match from './first/utils.mjs';
-import * as utils from './first/utils.mjs';
+import {{ action, defineConfig }} from 'typedpress';
+import match from './tp/utils.mjs';
+import * as utils from './tp/utils.mjs';
 const __probe = action({{ input: {{}}, handler: () => {expression} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'namespaces' }});
 "#
         ),
@@ -4339,18 +4349,18 @@ const __probe = action({{ input: {{}}, handler: () => {expression} }}); export {
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\FirstApp\\' . $schema['actions']['probe']['handler'];
-echo \First\Js::jsonStringify($fn(new \First\JsObject(), new \First\JsObject()));
+$fn = '\\TypedPressApp\\' . $schema['actions']['probe']['handler'];
+echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), new \TypedPress\JsObject()));
 "#,
         &[
-            &content.join("plugins/first-runtime/first/bootstrap.php"),
-            &content.join("plugins/first-app-namespaces/first/app"),
+            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/typedpress-app-namespaces/tp/app"),
         ],
     );
     assert_eq!(actual, expected);
     // The namespace object and the function with properties are never built in PHP.
     let functions =
-        std::fs::read_to_string(content.join("plugins/first-app-namespaces/first/app/functions.php")).unwrap();
+        std::fs::read_to_string(content.join("plugins/typedpress-app-namespaces/tp/app/functions.php")).unwrap();
     assert!(!functions.contains("'version'"), "{functions}");
 
     for (declarations, handler, message, help) in [
@@ -4415,7 +4425,7 @@ echo \First\Js::jsonStringify($fn(new \First\JsObject(), new \First\JsObject()))
             "build time only",
         ),
     ] {
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\n{declarations}\nconst __probe = action({{input:{{}},handler:()=>{handler}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'namespaces' }});")).unwrap();
+        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{action, defineConfig}} from 'typedpress';\n{declarations}\nconst __probe = action({{input:{{}},handler:()=>{handler}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'namespaces' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -4425,7 +4435,7 @@ echo \First\Js::jsonStringify($fn(new \First\JsObject(), new \First\JsObject()))
     }
 }
 
-/// Authored TypeScript runs `for await` only over sync iterables of settled values (First's own
+/// Authored TypeScript runs `for await` only over sync iterables of settled values (TypedPress's own
 /// promises or plain values). Values from imported JavaScript and async generators need the job
 /// queue, which only imported JavaScript has, so they keep a located refusal.
 #[test]
@@ -4459,13 +4469,13 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         write_app(
-            tmp.path().join("first/h.mjs"),
+            tmp.path().join("tp/h.mjs"),
             "export function untyped() { return [1, 2]; }\n",
         )
         .unwrap();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\nimport {{ untyped }} from './first/h.mjs';\nconst __probe = action({{ input: {{}}, handler: async () => {{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'awaits' }});"),
+            tmp.path().join("typedpress.config.ts"),
+            format!("import {{ action, defineConfig }} from 'typedpress';\nimport {{ untyped }} from './tp/h.mjs';\nconst __probe = action({{ input: {{}}, handler: async () => {{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'awaits' }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4483,7 +4493,7 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
 }
 
 /// Every refusal names what to write instead, so an author (often an agent) can act on it. Each
-/// source here hits one `First code doesn't support ...` refusal; the diagnostic must carry a
+/// source here hits one `TypedPress code doesn't support ...` refusal; the diagnostic must carry a
 /// location and non-empty help. Add a case whenever a refusal is added.
 #[test]
 fn language_refusals_carry_a_location_and_a_fix() {
@@ -4571,14 +4581,14 @@ fn language_refusals_carry_a_location_and_a_fix() {
         ),
         (
             "this through a module namespace",
-            "import * as ns from './first/ns.mjs';",
+            "import * as ns from './tp/ns.mjs';",
             "ns.nsThis()",
             "through the module namespace `ns`",
             "",
         ),
         (
             "function with properties in a this receiver",
-            "import { withHelper } from './first/ns.mjs';",
+            "import { withHelper } from './tp/ns.mjs';",
             "withHelper.read()",
             "a function with properties (`withHelper.helper`)",
             "",
@@ -4656,13 +4666,13 @@ fn language_refusals_carry_a_location_and_a_fix() {
     ];
     for (name, declarations, handler, message, fix) in cases {
         let tmp = tempfile::tempdir().unwrap();
-        write_app(tmp.path().join("first/ns.mjs"),
+        write_app(tmp.path().join("tp/ns.mjs"),
             "export function nsThis() { return typeof this; }\nfunction helper() { return 1; }\nhelper.x = 42;\nexport const withHelper = { helper, read() { return this.helper.x; } };\n",
         )
         .unwrap();
         std::fs::write(
-            tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: () => {handler} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            tmp.path().join("typedpress.config.ts"),
+            format!("import {{ action, defineConfig }} from 'typedpress';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: () => {handler} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4683,23 +4693,23 @@ fn language_refusals_carry_a_location_and_a_fix() {
 }
 
 /// `.was()` renames a stored column, so it is refused where there's none to rename, and a `was`
-/// rename can't move a kind onto or off a table First didn't create (spec §2.5, §2.6, §2.9).
+/// rename can't move a kind onto or off a table TypedPress didn't create (spec §2.5, §2.6, §2.9).
 #[test]
 fn was_renames_only_what_a_table_stores() {
     let tmp = tempfile::tempdir().unwrap();
-    let build = |config: &str, previous: Option<Value>| -> Result<first::pipeline::Built, String> {
-        std::fs::write(tmp.path().join("first.config.ts"), config).unwrap();
-        let program = first::loader::load(&tmp.path().join("first.config.ts")).map_err(|d| d.message)?;
-        first::pipeline::build(
+    let build = |config: &str, previous: Option<Value>| -> Result<typedpress::pipeline::Built, String> {
+        std::fs::write(tmp.path().join("typedpress.config.ts"), config).unwrap();
+        let program = typedpress::loader::load(&tmp.path().join("typedpress.config.ts")).map_err(|d| d.message)?;
+        typedpress::pipeline::build(
             tmp.path(),
             &program,
-            || first::pipeline::Previous::from_project(previous, []),
+            || typedpress::pipeline::Previous::from_project(previous, []),
             |_| None,
         )
         .map_err(|d| d.message)
     };
     let refused = |config: &str| build(config, None).err().unwrap_or_default();
-    let head = "import { defineConfig, collection, table, text, group } from 'first';";
+    let head = "import { defineConfig, collection, table, text, group } from 'typedpress';";
     assert!(
         refused(&format!("{head} const posts = collection({{ title: text(), body: text().was('copy').optional() }}, {{ title: 'title' }}); export {{ posts }}; export default defineConfig({{}});"))
             .contains("`.was()` renames a column of a table()"),
@@ -4708,7 +4718,7 @@ fn was_renames_only_what_a_table_stores() {
         refused(&format!("{head} const notes = table({{ meta: group({{ tag: text().was('label').optional() }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"))
             .contains("`.was()` renames a stored column"),
     );
-    // A First-created table renamed onto an adopted one (or back) would alter a table First didn't create.
+    // A TypedPress-created table renamed onto an adopted one (or back) would alter a table TypedPress didn't create.
     let first = build(
         &format!("{head} const notes = table({{}}); export {{ notes }}; export default defineConfig({{}});"),
         None,
@@ -4725,7 +4735,7 @@ fn was_renames_only_what_a_table_stores() {
             .unwrap_or_default()
             .contains("including through a `was` rename")
     );
-    // The same rename between two First-created tables plans a RENAME, not a drop and a create.
+    // The same rename between two TypedPress-created tables plans a RENAME, not a drop and a create.
     let renamed = build(
         &format!("{head} const memos = table({{}}, {{ was: 'notes' }}); export {{ memos }}; export default defineConfig({{}});"),
         Some(first.snapshot),
@@ -4733,30 +4743,30 @@ fn was_renames_only_what_a_table_stores() {
     .unwrap();
     let sql = &renamed.migrations[0].1;
     assert!(
-        sql.contains("RENAME TABLE `{prefix}first_notes` TO `{prefix}first_memos`;") && !sql.contains("DROP TABLE"),
+        sql.contains("RENAME TABLE `{prefix}tp_notes` TO `{prefix}tp_memos`;") && !sql.contains("DROP TABLE"),
         "{sql}"
     );
 }
 
 /// A Zero 0.8 table's name ends in a digest over the 0.8 table name, which the converter gives the
-/// binding collection's key. The runtime checks it (`First\Wp\Guard`), so the key the binding was
+/// binding collection's key. The runtime checks it (`TypedPress\Wp\Guard`), so the key the binding was
 /// first built under travels as `adoptedAs` in the snapshot, the adoption record and schema.php,
 /// and survives a `was` rename of the collection.
 #[test]
 fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
     let tmp = tempfile::tempdir().unwrap();
-    let build = |config: &str, previous: Option<Value>| -> first::pipeline::Built {
-        std::fs::write(tmp.path().join("first.config.ts"), config).unwrap();
-        let program = first::loader::load(&tmp.path().join("first.config.ts")).unwrap();
-        first::pipeline::build(
+    let build = |config: &str, previous: Option<Value>| -> typedpress::pipeline::Built {
+        std::fs::write(tmp.path().join("typedpress.config.ts"), config).unwrap();
+        let program = typedpress::loader::load(&tmp.path().join("typedpress.config.ts")).unwrap();
+        typedpress::pipeline::build(
             tmp.path(),
             &program,
-            || first::pipeline::Previous::from_project(previous, ["0001_init.sql"]),
+            || typedpress::pipeline::Previous::from_project(previous, ["0001_init.sql"]),
             |_| None,
         )
         .unwrap_or_else(|d| panic!("{}", d.message))
     };
-    let head = "import { defineConfig, table, text } from 'first';";
+    let head = "import { defineConfig, table, text } from 'typedpress';";
     let legacy = "sf_spc_x_mytasks_a102734393";
     let adopted = build(
         &format!(
@@ -4768,12 +4778,12 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
     let sql = &adopted.migrations[0].1;
     let record: Value = serde_json::from_str(
         sql.lines()
-            .find_map(|l| l.strip_prefix("-- first-adopt "))
+            .find_map(|l| l.strip_prefix("-- typedpress-adopt "))
             .expect("an adoption record"),
     )
     .unwrap();
     assert_eq!((&record["table"], &record["name"]), (&json!(legacy), &json!("myTasks")));
-    assert!(first::schema_php::render(&adopted.schema).contains("'adoptedAs' => 'myTasks',"));
+    assert!(typedpress::schema_php::render(&adopted.schema).contains("'adoptedAs' => 'myTasks',"));
 
     // Renamed with `was`: the table and the name it was adopted under stay.
     let renamed = build(
@@ -4783,7 +4793,7 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
         Some(adopted.snapshot.clone()),
     );
     assert_eq!(renamed.snapshot["tables"]["items"]["adoptedAs"], "myTasks");
-    assert!(first::schema_php::render(&renamed.schema).contains("'adoptedAs' => 'myTasks',"));
+    assert!(typedpress::schema_php::render(&renamed.schema).contains("'adoptedAs' => 'myTasks',"));
     // Renamed again, and on a snapshot from before `adoptedAs` (the stored name stands for it).
     let again = build(
         &format!(
@@ -4810,7 +4820,7 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
         None,
     );
     assert!(plain.snapshot["tables"]["tasks"].get("adoptedAs").is_none());
-    assert!(!first::schema_php::render(&plain.schema).contains("adoptedAs"));
+    assert!(!typedpress::schema_php::render(&plain.schema).contains("adoptedAs"));
     // A table stored before `adoptedAs` keeps its stored name, even under a new key: the key may be
     // a later alias (`storageName` keeps the storage), not the name the 0.8 table was made from.
     let mut old = plain.snapshot.clone();
@@ -4842,7 +4852,7 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
     let sql = &removed.migrations[0].1;
     let drop: Value = serde_json::from_str(
         sql.lines()
-            .filter_map(|l| l.strip_prefix("-- first-check "))
+            .filter_map(|l| l.strip_prefix("-- typedpress-check "))
             .find(|c| c.contains("\"drop\""))
             .expect("a drop check"),
     )
@@ -4856,7 +4866,7 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
 
 /// The OpenAPI document and the Abilities describe one value one way. `src/json_schema.rs` is the
 /// compiler's copy of `Wp\Abilities\JsonSchema`, and this runs both: for every kind, global and
-/// action of an app, the schema in `first/_generated/openapi.json` is the one the registered
+/// action of an app, the schema in `tp/_generated/openapi.json` is the one the registered
 /// Ability publishes (a row is the `-get` output, a create input the `-create` input, a patch the
 /// `-update` input's `patch`). The apps cover every field type, a users kind, localized kinds and
 /// relations.
@@ -4866,11 +4876,16 @@ fn openapi_schemas_are_the_registered_ability_schemas() {
         let tmp = tempfile::tempdir().unwrap();
         let project = tmp.path().join("app");
         copy_dir(&root().join(source), &project);
-        let _ = std::fs::remove_dir_all(project.join(".first"));
+        let _ = std::fs::remove_dir_all(project.join(".tp"));
         let content = build_wp(&project);
-        let program = first::loader::load(&project.join("first.config.ts")).unwrap();
-        let built =
-            first::pipeline::build(&project, &program, || Ok(first::pipeline::Previous::none()), |_| None).unwrap();
+        let program = typedpress::loader::load(&project.join("typedpress.config.ts")).unwrap();
+        let built = typedpress::pipeline::build(
+            &project,
+            &program,
+            || Ok(typedpress::pipeline::Previous::none()),
+            |_| None,
+        )
+        .unwrap();
         let out = Command::new("php")
             .args(["-d", "memory_limit=512M"])
             .arg(root().join("tests/php/wp.php"))
@@ -4879,7 +4894,7 @@ fn openapi_schemas_are_the_registered_ability_schemas() {
             .arg(
                 r#"
                 $out = [];
-                foreach (\First\Wp\Abilities\Register::operations() as $op) {
+                foreach (\TypedPress\Wp\Abilities\Register::operations() as $op) {
                     $out[$op['name']] = ['input' => $op['input'], 'output' => $op['output']];
                 }
                 echo json_encode($out), "\n";
@@ -4905,28 +4920,28 @@ fn openapi_schemas_are_the_registered_ability_schemas() {
         };
         let schema = &built.schema;
         let components = &built.openapi["components"]["schemas"];
-        let app = first::wordpress::abilities::kebab(&schema.name);
-        let kebab = first::wordpress::abilities::kebab;
+        let app = typedpress::wordpress::abilities::kebab(&schema.name);
+        let kebab = typedpress::wordpress::abilities::kebab;
         let mut compared = 0;
         for c in schema.collections.values() {
             let k = kebab(&c.table);
-            let name = first::client::type_name(&c.key);
+            let name = typedpress::client::type_name(&c.key);
             if c.api.get {
                 assert_eq!(
-                    first::json_schema::row(c),
+                    typedpress::json_schema::row(c),
                     registered[format!("{app}/{k}-get")]["output"],
                     "{source}: the row of {}",
                     c.table
                 );
                 // The document's row is that schema; it only adds notes and the `with` relations.
-                for (field, published) in first::json_schema::row(c)["properties"].as_object().unwrap() {
+                for (field, published) in typedpress::json_schema::row(c)["properties"].as_object().unwrap() {
                     let mut documented = components[&name]["properties"][field].clone();
                     if c.relations.contains_key(field) {
                         documented = documented["anyOf"][0].clone();
                     }
                     let documented = documented.as_object_mut().unwrap();
                     documented.remove("description");
-                    documented.remove("x-first-access");
+                    documented.remove("x-typedpress-access");
                     assert_eq!(
                         &Value::Object(documented.clone()),
                         published,

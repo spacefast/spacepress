@@ -9,11 +9,11 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\ExceptionInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\ExceptionInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>

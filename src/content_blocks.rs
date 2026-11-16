@@ -1,6 +1,6 @@
 //! Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md).
 //!
-//! A server component in `first/components/` whose file says `export const blocks = ["Callout"]`
+//! A server component in `tp/components/` whose file says `export const blocks = ["Callout"]`
 //! is one content may use. Each one becomes a dynamic block, `<app>/<kebab-name>`: the editor
 //! inserts it, a Markdown file writes it as `<Callout type="warning">…</Callout>`, and the site
 //! renders it through the component. Its attributes are the component's props, typed from the
@@ -21,7 +21,7 @@ pub struct Block {
     pub name: String,
     /// The tag a Markdown file writes: the component's export name.
     pub tag: String,
-    /// `first/components/x.tsx#Name`, the key of `schema.components`.
+    /// `tp/components/x.tsx#Name`, the key of `schema.components`.
     pub component: String,
     /// The block's attributes, as `register_block_type` takes them.
     pub attributes: Map<String, Value>,

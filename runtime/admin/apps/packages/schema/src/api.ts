@@ -14,11 +14,11 @@ import {
 } from './model';
 declare global {
 	interface Window {
-		firstAdmin?: unknown;
+		tpAdmin?: unknown;
 	}
 }
 export function bootstrap() {
-	const b = object(window.firstAdmin);
+	const b = object(window.tpAdmin);
 	const native = Object.fromEntries(
 		Object.entries(map(b.native)).map(([name, raw]) => {
 			const n = object(raw),
@@ -28,13 +28,13 @@ export function bootstrap() {
 				throw new Error('Missing native collection transport.');
 			return [
 				name,
-				{ path, postType, metaPrefix: text(n.metaPrefix) ?? 'first_' },
+				{ path, postType, metaPrefix: text(n.metaPrefix) ?? 'tp_' },
 			];
 		})
 	);
 	return {
 		native,
-		api: (text(b.api) ?? '/__first/api/v1').replace(/\/+$/, ''),
+		api: (text(b.api) ?? '/__tp/api/v1').replace(/\/+$/, ''),
 		readable: strings(b.readable),
 		role: text(b.role) ?? 'subscriber',
 	};
@@ -43,13 +43,13 @@ export function native(collection: string) {
 	return bootstrap().native[collection];
 }
 /**
- * A request to First's API (`/__first/api/v1`, outside `/wp-json`): `url` instead of `path`, so
+ * A request to TypedPress's API (`/__tp/api/v1`, outside `/wp-json`): `url` instead of `path`, so
  * api-fetch sends the nonce and the cookie and parses problems as for any core route.
  */
 export function api(path: string): { url: string } {
 	return { url: bootstrap().api + path };
 }
-/** An api-fetch target for a collection: its core route when it has one, else First's API. */
+/** An api-fetch target for a collection: its core route when it has one, else TypedPress's API. */
 export function target(collection: string, suffix = ''): { path: string } | { url: string } {
 	const n = native(collection);
 	return n ? { path: n.path + suffix } : api(`/${encodeURIComponent(collection)}${suffix}`);
@@ -60,7 +60,7 @@ export function unwrap(value: unknown): unknown {
 }
 export async function schema() {
 	const described = object(unwrap(await apiFetch(api(''))));
-	// The facade lists kinds; the admin's model reads them as collections (those First stores).
+	// The facade lists kinds; the admin's model reads them as collections (those TypedPress stores).
 	const kinds = map(described.kinds);
 	return parseSchema({ ...described, collections: Object.fromEntries(Object.entries(kinds).filter(([, k]) => ['post', 'users', 'table'].includes(String(object(k).type)))) });
 }
@@ -340,7 +340,7 @@ export async function list(
 	};
 }
 
-/** Resolve editor navigation through the active First adapter or the native WordPress routes. */
+/** Resolve editor navigation through the active TypedPress adapter or the native WordPress routes. */
 export function entityEditorPath(postType: string, postId: string): string {
     const collection = Object.entries(bootstrap().native).find(([, value]) => value.postType === postType)?.[0];
     return collection

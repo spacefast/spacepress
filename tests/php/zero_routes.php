@@ -8,17 +8,17 @@ declare(strict_types=1);
  * tree's plugins installed on WordPress, served by php -S with the theme front end on. Prints one
  * JSON object: label => [status, body].
  *
- *   FIRST_WP_THEMES=1 php tests/php/zero_routes.php <compiled tree>
+ *   TP_WP_THEMES=1 php tests/php/zero_routes.php <compiled tree>
  *
- * The tree is compiled with no previous output, so a fresh site gets First's table names (a site
+ * The tree is compiled with no previous output, so a fresh site gets TypedPress's table names (a site
  * that ran 0.3.0 gets them from the stored-name upgrade, tests/wp/zero-upgrade).
  */
 
 require __DIR__ . '/wp.php';
 
-// The compiled tree lays its plugins out as `first build` does; the harness reads their order
+// The compiled tree lays its plugins out as `typedpress build` does; the harness reads their order
 // from the manifest a build writes beside them.
-$content = sys_get_temp_dir() . '/first-zero-routes-' . bin2hex(random_bytes(4));
+$content = sys_get_temp_dir() . '/typedpress-zero-routes-' . bin2hex(random_bytes(4));
 wpCopy($argv[1] . '/plugins', "$content/plugins");
 $manifest = json_decode((string) file_get_contents($argv[1] . '/manifest.json'), true, 512, JSON_THROW_ON_ERROR);
 // The host provides the platform plugins; the tests' pins stand in for them.
@@ -30,10 +30,10 @@ foreach ($platform['plugins'] as $slug => $pin) {
         $plugins[$slug] = $pin['version'];
     }
 }
-foreach (['first-runtime', 'first-app-' . $manifest['app']] as $slug) {
+foreach (['typedpress-runtime', 'typedpress-app-' . $manifest['app']] as $slug) {
     $plugins[$slug] = '';
 }
-file_put_contents("$content/first-manifest.json", json_encode(['app' => $manifest['app'], 'plugins' => $plugins], JSON_THROW_ON_ERROR));
+file_put_contents("$content/typedpress-manifest.json", json_encode(['app' => $manifest['app'], 'plugins' => $plugins], JSON_THROW_ON_ERROR));
 $site = wpSite('zero-routes', ['wpContent' => $content, 'users' => ['chief' => 'editor', 'reader' => 'subscriber'],
     'muPlugins' => ['secret' => "<?php define('ROUTES_SECRET', 'route-secret');"]]);
 register_shutdown_function(static fn () => exec('rm -rf ' . escapeshellarg($content)));
@@ -42,8 +42,8 @@ if ($code !== 0) {
     throw new RuntimeException('migrate failed: ' . json_encode($migrated));
 }
 wp_set_current_user(1);
-\First\db()->insert('notes', ['title' => 'Published', 'status' => 'published']);
-\First\db()->insert('notes', ['title' => 'Draft', 'status' => 'draft']);
+\TypedPress\db()->insert('notes', ['title' => 'Published', 'status' => 'published']);
+\TypedPress\db()->insert('notes', ['title' => 'Draft', 'status' => 'draft']);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();

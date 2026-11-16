@@ -33,6 +33,7 @@ jobs:
             ~/.cargo/git
             target
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - run: node --test scripts/rename-to-typedpress.test.mjs
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
@@ -52,7 +53,7 @@ jobs:
         shard: [compiler, slow, rest]
     env:
       SHARD: ${{ matrix.shard }}
-      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -75,7 +76,7 @@ jobs:
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .first/cache/plugins
+          path: .tp/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       # tests/sync.rs serves a WordPress-on-SQLite site (tests/php/wp.php).
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -116,25 +117,25 @@ jobs:
         if: matrix.shard == 'compiler'
         run: |
           npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
-          FIRST_BIN="$GITHUB_WORKSPACE/target/debug/first" node examples/npm-compat/verify.mjs --isolated
+          TP_BIN="$GITHUB_WORKSPACE/target/debug/typedpress" node examples/npm-compat/verify.mjs --isolated
       # Every app under examples/ compiles (files-sdk, a probe of what doesn't yet, is left out).
       - if: matrix.shard == 'rest'
-        run: scripts/check-examples.sh target/debug/first
-      # Every example's committed first/_generated/ (client, db.d.ts, openapi.json, a migration the
+        run: scripts/check-examples.sh target/debug/typedpress
+      # Every example's committed tp/_generated/ (client, db.d.ts, openapi.json, a migration the
       # compiler would add) is what this compiler builds. This job runs after merging, on main;
       # on PRs, runtime/client/committed.test.ts checks only the copied client files.
       - if: matrix.shard == 'rest'
-        run: scripts/check-generated.sh target/debug/first
+        run: scripts/check-generated.sh target/debug/typedpress
       - name: Zero 0.8 census tool
         if: matrix.shard == 'rest'
         env:
-          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
         run: node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
-      # @first/astro against a First site on WordPress-on-SQLite, and a real astro build.
+      # @typedpress/astro against a TypedPress site on WordPress-on-SQLite, and a real astro build.
       - name: Astro loaders
         if: matrix.shard == 'rest'
         env:
-          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
         run: |
           npm ci --prefix packages/astro --ignore-scripts --no-audit --no-fund
           tsc -p packages/astro
@@ -143,7 +144,7 @@ jobs:
       - name: Astro twin example
         if: matrix.shard == 'rest'
         env:
-          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
         run: |
           npm ci --prefix examples/astro-garden --ignore-scripts --no-audit --no-fund
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
@@ -153,7 +154,7 @@ jobs:
       - name: Migrated Astro example
         if: matrix.shard == 'rest'
         env:
-          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
         run: |
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
@@ -164,7 +165,7 @@ jobs:
       - name: Offline deployment and recovery acceptance
         if: matrix.shard == 'rest'
         env:
-          FIRST_DEPLOY_BIN: ${{ github.workspace }}/target/debug/first
+          TP_DEPLOY_BIN: ${{ github.workspace }}/target/debug/typedpress
         run: node --test scripts/deploy/artifact.test.mjs scripts/deploy/wordpress.test.mjs
 
   host:
@@ -178,7 +179,7 @@ jobs:
       - run: cargo build --locked --no-default-features --features host --target x86_64-unknown-linux-musl
       - run: cargo clippy --locked --lib --no-default-features --target wasm32-unknown-unknown -- -D warnings
       - run: cargo build --locked --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
-      - run: cargo build --locked --bin first
+      - run: cargo build --locked --bin typedpress
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .node-version
@@ -283,7 +284,7 @@ jobs:
       - run: npm install --global typescript@5.9.3
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
       - run: tsc -p tests/host-types
-      - run: tsc -p types/first/tests
+      - run: tsc -p types/typedpress/tests
       # The WordPress hook catalog and its declarations match the pinned sources.
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -297,14 +298,14 @@ jobs:
       - run: node --test runtime/client/index.test.ts runtime/client/committed.test.ts
       - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
       - run: node --test scripts/dev/studio.test.mjs
-      - run: node --test packages/cli/test/*.test.mjs packages/create-first/test/*.test.mjs scripts/release/archive.test.mjs
+      - run: node --test packages/cli/test/*.test.mjs packages/create-typedpress/test/*.test.mjs scripts/release/archive.test.mjs
 
   wp:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -325,7 +326,7 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .first/cache/plugins
+            .tp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: corepack enable
@@ -339,13 +340,13 @@ jobs:
       # their own jobs below: on one runner the three together reached the 40-minute limit.
       - run: tests/wp/run.sh
         env:
-          FIRST_WP_SKIP_MIGRATE: '1'
+          TP_WP_SKIP_MIGRATE: '1'
       - name: Preserve failed native admin browser evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wp-admin-browser-${{ github.run_attempt }}
-          path: /tmp/first-admin-browser
+          path: /tmp/typedpress-admin-browser
           if-no-files-found: ignore
           retention-days: 7
 
@@ -354,7 +355,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -375,14 +376,14 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .first/cache/plugins
+            .tp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      - run: cargo build --locked --bin first
+      - run: cargo build --locked --bin typedpress
       - name: Zero 0.8 site, app-user and application migrations
-        run: FIRST_WP_PROJECT=first-wp-migrate FIRST_WP_PORT=8794 tests/wp/migrate-run.sh
+        run: TP_WP_PROJECT=typedpress-wp-migrate TP_WP_PORT=8794 tests/wp/migrate-run.sh
       - name: Spacefast cross-prefix migration and session continuity
-        run: FIRST_WP_PROJECT=first-wp-spacefast FIRST_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
+        run: TP_WP_PROJECT=typedpress-wp-spacefast TP_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
 
   # Schema checks, seeding, outbound fetch and WordPress abilities: split from wp-migrate, which
   # ran past its timeout once both halves shared one runner.
@@ -391,7 +392,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -412,37 +413,37 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .first/cache/plugins
+            .tp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      - run: cargo build --locked --bin first
+      - run: cargo build --locked --bin typedpress
       - name: Deploy-time schema check against live rows
-        run: FIRST_WP_PROJECT=first-wp-schema-check FIRST_WP_PORT=8902 tests/wp/schema-check/run.sh
-      - name: First-publish seed and sync adoption
-        run: FIRST_WP_PROJECT=first-wp-seed FIRST_WP_PORT=8897 tests/wp/seed-run.sh
+        run: TP_WP_PROJECT=typedpress-wp-schema-check TP_WP_PORT=8902 tests/wp/schema-check/run.sh
+      - name: TypedPress-publish seed and sync adoption
+        run: TP_WP_PROJECT=typedpress-wp-seed TP_WP_PORT=8897 tests/wp/seed-run.sh
       - name: Outbound fetch with SSRF refusals
-        run: FIRST_WP_PROJECT=first-wp-fetch FIRST_WP_PORT=8899 tests/wp/fetch/run.sh
+        run: TP_WP_PROJECT=typedpress-wp-fetch TP_WP_PORT=8899 tests/wp/fetch/run.sh
       - name: WordPress abilities and wp-hooks from TypeScript
-        run: FIRST_WP_PROJECT=first-wp-wordpress FIRST_WP_PORT=8898 tests/wp/wordpress/run.sh
+        run: TP_WP_PROJECT=typedpress-wp-wordpress TP_WP_PORT=8898 tests/wp/wordpress/run.sh
       - name: Opinionated WordPress hardening, and stock WordPress without an app
-        run: FIRST_WP_PROJECT=first-wp-hardening FIRST_WP_PORT=8896 tests/wp/hardening/run.sh
+        run: TP_WP_PROJECT=typedpress-wp-hardening TP_WP_PORT=8896 tests/wp/hardening/run.sh
       - name: Sealed mode on its own stack
-        run: FIRST_WP_PROJECT=first-wp-sealed FIRST_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
+        run: TP_WP_PROJECT=typedpress-wp-sealed TP_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
       - name: Build store, managed initialize, and inspecting a candidate without changing the site
-        run: FIRST_WP_PROJECT=first-wp-store FIRST_WP_PORT=8901 tests/wp/store-run.sh
+        run: TP_WP_PROJECT=typedpress-wp-store TP_WP_PORT=8901 tests/wp/store-run.sh
       - name: A managed build installs only from initialize, and installs what plugins install on boot
-        run: FIRST_WP_PROJECT=first-wp-store-install FIRST_WP_PORT=8903 tests/wp/store-install-run.sh
-      - name: The First plugin on a stock WordPress, with first login and first push
-        run: FIRST_WP_PROJECT=first-wp-plugin FIRST_WP_PORT=8905 tests/wp/plugin/run.sh
-      - name: The First plugin on a WordPress network, one app per site
-        run: FIRST_WP_PROJECT=first-wp-plugin-ms FIRST_WP_PORT=8907 tests/wp/plugin/multisite-run.sh
+        run: TP_WP_PROJECT=typedpress-wp-store-install TP_WP_PORT=8903 tests/wp/store-install-run.sh
+      - name: The TypedPress plugin on a stock WordPress, with typedpress login and typedpress push
+        run: TP_WP_PROJECT=typedpress-wp-plugin TP_WP_PORT=8905 tests/wp/plugin/run.sh
+      - name: The TypedPress plugin on a WordPress network, one app per site
+        run: TP_WP_PROJECT=typedpress-wp-plugin-ms TP_WP_PORT=8907 tests/wp/plugin/multisite-run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -463,19 +464,19 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .first/cache/plugins
+            .tp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - name: Shared S3 storage across disposable replicas
-        run: FIRST_WP_PROJECT=first-wp-s3 FIRST_WP_PORT=8792 FIRST_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
+        run: TP_WP_PROJECT=typedpress-wp-s3 TP_WP_PORT=8792 TP_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
 
-  # Hosted first/app pages, client components in Chromium and route.ts handlers, from `first compile-sources`.
+  # Hosted typedpress/app pages, client components in Chromium and route.ts handlers, from `typedpress compile-sources`.
   wp-pages:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -496,23 +497,23 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .first/cache/plugins
+            .tp/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      - run: cargo build --locked --bin first
+      - run: cargo build --locked --bin typedpress
       - name: Hosted pages, client components, action and HTTP routes from compile-sources
         run: |
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
-          FIRST_WP_PROJECT=first-wp-pages FIRST_WP_PORT=8873 tests/wp/hosted-pages-run.sh
+          TP_WP_PROJECT=typedpress-wp-pages TP_WP_PORT=8873 tests/wp/hosted-pages-run.sh
 
-  # `first dev` from a release binary after removing its build checkout.
+  # `typedpress dev` from a release binary after removing its build checkout.
   installed:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -532,7 +533,7 @@ jobs:
           key: rust-release-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .first/cache/plugins
+          path: .tp/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: tests/wp/installed/run.sh
 
@@ -541,7 +542,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+      TP_WP_PLUGIN_CACHE: ${{ github.workspace }}/.tp/cache/plugins
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -562,7 +563,7 @@ jobs:
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: .first/cache/plugins
+          path: .tp/cache/plugins
           key: plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
       - run: tests/system/run.sh
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Key;
+namespace TypedPress\Identity\Vendor\Cose\Key;
 
 use InvalidArgumentException;
 use function ltrim;
@@ -21,7 +21,7 @@ use Throwable;
  * section 3.1, which defines it as an odd integer between 3 and n - 1.
  *
  * Two families of constraints are applied by the RSA algorithms of this library to every key they are given, both
- * through First\Identity\Vendor\Cose\Algorithm\Signature\RSA\RSA and First\Identity\Vendor\Cose\Algorithm\Signature\RSA\PSSRSA: the public parameter constraints
+ * through TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA\RSA and TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA\PSSRSA: the public parameter constraints
  * of RFC 8017, section 3.1 (checkPublicParameters()), and the upper bounds on the size of the key
  * (checkLengthBounds()). Neither depends on a policy - an RSA operation costs an amount of CPU proportional to the
  * size of the key it is given, and that key is attacker supplied whenever it comes from the wire.
@@ -68,7 +68,7 @@ final class RsaKeyValidator
      * The warning an RSA algorithm emits when the key it is given is rejected by the validator it defaulted to. Its
      * only placeholder receives the message of the underlying InvalidArgumentException.
      *
-     * @see \First\Identity\Vendor\Cose\Algorithm\Signature\RSA\RsaKeyPolicy
+     * @see \TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA\RsaKeyPolicy
      */
     public const WEAK_KEY_MESSAGE = 'The RSA key does not satisfy RFC 8230 section 6.1: %s. Accept it explicitly with "RsaKeyValidator::create(minimumModulusLength: 1024)"; as of v5.0.0, it will be rejected with an exception.';
 

@@ -36,7 +36,7 @@ impl Source {
 pub struct Failure {
     pointer: String,
     reason: String,
-    /// `first migrate app` adds the diagnostic contract (`app::codes`) before it reports.
+    /// `typedpress migrate app` adds the diagnostic contract (`app::codes`) before it reports.
     #[serde(flatten)]
     contract: Option<Box<app::codes::Contract>>,
     /// Where in the 0.8 source the refusal is: capsule-relative file, 1-based line and UTF-16 column.
@@ -107,8 +107,7 @@ struct Report<'a> {
 }
 
 #[cfg(feature = "cli")]
-const USAGE: &str =
-    "usage: first migrate config --from emdash|payload|sanity|zero <input.ts|input.json> --out <new/first.config.ts>";
+const USAGE: &str = "usage: typedpress migrate config --from emdash|payload|sanity|zero <input.ts|input.json> --out <new/typedpress.config.ts>";
 
 #[cfg(feature = "cli")]
 struct Args {
@@ -207,8 +206,9 @@ fn run(args: &Args, entries: &mut Vec<Entry>) -> Result<(), Failure> {
 pub fn convert(source: Source, path: &Path, text: &str, entries: &mut Vec<Entry>) -> Result<String, Failure> {
     let input = input::parse(path, text, source)?;
     let config = translate::config(input, source, entries)?;
-    let response =
-        crate::wasm::compile(&serde_json::json!({"name":"candidate", "files":{"first.config.ts":config}}).to_string());
+    let response = crate::wasm::compile(
+        &serde_json::json!({"name":"candidate", "files":{"typedpress.config.ts":config}}).to_string(),
+    );
     let checked: serde_json::Value = serde_json::from_str(&response).expect("compiler response");
     if checked["output"].is_null() {
         return Err(fail(

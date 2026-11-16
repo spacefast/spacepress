@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\OtherObject;
+namespace TypedPress\Identity\Vendor\CBOR\OtherObject;
 
 interface OtherObjectManagerInterface
 {

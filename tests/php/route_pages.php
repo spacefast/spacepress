@@ -3,12 +3,12 @@
 declare(strict_types=1);
 
 /*
- * Code-owned WordPress Pages for static first/app/ routes (docs/spec/rendering.md §7;
+ * Code-owned WordPress Pages for static tp/app/ routes (docs/spec/rendering.md §7;
  * tests/app_router.rs `static_routes_have_code_owned_pages`): the fixture tests/fixtures/app-router
  * on WordPress with php -S. Prints one JSON object of what WordPress, wp-admin, REST and the
  * router see of those Pages.
  *
- *   FIRST_WP_THEMES=1 php tests/php/route_pages.php <wp-content dir>
+ *   TP_WP_THEMES=1 php tests/php/route_pages.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -19,13 +19,13 @@ wp_set_current_user(1);
 $native = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Native', 'post_name' => 'native']);
 $site->actAs(null);
 // The first request after a build stores the Pages.
-\First\Wp\RoutePages::instance()->reconcile();
-$codePages = \First\Wp\RoutePages::instance()->pages();
+\TypedPress\Wp\RoutePages::instance()->reconcile();
+$codePages = \TypedPress\Wp\RoutePages::instance()->pages();
 $summary = static function () use (&$codePages): array {
     $out = [];
     foreach ($codePages as $route => $id) {
         $post = get_post($id);
-        $out[$route] = ['status' => $post->post_status, 'title' => $post->post_title, 'link' => get_permalink($id), 'meta' => get_post_meta($id, '_first_route', true)];
+        $out[$route] = ['status' => $post->post_status, 'title' => $post->post_title, 'link' => get_permalink($id), 'meta' => get_post_meta($id, '_tp_route', true)];
     }
     ksort($out);
     return $out;
@@ -59,9 +59,9 @@ $menu = wp_create_nav_menu('Main');
 wp_update_nav_menu_item($menu, 0, ['menu-item-object-id' => $codePages['(site)/about'], 'menu-item-object' => 'page', 'menu-item-type' => 'post_type', 'menu-item-status' => 'publish']);
 $out['menu'] = array_map(static fn ($i): string => $i->url, wp_get_nav_menu_items($menu));
 // A second build of the same routes keeps every ID.
-delete_option('first_approuter_route_pages');
-\First\Wp\RoutePages::instance()->reconcile();
-$out['adopted'] = \First\Wp\RoutePages::instance()->pages() === $codePages;
+delete_option('tp_approuter_route_pages');
+\TypedPress\Wp\RoutePages::instance()->reconcile();
+$out['adopted'] = \TypedPress\Wp\RoutePages::instance()->pages() === $codePages;
 
 $site->startServer();
 $url = $site->url();
@@ -80,11 +80,11 @@ $get = static function (string $path) use ($url): array {
 };
 [$status, $location] = $get('/?page_id=' . $codePages['(site)/about']);
 $out['page_id redirect'] = [$status, $location];
-$out['slug redirect'] = array_slice($get('/first-home/'), 0, 2);
+$out['slug redirect'] = array_slice($get('/typedpress-home/'), 0, 2);
 $out['about'] = $get('/about')[0];
 $out['native'] = $get('/native/')[0];
 $out['sitemap pages'] = substr_count($get('/wp-sitemap-posts-page-1.xml')[2], '<loc>');
-$out['sitemap app'] = substr_count($get('/wp-sitemap-first-app-pages-1.xml')[2], '<loc>');
+$out['sitemap app'] = substr_count($get('/wp-sitemap-typedpress-app-pages-1.xml')[2], '<loc>');
 // The route renders with its Page as the queried object, as the page template would.
 $out['body class'] = (bool) preg_match('/<body class="[^"]*\bpage-id-' . $codePages['(site)/about'] . '\b/', $get('/about')[2]);
 $out['home body class'] = (bool) preg_match('/<body class="[^"]*\bhome\b[^"]*"/', $get('/')[2]);

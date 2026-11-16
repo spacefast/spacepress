@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useEntityValidity } from '@first-admin/admin-toolkit';
+import { useEntityValidity } from '@typedpress-admin/admin-toolkit';
 import { registerPlugin } from '@wordpress/plugins';
 import { PluginDocumentSettingPanel, store as editorStore } from '@wordpress/editor';
 import { useParams } from '@wordpress/route';
@@ -17,7 +17,7 @@ import {
 	useLoad,
 	object,
 	map,
-} from '@first-admin/schema';
+} from '@typedpress-admin/schema';
 
 function ContentFieldsPanel() {
 	const params = useParams({
@@ -88,7 +88,7 @@ function DocumentFields({
 	const jsonDrafts = useFieldDrafts(state.kind === 'ready' && values ? { fields: state.value.columns, values, objects, omit } : undefined);
 	const valid = jsonDrafts.valid;
 	useEffect(() => {
-		const lock = `first-fields:${collection}/${id}`;
+		const lock = `typedpress-fields:${collection}/${id}`;
 		setIsEntityValid(valid);
 		if (!valid) {
 			void lockPostSaving(lock);
@@ -102,7 +102,7 @@ function DocumentFields({
 	}, [valid, collection, id, setIsEntityValid, lockPostSaving, unlockPostSaving, lockPostAutosaving, unlockPostAutosaving]);
 	if (!transport || !record) return null;
 	return (
-		<PluginDocumentSettingPanel name="first-admin-content-fields" title="Fields">
+		<PluginDocumentSettingPanel name="typedpress-admin-content-fields" title="Fields">
 			{state.kind !== 'ready' ? (
 				<Loading state={state} />
 			) : (
@@ -126,4 +126,4 @@ function DocumentFields({
 		</PluginDocumentSettingPanel>
 	);
 }
-registerPlugin('first-admin-content-fields', { render: ContentFieldsPanel });
+registerPlugin('typedpress-admin-content-fields', { render: ContentFieldsPanel });

@@ -1,9 +1,9 @@
-//! `first mcp [dir] [--allow-remote-read] [--allow-writes]`: the project in `dir` for a coding
+//! `typedpress mcp [dir] [--allow-remote-read] [--allow-writes]`: the project in `dir` for a coding
 //! agent, as a Model Context Protocol server on stdin and stdout.
 //!
 //! This is the development-time half. The running site serves its own data and actions as a second
-//! MCP server (`/wp-json/mcp/first-<app>`, docs/agents.md); this one answers about the project's
-//! source: its schema, the compiler's diagnostics, First's documentation, the command table and the
+//! MCP server (`/wp-json/mcp/typedpress-<app>`, docs/agents.md); this one answers about the project's
+//! source: its schema, the compiler's diagnostics, TypedPress's documentation, the command table and the
 //! local dev site.
 //!
 //! The wire format is the specification's stdio transport: one JSON-RPC 2.0 message per line, and
@@ -19,9 +19,9 @@
 //! reads stdin only queues them and acts on `notifications/cancelled`: a request still queued is
 //! dropped, and the one being answered has the command it is waiting on stopped. A cancelled request
 //! gets no response. When stdin closes, the requests already received are answered and the server
-//! exits, so `printf … | first mcp` works; nothing it runs outlives the timeout.
+//! exits, so `printf … | typedpress mcp` works; nothing it runs outlives the timeout.
 //!
-//! The compiler runs in a process of its own for each `schema` and `check` (`first mcp <dir>
+//! The compiler runs in a process of its own for each `schema` and `check` (`typedpress mcp <dir>
 //! --compile`, an internal form of this command): a long-lived server then keeps nothing from one
 //! compile to the next, and a compile is bounded and cancellable like any other command.
 
@@ -63,8 +63,8 @@ const LEGACY_RESOURCE_NOT_FOUND: i64 = -32002;
 /// runs, so a client may keep them this long.
 const FIXED_TTL_MS: u64 = 3_600_000;
 
-const USAGE: &str = "usage: first mcp [dir] [--allow-remote-read] [--allow-writes]";
-/// Seconds a command run for a tool may take: `FIRST_MCP_TIMEOUT` overrides it.
+const USAGE: &str = "usage: typedpress mcp [dir] [--allow-remote-read] [--allow-writes]";
+/// Seconds a command run for a tool may take: `TP_MCP_TIMEOUT` overrides it.
 const TIMEOUT: u64 = 120;
 
 pub(crate) struct Options {
@@ -141,9 +141,9 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
             "--allow-writes" => allow_writes = true,
             // The server's own way to compile in a separate process; not an author's option.
             "--compile" => compile = true,
-            other if other.starts_with('-') => return usage(format!("unknown option {other} for first mcp")),
+            other if other.starts_with('-') => return usage(format!("unknown option {other} for typedpress mcp")),
             other if project.is_some() => {
-                return usage(format!("first mcp takes one project directory, not also {other}"));
+                return usage(format!("typedpress mcp takes one project directory, not also {other}"));
             }
             other => project = Some(PathBuf::from(other)),
         }
@@ -158,11 +158,11 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
         println!("{}", tools::compiled(&project));
         return ExitCode::SUCCESS;
     }
-    let timeout = match std::env::var("FIRST_MCP_TIMEOUT") {
+    let timeout = match std::env::var("TP_MCP_TIMEOUT") {
         Err(_) => TIMEOUT,
         Ok(seconds) => match seconds.parse::<u64>() {
             Ok(seconds) if seconds > 0 => seconds,
-            _ => return usage(format!("FIRST_MCP_TIMEOUT is a number of seconds, not {seconds:?}")),
+            _ => return usage(format!("TP_MCP_TIMEOUT is a number of seconds, not {seconds:?}")),
         },
     };
     let flight = Arc::new(Mutex::new(Flight::default()));
@@ -287,7 +287,7 @@ fn failure(id: Option<&Value>, error: RpcError) -> Value {
 
 impl Server {
     fn info() -> Value {
-        json!({ "name": "first", "title": "First", "version": env!("CARGO_PKG_VERSION") })
+        json!({ "name": "typedpress", "title": "TypedPress", "version": env!("CARGO_PKG_VERSION") })
     }
 
     fn capabilities() -> Value {
@@ -297,10 +297,10 @@ impl Server {
 
     fn instructions(&self) -> String {
         format!(
-            "Development-time tools for the First project in {}. Call `schema` before changing kinds, actions or pages, \
+            "Development-time tools for the TypedPress project in {}. Call `schema` before changing kinds, actions or pages, \
              `check` after every edit, and `docs_search` before guessing an API: the documentation is the one this \
              compiler was built with. `query` reads the local dev site. The running site's own data and actions are a \
-             different MCP server, at /wp-json/mcp/first-<app> on the site.",
+             different MCP server, at /wp-json/mcp/typedpress-<app> on the site.",
             self.options.project.display()
         )
     }

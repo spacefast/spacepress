@@ -1,11 +1,11 @@
-# @first-admin/wp-build
+# @typedpress-admin/wp-build
 
 Opinionated build tooling for WordPress plugins with routes and packages support.
 
 ## Installation
 
 ```bash
-npm install @first-admin/wp-build
+npm install @typedpress-admin/wp-build
 ```
 
 ## Usage
@@ -128,7 +128,7 @@ The build tool automatically:
 
 ## Features
 
--   **First Config**: Works out of the box with sensible defaults
+-   **TypedPress Config**: Works out of the box with sensible defaults
 -   **TypeScript/JSX Support**: Full TypeScript and JSX compilation
 -   **Sass/SCSS Support**: Including CSS modules
 -   **WordPress Externals**: Automatic externalization of WordPress packages

@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/dashboard-redirect",
+	"name": "@typedpress-admin/dashboard-redirect",
 	"version": "1.0.0",
 	"private": true,
 	"route": {

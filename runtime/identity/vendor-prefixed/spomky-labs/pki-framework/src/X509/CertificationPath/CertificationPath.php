@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath;
 
 use ArrayIterator;
 use function count;
@@ -10,15 +10,15 @@ use Countable;
 use const E_USER_DEPRECATED;
 use IteratorAggregate;
 use LogicException;
-use First\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateChain;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathBuilding\CertificationPathBuilder;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationResult;
-use First\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidator;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateChain;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathBuilding\CertificationPathBuilder;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationResult;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidator;
 
 /**
  * Implements certification path structure.

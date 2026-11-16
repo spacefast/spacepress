@@ -1,7 +1,7 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
-import { collection, text, integer, defineConfig, action, json as jsonField, group, repeater, blocks , table} from "first";
-import { job, jobs, once } from "first"; // lane D
+import { collection, text, integer, defineConfig, action, json as jsonField, group, repeater, blocks , table} from "typedpress";
+import { job, jobs, once } from "typedpress"; // lane D
 import * as ns from "./namespace.mjs";
 import picoish from "./namespace.mjs";
 import { jsAbort as jsAbortImpl, jsCollections as jsCollectionsImpl, jsTimers as jsTimersImpl } from "./stdlib.js";
@@ -1013,7 +1013,7 @@ export const enqueueIds = action({ input: {}, handler: async () => {
   return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
 } });
 
-export const envRead = action({ input: {}, handler: () => [process.env.FIRST_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.FIRST_LANE_D_UNSET === undefined] });
+export const envRead = action({ input: {}, handler: () => [process.env.TP_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.TP_LANE_D_UNSET === undefined] });
 
 export const loopClosures = run(() => {
   const fs: (() => number)[] = [];
@@ -1151,7 +1151,7 @@ export const ping = job({ input: { note: text().optional() }, handler: async () 
 export default defineConfig({});
 
 // ---- lane D: jobs, once(), process.env (phase 2 §6.1). The Node shim keeps once() receipts and pending
-// enqueue keys in memory; PHP keeps them in __first_receipts and __first_jobs. Keys are unique per case.
+// enqueue keys in memory; PHP keeps them in __tp_receipts and __tp_jobs. Keys are unique per case.
 
 // ---- standard objects: Map and Set in typed code (docs/decisions/2026-11-07-stdlib-objects.md).
 type Entry = { n: number };

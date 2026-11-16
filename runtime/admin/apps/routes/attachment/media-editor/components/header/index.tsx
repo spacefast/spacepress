@@ -1,4 +1,4 @@
-import { SiteIconBackButton, unlock } from '@first-admin/admin-toolkit';
+import { SiteIconBackButton, unlock } from '@typedpress-admin/admin-toolkit';
 import { IconButton } from '@wordpress/ui';
 import { __ } from '@wordpress/i18n';
 import { useDispatch, useSelect } from '@wordpress/data';
@@ -37,18 +37,18 @@ export default function MediaEditorHeader() {
 	const mediaType = getMediaTypeFromMimeType( post?.mime_type || '' );
 
 	return (
-		<div className="first-admin-media-details__header-container">
-			<div className="first-admin-media-details__header-container-back-button">
+		<div className="typedpress-admin-media-details__header-container">
+			<div className="typedpress-admin-media-details__header-container-back-button">
 				<SiteIconBackButton to="/media" />
 			</div>
-			<div className="first-admin-media-details__header-container-toolbar">
+			<div className="typedpress-admin-media-details__header-container-toolbar">
 				{ isMobileViewport && (
 					<IconButton
 						variant="minimal"
 						tone="neutral"
 						size="compact"
 						icon={ cropIcon }
-						label={ __( 'Crop', 'first-admin' ) }
+						label={ __( 'Crop', 'typedpress-admin' ) }
 						onClick={ () => {
 							// If we're not already in the image editor,
 							// ensure the sidebar is closed. This makes it easier
@@ -62,11 +62,11 @@ export default function MediaEditorHeader() {
 						} }
 						aria-expanded={ isImageEditorOpen }
 						aria-pressed={ isImageEditorOpen }
-						aria-controls="first-admin-media-editor-toolbar"
+						aria-controls="typedpress-admin-media-editor-toolbar"
 					/>
 				) }
 			</div>
-			<div className="first-admin-media-details__header-container-center">
+			<div className="typedpress-admin-media-details__header-container-center">
 				{ ! isMobileViewport && (
 					<DocumentBar
 						title={ post?.title }
@@ -74,7 +74,7 @@ export default function MediaEditorHeader() {
 					/>
 				) }
 			</div>
-			<div className="first-admin-media-details__header-container-actions">
+			<div className="typedpress-admin-media-details__header-container-actions">
 				<PinnedItems.Slot scope="core/edit-media" />
 				<MediaEditorSaveButton postId={ postId } />
 			</div>

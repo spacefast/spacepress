@@ -1,7 +1,7 @@
 // Migrating an ORIGINAL Zero (0.8) site to the new app (lane M), against real WordPress: run.sh
 // seeded the site through the original kernel (or replayed the rows it wrote), with the app that
-// `first migrate config --from zero` made from capsule.ts active. Everything is read back through
-// /__first/api/v1, the API the migrated app serves.
+// `typedpress migrate config --from zero` made from capsule.ts active. Everything is read back through
+// /__tp/api/v1, the API the migrated app serves.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -15,8 +15,8 @@ const site = JSON.parse(readFileSync(process.env.ZERO_LEGACY_SITE!, "utf8"));
 const ids: Record<string, any> = site.ids;
 const release = join(here, "content-model.php");
 const migrate = (...flags: string[]) => {
-  // `first migrate-legacy - < release` forwards exactly this: the release on stdin to the site's WP-CLI.
-  const r = spawnSync(`${here}/../harness.sh`, ["wp", "first", "migrate-legacy", "-", ...flags], { input: readFileSync(release), encoding: "utf8" });
+  // `typedpress migrate-legacy - < release` forwards exactly this: the release on stdin to the site's WP-CLI.
+  const r = spawnSync(`${here}/../harness.sh`, ["wp", "typedpress", "migrate-legacy", "-", ...flags], { input: readFileSync(release), encoding: "utf8" });
   return { code: r.status, out: r.stdout.trim() === "" ? null : JSON.parse(r.stdout) };
 };
 // Everything the migration may touch: posts with their meta, term relationships and term counts.
@@ -48,16 +48,16 @@ test("a post's content is checked against the new app's content column", () => {
   // The new tasks collection reads post_content as `brief`, whose rule wants 20+ characters: a dry
   // run with that schema refuses the original posts, whose content is shorter.
   const r = JSON.parse(wp("eval", `
-    $plugin = \\First\\Wp\\Runtime::plugin();
-    $raw = require $plugin->dir . '/first/app/schema.php';
+    $plugin = \\TypedPress\\Wp\\Runtime::plugin();
+    $raw = require $plugin->dir . '/tp/app/schema.php';
     $raw['collections']['tasks']['content'] = 'brief';
     $raw['collections']['tasks']['columns']['brief'] = ['type' => 'richText', 'rules' => ['min' => 20]];
     $GLOBALS['wpdb']->update($GLOBALS['wpdb']->posts, ['post_content' => 'Too short'], ['ID' => ${ids.parent}]);
     $plugin->app();
     try {
-      (new \\First\\Wp\\Legacy\\Migrate($plugin->connection(), new \\First\\Schema($raw)))->run(require '/tmp/first-legacy-release.php', true);
+      (new \\TypedPress\\Wp\\Legacy\\Migrate($plugin->connection(), new \\TypedPress\\Schema($raw)))->run(require '/tmp/typedpress-legacy-release.php', true);
       echo 'null';
-    } catch (\\First\\HttpError $e) { echo json_encode([$e->errorCode, $e->pointer]); }
+    } catch (\\TypedPress\\HttpError $e) { echo json_encode([$e->errorCode, $e->pointer]); }
     finally { $GLOBALS['wpdb']->update($GLOBALS['wpdb']->posts, ['post_content' => ''], ['ID' => ${ids.parent}]); }
   `));
   assert.deepEqual(r, ["invalid_input", `/records/${ids.parent}/brief`]);
@@ -65,7 +65,7 @@ test("a post's content is checked against the new app's content column", () => {
 
 test("an unknown flag is refused before anything runs", () => {
   // A typo like --dryrun must not fall through to a real migration.
-  const r = JSON.parse(wpTry("first", "migrate-legacy", "/tmp/first-legacy-release.php", "--dryrun"));
+  const r = JSON.parse(wpTry("first", "migrate-legacy", "/tmp/typedpress-legacy-release.php", "--dryrun"));
   assert.deepEqual([r.error.code, r.error.detail.includes("--dryrun")], ["invalid_command", true]);
   assert.deepEqual(snapshot(), before_);
 });
@@ -86,10 +86,10 @@ test("a dry run reports every record and changes nothing", () => {
   // Authored release ids can differ from storage keys. Exercise a real write inside
   // a rolled-back transaction, retaining the same record/revision/reference owner.
   const mixed = JSON.parse(wp("eval", `
-    $plugin = \\First\\Wp\\Runtime::plugin();
+    $plugin = \\TypedPress\\Wp\\Runtime::plugin();
     $plugin->app();
-    $raw = require $plugin->dir . '/first/app/schema.php';
-    $release = require '/tmp/first-legacy-release.php';
+    $raw = require $plugin->dir . '/tp/app/schema.php';
+    $release = require '/tmp/typedpress-legacy-release.php';
     $names = ['projects' => 'stockProjects', 'tasks' => 'stockTasks'];
     $storage = ['projects' => 'stock_projects', 'tasks' => 'stock_tasks'];
     foreach ($release['postTypes'] as &$resource) {
@@ -105,7 +105,7 @@ test("a dry run reports every record and changes nothing", () => {
     $collections = [];
     foreach ($raw['collections'] as $name => $spec) {
       $spec['key'] = $names[$name];
-      $spec['wp']['postType'] = 'first_' . $storage[$name];
+      $spec['wp']['postType'] = 'tp_' . $storage[$name];
       foreach ($spec['columns'] as &$column) {
         if (isset($column['references'])) {
           $column['references']['collection'] = $storage[$column['references']['collection']];
@@ -122,13 +122,13 @@ test("a dry run reports every record and changes nothing", () => {
       foreach ($names as $old => $name) {
         $db->run("UPDATE \`{$w->termmeta}\` SET meta_value = ? WHERE meta_key = ? AND meta_value = ?", [$name, '_zero_resource_id', $old]);
       }
-      $migrate = new \\First\\Wp\\Legacy\\Migrate($db, new \\First\\Schema($raw));
+      $migrate = new \\TypedPress\\Wp\\Legacy\\Migrate($db, new \\TypedPress\\Schema($raw));
       $dry = $migrate->run($release, true);
       $written = $migrate->run($release, false);
       echo json_encode([
         'dry' => $dry['collections'], 'written' => $written['collections'],
         'postType' => $db->run("SELECT post_type FROM \`{$w->posts}\` WHERE ID = ?", [${ids.apollo}])[0]['post_type'],
-        'reference' => get_post_meta(${ids.parent}, 'first_projectId', true),
+        'reference' => get_post_meta(${ids.parent}, 'tp_projectId', true),
       ]);
     } finally { $db->rollback(); }
   `));
@@ -136,34 +136,34 @@ test("a dry run reports every record and changes nothing", () => {
     stockProjects: r.out.data.collections.projects,
     stockTasks: r.out.data.collections.tasks,
   };
-  assert.deepEqual(mixed, { dry: expected, written: expected, postType: "first_stock_projects", reference: String(ids.apollo) });
+  assert.deepEqual(mixed, { dry: expected, written: expected, postType: "tp_stock_projects", reference: String(ids.apollo) });
   assert.deepEqual(snapshot(), before_);
 });
 
 test("a database failure after writes have begun rolls every write back", () => {
   // The last task's meta write fails inside MariaDB, after the projects were already rewritten.
   // (Sent through $wpdb: the mariadb client would split the body at its `;`.)
-  wp("eval", `$GLOBALS['wpdb']->query("CREATE TRIGGER first_legacy_fail BEFORE INSERT ON wp_postmeta FOR EACH ROW IF NEW.post_id = ${ids.child} AND NEW.meta_key = 'first_projectId' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected'; END IF") || exit(1);`);
+  wp("eval", `$GLOBALS['wpdb']->query("CREATE TRIGGER tp_legacy_fail BEFORE INSERT ON wp_postmeta FOR EACH ROW IF NEW.post_id = ${ids.child} AND NEW.meta_key = 'tp_projectId' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected'; END IF") || exit(1);`);
   try {
     const r = migrate();
     assert.equal(r.code, 1);
     assert.deepEqual(snapshot(), before_);
   } finally {
-    sql("DROP TRIGGER first_legacy_fail");
+    sql("DROP TRIGGER tp_legacy_fail");
   }
 });
 
 test("a failed term recount, the last write, rolls the whole migration back", () => {
-  wp("eval", `$GLOBALS['wpdb']->query("CREATE TRIGGER first_legacy_fail_count BEFORE UPDATE ON wp_term_taxonomy FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected'") || exit(1);`);
+  wp("eval", `$GLOBALS['wpdb']->query("CREATE TRIGGER tp_legacy_fail_count BEFORE UPDATE ON wp_term_taxonomy FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected'") || exit(1);`);
   try {
     assert.equal(migrate().code, 1);
     assert.deepEqual(snapshot(), before_);
   } finally {
-    sql("DROP TRIGGER first_legacy_fail_count");
+    sql("DROP TRIGGER tp_legacy_fail_count");
   }
 });
 
-test("the migration keeps every record, field, status, date and author, read through /__first/api/v1", async () => {
+test("the migration keeps every record, field, status, date and author, read through /__tp/api/v1", async () => {
   const r = migrate();
   assert.equal(r.code, 0, JSON.stringify(r.out));
   const published = (id: number) => site.posts.find((p: any) => Number(p.ID) === id).post_date_gmt.replace(" ", "T") + ".000Z";
@@ -180,7 +180,7 @@ test("the migration keeps every record, field, status, date and author, read thr
   // Authors and post dates are the rows' own: the editor still owns the tasks it wrote.
   const authors = sql(`SELECT ID, post_author, post_type FROM wp_posts WHERE ID IN (${ids.parent}, ${ids.child}, ${ids.apollo}) ORDER BY ID`);
   assert.deepEqual(authors.map((a) => [Number(a.ID), a.post_type, a.post_author]), [
-    [ids.apollo, "first_projects", "1"], [ids.parent, "first_tasks", "2"], [ids.child, "first_tasks", "2"],
+    [ids.apollo, "tp_projects", "1"], [ids.parent, "tp_tasks", "2"], [ids.child, "tp_tasks", "2"],
   ]);
   // The trashed post stays a trashed native post.
   assert.deepEqual(sql(`SELECT post_type, post_status FROM wp_posts WHERE ID = ${ids.trashed}`), [{ post_type: "post", post_status: "trash" }]);
@@ -232,18 +232,18 @@ test("the migrated records are ordinary rows of the new app", async () => {
 test("a generically counted taxonomy keeps counting every relationship", () => {
   // No callback, but a non-post object type: WordPress counts it generically (every relationship).
   const result = JSON.parse(wp("eval", `
-    register_taxonomy('first_legacy_generic', ['post', 'user']);
-    $term = wp_insert_term('Everything', 'first_legacy_generic')['term_taxonomy_id'];
+    register_taxonomy('tp_legacy_generic', ['post', 'user']);
+    $term = wp_insert_term('Everything', 'tp_legacy_generic')['term_taxonomy_id'];
     $post = wp_insert_post(['post_title' => 'Skylab', 'post_status' => 'publish', 'post_type' => 'post']);
     $GLOBALS['wpdb']->insert($GLOBALS['wpdb']->term_relationships, ['object_id' => $post, 'term_taxonomy_id' => $term]);
     $collection = $GLOBALS['wpdb']->get_var("SELECT tt.term_taxonomy_id FROM {$GLOBALS['wpdb']->term_taxonomy} tt JOIN {$GLOBALS['wpdb']->termmeta} m ON m.term_id = tt.term_id AND m.meta_key = '_zero_resource_id' AND m.meta_value = 'projects'");
     $GLOBALS['wpdb']->insert($GLOBALS['wpdb']->term_relationships, ['object_id' => $post, 'term_taxonomy_id' => $collection]);
-    $plugin = \\First\\Wp\\Runtime::plugin();
+    $plugin = \\TypedPress\\Wp\\Runtime::plugin();
     $plugin->app();
-    $plugin->connection()->transaction(fn () => (new \\First\\Wp\\Legacy\\Migrate($plugin->connection(), $plugin->schema))->run(require '/tmp/first-legacy-release.php', false));
+    $plugin->connection()->transaction(fn () => (new \\TypedPress\\Wp\\Legacy\\Migrate($plugin->connection(), $plugin->schema))->run(require '/tmp/typedpress-legacy-release.php', false));
     echo json_encode((int) $GLOBALS['wpdb']->get_var("SELECT count FROM {$GLOBALS['wpdb']->term_taxonomy} WHERE term_taxonomy_id = $term"));
   `));
-  // The migrated post still holds the term; generic counting doesn't care that it is now a first_projects post.
+  // The migrated post still holds the term; generic counting doesn't care that it is now a tp_projects post.
   assert.equal(result, 1);
 });
 
@@ -251,21 +251,21 @@ test("a term shared by migrated posts and attachments keeps WordPress's attachme
   // A taxonomy on posts and attachments, as media-tagging plugins register: an inherit attachment
   // counts while its parent is published, so migrating that parent changes the count.
   const result = JSON.parse(wp("eval", `
-    register_taxonomy('first_legacy_shared', ['post', 'attachment']);
-    $term = wp_insert_term('Shared', 'first_legacy_shared')['term_taxonomy_id'];
+    register_taxonomy('tp_legacy_shared', ['post', 'attachment']);
+    $term = wp_insert_term('Shared', 'tp_legacy_shared')['term_taxonomy_id'];
     $tr = static fn (int $id) => $GLOBALS['wpdb']->insert($GLOBALS['wpdb']->term_relationships, ['object_id' => $id, 'term_taxonomy_id' => $term]);
     $parent = wp_insert_post(['post_title' => 'Mir', 'post_status' => 'publish', 'post_type' => 'post']);
     $image = wp_insert_post(['post_title' => 'shot', 'post_status' => 'inherit', 'post_type' => 'attachment', 'post_parent' => $parent, 'post_mime_type' => 'image/png']);
     $tr($parent); $tr($image);
     $collection = $GLOBALS['wpdb']->get_var("SELECT tt.term_taxonomy_id FROM {$GLOBALS['wpdb']->term_taxonomy} tt JOIN {$GLOBALS['wpdb']->termmeta} m ON m.term_id = tt.term_id AND m.meta_key = '_zero_resource_id' AND m.meta_value = 'projects'");
     $GLOBALS['wpdb']->insert($GLOBALS['wpdb']->term_relationships, ['object_id' => $parent, 'term_taxonomy_id' => $collection]);
-    wp_update_term_count_now([$term], 'first_legacy_shared');
+    wp_update_term_count_now([$term], 'tp_legacy_shared');
     $before = (int) $GLOBALS['wpdb']->get_var("SELECT count FROM {$GLOBALS['wpdb']->term_taxonomy} WHERE term_taxonomy_id = $term");
-    \\First\\Wp\\Runtime::plugin()->app();
-    $plugin = \\First\\Wp\\Runtime::plugin();
-    $plugin->connection()->transaction(fn () => (new \\First\\Wp\\Legacy\\Migrate($plugin->connection(), $plugin->schema))->run(require '/tmp/first-legacy-release.php', false));
+    \\TypedPress\\Wp\\Runtime::plugin()->app();
+    $plugin = \\TypedPress\\Wp\\Runtime::plugin();
+    $plugin->connection()->transaction(fn () => (new \\TypedPress\\Wp\\Legacy\\Migrate($plugin->connection(), $plugin->schema))->run(require '/tmp/typedpress-legacy-release.php', false));
     $after = (int) $GLOBALS['wpdb']->get_var("SELECT count FROM {$GLOBALS['wpdb']->term_taxonomy} WHERE term_taxonomy_id = $term");
-    wp_update_term_count_now([$term], 'first_legacy_shared');
+    wp_update_term_count_now([$term], 'tp_legacy_shared');
     $wordpress = (int) $GLOBALS['wpdb']->get_var("SELECT count FROM {$GLOBALS['wpdb']->term_taxonomy} WHERE term_taxonomy_id = $term");
     echo json_encode([$before, $after, $wordpress]);
   `));
@@ -284,16 +284,16 @@ test("a second run changes nothing", () => {
 test("a taxonomy with its own count callback refuses only when this run's posts carry it", () => {
   const term = sql("SELECT tt.term_taxonomy_id FROM wp_term_taxonomy tt JOIN wp_termmeta m ON m.term_id = tt.term_id AND m.meta_key = '_zero_resource_id' AND m.meta_value = 'projects'")[0].term_taxonomy_id;
   const run = (attachToPending: boolean) => JSON.parse(wp("eval", `
-    register_taxonomy('first_legacy_custom', ['post'], ['update_count_callback' => static fn () => null]);
-    $custom = wp_insert_term('Custom ' . wp_generate_password(6, false), 'first_legacy_custom')['term_taxonomy_id'];
+    register_taxonomy('tp_legacy_custom', ['post'], ['update_count_callback' => static fn () => null]);
+    $custom = wp_insert_term('Custom ' . wp_generate_password(6, false), 'tp_legacy_custom')['term_taxonomy_id'];
     $trashed = wp_insert_post(['post_title' => 'Old', 'post_status' => 'trash', 'post_type' => 'post']);
     $pending = wp_insert_post(['post_title' => 'Tiangong ' . wp_generate_password(6, false), 'post_status' => 'publish', 'post_type' => 'post']);
     foreach ([[$trashed, ${term}], [$trashed, $custom], [$pending, ${term}]] as [$o, $t]) $GLOBALS['wpdb']->insert($GLOBALS['wpdb']->term_relationships, ['object_id' => $o, 'term_taxonomy_id' => $t]);
     if (${attachToPending ? "true" : "false"}) $GLOBALS['wpdb']->insert($GLOBALS['wpdb']->term_relationships, ['object_id' => $pending, 'term_taxonomy_id' => $custom]);
-    $plugin = \\First\\Wp\\Runtime::plugin();
+    $plugin = \\TypedPress\\Wp\\Runtime::plugin();
     $plugin->app();
-    try { $r = (new \\First\\Wp\\Legacy\\Migrate($plugin->connection(), $plugin->schema))->run(require '/tmp/first-legacy-release.php', true); $out = $r['collections']['projects']['records']; }
-    catch (\\First\\HttpError $e) { $out = $e->errorCode; }
+    try { $r = (new \\TypedPress\\Wp\\Legacy\\Migrate($plugin->connection(), $plugin->schema))->run(require '/tmp/typedpress-legacy-release.php', true); $out = $r['collections']['projects']['records']; }
+    catch (\\TypedPress\\HttpError $e) { $out = $e->errorCode; }
     wp_delete_post($trashed, true); wp_delete_post($pending, true);
     echo json_encode($out);
   `));
@@ -309,7 +309,7 @@ test("a title repeating an existing project's refuses the run, whatever the ids'
   const term = sql("SELECT tt.term_taxonomy_id FROM wp_term_taxonomy tt JOIN wp_termmeta m ON m.term_id = tt.term_id AND m.meta_key = '_zero_resource_id' AND m.meta_value = 'projects'")[0].term_taxonomy_id;
   const legacy = Number(wp("post", "create", "--post_type=post", "--post_status=publish", "--post_title=Mercury", "--porcelain"));
   sql(`INSERT INTO wp_term_relationships (object_id, term_taxonomy_id) VALUES (${legacy}, ${term})`);
-  const existing = Number(wp("post", "create", "--post_type=first_projects", "--post_status=publish", "--post_title=Mercury", "--porcelain"));
+  const existing = Number(wp("post", "create", "--post_type=tp_projects", "--post_status=publish", "--post_title=Mercury", "--porcelain"));
   assert.ok(existing > legacy);
   const r = migrate();
   assert.deepEqual([r.code, r.out.error.code, r.out.error.pointer], [1, "unique_violation", `/records/${legacy}/title`]);
@@ -344,7 +344,7 @@ test("a cover that isn't an image refuses the run, as a Zero write would", () =>
 
 test("a reference to a trashed row of the new collection refuses the run", () => {
   // Trashed posts aren't rows of the new app (WpPostStore skips them), so they can't be targets.
-  const trashedTask = Number(wp("post", "create", "--post_type=first_tasks", "--post_status=trash", "--post_title=Gone", "--porcelain"));
+  const trashedTask = Number(wp("post", "create", "--post_type=tp_tasks", "--post_status=trash", "--post_title=Gone", "--porcelain"));
   const term = sql("SELECT tt.term_taxonomy_id FROM wp_term_taxonomy tt JOIN wp_termmeta m ON m.term_id = tt.term_id AND m.meta_key = '_zero_resource_id' AND m.meta_value = 'tasks'")[0].term_taxonomy_id;
   const legacy = Number(wp("post", "create", "--post_type=post", "--post_status=publish", "--post_title=Points at trash", "--porcelain"));
   sql(`INSERT INTO wp_term_relationships (object_id, term_taxonomy_id) VALUES (${legacy}, ${term})`);

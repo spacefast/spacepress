@@ -1,7 +1,7 @@
 @use "@wordpress/base-styles/colors";
 @use "@wordpress/base-styles/variables";
 
-.first-admin-dashboard-widget {
+.typedpress-admin-dashboard-widget {
 	display: flex;
 	flex-direction: column;
 	background: var( --wpds-color-background-surface-neutral-strong );
@@ -18,15 +18,15 @@
 	}
 }
 
-.first-admin-dashboard-widget--fixed-height {
+.typedpress-admin-dashboard-widget--fixed-height {
 	height: 100%;
 }
 
-.first-admin-dashboard-widget__header {
+.typedpress-admin-dashboard-widget__header {
 	padding: calc( 4 * var( --wpds-dimension-gap-xs ) );
 }
 
-.first-admin-dashboard-widget__settings {
+.typedpress-admin-dashboard-widget__settings {
 	position: absolute;
 	top: variables.$grid-unit-20;
 	right: variables.$grid-unit-20;
@@ -34,7 +34,7 @@
 	background-color: var( --wpds-color-background-surface-neutral-strong );
 }
 
-.first-admin-dashboard-widget__content {
+.typedpress-admin-dashboard-widget__content {
 	overflow: auto;
 	padding: 0 calc( 4 * var( --wpds-dimension-gap-xs ) )
 		calc( 4 * var( --wpds-dimension-gap-xs ) );
@@ -42,11 +42,11 @@
 	min-height: 0; // Allows flex item to shrink and overflow
 }
 
-.first-admin-dashboard-widget__content--no-padding {
+.typedpress-admin-dashboard-widget__content--no-padding {
 	padding: 0;
 }
 
-.first-admin-dashboard-widget--fade-overlay {
+.typedpress-admin-dashboard-widget--fade-overlay {
 	&::after {
 		content: "";
 		position: absolute;
@@ -64,7 +64,7 @@
 	}
 }
 
-.first-admin-dashboard-widget__title {
+.typedpress-admin-dashboard-widget__title {
 	margin: 0;
 	padding: 0;
 	color: var( --wpds-color-foreground-content-neutral );
@@ -74,11 +74,11 @@
 	line-height: var( --wpds-typography-line-height-md );
 }
 
-.first-admin-dashboard-widget__description {
+.typedpress-admin-dashboard-widget__description {
 	color: var( --wpds-color-foreground-content-neutral-weak );
 }
 
-.first-admin-dashboard-widget-actions {
+.typedpress-admin-dashboard-widget-actions {
 	position: absolute;
 	top: variables.$grid-unit-10;
 	right: variables.$grid-unit-10;
@@ -87,12 +87,12 @@
 	box-sizing: border-box;
 }
 
-.first-admin-dashboard-widget__info-icon {
+.typedpress-admin-dashboard-widget__info-icon {
 	color: var( --wpds-color-foreground-content-neutral-weak );
 	display: flex;
 }
 
-.first-admin-dashboard-widget__info-tooltip {
+.typedpress-admin-dashboard-widget__info-tooltip {
 	max-width: 240px;
 	text-align: left;
 }

@@ -2,11 +2,11 @@
 /**
  * Layout View Config Filter System
  *
- * This file provides the filter-based API for layout view configs in First Admin.
+ * This file provides the filter-based API for layout view configs in TypedPress Admin.
  * Layout view configs contain entity configurations like default_view, default_layouts,
  * quick_edit_form, views, etc.
  *
- * @package FirstAdmin
+ * @package TypedPressAdmin
  */
 
 /**
@@ -22,7 +22,7 @@
  * @param string|null $variant Optional. View config identifier for variant-specific configurations. Default null.
  * @return array Configuration array.
  */
-function first_admin_get_entity_view_config( $kind, $name, $variant = null ) {
+function tp_admin_get_entity_view_config( $kind, $name, $variant = null ) {
 	// Start with default configuration structure.
 	$config = array(
 		'default_view'    => null,
@@ -58,7 +58,7 @@ function first_admin_get_entity_view_config( $kind, $name, $variant = null ) {
 	 * @param string      $kind    Entity kind.
 	 * @param string      $name    Entity name.
 	 */
-	$config = apply_filters( "first_admin_entity_view_config_{$kind}_{$name}", $config, $kind, $name );
+	$config = apply_filters( "tp_admin_entity_view_config_{$kind}_{$name}", $config, $kind, $name );
 
 	// If variant is provided, also apply variant-specific filter for more granular control.
 	if ( $variant ) {
@@ -75,18 +75,18 @@ function first_admin_get_entity_view_config( $kind, $name, $variant = null ) {
 		 * @param string $name    Entity name.
 		 * @param string $variant View config identifier.
 		 */
-		$config = apply_filters( "first_admin_entity_view_config_{$kind}_{$name}_{$variant}", $config, $kind, $name, $variant );
+		$config = apply_filters( "tp_admin_entity_view_config_{$kind}_{$name}_{$variant}", $config, $kind, $name, $variant );
 	}
 
-	return first_admin_compose_core_view_config( $config, $kind, $name );
+	return tp_admin_compose_core_view_config( $config, $kind, $name );
 }
 
 /**
- * First: WordPress 7.1's view config filter (`get_entity_view_config_{kind}_{name}`, through
- * WP_View_Config_Data) runs over First Admin's configuration, so a plugin that patches an entity's
+ * TypedPress: WordPress 7.1's view config filter (`get_entity_view_config_{kind}_{name}`, through
+ * WP_View_Config_Data) runs over TypedPress Admin's configuration, so a plugin that patches an entity's
  * view with core's API changes it here too. The shapes map one to one where they overlap:
  *
- * | First Admin       | core                                        |
+ * | TypedPress Admin       | core                                        |
  * |-------------------|---------------------------------------------|
  * | `default_view`    | `default_view`                              |
  * | `default_layouts` | `default_layouts`                           |
@@ -95,12 +95,12 @@ function first_admin_get_entity_view_config( $kind, $name, $variant = null ) {
  *
  * `quick_edit_form`, `add_form`, `labels` and `actions` have no core counterpart and pass through.
  *
- * @param array  $config First Admin's configuration.
+ * @param array  $config TypedPress Admin's configuration.
  * @param string $kind   Entity kind.
  * @param string $name   Entity name.
  * @return array
  */
-function first_admin_compose_core_view_config( $config, $kind, $name ) {
+function tp_admin_compose_core_view_config( $config, $kind, $name ) {
 	if ( ! class_exists( 'WP_View_Config_Data' ) ) {
 		return $config;
 	}
@@ -111,7 +111,7 @@ function first_admin_compose_core_view_config( $config, $kind, $name ) {
 			'slug'  => $tab['slug'] ?? '',
 			'title' => $tab['label'] ?? ( $tab['slug'] ?? '' ),
 			'view'  => array( 'filters' => $tab['filters'] ?? array() ),
-			'first' => array_diff_key( (array) $tab, array( 'slug' => 1, 'label' => 1, 'filters' => 1 ) ),
+			'typedpress' => array_diff_key( (array) $tab, array( 'slug' => 1, 'label' => 1, 'filters' => 1 ) ),
 		);
 	}
 	$data = new WP_View_Config_Data(
@@ -129,9 +129,9 @@ function first_admin_compose_core_view_config( $config, $kind, $name ) {
 	$config['edit_form']       = $back( $core['form'] ?? array() );
 	$config['tabs']            = array_map(
 		static fn ( $item ) => array_merge(
-			(array) ( $item['first'] ?? array() ),
+			(array) ( $item['typedpress'] ?? array() ),
 			// A view another plugin added through core keeps its own `view` (type, layout) beside it.
-			isset( $item['first'] ) ? array() : array( 'view' => $item['view'] ?? array() ),
+			isset( $item['typedpress'] ) ? array() : array( 'view' => $item['view'] ?? array() ),
 			array(
 				'slug'    => $item['slug'] ?? '',
 				'label'   => $item['title'] ?? ( $item['slug'] ?? '' ),

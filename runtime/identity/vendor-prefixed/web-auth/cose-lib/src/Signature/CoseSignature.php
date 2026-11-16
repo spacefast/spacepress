@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Cose\Signature;
+namespace TypedPress\Identity\Vendor\Cose\Signature;
 
-use First\Identity\Vendor\CBOR\ByteStringObject;
-use First\Identity\Vendor\CBOR\CBORObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthListObject;
-use First\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
-use First\Identity\Vendor\CBOR\ListObject;
-use First\Identity\Vendor\CBOR\MapObject;
-use First\Identity\Vendor\Cose\Structure\CoseHeaders;
-use First\Identity\Vendor\Cose\Structure\HeaderMapHelper;
+use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
+use TypedPress\Identity\Vendor\CBOR\CBORObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthListObject;
+use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
+use TypedPress\Identity\Vendor\CBOR\ListObject;
+use TypedPress\Identity\Vendor\CBOR\MapObject;
+use TypedPress\Identity\Vendor\Cose\Structure\CoseHeaders;
+use TypedPress\Identity\Vendor\Cose\Structure\HeaderMapHelper;
 use InvalidArgumentException;
 
 /**
@@ -21,7 +21,7 @@ use InvalidArgumentException;
  * COSE_Signature = [ Headers, signature : bstr ]
  *
  * The raw list a message carries says nothing about what is inside it, and neither cbor-php nor the deprecated
- * First\Identity\Vendor\Cose\Signature\CoseSignTag looks: both accept an empty list and entries of any shape. This view is the checked
+ * TypedPress\Identity\Vendor\Cose\Signature\CoseSignTag looks: both accept an empty list and entries of any shape. This view is the checked
  * form, and it carries the same header reader as the message, because a signer of a COSE_Sign has a protected
  * bucket of its own that its signature commits to.
  *

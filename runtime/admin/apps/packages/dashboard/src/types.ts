@@ -1,6 +1,6 @@
 import type { ReactNode, ComponentProps } from 'react';
 import type { Icon, Badge } from '@wordpress/ui';
-import type { Field } from '@first-admin/dataviews';
+import type { Field } from '@typedpress-admin/dataviews';
 import type { Notice } from '@wordpress/components';
 import type { GridLayoutItem, GridProps } from '@automattic/grid';
 

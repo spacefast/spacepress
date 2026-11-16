@@ -22,7 +22,7 @@ export default function LeafMoreMenu( {
 
 	const removeLabel = sprintf(
 		/* translators: %s: block name */
-		__( 'Remove %s', 'first-admin' ),
+		__( 'Remove %s', 'typedpress-admin' ),
 		BlockTitle( { clientId, maximumLength: 25 } )
 	);
 
@@ -38,7 +38,7 @@ export default function LeafMoreMenu( {
 	return (
 		<DropdownMenu
 			icon={ moreVertical }
-			label={ __( 'Options', 'first-admin' ) }
+			label={ __( 'Options', 'typedpress-admin' ) }
 			className="block-editor-block-settings-menu"
 			popoverProps={ POPOVER_PROPS }
 			noIcons
@@ -54,7 +54,7 @@ export default function LeafMoreMenu( {
 								onClose();
 							} }
 						>
-							{ __( 'Move up', 'first-admin' ) }
+							{ __( 'Move up', 'typedpress-admin' ) }
 						</MenuItem>
 						<MenuItem
 							icon={ chevronDown }
@@ -63,7 +63,7 @@ export default function LeafMoreMenu( {
 								onClose();
 							} }
 						>
-							{ __( 'Move down', 'first-admin' ) }
+							{ __( 'Move down', 'typedpress-admin' ) }
 						</MenuItem>
 					</MenuGroup>
 					<MenuGroup>

@@ -3,8 +3,8 @@
 #
 # Pure suites (js, env, query, schema, sql, images, legacy, vendor) need PHP alone. The WordPress suites (db, blog, guard, search,
 # auth, jobs, webhooks, realtime, live, services, files, media, locales, sync, markdown, spam, harness, staged, taxonomy) boot a real WordPress on SQLite in-process (tests/php/wp.php):
-# WordPress core and the pinned plugins are downloaded once into tests/wp/cache (FIRST_WP_CACHE
-# overrides); the site itself lives in a temp dir per suite. FIRST_WP_KEEP=1 keeps it afterwards.
+# WordPress core and the pinned plugins are downloaded once into tests/wp/cache (TP_WP_CACHE
+# overrides); the site itself lives in a temp dir per suite. TP_WP_KEEP=1 keeps it afterwards.
 set -euo pipefail
 cd "$(dirname "$0")"
 PHP="${PHP:-php}"

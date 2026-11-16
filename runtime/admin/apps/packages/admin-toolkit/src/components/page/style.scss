@@ -2,7 +2,7 @@
 @use "@wordpress/base-styles/mixins";
 @use "@wordpress/base-styles/colors";
 
-.first-admin-page {
+.typedpress-admin-page {
 	color: var( --wpds-color-foreground-content-neutral );
 	background: var( --wpds-color-background-surface-neutral );
 	height: 100%;
@@ -10,7 +10,7 @@
 	flex-direction: column;
 }
 
-.first-admin-page__header {
+.typedpress-admin-page__header {
 	padding: variables.$grid-unit-10 variables.$grid-unit * 2.5;
 	position: sticky;
 	top: 0;
@@ -29,14 +29,14 @@
 	}
 }
 
-.first-admin-page__header-subtitle {
+.typedpress-admin-page__header-subtitle {
 	padding-block-end: variables.$grid-unit-10;
 	color: var( --wpds-color-foreground-content-neutral-weak );
 	@include mixins.body-medium();
 	margin: 0;
 }
 
-.first-admin-page__content {
+.typedpress-admin-page__content {
 	flex-grow: 1;
 	overflow: auto;
 	display: flex;
@@ -66,7 +66,7 @@
 	}
 }
 
-.first-admin-page__sidebar-toggle-slot {
+.typedpress-admin-page__sidebar-toggle-slot {
 	display: flex;
 	align-items: center;
 

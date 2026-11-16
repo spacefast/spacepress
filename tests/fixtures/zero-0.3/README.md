@@ -1,6 +1,6 @@
 # Zero v2 0.3.0 apps, as deployed hosts hold them
 
-The First compiler at commit `61c22fc2` (0.3.0, before the rename to First) produced these files.
+The TypedPress compiler at commit `61c22fc2` (0.3.0, before the rename to TypedPress) produced these files.
 Released clients that predate the rename (the `spacefast` CLI and `@spacefast/mcp` 0.9.0) upload
 `sources/`; hosts that compiled them keep `compiled/`. Tests read them as frozen data.
 
@@ -47,4 +47,4 @@ binary. Do not edit these files by hand.
 
 `pages/sources/` is `examples/full-site` of that checkout (TSX pages with their committed
 `zero/pages.json`, and `routes`), captured with `zero sources app --out sources`: a bundle that
-carries pages, which First refuses.
+carries pages, which TypedPress refuses.

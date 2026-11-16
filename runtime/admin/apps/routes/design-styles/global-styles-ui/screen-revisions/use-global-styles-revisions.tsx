@@ -1,4 +1,4 @@
-import type { GlobalStylesConfig } from '@first-admin/global-styles-engine';
+import type { GlobalStylesConfig } from '@typedpress-admin/global-styles-engine';
 import { useSelect } from '@wordpress/data';
 import {
 	store as coreStore,

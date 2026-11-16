@@ -9,8 +9,8 @@ import {
 import { __ } from '@wordpress/i18n';
 // @ts-expect-error - WordPress private APIs
 import { privateApis as blockEditorPrivateApis } from '@wordpress/block-editor';
-import type { GlobalStylesSettings } from '@first-admin/global-styles-engine';
-import { unlock } from '@first-admin/admin-toolkit';
+import type { GlobalStylesSettings } from '@typedpress-admin/global-styles-engine';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { NavigationButtonAsItem } from './navigation-button';
 import { useSetting } from './hooks';
 
@@ -45,31 +45,31 @@ function RootMenu() {
 						icon={ typography }
 						path="/typography"
 					>
-						{ __( 'Typography', 'first-admin' ) }
+						{ __( 'Typography', 'typedpress-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 				{ hasColorPanel && (
 					<NavigationButtonAsItem icon={ color } path="/colors">
-						{ __( 'Colors', 'first-admin' ) }
+						{ __( 'Colors', 'typedpress-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 				{ hasBackgroundPanel && (
 					<NavigationButtonAsItem
 						icon={ background }
 						path="/background"
-						aria-label={ __( 'Background styles', 'first-admin' ) }
+						aria-label={ __( 'Background styles', 'typedpress-admin' ) }
 					>
-						{ __( 'Background', 'first-admin' ) }
+						{ __( 'Background', 'typedpress-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 				{ hasShadowPanel && (
 					<NavigationButtonAsItem icon={ shadowIcon } path="/shadows">
-						{ __( 'Shadows', 'first-admin' ) }
+						{ __( 'Shadows', 'typedpress-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 				{ hasLayoutPanel && (
 					<NavigationButtonAsItem icon={ layout } path="/layout">
-						{ __( 'Layout', 'first-admin' ) }
+						{ __( 'Layout', 'typedpress-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 			</ItemGroup>

@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/lazy-editor",
+	"name": "@typedpress-admin/lazy-editor",
 	"version": "1.0.0",
 	"description": "A lazy editor loader that provides editor settings and assets loading hooks.",
 	"type": "module",
@@ -11,12 +11,12 @@
 		"build"
 	],
 	"dependencies": {
-		"@first-admin/core-data-next": "workspace:*",
-		"@first-admin/global-styles-engine": "workspace:*",
-		"@first-admin/load-assets": "workspace:*",
+		"@typedpress-admin/core-data-next": "workspace:*",
+		"@typedpress-admin/global-styles-engine": "workspace:*",
+		"@typedpress-admin/load-assets": "workspace:*",
 		"@wordpress/theme": "catalog:",
-		"@first-admin/private-apis": "workspace:*",
-		"@first-admin/admin-toolkit": "workspace:*",
+		"@typedpress-admin/private-apis": "workspace:*",
+		"@typedpress-admin/admin-toolkit": "workspace:*",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",
 		"@wordpress/element": "catalog:",

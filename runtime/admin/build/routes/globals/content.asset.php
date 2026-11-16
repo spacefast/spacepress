@@ -1,1 +1,1 @@
-<?php return array('name' => 'globals', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/schema'), 'version' => '8e17526a6118e7a35281');
+<?php return array('name' => 'globals', 'dependencies' => array(), 'moduleDependencies' => array('@typedpress-admin/schema'), 'version' => 'b3f37ef9910f3a26a425');

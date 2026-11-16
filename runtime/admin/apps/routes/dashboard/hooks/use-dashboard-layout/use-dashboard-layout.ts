@@ -1,7 +1,7 @@
 import { useDispatch, useSelect } from '@wordpress/data';
 import { store as preferencesStore } from '@wordpress/preferences';
-import { store as firstAdminStore, type StoreSelectors } from '@first-admin/boot';
-import type { DashboardWidget } from '@first-admin/dashboard';
+import { store as tpAdminStore, type StoreSelectors } from '@typedpress-admin/boot';
+import type { DashboardWidget } from '@typedpress-admin/dashboard';
 
 /**
  * Hook for managing dashboard layout preferences.
@@ -33,7 +33,7 @@ function useDashboardLayout(): [
 		( select ) =>
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-return -- StoreSelectors cast
 			(
-				select( firstAdminStore ) as StoreSelectors
+				select( tpAdminStore ) as StoreSelectors
 			 ).getDashboardDefaultLayout(),
 		[]
 	);

@@ -1,6 +1,6 @@
-import { unlock } from '@first-admin/admin-toolkit';
-import { useFieldCollections } from '@first-admin/core-data-next';
-import type { Field } from '@first-admin/dataviews';
+import { unlock } from '@typedpress-admin/admin-toolkit';
+import { useFieldCollections } from '@typedpress-admin/core-data-next';
+import type { Field } from '@typedpress-admin/dataviews';
 import { useMemo } from '@wordpress/element';
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
 import type { Post } from '@wordpress/core-data';
@@ -53,7 +53,7 @@ export function usePostFields( { postType }: { postType: string } ) {
 
 		return [
 			...coreFields
-				// Attachment attribution is outside First's media editing scope. Core's
+				// Attachment attribution is outside TypedPress's media editing scope. Core's
 				// author selector requests edit-context users, which editors cannot list.
 				.filter( ( field: Field< Post > ) => postType !== 'attachment' || field.id !== 'author' )
 				.map( ( rawField: Field< Post > ) => {

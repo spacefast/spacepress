@@ -53,13 +53,13 @@ try {
   };
   out.callout = await page.$eval(".callout", (el) => [el.className, el.querySelector(".callout-title")?.textContent, el.querySelector(".callout-body b")?.textContent]);
   // The code group: the first tab shows, a click on the second shows it instead.
-  const visible = () => page.$$eval(".first-code-group .first-code-panel", (ps) => ps.map((p) => getComputedStyle(p).display !== "none"));
-  out.tabs = await page.$$eval(".first-code-group label", (ls) => ls.map((l) => l.textContent));
+  const visible = () => page.$$eval(".typedpress-code-group .typedpress-code-panel", (ps) => ps.map((p) => getComputedStyle(p).display !== "none"));
+  out.tabs = await page.$$eval(".typedpress-code-group label", (ls) => ls.map((l) => l.textContent));
   out.tabsBefore = await visible();
-  await page.click(".first-code-group label:nth-of-type(2)");
+  await page.click(".typedpress-code-group label:nth-of-type(2)");
   out.tabsAfter = await visible();
-  out.title = await page.textContent(".first-code-title");
-  out.marked = await page.$$eval(".first-code-marked", (ls) => ls.map((l) => l.textContent));
+  out.title = await page.textContent(".typedpress-code-title");
+  out.marked = await page.$$eval(".typedpress-code-marked", (ls) => ls.map((l) => l.textContent));
   const keyword = ".language-ts .hljs-keyword";
   out.light = await page.$eval(keyword, (el) => getComputedStyle(el).color);
   await page.emulateMedia({ colorScheme: "dark" });

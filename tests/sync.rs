@@ -918,9 +918,18 @@ fn a_pointerless_reference_refusal_is_not_reported_as_a_missing_target() {
     let path = project.join(format!("content/snippets/{uid}.json"));
     std::fs::remove_file(&path).unwrap();
 
-    // Even an empty hidden incoming relationship (`safes.snippetId`, admin-only) refuses the delete.
-    // This is not a target another push could create, so preserve the server's refusal rather than
-    // defer it.
+    // A hidden incoming relationship (`safes.snippetId`, admin-only) that holds a row refuses the
+    // delete (docs/decisions/2026-11-16-per-row-delete-visibility.md). This is not a target another
+    // push could create, so preserve the server's refusal rather than defer it.
+    let admin_site = site.as_user(&site.admin);
+    let (s, vault) = admin_site.call("POST", "/vaults", Some(serde_json::json!({"name": "Hidden keeper"})));
+    assert_eq!(s, 201, "{vault}");
+    let (s, safe) = admin_site.call(
+        "POST",
+        "/safes",
+        Some(serde_json::json!({"vaultId": vault["data"]["id"], "snippetId": created["data"]["id"]})),
+    );
+    assert_eq!(s, 201, "{safe}");
     let out = sync(&project, &site, &["--only", "snippets"]);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(

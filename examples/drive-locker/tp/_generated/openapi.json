@@ -336,7 +336,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `label`, `model`, `serial`, `serialKey`, `kind`, `capacityGb`, `interface`, `purchasedOn`, `warrantyUntil`, `placeId`, `status`, `notes`, `tags`, `replacementNeededAt`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `label`, `model`, `serial`, `kind`, `capacityGb`, `interface`, `purchasedOn`, `warrantyUntil`, `placeId`, `status`, `notes`, `tags`, `replacementNeededAt`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -4259,12 +4259,6 @@
           "label": { "type": "string", "minLength": 1, "maxLength": 120 },
           "model": { "type": "string", "minLength": 1, "maxLength": 160 },
           "serial": { "type": "string", "minLength": 1, "maxLength": 160 },
-          "serialKey": {
-            "type": "string",
-            "maxLength": 191,
-            "x-typedpress-access": { "read": false, "create": false, "update": false },
-            "description": "Absent for callers who may not read it. Nobody may read this field over the API."
-          },
           "kind": { "type": "string", "enum": ["ssd", "hdd", "nvme", "sd", "usb"] },
           "capacityGb": { "type": "number", "minimum": 0.001 },
           "interface": { "type": "string", "minLength": 1, "maxLength": 80 },
@@ -4308,7 +4302,6 @@
           "label": { "type": "string", "minLength": 1, "maxLength": 120 },
           "model": { "type": "string", "minLength": 1, "maxLength": 160 },
           "serial": { "type": "string", "minLength": 1, "maxLength": 160 },
-          "serialKey": { "type": "string", "maxLength": 191 },
           "kind": { "type": "string", "enum": ["ssd", "hdd", "nvme", "sd", "usb"] },
           "capacityGb": { "type": "number", "minimum": 0.001 },
           "interface": { "type": "string", "minLength": 1, "maxLength": 80 },
@@ -4329,7 +4322,6 @@
           "label": { "type": "string", "minLength": 1, "maxLength": 120 },
           "model": { "type": "string", "minLength": 1, "maxLength": 160 },
           "serial": { "type": "string", "minLength": 1, "maxLength": 160 },
-          "serialKey": { "type": "string", "maxLength": 191 },
           "kind": { "type": "string", "enum": ["ssd", "hdd", "nvme", "sd", "usb"] },
           "capacityGb": { "type": "number", "minimum": 0.001 },
           "interface": { "type": "string", "minLength": 1, "maxLength": 80 },
@@ -4380,7 +4372,6 @@
           "label": { "$ref": "#/components/schemas/StringFilter" },
           "model": { "$ref": "#/components/schemas/StringFilter" },
           "serial": { "$ref": "#/components/schemas/StringFilter" },
-          "serialKey": { "$ref": "#/components/schemas/StringFilter" },
           "kind": { "$ref": "#/components/schemas/StringFilter" },
           "capacityGb": { "$ref": "#/components/schemas/NumberFilter" },
           "interface": { "$ref": "#/components/schemas/StringFilter" },

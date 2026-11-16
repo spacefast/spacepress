@@ -224,7 +224,6 @@ No compiler or runtime code is changed by this example.
 Exact runtime and CLI responses:
 
 ```json
-{"type":"about:blank","title":"Reference violation","status":409,"code":"reference_violation","detail":"Rows in tasks may reference this row"}
 {"type":"about:blank","title":"Service unavailable","status":503,"code":"files_unavailable","detail":"private files are reachable at http://localhost:8896/wp-content/uploads/typedpress-private/; deny /wp-content/uploads/typedpress-private/ in your web server config"}
 ```
 

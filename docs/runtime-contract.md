@@ -262,12 +262,18 @@ visible peer is available. This applies to core WordPress saves too.
 Sync checks target visibility before resolved values reach input rules or validators.
 Potential generated constraints are preflighted before defaults and on-update
 generators run; hook-written references are checked before field validation.
-A delete requires visibility across the referencing collection and
-column before checking for children, so hidden children cannot be discovered by
-trying to delete their parent. The preflight follows cascade branches and covers
-generated values from referential updates even when a branch has no rows. Hidden
-cascade branches are refused before traversal, so recursion limits cannot reveal
-their depth.
+A viewer's delete looks at the rows that reference the deleted row, never at
+whole tables ([decision](decisions/2026-11-16-per-row-delete-visibility.md)).
+When the viewer can read every one of them and the referencing column, `onDelete`
+applies to them as before; a row nobody references deletes. When any referencing
+row, or the referencing column, is hidden from the viewer, the delete is refused
+with `409 reference_violation` and the detail `Rows in <child> may reference this
+row`, the same body for one or many hidden rows. Hidden rows are never returned,
+written, cascaded or counted. The check follows visible cascade branches to every
+depth before any row is written. The one bit a viewer allowed to delete the row
+learns is whether a hidden row references it. Referential updates on visible rows
+(`setNull`, generated and hook-written values) keep the viewer's own constraint
+checks. Trusted writes (hooks, CLI, jobs) are not checked.
 These checks roll back the whole write on refusal.
 Changing a referenced key uses the same relationship visibility preflight,
 following native cascading updates before the database can expose hidden children.

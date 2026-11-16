@@ -137,11 +137,13 @@ test("unique fields, filtered references and restrictive deletes hide competing 
     assert.deepEqual([coreWrite.status, coreWrite.json.code], [409, "reference_violation"]);
   }
   await ok("PATCH", `/oracle_refs/${reference.id}`, { as: "editor", body: { rowId: own.id } });
-  for (const id of [own.id, unused.id]) {
-    await problem("DELETE", `/oracle_rows/${id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
-    const coreDelete = await http("DELETE", `${core}/tp_oracle_rows/${id}?force=true`, { as: "editor" });
-    assert.deepEqual([coreDelete.status, coreDelete.json.code], [409, "reference_violation"]);
-  }
+  // A delete looks only at the rows referencing this row (docs/decisions/2026-11-16-per-row-delete-visibility.md).
+  await problem("DELETE", `/oracle_rows/${own.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
+  const coreDelete = await http("DELETE", `${core}/tp_oracle_rows/${own.id}?force=true`, { as: "editor" });
+  assert.deepEqual([coreDelete.status, coreDelete.json.code], [409, "reference_violation"]);
+  await ok("DELETE", `/oracle_rows/${unused.id}`, { as: "editor" });
+  const unusedCore = first("insert", "oracle_rows", JSON.stringify({ title: "Unused core", ownerId: harness.users.editor.id }))[0];
+  assert.equal((await http("DELETE", `${core}/tp_oracle_rows/${unusedCore.id}?force=true`, { as: "editor" })).status, 200, "a row nothing references deletes on both surfaces");
   const privatePeer = first("insert", "oracle_peers", JSON.stringify({ title: "Private peer", ownerId: harness.users.admin.id, locale: "en" }))[0];
   for (const [uid, targetUid] of [["zr_12121212121212121212", privatePeer.uid], ["zr_13131313131313131313", "zr_99999999999999999999"]]) {
     await ok("POST", "/sync/oracle_peers", { as: "editor", body: { record: { uid, fields: { title: "Unlinked peer", ownerId: harness.users.editor.id, locale: "fr", translations: { en: targetUid } }, body: null }, expect: "absent" } });
@@ -162,23 +164,27 @@ test("unique fields, filtered references and restrictive deletes hide competing 
 });
 
 test("cascades and generated editor values cannot answer questions about hidden rows", async () => {
-  const roots = first("insert", "deep_roots", JSON.stringify([{ title: "Empty deep branch" }, { title: "Deep hidden branch" }]));
-  let ancestor = first("insert", "deep_nodes", JSON.stringify({ title: "Hidden root", rootId: roots[1].id }))[0];
+  // A delete looks only at the rows referencing this row: an empty branch deletes on both surfaces; one
+  // hidden row, at any depth under visible cascades, refuses with the same generic 409.
+  const fresh = (kind: string) => first("insert", kind, JSON.stringify({ title: "Empty branch" }))[0];
+  const emptyDelete = async (kind: string) => {
+    await ok("DELETE", `/${kind}/${fresh(kind).id}`, { as: "editor" });
+    assert.equal((await http("DELETE", `${core}/tp_${kind}/${fresh(kind).id}?force=true`, { as: "editor" })).status, 200, `an empty ${kind} branch deletes`);
+  };
+  await emptyDelete("deep_roots");
+  const hiddenRoot = first("insert", "deep_roots", JSON.stringify({ title: "Deep hidden branch" }))[0];
+  let ancestor = first("insert", "deep_nodes", JSON.stringify({ title: "Hidden root", rootId: hiddenRoot.id }))[0];
   for (let depth = 0; depth < 9; depth++) {
     ancestor = first("insert", "deep_nodes", JSON.stringify({ title: `Hidden depth ${depth}`, parentId: ancestor.id }))[0];
   }
-  for (const root of roots) {
-    await problem("DELETE", `/deep_roots/${root.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
-    const result = await http("DELETE", `${core}/tp_deep_roots/${root.id}?force=true`, { as: "editor" });
-    assert.deepEqual([result.status, result.json.code], [409, "reference_violation"]);
-  }
-  const empty = first("insert", "oracle_parents", JSON.stringify({ title: "Empty branch" }))[0];
+  await problem("DELETE", `/deep_roots/${hiddenRoot.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
+  const hiddenCore = await http("DELETE", `${core}/tp_deep_roots/${hiddenRoot.id}?force=true`, { as: "editor" });
+  assert.deepEqual([hiddenCore.status, hiddenCore.json.code], [409, "reference_violation"]);
+  for (const kind of ["oracle_parents", "null_parents", "hook_parents"]) await emptyDelete(kind);
   const parent = first("insert", "oracle_parents", JSON.stringify({ title: "With child" }))[0];
   const child = first("insert", "oracle_kids", JSON.stringify({ title: "Cascade", parentId: parent.id }))[0];
-  const nullEmpty = first("insert", "null_parents", JSON.stringify({ title: "No null children" }))[0];
   const nullParent = first("insert", "null_parents", JSON.stringify({ title: "Has null child" }))[0];
   const nullChild = first("insert", "null_children", JSON.stringify({ title: "Will null", parentId: nullParent.id, code: "original" }))[0];
-  const hookEmpty = first("insert", "hook_parents", JSON.stringify({ title: "No hooked children" }))[0];
   const hookParent = first("insert", "hook_parents", JSON.stringify({ title: "Has hooked child" }))[0];
   first("insert", "hook_children", JSON.stringify({ title: "Will hook", parentId: hookParent.id, code: "original" }));
   const generated = first("insert", "oracle_default", JSON.stringify({ title: "Existing", code: "other" }))[0];
@@ -189,21 +195,18 @@ test("cascades and generated editor values cannot answer questions about hidden 
       first("insert", "null_children", JSON.stringify({ title: "Taken generated", code: "null-reserved" }));
       first("insert", "hook_children", JSON.stringify({ title: "Taken hook", code: "hook-reserved" }));
     }
-    for (const id of [empty.id, parent.id]) {
-      await problem("DELETE", `/oracle_parents/${id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
-      const r = await http("DELETE", `${core}/tp_oracle_parents/${id}?force=true`, { as: "editor" });
-      assert.deepEqual([r.status, r.json.code], [409, "reference_violation"]);
+    if (populated) {
+      await problem("DELETE", `/oracle_parents/${parent.id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
+      const r = await http("DELETE", `${core}/tp_oracle_parents/${parent.id}?force=true`, { as: "editor" });
+      assert.deepEqual([r.status, r.json.code], [409, "reference_violation"], "a hidden grandchild under a visible cascade refuses");
     }
-    for (const id of [hookEmpty.id, hookParent.id]) {
-      await problem("DELETE", `/hook_parents/${id}`, { as: "editor" }, { status: 403, code: "forbidden", pointer: "/code" });
-      const r = await http("DELETE", `${core}/tp_hook_parents/${id}?force=true`, { as: "editor" });
-      assert.deepEqual([r.status, r.json.code], [403, "forbidden"]);
-    }
-    for (const id of [nullEmpty.id, nullParent.id]) {
-      await problem("DELETE", `/null_parents/${id}`, { as: "editor" }, { status: 403, code: "forbidden", pointer: "/code" });
-      const r = await http("DELETE", `${core}/tp_null_parents/${id}?force=true`, { as: "editor" });
-      assert.deepEqual([r.status, r.json.code], [403, "forbidden"]);
-    }
+    // A visible child's referential update still runs the viewer's generated-value checks, taken or free.
+    await problem("DELETE", `/hook_parents/${hookParent.id}`, { as: "editor" }, { status: 403, code: "forbidden", pointer: "/code" });
+    const hooked = await http("DELETE", `${core}/tp_hook_parents/${hookParent.id}?force=true`, { as: "editor" });
+    assert.deepEqual([hooked.status, hooked.json.code], [403, "forbidden"]);
+    await problem("DELETE", `/null_parents/${nullParent.id}`, { as: "editor" }, { status: 403, code: "forbidden", pointer: "/code" });
+    const nulled = await http("DELETE", `${core}/tp_null_parents/${nullParent.id}?force=true`, { as: "editor" });
+    assert.deepEqual([nulled.status, nulled.json.code], [403, "forbidden"]);
     await problem("POST", "/oracle_default", { as: "editor", body: { title: "Probe" } }, { status: 403, code: "forbidden", pointer: "/code" });
     const create = await http("POST", `${core}/tp_oracle_default`, { as: "editor", body: { title: "Probe" } });
     assert.deepEqual([create.status, create.json.code], [403, "forbidden"]);

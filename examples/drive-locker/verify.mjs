@@ -11,13 +11,6 @@ const wp = (...args) => execFileSync(binary, ["wp", "--site", project, ...args],
 const run = `locker-${Date.now()}`;
 const credentials = [];
 const created = [];
-const gaps = [];
-
-function trusted(user, operation, table, body) {
-  const encoded = Buffer.from(JSON.stringify(body)).toString("base64");
-  const code = `$app=\\TypedPress\\Wp\\Runtime::plugin()->app(); $user=get_user_by('login','${user}'); $app->db->setActor(['id'=>(int)$user->ID,'name'=>$user->display_name,'role'=>'${user === "admin" ? "admin" : "subscriber"}']); $value=json_decode(base64_decode('${encoded}'),true); echo wp_json_encode($app->db->transaction(fn()=>$app->db->${operation}('${table}',$value,true)));`;
-  return JSON.parse(wp("eval", code));
-}
 
 function auth(user) {
   const password = wp("user", "application-password", "create", user, run, "--porcelain").split("\n").at(-1);
@@ -52,28 +45,16 @@ try {
   const place = await request("Place create", "tp/v1/places", { authorization: first, method: "POST", status: 201, body: { name: run, kind: "nas-bay" } });
   created.push(["places", place.id]);
   const driveInput = { label: run, model: "Example NVMe", serial: run, kind: "nvme", capacityGb: 1000, interface: "PCIe 4.0", placeId: place.id, status: "in-use", tags: ["verification"], warrantyUntil: new Date().toISOString().slice(0, 10) };
-  const createResponse = await fetch(`${base}/__tp/api/v1/drives`, { method: "POST", headers: { Authorization: first, "Content-Type": "application/json" }, body: JSON.stringify(driveInput) });
-  const createResult = await createResponse.json();
-  console.log(`Drive create: POST /__tp/api/v1/drives -> ${createResponse.status} ${JSON.stringify(createResult)}`);
-  let drive = createResult.data;
-  if (createResponse.status !== 201) {
-    assert.equal(createResponse.status, 403);
-    assert.equal(createResult.detail, "You can't set serialKey");
-    gaps.push(createResult.detail);
-    if (!process.argv.includes("--probe-main")) throw new Error("Drive CRUD blocked on main. Use --probe-main to test other paths with an explicitly trusted CLI fixture.");
-    drive = trusted("admin", "insert", "drives", driveInput)[0];
-    console.log(`Trusted CLI fixture: drive ${drive.id}; this does not verify HTTP drive creation.`);
-  }
+  const drive = await request("Drive create", "tp/v1/drives", { authorization: first, method: "POST", status: 201, body: driveInput });
   created.push(["drives", drive.id]);
-  await request("Drive edit contract", `tp/v1/drives/${drive.id}`, { authorization: first, method: "PATCH", status: gaps.length ? 403 : 200, body: { label: `${run} edited` } });
+  await request("Drive edit", `tp/v1/drives/${drive.id}`, { authorization: first, method: "PATCH", body: { label: `${run} edited` } });
   assert.equal(drive.serial, run.toUpperCase());
-  if (createResponse.status === 201) assert.equal("serialKey" in drive, false);
   const duplicate = await fetch(`${base}/__tp/api/v1/drives`, { method: "POST", headers: { Authorization: first, "Content-Type": "application/json" }, body: JSON.stringify(driveInput) });
   console.log(`Duplicate serial: POST /__tp/api/v1/drives -> ${duplicate.status} ${await duplicate.text()}`);
-  assert.ok(duplicate.status >= 400);
-  const other = gaps.length ? trusted("locker-other", "insert", "drives", { ...driveInput, placeId: null })[0] : await request("Same serial allowed for another owner", "tp/v1/drives", { authorization: second, method: "POST", status: 201, body: { ...driveInput, placeId: null } });
-  console.log(`Same serial allowed for another owner: drive ${other.id}, owner ${other.ownerId}, via ${gaps.length ? "trusted CLI" : "HTTP"}`);
-  trusted("locker-other", "delete", "drives", { id: other.id });
+  assert.equal(duplicate.status, 409);
+  const other = await request("Same serial allowed for another owner", "tp/v1/drives", { authorization: second, method: "POST", status: 201, body: { ...driveInput, placeId: null } });
+  assert.notEqual(other.ownerId, drive.ownerId);
+  await request("Other owner deletes their own drive", `tp/v1/drives/${other.id}`, { authorization: second, method: "DELETE" });
   await request("Owner cannot be supplied", "tp/v1/places", { authorization: first, method: "POST", status: [403, 422], body: { name: run, kind: "drawer", ownerId: 999999 } });
   const hidden = await request("Other owner list", "tp/v1/drives", { authorization: second });
   assert.equal(hidden.some((row) => row.id === drive.id), false);
@@ -86,7 +67,6 @@ try {
   const found = await request("whereIs contents search", "tp/v1/actions/whereIs", { authorization: first, method: "POST", body: { query: `${run} photos` } });
   assert.equal(found[0].place.id, place.id);
   assert.equal(found[0].drive.id, drive.id);
-  assert.equal("serialKey" in found[0].drive, false);
   const report = await request("capacityReport", "tp/v1/actions/capacityReport", { authorization: first, method: "POST", body: {} });
   const location = report.byPlace.find((row) => row.placeId === place.id);
   assert.deepEqual({ totalGb: location.totalGb, usedGb: location.usedGb, freeGb: location.freeGb }, { totalGb: 1000, usedGb: 240, freeGb: 760 });
@@ -112,21 +92,17 @@ try {
   await request("Place update", `tp/v1/places/${place.id}`, { authorization: first, method: "PATCH", body: { name: `${run} updated` } });
   await request("MCP initialize", "mcp/typedpress-drive-locker", { authorization: first, method: "POST", body: { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "drive-locker-verifier", version: "1" } } } });
   await request("Content delete", `tp/v1/contents/${content.id}`, { authorization: first, method: "DELETE" });
-  console.log(`VERIFIED: all five actions, contents CRUD, two-owner isolation, trend verdicts, replacement job and MCP initialization. Drive creation ${gaps.length ? "requires a trusted CLI fixture due to the recorded main gap" : "passed over HTTP"}.`);
+  for (const [table, id] of created.reverse()) await request(`Delete ${table}`, `tp/v1/${table}/${id}`, { authorization: first, method: "DELETE" });
+  created.length = 0;
+  console.log("VERIFIED: drive CRUD over HTTP, all five actions, contents CRUD, two-owner isolation, trend verdicts, replacement job, MCP initialization and owner deletes with cascades.");
 } finally {
+  // A failed run leaves its rows; delete what is left as the owner and report a refusal.
   if (first) for (const [table, id] of created.reverse()) {
     const response = await fetch(`${base}/__tp/api/v1/${table}/${id}`, { method: "DELETE", headers: { Authorization: first } });
-    const result = await response.json();
-    console.log(`Cleanup: DELETE /__tp/api/v1/${table}/${id} -> ${response.status} ${JSON.stringify(result)}`);
-    if (response.status !== 200) {
-      gaps.push(result.detail);
-      trusted("admin", "delete", table, { id });
-      console.log(`Trusted CLI cleanup: ${table}/${id}. HTTP deletion remains blocked.`);
-    }
+    console.log(`Cleanup: DELETE /__tp/api/v1/${table}/${id} -> ${response.status}`);
   }
   for (const user of credentials) {
     const entries = JSON.parse(wp("user", "application-password", "list", user, "--format=json"));
     for (const entry of entries.filter((entry) => entry.name === run)) wp("user", "application-password", "delete", user, entry.uuid);
   }
-  if (gaps.length) console.log(`KNOWN MAIN GAPS: ${JSON.stringify(gaps)}`);
 }

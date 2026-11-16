@@ -1,6 +1,67 @@
 {
   "version": 2,
   "tables": {
+    "places": {
+      "editor": false,
+      "drafts": false,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": true,
+          "autoIncrement": true,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "ownerId": {
+          "type": "integer",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": null,
+          "default": 0,
+          "references": null
+        },
+        "name": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": 120.0,
+          "enum": null,
+          "default": null,
+          "references": null
+        },
+        "kind": {
+          "type": "text",
+          "notNull": true,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": false,
+          "max": null,
+          "enum": [
+            "nas-bay",
+            "desktop",
+            "laptop",
+            "drawer",
+            "offsite"
+          ],
+          "default": null,
+          "references": null
+        }
+      },
+      "queried": [
+        "id",
+        "name",
+        "ownerId"
+      ]
+    },
     "drives": {
       "editor": false,
       "drafts": false,
@@ -58,17 +119,6 @@
           "max": 160.0,
           "enum": null,
           "default": null,
-          "references": null
-        },
-        "serialKey": {
-          "type": "text",
-          "notNull": true,
-          "primaryKey": false,
-          "autoIncrement": false,
-          "unique": true,
-          "max": 191.0,
-          "enum": null,
-          "default": "",
           "references": null
         },
         "kind": {
@@ -206,67 +256,15 @@
         "replacementNeededAt",
         "status",
         "warrantyUntil"
-      ]
-    },
-    "places": {
-      "editor": false,
-      "drafts": false,
-      "columns": {
-        "id": {
-          "type": "integer",
-          "notNull": true,
-          "primaryKey": true,
-          "autoIncrement": true,
-          "unique": false,
-          "max": null,
-          "enum": null,
-          "default": null,
-          "references": null
-        },
-        "ownerId": {
-          "type": "integer",
-          "notNull": true,
-          "primaryKey": false,
-          "autoIncrement": false,
-          "unique": false,
-          "max": null,
-          "enum": null,
-          "default": 0,
-          "references": null
-        },
-        "name": {
-          "type": "text",
-          "notNull": true,
-          "primaryKey": false,
-          "autoIncrement": false,
-          "unique": false,
-          "max": 120.0,
-          "enum": null,
-          "default": null,
-          "references": null
-        },
-        "kind": {
-          "type": "text",
-          "notNull": true,
-          "primaryKey": false,
-          "autoIncrement": false,
-          "unique": false,
-          "max": null,
-          "enum": [
-            "nas-bay",
-            "desktop",
-            "laptop",
-            "drawer",
-            "offsite"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "ownerId",
+            "serial"
           ],
-          "default": null,
-          "references": null
+          "unique": true
         }
-      },
-      "queried": [
-        "id",
-        "name",
-        "ownerId"
       ]
     },
     "health_readings": {

@@ -16,12 +16,12 @@ const text = (tag, value) => { const el=document.createElement(tag); el.textCont
 async function read(path) { const response=await fetch('/__tp/api/v1'+path); const value=await response.json(); if(!response.ok) throw Error(value.detail || 'Could not load stories'); return value.data; }
 try {
  const id=query.get('id');
- const rows=id ? [await read('/stories/'+encodeURIComponent(id)+'?locale='+locale.value+'&with=writer,cover')] : await read('/stories?locale='+locale.value+'&with=writer,cover');
+ const rows=id ? [await read('/stories/'+encodeURIComponent(id)+'?locale='+locale.value+'&with=writerId,cover')] : await read('/stories?locale='+locale.value+'&with=writerId,cover');
  document.querySelector('#status').textContent=rows.length ? '' : 'No published stories yet. Create one in WordPress or TypedPress admin.';
  for (const story of rows) {
   const article=document.createElement('article');
   if(story.cover?.url){const image=document.createElement('img'); image.src=story.cover.sizes?.wide?.url || story.cover.url; image.alt=story.cover.alt || '';article.append(image);}
-  article.append(text('small',story.writer?.name || 'The journal'));
+  article.append(text('small',story.writerId?.name || 'The journal'));
   const link=text('a',story.title);link.href='?'+new URLSearchParams({locale:locale.value,id:story.id});const heading=document.createElement('h2');heading.append(link);article.append(heading);
   if(story.details?.subtitle)article.append(text('p',story.details.subtitle));
   if(id){ const body=document.createElement('div');body.innerHTML=story.body || '';article.append(body);for(const section of story.sections || []){article.append(text(section.layout==='quote'?'blockquote':'h3',section.text || section.heading || ''));}for(const item of story.links || []) {const a=text('a',item.label);if(/^https?:\/\//.test(item.href)){a.href=item.href;article.append(a,document.createElement('br'));}} }

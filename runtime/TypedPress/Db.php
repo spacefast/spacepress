@@ -925,44 +925,76 @@ final class Db
         Extensions::written('delete', $collection, $row, $existing);
     }
 
-    /** Check the whole cascading graph before looking for any children, including empty branches. */
-    private function requireDeleteVisibility(string $collection, ?Viewer $viewer, array $seen = []): void
+    /**
+     * A viewer's delete acts on the rows that reference this one only when the viewer can read every
+     * one of them (docs/decisions/2026-11-16-per-row-delete-visibility.md). The check looks at the rows
+     * referencing this row, never at whole tables. A referencing row the viewer can't read is never
+     * returned, written, cascaded or counted: one or many answer the same generic 409, which is the one
+     * bit a viewer allowed to delete the row learns. Referential writes on visible rows run as before and
+     * carry the viewer's own constraint checks (update's $errorViewer). Cascades are followed through
+     * the visible rows first, so a refusal anywhere in the graph comes before any write.
+     */
+    private function refuseHiddenReferences(string $collection, array $row, Viewer $viewer, array &$seen = []): void
     {
-        if ($viewer === null || isset($seen[$collection])) {
+        $parent = $this->schema->collection($collection);
+        $at = $collection . ':' . self::key($row[$parent['primaryKey']]);
+        if (isset($seen[$at])) {
             return;
         }
-        $seen[$collection] = true;
+        $seen[$at] = true;
         foreach ($this->schema->kinds() as $child => $spec) {
+            $child = (string) $child;
             foreach ($spec['columns'] as $col => $def) {
                 $ref = $def['references'] ?? null;
-                if ($ref === null || $ref['collection'] !== $collection) {
+                // A term's links go with the term; core's own delete removes them.
+                if ($ref === null || $ref['collection'] !== $collection
+                    || ($def['type'] === 'refList' && str_starts_with($ref['join'], 'term:'))) {
                     continue;
                 }
-                $this->requireReferenceVisibility($collection, $ref['column'], (string) $child, $def, $viewer);
-                if ($def['type'] === 'refList') {
-                    continue; // a deleted target only loses its links
+                if (FieldAccess::mayHide($parent['columns'][$ref['column']], $viewer)) {
+                    throw new HttpError(409, 'reference_violation', 'A hidden field may be referenced by this row');
                 }
-                $action = strtolower($ref['onDelete'] ?? 'no action');
-                if ($action === 'cascade') {
-                    $this->requireDeleteVisibility((string) $child, $viewer, $seen);
-                } else {
-                    if (in_array($action, ['set null', 'set default'], true)) {
-                        // These writes run as referential effects, but their errors still belong to
-                        // this viewer. Check potential generated values even on an empty branch.
-                        $inputs = [$col => $action === 'set default' ? ($def['default'] ?? ['value' => null]) : ['value' => null]];
-                        foreach ($spec['columns'] as $name => $column) {
-                            if ($name !== $col && isset($column['onUpdate'])) {
-                                $inputs[$name] = $column['onUpdate'];
-                            }
-                        }
-                        if (isset($spec['hooks']['beforeUpdate'])) {
-                            foreach ($spec['columns'] as $name => $column) {
-                                if ($name !== $spec['primaryKey'] && (($column['unique'] ?? false) || isset($column['references']))) {
-                                    $inputs[$name] = ['fn' => true]; // a hook may replace any constraint value
-                                }
-                            }
-                        }
-                        $this->requireGeneratedVisibility((string) $child, $inputs, $viewer);
+                $value = $row[$ref['column']] ?? null;
+                if ($value === null) {
+                    continue;
+                }
+                $pk = $spec['primaryKey'];
+                $many = $def['type'] === 'refList';
+                $where = $many
+                    ? [$pk => ['in' => array_values(array_unique(array_column($this->links()->links($ref['join'], 'target_id', [$value]), 'owner_id')))]]
+                    : [(string) $col => $value];
+                if ($many && $where[$pk]['in'] === []) {
+                    continue;
+                }
+                $opts = ['where' => $where];
+                $referencing = $this->selectDecoded($child, $opts, '', null);
+                if ($referencing === []) {
+                    continue;
+                }
+                $hidden = new HttpError(409, 'reference_violation', "Rows in $child may reference this row");
+                if (FieldAccess::mayHide($def, $viewer)) {
+                    throw $hidden;
+                }
+                $read = ['where' => $where] + (($spec['localized'] ?? false) ? ['locale' => '*'] : []);
+                try {
+                    $readable = $this->findMany($child, $read, $viewer);
+                } catch (HttpError) {
+                    throw $hidden;
+                }
+                $visible = [];
+                foreach ($readable as $r) {
+                    if (array_key_exists($pk, $r) && ($many || (array_key_exists((string) $col, $r) && Js::strictEq($r[$col], $value)))) {
+                        $visible[self::key($r[$pk])] = true;
+                    }
+                }
+                foreach ($referencing as $r) {
+                    if (!isset($visible[self::key($r[$pk])])) {
+                        throw $hidden;
+                    }
+                }
+                if (!$many && strtolower($ref['onDelete'] ?? 'no action') === 'cascade') {
+                    foreach ($referencing as $r) {
+                        $this->refuseHiddenReferences($child, $r, $viewer, $seen);
                     }
                 }
             }
@@ -1013,7 +1045,9 @@ final class Db
      */
     private function referentialActions(string $collection, array $row, ?Viewer $viewer = null): void
     {
-        $this->requireDeleteVisibility($collection, $viewer);
+        if ($viewer !== null) {
+            $this->refuseHiddenReferences($collection, $row, $viewer);
+        }
         $spec = $this->schema->collection($collection);
         foreach ($this->schema->kinds() as $child => $cspec) {
             foreach ($cspec['columns'] as $col => $c) {

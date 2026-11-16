@@ -1499,12 +1499,19 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         $tag = $db->insert('tags', ['name' => 'u'], true, $sub)[0];
         problem('updates are held to it too', fn () => $db->update('tags', ['noteId' => $note['id']], ['id' => $tag['id']], true, $sub), 409, 'reference_violation', '/noteId');
         eq('a viewer who can read the target references it', $db->insert('tags', ['name' => 'v', 'noteId' => $note['id']], true, $admin)[0]['noteId'], $note['id']);
+        // Deletes look at the rows that reference this row only
+        // (docs/decisions/2026-11-16-per-row-delete-visibility.md).
         $unreferenced = $db->insert('notes', ['body' => 'no children'], true)[0];
-        foreach ([$note, $unreferenced] as $parent) {
-            problem('unreadable restrictive children refuse deletion whether present or absent', fn () => $db->delete('notes', ['id' => $parent['id']], true, $editor), 409, 'reference_violation');
-        }
-        eq('refused deletes preserve both parents', $count('notes'), 2);
+        problem('a hidden referencing row refuses the delete', fn () => $db->delete('notes', ['id' => $note['id']], true, $editor), 409, 'reference_violation');
+        eq('the refused delete keeps the parent', $count('notes'), 2);
+        $db->insert('tags', ['name' => 'second hidden', 'noteId' => $note['id']], true);
+        $one = $failure(fn () => $db->delete('notes', ['id' => $note['id']], true, $editor));
+        $db->insert('tags', ['name' => 'third hidden', 'noteId' => $note['id']], true);
+        eq('one or many hidden rows answer the same body', $failure(fn () => $db->delete('notes', ['id' => $note['id']], true, $editor)), $one);
+        eq('the generic body names no row', [$one['status'], $one['code'], $one['pointer'] ?? null, $one['detail']], [409, 'reference_violation', null, 'Rows in tags may reference this row']);
+        eq('a row nothing references deletes', $db->delete('notes', ['id' => $unreferenced['id']], true, $editor)[0]['id'], $unreferenced['id']);
         eq('trusted writes (hooks, CLI) check existence only', $db->insert('tags', ['name' => 'w', 'noteId' => $note['id']], true)[0]['noteId'], $note['id']);
+        eq('hidden referencing rows are untouched by refused deletes', (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}tp_tags WHERE noteId = {$note['id']}"), 4);
 
         // References to a key other than `id` (0.3.0 captures only).
         [$b1, $b2] = $db->insert('badges', [['code' => 701001, 'badge' => 889001], ['code' => 701002, 'badge' => 889002]], true);
@@ -1520,6 +1527,85 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             problem('changing a referenced non-id key is refused, children or not', fn () => $db->update('badges', ['code' => $parent['code'] + 10], ['id' => $parent['id']], true, $editor), 409, 'reference_violation');
         }
         eq('refused key changes keep both keys', array_column($db->findMany('badges', ['orderBy' => ['id' => 'asc']]), 'code'), [701001, 701002]);
+    } finally {
+        \TypedPress\Db::setInstance($previous);
+    }
+})();
+
+// Owner-scoped apps (examples/pet-food, stuff-drawer, subscriptions, drive-locker): every table reads
+// `{ ownerId: user.id }`. A delete checks only the rows that reference this row: an owner deletes
+// their own rows and applies onDelete to their own children; another owner's row pointing here (which
+// an app hook should prevent, but the database allows) refuses with the generic 409, untouched.
+(static function (): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $owned = ['fn' => static fn (array $ctx) => $ctx['user'] === null ? false : ['ownerId' => $ctx['user']['id']]];
+    $access = ['read' => $owned, 'create' => ['role' => 'authenticated'], 'update' => $owned, 'delete' => $owned];
+    $owner = ['ownerId' => ['type' => 'integer', 'notNull' => true]];
+    $table = static fn (string $name, array $columns): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "tp_$name", 'access' => $access, 'columns' => ['id' => $id] + $owner + $columns];
+    $ref = static fn (string $to, string $onDelete, bool $notNull = true): array => ['type' => 'integer', 'notNull' => $notNull, 'references' => ['collection' => $to, 'column' => 'id', 'onDelete' => $onDelete]];
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'bins' => $table('bins', []),
+        'things' => $table('things', ['binId' => $ref('bins', 'set null', false)]),
+        'loans' => $table('loans', ['thingId' => $ref('things', 'restrict')]),
+        'charges' => $table('charges', ['thingId' => $ref('things', 'cascade')]),
+        'receipts' => $table('receipts', ['chargeId' => $ref('charges', 'cascade')]),
+    ]]);
+    $fk = static fn (string $t, string $c, string $to, string $on): string => "CONSTRAINT `tp_{$t}_{$c}_fk` FOREIGN KEY (`$c`) REFERENCES {prefix}tp_$to (`id`) ON DELETE $on";
+    $wp->exec('CREATE TABLE {prefix}tp_bins (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_things (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, `binId` BIGINT UNSIGNED, PRIMARY KEY (`id`), ' . $fk('things', 'binId', 'bins', 'SET NULL') . ') ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_loans (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, `thingId` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`id`), ' . $fk('loans', 'thingId', 'things', 'RESTRICT') . ') ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_charges (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, `thingId` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`id`), ' . $fk('charges', 'thingId', 'things', 'CASCADE') . ') ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_receipts (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `ownerId` BIGINT NOT NULL, `chargeId` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`id`), ' . $fk('receipts', 'chargeId', 'charges', 'CASCADE') . ') ENGINE=InnoDB');
+    $store = \TypedPress\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \TypedPress\Db($store, $schema, \TypedPress\db()->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($db);
+    $me = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    $other = 8;
+    $count = static fn (string $t) => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}tp_$t");
+    $failure = static function (callable $write): array {
+        try {
+            $write();
+
+            return ['status' => 200, 'code' => 'unexpected_success', 'pointer' => null, 'detail' => ''];
+        } catch (\Throwable $e) {
+            return \TypedPress\App::problem($e);
+        }
+    };
+    $insert = static fn (string $t, array $row) => $db->insert($t, $row, true)[0];
+    try {
+        $empty = $insert('bins', ['ownerId' => 7]);
+        eq('an owner deletes an empty parent of an owner-filtered table', $db->delete('bins', ['id' => $empty['id']], true, $me)[0]['id'], $empty['id']);
+
+        $bin = $insert('bins', ['ownerId' => 7]);
+        $thing = $insert('things', ['ownerId' => 7, 'binId' => $bin['id']]);
+        $db->delete('bins', ['id' => $bin['id']], false, $me);
+        eq('set null applies to the owner\'s own children', $db->findFirst('things', ['where' => ['id' => $thing['id']]])['binId'], null);
+
+        $charge = $insert('charges', ['ownerId' => 7, 'thingId' => $thing['id']]);
+        $insert('receipts', ['ownerId' => 7, 'chargeId' => $charge['id']]);
+        $loan = $insert('loans', ['ownerId' => 7, 'thingId' => $thing['id']]);
+        problem('restrict still refuses on visible rows', fn () => $db->delete('things', ['id' => $thing['id']], true, $me), 409, 'reference_violation');
+        $db->delete('loans', ['id' => $loan['id']], false, $me);
+        $db->delete('things', ['id' => $thing['id']], false, $me);
+        eq('cascade removes the owner\'s own children and grandchildren', [$count('things'), $count('charges'), $count('receipts')], [0, 0, 0]);
+
+        // Another owner's rows point at mine: refused alike at any depth, nothing written or read back.
+        $mine = $insert('things', ['ownerId' => 7]);
+        $theirs = $insert('loans', ['ownerId' => $other, 'thingId' => $mine['id']]);
+        $direct = $failure(fn () => $db->delete('things', ['id' => $mine['id']], true, $me));
+        eq('a hidden restrict child refuses with the generic body', [$direct['status'], $direct['code'], $direct['detail']], [409, 'reference_violation', 'Rows in loans may reference this row']);
+        $db->delete('loans', ['id' => $theirs['id']], false);
+        $myCharge = $insert('charges', ['ownerId' => 7, 'thingId' => $mine['id']]);
+        $insert('receipts', ['ownerId' => $other, 'chargeId' => $myCharge['id']]);
+        $deep = $failure(fn () => $db->delete('things', ['id' => $mine['id']], true, $me));
+        eq('a hidden grandchild under a visible cascade refuses the whole delete', [$deep['status'], $deep['code'], $deep['detail']], [409, 'reference_violation', 'Rows in receipts may reference this row']);
+        eq('the refused cascade rolled back nothing it should keep', [$count('things'), $count('charges'), $count('receipts')], [1, 1, 1]);
+        $theirBin = $insert('bins', ['ownerId' => $other]);
+        $insert('things', ['ownerId' => 7, 'binId' => $theirBin['id']]);
+        eq('another owner\'s parent is not selected by my delete', $db->delete('bins', ['id' => $theirBin['id']], true, $me), []);
+        eq('so it stays', $count('bins'), 1);
     } finally {
         \TypedPress\Db::setInstance($previous);
     }

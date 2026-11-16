@@ -9,7 +9,10 @@ export const posts = collection({
   seoTitle: text().optional(),
   seoDescription: text({ multiline: true }).optional(),
 }, {
-  label: "Publication posts", title: "title", content: "body", revisions: true, comments: true,
+  label: "Publication posts", title: "title", content: "body", revisions: true,
+  // Like the EmDash blog and WordPress's default Discussion settings: readers comment with a name and
+  // email, held for moderation the first time. Without `guests`, commenting needs a sign-in.
+  comments: { guests: true, moderation: "first-time" },
   access: {
     read: (ctx) => ["admin", "editor", "author"].includes(ctx.user?.role ?? "") ? true : { status: "published" },
     create: "editor", update: "editor", delete: "editor",

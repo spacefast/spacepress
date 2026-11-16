@@ -186,8 +186,9 @@ owner against an existing harness receipt (`FIRST_WP_HARNESS` selects another
 receipt). `FIRST_WP_PROJECT` and `FIRST_WP_PORT` isolate the Docker stack.
 `FIRST_WP_SKIP_BROWSER=1` is an explicit opt-out for PHP-only iteration; missing
 browser dependencies otherwise fail the lane. Screenshots and failure traces
-go to a fresh `first-admin-browser/run-*` folder below the system temporary
-directory, printed at the start of the run, or to `FIRST_ADMIN_BROWSER_OUTPUT`.
+go to a fresh `first-admin-browser/run-*` folder (`subdirectory-*` for the
+subdirectory lane) below the system temporary directory, printed at the start
+of the run, or to `FIRST_ADMIN_BROWSER_OUTPUT`.
 The committed admin bundle is rebuilt on Linux; CI checks it byte-for-byte.
 
 ## Releases

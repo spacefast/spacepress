@@ -31,4 +31,5 @@ FIRST_WP_HARNESS="$wp/.harness-admin.json" node --test --test-concurrency=1 "$he
 
 FIRST_WP_HARNESS="$wp/.harness-admin.json" \
 FIRST_ADMIN_BROWSER_OUTPUT="${FIRST_ADMIN_BROWSER_OUTPUT:+$FIRST_ADMIN_BROWSER_OUTPUT/subdirectory}" \
+FIRST_ADMIN_BROWSER_RUN=subdirectory \
 "$wp/admin/browser-run.sh"

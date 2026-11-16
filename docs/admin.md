@@ -164,7 +164,6 @@ disposable WordPress artifact created by `tests/wp/harness.sh`, run:
 cd runtime/admin/apps
 pnpm exec playwright install chromium
 FIRST_WP_HARNESS=/path/to/disposable-harness.json \
-FIRST_ADMIN_BROWSER_OUTPUT=/tmp/first-admin-browser \
 pnpm exec playwright test --config wp-journey/playwright.config.ts
 ```
 

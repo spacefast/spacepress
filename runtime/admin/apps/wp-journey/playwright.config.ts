@@ -4,13 +4,16 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// A fresh folder per run under <tmp>/first-admin-browser (the folder CI uploads on failure), so two
-// lanes running the journey at once don't clean or overwrite each other's traces and snapshots.
+// A fresh folder per run under <tmp>/first-admin-browser (the folder CI uploads on failure), named
+// <FIRST_ADMIN_BROWSER_RUN or run>-<random>, so two lanes running the journey at once don't clean
+// or overwrite each other's traces and snapshots.
 // Chosen once in the runner and passed to the workers through the environment, which they inherit.
 if ( ! process.env.FIRST_ADMIN_BROWSER_OUTPUT ) {
 	const parent = join( tmpdir(), 'first-admin-browser' );
 	mkdirSync( parent, { recursive: true } );
-	process.env.FIRST_ADMIN_BROWSER_OUTPUT = mkdtempSync( join( parent, 'run-' ) );
+	process.env.FIRST_ADMIN_BROWSER_OUTPUT = mkdtempSync(
+		join( parent, `${ process.env.FIRST_ADMIN_BROWSER_RUN ?? 'run' }-` )
+	);
 	console.log( `browser journey output: ${ process.env.FIRST_ADMIN_BROWSER_OUTPUT }` );
 }
 export default defineConfig({

@@ -277,14 +277,17 @@ generators run; hook-written references are checked before field validation.
 A viewer's delete looks at the rows that reference the deleted row, never at
 whole tables ([decision](decisions/2026-11-16-per-row-delete-visibility.md)).
 It counts them in SQL, trusted and as the viewer, WordPress's trash included,
-without loading them, and follows visible cascades to every depth. What the delete
+without loading them, and follows visible cascades to every depth. Password
+visibility for these rows is decided in SQL only and fails closed: a protected post
+the viewer's password proof doesn't open counts as hidden, for an editor too. What the delete
 then does to them is the viewer's own writes through the ordinary pipeline: a
 cascade is their delete of each child, `setNull` / `setDefault` their update of
 it, a `ref().many()` or term link their update of the owner without that id, with
 the collection rule on the real patch, field rules, hooks, write extensions and
-listeners. A hidden referencing row, a hidden referencing column or key, a read
-extension that may hide rows, or any 4xx from a side effect refuses the whole
-delete with `409 reference_violation`, detail `Rows you can't read may reference
+listeners. Nothing trusted runs for a viewer's delete: afterwards the referencing
+rows are counted again, and any left refuses. A hidden referencing row, a hidden
+referencing column or key, a read extension that may hide rows, or any error from a
+side effect (its message is never passed on) refuses the whole delete with `409 reference_violation`, detail `Rows you can't read may reference
 this row` and no pointer, whatever the table, depth or count. Trusted writes
 (hooks, CLI, jobs) are not checked.
 These checks roll back the whole write on refusal.

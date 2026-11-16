@@ -20,8 +20,10 @@ viewer's own writes:
 1. **Visibility, before anything is written.** It counts, trusted and as the viewer, the rows whose
    referencing column holds this row's key (for a `ref().many()`, including a taxonomy's terms, the
    owners of links to it), in SQL, WordPress's trash included, without loading them. It never
-   inspects a whole table, and password visibility is decided for those rows only, so hidden volume
-   elsewhere can't change the answer. When the counts differ, when the referencing column or the
+   inspects a whole table. WordPress's password visibility for these rows is decided in SQL only and
+   fails closed: a protected post the viewer's password proof doesn't open counts as hidden, even for
+   an editor who could open it in wp-admin, and no post is loaded, so hidden volume can't change the
+   answer. When the counts differ, when the referencing column or the
    referenced key may be hidden, or when a read extension that may hide rows is registered
    (`Extensions::constraintReadsSafe()` is false), the delete is refused. Under `cascade` this repeats
    for each visible child, to every depth.
@@ -30,10 +32,14 @@ viewer's own writes:
    term link the viewer's update of the owner without that id. Each takes the path a direct request
    takes: the collection rule with the real patch, field rules, `beforeUpdate` / `beforeDelete` hooks,
    `Extensions::onWrite` and listeners, generated values. Restrict is refused by the pipeline as
-   before. All of it is one transaction.
-3. **One refusal.** Any 4xx from any side effect, a hidden row, or a side effect that reaches fewer
-   rows than reference the deleted one, is `409 reference_violation`, detail
-   `Rows you can't read may reference this row`, no pointer, and the whole delete rolls back. Nothing
+   before. Nothing trusted runs for a viewer's delete: after the viewer's writes, the rows that
+   reference the deleted row are counted again in the same transaction, and any left (a hook created
+   or kept one) refuses. All of it is one transaction.
+3. **One refusal.** Any error from any side effect (an `HttpError` of any status, an app hook's
+   JavaScript `Error`, anything else), a hidden row, or a side effect that reaches fewer rows than
+   reference the deleted one, is `409 reference_violation`, detail
+   `Rows you can't read may reference this row`, no pointer, and the whole delete rolls back. A side
+   effect's own message is never passed on; it goes to the error log. Nothing
    is hard-deleted that a direct request wouldn't delete; WordPress's trash stays an unpublish
    ([2026-11-14-trash-is-unpublish.md](2026-11-14-trash-is-unpublish.md)).
 4. Trusted writes (hooks, CLI, jobs) are not checked, as before.
@@ -51,9 +57,13 @@ viewer's own writes:
   transaction, but not external effects such as mail or HTTP.
 - The check costs two counts per referencing column, plus a read of each visible referencing row.
 
+- An editor can't delete a row that a password-protected post they could open references; they
+  remove the reference first.
+
 Replaced by ordinary writes and deleted: the per-branch authorization counts for cascade and set null,
-the set null / set default generated-value preflight (`requireReferentialUpdateVisibility`), and
-`requireDeleteVisibility`'s whole-table check.
+the set null / set default generated-value preflight (`requireReferentialUpdateVisibility`),
+`requireDeleteVisibility`'s whole-table check, and, for a viewer's delete, the trusted referential
+actions.
 
 ## Tests
 

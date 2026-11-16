@@ -1050,12 +1050,14 @@ final class Db
         foreach ($this->referencing($collection, $row) as [$child, $spec, $col, $def, $where]) {
             $many = $def['type'] === 'refList';
             $action = strtolower($def['references']['onDelete'] ?? ($many ? 'cascade' : 'no action'));
-            if (!in_array($action, ['cascade', 'set null', 'set default'], true)) {
-                continue; // restrict: refused by the pipeline below, on rows the viewer can read
-            }
             $expected = $this->countRows($child, $where, null);
             if ($expected === 0) {
                 continue; // nothing to write: no generator runs either
+            }
+            if (!in_array($action, ['cascade', 'set null', 'set default'], true)) {
+                // restrict: every referencing row is one the viewer reads (refuseHiddenReferences), so
+                // the refusal may say where they are, as a trusted delete's does.
+                throw new HttpError(409, 'reference_violation', $many ? "Rows in $child still link to this row" : "Rows in $child still reference this row");
             }
             $pk = $spec['primaryKey'];
             $target = $row[$def['references']['column']];
@@ -1076,10 +1078,21 @@ final class Db
             };
             try {
                 $this->withTrashFor($child, $write);
-            } catch (HttpError $e) {
-                throw $e->status >= 400 && $e->status < 500 ? self::hiddenReference() : $e;
+            } catch (\Throwable $e) {
+                // A side effect's own answer may carry what the viewer can't read (an app hook's
+                // message, a hidden value's constraint): never pass it on. The request's transaction
+                // rolls the whole delete back; the cause goes to the log only.
+                error_log('[typedpress] a delete side effect refused: ' . $e::class . ': ' . $e->getMessage());
+                throw self::hiddenReference();
             }
             if ($written !== $expected) {
+                throw self::hiddenReference();
+            }
+        }
+        // Whatever hooks did meanwhile, nothing may still reference the row: the trusted referential
+        // actions never run for a viewer's delete.
+        foreach ($this->referencing($collection, $row) as [$child, , , $def, $where]) {
+            if ($this->countRows($child, $where, null) > 0) {
                 throw self::hiddenReference();
             }
         }
@@ -1113,7 +1126,7 @@ final class Db
     {
         $opts = ['where' => $where] + (($spec['localized'] ?? false) ? ['locale' => '*'] : []);
 
-        return $this->withTrashFor($child, fn () => $this->scopedVisibility($child, $where, fn () => $this->findMany($child, $opts, $viewer)));
+        return $this->withTrashFor($child, fn () => $this->sqlVisibility($child, fn () => $this->findMany($child, $opts, $viewer)));
     }
 
     /**
@@ -1128,7 +1141,7 @@ final class Db
         }
         $extra = $viewer !== null && ($this->schema->collection($collection)['localized'] ?? false) ? ['locale' => '*'] : [];
 
-        return $this->withTrashFor($collection, fn () => $this->scopedVisibility($collection, $where, function () use ($collection, $where, $viewer, $extra, $store): int {
+        return $this->withTrashFor($collection, fn () => $this->sqlVisibility($collection, function () use ($collection, $where, $viewer, $extra, $store): int {
             $q = $this->countQuery($collection, $where, $viewer, $extra);
 
             return (int) ($store->db->run($q['sql'], $q['params'])[0]['n'] ?? 0);
@@ -1142,21 +1155,12 @@ final class Db
         return $store instanceof Wp\CompositeStore && $store->isPostBacked($collection) ? $store->posts->withTrash($fn) : $fn();
     }
 
-    /**
-     * Run $fn with WordPress's post visibility (password-protected posts) decided only for the rows
-     * matching $where, so a viewer's read of them loads no other post.
-     */
-    private function scopedVisibility(string $collection, array $where, callable $fn): mixed
+    /** Run $fn with WordPress's password visibility decided in SQL only, failing closed ({@see Wp\WpPostStore::withSqlVisibility()}). */
+    private function sqlVisibility(string $collection, callable $fn): mixed
     {
         $store = $this->store;
-        if (!$store instanceof Wp\CompositeStore || !$store->isPostBacked($collection)) {
-            return $fn();
-        }
-        $opts = ['where' => $where];
-        $q = $this->current(fn () => Sql::select($this->schema, $this->store, $collection, Seam::query($collection, $opts, $this->schema)));
-        $pk = $this->schema->collection($collection)['primaryKey'];
 
-        return $store->posts->withVisibilityScope(new SqlPredicate('SELECT `' . $pk . '` FROM (' . $q['sql'] . ') tp_scope', $q['params']), $fn);
+        return $store instanceof Wp\CompositeStore && $store->isPostBacked($collection) ? $store->posts->withSqlVisibility($fn) : $fn();
     }
 
     /** The one refusal for a delete that rows the viewer can't read, or can't write, may depend on. */
@@ -1210,8 +1214,18 @@ final class Db
     private function referentialActions(string $collection, array $row, ?Viewer $viewer = null): void
     {
         if ($viewer !== null) {
+            // A viewer's delete: what it does to referencing rows is that viewer's own writes, and
+            // nothing else runs for them.
             $this->refuseHiddenReferences($collection, $row, $viewer);
             $this->viewerReferentialWrites($collection, $row, $viewer);
+            $spec = $this->schema->collection($collection);
+            foreach ($spec['columns'] as $c) {
+                if ($c['type'] === 'refList') {
+                    $this->links()->unlink($c['references']['join'], 'owner_id', $row[$spec['primaryKey']]); // its own links go with it
+                }
+            }
+
+            return;
         }
         $spec = $this->schema->collection($collection);
         foreach ($this->schema->kinds() as $child => $cspec) {

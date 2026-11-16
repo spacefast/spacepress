@@ -1658,6 +1658,65 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     }
 })();
 
+// Fourth review of #516: after the viewer's own writes nothing trusted runs, so a row or link a hook
+// created or kept still refuses the delete; an app hook's JavaScript Error is the one refusal too.
+(static function () use ($db, $wp): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $table = static fn ($name, $cols, $access = [], $hooks = []) => ['editor' => false, 'primaryKey' => 'id', 'table' => 'tp_q516_'.$name, 'columns' => ['id' => $id] + $cols, 'access' => $access + $open, 'hooks' => $hooks];
+    $ref = ['type' => 'integer', 'references' => ['collection' => 'q516_parent', 'column' => 'id', 'onDelete' => 'set null']];
+    $schema = new \TypedPress\Schema(['collections' => [
+        'q516_parent' => $table('parent', ['name' => ['type' => 'text']]),
+        // This branch is inspected before the trigger branch. A trusted app hook creates a new row later.
+        'q516_protected' => $table('protected', ['parentId' => ['type' => 'integer', 'references' => ['collection' => 'q516_parent', 'column' => 'id', 'onDelete' => 'cascade']]], ['read' => ['role' => 'admin'], 'delete' => ['role' => 'admin']], ['beforeDelete' => static function (): void { $GLOBALS['q516_deleted']++; }]),
+        'q516_trigger' => $table('trigger', ['parentId' => $ref], [], ['afterUpdate' => static function (array $row, array $previous): void {
+            if ($previous['parentId'] !== null) {
+                $GLOBALS['q516_new'] = \TypedPress\Db::instance()->insert('q516_protected', ['parentId' => $previous['parentId']], true)[0]['id'];
+            }
+        }]),
+        'q516_error' => $table('error', ['parentId' => $ref, 'secret' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]], [], ['beforeUpdate' => static function (array $patch, array $existing): array { throw new \TypedPress\JsError('secret=' . $existing['secret']); }]),
+        'q516_tag' => $table('tag', ['name' => ['type' => 'text']]),
+        'q516_card' => $table('card', ['locked' => ['type' => 'boolean'], 'tags' => ['type' => 'refList', 'references' => ['collection' => 'q516_tag', 'column' => 'id', 'onDelete' => 'cascade', 'join' => 'q516_card_tags']]], ['update' => ['fn' => static fn () => ['locked' => false]]], ['beforeUpdate' => static function (array $patch, array $existing): array {
+            $patch['locked'] = true;
+            $patch['tags'] = $existing['tags']; // Keep mandatory assignment; direct updates can't remove it.
+            return $patch;
+        }]) + ['relations' => ['tags' => ['kind' => 'many', 'collection' => 'q516_tag', 'from' => 'id', 'to' => 'id', 'through' => ['table' => 'q516_card_tags', 'from' => 'owner_id', 'to' => 'target_id']]]],
+    ]]);
+    foreach (['parent' => 'name LONGTEXT', 'protected' => 'parentId BIGINT', 'trigger' => 'parentId BIGINT', 'error' => 'parentId BIGINT, secret LONGTEXT', 'tag' => 'name LONGTEXT', 'card' => 'locked TINYINT'] as $name => $cols) {
+        $wp->exec("CREATE TABLE {prefix}tp_q516_$name (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, $cols, PRIMARY KEY(id)) ENGINE=InnoDB");
+    }
+    $wp->exec('CREATE TABLE {prefix}tp_q516_card_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id,target_id)) ENGINE=InnoDB');
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($probe);
+    $viewer = new \TypedPress\Viewer(['id' => 7, 'role' => 'subscriber', 'name' => 'me']);
+    try {
+        $parent = $probe->insert('q516_parent', ['name' => 'root'], true)[0];
+        $probe->insert('q516_trigger', ['parentId' => $parent['id']], true);
+        $GLOBALS['q516_deleted'] = 0;
+        problem('newly created protected cascade must refuse', fn () => $probe->delete('q516_parent', ['id' => $parent['id']], false, $viewer), 409, 'reference_violation');
+        eq('no protected-row delete hook may run', $GLOBALS['q516_deleted'], 0);
+
+        $tag = $probe->insert('q516_tag', ['name' => 'mandatory'], true)[0];
+        $card = $probe->insert('q516_card', ['locked' => false, 'tags' => [$tag['id']]], true)[0];
+        $control = $probe->insert('q516_card', ['locked' => false, 'tags' => [$tag['id']]], true)[0];
+        $probe->update('q516_card', ['tags' => []], ['id' => $control['id']], false, $viewer);
+        eq('direct unlink preserves assignment', $probe->findFirst('q516_card', ['where' => ['id' => $control['id']]])['tags'], [$tag['id']]);
+        // Remove control from this scenario using a trusted write so it cannot itself block deletion.
+        $probe->delete('q516_card', ['id' => $control['id']]);
+        problem('preserved mandatory link must refuse parent deletion', fn () => $probe->delete('q516_tag', ['id' => $tag['id']], false, $viewer), 409, 'reference_violation');
+        $after = $probe->findFirst('q516_card', ['where' => ['id' => $card['id']]]);
+        eq('viewer delete must preserve mandatory link', $after['tags'], [$tag['id']]);
+        foreach (['alpha', 'beta'] as $secret) {
+            $parent = $probe->insert('q516_parent', ['name' => 'error parent'], true)[0];
+            $probe->insert('q516_error', ['parentId' => $parent['id'], 'secret' => $secret], true);
+            $e = problem('a child hook\'s JavaScript Error is the one refusal', fn () => $probe->delete('q516_parent', ['id' => $parent['id']], false, $viewer), 409, 'reference_violation');
+            eq('… and its message, which holds a hidden value, is not passed on', \TypedPress\App::problem($e)['detail'], "Rows you can't read may reference this row");
+        }
+    } finally { \TypedPress\Db::setInstance($previous); }
+})();
+
 // Third review of #516: delete side effects are the viewer's own writes, so a data-dependent update
 // rule, a field update rule, a link owner's update rule and an extension-written value all hold.
 (static function () use ($db): void {

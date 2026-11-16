@@ -283,4 +283,38 @@ check('and selects no other term field or meta join', !str_contains($termSql, 'A
     eq('refused draft-only term owner retains link', wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']), [$term['id']]);
 })();
 
+// Password-protected posts that carry the deleted term are decided in SQL, never loaded: one or 64
+// such posts of 2 MiB each answer the same refusal at 128M. An editor, who could open them, is refused
+// too (the check fails closed).
+(static function () use ($db, $fixture, $wp): void {
+    $raw = require "$fixture/schema.php";
+    $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
+    $schema = new \TypedPress\Schema($raw);
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $viewer = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    $single = $db->insert('tags', ['name' => 'single protected referring post'], true)[0];
+    $bulk = $db->insert('tags', ['name' => 'many protected referring posts'], true)[0];
+    $one = \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => 'Q516 protected single', 'post_status' => 'publish', 'post_password' => 'q516-fixture'], true));
+    wp_set_object_terms($one, [$single['id']], 'tp_tags');
+    $seed = \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => 'Q516 protected bulk', 'post_status' => 'publish', 'post_password' => 'q516-fixture'], true));
+    $payload = str_repeat('x', 2 * 1024 * 1024);
+    $wp->connection()->run('UPDATE wp_posts SET post_content = ? WHERE ID = ?', [$payload, $seed]);
+    unset($payload);
+    $cols = 'post_author, post_date, post_date_gmt, post_content, post_title, post_excerpt, post_status, comment_status, ping_status, post_password, post_name, to_ping, pinged, post_modified, post_modified_gmt, post_content_filtered, post_parent, guid, menu_order, post_type, post_mime_type, comment_count';
+    for ($i = 0; $i < 6; $i++) {
+        $wp->connection()->run("INSERT INTO wp_posts ($cols) SELECT $cols FROM wp_posts WHERE post_title = ?", ['Q516 protected bulk']);
+    }
+    $tt = get_term($bulk['id'], 'tp_tags')->term_taxonomy_id;
+    $wp->connection()->run('INSERT INTO wp_term_relationships (object_id, term_taxonomy_id, term_order) SELECT ID, ?, 0 FROM wp_posts WHERE post_title = ?', [$tt, 'Q516 protected bulk']);
+    wp_cache_flush();
+    \TypedPress\Wp\CoreAccess::flush();
+    $limit = ini_get('memory_limit');
+    ini_set('memory_limit', '128M');
+    problem('a protected post carrying the term refuses its delete', fn () => $probe->delete('tags', ['id' => $single['id']], false, $viewer), 409, 'reference_violation');
+    problem('… and 64 large ones answer alike, loading none', fn () => $probe->delete('tags', ['id' => $bulk['id']], false, $viewer), 409, 'reference_violation');
+    ini_set('memory_limit', $limit);
+    $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
+    problem('an editor is refused too: password visibility here is decided in SQL and fails closed', fn () => $probe->delete('tags', ['id' => $single['id']], false, $editor), 409, 'reference_violation');
+})();
+
 finish('taxonomy');

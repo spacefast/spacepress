@@ -107,10 +107,12 @@ check($oauth->userinfo($tokens['access_token'])['sub'] === (string) $uid, 'key r
 $db->run("UPDATE {$db->prefix}applications SET enabled=0 WHERE id=%s", $client);
 rejects(fn () => $oauth->userinfo($tokens['access_token']), 'invalid_token', 'disabled application ends its tokens');
 $db->run("UPDATE {$db->prefix}applications SET enabled=1 WHERE id=%s", $client);
-$target = $oauth->logout(['id_token_hint' => $tokens['id_token'], 'post_logout_redirect_uri' => 'http://127.0.0.1:18181/bye', 'state' => 'abc']);
-check($target === 'http://127.0.0.1:18181/bye?state=abc', 'logout returns to a registered origin with state');
+$request = $oauth->logoutRequest(['id_token_hint' => $tokens['id_token'], 'post_logout_redirect_uri' => 'http://127.0.0.1:18181/bye', 'state' => 'abc']);
+check($request['target'] === 'http://127.0.0.1:18181/bye?state=abc', 'logout returns to a registered origin with state');
+check($oauth->userinfo($tokens['access_token'])['sub'] === (string) $uid, 'checking a logout request revokes nothing');
+$oauth->endLogout($request['claims']);
 rejects(fn () => $oauth->userinfo($tokens['access_token']), 'invalid_token', 'logout revokes the identity session and its tokens');
-rejects(fn () => $oauth->logout(['id_token_hint' => $tokens['id_token'], 'post_logout_redirect_uri' => 'https://evil.example/']), 'invalid_request', 'logout refuses an unregistered redirect');
+rejects(fn () => $oauth->logoutRequest(['id_token_hint' => $tokens['id_token'], 'post_logout_redirect_uri' => 'https://evil.example/']), 'invalid_request', 'logout refuses an unregistered redirect');
 $session = $sessions->create($uid)['session'];
 parse_str(parse_url($oauth->authorize($query, $session), PHP_URL_QUERY), $result);
 $tokens = $oauth->token(['code' => $result['code']] + $body);

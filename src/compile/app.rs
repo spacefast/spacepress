@@ -25,6 +25,18 @@ impl Compiler<'_, '_> {
         if file.ends_with("layout.tsx") {
             props.insert("children".to_string(), (Ty::Html, false));
         }
+        // `login.tsx`: what wp-login.php's sign-in view knows (TypedPress\Render\LoginView::props).
+        if file == "app/login.tsx" {
+            let strings = Ty::Array(Box::new(Ty::Str));
+            props.insert("errors".to_string(), (strings.clone(), false));
+            props.insert("messages".to_string(), (strings, false));
+            props.insert("login".to_string(), (Ty::Str, false));
+            props.insert("remember".to_string(), (Ty::Bool, false));
+            props.insert("redirectTo".to_string(), (Ty::Str, false));
+            props.insert("action".to_string(), (Ty::Str, false));
+            props.insert("lostPasswordUrl".to_string(), (Ty::Str, false));
+            props.insert("registerUrl".to_string(), (Ty::union([Ty::Str, Ty::Null]), false));
+        }
         // A page that serves a kind's URL receives its item, read as the visitor (spec §2.7).
         if let Some((kind, _)) = app
             .routes
@@ -43,7 +55,7 @@ impl Compiler<'_, '_> {
         self.ev_program().modules[module].body.iter().any(|stmt| match stmt {
             Stmt::Import { source, specs, .. } if source == crate::loader::APP_MODULE => specs.iter().any(|s| {
                 s.local == *name
-                    && matches!(&s.imported, ImportName::Named(n) if n == "PageProps" || n == "LayoutProps")
+                    && matches!(&s.imported, ImportName::Named(n) if n == "PageProps" || n == "LayoutProps" || n == "LoginProps")
             }),
             _ => false,
         })
@@ -349,6 +361,7 @@ impl Compiler<'_, '_> {
             "Content" | "Html" => &["value"],
             "Comments" => &["for", "className"],
             "Live" => &["id", "children"],
+            "LoginForm" => &["className", "submitLabel", "notices", "links"],
             "Pagination" => &["page", "pages", "param", "className", "aria-label"],
             "Search" => &["action", "label", "placeholder", "className"],
             "SearchResults" => &["kind", "q", "page", "perPage", "className"],
@@ -460,6 +473,34 @@ impl Compiler<'_, '_> {
                 ))
             }
             "Search" | "SearchResults" => self.search_component(name, &named, span),
+            "LoginForm" => {
+                let mut arg = |k: &str, want: Ty| -> Result<String> {
+                    match get(k) {
+                        None => Ok("null".into()),
+                        Some(v) => {
+                            let out = self.expr(v)?;
+                            let out = self.finish_value(out, v.span)?;
+                            if !assignable(&out.ty, &want) {
+                                return err(
+                                    v.span,
+                                    format!("`<LoginForm {k}>` takes {}, not {}", want.describe(), out.ty.describe()),
+                                );
+                            }
+                            Ok(out.php)
+                        }
+                    }
+                };
+                let optional = Ty::union([Ty::Str, Ty::Null, Ty::Undefined]);
+                let class = arg("className", optional.clone())?;
+                let submit = arg("submitLabel", optional)?;
+                let flag = Ty::union([Ty::Bool, Ty::Undefined]);
+                let notices = arg("notices", flag.clone())?;
+                let links = arg("links", flag)?;
+                Ok(Out::atom(
+                    format!("\\TypedPress\\Render\\LoginView::form({class}, {submit}, {notices}, {links})"),
+                    Ty::Html,
+                ))
+            }
             "Content" | "Html" => {
                 let Some(value) = get("value") else {
                     return err_help(

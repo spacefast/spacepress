@@ -24,6 +24,9 @@ use First\JsObject;
  * error is ever stored in Batcache or at the edge for someone else. The page reads it once with
  * `useFormState(action)`; the cookie is deleted in the same response. Nothing is stored on the
  * server: a flash older than {@see TTL} seconds, or one sealed before a salt change, reads as no flash.
+ *
+ * With JavaScript, the form's directive ({@see enhanced()}) sends the same body with `fetch`, which
+ * follows the 303 and reads the flash in that one page request; the router swaps that HTML in place.
  */
 final class Forms
 {
@@ -43,7 +46,21 @@ final class Forms
     /** The attributes `<form action={name}>` gets. */
     public static function attributes(string $action): array
     {
-        return ['method' => 'post', 'action' => \First\Wp\Facade::url('/actions/' . rawurlencode($action))];
+        return ['method' => 'post', 'action' => \First\Wp\Facade::url('/actions/' . rawurlencode($action))] + self::enhanced();
+    }
+
+    /**
+     * The JavaScript submit's directive (client/router.js `actions.submit`): with scripts on, the
+     * same post goes through `fetch` and the page it comes back to is swapped into the router region
+     * in place. The router store is enqueued on any page that renders one.
+     *
+     * @return array<string, string>
+     */
+    public static function enhanced(): array
+    {
+        Navigation::used();
+
+        return ['data-wp-interactive' => Navigation::NAMESPACE, 'data-wp-on--submit' => 'actions.submit'];
     }
 
     /** The hidden fields after the author's: where to come back to, and the nonce of a signed-in render. */

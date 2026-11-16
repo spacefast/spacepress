@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\TrustPath;
+namespace TypedPress\Identity\Vendor\Webauthn\TrustPath;
 
 final readonly class EmptyTrustPath implements TrustPath
 {

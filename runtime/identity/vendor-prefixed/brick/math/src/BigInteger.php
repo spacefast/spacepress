@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Brick\Math;
+namespace TypedPress\Identity\Vendor\Brick\Math;
 
-use First\Identity\Vendor\Brick\Math\Exception\DivisionByZeroException;
-use First\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
-use First\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Brick\Math\Exception\MathException;
-use First\Identity\Vendor\Brick\Math\Exception\NegativeNumberException;
-use First\Identity\Vendor\Brick\Math\Exception\NoInverseException;
-use First\Identity\Vendor\Brick\Math\Exception\NumberFormatException;
-use First\Identity\Vendor\Brick\Math\Exception\PlatformException;
-use First\Identity\Vendor\Brick\Math\Exception\RandomSourceException;
-use First\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
-use First\Identity\Vendor\Brick\Math\Internal\Calculator;
-use First\Identity\Vendor\Brick\Math\Internal\CalculatorRegistry;
-use First\Identity\Vendor\Brick\Math\Internal\Safe;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\DivisionByZeroException;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\IntegerOverflowException;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\NegativeNumberException;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\NoInverseException;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\NumberFormatException;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\PlatformException;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\RandomSourceException;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
+use TypedPress\Identity\Vendor\Brick\Math\Internal\Calculator;
+use TypedPress\Identity\Vendor\Brick\Math\Internal\CalculatorRegistry;
+use TypedPress\Identity\Vendor\Brick\Math\Internal\Safe;
 use LogicException;
 use Override;
 use Throwable;

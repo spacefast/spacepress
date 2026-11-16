@@ -1,4 +1,4 @@
-//! `first/app/` route files become compiled roots (docs/spec/rendering.md §2–§3).
+//! `tp/app/` route files become compiled roots (docs/spec/rendering.md §2–§3).
 //!
 //! Each file's exports are checked against what its name allows ([`crate::app::allowed_exports`]):
 //! - `default`: the page, layout, not-found or error component, compiled like any component;
@@ -10,7 +10,7 @@
 //! - `GET`/`POST`/... (pages and `route.ts`): HTTP handlers, `(req, ctx) => { status, headers, body }`,
 //!   as `routes` handlers are.
 //!
-//! The route table itself goes into `schema.php` as `app`, which `First\Wp\AppRouter` reads.
+//! The route table itself goes into `schema.php` as `app`, which `TypedPress\Wp\AppRouter` reads.
 
 use crate::app::{self, RouteKind};
 use crate::diag::{Diag, Span};
@@ -69,7 +69,7 @@ fn route_id(v: &Value, span: Span) -> Result<String, Diag> {
 }
 
 /// `export const template` on a page or layout: the block template the page renders in
-/// (docs/pages.md "Block templates"). `"theme"` is First's template with the theme's header and
+/// (docs/pages.md "Block templates"). `"theme"` is TypedPress's template with the theme's header and
 /// footer parts, `"blank"` the one with none; any other slug names a template the theme, a plugin
 /// or the Site Editor provides. A layout that says nothing and places `<TemplatePart>` itself is
 /// `"blank"`: it lays out the theme's parts where it wants them.
@@ -101,7 +101,7 @@ fn template(
     }
 }
 
-/// Whether a module imports `TemplatePart` from `"first/app"`.
+/// Whether a module imports `TemplatePart` from `"typedpress/app"`.
 fn places_template_parts(program: &loader::Program, module: usize) -> bool {
     use crate::ir::{ImportName, Stmt};
     program.modules[module].body.iter().any(|stmt| match stmt {
@@ -139,7 +139,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         for name in exports.keys() {
             if !allowed.contains(&name.as_str()) {
                 let help = if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
-                    "move components into first/components/ (or a `_private` folder) and import them".to_string()
+                    "move components into tp/components/ (or a `_private` folder) and import them".to_string()
                 } else {
                     format!(
                         "{path} exports only {}; move helpers into a module it imports",
@@ -458,7 +458,7 @@ fn prebuilt(
         let at = span(path);
         if output == Output::Static && file.prerender == Some(false) {
             return Err(Diag::new(at, format!("{path} says `prerender = false`, and `output: \"static\"` prebuilds every page"))
-                .help("remove `export const prerender = false`, or set `output: \"server\"` in first.config.ts to render pages per request"));
+                .help("remove `export const prerender = false`, or set `output: \"server\"` in typedpress.config.ts to render pages per request"));
         }
         let dynamic = route.segments.iter().any(|s| !matches!(s, app::Segment::Literal(_)));
         let serves_kind = kinds.iter().any(|(_, url)| app::serves_kind_url(route, url).is_some());
@@ -492,7 +492,7 @@ fn prebuilt(
             "it says `prerender = true`"
         };
         let fix = if output == Output::Static {
-            "set `output: \"server\"` in first.config.ts and `export const prerender = false` here to render it per request"
+            "set `output: \"server\"` in typedpress.config.ts and `export const prerender = false` here to render it per request"
         } else {
             "remove `export const prerender = true` to render it per request"
         };

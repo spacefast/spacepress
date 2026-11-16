@@ -174,7 +174,7 @@ async function serve(options) {
   }
   const baseline = () => {
     const source = join(app, "public/sources.json");
-    const published = join(state, "wp-content/plugins/first-app-showcase/public/sources.json");
+    const published = join(state, "wp-content/plugins/typedpress-app-showcase/public/sources.json");
     return JSON.parse(readFileSync(existsSync(source) ? source : published, "utf8"));
   };
   const wp = (args) => command("bash", [harness, "wp", ...args], { env, timeout: 90000 });
@@ -186,7 +186,7 @@ async function serve(options) {
     let publicationStarted = false;
     let committed = false;
     let outcome;
-    const live = join(state, "wp-content/plugins/first-app-showcase");
+    const live = join(state, "wp-content/plugins/typedpress-app-showcase");
     const backup = join(dir, "previous-plugin");
     const stage = join(dirname(live), `.showcase-${job.id}`);
     const log = (text) => {
@@ -203,11 +203,11 @@ async function serve(options) {
         throw new Error("The demo changed. Reload the source before applying.");
       await mkdir(candidate, { recursive: true });
       await cp(join(app, "public"), join(candidate, "public"), { recursive: true });
-      await cp(join(app, "first"), join(candidate, "first"), { recursive: true });
+      await cp(join(app, "tp"), join(candidate, "tp"), { recursive: true });
       const result = await buildApp({ app: candidate, first, files: request.files, log });
       assertAdditive(before.previous, result.manifest.previous);
       assertStructuredFields(
-        await readAppSchema(join(app, "first/dist/wp-content/plugins/first-app-showcase")),
+        await readAppSchema(join(app, "tp/dist/wp-content/plugins/typedpress-app-showcase")),
         await readAppSchema(result.plugin),
       );
       for (const name of result.manifest.migrationFiles) {

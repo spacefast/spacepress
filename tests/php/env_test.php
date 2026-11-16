@@ -2,25 +2,25 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/../../runtime/First/bootstrap.php';
+require __DIR__ . '/../../runtime/TypedPress/bootstrap.php';
 require __DIR__ . '/harness.php';
 
-use First\Env;
+use TypedPress\Env;
 
-define('FIRST_ENV_CONSTANT', 'standalone-constant');
-putenv('FIRST_ENV_PROCESS=standalone-process');
+define('TP_ENV_CONSTANT', 'standalone-constant');
+putenv('TP_ENV_PROCESS=standalone-process');
 eq('standalone env reads process values and WordPress constants',
-    [Env::get('FIRST_ENV_PROCESS'), Env::resolve(['env' => 'FIRST_ENV_CONSTANT'])],
+    [Env::get('TP_ENV_PROCESS'), Env::resolve(['env' => 'TP_ENV_CONSTANT'])],
     ['standalone-process', 'standalone-constant']);
 
-Env::isolate(['APP_VALUE' => 'space-version', 'FIRST_ENV_PROCESS' => '']);
+Env::isolate(['APP_VALUE' => 'space-version', 'TP_ENV_PROCESS' => '']);
 eq('managed env preserves values and empty overrides without ambient fallback',
-    [Env::get('APP_VALUE'), Env::get('FIRST_ENV_PROCESS'), Env::resolve(['env' => 'FIRST_ENV_CONSTANT']), Env::get('MISSING'), Env::resolve('literal')],
+    [Env::get('APP_VALUE'), Env::get('TP_ENV_PROCESS'), Env::resolve(['env' => 'TP_ENV_CONSTANT']), Env::get('MISSING'), Env::resolve('literal')],
     ['space-version', '', null, null, 'literal']);
 
 Env::isolate([]);
 eq('an empty managed scope denies all ambient values',
-    [Env::get('APP_VALUE'), Env::get('FIRST_ENV_PROCESS'), Env::get('FIRST_ENV_CONSTANT')],
+    [Env::get('APP_VALUE'), Env::get('TP_ENV_PROCESS'), Env::get('TP_ENV_CONSTANT')],
     [null, null, null]);
 
 define('DB_PASSWORD', 'box-database-password');
@@ -39,11 +39,11 @@ eq('an isolated host never passes WordPress secrets, but its own variables keep 
     $scope->setValue(null, null);
 })();
 eq('standalone lookup never falls back to WordPress secrets or per-request server values',
-    [Env::get('DB_PASSWORD'), Env::get('LOGGED_IN_SALT'), Env::get('SECRET_KEY'), Env::get('WP_SECRETS_KEY'), Env::get('HTTP_COOKIE'), Env::get('HTTP_PROXY'), Env::get('PHP_AUTH_PW'), Env::resolve(['env' => 'DB_PASSWORD']), Env::get('FIRST_ENV_CONSTANT')],
+    [Env::get('DB_PASSWORD'), Env::get('LOGGED_IN_SALT'), Env::get('SECRET_KEY'), Env::get('WP_SECRETS_KEY'), Env::get('HTTP_COOKIE'), Env::get('HTTP_PROXY'), Env::get('PHP_AUTH_PW'), Env::resolve(['env' => 'DB_PASSWORD']), Env::get('TP_ENV_CONSTANT')],
     [null, null, null, null, null, null, null, null, 'standalone-constant']);
 eq('host secrets are exact names; request values are prefixes',
     [array_map([Env::class, 'hostSecret'], ['db_host', 'DB_URL', 'NONCE_KEY', 'SECRET_SALT', 'wp_secrets_key_previous', 'WEBHOOK_SECRET']),
-     array_map([Env::class, 'requestValue'], ['HTTP_X_ANYTHING', 'query_string', 'PHP_AUTH_USER', 'REMOTE_USER', 'HTTPS_ONLY', 'FIRST_NOW'])],
+     array_map([Env::class, 'requestValue'], ['HTTP_X_ANYTHING', 'query_string', 'PHP_AUTH_USER', 'REMOTE_USER', 'HTTPS_ONLY', 'TP_NOW'])],
     [[true, false, true, true, true, false], [true, true, true, true, false, false]]);
 eq('core\'s filesystem and proxy credentials are WordPress secrets too',
     array_map([Env::class, 'hostSecret'], ['FTP_PASS', 'ftp_privkey', 'FTP_USER', 'FTP_PUBKEY', 'WP_PROXY_USERNAME', 'WP_PROXY_PASSWORD', 'WP_PROXY_HOST']),
@@ -68,5 +68,5 @@ putenv('REDIRECT_URI');
 putenv('HTTP_COOKIE');
 putenv('HTTP_PROXY');
 putenv('PHP_AUTH_PW');
-putenv('FIRST_ENV_PROCESS');
+putenv('TP_ENV_PROCESS');
 finish('env');

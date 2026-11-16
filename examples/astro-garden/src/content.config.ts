@@ -1,8 +1,8 @@
 import { defineCollection } from "astro:content";
-import { firstLoader } from "@first/astro";
+import { tpLoader } from "@typedpress/astro";
 
-// The plants of the First app at FIRST_URL (examples/garden). The schema and the type of
+// The plants of the TypedPress app at TP_URL (examples/garden). The schema and the type of
 // `entry.data` come from the site; each build pulls only the plants that changed.
 export const collections = {
-  plants: defineCollection({ loader: firstLoader("plants") }),
+  plants: defineCollection({ loader: tpLoader("plants") }),
 };

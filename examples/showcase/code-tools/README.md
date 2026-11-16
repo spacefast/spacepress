@@ -13,14 +13,14 @@ wrapper is bundled from the canonical `docs-site/lib/compiler.ts`; no second
 implementation is maintained here. Runtime code and highlighting grammars are
 bundled locally. Exact dependency versions are in `package-lock.json`.
 
-The launcher also copies the current compiler's `first.wasm` and writes
+The launcher also copies the current compiler's `typedpress.wasm` and writes
 `sources.json` alongside these files. Its manifest is:
 
 ```json
 {
   "name": "showcase",
   "revision": "SHA-256 of the running source and migration inputs",
-  "files": {"first.config.ts": "complete TypeScript", "pantry.ts": "complete TypeScript"},
+  "files": {"typedpress.config.ts": "complete TypeScript", "pantry.ts": "complete TypeScript"},
   "output": {"schema.php": "exact generated PHP", "functions.php": "exact generated PHP"},
   "previous": null,
   "migrationFiles": []
@@ -63,7 +63,7 @@ inspection before another rebuild; the UI retains its message, log and draft.
 The build panel reports service unavailability separately from missing administrator access. The sign-in link returns here.
 
 The UI obtains the canonical WordPress REST nonce and calls the demo-only
-`first-showcase/v1/control` and `first-showcase/v1/builds` endpoints. Source files
+`typedpress-showcase/v1/control` and `typedpress-showcase/v1/builds` endpoints. Source files
 and the manifest revision are submitted together. Build logs remain plain text.
 After success, **Reload updated demo** loads the new source and artifacts. A
 stale revision is refused while the browser draft remains downloadable.

@@ -1,5 +1,5 @@
 {
-  "name": "first-official-emdash-sites",
+  "name": "typedpress-official-emdash-sites",
   "private": true,
   "type": "module",
   "engines": {
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@astrojs/node": "11.1.5",
-    "@first/astro": "file:../../../packages/astro",
+    "@typedpress/astro": "file:../../../packages/astro",
     "astro": "7.4.5",
     "linkedom": "0.18.12"
   },

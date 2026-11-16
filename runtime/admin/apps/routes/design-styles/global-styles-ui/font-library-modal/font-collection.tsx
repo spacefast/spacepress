@@ -1,5 +1,5 @@
-// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
-import { Select, SelectControl, Stack } from '@first-admin/design-system';
+// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- See: ARC-1359
+import { Select, SelectControl, Stack } from '@typedpress-admin/design-system';
 import {
 	useContext,
 	useEffect,
@@ -47,7 +47,7 @@ import type { FontFace, FontFamily } from './types';
 
 const DEFAULT_CATEGORY = {
 	slug: 'all',
-	name: _x( 'All', 'font categories', 'first-admin' ),
+	name: _x( 'All', 'font categories', 'typedpress-admin' ),
 };
 
 const LOCAL_STORAGE_ITEM = 'wp-font-library-google-fonts-permission';
@@ -228,7 +228,7 @@ function FontCollection( { slug }: { slug: string } ) {
 				type: 'error',
 				message: __(
 					'Error installing the fonts, could not be downloaded.',
-					'first-admin'
+					'typedpress-admin'
 				),
 			} );
 			return;
@@ -240,7 +240,7 @@ function FontCollection( { slug }: { slug: string } ) {
 				type: 'success',
 				message: __(
 					'Fonts were installed successfully.',
-					'first-admin'
+					'typedpress-admin'
 				),
 			} );
 		} catch ( error ) {
@@ -279,7 +279,7 @@ function FontCollection( { slug }: { slug: string } ) {
 		return (
 			<DropdownMenu
 				icon={ moreVertical }
-				label={ __( 'Actions', 'first-admin' ) }
+				label={ __( 'Actions', 'typedpress-admin' ) }
 				popoverProps={ {
 					position: 'bottom left',
 				} }
@@ -287,7 +287,7 @@ function FontCollection( { slug }: { slug: string } ) {
 					{
 						title: __(
 							'Revoke access to Google Fonts',
-							'first-admin'
+							'typedpress-admin'
 						),
 						onClick: revokeAccess,
 					},
@@ -325,16 +325,16 @@ function FontCollection( { slug }: { slug: string } ) {
 									value={ filters.search }
 									placeholder={ __(
 										'Font name…',
-										'first-admin'
+										'typedpress-admin'
 									) }
-									label={ __( 'Search', 'first-admin' ) }
+									label={ __( 'Search', 'typedpress-admin' ) }
 									onChange={ debouncedUpdateSearchInput }
 									__nextHasNoMarginBottom
 									hideLabelFromVision={ false }
 								/>
 								<SelectControl
 									className="font-library-modal__category-select"
-									label={ __( 'Category', 'first-admin' ) }
+									label={ __( 'Category', 'typedpress-admin' ) }
 									items={ categories.map( ( category ) => ( {
 										label: category.name,
 										value: category.slug,
@@ -354,7 +354,7 @@ function FontCollection( { slug }: { slug: string } ) {
 									<Text>
 										{ __(
 											'No fonts found. Try with a different search term.',
-											'first-admin'
+											'typedpress-admin'
 										) }
 									</Text>
 								) }
@@ -405,12 +405,12 @@ function FontCollection( { slug }: { slug: string } ) {
 										setSelectedFont( null );
 										setNotice( null );
 									} }
-									label={ __( 'Back', 'first-admin' ) }
+									label={ __( 'Back', 'typedpress-admin' ) }
 								/>
 								<Heading
 									level={ 2 }
 									size={ 13 }
-									className="first-admin-global-styles-header"
+									className="typedpress-admin-global-styles-header"
 								>
 									{ selectedFont?.name }
 								</Heading>
@@ -431,13 +431,13 @@ function FontCollection( { slug }: { slug: string } ) {
 							<Text>
 								{ __(
 									'Select font variants to install.',
-									'first-admin'
+									'typedpress-admin'
 								) }
 							</Text>
 							<Spacer margin={ 4 } />
 							<CheckboxControl
 								className="font-library-modal__select-all"
-								label={ __( 'Select all', 'first-admin' ) }
+								label={ __( 'Select all', 'typedpress-admin' ) }
 								checked={ isSelectAllChecked }
 								onChange={ toggleSelectAll }
 								indeterminate={ isIndeterminate }
@@ -499,7 +499,7 @@ function FontCollection( { slug }: { slug: string } ) {
 								}
 								accessibleWhenDisabled
 							>
-								{ __( 'Install', 'first-admin' ) }
+								{ __( 'Install', 'typedpress-admin' ) }
 							</Button>
 						</Flex>
 					) }
@@ -523,7 +523,7 @@ function FontCollection( { slug }: { slug: string } ) {
 										_x(
 											'<div>Page</div>%1$s<div>of %2$d</div>',
 											'paging',
-											'first-admin'
+											'typedpress-admin'
 										),
 										'<CurrentPage />',
 										totalPages
@@ -543,7 +543,7 @@ function FontCollection( { slug }: { slug: string } ) {
 												<Select.Trigger
 													aria-label={ __(
 														'Current page',
-														'first-admin'
+														'typedpress-admin'
 													) }
 													size="small"
 													variant="minimal"
@@ -580,7 +580,7 @@ function FontCollection( { slug }: { slug: string } ) {
 									accessibleWhenDisabled
 									label={ __(
 										'Previous page',
-										'first-admin'
+										'typedpress-admin'
 									) }
 									icon={ isRTL() ? next : previous }
 									showTooltip
@@ -591,7 +591,7 @@ function FontCollection( { slug }: { slug: string } ) {
 									onClick={ () => setPage( page + 1 ) }
 									disabled={ page === totalPages }
 									accessibleWhenDisabled
-									label={ __( 'Next page', 'first-admin' ) }
+									label={ __( 'Next page', 'typedpress-admin' ) }
 									icon={ isRTL() ? previous : next }
 									showTooltip
 									size="compact"

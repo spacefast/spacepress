@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 /*
  * Db + write pipeline + CLI + REST on WordPress, in-process (tests/php/wp.php): a hand-written app
- * plugin (what `first build` emits) on a fresh WordPress-on-SQLite site. The collections here are
+ * plugin (what `typedpress build` emits) on a fresh WordPress-on-SQLite site. The collections here are
  * custom tables (`editor: false`); post-backed collections are proven by the blog suite and tests/wp.
  */
 
-use First\HttpError;
-use First\JsError;
+use TypedPress\HttpError;
+use TypedPress\JsError;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -169,7 +169,7 @@ $schema = [
             'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'author'], 'update' => ['fn' => 'profiles__access__update'], 'delete' => ['role' => 'editor']],
             'api' => ['list' => true, 'get' => true, 'create' => true, 'update' => true, 'delete' => true],
         ],
-        // ---- ref(labels).many(): what `first build` emits (tests/compiler.rs owns that shape)
+        // ---- ref(labels).many(): what `typedpress build` emits (tests/compiler.rs owns that shape)
         'labels' => [
             'primaryKey' => 'id',
             'columns' => [
@@ -213,22 +213,22 @@ $schema = [
 ];
 
 $functions = <<<'PHP'
-    use First\HttpError;
-    use First\JsError;
-    use First\Js;
-    use function First\db;
+    use TypedPress\HttpError;
+    use TypedPress\JsError;
+    use TypedPress\Js;
+    use function TypedPress\db;
 
     // A compiled before-hook mutates its handle without returning a replacement.
     // Advances a pinned clock by a second while a row's defaults are being generated.
     function locations__tick()
     {
-        if (($pinned = getenv('FIRST_NOW')) !== false && $pinned !== '') {
-            putenv('FIRST_NOW=' . Js::iso(Js::now() + 1000));
+        if (($pinned = getenv('TP_NOW')) !== false && $pinned !== '') {
+            putenv('TP_NOW=' . Js::iso(Js::now() + 1000));
         }
         return null;
     }
 
-    function locations__beforeCreate(\First\JsObject $data)
+    function locations__beforeCreate(\TypedPress\JsObject $data)
     {
         $data->p['name'] = Js::trim($data->p['name'] ?? null);
         if ($data->p['name'] !== 'forget-code') {
@@ -241,7 +241,7 @@ $functions = <<<'PHP'
         if (!array_key_exists('name', $data->p)) {
             throw new \LogicException('beforeCreate ran without a required field');
         }
-        return new \First\JsObject([...$data->p, 'name' => ucfirst($data->p['name'])]);
+        return new \TypedPress\JsObject([...$data->p, 'name' => ucfirst($data->p['name'])]);
     }
 
     function items__afterUpdate($row, $previous)
@@ -340,7 +340,7 @@ $functions = <<<'PHP'
     PHP;
 
 $wp = wpSite('db', ['schema' => $schema, 'functions' => $functions, 'users' => ['fa_alice' => 'author', 'fa_bob' => 'author', 'fa_ed' => 'editor', 'fa_admin' => 'admin']]);
-$db = \First\db();
+$db = \TypedPress\db();
 $app = $wp->app();
 
 function names(array $rows): array
@@ -351,32 +351,32 @@ function names(array $rows): array
 // ================================================================ boot + migrate
 
 eq('activation applied the init migration and recorded it in the per-app ledger',
-    $wp->sql('SELECT `id` FROM {prefix}first__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), [['id' => '0001_init']]);
+    $wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), [['id' => '0001_init']]);
 eq('the app plugin is active with current storage', [$wp->plugin()->unavailable(), $wp->plugin()->pendingMigrations()], [null, []]);
-eq('the runtime describes its database as SQLite through the official plugin', \First\Wp\Platform::versions()['database']['kind'], 'sqlite');
-eq('platform problems accept SQLite Database Integration', \First\Wp\Platform::problems(), []);
+eq('the runtime describes its database as SQLite through the official plugin', \TypedPress\Wp\Platform::versions()['database']['kind'], 'sqlite');
+eq('platform problems accept SQLite Database Integration', \TypedPress\Wp\Platform::problems(), []);
 // Akismet isn't a platform plugin: this site has none, and the app mounted. Two Factor counts when loaded,
 // not when stored as active: the host's v2 scope activates it per request.
-eq('the app mounted with no Akismet installed', [is_dir(WP_PLUGIN_DIR . '/akismet'), class_exists('Akismet', false), \First\Wp\Platform::versions()['akismet'], \First\Wp\Platform::versions()['twoFactor']],
+eq('the app mounted with no Akismet installed', [is_dir(WP_PLUGIN_DIR . '/akismet'), class_exists('Akismet', false), \TypedPress\Wp\Platform::versions()['akismet'], \TypedPress\Wp\Platform::versions()['twoFactor']],
     [false, false, ['version' => null, 'spamChecks' => false], '0.17.0']);
 $stored = get_option('active_plugins');
 add_filter('pre_option_active_plugins', static fn (): array => array_values(array_diff($stored, ['two-factor/two-factor.php'])));
-eq('platform problems read the loaded plugins, not the stored active list', \First\Wp\Platform::problems(), []);
+eq('platform problems read the loaded plugins, not the stored active list', \TypedPress\Wp\Platform::problems(), []);
 remove_all_filters('pre_option_active_plugins');
 
 // ================================================================ write pipeline: create
 
 
 $tsPattern = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/';
-putenv('FIRST_NOW=2026-01-01T00:00:00.000Z');
+putenv('TP_NOW=2026-01-01T00:00:00.000Z');
 $garage = $db->insert('locations', ['name' => '  Garage  ', 'meta' => ['floor' => 1, 'tags' => ['a/b', 'é']]], true)[0];
-putenv('FIRST_NOW');
+putenv('TP_NOW');
 eq('by-ref beforeCreate mutation is kept (trim + fill)', [$garage['name'], $garage['code']], ['Garage', 'GAR']);
 eq('defaults: enum value + boolean', [$garage['kind'], $garage['active']], ['shelf', true]);
 eq('default now: one instant per write, nested defaults included, even when the clock moves between defaults',
     [$garage['createdAt'], $garage['updatedAt'], $garage['audit']['at'] ?? null], array_fill(0, 3, '2026-01-01T00:00:00.000Z'));
-eq('json column round-trips', \First\Js::jsonStringify($garage['meta']), '{"floor":1,"tags":["a/b","é"]}');
-eq('json stored with unescaped slashes/unicode', $wp->scalar('SELECT `meta` FROM {prefix}first_locations WHERE `name` = ?', ['Garage']), '{"floor":1,"tags":["a/b","é"]}');
+eq('json column round-trips', \TypedPress\Js::jsonStringify($garage['meta']), '{"floor":1,"tags":["a/b","é"]}');
+eq('json stored with unescaped slashes/unicode', $wp->scalar('SELECT `meta` FROM {prefix}tp_locations WHERE `name` = ?', ['Garage']), '{"floor":1,"tags":["a/b","é"]}');
 
 [$attic, $basement] = $db->insert('locations', [
     ['name' => 'Attic', 'kind' => 'bin', 'active' => false, 'updatedAt' => '2000-01-01T00:00:00Z'],
@@ -387,7 +387,7 @@ eq('multi-row insert + explicit timestamp normalized', $attic['updatedAt'], '200
 $items = $db->insert('items', [
     ['name' => 'hammer', 'qty' => 2, 'price' => 9.5, 'locationId' => $garage['id']],
     ['name' => 'nails', 'qty' => 100, 'price' => 2, 'locationId' => $garage['id'], 'seenAt' => 0],
-    ['name' => 'box', 'price' => \First\Js::undefined(), 'seenAt' => \First\Js::undefined()],
+    ['name' => 'box', 'price' => \TypedPress\Js::undefined(), 'seenAt' => \TypedPress\Js::undefined()],
     ['name' => 'lamp', 'qty' => 3.0, 'locationId' => $attic['id'], 'seenAt' => '2024-03-01T01:30:00+02:00', 'bestBefore' => '2024-02-29'],
 ], true);
 [$hammer, $nails, $box, $lamp] = $items;
@@ -430,7 +430,7 @@ eq('like is case-sensitive, ilike is not', [names($find(['where' => ['name' => [
 eq('notIlike', names($find(['where' => ['name' => ['notIlike' => '%A%']]])), ['Box']);
 $db->insert('items', [['name' => 'Été', 'qty' => 1], ['name' => 'ΟΔΥΣΣΕΥΣ', 'qty' => 1], ['name' => 'İ', 'qty' => 1]]);
 // Rows the items hook would reshape (it trims and capitalizes) go in as stored values.
-$wp->exec('INSERT INTO {prefix}first_items (`name`, `qty`) VALUES (?, 1), (?, 1)', ["Hammer\n", 'abc\\']);
+$wp->exec('INSERT INTO {prefix}tp_items (`name`, `qty`) VALUES (?, 1), (?, 1)', ["Hammer\n", 'abc\\']);
 eq('ilike folds case beyond ASCII', names($find(['where' => ['name' => ['ilike' => 'été']]])), ['Été']);
 eq('ilike folds a final sigma onto its capital', names($find(['where' => ['name' => ['ilike' => 'οδυσσευς']]])), ['ΟΔΥΣΣΕΥΣ']);
 eq('ilike `_` is one character, whatever its case folding expands to', names($find(['where' => ['name' => ['ilike' => '_']]])), ['İ']);
@@ -458,7 +458,7 @@ eq('json whole-value eq compares the stored text: the same document matches, a d
 // is neither empty nor a member of anything.
 (static function (): void {
     $wp = $GLOBALS['wp'];
-    $schema = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => ['listed' => [
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['listed' => [
         'primaryKey' => 'id', 'editor' => false, 'table' => 'first_listed',
         'columns' => [
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -468,7 +468,7 @@ eq('json whole-value eq compares the stored text: the same document matches, a d
     ]]]);
     $wp->exec('CREATE TABLE {prefix}first_listed (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `tags` LONGTEXT, `photos` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
     $wp->exec('INSERT INTO {prefix}first_listed (`id`, `tags`, `photos`) VALUES (1, \'["news","guide"]\', \'[12,7]\'), (2, \'["new"]\', \'[120]\'), (3, \'[]\', \'[]\'), (4, NULL, NULL)');
-    $db = new \First\Db(\First\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \First\db()->media());
+    $db = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \TypedPress\db()->media());
     $ids = static fn (array $where): array => array_column($db->findMany('listed', ['where' => $where, 'orderBy' => ['id' => 'asc']]), 'id');
     eq('has on a media list matches the whole id 12, not 120', $ids(['photos' => ['has' => 12]]), [1]);
     eq('has on a select list matches the whole string "new", not "news"', $ids(['tags' => ['has' => 'new']]), [2]);
@@ -527,15 +527,15 @@ eq('transaction rolled back the update and the hook insert', [$db->findFirst('it
 
 // Callback effects use another connection: they must see committed rows, never uncommitted state.
 $observer = new PDO('sqlite:' . DB_PATH);
-$items = $wp->connection()->prefix() . 'first_items';
+$items = $wp->connection()->prefix() . 'tp_items';
 $committed = [];
 $db->transaction(function () use ($db, $observer, $items, &$committed) {
-    \First\Extensions::afterCommit(function () use ($observer, $items, &$committed) {
+    \TypedPress\Extensions::afterCommit(function () use ($observer, $items, &$committed) {
         $committed[] = 'outer:' . (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn();
     });
     $db->transaction(function () use ($db, $observer, $items, &$committed) {
         $db->update('items', ['qty' => 6], ['name' => 'Hammer']);
-        \First\Extensions::afterCommit(function () use ($observer, $items, &$committed) {
+        \TypedPress\Extensions::afterCommit(function () use ($observer, $items, &$committed) {
             $committed[] = 'inner:' . (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn();
         });
     });
@@ -546,7 +546,7 @@ problem('outer rollback discards callbacks registered by a nested write', functi
     $db->transaction(function () use ($db, &$committed) {
         $db->transaction(function () use ($db, &$committed) {
             $db->update('items', ['qty' => 99], ['name' => 'Hammer']);
-            \First\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'rolled back'; });
+            \TypedPress\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'rolled back'; });
         });
         throw new JsError('rollback');
     });
@@ -559,7 +559,7 @@ try {
         try {
             $db->transaction(function () use ($db, &$committed): void {
                 $db->insert('logs', ['message' => 'caught-inner-write']);
-                \First\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'must not run'; });
+                \TypedPress\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'must not run'; });
                 throw new RuntimeException('inner failure');
             });
         } catch (RuntimeException) {
@@ -581,11 +581,11 @@ problem('post-commit exception propagates', function () use ($db, $wp) {
         file_put_contents($wp->dir . '/committed-file', 'durable');
         $wp->connection()->onRollback(static fn () => unlink($wp->dir . '/committed-file'));
         $db->update('items', ['qty' => 5], ['name' => 'Hammer']);
-        \First\Extensions::afterCommit(static fn () => throw new JsError('after commit'));
+        \TypedPress\Extensions::afterCommit(static fn () => throw new JsError('after commit'));
     });
 }, 422, 'rejected');
 eq('post-commit failure never undoes committed filesystem effects', is_file($wp->dir . '/committed-file'), true);
-\First\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'immediate'; });
+\TypedPress\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'immediate'; });
 eq('rollback and post-commit failure leave no stale callbacks', [(int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn(), $committed], [5, ['outer:6', 'inner:6', 'immediate']]);
 
 $before = $logCount();
@@ -601,60 +601,60 @@ eq('runtime FK cascade is on', $db->findFirst('items', ['where' => ['id' => $lam
 
 // ================================================================ migrations: a later file, the ledger, a failing statement
 
-// An app update ships 0002: adding a column to a table with rows. `wp first migrate` applies it in
+// An app update ships 0002: adding a column to a table with rows. `wp typedpress migrate` applies it in
 // order, records it per app, and the next request sees current storage.
 $childrenBefore = $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]);
-file_put_contents($wp->plugin()->dir . '/first/app/migrations/0002_note.sql', 'ALTER TABLE `{prefix}first_locations` ADD COLUMN `note` LONGTEXT;');
-eq('`wp first migrate` applies the pending file', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['0002_note']]]]);
+file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0002_note.sql', 'ALTER TABLE `{prefix}tp_locations` ADD COLUMN `note` LONGTEXT;');
+eq('`wp typedpress migrate` applies the pending file', $wp->wpCli(['migrate']), [0, ['data' => ['applied' => ['0002_note']]]]);
 eq('child rows survive the parent change (no cascade fired)', $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]), $childrenBefore);
 eq('the table has the new column and the ledger the file', [
-    $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'first_locations', 'note']),
-    array_column($wp->sql('SELECT `id` FROM {prefix}first__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), 'id'),
+    $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'tp_locations', 'note']),
+    array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? ORDER BY `id`', ['dbtest']), 'id'),
 ], [1, ['0001_init', '0002_note']]);
 problem('the unique index still holds', fn () => $db->insert('locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
 // Migration text is SQL as the compiler or an operator writes it: a leading comment, a `?` inside a
 // literal default, and a constraint over rows that break it.
 $migrate = static function (string $id, string $sql) use ($wp): ?array {
-    file_put_contents($wp->plugin()->dir . "/first/app/migrations/$id.sql", $sql);
+    file_put_contents($wp->plugin()->dir . "/tp/app/migrations/$id.sql", $sql);
 
     return $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null;
 };
 // Statement text as the compiler or an operator writes it, read as the driver reads it. Each ALTER
 // is a plain Connection::run on a parent table with children (the migration path above proves the
 // same statement reaching it through a file); the children must survive the driver's table rebuild.
-$wp->exec('CREATE TABLE {prefix}first_rf_parent (`id` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-$wp->exec('CREATE TABLE {prefix}first_rf_child (`id` BIGINT UNSIGNED NOT NULL, `pid` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `first_rf_child_pid_fk` FOREIGN KEY (`pid`) REFERENCES {prefix}first_rf_parent (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
-$wp->exec('INSERT INTO {prefix}first_rf_parent VALUES (1)');
-$wp->exec('INSERT INTO {prefix}first_rf_child VALUES (1, 1)');
-$column = static fn (string $name): int => (int) $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'first_rf_parent', $name]);
-$children = static fn (): int => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first_rf_child');
+$wp->exec('CREATE TABLE {prefix}tp_rf_parent (`id` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+$wp->exec('CREATE TABLE {prefix}tp_rf_child (`id` BIGINT UNSIGNED NOT NULL, `pid` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `tp_rf_child_pid_fk` FOREIGN KEY (`pid`) REFERENCES {prefix}tp_rf_parent (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
+$wp->exec('INSERT INTO {prefix}tp_rf_parent VALUES (1)');
+$wp->exec('INSERT INTO {prefix}tp_rf_child VALUES (1, 1)');
+$column = static fn (string $name): int => (int) $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'tp_rf_parent', $name]);
+$children = static fn (): int => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp_rf_child');
 $alter = static function (string $sql, string $column) use ($wp, $children): array {
     $wp->exec($sql);
 
-    return [$children(), $column === '' ? null : (int) $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'first_rf_parent', $column])];
+    return [$children(), $column === '' ? null : (int) $wp->scalar('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$wp->connection()->prefix() . 'tp_rf_parent', $column])];
 };
-eq('a leading block comment and a literal `?` default', $alter("/* adds a prompt */ ALTER TABLE `{prefix}first_rf_parent` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?'", 'prompt'), [1, 1]);
-eq('a comment between the keywords', $alter('ALTER /* inline */ TABLE `{prefix}first_rf_parent` ADD COLUMN `c2` LONGTEXT', 'c2'), [1, 1]);
-eq('a line comment ending in a carriage return', $alter("-- note\rALTER TABLE `{prefix}first_rf_parent` ADD COLUMN `c3` LONGTEXT", 'c3'), [1, 1]);
-eq('an executable comment this server\'s version satisfies is the statement', $alter('/*!80000 ALTER TABLE `{prefix}first_rf_parent` ADD COLUMN `c4` LONGTEXT */', 'c4'), [1, 1]);
-eq('an executable comment for a newer server is a comment, and the ALTER behind it still keeps the children', $alter('/*!99999 SELECT 1 */ ALTER TABLE `{prefix}first_rf_parent` ADD COLUMN `c5` LONGTEXT', 'c5'), [1, 1]);
-eq('a migration file carrying such a statement reaches the same path', [$migrate('0002b_commented', "/* adds */ ALTER /* inline */ TABLE `{prefix}first_locations` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?';"), $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]) === $childrenBefore, $wp->scalar('SELECT `prompt` FROM {prefix}first_locations WHERE `name` = ?', ['Garage'])], [['0002b_commented'], true, 'Continue?']);
+eq('a leading block comment and a literal `?` default', $alter("/* adds a prompt */ ALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?'", 'prompt'), [1, 1]);
+eq('a comment between the keywords', $alter('ALTER /* inline */ TABLE `{prefix}tp_rf_parent` ADD COLUMN `c2` LONGTEXT', 'c2'), [1, 1]);
+eq('a line comment ending in a carriage return', $alter("-- note\rALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c3` LONGTEXT", 'c3'), [1, 1]);
+eq('an executable comment this server\'s version satisfies is the statement', $alter('/*!80000 ALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c4` LONGTEXT */', 'c4'), [1, 1]);
+eq('an executable comment for a newer server is a comment, and the ALTER behind it still keeps the children', $alter('/*!99999 SELECT 1 */ ALTER TABLE `{prefix}tp_rf_parent` ADD COLUMN `c5` LONGTEXT', 'c5'), [1, 1]);
+eq('a migration file carrying such a statement reaches the same path', [$migrate('0002b_commented', "/* adds */ ALTER /* inline */ TABLE `{prefix}tp_locations` ADD COLUMN `prompt` VARCHAR(191) DEFAULT 'Continue?';"), $db->findMany('items', ['where' => ['locationId' => $garage['id']], 'orderBy' => ['id' => 'asc']]) === $childrenBefore, $wp->scalar('SELECT `prompt` FROM {prefix}tp_locations WHERE `name` = ?', ['Garage'])], [['0002b_commented'], true, 'Continue?']);
 eq('`--` without a space is subtraction', $wp->sql('SELECT 1--? AS n', [1])[0]['n'], 2);
 eq('a parameter inside an executable comment this server reads is bound', $wp->sql('SELECT /*!80000 ? */ AS n', [42])[0]['n'], 42);
 eq('a `?` inside an executable comment for a newer server is text, not a parameter', $wp->sql('SELECT 3 AS n /*!99999 , ? AS m */')[0], ['n' => 3]);
 eq('a token-merging executable comment is read as the server reads it', $wp->sql('/*!80000 SELECT*/1 AS n')[0]['n'], 1);
 eq('a quoted `*/` inside executable SQL does not end the comment', $wp->sql("SELECT /*!80000 '*/?' AS s, ? AS n */", [42])[0], ['s' => '*/?', 'n' => 42]);
 eq('an odd run of backslashes escapes the quote: the `?` inside stays text', $wp->sql("SELECT 'it''s a \\\\\\'?' AS s, ? AS n", [7])[0], ['s' => "it's a \\'?", 'n' => 7]);
-$wp->exec('INSERT INTO {prefix}first_logs (`message`, `at`) VALUES (?, ?)', ['orphan', '2026-01-01T00:00:00.000Z']);
-$wp->exec('ALTER TABLE {prefix}first_logs ADD COLUMN `itemId` BIGINT UNSIGNED');
-$wp->exec('UPDATE {prefix}first_logs SET `itemId` = 424242 WHERE `message` = ?', ['orphan']);
-file_put_contents($wp->plugin()->dir . '/first/app/migrations/0002c_fk.sql', 'ALTER TABLE `{prefix}first_logs` ADD CONSTRAINT `first_logs_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}first_items` (`id`) ON DELETE SET NULL;');
-putenv('FIRST_DEBUG=1');
+$wp->exec('INSERT INTO {prefix}tp_logs (`message`, `at`) VALUES (?, ?)', ['orphan', '2026-01-01T00:00:00.000Z']);
+$wp->exec('ALTER TABLE {prefix}tp_logs ADD COLUMN `itemId` BIGINT UNSIGNED');
+$wp->exec('UPDATE {prefix}tp_logs SET `itemId` = 424242 WHERE `message` = ?', ['orphan']);
+file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0002c_fk.sql', 'ALTER TABLE `{prefix}tp_logs` ADD CONSTRAINT `tp_logs_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}tp_items` (`id`) ON DELETE SET NULL;');
+putenv('TP_DEBUG=1');
 [$code, $out] = $wp->wpCli(['migrate']);
-putenv('FIRST_DEBUG');
+putenv('TP_DEBUG');
 check('a constraint added over rows that break it fails the migration and changes nothing', $code === 1 && str_contains($out['error']['detail'] ?? '', 'foreign key constraint fails')
-    && $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?', [$wp->connection()->prefix() . 'first_logs', 'first_logs_itemId_fk']) === 0, $out);
-$wp->exec('DELETE FROM {prefix}first_logs WHERE `message` = ?', ['orphan']);
+    && $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?', [$wp->connection()->prefix() . 'tp_logs', 'tp_logs_itemId_fk']) === 0, $out);
+$wp->exec('DELETE FROM {prefix}tp_logs WHERE `message` = ?', ['orphan']);
 eq('with the orphan gone the same file applies', $wp->wpCli(['migrate'])[1]['data']['applied'] ?? null, ['0002c_fk']);
 // Migrations run under one site-wide lock across processes: while this process holds it, another
 // process can't take it (and gives up at its timeout); once released, it can.
@@ -663,8 +663,8 @@ file_put_contents($wp->dir . '/lock.php', <<<'PHP'
     require $argv[1];
     wpLoad($argv[2]);
     try {
-        echo \First\Wp\Runtime::plugin()->connection()->locked('first:test', 1, static fn () => 'held');
-    } catch (\First\Wp\LockBusy $e) {
+        echo \TypedPress\Wp\Runtime::plugin()->connection()->locked('first:test', 1, static fn () => 'held');
+    } catch (\TypedPress\Wp\LockBusy $e) {
         echo 'refused';
     }
     PHP);
@@ -674,61 +674,61 @@ eq('a second process can\'t take a held migration lock, and can once it is relea
 eq('the lock is per name', $wp->connection()->locked('first:other', 1, $other), 'held');
 
 // A statement that fails stops the file; what ran before it is recorded step by step, nothing after it runs.
-file_put_contents($wp->plugin()->dir . '/first/app/migrations/0003_broken.sql', "DELETE FROM `{prefix}first_logs` WHERE `message` = 'hello';\n--> statement-breakpoint\nALTER TABLE `{prefix}first_nope` ADD COLUMN `x` LONGTEXT;\n--> statement-breakpoint\nDELETE FROM `{prefix}first_logs`;");
-putenv('FIRST_DEBUG=1'); // the problem's detail carries the migration's own message, as the operator sees it in the log
+file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0003_broken.sql', "DELETE FROM `{prefix}tp_logs` WHERE `message` = 'hello';\n--> statement-breakpoint\nALTER TABLE `{prefix}tp_nope` ADD COLUMN `x` LONGTEXT;\n--> statement-breakpoint\nDELETE FROM `{prefix}tp_logs`;");
+putenv('TP_DEBUG=1'); // the problem's detail carries the migration's own message, as the operator sees it in the log
 [$code, $out] = $wp->wpCli(['migrate']);
-putenv('FIRST_DEBUG');
+putenv('TP_DEBUG');
 check('a failing statement fails the command and names its position', $code === 1 && str_contains($out['error']['detail'] ?? '', '0003_broken failed at statement 2'), $out);
 eq('the statements before it ran and are recorded; the ones after it did not run', [
     count($db->findMany('logs', ['where' => ['message' => 'hello']])), count($db->findMany('logs')) > 0,
-    array_column($wp->sql('SELECT `id` FROM {prefix}first__migrations WHERE `app` = ? AND `id` LIKE ? ORDER BY `id`', ['dbtest', '0003%']), 'id'),
+    array_column($wp->sql('SELECT `id` FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ? ORDER BY `id`', ['dbtest', '0003%']), 'id'),
 ], [0, true, ['0003_broken:1']]);
-unlink($wp->plugin()->dir . '/first/app/migrations/0003_broken.sql');
-$wp->exec('DELETE FROM {prefix}first__migrations WHERE `app` = ? AND `id` LIKE ?', ['dbtest', '0003%']);
+unlink($wp->plugin()->dir . '/tp/app/migrations/0003_broken.sql');
+$wp->exec('DELETE FROM {prefix}tp__migrations WHERE `app` = ? AND `id` LIKE ?', ['dbtest', '0003%']);
 eq('with the file gone, migrate is a no-op and the CLI serves again', [$wp->wpCli(['migrate'])[1], $wp->wpCli(['find', 'items', '{"where":{"name":"Hammer"},"columns":{"name":true}}'])[1]],
     [['data' => ['applied' => []]], ['data' => [['name' => 'Hammer']]]]);
 
 // ================================================================ migrations: the deploy-time schema check on SQLite (spec §2.9)
 
-// Statements as `first build` plans a `was` rename and a drop. The SQLite driver has no RENAME TABLE and
+// Statements as `typedpress build` plans a `was` rename and a drop. The SQLite driver has no RENAME TABLE and
 // its RENAME COLUMN loses values, so the migrator copies the table and changes the column instead:
 // rows, the auto-increment, and a child's foreign key (dropped and added back as the plan does) survive.
-$wp->exec('CREATE TABLE {prefix}first_sc_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT, `state` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-$wp->exec('CREATE TABLE {prefix}first_sc_kids (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `first_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}first_sc_notes (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
-$wp->exec("INSERT INTO {prefix}first_sc_notes (`body`, `state`) VALUES ('first', 'open'), ('second', NULL)");
-$wp->exec('INSERT INTO {prefix}first_sc_kids (`noteId`) VALUES (1)');
-$checked = static fn (array $check, string $sql): string => '-- first-check ' . json_encode($check, JSON_UNESCAPED_SLASHES) . "\n" . $sql;
+$wp->exec('CREATE TABLE {prefix}tp_sc_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT, `state` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+$wp->exec('CREATE TABLE {prefix}tp_sc_kids (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `tp_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}tp_sc_notes (`id`) ON DELETE CASCADE) ENGINE=InnoDB');
+$wp->exec("INSERT INTO {prefix}tp_sc_notes (`body`, `state`) VALUES ('first', 'open'), ('second', NULL)");
+$wp->exec('INSERT INTO {prefix}tp_sc_kids (`noteId`) VALUES (1)');
+$checked = static fn (array $check, string $sql): string => '-- typedpress-check ' . json_encode($check, JSON_UNESCAPED_SLASHES) . "\n" . $sql;
 $p = '{prefix}';
-file_put_contents($wp->plugin()->dir . '/first/app/migrations/0004_rename.sql', implode("\n--> statement-breakpoint\n", [
-    "ALTER TABLE `{$p}first_sc_kids` DROP FOREIGN KEY `first_sc_kids_noteId_fk`;",
-    $checked(['check' => 'rename', 'table' => "{$p}first_sc_notes", 'to' => "{$p}first_sc_memos"], "RENAME TABLE `{$p}first_sc_notes` TO `{$p}first_sc_memos`;"),
-    $checked(['check' => 'rename', 'name' => 'sc_memos.body', 'table' => "{$p}first_sc_notes", 'column' => 'body', 'to' => 'text', 'definition' => '`text` LONGTEXT', 'adopted' => false],
-        "ALTER TABLE `{$p}first_sc_memos` RENAME COLUMN `body` TO `text`;"),
-    "ALTER TABLE `{$p}first_sc_kids` ADD CONSTRAINT `first_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES `{$p}first_sc_memos` (`id`) ON DELETE CASCADE;",
+file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0004_rename.sql', implode("\n--> statement-breakpoint\n", [
+    "ALTER TABLE `{$p}tp_sc_kids` DROP FOREIGN KEY `tp_sc_kids_noteId_fk`;",
+    $checked(['check' => 'rename', 'table' => "{$p}tp_sc_notes", 'to' => "{$p}tp_sc_memos"], "RENAME TABLE `{$p}tp_sc_notes` TO `{$p}tp_sc_memos`;"),
+    $checked(['check' => 'rename', 'name' => 'sc_memos.body', 'table' => "{$p}tp_sc_notes", 'column' => 'body', 'to' => 'text', 'definition' => '`text` LONGTEXT', 'adopted' => false],
+        "ALTER TABLE `{$p}tp_sc_memos` RENAME COLUMN `body` TO `text`;"),
+    "ALTER TABLE `{$p}tp_sc_kids` ADD CONSTRAINT `tp_sc_kids_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES `{$p}tp_sc_memos` (`id`) ON DELETE CASCADE;",
 ]));
 // A second pending file drops a column under the new name: its check counts the rows still in sc_notes.
-file_put_contents($wp->plugin()->dir . '/first/app/migrations/0005_drop.sql', $checked(
-    ['check' => 'drop', 'name' => 'sc_memos.state', 'table' => "{$p}first_sc_memos", 'column' => 'state', 'adopted' => false],
-    "ALTER TABLE `{$p}first_sc_memos` DROP COLUMN `state`;",
+file_put_contents($wp->plugin()->dir . '/tp/app/migrations/0005_drop.sql', $checked(
+    ['check' => 'drop', 'name' => 'sc_memos.state', 'table' => "{$p}tp_sc_memos", 'column' => 'state', 'adopted' => false],
+    "ALTER TABLE `{$p}tp_sc_memos` DROP COLUMN `state`;",
 ));
 [$code, $out] = $wp->wpCli(['migrate']);
 eq('a drop pending behind a rename is counted under the old name, and refused with nothing run', [$code, $out['error']['code'] ?? null,
     array_map(static fn (array $r): array => [$r['code'], $r['name'], $r['rows']], $out['error']['refusals'] ?? []), $out['error']['drop'] ?? null,
-    (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first_sc_notes')],
+    (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp_sc_notes')],
     [1, 'schema_refused', [['drop_has_rows', 'sc_memos.state', 1]], ['sc_memos.state=1'], 2]);
 eq('a bare --drop is refused, not ignored', $wp->wpCli(['migrate'], ['drop' => true])[1]['error']['code'] ?? null, 'invalid_drop');
 eq('--drop with the live count applies both files', $wp->wpCli(['migrate'], ['drop' => 'sc_memos.state=1'])[1]['data']['applied'] ?? null, ['0004_rename', '0005_drop']);
 eq('the renamed table kept its rows, values and auto-increment, and its child kept its row and key', [
-    $wp->sql('SELECT `id`, `text` FROM {prefix}first_sc_memos ORDER BY `id`'),
-    $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$wp->connection()->prefix() . 'first_sc_notes']),
-    $wp->sql('SELECT `noteId` FROM {prefix}first_sc_kids'),
+    $wp->sql('SELECT `id`, `text` FROM {prefix}tp_sc_memos ORDER BY `id`'),
+    $wp->scalar('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$wp->connection()->prefix() . 'tp_sc_notes']),
+    $wp->sql('SELECT `noteId` FROM {prefix}tp_sc_kids'),
 ], [[['id' => 1, 'text' => 'first'], ['id' => 2, 'text' => 'second']], 0, [['noteId' => 1]]]);
-$wp->exec("INSERT INTO {prefix}first_sc_memos (`text`) VALUES ('third')");
-eq('the copy keeps counting ids where the table left off', (int) $wp->scalar('SELECT MAX(`id`) FROM {prefix}first_sc_memos'), 3);
-$wp->exec('DELETE FROM {prefix}first_sc_memos WHERE `id` = 1');
-eq('the child key points at the renamed table (ON DELETE CASCADE fires)', (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first_sc_kids'), 0);
-$wp->exec('DROP TABLE {prefix}first_sc_kids');
-$wp->exec('DROP TABLE {prefix}first_sc_memos');
+$wp->exec("INSERT INTO {prefix}tp_sc_memos (`text`) VALUES ('third')");
+eq('the copy keeps counting ids where the table left off', (int) $wp->scalar('SELECT MAX(`id`) FROM {prefix}tp_sc_memos'), 3);
+$wp->exec('DELETE FROM {prefix}tp_sc_memos WHERE `id` = 1');
+eq('the child key points at the renamed table (ON DELETE CASCADE fires)', (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}tp_sc_kids'), 0);
+$wp->exec('DROP TABLE {prefix}tp_sc_kids');
+$wp->exec('DROP TABLE {prefix}tp_sc_memos');
 
 // ================================================================ CLI
 
@@ -746,12 +746,12 @@ eq('CLI runs in a transaction', [$code, $out['error']['code'] ?? null, $db->find
 eq('CLI action', [$code, $out['data']['qty'] ?? null], [0, 7]);
 eq('CLI usage error', $cli('frobnicate')[0], 1);
 
-// ================================================================ HTTP: First's API on WordPress
+// ================================================================ HTTP: TypedPress's API on WordPress
 
-// Through the web server (php -S on this site), as a client sees it: /__first/api/v1 answers with
-// First's envelopes, problem documents and headers.
+// Through the web server (php -S on this site), as a client sees it: /__tp/api/v1 answers with
+// TypedPress's envelopes, problem documents and headers.
 $port = $wp->startServer();
-$base = "http://127.0.0.1:$port/__first/api/v1";
+$base = "http://127.0.0.1:$port/__tp/api/v1";
 
 /** @return array{status: int, headers: array<string, string>, body: string, json: mixed} */
 function http(string $method, string $path, mixed $body = null, ?string $raw = null, array $headers = []): array
@@ -793,7 +793,7 @@ $isProblem = function (string $label, array $r, int $status, string $code, ?stri
 };
 
 $r = http('GET', '');
-check('GET /__first/api/v1 (the schema)', $r['status'] === 200 && $r['json']['data']['kinds']['items']['columns']['qty']['type'] === 'integer'
+check('GET /__tp/api/v1 (the schema)', $r['status'] === 200 && $r['json']['data']['kinds']['items']['columns']['qty']['type'] === 'integer'
     && isset($r['json']['data']['actions']['restock']['input']['amount']), $r);
 check('schema exposes no function names', !str_contains($r['body'], '__') && !str_contains($r['body'], 'hooks') && !str_contains($r['body'], 'handler'), $r['body']);
 eq('the runtime reports the WordPress platform in the schema', [$r['json']['data']['runtime']['wp']['database']['kind'], $r['json']['data']['runtime']['wp']['incompatibleTables']], ['sqlite', []]);
@@ -818,7 +818,7 @@ $isProblem('unknown collection', http('GET', '/widgets'), 404, 'not_found');
 
 // A malformed JSON body is refused before anything runs: the API's own parser answers invalid_json.
 eq('invalid JSON body is refused', [http('POST', '/items', raw: '{"name":')['status'], http('POST', '/items', raw: '{"name":')['json']['code'] ?? null], [400, 'invalid_json']);
-eq('… and by First itself', [$wp->call('POST', '/items', '{"name":')[0], $wp->call('POST', '/items', '{"name":')[1]['code'] ?? null], [400, 'invalid_json']);
+eq('… and by TypedPress itself', [$wp->call('POST', '/items', '{"name":')[0], $wp->call('POST', '/items', '{"name":')[1]['code'] ?? null], [400, 'invalid_json']);
 $isProblem('coercion error with pointer', http('POST', '/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
 $isProblem('missing required', http('POST', '/items', ['qty' => 1]), 422, 'invalid_input', '/name');
 $isProblem('unique violation', http('POST', '/locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');
@@ -863,15 +863,15 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
     $seen = [];
-    $raw = ['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [
-        'bulletins' => ['primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'first_ap_bulletins',
+    $raw = ['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'bulletins' => ['primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'tp_ap_bulletins',
             'hooks' => ['afterPublish' => static function (array $row) use (&$seen): void { $seen[] = $row['title']; }],
             'columns' => ['id' => $id, 'title' => ['type' => 'text', 'notNull' => true], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]]],
     ]];
-    $schema = new \First\Schema($raw);
+    $schema = new \TypedPress\Schema($raw);
     $wp = $GLOBALS['wp'];
-    $wp->exec('CREATE TABLE {prefix}first_ap_bulletins (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `title` LONGTEXT NOT NULL, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
-    $db = new \First\Db(\First\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \First\db()->media());
+    $wp->exec('CREATE TABLE {prefix}tp_ap_bulletins (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `title` LONGTEXT NOT NULL, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $db = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \TypedPress\db()->media());
     $db->insert('bulletins', ['title' => 'live']);
     $draft = $db->insert('bulletins', ['title' => 'draft', 'status' => 'draft'], true)[0];
     $db->update('bulletins', ['title' => 'draft, edited'], ['id' => $draft['id']]);
@@ -879,7 +879,7 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     $db->update('bulletins', ['title' => 'published, edited'], ['id' => $draft['id']]);
     $later = $db->insert('bulletins', ['title' => 'later', 'status' => 'scheduled', 'publishedAt' => gmdate('Y-m-d\\TH:i:s.000\\Z', time() + 3600)], true)[0];
     $db->promoteDue();
-    $wp->exec("UPDATE {prefix}first_ap_bulletins SET `publishedAt` = '" . gmdate('Y-m-d\\TH:i:s.000\\Z', time() - 60) . "' WHERE `id` = " . (int) $later['id']);
+    $wp->exec("UPDATE {prefix}tp_ap_bulletins SET `publishedAt` = '" . gmdate('Y-m-d\\TH:i:s.000\\Z', time() - 60) . "' WHERE `id` = " . (int) $later['id']);
     $db->promoteDue();
     eq('afterPublish runs once per item that became published, scheduled ones when they come due', $seen, ['live', 'draft, edited', 'later']);
 })();
@@ -893,7 +893,7 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
     $one = static fn (string $c, string $from) => ['kind' => 'one', 'collection' => $c, 'from' => $from, 'to' => 'id'];
-    $schema = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
         'accounts' => ['primaryKey' => 'id', 'access' => ['read' => ['role' => 'admin']],
             'columns' => ['id' => $id, 'apiKey' => ['type' => 'text', 'notNull' => true]]],
         'articles' => ['primaryKey' => 'id', 'drafts' => true,
@@ -905,23 +905,23 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     ]]);
     // Its own custom tables on the site, read through a Db over the same connection.
     $wp = $GLOBALS['wp'];
-    $raw = ['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => []];
+    $raw = ['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => []];
     foreach (['accounts', 'articles', 'comments'] as $t) {
-        $raw['collections'][$t] = $schema->collection($t) + ['editor' => false, 'table' => "first_rf_$t"];
+        $raw['collections'][$t] = $schema->collection($t) + ['editor' => false, 'table' => "tp_rf_$t"];
     }
-    $schema = new \First\Schema($raw);
-    $wp->exec('CREATE TABLE {prefix}first_rf_accounts (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `apiKey` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-    $wp->exec('CREATE TABLE {prefix}first_rf_articles (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `secret` LONGTEXT, `ownerId` BIGINT, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
-    $wp->exec('CREATE TABLE {prefix}first_rf_comments (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `articleId` BIGINT, `ownerId` BIGINT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-    $wp->exec("INSERT INTO {prefix}first_rf_accounts VALUES (1, 'sk_live_7x')");
-    $wp->exec("INSERT INTO {prefix}first_rf_articles VALUES (1, 'price=42', NULL, 'draft', NULL), (2, 'open', 1, 'published', '2026-01-01T00:00:00.000Z')");
-    $wp->exec('INSERT INTO {prefix}first_rf_comments VALUES (1, 1, 1), (2, 2, NULL)');
-    $store = \First\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \First\Db($store, $schema, \First\db()->media());
-    $anon = new \First\Viewer(null);
-    $editor = new \First\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
-    $admin = new \First\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin']);
-    $ids = static fn (string $c, array $where, ?\First\Viewer $v) => array_column($db->findMany($c, ['where' => $where, 'orderBy' => ['id' => 'asc']], $v), 'id');
+    $schema = new \TypedPress\Schema($raw);
+    $wp->exec('CREATE TABLE {prefix}tp_rf_accounts (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `apiKey` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_rf_articles (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `secret` LONGTEXT, `ownerId` BIGINT, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_rf_comments (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `articleId` BIGINT, `ownerId` BIGINT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec("INSERT INTO {prefix}tp_rf_accounts VALUES (1, 'sk_live_7x')");
+    $wp->exec("INSERT INTO {prefix}tp_rf_articles VALUES (1, 'price=42', NULL, 'draft', NULL), (2, 'open', 1, 'published', '2026-01-01T00:00:00.000Z')");
+    $wp->exec('INSERT INTO {prefix}tp_rf_comments VALUES (1, 1, 1), (2, 2, NULL)');
+    $store = \TypedPress\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \TypedPress\Db($store, $schema, \TypedPress\db()->media());
+    $anon = new \TypedPress\Viewer(null);
+    $editor = new \TypedPress\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
+    $admin = new \TypedPress\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin']);
+    $ids = static fn (string $c, array $where, ?\TypedPress\Viewer $v) => array_column($db->findMany($c, ['where' => $where, 'orderBy' => ['id' => 'asc']], $v), 'id');
     $key = ['owner' => ['apiKey' => ['like' => 'sk_live_7%']]];
 
     problem('an unreadable relation target is denied like `with` (anonymous → 401)', fn () => $ids('comments', $key, $anon), 401, 'unauthenticated');
@@ -939,44 +939,44 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
     ], [[1], [1]]);
     // A render binds its visitor (Seam::asViewer): compiled reads then skip drafts, also after an
     // await inside an async body, which resumes after asViewer itself has returned.
-    $titles = static fn (): array => array_map(static fn ($row) => $row->p['secret'], \First\Seam::findMany('articles', ['orderBy' => ['id' => 'asc']])->a);
+    $titles = static fn (): array => array_map(static fn ($row) => $row->p['secret'], \TypedPress\Seam::findMany('articles', ['orderBy' => ['id' => 'asc']])->a);
     eq('compiled reads see drafts when trusted and skip them for a bound visitor', $db->current(static fn () => [
         $titles(),
-        \First\Seam::asViewer($anon, $titles),
-        \First\Seam::asViewer($editor, $titles),
+        \TypedPress\Seam::asViewer($anon, $titles),
+        \TypedPress\Seam::asViewer($editor, $titles),
     ]), [['price=42', 'open'], ['open'], ['price=42', 'open']]);
-    $render = \First\JsJobs::asyncFunction(static function () use ($titles): array {
+    $render = \TypedPress\JsJobs::asyncFunction(static function () use ($titles): array {
         $before = $titles();
-        \First\JsJobs::await(\First\JsPromise::from(1));
+        \TypedPress\JsJobs::await(\TypedPress\JsPromise::from(1));
         $after = $titles();
-        $inner = \First\Seam::asViewer(null, static function () use ($titles): array {
-            \First\JsJobs::await(\First\JsPromise::from(2));
+        $inner = \TypedPress\Seam::asViewer(null, static function () use ($titles): array {
+            \TypedPress\JsJobs::await(\TypedPress\JsPromise::from(2));
             return $titles();
         });
-        return [$before, $after, \First\JsJobs::await($inner), $titles()];
+        return [$before, $after, \TypedPress\JsJobs::await($inner), $titles()];
     });
-    eq('an async render keeps its visitor across awaits, and a nested binding only inside', $db->current(static fn () => \First\JsJobs::run(
-        static fn () => \First\Seam::asViewer($anon, $render),
+    eq('an async render keeps its visitor across awaits, and a nested binding only inside', $db->current(static fn () => \TypedPress\JsJobs::run(
+        static fn () => \TypedPress\Seam::asViewer($anon, $render),
         [],
     )), [['open'], ['open'], ['price=42', 'open'], ['open']]);
-    eq('nothing stays bound after the render', \First\Seam::viewer(), null);
+    eq('nothing stays bound after the render', \TypedPress\Seam::viewer(), null);
     // Promise reactions and timers read as the viewer bound where they were registered, even when
     // the queue drains after asViewer has returned.
     $seen = [];
-    $db->current(static function () use ($anon, $titles, &$seen): void { \First\JsJobs::run(static function () use ($anon, $titles, &$seen): \First\JsPromise {
-        return \First\Seam::asViewer($anon, static function () use ($titles, &$seen): \First\JsPromise {
-            $done = new \First\JsPromise();
-            \First\JsPromise::from(1)->then(static function () use ($titles, &$seen) { $seen['then'] = $titles(); return 1; });
-            \First\Timers::set(static function () use ($titles, &$seen, $done): void { $seen['timer'] = $titles(); $done->resolve(1); }, 1);
+    $db->current(static function () use ($anon, $titles, &$seen): void { \TypedPress\JsJobs::run(static function () use ($anon, $titles, &$seen): \TypedPress\JsPromise {
+        return \TypedPress\Seam::asViewer($anon, static function () use ($titles, &$seen): \TypedPress\JsPromise {
+            $done = new \TypedPress\JsPromise();
+            \TypedPress\JsPromise::from(1)->then(static function () use ($titles, &$seen) { $seen['then'] = $titles(); return 1; });
+            \TypedPress\Timers::set(static function () use ($titles, &$seen, $done): void { $seen['timer'] = $titles(); $done->resolve(1); }, 1);
             return $done;
         });
     }, []); });
     eq('a reaction and a timer registered under a visitor read as that visitor', $seen, ['then' => ['open'], 'timer' => ['open']]);
     $trusted = [];
-    $db->current(static function () use ($titles, &$trusted): void { \First\JsJobs::run(static function () use ($titles, &$trusted): \First\JsPromise {
-        $done = new \First\JsPromise();
-        \First\JsPromise::from(1)->then(static function () use ($titles, &$trusted) { $trusted[] = $titles(); return 1; });
-        \First\Timers::set(static function () use ($titles, &$trusted, $done): void { $trusted[] = $titles(); $done->resolve(1); }, 1);
+    $db->current(static function () use ($titles, &$trusted): void { \TypedPress\JsJobs::run(static function () use ($titles, &$trusted): \TypedPress\JsPromise {
+        $done = new \TypedPress\JsPromise();
+        \TypedPress\JsPromise::from(1)->then(static function () use ($titles, &$trusted) { $trusted[] = $titles(); return 1; });
+        \TypedPress\Timers::set(static function () use ($titles, &$trusted, $done): void { $trusted[] = $titles(); $done->resolve(1); }, 1);
         return $done;
     }, []); });
     eq('… and registered outside any render they stay trusted', $trusted, [['price=42', 'open'], ['price=42', 'open']]);
@@ -988,7 +988,7 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
 
 // ================================================================ field access (lane B, phase 2 §4)
 
-// The field-access users are WordPress users (created at install); rules see them as First maps them.
+// The field-access users are WordPress users (created at install); rules see them as TypedPress maps them.
 $fa = [];
 foreach (['fa_alice', 'fa_bob', 'fa_ed', 'fa_admin'] as $name) {
     $fa[$name] = ['user' => $wp->user($name)];
@@ -1040,26 +1040,26 @@ $faProblem('with across a hidden link column (target end)', $as('fa_alice', 'GET
 $faProblem('relation filter across a hidden link column (target end)', $as('fa_alice', 'GET', '/profiles', query: ['where' => '{"mentees":{"name":"Bob"}}']), 403, 'forbidden', '/where/mentees');
 eq('editors may follow the link', $as('fa_ed', 'GET', "/profiles/{$mine['id']}", query: ['with' => 'mentor'])[1]['mentor'], null);
 $faProblem('orderBy on a hidden column', $as(null, 'GET', '/profiles', query: ['orderBy' => '-email']), 403, 'forbidden', '/orderBy/email');
-problem('columns selecting a hidden column', fn () => $db->findMany('profiles', ['columns' => ['email' => true]], new \First\Viewer(null)), 403, 'forbidden', '/columns/email');
-problem('columns selecting a column with a per-row rule', fn () => $db->findMany('profiles', ['columns' => ['salary' => true]], new \First\Viewer($fa['fa_alice']['user'])), 403, 'forbidden', '/columns/salary');
-eq('excluding a hidden column is allowed', array_keys($db->findMany('profiles', ['columns' => ['email' => false], 'limit' => 1], new \First\Viewer(null))[0]), ['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId']);
+problem('columns selecting a hidden column', fn () => $db->findMany('profiles', ['columns' => ['email' => true]], new \TypedPress\Viewer(null)), 403, 'forbidden', '/columns/email');
+problem('columns selecting a column with a per-row rule', fn () => $db->findMany('profiles', ['columns' => ['salary' => true]], new \TypedPress\Viewer($fa['fa_alice']['user'])), 403, 'forbidden', '/columns/salary');
+eq('excluding a hidden column is allowed', array_keys($db->findMany('profiles', ['columns' => ['email' => false], 'limit' => 1], new \TypedPress\Viewer(null))[0]), ['id', 'name', 'ownerId', 'approved', 'notes', 'blocks', 'stamp', 'pairs', 'rounds', 'fixed', 'gated', 'seeded', 'vault', 'seen', 'cleared', 'meta', 'checks', 'tasks', 'teamId']);
 eq('a readable column filters normally; trusted filters see everything', [
     array_column($as('fa_ed', 'GET', '/profiles', query: ['where' => '{"email":"bob@example.test"}'])[1], 'name'),
     array_column($db->findMany('teams', ['where' => ['budget' => 1000]]), 'name'),
 ], [['Bob'], ['Core']]);
 
 // Compiled reads (Seam) are trusted unless a caller binds a visitor, as a page render does.
-$hasEmail = static fn (): array => array_values(array_unique(array_map(static fn ($row) => array_key_exists('email', $row->p), \First\Seam::findMany('profiles')->a)));
-$editor = new \First\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
-eq('Seam reads are trusted outside asViewer', [\First\Seam::viewer(), $hasEmail()], [null, [true]]);
-eq('asViewer binds an anonymous visitor: hidden fields stay out', \First\Seam::asViewer(new \First\Viewer(null), static fn () => [
-    array_key_exists('email', \First\Seam::findFirst('profiles')->p),
+$hasEmail = static fn (): array => array_values(array_unique(array_map(static fn ($row) => array_key_exists('email', $row->p), \TypedPress\Seam::findMany('profiles')->a)));
+$editor = new \TypedPress\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
+eq('Seam reads are trusted outside asViewer', [\TypedPress\Seam::viewer(), $hasEmail()], [null, [true]]);
+eq('asViewer binds an anonymous visitor: hidden fields stay out', \TypedPress\Seam::asViewer(new \TypedPress\Viewer(null), static fn () => [
+    array_key_exists('email', \TypedPress\Seam::findFirst('profiles')->p),
     $hasEmail(),
 ]), [false, [false]]);
-eq('asViewer binds an editor, who reads the field', \First\Seam::asViewer($editor, $hasEmail), [true]);
-problem('a visitor-bound read refuses a hidden column', fn () => \First\Seam::asViewer(new \First\Viewer(null), static fn () => \First\Seam::findMany('profiles', ['columns' => ['email' => true]])), 403, 'forbidden', '/columns/email');
-eq('the previous viewer is restored after a throw', \First\Seam::viewer(), null);
-eq('nested asViewer restores the outer viewer', \First\Seam::asViewer($editor, static fn () => [\First\Seam::asViewer(null, static fn () => \First\Seam::viewer()), \First\Seam::viewer() === $editor]), [null, true]);
+eq('asViewer binds an editor, who reads the field', \TypedPress\Seam::asViewer($editor, $hasEmail), [true]);
+problem('a visitor-bound read refuses a hidden column', fn () => \TypedPress\Seam::asViewer(new \TypedPress\Viewer(null), static fn () => \TypedPress\Seam::findMany('profiles', ['columns' => ['email' => true]])), 403, 'forbidden', '/columns/email');
+eq('the previous viewer is restored after a throw', \TypedPress\Seam::viewer(), null);
+eq('nested asViewer restores the outer viewer', \TypedPress\Seam::asViewer($editor, static fn () => [\TypedPress\Seam::asViewer(null, static fn () => \TypedPress\Seam::viewer()), \TypedPress\Seam::viewer() === $editor]), [null, true]);
 
 // Writes: a supplied key the viewer can't set → 403 at its pointer. Defaults and hooks are trusted.
 $faProblem('update rule (admin) refuses the owner', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['salary' => 99]), 403, 'forbidden', '/salary');
@@ -1150,13 +1150,13 @@ $faProblem('a merged hidden value is not incoming data (group first)', $as('fa_a
 $faProblem('… nor with the keys reversed', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['cleared' => true, 'notes' => ['public' => 'n']]), 403, 'forbidden', '/cleared');
 eq('… and nothing was stored', $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['cleared'], false);
 // Update/delete selectors run as the viewer: they can't filter on a column hidden from it.
-$aliceViewer = new \First\Viewer($fa['fa_alice']['user']);
+$aliceViewer = new \TypedPress\Viewer($fa['fa_alice']['user']);
 problem('an update selector on a hidden column is refused', fn () => $db->update('profiles', ['name' => 'x'], ['email' => 'alice@example.test'], true, $aliceViewer), 403, 'forbidden', '/where/email');
-problem('… and a delete selector', fn () => $db->delete('profiles', ['salary' => -1], true, new \First\Viewer($fa['fa_ed']['user'])), 403, 'forbidden', '/where/salary');
+problem('… and a delete selector', fn () => $db->delete('profiles', ['salary' => -1], true, new \TypedPress\Viewer($fa['fa_ed']['user'])), 403, 'forbidden', '/where/salary');
 // An unchanged resend must be the same value: a list resent as an object is a change.
 $db->update('profiles', ['meta' => ['a', 'b']], ['id' => $mine['id']]);
 $faProblem('a list resent as an object with numeric keys is refused', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['1' => 'b', '0' => 'a']]), 403, 'forbidden', '/meta');
-eq('… the stored list is untouched, and the true resend passes', [\First\Seam::toWire($db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['meta']), $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['a', 'b']])[0]], [['a', 'b'], 200]);
+eq('… the stored list is untouched, and the true resend passes', [\TypedPress\Seam::toWire($db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['meta']), $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['meta' => ['a', 'b']])[0]], [['a', 'b'], 200]);
 // Carrying an omitted protected value forward compares only what the viewer sees: any hidden value
 // in that item is refused alike, right guess or wrong.
 $db->update('profiles', ['tasks' => [['label' => 'w', 'rate' => 5, 'secret' => 'old']]], ['id' => $mine['id']]);
@@ -1200,51 +1200,51 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 // ================================================================ globals: one instant per update
 
 // A global update fills never-written `now` fields and the patch's nested defaults at one instant,
-// although every clock read here moves the pinned clock a millisecond (FIRST_NOW_STEP).
+// although every clock read here moves the pinned clock a millisecond (TP_NOW_STEP).
 (static function (): void {
     $now = ['now' => true];
     $wp = $GLOBALS['wp'];
-    $schema = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [], 'globals' => ['site' => [
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [], 'globals' => ['site' => [
         'label' => 'site', 'agents' => true, 'access' => ['read' => ['role' => 'anyone'], 'update' => ['role' => 'editor']],
-        'wp' => ['postId' => 'first_global_site', 'menuSlug' => 'first-global-site', 'groupKey' => 'group_first_global_site', 'fieldKeyPrefix' => 'field_first_global_site_', 'optionPrefix' => 'first_global_site_'],
+        'wp' => ['postId' => 'tp_global_site', 'menuSlug' => 'typedpress-global-site', 'groupKey' => 'group_tp_global_site', 'fieldKeyPrefix' => 'field_tp_global_site_', 'optionPrefix' => 'tp_global_site_'],
         'fields' => [
             'createdAt' => ['type' => 'timestamp', 'default' => $now],
             'audit' => ['type' => 'group', 'fields' => ['at' => ['type' => 'timestamp', 'default' => $now]]],
         ],
     ]]]);
     // Globals are SCF option fields: SCF must know this global's fields to write them.
-    \First\Wp\Scf::register($schema);
-    $store = \First\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \First\Db($store, $schema, \First\db()->media());
-    putenv('FIRST_NOW=2030-01-01T00:00:00.000Z');
-    putenv('FIRST_NOW_STEP=1');
+    \TypedPress\Wp\Scf::register($schema);
+    $store = \TypedPress\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \TypedPress\Db($store, $schema, \TypedPress\db()->media());
+    putenv('TP_NOW=2030-01-01T00:00:00.000Z');
+    putenv('TP_NOW_STEP=1');
     try {
         $site = $db->globalUpdate('site', ['audit' => []]);
     } finally {
-        putenv('FIRST_NOW_STEP');
-        putenv('FIRST_NOW');
+        putenv('TP_NOW_STEP');
+        putenv('TP_NOW');
     }
     eq('a global update stores its now defaults at one instant', [$site['createdAt'], $site['audit']['at']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
     // A render's bound visitor applies to compiled global reads too: this global is editor-read.
-    $guarded = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [], 'globals' => ['desk' => [
+    $guarded = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [], 'globals' => ['desk' => [
         'label' => 'desk', 'agents' => true, 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']],
-        'wp' => ['postId' => 'first_global_desk', 'menuSlug' => 'first-global-desk', 'groupKey' => 'group_first_global_desk', 'fieldKeyPrefix' => 'field_first_global_desk_', 'optionPrefix' => 'first_global_desk_'],
+        'wp' => ['postId' => 'tp_global_desk', 'menuSlug' => 'typedpress-global-desk', 'groupKey' => 'group_tp_global_desk', 'fieldKeyPrefix' => 'field_tp_global_desk_', 'optionPrefix' => 'tp_global_desk_'],
         'fields' => ['note' => ['type' => 'text', 'default' => ['value' => 'shh']]],
     ]]]);
-    \First\Wp\Scf::register($guarded);
-    $desk = new \First\Db(\First\Wp\CompositeStore::create($guarded, $wp->connection()), $guarded, \First\db()->media());
-    eq('a trusted compiled global read sees an editor-only global', $desk->current(static fn () => \First\Seam::globalGet('desk')->p['note']), 'shh');
-    problem('a visitor-bound compiled global read is refused', static fn () => $desk->current(static fn () => \First\Seam::asViewer(new \First\Viewer(null), static fn () => \First\Seam::globalGet('desk'))), 401, 'unauthenticated');
+    \TypedPress\Wp\Scf::register($guarded);
+    $desk = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($guarded, $wp->connection()), $guarded, \TypedPress\db()->media());
+    eq('a trusted compiled global read sees an editor-only global', $desk->current(static fn () => \TypedPress\Seam::globalGet('desk')->p['note']), 'shh');
+    problem('a visitor-bound compiled global read is refused', static fn () => $desk->current(static fn () => \TypedPress\Seam::asViewer(new \TypedPress\Viewer(null), static fn () => \TypedPress\Seam::globalGet('desk'))), 401, 'unauthenticated');
 })();
 
 // ================================================================ JSON identity at query boundaries
 
 // An access rule sees a list-typed patch as a handle; JSON columns retain nested object shape.
 (static function (): void {
-    eval('namespace FirstApp; function marked__update($ctx) { return !\First\Js::includes($ctx->p["data"]->p["tags"], "locked"); }');
+    eval('namespace TypedPressApp; function marked__update($ctx) { return !\TypedPress\Js::includes($ctx->p["data"]->p["tags"], "locked"); }');
     // A read rule returning a filter that contains an empty object: compiled `{ AND: [{}] }`.
-    eval('namespace FirstApp; function marked__read($ctx) { return ["AND" => [new \\First\\JsObject()]]; }');
-    $schema = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => ['marked' => [
+    eval('namespace TypedPressApp; function marked__read($ctx) { return ["AND" => [new \\TypedPress\\JsObject()]]; }');
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['marked' => [
         'primaryKey' => 'id', 'editor' => false, 'table' => 'first_marked', 'access' => ['read' => ['fn' => 'marked__read'], 'update' => ['fn' => 'marked__update']],
         'columns' => [
             'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
@@ -1257,55 +1257,55 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     ]]]);
     $wp = $GLOBALS['wp'];
     $wp->exec('CREATE TABLE {prefix}first_marked (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `tags` LONGTEXT, `meta` LONGTEXT, `info` LONGTEXT, `parentId` BIGINT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-    $store = \First\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \First\Db($store, $schema, \First\db()->media());
-    $previous = \First\Db::instance();
-    \First\Db::setInstance($db); // registered extensions read the active Db's schema
+    $store = \TypedPress\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \TypedPress\Db($store, $schema, \TypedPress\db()->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($db); // registered extensions read the active Db's schema
     try {
         $row = $db->insert('marked', ['tags' => ['open']], true)[0];
-        $viewer = new \First\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
-        $patch = \First\Js::decodeJson('{"tags":[],"meta":{"a":{}}}');
+        $viewer = new \TypedPress\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
+        $patch = \TypedPress\Js::decodeJson('{"tags":[],"meta":{"a":{}}}');
         try {
             $updated = $db->update('marked', $patch, ['id' => $row['id']], true, $viewer)[0];
-            $got = [$updated['tags'], \First\Js::jsonStringify($updated['meta'])];
+            $got = [$updated['tags'], \TypedPress\Js::jsonStringify($updated['meta'])];
         } catch (\Throwable $e) {
             $got = $e::class . ': ' . $e->getMessage();
         }
         eq('an update rule gets list handles; the json() value keeps {}', $got, [[], '{"a":{}}']);
         // A json() filter operand keeps `{}`: deleting rows whose meta is {} leaves the one holding [].
-        $db->insert('marked', [['meta' => \First\Js::decodeJson('{}')], ['meta' => []]]);
-        $db->delete('marked', \First\Js::decodeJson('{"meta":{"eq":{}}}'));
-        eq('a json() filter compares {} and [] as different values', array_map(static fn ($r) => \First\Js::jsonStringify($r['meta']),
+        $db->insert('marked', [['meta' => \TypedPress\Js::decodeJson('{}')], ['meta' => []]]);
+        $db->delete('marked', \TypedPress\Js::decodeJson('{"meta":{"eq":{}}}'));
+        eq('a json() filter compares {} and [] as different values', array_map(static fn ($r) => \TypedPress\Js::jsonStringify($r['meta']),
             $db->findMany('marked', ['orderBy' => ['id' => 'asc']])), ['{"a":{}}', '[]']);
         // The same holds in nested `with` options, in a json() sub-field of a structured filter, and
         // under a viewer whose read rule returns a filter containing {} (all flattened by schema).
         $parent = $db->findFirst('marked', ['orderBy' => ['id' => 'asc']]);
-        $db->insert('marked', [['parentId' => $parent['id'], 'meta' => \First\Js::decodeJson('{}'), 'info' => ['extra' => \First\Js::decodeJson('{}')]],
+        $db->insert('marked', [['parentId' => $parent['id'], 'meta' => \TypedPress\Js::decodeJson('{}'), 'info' => ['extra' => \TypedPress\Js::decodeJson('{}')]],
             ['parentId' => $parent['id'], 'meta' => [], 'info' => ['extra' => []]]]);
-        $kids = $db->findFirst('marked', \First\Js::decodeJson('{"where":{"id":' . $parent['id'] . '},"with":{"kids":{"where":{"meta":{"eq":{}}}}}}'))['kids'];
-        $byInfo = $db->findMany('marked', \First\Js::decodeJson('{"where":{"info":{"eq":{"extra":{}}}}}'));
-        $asViewer = $db->findMany('marked', [], new \First\Viewer(null));
+        $kids = $db->findFirst('marked', \TypedPress\Js::decodeJson('{"where":{"id":' . $parent['id'] . '},"with":{"kids":{"where":{"meta":{"eq":{}}}}}}'))['kids'];
+        $byInfo = $db->findMany('marked', \TypedPress\Js::decodeJson('{"where":{"info":{"eq":{"extra":{}}}}}'));
+        $asViewer = $db->findMany('marked', [], new \TypedPress\Viewer(null));
         eq('permission checks run a rule filter holding {} like reads do', [
-            $db->permits('marked', 'read', $parent['id'], new \First\Viewer(null)),
-            count($db->permittedKeys('marked', 'read', new \First\Viewer(null)) ?? []),
+            $db->permits('marked', 'read', $parent['id'], new \TypedPress\Viewer(null)),
+            count($db->permittedKeys('marked', 'read', new \TypedPress\Viewer(null)) ?? []),
         ], [true, 4]);
         eq('json() operands keep {} in with, in structured filters, and beside rule filters', [
-            array_map(static fn ($r) => \First\Js::jsonStringify($r['meta']), $kids),
-            array_map(static fn ($r) => \First\Js::jsonStringify($r['info']['extra']), $byInfo),
+            array_map(static fn ($r) => \TypedPress\Js::jsonStringify($r['meta']), $kids),
+            array_map(static fn ($r) => \TypedPress\Js::jsonStringify($r['info']['extra']), $byInfo),
             count($asViewer),
         ], [['{}'], ['{}'], 4]);
     } finally {
-        \First\Db::setInstance($previous);
+        \TypedPress\Db::setInstance($previous);
     }
 })();
 
 // ================================================================ callback ownership and JSON boundaries
 (static function (): void {
     eval(<<<'CODE'
-    namespace FirstApp;
+    namespace TypedPressApp;
     function refs__before($data, $ctx) {
         if ($data !== $ctx->p['data']) throw new \RuntimeException('before alias');
-        if ($data->p['meta'] instanceof \First\JsObject && isset($data->p['meta']->p['x'])) $data->p['meta']->p['x'] = 2;
+        if ($data->p['meta'] instanceof \TypedPress\JsObject && isset($data->p['meta']->p['x'])) $data->p['meta']->p['x'] = 2;
     }
     function refs__validate($value, $ctx) {
         if ($value !== $ctx->p['data']->p['meta']) return 'validator alias';
@@ -1317,7 +1317,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         return true;
     }
     function refs__after($row) {
-        if ($row->p['meta'] instanceof \First\JsObject && isset($row->p['meta']->p['x'])) $row->p['meta']->p['x'] = 100;
+        if ($row->p['meta'] instanceof \TypedPress\JsObject && isset($row->p['meta']->p['x'])) $row->p['meta']->p['x'] = 100;
     }
     function refs__input($input, $ctx) { return $input->p['info']->p['extra']; }
     CODE);
@@ -1326,48 +1326,48 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         'meta' => ['type' => 'json', 'rules' => ['validate' => 'refs__validate'], 'access' => ['update' => ['allow' => false]]],
         'info' => ['type' => 'group', 'fields' => ['extra' => ['type' => 'json', 'default' => ['json' => '{"1":1,"0":2}']]], 'default' => ['json' => '{}']],
     ];
-    $schema = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => ['refs' => [
-        'primaryKey' => 'id', 'editor' => false, 'table' => 'first_refs', 'columns' => $columns,
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => ['refs' => [
+        'primaryKey' => 'id', 'editor' => false, 'table' => 'tp_refs', 'columns' => $columns,
         'access' => ['read' => ['allow' => true], 'update' => ['allow' => true]],
         'hooks' => ['beforeCreate' => 'refs__before', 'afterCreate' => 'refs__after'],
         'relations' => ['self' => ['kind' => 'one', 'collection' => 'refs', 'from' => 'id', 'to' => 'id']],
     ]]]);
     $wp = $GLOBALS['wp'];
-    $wp->exec('CREATE TABLE {prefix}first_refs (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `meta` LONGTEXT, `info` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-    $db = new \First\Db(\First\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \First\db()->media());
-    $previous = \First\Db::instance();
-    \First\Db::setInstance($db);
+    $wp->exec('CREATE TABLE {prefix}tp_refs (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `meta` LONGTEXT, `info` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $db = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \TypedPress\db()->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($db);
     $seen = null;
-    \First\Extensions::onWrite(static function (string $op, string $collection, array &$data) use (&$seen): void {
+    \TypedPress\Extensions::onWrite(static function (string $op, string $collection, array &$data) use (&$seen): void {
         if ($collection === 'refs') $seen = is_array($data);
     });
     try {
-        $source = new \First\JsObject(['x' => 1]);
+        $source = new \TypedPress\JsObject(['x' => 1]);
         $GLOBALS['refsCaptured'] = $source;
-        $row = $db->insert('refs', new \First\JsObject(['meta' => $source]), true)[0];
+        $row = $db->insert('refs', new \TypedPress\JsObject(['meta' => $source]), true)[0];
         eq('before mutations persist; validator, capture and after mutations are isolated', [
             $seen, $row['meta']->p['x'], $db->findFirst('refs')['meta']->p['x'], $source->p['x'],
         ], [true, 2, 2, 99]);
-        eq('a group default fills nested JSON defaults as objects', \First\Js::jsonStringify($row['info']), '{"extra":{"0":2,"1":1}}');
+        eq('a group default fills nested JSON defaults as objects', \TypedPress\Js::jsonStringify($row['info']), '{"extra":{"0":2,"1":1}}');
         foreach (['{}', '[]', '{"1":1,"0":2}', '{"\u0000":1}'] as $json) {
-            $value = \First\Js::decodeJson($json);
+            $value = \TypedPress\Js::decodeJson($json);
             $created = $db->insert('refs', ['meta' => $value, 'info' => []], true)[0];
             $read = $db->findFirst('refs', ['where' => ['id' => $created['id']]]);
-            eq("JSON insert/read/response: $json", \First\Js::jsonStringify($read['meta']), \First\Js::jsonStringify($value));
+            eq("JSON insert/read/response: $json", \TypedPress\Js::jsonStringify($read['meta']), \TypedPress\Js::jsonStringify($value));
         }
-        $protected = $db->insert('refs', ['meta' => \First\Js::decodeJson('{"a":1,"b":{"n":2}}')], true)[0];
-        $viewer = new \First\Viewer(['id' => 1, 'name' => 'Ed', 'role' => 'editor']);
-        $same = $db->update('refs', ['meta' => \First\Js::decodeJson('{"b":{"n":2},"a":1}')], ['id' => $protected['id']], true, $viewer)[0];
+        $protected = $db->insert('refs', ['meta' => \TypedPress\Js::decodeJson('{"a":1,"b":{"n":2}}')], true)[0];
+        $viewer = new \TypedPress\Viewer(['id' => 1, 'name' => 'Ed', 'role' => 'editor']);
+        $same = $db->update('refs', ['meta' => \TypedPress\Js::decodeJson('{"b":{"n":2},"a":1}')], ['id' => $protected['id']], true, $viewer)[0];
         eq('a protected JSON echo compares object keys structurally', $same['meta']->p['b']->p['n'], 2);
-        problem('a nested JSON change is a protected write', fn () => $db->update('refs', ['meta' => \First\Js::decodeJson('{"b":{"n":3},"a":1}')], ['id' => $protected['id']], true, $viewer), 403, 'forbidden', '/meta');
-        eq('sameJson detects a nested handle change', \First\Js::sameJson($same['meta'], \First\Js::decodeJson('{"b":{"n":3},"a":1}')), false);
-        $jsRow = \First\Seam::findFirst('refs', ['where' => ['id' => $row['id']], 'with' => ['self' => true]]);
-        eq('row handles enumerate columns and attached relations', [\First\Js::keys($jsRow)->a, $jsRow->p['self']->p['id']], [[...array_keys($columns), 'self'], $row['id']]);
+        problem('a nested JSON change is a protected write', fn () => $db->update('refs', ['meta' => \TypedPress\Js::decodeJson('{"b":{"n":3},"a":1}')], ['id' => $protected['id']], true, $viewer), 403, 'forbidden', '/meta');
+        eq('sameJson detects a nested handle change', \TypedPress\Js::sameJson($same['meta'], \TypedPress\Js::decodeJson('{"b":{"n":3},"a":1}')), false);
+        $jsRow = \TypedPress\Seam::findFirst('refs', ['where' => ['id' => $row['id']], 'with' => ['self' => true]]);
+        eq('row handles enumerate columns and attached relations', [\TypedPress\Js::keys($jsRow)->a, $jsRow->p['self']->p['id']], [[...array_keys($columns), 'self'], $row['id']]);
         problem('cyclic write inputs are a validation error', static function () use ($db): void {
-            $cycle = new \First\JsObject(); $cycle->p['self'] = $cycle;
+            $cycle = new \TypedPress\JsObject(); $cycle->p['self'] = $cycle;
             $db->insert('refs', ['meta' => $cycle]);
         }, 422, 'invalid_input');
-    } finally { \First\Db::setInstance($previous); unset($GLOBALS['refsCaptured']); }
+    } finally { \TypedPress\Db::setInstance($previous); unset($GLOBALS['refsCaptured']); }
 })();
 
 // ================================================================ a second Db keeps its own rules
@@ -1377,44 +1377,44 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 (static function (): void {
     $wp = $GLOBALS['wp'];
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
-    eval('namespace FirstApp; function scoped__rule($ctx) { return \\First\\db()->schema()->hasCollection("people"); } function scoped__default() { return \\First\\db()->schema()->hasCollection("people") ? "secondary" : "booted"; }');
-    $schema = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [
-        'people' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'first_scoped_people', 'revisions' => true, 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
+    eval('namespace TypedPressApp; function scoped__rule($ctx) { return \\TypedPress\\db()->schema()->hasCollection("people"); } function scoped__default() { return \\TypedPress\\db()->schema()->hasCollection("people") ? "secondary" : "booted"; }');
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'people' => ['primaryKey' => 'id', 'editor' => false, 'table' => 'tp_scoped_people', 'revisions' => true, 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
             'columns' => ['id' => $id, 'name' => ['type' => 'text', 'notNull' => true], 'ssn' => ['type' => 'text', 'access' => ['read' => ['role' => 'admin']]]]],
     ], 'globals' => ['scope' => ['label' => 'scope', 'agents' => true, 'fields' => ['name' => ['type' => 'text', 'default' => ['fn' => 'scoped__default']]], 'access' => ['read' => ['fn' => 'scoped__rule'], 'update' => ['fn' => 'scoped__rule']],
-        'wp' => ['postId' => 'first_global_scope', 'menuSlug' => 'first-global-scope', 'groupKey' => 'group_first_global_scope', 'fieldKeyPrefix' => 'field_first_global_scope_', 'optionPrefix' => 'first_global_scope_']]]]);
-    \First\Wp\Scf::register($schema);
-    $wp->exec('CREATE TABLE {prefix}first_scoped_people (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `ssn` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-    $store = \First\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \First\Db($store, $schema, \First\db()->media());
+        'wp' => ['postId' => 'tp_global_scope', 'menuSlug' => 'typedpress-global-scope', 'groupKey' => 'group_tp_global_scope', 'fieldKeyPrefix' => 'field_tp_global_scope_', 'optionPrefix' => 'tp_global_scope_']]]]);
+    \TypedPress\Wp\Scf::register($schema);
+    $wp->exec('CREATE TABLE {prefix}tp_scoped_people (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `ssn` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $store = \TypedPress\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \TypedPress\Db($store, $schema, \TypedPress\db()->media());
     $db->insert('people', ['name' => 'p', 'ssn' => '123-45-6789']);
-    eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', [], new \First\Viewer(null))), false);
+    eq('field rules of a second Db apply to it', array_key_exists('ssn', $db->findFirst('people', [], new \TypedPress\Viewer(null))), false);
     eq('… and its trusted reads see the column', $db->findFirst('people')['ssn'], '123-45-6789');
-    $viewer = new \First\Viewer(['id' => 1, 'role' => 'admin']);
+    $viewer = new \TypedPress\Viewer(['id' => 1, 'role' => 'admin']);
     eq('direct permission rules query the secondary schema', [$db->permits('people', 'read', 1, $viewer), $db->permittedKeys('people', 'update', $viewer)], [true, null]);
     $revisions = $db->revisions('people', 1, $viewer);
     eq('revision authorization queries the secondary schema', count($revisions), 1);
     eq('revision restore authorization keeps the secondary schema', $db->restoreRevision('people', 1, $revisions[0]['id'], $viewer)['name'], 'p');
-    \First\Extensions::beforeRead(static function (string $collection, array &$opts): void {
-        if ($collection === 'people' && !\First\db()->schema()->hasCollection('people')) {
+    \TypedPress\Extensions::beforeRead(static function (string $collection, array &$opts): void {
+        if ($collection === 'people' && !\TypedPress\db()->schema()->hasCollection('people')) {
             throw new \RuntimeException('wrong query Db');
         }
     }, constraintSafe: true);
     eq('editor captures dispatch query extensions in their own Db', $db->editorRow('people', 1)['name'], 'p');
     eq('global rules and default generators use the secondary schema', $db->globalGet('scope', $viewer)['name'], 'secondary');
     eq('global update authorization uses the secondary schema', $db->globalUpdate('scope', ['name' => 'saved'], $viewer)['name'], 'saved');
-    $shared = new \First\Db($store, new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => []]), $db->media());
+    $shared = new \TypedPress\Db($store, new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => []]), $db->media());
     $committed = [];
     $shared->transaction(function () use ($db, &$committed): void {
         $db->transaction(function () use ($db, &$committed): void {
-            \First\Extensions::afterCommit(function () use (&$committed): void {
-                $committed[] = \First\db()->schema()->hasCollection('people');
+            \TypedPress\Extensions::afterCommit(function () use (&$committed): void {
+                $committed[] = \TypedPress\db()->schema()->hasCollection('people');
             });
         });
         eq('a secondary Db callback waits for the shared outer commit', $committed, []);
     });
     eq('deferred callbacks retain the registering Db', $committed, [true]);
-    eq('the booted app\'s db() is back afterwards', \First\db()->schema()->hasCollection('profiles'), true);
+    eq('the booted app\'s db() is back afterwards', \TypedPress\db()->schema()->hasCollection('profiles'), true);
 })();
 
 // ================================================================ write errors don't reveal what the viewer can't read
@@ -1425,8 +1425,8 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     $wp = $GLOBALS['wp'];
     $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
     $anyone = ['role' => 'anyone'];
-    $table = static fn (string $name, array $access, array $columns): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "first_$name", 'access' => $access, 'columns' => ['id' => $id] + $columns];
-    $schema = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [
+    $table = static fn (string $name, array $access, array $columns): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "tp_$name", 'access' => $access, 'columns' => ['id' => $id] + $columns];
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
         // Anyone signs up; only admins see who did.
         'subscribers' => $table('subscribers', ['read' => ['role' => 'admin'], 'create' => $anyone],
             ['email' => ['type' => 'text', 'notNull' => true, 'unique' => true], 'note' => ['type' => 'text', 'default' => ['value' => 'welcome']]]),
@@ -1446,21 +1446,21 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             ['code' => ['type' => 'integer', 'references' => ['collection' => 'badges', 'column' => 'code']],
              'badge' => ['type' => 'integer', 'references' => ['collection' => 'badges', 'column' => 'badge']]]),
     ]]);
-    $wp->exec('CREATE TABLE {prefix}first_subscribers (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `email` VARCHAR(191) NOT NULL, `note` LONGTEXT, PRIMARY KEY (`id`), UNIQUE KEY `email_unique` (`email`)) ENGINE=InnoDB');
-    $wp->exec('CREATE TABLE {prefix}first_people (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `ssn` VARCHAR(191), PRIMARY KEY (`id`), UNIQUE KEY `ssn_unique` (`ssn`)) ENGINE=InnoDB');
-    $wp->exec('CREATE TABLE {prefix}first_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
-    $wp->exec('CREATE TABLE {prefix}first_tags (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `first_tags_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}first_notes (`id`)) ENGINE=InnoDB');
-    $wp->exec('CREATE TABLE {prefix}first_badges (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `code` BIGINT, `badge` BIGINT, PRIMARY KEY (`id`), UNIQUE KEY `code_unique` (`code`), UNIQUE KEY `badge_unique` (`badge`)) ENGINE=InnoDB');
-    $wp->exec('CREATE TABLE {prefix}first_holders (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `code` BIGINT, `badge` BIGINT, PRIMARY KEY (`id`), CONSTRAINT `first_holders_code_fk` FOREIGN KEY (`code`) REFERENCES {prefix}first_badges (`code`), CONSTRAINT `first_holders_badge_fk` FOREIGN KEY (`badge`) REFERENCES {prefix}first_badges (`badge`)) ENGINE=InnoDB');
-    $store = \First\Wp\CompositeStore::create($schema, $wp->connection());
-    $db = new \First\Db($store, $schema, \First\db()->media());
-    $previous = \First\Db::instance();
-    \First\Db::setInstance($db); // registered extensions read the active Db's schema
-    $anon = new \First\Viewer(null);
-    $sub = new \First\Viewer(['id' => 5, 'name' => 'sub', 'role' => 'subscriber']);
-    $admin = new \First\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin']);
-    $editor = new \First\Viewer(['id' => 3, 'name' => 'ed', 'role' => 'editor']);
-    $count = static fn (string $c) => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}first_$c");
+    $wp->exec('CREATE TABLE {prefix}tp_subscribers (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `email` VARCHAR(191) NOT NULL, `note` LONGTEXT, PRIMARY KEY (`id`), UNIQUE KEY `email_unique` (`email`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_people (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `ssn` VARCHAR(191), PRIMARY KEY (`id`), UNIQUE KEY `ssn_unique` (`ssn`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_tags (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `tp_tags_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}tp_notes (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_badges (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `code` BIGINT, `badge` BIGINT, PRIMARY KEY (`id`), UNIQUE KEY `code_unique` (`code`), UNIQUE KEY `badge_unique` (`badge`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_holders (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `code` BIGINT, `badge` BIGINT, PRIMARY KEY (`id`), CONSTRAINT `tp_holders_code_fk` FOREIGN KEY (`code`) REFERENCES {prefix}tp_badges (`code`), CONSTRAINT `tp_holders_badge_fk` FOREIGN KEY (`badge`) REFERENCES {prefix}tp_badges (`badge`)) ENGINE=InnoDB');
+    $store = \TypedPress\Wp\CompositeStore::create($schema, $wp->connection());
+    $db = new \TypedPress\Db($store, $schema, \TypedPress\db()->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($db); // registered extensions read the active Db's schema
+    $anon = new \TypedPress\Viewer(null);
+    $sub = new \TypedPress\Viewer(['id' => 5, 'name' => 'sub', 'role' => 'subscriber']);
+    $admin = new \TypedPress\Viewer(['id' => 2, 'name' => 'root', 'role' => 'admin']);
+    $editor = new \TypedPress\Viewer(['id' => 3, 'name' => 'ed', 'role' => 'editor']);
+    $count = static fn (string $c) => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}tp_$c");
     try {
         // Unique writes require visibility across the collection, before any value is looked up.
         $db->insert('subscribers', ['email' => 'a@x.test'], true, $admin);
@@ -1487,7 +1487,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
 
                 return ['status' => 200, 'code' => 'unexpected_success', 'pointer' => null, 'detail' => ''];
             } catch (\Throwable $e) {
-                return \First\App::problem($e);
+                return \TypedPress\App::problem($e);
             }
         };
         foreach ([$note['id'], $missing] as $value) {
@@ -1521,17 +1521,17 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         }
         eq('refused key changes keep both keys', array_column($db->findMany('badges', ['orderBy' => ['id' => 'asc']]), 'code'), [701001, 701002]);
     } finally {
-        \First\Db::setInstance($previous);
+        \TypedPress\Db::setInstance($previous);
     }
 })();
 
 // ================================================================ ref(labels).many(): links in a join table
 
 (static function () use ($db, $wp): void {
-    $anon = new \First\Viewer(null);
-    $member = new \First\Viewer(['id' => 1, 'name' => 'm', 'role' => 'subscriber']);
+    $anon = new \TypedPress\Viewer(null);
+    $member = new \TypedPress\Viewer(['id' => 1, 'name' => 'm', 'role' => 'subscriber']);
     [$red, $green, $blue, $hidden] = $db->insert('labels', [['name' => 'red'], ['name' => 'green'], ['name' => 'blue'], ['name' => 'hidden', 'secret' => true]], true);
-    $links = static fn (string $table) => array_map(static fn (array $r) => array_map('intval', $r), $wp->sql("SELECT `owner_id`, `target_id`, `position` FROM {prefix}first_$table ORDER BY `owner_id`, `position`"));
+    $links = static fn (string $table) => array_map(static fn (array $r) => array_map('intval', $r), $wp->sql("SELECT `owner_id`, `target_id`, `position` FROM {prefix}tp_$table ORDER BY `owner_id`, `position`"));
 
     $card = $db->insert('cards', ['title' => 'one', 'labels' => [$blue['id'], $red['id']]], true)[0];
     eq('a many-ref reads back as its ids in write order; an omitted optional one is []', [$card['labels'], $card['pinned']], [[$blue['id'], $red['id']], []]);
@@ -1549,7 +1549,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('an update without the field keeps its links', $db->update('cards', ['title' => 'uno'], ['id' => $card['id']], true)[0]['labels'], [$green['id'], $blue['id']]);
 
     $two = $db->insert('cards', ['title' => 'two', 'labels' => [$red['id'], $green['id']], 'pinned' => [$green['id']]], true)[0];
-    $titles = static fn (array $opts, ?\First\Viewer $v = null) => array_column($db->findMany('cards', $opts + ['orderBy' => ['id' => 'asc']], $v), 'title');
+    $titles = static fn (array $opts, ?\TypedPress\Viewer $v = null) => array_column($db->findMany('cards', $opts + ['orderBy' => ['id' => 'asc']], $v), 'title');
     eq('`has` matches rows linked to the id', $titles(['where' => ['labels' => ['has' => $green['id']]]]), ['uno', 'two']);
     eq('NOT has, and eq [] (no links)', [$titles(['where' => ['labels' => ['NOT' => ['has' => $green['id']]]]]), $titles(['where' => ['labels' => []]])], [['empty', 'seen'], ['empty']]);
     eq('a filter on the linked rows means some linked row matches', $titles(['where' => ['labels' => ['name' => 'red']]]), ['two']);
@@ -1571,10 +1571,10 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     problem('restrict refuses deleting a target that is still linked', fn () => $db->delete('labels', ['id' => $green['id']]), 409, 'reference_violation');
     eq('… and keeps it and its links', [count($db->findMany('labels', ['where' => ['id' => $green['id']]])), $db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels']], [1, [$red['id'], $green['id']]]);
     $db->delete('labels', ['id' => $red['id']]);
-    eq('deleting a target removes the links pointing at it', [$db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels'], count($wp->sql('SELECT 1 FROM {prefix}first_cards_labels WHERE `target_id` = ?', [$red['id']]))], [[$green['id']], 0]);
+    eq('deleting a target removes the links pointing at it', [$db->findFirst('cards', ['where' => ['id' => $two['id']]])['labels'], count($wp->sql('SELECT 1 FROM {prefix}tp_cards_labels WHERE `target_id` = ?', [$red['id']]))], [[$green['id']], 0]);
     $db->update('cards', ['pinned' => []], ['id' => $two['id']]);
     $db->delete('cards', ['id' => $two['id']]);
-    eq('deleting the owner removes its links', count($wp->sql('SELECT 1 FROM {prefix}first_cards_labels WHERE `owner_id` = ?', [$two['id']])), 0);
+    eq('deleting the owner removes its links', count($wp->sql('SELECT 1 FROM {prefix}tp_cards_labels WHERE `owner_id` = ?', [$two['id']])), 0);
     $db->delete('labels', ['id' => $green['id']]);
     eq('with the last link gone, restrict lets the target go', $db->findFirst('cards', ['where' => ['id' => $card['id']]])['labels'], [$blue['id']]);
 

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Util;
+namespace TypedPress\Identity\Vendor\Webauthn\Util;
 
-use First\Identity\Vendor\Webauthn\CredentialRecord;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use TypedPress\Identity\Vendor\Webauthn\CredentialRecord;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
 
 /**
  * Utility class to convert between PublicKeyCredentialSource and CredentialRecord.

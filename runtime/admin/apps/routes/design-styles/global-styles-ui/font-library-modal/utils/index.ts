@@ -1,4 +1,4 @@
-import { unlock } from '@first-admin/admin-toolkit';
+import { unlock } from '@typedpress-admin/admin-toolkit';
 import { privateApis as componentsPrivateApis } from '@wordpress/components';
 import { FONT_WEIGHTS, FONT_STYLES } from './constants';
 import { fetchInstallFontFace } from '../resolvers';

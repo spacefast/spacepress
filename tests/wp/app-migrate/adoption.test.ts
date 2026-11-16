@@ -34,7 +34,7 @@ function row(value: unknown): Row {
 
 test("adopts original rows and keeps legacy action results and mutation atomicity", async () => {
   const table = "sf_spc_migrate_test_tasks_3c47092ff0";
-  const before: unknown = JSON.parse(readFileSync(process.env.FIRST_APP_ADOPTION_BEFORE ?? "", "utf8"));
+  const before: unknown = JSON.parse(readFileSync(process.env.TP_APP_ADOPTION_BEFORE ?? "", "utf8"));
   assert.ok(typeof before === "object" && before !== null && "rows" in before && "ddl" in before);
   const actual: unknown = JSON.parse(wp("eval", `global $wpdb; echo wp_json_encode($wpdb->get_results('SELECT * FROM ${table} ORDER BY id', ARRAY_A));`));
   assert.deepEqual(actual, before.rows);
@@ -97,9 +97,9 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
   assert.equal(await action("count"), 3);
   // Every read, update, and delete above still targeted the original table.
   assert.deepEqual(sql(`SELECT id FROM ${table} ORDER BY id`), [{ id: "41" }, { id: "42" }, { id: "9007199254740900" }]);
-  const schemaOption = `first_${harness.plugin.slice("first-app-".length)}_schema`;
+  const schemaOption = `tp_${harness.plugin.slice("typedpress-app-".length)}_schema`;
   const schemaBefore = sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`);
-  const ledgerBefore = sql("SELECT app, id FROM wp_first__migrations ORDER BY app, id");
+  const ledgerBefore = sql("SELECT app, id FROM wp_tp__migrations ORDER BY app, id");
   // Legacy prefix indexes exceed MyISAM's key limit; restore them after the engine probe.
   sql(`ALTER TABLE ${table} DROP INDEX by_owner, DROP INDEX by_done, ENGINE=MyISAM`);
   sql(`UPDATE wp_options SET option_value = 'pending-storage-upgrade' WHERE option_name = '${schemaOption}'`);
@@ -115,7 +115,7 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
     assert.equal(cli.error.status, 500);
     assert.equal(cli.error.code, "internal");
     assert.deepEqual(sql(`SELECT option_value FROM wp_options WHERE option_name = '${schemaOption}'`), [{ option_value: "pending-storage-upgrade" }]);
-    assert.deepEqual(sql("SELECT app, id FROM wp_first__migrations ORDER BY app, id"), ledgerBefore);
+    assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations ORDER BY app, id"), ledgerBefore);
   } finally {
     sql(`ALTER TABLE ${table} ENGINE=InnoDB, ADD KEY by_owner (owner(191), createdAt(191), id), ADD KEY by_done (done(191), createdAt(191), id)`);
   }

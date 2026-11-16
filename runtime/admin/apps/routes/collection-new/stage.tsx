@@ -1,1 +1,1 @@
-export { NewDocument as default } from '@first-admin/schema';
+export { NewDocument as default } from '@typedpress-admin/schema';

@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component;
 
 use function array_key_exists;
-use First\Identity\Vendor\Brick\Math\BigInteger;
-use First\Identity\Vendor\Brick\Math\Exception\MathException;
+use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
+use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
 use function func_num_args;
 use function mb_strlen;
 use function ord;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\Encodable;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\BigInt;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\Encodable;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util\BigInt;
 use function sprintf;
 
 /**

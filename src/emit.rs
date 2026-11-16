@@ -4,7 +4,7 @@ use std::path::Path;
 
 /// Writes `content` to `path` unless the file already holds exactly those bytes, so an unchanged
 /// file keeps its modification time; returns whether it wrote. A changed file is removed and
-/// written again rather than overwritten in place: `first build` stages its output with hard links
+/// written again rather than overwritten in place: `typedpress build` stages its output with hard links
 /// to the published files, and writing through a link would change the published copy before the
 /// stage is published.
 pub(crate) fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<bool> {
@@ -82,7 +82,7 @@ pub(crate) fn embedded(prefix: &'static str) -> impl Iterator<Item = (&'static s
         .filter_map(move |(rel, bytes)| rel.strip_prefix(prefix).map(|rest| (rest, *bytes)))
 }
 
-/// The schema-independent plugins: `first-runtime`, `first-identity` and `first-admin`, as
+/// The schema-independent plugins: `typedpress-runtime`, `typedpress-identity` and `typedpress-admin`, as
 /// (path below the plugins directory, bytes). Identical for every app built by this compiler, so a
 /// build store writes the tree once per revision.
 pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
@@ -98,7 +98,7 @@ fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
         use sha2::Digest;
         let mut hash = sha2::Sha256::new();
         for (rel, bytes) in runtime_files::FILES {
-            if rel.starts_with("First/") {
+            if rel.starts_with("TypedPress/") {
                 hash.update(rel.as_bytes());
                 hash.update([0]);
                 hash.update(bytes);
@@ -110,7 +110,7 @@ fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
         ("runtimeHash", runtime_hash),
         ("wpVersion", platform::WORDPRESS.to_string()),
         ("phpVersion", platform::PHP.to_string()),
-        ("firstVersion", env!("CARGO_PKG_VERSION").to_string()),
+        ("tpVersion", env!("CARGO_PKG_VERSION").to_string()),
         // Every platform plugin Runtime::activate() requires; Polylang only with an app's `locales`.
         (
             "runtimeRequires",
@@ -121,39 +121,39 @@ fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
                 .join(", "),
         ),
     ];
-    let template = runtime_file("wp-plugin/first-runtime.php").expect("embedded plugin template");
-    let uninstall = runtime_file("wp-plugin/first-runtime-uninstall.php").expect("embedded uninstall template");
+    let template = runtime_file("wp-plugin/typedpress-runtime.php").expect("embedded plugin template");
+    let uninstall = runtime_file("wp-plugin/typedpress-runtime-uninstall.php").expect("embedded uninstall template");
     let mut files: Vec<(String, Cow<'static, [u8]>)> = vec![
         (
-            "first-runtime/first-runtime.php".into(),
+            "typedpress-runtime/typedpress-runtime.php".into(),
             Cow::Owned(substitute(&String::from_utf8_lossy(template), &vars).into_bytes()),
         ),
         // Deleting the plugin in wp-admin runs uninstall.php: options and capabilities go, content stays.
-        ("first-runtime/uninstall.php".into(), Cow::Borrowed(uninstall)),
+        ("typedpress-runtime/uninstall.php".into(), Cow::Borrowed(uninstall)),
         (
-            "first-runtime/readme.txt".into(),
-            Cow::Owned(readme("first-runtime").into_bytes()),
+            "typedpress-runtime/readme.txt".into(),
+            Cow::Owned(readme("typedpress-runtime").into_bytes()),
         ),
         // The build store's loader, which the host requires to mount one build.
         (
-            "first-loader.php".into(),
-            Cow::Borrowed(runtime_file("wp-plugin/first-loader.php").expect("embedded loader")),
+            "typedpress-loader.php".into(),
+            Cow::Borrowed(runtime_file("wp-plugin/typedpress-loader.php").expect("embedded loader")),
         ),
     ];
     for (rel, bytes) in runtime_files::FILES {
-        if let Some(rest) = rel.strip_prefix("First/") {
-            files.push((format!("first-runtime/first/{rest}"), Cow::Borrowed(*bytes)));
+        if let Some(rest) = rel.strip_prefix("TypedPress/") {
+            files.push((format!("typedpress-runtime/tp/{rest}"), Cow::Borrowed(*bytes)));
         } else if let Some(rest) = rel.strip_prefix("identity/") {
-            files.push((format!("first-identity/{rest}"), Cow::Borrowed(*bytes)));
+            files.push((format!("typedpress-identity/{rest}"), Cow::Borrowed(*bytes)));
         } else if let Some(rest) = rel.strip_prefix("admin/") {
             // The committed admin plugin (PHP, routes.js, notices, the built modules); its header
             // carries the same version placeholders as the generated plugins.
-            let bytes = if rest == "first-admin.php" {
+            let bytes = if rest == "typedpress-admin.php" {
                 Cow::Owned(substitute(&String::from_utf8_lossy(bytes), &vars).into_bytes())
             } else {
                 Cow::Borrowed(*bytes)
             };
-            files.push((format!("first-admin/{rest}"), bytes));
+            files.push((format!("typedpress-admin/{rest}"), bytes));
         }
     }
     files
@@ -169,19 +169,19 @@ pub(crate) fn emit_generated(
     runtime: bool,
 ) -> std::io::Result<()> {
     if runtime {
-        let slugs = ["first-runtime", "first-identity", "first-admin"];
+        let slugs = ["typedpress-runtime", "typedpress-identity", "typedpress-admin"];
         emit_runtime(plugins, &slugs[..if built.schema.admin { 3 } else { 2 }])?;
     }
     let (_, files) = app_files(project, migrations, built)?;
     // The migrations directory exists even when the ledger has no SQL yet, as it always has.
-    std::fs::create_dir_all(plugins.join(format!("first-app-{}/first/app/migrations", built.schema.name)))?;
+    std::fs::create_dir_all(plugins.join(format!("typedpress-app-{}/tp/app/migrations", built.schema.name)))?;
     for (rel, bytes) in files {
         write(&plugins.join(rel), bytes)?;
     }
     Ok(())
 }
 
-/// Writes the runtime plugins named in `slugs` (`first-runtime`, `first-identity`, `first-admin`).
+/// Writes the runtime plugins named in `slugs` (`typedpress-runtime`, `typedpress-identity`, `typedpress-admin`).
 pub(crate) fn emit_runtime(plugins: &Path, slugs: &[&str]) -> std::io::Result<()> {
     for (rel, bytes) in runtime_tree() {
         if rel.split_once('/').is_some_and(|(slug, _)| slugs.contains(&slug)) {

@@ -16,7 +16,7 @@ export function IconWithCurrentColor( {
 		<Icon
 			className={ clsx(
 				className,
-				'first-admin-global-styles-icon-with-current-color'
+				'typedpress-admin-global-styles-icon-with-current-color'
 			) }
 			{ ...props }
 		/>

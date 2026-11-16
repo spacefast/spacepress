@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\PropertyNormalizer;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\PropertyNormalizer;
 
 /**
  * A helper providing autocompletion for available PropertyNormalizer options.

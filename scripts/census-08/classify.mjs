@@ -65,7 +65,7 @@ const RULES = [
   // every endpoint as an unsupported capsule feature.
   ["endpoint: no endpoint conversion", "refusal", (p, r) => /^\/endpoints(\/|$)/.test(p) && /unsupported capsule feature/.test(r)],
   ["endpoint: writing GET", "refusal", (p, r) => /^\/endpoints\//.test(p) && /writing GET/.test(r)],
-  ["endpoint: path owned by WordPress or First", "refusal", (p, r) => /^\/endpoints\//.test(p) && /belongs to WordPress or First/.test(r)],
+  ["endpoint: path owned by WordPress or TypedPress", "refusal", (p, r) => /^\/endpoints\//.test(p) && /belongs to WordPress or TypedPress/.test(r)],
   ["endpoint: OPTIONS or HEAD", "refusal", (p, r) => /^\/endpoints\//.test(p) && /OPTIONS|HEAD/.test(r) && /method|endpoints have no v2 route/.test(r)],
   ["endpoint: catch-all segment", "refusal", (p, r) => /^\/endpoints\//.test(p) && /catch-all|\*[a-z]|:splat|splat/.test(r)],
   ["endpoint: request API (url, bytes, headers.entries)", "refusal", (p, r) => /request API has no v2 route equivalent/.test(r)],
@@ -104,12 +104,12 @@ const RULES = [
   ...LANGUAGE.map(([needle, label]) => [
     `language: ${label}`,
     "refusal",
-    (p, r) => !p && r.startsWith("error: First code doesn't support") && first(r).includes(needle),
+    (p, r) => !p && r.startsWith("error: TypedPress code doesn't support") && first(r).includes(needle),
   ]),
-  ["language: other construct", "refusal", (p, r) => !p && r.startsWith("error: First code doesn't support")],
+  ["language: other construct", "refusal", (p, r) => !p && r.startsWith("error: TypedPress code doesn't support")],
   // A global the handler calls that v2 does not provide; `fetch` is mapped from #131 on.
-  ["global: fetch", "refusal", (p, r) => /`fetch` isn't available in First code/.test(r)],
-  ["global: other host API", "refusal", (p, r) => /`[\w$.]+` isn't available in First code/.test(r)],
+  ["global: fetch", "refusal", (p, r) => /`fetch` isn't available in TypedPress code/.test(r)],
+  ["global: other host API", "refusal", (p, r) => /`[\w$.]+` isn't available in TypedPress code/.test(r)],
   // Shapes esbuild may have produced: settled only by the source.
   ["bundle shape", "source", () => true],
 ];

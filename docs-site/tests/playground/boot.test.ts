@@ -1,10 +1,10 @@
 // Boots every site example in WordPress Playground from the blueprint the site publishes
 // (public/files/<name>.blueprint.json, written by scripts/build-showcase.ts), and checks the app
-// works there: First's plugins are active, each collection answers on the REST API, each
+// works there: TypedPress's plugins are active, each collection answers on the REST API, each
 // collection stored as WordPress posts has its wp-admin list and editor, and the example's landing
 // page opens. This is the WordPress a visitor gets from "Run in WordPress".
 //
-// The blueprint names the site's published address for First's plugin zips. Here they are served
+// The blueprint names the site's published address for TypedPress's plugin zips. Here they are served
 // from public/files/ on a local port instead; everything else (WordPress, PHP, the WordPress.org
 // plugins) is fetched as it is for a visitor. Run `pnpm showcase` first.
 import { runCLI, type RunCLIServer } from "@wp-playground/cli";
@@ -21,10 +21,10 @@ import { browser, serveFiles } from "./helpers.ts";
 
 const files = path.join(site, "public/files");
 
-// What the app plugin declares, read inside WordPress from the schema `first build` wrote.
+// What the app plugin declares, read inside WordPress from the schema `typedpress build` wrote.
 const describeApp = (app: string) => `<?php
 require_once '/wordpress/wp-load.php';
-$schema = require WP_PLUGIN_DIR . '/first-app-${app}/first/app/schema.php';
+$schema = require WP_PLUGIN_DIR . '/typedpress-app-${app}/tp/app/schema.php';
 $collections = [];
 foreach ($schema['collections'] as $key => $collection) {
 	$collections[] = ['key' => $key, 'postType' => $collection['wp']['postType'] ?? null];
@@ -32,13 +32,13 @@ foreach ($schema['collections'] as $key => $collection) {
 echo wp_json_encode(['active' => get_option('active_plugins'), 'collections' => $collections]);
 `;
 
-// Each collection's list route, as the admin, through First's API (in process, as an HTTP request would).
+// Each collection's list route, as the admin, through TypedPress's API (in process, as an HTTP request would).
 const restStatus = (keys: string[]) => `<?php
 require_once '/wordpress/wp-load.php';
 wp_set_current_user(1);
 $out = [];
 foreach (json_decode(base64_decode('${Buffer.from(JSON.stringify(keys)).toString("base64")}'), true) as $key) {
-	$out[$key] = \\First\\Wp\\Facade::route(\\First\\Wp\\Runtime::plugin(), 'GET', '/' . $key, [], '')[0];
+	$out[$key] = \\TypedPress\\Wp\\Facade::route(\\TypedPress\\Wp\\Runtime::plugin(), 'GET', '/' . $key, [], '')[0];
 }
 echo wp_json_encode($out);
 `;
@@ -72,9 +72,9 @@ const exampleChecks: Record<string, { title: string; run: (base: string, admin: 
 		title: "the tally jobs filled in minutes read, the draft is the admin's only, and the shelf route lists the books",
 		async run(base, admin) {
 			const visitor = browser(base, { signedOut: true });
-			const books = (await rest(visitor, "/__first/api/v1/books")).data;
+			const books = (await rest(visitor, "/__tp/api/v1/books")).data;
 			assert.deepEqual(books.map((b) => [b.title, b.minutesRead]).sort(), [["A Wizard of Earthsea", 45], ["The Dispossessed", 65], ["The Left Hand of Darkness", 25]]);
-			const all = (await rest(admin, "/__first/api/v1/books?status=draft", {}, await adminNonce(admin))).data;
+			const all = (await rest(admin, "/__tp/api/v1/books?status=draft", {}, await adminNonce(admin))).data;
 			assert.deepEqual(all.map((b) => b.title), ["The Lathe of Heaven"]);
 			const shelf = await visitor("/shelf.html");
 			assert.equal(shelf.status, 200);
@@ -85,25 +85,25 @@ const exampleChecks: Record<string, { title: string; run: (base: string, admin: 
 		title: "milk is on the shopping list and notified, and milk and butter expire soon",
 		async run(_base, admin) {
 			const nonce = await adminNonce(admin);
-			const list = (await rest(admin, "/__first/api/v1/shopping_list", {}, nonce)).data;
+			const list = (await rest(admin, "/__tp/api/v1/shopping_list", {}, nonce)).data;
 			assert.deepEqual(list.map((row) => row.name), ["Milk"]);
 			assert.ok(list[0]!.notifiedAt, "the notifyLowStock job did not run");
-			const soon = (await rest(admin, "/__first/api/v1/actions/expiringSoon", { method: "POST", body: {} }, nonce)).data;
+			const soon = (await rest(admin, "/__tp/api/v1/actions/expiringSoon", { method: "POST", body: {} }, nonce)).data;
 			assert.deepEqual(soon.map((item) => [item.name, item.where]), [["Butter", "Fridge"], ["Milk", "Fridge"]]);
 		},
 	},
 	blog: {
-		title: "/__first/api/v1/posts lists the published posts, and a reader's comment waits for an editor",
+		title: "/__tp/api/v1/posts lists the published posts, and a reader's comment waits for an editor",
 		async run(base, admin) {
 			const visitor = browser(base, { signedOut: true });
-			const published = (await rest(visitor, "/__first/api/v1/posts")).data;
-			assert.deepEqual(published.map((p) => p.title).sort(), ["Comments are moderated", "Hello, First"]);
+			const published = (await rest(visitor, "/__tp/api/v1/posts")).data;
+			assert.deepEqual(published.map((p) => p.title).sort(), ["Comments are moderated", "Hello, TypedPress"]);
 			const nonce = await adminNonce(admin);
-			const drafts = (await rest(admin, "/__first/api/v1/posts?status=draft", {}, nonce)).data;
+			const drafts = (await rest(admin, "/__tp/api/v1/posts?status=draft", {}, nonce)).data;
 			assert.deepEqual(drafts.map((p) => p.title), ["Typed content, plain files"]);
-			const shown = (await rest(visitor, "/__first/api/v1/comments")).data;
+			const shown = (await rest(visitor, "/__tp/api/v1/comments")).data;
 			assert.equal(shown.length, 2, "a signed-out reader should see the two approved comments");
-			const waiting = (await rest(admin, "/__first/api/v1/comments", {}, nonce)).data.filter((c) => c.approved === false);
+			const waiting = (await rest(admin, "/__tp/api/v1/comments", {}, nonce)).data.filter((c) => c.approved === false);
 			assert.equal(waiting.length, 1);
 			assert.ok(waiting[0]!.notifiedAt, "the notifyEditors job did not stamp the reader's comment");
 		},
@@ -149,7 +149,7 @@ for (const example of siteExamples) {
 			const blueprintFile = path.join(files, `${example.name}.blueprint.json`);
 			if (!existsSync(blueprintFile)) throw new Error(`${blueprintFile} is missing; run pnpm showcase`);
 			const { port } = zips.address() as AddressInfo;
-			// First's zips from the local server; every other URL as published.
+			// TypedPress's zips from the local server; every other URL as published.
 			const blueprint = JSON.parse(readFileSync(blueprintFile, "utf8").replace(/"https?:\/\/[^"]+?\/files\/plugins\//g, `"http://127.0.0.1:${port}/files/plugins/`));
 			// The plugin folder each installPlugin step unpacks: the zip's name without its version.
 			installed = (blueprint.steps as { step: string; pluginData?: { url: string } }[])
@@ -169,9 +169,9 @@ for (const example of siteExamples) {
 			await wordpress?.[Symbol.asyncDispose]();
 		});
 
-		test("First's plugins are active, and every collection answers on the REST API", async () => {
+		test("TypedPress's plugins are active, and every collection answers on the REST API", async () => {
 			const described = JSON.parse((await wordpress.playground.run({ code: describeApp(app) })).text) as { active: string[]; collections: { key: string; postType: string | null }[] };
-			// Every plugin the blueprint installs, First's and WordPress.org's, is active.
+			// Every plugin the blueprint installs, TypedPress's and WordPress.org's, is active.
 			for (const plugin of installed) {
 				assert.ok(described.active.some((file) => file.startsWith(`${plugin}/`)), `${plugin} is not active: ${described.active.join(", ")}`);
 			}

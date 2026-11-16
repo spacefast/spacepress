@@ -2,11 +2,11 @@
 /**
  * Nickname field definition for core user fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Nickname', 'first-admin' ),
+	'label'         => __( 'Nickname', 'typedpress-admin' ),
 	'enableSorting' => true,
 );

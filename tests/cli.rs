@@ -1,7 +1,7 @@
-//! The `first` command line: one table, build commands here, site commands through WP-CLI
+//! The `typedpress` command line: one table, build commands here, site commands through WP-CLI
 //! (docs/decisions/2026-11-07-one-cli.md). The fixture tests use a stand-in `wp` on PATH; the
 //! WordPress test serves a real WordPress on SQLite (tests/php/wp.php serve) and checks that
-//! `first <site cmd> --site @alias` answers exactly what `wp @alias first <site cmd>` answers.
+//! `typedpress <site cmd> --site @alias` answers exactly what `wp @alias typedpress <site cmd>` answers.
 
 #![cfg(feature = "cli")]
 
@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_first"))
+    Command::new(env!("CARGO_BIN_EXE_typedpress"))
 }
 
 fn root() -> PathBuf {
@@ -59,7 +59,7 @@ fn run_with_stdin(mut command: Command, stdin: &str) -> Output {
 #[test]
 fn help_lists_build_and_site_commands_from_one_table() {
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
     let out = first().arg("help").output().unwrap();
     assert!(out.status.success());
     let help = text(&out.stdout);
@@ -89,11 +89,11 @@ fn help_lists_build_and_site_commands_from_one_table() {
     let unknown = first().arg("frobnicate").output().unwrap();
     assert_eq!(unknown.status.code(), Some(2));
     assert_eq!(text(&unknown.stderr), format!("no command frobnicate\n{help}"));
-    // `first help <command>` prints that command's arguments.
+    // `typedpress help <command>` prints that command's arguments.
     let jobs = first().args(["help", "jobs"]).output().unwrap();
     assert_eq!(
         text(&jobs.stdout),
-        "usage: first jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain | tick [--limit=n] [--budget-ms=ms]\n"
+        "usage: typedpress jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain | tick [--limit=n] [--budget-ms=ms]\n"
     );
 }
 
@@ -108,11 +108,11 @@ fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         seen["args"],
-        serde_json::json!(["@prod", "first", "migrate-legacy", "-", "--dry-run", "--space=s1"])
+        serde_json::json!(["@prod", "typedpress", "migrate-legacy", "-", "--dry-run", "--space=s1"])
     );
     assert_eq!(seen["stdin"], "<?php return [];");
 
-    // `first wp` forwards any WP-CLI command; `--site=@x` works too.
+    // `typedpress wp` forwards any WP-CLI command; `--site=@x` works too.
     let mut command = first();
     command.args(["wp", "--site=@staging", "plugin", "list", "--format=json"]);
     with_path(&mut command, wp.path());
@@ -127,7 +127,7 @@ fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
 
 #[test]
 fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
-    // `abilities pull` reads a site over HTTP from this binary; `abilities` alone is `wp first abilities`.
+    // `abilities pull` reads a site over HTTP from this binary; `abilities` alone is `wp typedpress abilities`.
     let wp = fake_wp();
     let mut command = first();
     command.args(["abilities", "--site", "@prod"]);
@@ -135,7 +135,7 @@ fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
     let out = command.output().unwrap();
     assert_eq!(out.status.code(), Some(7));
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(seen["args"], serde_json::json!(["@prod", "first", "abilities"]));
+    assert_eq!(seen["args"], serde_json::json!(["@prod", "typedpress", "abilities"]));
     let mut command = first();
     command.args(["abilities", "pull"]);
     with_path(&mut command, wp.path());
@@ -150,7 +150,7 @@ fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
 
 #[test]
 fn styles_pull_reads_the_site_through_wp_cli_and_refuses_a_url() {
-    // The site answers through WP-CLI: an alias runs `wp @alias first styles export`.
+    // The site answers through WP-CLI: an alias runs `wp @alias typedpress styles export`.
     let wp = fake_wp();
     let project = tempfile::tempdir().unwrap();
     let mut command = first();
@@ -163,11 +163,11 @@ fn styles_pull_reads_the_site_through_wp_cli_and_refuses_a_url() {
     assert_eq!(out.status.code(), Some(1));
     // The stand-in prints its arguments, which is no answer: nothing is written.
     assert!(
-        text(&out.stderr).contains("\"args\":[\"@prod\",\"first\",\"styles\",\"export\"]"),
+        text(&out.stderr).contains("\"args\":[\"@prod\",\"typedpress\",\"styles\",\"export\"]"),
         "{}",
         text(&out.stderr)
     );
-    assert!(!project.path().join("first/theme.json").exists());
+    assert!(!project.path().join("tp/theme.json").exists());
     let out = first()
         .args(["styles", "pull", "--site", "https://example.test"])
         .output()
@@ -177,7 +177,7 @@ fn styles_pull_reads_the_site_through_wp_cli_and_refuses_a_url() {
     let out = first().args(["styles", "push"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(
-        text(&out.stderr).starts_with("no command styles push\nusage: first styles pull"),
+        text(&out.stderr).starts_with("no command styles push\nusage: typedpress styles pull"),
         "{}",
         text(&out.stderr)
     );
@@ -199,34 +199,34 @@ fn a_site_url_is_refused_for_wp_cli_commands() {
     assert!(text(&out.stderr).contains("--site given twice"));
     let out = first().arg("wp").output().unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert!(text(&out.stderr).starts_with("first wp needs WP-CLI arguments\nusage: first wp"));
+    assert!(text(&out.stderr).starts_with("typedpress wp needs WP-CLI arguments\nusage: typedpress wp"));
 }
 
 #[test]
 fn build_commands_refuse_options_they_do_not_take() {
     let out = first().args(["check", "--port", "9"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert!(text(&out.stderr).starts_with("unknown option --port for first check\nusage: first check"));
+    assert!(text(&out.stderr).starts_with("unknown option --port for typedpress check\nusage: typedpress check"));
 }
 
 #[test]
 fn sync_takes_its_credential_from_the_environment_only() {
     let out = first()
         .args(["sync", "--site", "http://127.0.0.1:9"])
-        .env_remove("FIRST_APP_PASSWORD")
-        .env_remove("FIRST_TOKEN")
+        .env_remove("TP_APP_PASSWORD")
+        .env_remove("TP_TOKEN")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(3));
-    assert!(text(&out.stderr).starts_with("first sync needs a credential in FIRST_APP_PASSWORD or FIRST_TOKEN"));
+    assert!(text(&out.stderr).starts_with("typedpress sync needs a credential in TP_APP_PASSWORD or TP_TOKEN"));
     let out = first()
         .args(["sync", "--site", "http://127.0.0.1:9"])
-        .env("FIRST_APP_PASSWORD", "a:b")
-        .env("FIRST_TOKEN", "t")
+        .env("TP_APP_PASSWORD", "a:b")
+        .env("TP_TOKEN", "t")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(3));
-    assert!(text(&out.stderr).starts_with("set FIRST_APP_PASSWORD or FIRST_TOKEN, not both"));
+    assert!(text(&out.stderr).starts_with("set TP_APP_PASSWORD or TP_TOKEN, not both"));
 }
 
 #[test]
@@ -239,8 +239,8 @@ fn push_and_login_say_what_they_need_before_they_reach_a_site() {
         first()
             .args(args)
             .current_dir(&project)
-            .env("FIRST_CONFIG_DIR", &config)
-            .env_remove("FIRST_APP_PASSWORD")
+            .env("TP_CONFIG_DIR", &config)
+            .env_remove("TP_APP_PASSWORD")
             .output()
             .unwrap()
     };
@@ -248,27 +248,29 @@ fn push_and_login_say_what_they_need_before_they_reach_a_site() {
     let out = run(&["push"]);
     assert_eq!(out.status.code(), Some(1));
     assert!(
-        text(&out.stderr).starts_with("no first.config.ts in "),
+        text(&out.stderr).starts_with("no typedpress.config.ts in "),
         "{}",
         text(&out.stderr)
     );
-    std::fs::write(project.join("first.config.ts"), CONFIG).unwrap();
-    // A project nobody ran `first login` in.
+    std::fs::write(project.join("typedpress.config.ts"), CONFIG).unwrap();
+    // A project nobody ran `typedpress login` in.
     let out = run(&["push"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(&out.stderr).starts_with("this project has no site to deploy to. Run first login <site-url> here"));
+    assert!(
+        text(&out.stderr).starts_with("this project has no site to deploy to. Run typedpress login <site-url> here")
+    );
     // A site with no stored credential: nothing is compiled or sent.
     let out = run(&["push", "--site", "http://127.0.0.1:9/"]);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         text(&out.stderr),
-        "not signed in to http://127.0.0.1:9. Run: first login http://127.0.0.1:9\n"
+        "not signed in to http://127.0.0.1:9. Run: typedpress login http://127.0.0.1:9\n"
     );
-    assert!(!project.join(".first").exists(), "nothing was written to the project");
+    assert!(!project.join(".tp").exists(), "nothing was written to the project");
     let out = run(&["push", "--force"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(&out.stderr).starts_with("unknown option --force\nusage: first push"));
-    // `first login` takes a site's address and nothing that could carry a credential.
+    assert!(text(&out.stderr).starts_with("unknown option --force\nusage: typedpress push"));
+    // `typedpress login` takes a site's address and nothing that could carry a credential.
     for site in [
         "example.test",
         "https://user:secret@example.test",
@@ -280,7 +282,7 @@ fn push_and_login_say_what_they_need_before_they_reach_a_site() {
     }
     let out = run(&["login"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(&out.stderr).starts_with("usage: first login <site-url>"));
+    assert!(text(&out.stderr).starts_with("usage: typedpress login <site-url>"));
     // Forgetting a site nobody signed in to is not an error, and creates nothing.
     let out = run(&["logout", "https://example.test/"]);
     assert!(out.status.success());
@@ -296,16 +298,16 @@ fn plugin_writes_the_archive_where_it_is_told() {
     let work = tempfile::tempdir().unwrap();
     let out = first().arg("plugin").current_dir(work.path()).output().unwrap();
     assert!(out.status.success(), "{}", text(&out.stderr));
-    let default = std::fs::read(work.path().join("first.zip")).unwrap();
+    let default = std::fs::read(work.path().join("typedpress.zip")).unwrap();
     // A ZIP archive: the local file header's signature.
     assert_eq!(&default[..4], b"PK\x03\x04");
-    let named = work.path().join("out/first-plugin.zip");
+    let named = work.path().join("out/typedpress-plugin.zip");
     let out = first().args(["plugin", "--out"]).arg(&named).output().unwrap();
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert!(named.is_file());
     let out = first().args(["plugin", "--to", "x"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert_eq!(text(&out.stderr), "usage: first plugin [--out <file.zip>]\n");
+    assert_eq!(text(&out.stderr), "usage: typedpress plugin [--out <file.zip>]\n");
 }
 
 /// The served WordPress, stopped (and its directory removed) on drop.
@@ -318,18 +320,18 @@ impl Drop for Served {
     }
 }
 
-const CONFIG: &str = r#"import { defineConfig, table, text, job, jobs, integer } from "first";
+const CONFIG: &str = r#"import { defineConfig, table, text, job, jobs, integer } from "typedpress";
 const notes = table({ title: text() }, { access: { read: "anyone" } });
 export { notes }; export const stamp = job({ input: { n: integer().optional() }, handler: async () => {} }); export default defineConfig({ name: "clilane" });
 "#;
 
-/// `first <site cmd> --site @lane` and `wp @lane first <site cmd>` on one real WordPress: the same
+/// `typedpress <site cmd> --site @lane` and `wp @lane typedpress <site cmd>` on one real WordPress: the same
 /// stdout, the same exit status. Needs PHP 8.2+ with pdo_sqlite and network for the pinned
 /// downloads (cached in tests/wp/cache), as tests/sync.rs does.
 #[test]
 fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
     let built = first()
         .arg("build")
         .arg(project.path())
@@ -342,9 +344,9 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.path().join("first/dist/wp-content"))
-        .env("FIRST_WP_CLI", "1")
-        .env("FIRST_WP_IDENTITY", "1")
+        .arg(project.path().join("tp/dist/wp-content"))
+        .env("TP_WP_CLI", "1")
+        .env("TP_WP_IDENTITY", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -393,7 +395,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     };
     let direct = |args: &[&str]| {
         let mut command = Command::new(&wp);
-        command.arg("@lane").arg("first").args(args);
+        command.arg("@lane").arg("typedpress").args(args);
         env(&mut command);
         command.output().unwrap()
     };
@@ -408,7 +410,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         assert_eq!(
             text(&b.stdout),
             text(&a.stdout),
-            "first {args:?} vs wp first {args:?}\n{}",
+            "first {args:?} vs wp typedpress {args:?}\n{}",
             text(&b.stderr)
         );
         assert_eq!(b.status.code(), a.status.code(), "{args:?}");
@@ -419,7 +421,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     let empty = same(&["jobs", "list"]);
     assert_eq!(empty, serde_json::json!({"data": []}));
     assert_eq!(same(&["find", "notes"]), serde_json::json!({"data": []}));
-    // A write through `first`, read back both ways.
+    // A write through `typedpress`, read back both ways.
     let inserted = forwarded(&["insert", "notes", r#"{"title":"From first"}"#]);
     assert_eq!(inserted.status.code(), Some(0), "{}", text(&inserted.stdout));
     let found = same(&["find", "notes"]);
@@ -427,7 +429,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     // A failing command keeps WP-CLI's exit status and error document.
     let bad = same(&["jobs", "retry", "no-such-job"]);
     assert!(bad["error"]["code"].is_string(), "{bad}");
-    // Identity lives under the one `first` namespace.
+    // Identity lives under the one `typedpress` namespace.
     let app = same(&[
         "identity",
         "app",
@@ -440,7 +442,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     assert_eq!(app["data"]["id"], "app_lane", "{app}");
     let usage = same(&["identity", "frobnicate"]);
     assert_eq!(usage["error"]["code"], "invalid_command");
-    // `first mcp --allow-remote-read`: `query` reads the same site through the same forwarding, by
+    // `typedpress mcp --allow-remote-read`: `query` reads the same site through the same forwarding, by
     // the kind's name, with its filter; a kind the site lacks is the site's own error document.
     let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| env(command));
     mcp.modern = true;
@@ -463,8 +465,8 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         "{unknown}"
     );
     mcp.finish();
-    // `first styles pull`: the owner's Global Styles on the site become the project's first/theme.json
-    // and first/_generated/theme.css; a second pull with --check finds nothing to change.
+    // `typedpress styles pull`: the owner's Global Styles on the site become the project's tp/theme.json
+    // and tp/_generated/theme.css; a second pull with --check finds nothing to change.
     let mut command = Command::new(&wp);
     command.args([
         "@lane",
@@ -496,33 +498,33 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         text(&pulled.stderr)
     );
     let theme: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(project.path().join("first/theme.json")).unwrap()).unwrap();
+        serde_json::from_str(&std::fs::read_to_string(project.path().join("tp/theme.json")).unwrap()).unwrap();
     assert_eq!(
         theme["settings"]["color"]["palette"],
         serde_json::json!([{ "slug": "brand", "color": "#123456", "name": "Brand" }])
     );
-    let tokens = std::fs::read_to_string(project.path().join("first/_generated/theme.css")).unwrap();
+    let tokens = std::fs::read_to_string(project.path().join("tp/_generated/theme.css")).unwrap();
     assert!(
         tokens.contains("  --color-brand: var(--wp--preset--color--brand);\n"),
         "{tokens}"
     );
     let again = pull(&["--check"]);
     assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
-    // `first wp` reaches plain WordPress commands.
+    // `typedpress wp` reaches plain WordPress commands.
     let mut command = first();
     command.args(["wp", "--site", "@lane", "option", "get", "blogname"]);
     env(&mut command);
     let blogname = command.output().unwrap();
     assert_eq!(
         text(&blogname.stdout).trim(),
-        "First test site",
+        "TypedPress test site",
         "{}",
         text(&blogname.stderr)
     );
 }
 
 // ---------------------------------------------------------------------------------------------
-// `first mcp`: the real binary driven over stdin and stdout, one JSON-RPC message per line.
+// `typedpress mcp`: the real binary driven over stdin and stdout, one JSON-RPC message per line.
 // ---------------------------------------------------------------------------------------------
 
 /// What every 2026-07-28 request carries in `params._meta`.
@@ -699,7 +701,7 @@ fn mcp_opens_with_initialize_and_lists_read_only_tools_unless_writes_are_allowed
         serde_json::json!({ "protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": { "name": "old", "version": "1" } }),
     );
     assert_eq!(opened["protocolVersion"], "2025-11-25");
-    assert_eq!(opened["serverInfo"]["name"], "first");
+    assert_eq!(opened["serverInfo"]["name"], "typedpress");
     assert_eq!(opened["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
         opened["capabilities"],
@@ -768,10 +770,10 @@ fn mcp_opens_with_initialize_and_lists_read_only_tools_unless_writes_are_allowed
     // An option the command does not take is a usage error, before any protocol.
     let bad = first().args(["mcp", "--allow-everything"]).output().unwrap();
     assert_eq!(bad.status.code(), Some(2));
-    assert!(text(&bad.stderr).contains("usage: first mcp [dir] [--allow-remote-read] [--allow-writes]"));
+    assert!(text(&bad.stderr).contains("usage: typedpress mcp [dir] [--allow-remote-read] [--allow-writes]"));
     assert!(bad.stdout.is_empty());
     // One project directory, and a directory: a second one or a file is refused, not guessed at.
-    let config = agent_kit().join("first.config.ts");
+    let config = agent_kit().join("typedpress.config.ts");
     for args in [
         vec![config.as_os_str()],
         vec![agent_kit().as_os_str(), config.as_os_str()],
@@ -782,16 +784,16 @@ fn mcp_opens_with_initialize_and_lists_read_only_tools_unless_writes_are_allowed
     }
     let timeout = first()
         .args(["mcp", "--allow-writes"])
-        .env("FIRST_MCP_TIMEOUT", "soon")
+        .env("TP_MCP_TIMEOUT", "soon")
         .stdin(Stdio::null())
         .output()
         .unwrap();
     assert_eq!(timeout.status.code(), Some(2));
-    assert!(text(&timeout.stderr).contains("FIRST_MCP_TIMEOUT is a number of seconds"));
+    assert!(text(&timeout.stderr).contains("TP_MCP_TIMEOUT is a number of seconds"));
     let help = first().args(["help", "mcp"]).output().unwrap();
     assert_eq!(
         text(&help.stdout),
-        "usage: first mcp [dir] [--allow-remote-read] [--allow-writes]\n"
+        "usage: typedpress mcp [dir] [--allow-remote-read] [--allow-writes]\n"
     );
 }
 
@@ -808,7 +810,7 @@ fn mcp_serves_the_stateless_revision_from_per_request_metadata() {
     assert_eq!(discovered["resultType"], "complete");
     assert_eq!(
         discovered["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
-        "first"
+        "typedpress"
     );
     assert_eq!(discovered["cacheScope"], "public");
     assert!(discovered["ttlMs"].as_u64().is_some());
@@ -830,10 +832,10 @@ fn mcp_serves_the_stateless_revision_from_per_request_metadata() {
     // A missing resource is Invalid Params in this revision (it was -32002 before).
     let missing = mcp.request(
         "resources/read",
-        serde_json::json!({ "uri": "first-docs:///docs/nope.md" }),
+        serde_json::json!({ "uri": "typedpress-docs:///docs/nope.md" }),
     );
     assert_eq!(missing["error"]["code"], -32602, "{missing}");
-    assert_eq!(missing["error"]["data"]["uri"], "first-docs:///docs/nope.md");
+    assert_eq!(missing["error"]["data"]["uri"], "typedpress-docs:///docs/nope.md");
 
     // A revision this server does not speak is refused with the ones it does.
     mcp.modern = false;
@@ -984,7 +986,7 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
 
     let rename = &schema["actions"]["rename"];
     assert_eq!(rename["access"], "editor");
-    assert_eq!(rename["endpoint"], "POST /__first/api/v1/actions/rename");
+    assert_eq!(rename["endpoint"], "POST /__tp/api/v1/actions/rename");
     assert_eq!(rename["ability"], "agentkit/rename");
     assert_eq!(
         rename["input"]["id"],
@@ -999,9 +1001,9 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
     assert_eq!(
         schema["routes"],
         serde_json::json!([
-            { "pattern": "/api/list", "type": "route", "file": "first/app/api/list/route.ts", "methods": ["GET"], "access": "anyone" },
-            { "pattern": "/events/:slug", "type": "page", "file": "first/app/events/[slug]/page.tsx", "kind": "cookingEvents" },
-            { "pattern": "/", "type": "page", "file": "first/app/page.tsx" },
+            { "pattern": "/api/list", "type": "route", "file": "tp/app/api/list/route.ts", "methods": ["GET"], "access": "anyone" },
+            { "pattern": "/events/:slug", "type": "page", "file": "tp/app/events/[slug]/page.tsx", "kind": "cookingEvents" },
+            { "pattern": "/", "type": "page", "file": "tp/app/page.tsx" },
         ])
     );
     let events = &schema["kinds"]["cookingEvents"];
@@ -1045,8 +1047,8 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
         schema["roles"],
         serde_json::json!(["guest", "subscriber", "author", "editor", "admin"])
     );
-    assert_eq!(schema["endpoints"]["mcp"], "/wp-json/mcp/first-agentkit");
-    // Both admins, with First Admin the default (the kit does not set `admin: false`).
+    assert_eq!(schema["endpoints"]["mcp"], "/wp-json/mcp/typedpress-agentkit");
+    // Both admins, with TypedPress Admin the default (the kit does not set `admin: false`).
     assert_eq!(
         schema["admin"],
         serde_json::json!({ "default": "/wp-admin/new/", "classic": "/wp-admin/" })
@@ -1083,20 +1085,20 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
 
 #[test]
 fn mcp_check_returns_the_envelope_first_check_json_prints_and_sees_edits() {
-    // On the fixture, the same document `first check --json` writes.
+    // On the fixture, the same document `typedpress check --json` writes.
     let printed = first().arg("check").arg(agent_kit()).arg("--json").output().unwrap();
     assert!(printed.status.success(), "{}", text(&printed.stderr));
     let printed: serde_json::Value = serde_json::from_slice(&printed.stdout).unwrap();
     let mut mcp = Mcp::initialized(&agent_kit(), &[]);
     let checked = mcp.ok("check", serde_json::json!({}));
     assert_eq!(checked, printed);
-    assert_eq!(checked["schema"], "first-diagnostics");
+    assert_eq!(checked["schema"], "typedpress-diagnostics");
     assert_eq!(checked["ok"], true);
     mcp.finish();
 
     // The server compiles the files as they are at each call: an edit shows up without a restart.
     let project = tempfile::tempdir().unwrap();
-    let config = project.path().join("first.config.ts");
+    let config = project.path().join("typedpress.config.ts");
     std::fs::write(&config, CONFIG).unwrap();
     let mut mcp = Mcp::initialized(project.path(), &[]);
     assert_eq!(mcp.ok("check", serde_json::json!({}))["ok"], true);
@@ -1105,7 +1107,7 @@ fn mcp_check_returns_the_envelope_first_check_json_prints_and_sees_edits() {
     let broken = mcp.ok("check", serde_json::json!({}));
     assert_eq!(broken["ok"], false);
     let diagnostic = &broken["diagnostics"][0];
-    assert_eq!(diagnostic["location"]["file"], "first.config.ts");
+    assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts");
     assert_eq!(diagnostic["location"]["line"], 2);
     assert!(diagnostic["code"].as_str().unwrap().starts_with('F'), "{diagnostic}");
     let printed = first().arg("check").arg(project.path()).arg("--json").output().unwrap();
@@ -1125,7 +1127,7 @@ fn mcp_check_returns_the_envelope_first_check_json_prints_and_sees_edits() {
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
-    assert_eq!(written, ["first.config.ts"]);
+    assert_eq!(written, ["typedpress.config.ts"]);
     mcp.finish();
 }
 
@@ -1230,13 +1232,16 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
 
     // The same pages are the server's resources. Design proposals are not documentation of what ships.
     let uris: Vec<&str> = resources.iter().map(|r| r["uri"].as_str().unwrap()).collect();
-    assert!(uris.contains(&"first-docs:///docs/agents.md"), "{uris:?}");
+    assert!(uris.contains(&"typedpress-docs:///docs/agents.md"), "{uris:?}");
     assert!(
-        uris.contains(&"first-docs:///docs-site/docs/getting-started.mdx"),
+        uris.contains(&"typedpress-docs:///docs-site/docs/getting-started.mdx"),
         "{uris:?}"
     );
     // The site's copy of a docs/ page is not a second page to search.
-    assert!(!uris.contains(&"first-docs:///docs-site/docs/agents.mdx"), "{uris:?}");
+    assert!(
+        !uris.contains(&"typedpress-docs:///docs-site/docs/agents.mdx"),
+        "{uris:?}"
+    );
     assert!(
         !uris
             .iter()
@@ -1249,19 +1254,19 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         .unwrap();
     assert_eq!(started["title"], "Get started");
     assert_eq!(started["mimeType"], "text/markdown");
-    assert!(started["description"].as_str().unwrap().contains("First app"));
+    assert!(started["description"].as_str().unwrap().contains("TypedPress app"));
     let read = mcp.result(
         "resources/read",
-        serde_json::json!({ "uri": "first-docs:///docs/compiler-diagnostics.md" }),
+        serde_json::json!({ "uri": "typedpress-docs:///docs/compiler-diagnostics.md" }),
     );
     assert_eq!(
         read["contents"],
-        serde_json::json!([{ "uri": "first-docs:///docs/compiler-diagnostics.md", "mimeType": "text/markdown", "text": on_disk }])
+        serde_json::json!([{ "uri": "typedpress-docs:///docs/compiler-diagnostics.md", "mimeType": "text/markdown", "text": on_disk }])
     );
     // Through 2025-11-25 a missing resource is -32002.
     let missing = mcp.request(
         "resources/read",
-        serde_json::json!({ "uri": "first-docs:///docs/nope.md" }),
+        serde_json::json!({ "uri": "typedpress-docs:///docs/nope.md" }),
     );
     assert_eq!(missing["error"]["code"], -32002, "{missing}");
     assert_eq!(
@@ -1274,9 +1279,9 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
 #[test]
 fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_site() {
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
     let mut mcp = Mcp::initialized(project.path(), &["--allow-writes"]);
     assert_eq!(mcp.ok("commands", serde_json::json!({})), table);
     // The table lists the server's own command.
@@ -1291,9 +1296,9 @@ fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_si
     // No dev site was ever started here: the tools say so and start nothing.
     assert_eq!(
         mcp.ok("dev_status", serde_json::json!({})),
-        serde_json::json!({ "state": "none", "start": "first dev" })
+        serde_json::json!({ "state": "none", "start": "typedpress dev" })
     );
-    // `first dev status --json` is the same report, and starts nothing either.
+    // `typedpress dev status --json` is the same report, and starts nothing either.
     let status = first()
         .args(["dev", "status", "--json"])
         .arg(project.path())
@@ -1302,7 +1307,7 @@ fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_si
     assert!(status.status.success(), "{}", text(&status.stderr));
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&status.stdout).unwrap(),
-        serde_json::json!({ "state": "none", "start": "first dev" })
+        serde_json::json!({ "state": "none", "start": "typedpress dev" })
     );
     // The flags belong to the commands that take them.
     for misplaced in [
@@ -1318,8 +1323,7 @@ fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_si
             text(&out.stderr)
         );
     }
-    let no_site =
-        "this project has no dev site yet; start one with `first dev` (`first dev --no-watch` starts it and returns)";
+    let no_site = "this project has no dev site yet; start one with `typedpress dev` (`typedpress dev --no-watch` starts it and returns)";
     assert_eq!(mcp.refused("query", serde_json::json!({ "kind": "notes" })), no_site);
     assert_eq!(
         mcp.refused(
@@ -1328,7 +1332,7 @@ fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_si
         ),
         no_site
     );
-    assert!(!project.path().join(".first").exists());
+    assert!(!project.path().join(".tp").exists());
     mcp.finish();
 }
 
@@ -1337,7 +1341,7 @@ fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
     // A stand-in `wp` records anything that reaches a site; nothing may.
     let wp = fake_wp();
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
     let mut mcp = Mcp::start(project.path(), &[], |command| with_path(command, wp.path()));
     mcp.modern = true;
     for (tool, arguments) in [
@@ -1354,13 +1358,13 @@ fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
         assert_eq!(
             mcp.refused(tool, arguments),
             format!(
-                "{tool} writes to the dev site, and this server was started read-only. Start it as `first mcp --allow-writes` to allow writes to this project's dev site."
+                "{tool} writes to the dev site, and this server was started read-only. Start it as `typedpress mcp --allow-writes` to allow writes to this project's dev site."
             )
         );
     }
     assert_eq!(
         mcp.refused("query", serde_json::json!({ "kind": "notes", "site": "@prod" })),
-        "query reads this project's dev site only, and was asked for @prod. Start the server as `first mcp --allow-remote-read` to read another site."
+        "query reads this project's dev site only, and was asked for @prod. Start the server as `typedpress mcp --allow-remote-read` to read another site."
     );
     mcp.finish();
 
@@ -1382,7 +1386,7 @@ fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
     );
     mcp.finish();
 
-    // --allow-remote-read forwards a read to the named site, as `first find --site` does.
+    // --allow-remote-read forwards a read to the named site, as `typedpress find --site` does.
     let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
         with_path(command, wp.path())
     });
@@ -1397,7 +1401,7 @@ fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
         seen["structuredContent"]["args"],
         serde_json::json!([
             "@prod",
-            "first",
+            "typedpress",
             "find",
             "notes",
             r#"{"where":{"title":"x"},"limit":3}"#
@@ -1500,7 +1504,7 @@ fn running(file: &Path) -> bool {
 #[test]
 fn mcp_stops_a_command_at_the_timeout_and_when_the_request_is_cancelled() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
     let pids = tempfile::tempdir().unwrap();
     // A site that never answers. Each call records the pid of the command it is stuck in.
     let wp = scripted_wp(&format!("sleep 600 & echo $! > {}/$$; wait", pids.path().display()));
@@ -1515,12 +1519,12 @@ fn mcp_stops_a_command_at_the_timeout_and_when_the_request_is_cancelled() {
     // The timeout ends the command and everything it started, and the call says why.
     let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
         with_path(command, wp.path());
-        command.env("FIRST_MCP_TIMEOUT", "1");
+        command.env("TP_MCP_TIMEOUT", "1");
     });
     mcp.modern = true;
     assert_eq!(
         mcp.refused("query", query.clone()),
-        "first find took longer than 1 seconds and was stopped; FIRST_MCP_TIMEOUT sets the limit"
+        "typedpress find took longer than 1 seconds and was stopped; TP_MCP_TIMEOUT sets the limit"
     );
     let started = stuck(pids.path());
     assert_eq!(started.len(), 1);
@@ -1566,7 +1570,7 @@ fn mcp_stops_a_command_at_the_timeout_and_when_the_request_is_cancelled() {
 #[test]
 fn mcp_reads_a_site_commands_answer_after_other_output() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
     // A PHP notice before the document, as a site with WP_DEBUG prints it.
     let wp = scripted_wp(
         r#"echo "PHP Notice:  Undefined index: x in /site/wp-content/plugins/other.php on line 3"; echo '{"data":[{"id":1}]}'"#,
@@ -1582,7 +1586,7 @@ fn mcp_reads_a_site_commands_answer_after_other_output() {
     mcp.finish();
 }
 
-/// `first add api-reference` on a fresh scaffold: the pages check, build and type-check, and the
+/// `typedpress add api-reference` on a fresh scaffold: the pages check, build and type-check, and the
 /// app's routes now include /api and /api/<tag>/<operation>.
 #[test]
 fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
@@ -1592,39 +1596,39 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
     let report = text(&added.stdout);
     for file in [
-        "first/app/api/page.tsx",
-        "first/app/api/[tag]/[operation]/page.tsx",
-        "first/components/ApiFields.tsx",
-        "first/API.md",
+        "tp/app/api/page.tsx",
+        "tp/app/api/[tag]/[operation]/page.tsx",
+        "tp/components/ApiFields.tsx",
+        "tp/API.md",
     ] {
         assert!(project.join(file).is_file(), "{file}");
         assert_eq!(reported(&report, file).0, "created", "{report}");
     }
     let built = first().arg("build").arg(&project).output().unwrap();
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
-    let routes = std::fs::read_to_string(project.join("first/_generated/routes.d.ts")).unwrap();
+    let routes = std::fs::read_to_string(project.join("tp/_generated/routes.d.ts")).unwrap();
     assert!(routes.contains("\"api\": { path: `/api`"), "{routes}");
     assert!(
         routes.contains("\"api/[tag]/[operation]\": { path: `/api/${string}/${string}`"),
         "{routes}"
     );
-    // The pages type-check against First's types, with the generated routes.
+    // The pages type-check against TypedPress's types, with the generated routes.
     std::fs::write(
         project.join("tsconfig.test.json"),
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
             "compilerOptions": {
-                "types": [], "jsx": "react-jsx", "jsxImportSource": "first", "skipLibCheck": true,
+                "types": [], "jsx": "react-jsx", "jsxImportSource": "typedpress", "skipLibCheck": true,
                 "paths": {
-                    "first": [root().join("types/first/index.d.ts")],
-                    "first/app": [root().join("types/first/app.d.ts")],
-                    "first/content": [root().join("types/first/content.d.ts")],
-                    "first/jsx-runtime": [root().join("types/first/jsx-runtime.d.ts")],
-                    "first/jsx-dev-runtime": [root().join("types/first/jsx-dev-runtime.d.ts")]
+                    "typedpress": [root().join("types/typedpress/index.d.ts")],
+                    "typedpress/app": [root().join("types/typedpress/app.d.ts")],
+                    "typedpress/content": [root().join("types/typedpress/content.d.ts")],
+                    "typedpress/jsx-runtime": [root().join("types/typedpress/jsx-runtime.d.ts")],
+                    "typedpress/jsx-dev-runtime": [root().join("types/typedpress/jsx-dev-runtime.d.ts")]
                 }
             },
-            "include": ["first/**/*.ts", "first/**/*.tsx"],
-            "exclude": ["first/dist"]
+            "include": ["tp/**/*.ts", "tp/**/*.tsx"],
+            "exclude": ["tp/dist"]
         }))
         .unwrap(),
     )
@@ -1638,18 +1642,18 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     // A second run keeps every file as it is.
     let again = add(&project, &["api-reference"]);
     assert!(
-        text(&again.stdout).starts_with("first add api-reference: nothing to add\n"),
+        text(&again.stdout).starts_with("typedpress add api-reference: nothing to add\n"),
         "{}",
         text(&again.stdout)
     );
 }
 
-/// A project from the scaffolder, as `npm create @spacefast/first` writes it, without the npm
+/// A project from the scaffolder, as `npm create typedpress` writes it, without the npm
 /// install. Its directory name has a space, as a real one may.
 fn scaffold(parent: &Path) -> PathBuf {
     let project = parent.join("my app");
     let created = Command::new("node")
-        .arg(root().join("packages/create-first/bin/create-first.mjs"))
+        .arg(root().join("packages/create-typedpress/bin/create-typedpress.mjs"))
         .arg(&project)
         .arg("--no-install")
         .output()
@@ -1662,7 +1666,7 @@ fn add(project: &Path, args: &[&str]) -> Output {
     first().arg("add").args(args).arg(project).output().unwrap()
 }
 
-/// The report line `first add` printed for `file`: "created", "kept" or "skipped", and its reason.
+/// The report line `typedpress add` printed for `file`: "created", "kept" or "skipped", and its reason.
 fn reported(report: &str, file: &str) -> (String, String) {
     let line = report
         .lines()
@@ -1695,7 +1699,7 @@ fn tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
     out
 }
 
-/// `first add db` on a fresh scaffold: the project still checks and builds, the build plans the
+/// `typedpress add db` on a fresh scaffold: the project still checks and builds, the build plans the
 /// tables with their foreign key, and the new files type-check under the scaffold's own tsconfig.
 /// Needs node and tsc (or TSC), as the other generated-client tests do.
 #[test]
@@ -1713,7 +1717,7 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     let added = first().args(["add", "db"]).current_dir(&project).output().unwrap();
     assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
     let report = text(&added.stdout);
-    for file in ["first/tables.ts", "tables.client.ts", "first/DATABASE.md"] {
+    for file in ["tp/tables.ts", "tables.client.ts", "tp/DATABASE.md"] {
         assert!(project.join(file).is_file(), "{file}");
         assert_eq!(reported(&report, file).0, "created", "{report}");
     }
@@ -1730,20 +1734,20 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     );
     let built = first().arg("build").arg(&project).output().unwrap();
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
-    let mut ledger: Vec<String> = std::fs::read_dir(project.join("first/_generated/migrations"))
+    let mut ledger: Vec<String> = std::fs::read_dir(project.join("tp/_generated/migrations"))
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     ledger.sort();
     assert_eq!(ledger, ["0001_init.sql", "snapshot.json"]);
-    let sql = std::fs::read_to_string(project.join("first/_generated/migrations/0001_init.sql")).unwrap();
-    assert_eq!(sql.matches("CREATE TABLE `{prefix}first_projects`").count(), 1, "{sql}");
+    let sql = std::fs::read_to_string(project.join("tp/_generated/migrations/0001_init.sql")).unwrap();
+    assert_eq!(sql.matches("CREATE TABLE `{prefix}tp_projects`").count(), 1, "{sql}");
     assert!(
-        sql.contains("FOREIGN KEY (`project`) REFERENCES `{prefix}first_projects` (`id`) ON DELETE CASCADE"),
+        sql.contains("FOREIGN KEY (`project`) REFERENCES `{prefix}tp_projects` (`id`) ON DELETE CASCADE"),
         "{sql}"
     );
     // The scaffold's own kind stays a WordPress post type: it gets no table.
-    assert!(!sql.contains("first_notes"), "{sql}");
+    assert!(!sql.contains("tp_notes"), "{sql}");
 
     // The scaffold's own tsconfig covers the new files. Only the path to the types differs here,
     // where nothing is installed from npm.
@@ -1751,7 +1755,7 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         project.join("tsconfig.test.json"),
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
-            "compilerOptions": { "types": [], "paths": { "first": [root().join("types/first/index.d.ts")] } }
+            "compilerOptions": { "types": [], "paths": { "typedpress": [root().join("types/typedpress/index.d.ts")] } }
         }))
         .unwrap(),
     )
@@ -1765,7 +1769,7 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
             .expect("tsc (or TSC) must be installed to check the added files")
     };
     let listed = text(&tsc(&["--listFilesOnly"]).stdout);
-    for file in ["first/tables.ts", "tables.client.ts"] {
+    for file in ["tp/tables.ts", "tables.client.ts"] {
         assert!(
             listed.lines().any(|l| l.ends_with(file)),
             "{file} is not type-checked:\n{listed}"
@@ -1798,16 +1802,16 @@ fn add_only_creates_missing_files_and_never_changes_one_that_is_there() {
     // The author edits what they were given.
     let mine = format!(
         "{}\n// mine\n",
-        std::fs::read_to_string(project.join("first/tables.ts")).unwrap()
+        std::fs::read_to_string(project.join("tp/tables.ts")).unwrap()
     );
-    std::fs::write(project.join("first/tables.ts"), &mine).unwrap();
-    std::fs::write(project.join("first/DATABASE.md"), "my notes\n").unwrap();
+    std::fs::write(project.join("tp/tables.ts"), &mine).unwrap();
+    std::fs::write(project.join("tp/DATABASE.md"), "my notes\n").unwrap();
     let state = tree(&project);
     let again = add(&project, &["db"]);
     assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
     let report = text(&again.stdout);
-    assert!(report.starts_with("first add db: nothing to add\n"), "{report}");
-    for file in ["first/tables.ts", "tables.client.ts", "first/DATABASE.md"] {
+    assert!(report.starts_with("typedpress add db: nothing to add\n"), "{report}");
+    for file in ["tp/tables.ts", "tables.client.ts", "tp/DATABASE.md"] {
         assert_eq!(reported(&report, file).0, "kept", "{report}");
     }
     assert_eq!(tree(&project), state);
@@ -1839,20 +1843,20 @@ fn add_only_creates_missing_files_and_never_changes_one_that_is_there() {
 fn add_db_leaves_out_the_example_where_the_project_has_its_own_tables() {
     let tmp = tempfile::tempdir().unwrap();
     let project = scaffold(tmp.path());
-    std::fs::create_dir_all(project.join("first")).unwrap();
-    let mine = "import { table, text } from \"first\";\nexport const orders = table({ code: text().max(40) });\n";
-    // At the module's own path first, then anywhere else under first/.
-    for (at, status) in [("first/tables.ts", "kept"), ("first/schema.ts", "skipped")] {
+    std::fs::create_dir_all(project.join("tp")).unwrap();
+    let mine = "import { table, text } from \"typedpress\";\nexport const orders = table({ code: text().max(40) });\n";
+    // At the module's own path first, then anywhere else under tp/.
+    for (at, status) in [("tp/tables.ts", "kept"), ("tp/schema.ts", "skipped")] {
         std::fs::write(project.join(at), mine).unwrap();
-        let _ = std::fs::remove_file(project.join("first/DATABASE.md"));
+        let _ = std::fs::remove_file(project.join("tp/DATABASE.md"));
         let added = add(&project, &["db"]);
         assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
         let report = text(&added.stdout);
-        assert_eq!(reported(&report, "first/tables.ts").0, status, "{report}");
+        assert_eq!(reported(&report, "tp/tables.ts").0, status, "{report}");
         let (client, why) = reported(&report, "tables.client.ts");
         assert_eq!(client, "skipped", "{report}");
         assert!(why.contains("`projects`"), "{report}");
-        assert_eq!(reported(&report, "first/DATABASE.md").0, "created", "{report}");
+        assert_eq!(reported(&report, "tp/DATABASE.md").0, "created", "{report}");
         assert!(!project.join("tables.client.ts").exists());
         let checked = first().arg("check").arg(&project).output().unwrap();
         assert!(
@@ -1865,14 +1869,14 @@ fn add_db_leaves_out_the_example_where_the_project_has_its_own_tables() {
 
     // An author who took the example and then moved and renamed its tables doesn't get it back.
     assert_eq!(add(&project, &["db"]).status.code(), Some(0));
-    assert!(project.join("first/tables.ts").is_file() && project.join("tables.client.ts").is_file());
-    std::fs::remove_file(project.join("first/tables.ts")).unwrap();
+    assert!(project.join("tp/tables.ts").is_file() && project.join("tables.client.ts").is_file());
+    std::fs::remove_file(project.join("tp/tables.ts")).unwrap();
     std::fs::remove_file(project.join("tables.client.ts")).unwrap();
-    std::fs::write(project.join("first/schema.ts"), mine).unwrap();
+    std::fs::write(project.join("tp/schema.ts"), mine).unwrap();
     let state = tree(&project);
     let again = add(&project, &["db"]);
     assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
-    assert!(text(&again.stdout).starts_with("first add db: nothing to add\n"));
+    assert!(text(&again.stdout).starts_with("typedpress add db: nothing to add\n"));
     assert_eq!(tree(&project), state);
 }
 
@@ -1881,10 +1885,10 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     let tmp = tempfile::tempdir().unwrap();
     let project = scaffold(tmp.path());
     // An export of the author's already uses a name the module's example exports.
-    std::fs::create_dir_all(project.join("first/server")).unwrap();
+    std::fs::create_dir_all(project.join("tp/server")).unwrap();
     std::fs::write(
-        project.join("first/server/tasks.ts"),
-        "import { action } from \"first\";\nexport const tasks = action({ input: {}, async handler() { return 1; } });\n",
+        project.join("tp/server/tasks.ts"),
+        "import { action } from \"typedpress\";\nexport const tasks = action({ input: {}, async handler() { return 1; } });\n",
     )
     .unwrap();
     let state = tree(&project);
@@ -1896,12 +1900,12 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     assert_eq!(tree(&project), state);
 
     // A project that doesn't compile today is refused before anything is written, with its own error.
-    std::fs::write(project.join("first/server/tasks.ts"), "export const broken = ;\n").unwrap();
+    std::fs::write(project.join("tp/server/tasks.ts"), "export const broken = ;\n").unwrap();
     let state = tree(&project);
     let broken = add(&project, &["db"]);
     assert_eq!(broken.status.code(), Some(1), "{}", text(&broken.stdout));
     assert!(
-        text(&broken.stderr).contains("first/server/tasks.ts:1"),
+        text(&broken.stderr).contains("tp/server/tasks.ts:1"),
         "{}",
         text(&broken.stderr)
     );
@@ -1912,12 +1916,12 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     );
     assert_eq!(tree(&project), state);
 
-    // With no first/ directory yet, a refused add doesn't leave an empty one behind.
+    // With no tp/ directory yet, a refused add doesn't leave an empty one behind.
     let bare = tmp.path().join("bare");
     std::fs::create_dir_all(&bare).unwrap();
     std::fs::write(
-        bare.join("first.config.ts"),
-        "import { action, defineConfig } from \"first\";\nconst __projects = action({ input: {}, async handler() { return 1; } }); export { __projects as projects }; export default defineConfig({ name: \"bare\" });\n",
+        bare.join("typedpress.config.ts"),
+        "import { action, defineConfig } from \"typedpress\";\nconst __projects = action({ input: {}, async handler() { return 1; } }); export { __projects as projects }; export default defineConfig({ name: \"bare\" });\n",
     )
     .unwrap();
     let state = tree(&bare);
@@ -1931,7 +1935,7 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     let none = add(&empty, &["db"]);
     assert_eq!(none.status.code(), Some(1));
     assert!(
-        text(&none.stderr).starts_with("first add db: no first.config.ts in "),
+        text(&none.stderr).starts_with("typedpress add db: no typedpress.config.ts in "),
         "{}",
         text(&none.stderr)
     );
@@ -1948,14 +1952,14 @@ fn add_removes_a_file_it_could_not_finish_writing() {
     let state = tree(&project);
     let out = Command::new("sh")
         .args(["-c", "trap '' XFSZ; ulimit -f 1; exec \"$@\"", "sh"])
-        .arg(env!("CARGO_BIN_EXE_first"))
+        .arg(env!("CARGO_BIN_EXE_typedpress"))
         .args(["add", "db"])
         .arg(&project)
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1), "{}{}", text(&out.stdout), text(&out.stderr));
     assert!(
-        text(&out.stderr).contains("can't write first/tables.ts") && text(&out.stderr).contains("Nothing was added"),
+        text(&out.stderr).contains("can't write tp/tables.ts") && text(&out.stderr).contains("Nothing was added"),
         "{}",
         text(&out.stderr)
     );
@@ -1963,21 +1967,21 @@ fn add_removes_a_file_it_could_not_finish_writing() {
     // The project still compiles, and the next run adds everything.
     let added = add(&project, &["db"]);
     assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
-    assert_eq!(reported(&text(&added.stdout), "first/tables.ts").0, "created");
+    assert_eq!(reported(&text(&added.stdout), "tp/tables.ts").0, "created");
 }
 
 #[test]
 fn add_names_its_modules_when_the_module_is_missing_or_unknown() {
-    // `first help add` lists the modules; the command table's summary names each of them.
+    // `typedpress help add` lists the modules; the command table's summary names each of them.
     let help = first().args(["help", "add"]).output().unwrap();
     assert_eq!(help.status.code(), Some(0));
     let modules = text(&help.stdout);
     assert!(
-        modules.starts_with("usage: first add <module> [dir]\nmodules:\n  db  "),
+        modules.starts_with("usage: typedpress add <module> [dir]\nmodules:\n  db  "),
         "{modules}"
     );
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
     let row = table["build"]
         .as_array()
         .unwrap()
@@ -1997,7 +2001,7 @@ fn add_names_its_modules_when_the_module_is_missing_or_unknown() {
 
     let none = first().arg("add").output().unwrap();
     assert_eq!(none.status.code(), Some(2));
-    assert_eq!(text(&none.stderr), format!("first add needs a module\n{modules}"));
+    assert_eq!(text(&none.stderr), format!("typedpress add needs a module\n{modules}"));
     let tmp = tempfile::tempdir().unwrap();
     let unknown = add(tmp.path(), &["pages"]);
     assert_eq!(unknown.status.code(), Some(2));
@@ -2006,7 +2010,7 @@ fn add_names_its_modules_when_the_module_is_missing_or_unknown() {
     assert_eq!(option.status.code(), Some(2));
     assert_eq!(
         text(&option.stderr),
-        format!("unknown option --force for first add\n{modules}")
+        format!("unknown option --force for typedpress add\n{modules}")
     );
     assert!(std::fs::read_dir(tmp.path()).unwrap().next().is_none());
 }
@@ -2026,7 +2030,7 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join("first/dist/wp-content"))
+        .arg(project.join("tp/dist/wp-content"))
         .args(["sub=subscriber", "ed=editor"])
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -2038,7 +2042,7 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
         .unwrap();
     let _served = Served(child);
     let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
-    let base = format!("{}/__first/api/v1", served["url"].as_str().unwrap());
+    let base = format!("{}/__tp/api/v1", served["url"].as_str().unwrap());
     // (status, body) of one request, as `who` (a served user) or signed out.
     let call = |who: Option<&str>, method: &str, path: &str, body: Option<serde_json::Value>| {
         let mut curl = Command::new("curl");
@@ -2139,7 +2143,7 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// `first init`: AGENTS.md, .mcp.json and the agent skills, written from the project's config.
+// `typedpress init`: AGENTS.md, .mcp.json and the agent skills, written from the project's config.
 // ---------------------------------------------------------------------------------------------
 
 fn copy_tree(from: &Path, to: &Path) {
@@ -2209,33 +2213,33 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     let agents = read("AGENTS.md");
     // The author's text stays, and the section follows it between the markers.
     assert!(
-        agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- first:begin -->\n"),
+        agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- typedpress:begin -->\n"),
         "{agents}"
     );
-    assert!(agents.ends_with("<!-- first:end -->\n"));
+    assert!(agents.ends_with("<!-- typedpress:end -->\n"));
     // It describes this project: its kinds with their access rules and API paths, its fields, its
     // action with its endpoint, its job, its page and route, and the site's MCP endpoint.
     for line in [
-        "This project is the First app `agentkit`.",
-        "| `shoppingList` | table | anyone | editor | editor | admin | `/__first/api/v1/shopping_list` |",
-        "| `articles` | collection | anyone | author | editor | editor | `/__first/api/v1/articles` |",
+        "This project is the TypedPress app `agentkit`.",
+        "| `shoppingList` | table | anyone | editor | editor | admin | `/__tp/api/v1/shopping_list` |",
+        "| `articles` | collection | anyone | author | editor | editor | `/__tp/api/v1/articles` |",
         "- `substitutes`: `item`: ref → shoppingList, `name`: text",
-        "| `rename` | `id`: integer, `name`: text | editor | `POST /__first/api/v1/actions/rename` |",
+        "| `rename` | `id`: integer, `name`: text | editor | `POST /__tp/api/v1/actions/rename` |",
         "- `clearDone`: input `keep?`: integer; retried up to 2 times",
-        "| `/api/list` | route (GET) | `first/app/api/list/route.ts` |",
-        "| `/` | page | `first/app/page.tsx` |",
+        "| `/api/list` | route (GET) | `tp/app/api/list/route.ts` |",
+        "| `/` | page | `tp/app/page.tsx` |",
         "guest < subscriber < author < editor < admin.",
-        "`/wp-json/mcp/first-agentkit`",
+        "`/wp-json/mcp/typedpress-agentkit`",
     ] {
         assert!(agents.contains(line), "{line}\nin\n{agents}");
     }
     // Every command of the table is listed with its arguments.
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
     for group in ["build", "site"] {
         for row in table[group].as_array().unwrap() {
             let usage = format!(
-                "first {} {}",
+                "typedpress {} {}",
                 row["name"].as_str().unwrap(),
                 row["args"].as_str().unwrap()
             );
@@ -2244,18 +2248,18 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
         }
     }
 
-    // .mcp.json keeps the author's server and gains one that starts `first mcp`.
+    // .mcp.json keeps the author's server and gains one that starts `typedpress mcp`.
     let mcp: serde_json::Value = serde_json::from_str(&read(".mcp.json")).unwrap();
     assert_eq!(mcp["mcpServers"]["tracker"]["command"], "tracker-mcp");
     assert_eq!(
-        mcp["mcpServers"]["first"],
-        serde_json::json!({ "command": "npx", "args": ["--no-install", "first", "mcp"] })
+        mcp["mcpServers"]["typedpress"],
+        serde_json::json!({ "command": "npx", "args": ["--no-install", "typedpress", "mcp"] })
     );
 
     // The skills this binary carries, as committed under skills/, in both places agents read.
     let skills = files_under(&root().join("skills"));
     assert!(
-        skills.contains(&"first-fix-diagnostic/SKILL.md".to_string()),
+        skills.contains(&"typedpress-fix-diagnostic/SKILL.md".to_string()),
         "{skills:?}"
     );
     for dir in [".agents/skills", ".claude/skills"] {
@@ -2269,9 +2273,9 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
         }
     }
     // Each skill is listed in the section by its name.
-    assert!(agents.contains("- `first-fix-diagnostic` (`.agents/skills/first-fix-diagnostic/SKILL.md`): "));
+    assert!(agents.contains("- `typedpress-fix-diagnostic` (`.agents/skills/typedpress-fix-diagnostic/SKILL.md`): "));
 
-    // Now everything matches: --check exits 0, a rerun writes nothing, and `first check` has no hint.
+    // Now everything matches: --check exits 0, a rerun writes nothing, and `typedpress check` has no hint.
     let current = init(&project, &["--check"]);
     assert_eq!(current.status.code(), Some(0), "{}", text(&current.stderr));
     let again = init(&project, &[]);
@@ -2283,14 +2287,14 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(checked.status.success());
     assert!(
-        !text(&checked.stderr).contains("first init"),
+        !text(&checked.stderr).contains("typedpress init"),
         "{}",
         text(&checked.stderr)
     );
 
-    // The config changes: `first check` and `first build` say so in one line, --check fails for CI
+    // The config changes: `typedpress check` and `typedpress build` say so in one line, --check fails for CI
     // and names the file, and nothing but the section is rewritten.
-    let schema = project.join("first/schema.ts");
+    let schema = project.join("tp/schema.ts");
     let source = std::fs::read_to_string(&schema).unwrap();
     std::fs::write(
         &schema,
@@ -2298,12 +2302,12 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     )
     .unwrap();
     std::fs::write(project.join("AGENTS.md"), format!("{agents}\n## After\n\nMine too.\n")).unwrap();
-    let hint = "hint: AGENTS.md and the agent skills no longer match this project or this compiler; run first init to update them\n";
+    let hint = "hint: AGENTS.md and the agent skills no longer match this project or this compiler; run typedpress init to update them\n";
     for command in ["check", "build"] {
         let ran = first().arg(command).arg(&project).output().unwrap();
         assert!(ran.status.success(), "{}", text(&ran.stderr));
         assert_eq!(
-            text(&ran.stderr).matches("first init").count(),
+            text(&ran.stderr).matches("typedpress init").count(),
             1,
             "{}",
             text(&ran.stderr)
@@ -2312,64 +2316,64 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     }
     // --quiet and --json keep their output as it was.
     let quiet = first().arg("build").arg(&project).arg("--quiet").output().unwrap();
-    assert!(!text(&quiet.stderr).contains("first init"));
+    assert!(!text(&quiet.stderr).contains("typedpress init"));
     let json = first().arg("check").arg(&project).arg("--json").output().unwrap();
     assert!(json.stderr.is_empty(), "{}", text(&json.stderr));
     let stale = init(&project, &["--check"]);
     assert_eq!(stale.status.code(), Some(1));
     assert_eq!(
         text(&stale.stderr),
-        "out of date: AGENTS.md\nrun first init to update them\n"
+        "out of date: AGENTS.md\nrun typedpress init to update them\n"
     );
     let updated = init(&project, &[]);
     assert_eq!(text(&updated.stdout), "wrote AGENTS.md\n");
     let agents = read("AGENTS.md");
-    assert!(agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- first:begin -->\n"));
+    assert!(agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- typedpress:begin -->\n"));
     assert!(
-        agents.ends_with("<!-- first:end -->\n\n## After\n\nMine too.\n"),
+        agents.ends_with("<!-- typedpress:end -->\n\n## After\n\nMine too.\n"),
         "{agents}"
     );
-    assert_eq!(agents.matches("<!-- first:begin -->").count(), 1);
+    assert_eq!(agents.matches("<!-- typedpress:begin -->").count(), 1);
     assert!(agents.contains("| `recipes` | table |"));
     assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
 
     // A skill edited in the project is out of date like any other file, and is written back.
-    let skill = project.join(".claude/skills/first-fix-diagnostic/SKILL.md");
+    let skill = project.join(".claude/skills/typedpress-fix-diagnostic/SKILL.md");
     std::fs::write(&skill, "changed").unwrap();
     let edited = init(&project, &["--check"]);
     assert_eq!(
         text(&edited.stderr),
-        "out of date: .claude/skills/first-fix-diagnostic/SKILL.md\nrun first init to update them\n"
+        "out of date: .claude/skills/typedpress-fix-diagnostic/SKILL.md\nrun typedpress init to update them\n"
     );
     assert!(init(&project, &[]).status.success());
     assert_eq!(
         std::fs::read_to_string(&skill).unwrap(),
-        std::fs::read_to_string(root().join("skills/first-fix-diagnostic/SKILL.md")).unwrap()
+        std::fs::read_to_string(root().join("skills/typedpress-fix-diagnostic/SKILL.md")).unwrap()
     );
 
-    // A `first` server the author configured themselves is theirs: it is never replaced.
+    // A `typedpress` server the author configured themselves is theirs: it is never replaced.
     std::fs::write(
         project.join(".mcp.json"),
-        r#"{"mcpServers":{"first":{"command":"/opt/first","args":["mcp","--allow-writes"]}}}"#,
+        r#"{"mcpServers":{"typedpress":{"command":"/opt/tp","args":["mcp","--allow-writes"]}}}"#,
     )
     .unwrap();
     assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
     assert!(init(&project, &[]).status.success());
     assert_eq!(
         read(".mcp.json"),
-        r#"{"mcpServers":{"first":{"command":"/opt/first","args":["mcp","--allow-writes"]}}}"#
+        r#"{"mcpServers":{"typedpress":{"command":"/opt/tp","args":["mcp","--allow-writes"]}}}"#
     );
 }
 
 #[test]
 fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint() {
-    // A project that never ran `first init` gets no hint about it.
+    // A project that never ran `typedpress init` gets no hint about it.
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("first.config.ts"), CONFIG).unwrap();
+    std::fs::write(dir.path().join("typedpress.config.ts"), CONFIG).unwrap();
     let checked = first().arg("check").arg(dir.path()).output().unwrap();
     assert!(checked.status.success());
     assert!(
-        !text(&checked.stderr).contains("first init"),
+        !text(&checked.stderr).contains("typedpress init"),
         "{}",
         text(&checked.stderr)
     );
@@ -2377,21 +2381,21 @@ fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint
     std::fs::write(dir.path().join("AGENTS.md"), "# Mine\n").unwrap();
     let checked = first().arg("check").arg(dir.path()).output().unwrap();
     assert!(
-        !text(&checked.stderr).contains("first init"),
+        !text(&checked.stderr).contains("typedpress init"),
         "{}",
         text(&checked.stderr)
     );
 
     // A project that does not compile has nothing to describe: the diagnostic, exit 1, no files.
     std::fs::write(
-        dir.path().join("first.config.ts"),
+        dir.path().join("typedpress.config.ts"),
         CONFIG.replace("title: text()", "title: nothing()"),
     )
     .unwrap();
     let broken = init(dir.path(), &[]);
     assert_eq!(broken.status.code(), Some(1));
     assert!(
-        text(&broken.stderr).contains("first.config.ts:2:"),
+        text(&broken.stderr).contains("typedpress.config.ts:2:"),
         "{}",
         text(&broken.stderr)
     );
@@ -2400,10 +2404,14 @@ fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint
         "# Mine\n"
     );
     assert!(!dir.path().join(".mcp.json").exists() && !dir.path().join(".agents").exists());
-    std::fs::write(dir.path().join("first.config.ts"), CONFIG).unwrap();
+    std::fs::write(dir.path().join("typedpress.config.ts"), CONFIG).unwrap();
 
     // One marker without the other: the author's file is not guessed at.
-    std::fs::write(dir.path().join("AGENTS.md"), "# Mine\n<!-- first:begin -->\nhalf\n").unwrap();
+    std::fs::write(
+        dir.path().join("AGENTS.md"),
+        "# Mine\n<!-- typedpress:begin -->\nhalf\n",
+    )
+    .unwrap();
     let half = init(dir.path(), &[]);
     assert_eq!(half.status.code(), Some(1));
     assert!(
@@ -2413,7 +2421,7 @@ fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("AGENTS.md")).unwrap(),
-        "# Mine\n<!-- first:begin -->\nhalf\n"
+        "# Mine\n<!-- typedpress:begin -->\nhalf\n"
     );
     // An .mcp.json that is not JSON is the author's to fix; nothing is written over it.
     std::fs::write(dir.path().join("AGENTS.md"), "# Mine\n").unwrap();
@@ -2439,18 +2447,18 @@ fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint
     let none = init(empty.path(), &[]);
     assert_eq!(none.status.code(), Some(1));
     assert!(
-        text(&none.stderr).starts_with("no first.config.ts in "),
+        text(&none.stderr).starts_with("no typedpress.config.ts in "),
         "{}",
         text(&none.stderr)
     );
     assert_eq!(std::fs::read_dir(empty.path()).unwrap().count(), 0);
     let bad = first().args(["init", "--force"]).output().unwrap();
     assert_eq!(bad.status.code(), Some(2));
-    assert!(text(&bad.stderr).contains("usage: first init [dir] [--check]"));
+    assert!(text(&bad.stderr).contains("usage: typedpress init [dir] [--check]"));
 }
 
 /// The server `.mcp.json` names is one a client can start: the command as written, run in the
-/// project with the project's own `first` in `node_modules/.bin`, answers `server/discover`.
+/// project with the project's own `typedpress` in `node_modules/.bin`, answers `server/discover`.
 #[cfg(unix)]
 #[test]
 fn init_configures_an_mcp_server_that_starts_from_the_project() {
@@ -2460,10 +2468,10 @@ fn init_configures_an_mcp_server_that_starts_from_the_project() {
     assert!(init(&project, &[]).status.success());
     let bin = project.join("node_modules/.bin");
     std::fs::create_dir_all(&bin).unwrap();
-    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_first"), bin.join("first")).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_typedpress"), bin.join("typedpress")).unwrap();
     let config: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(project.join(".mcp.json")).unwrap()).unwrap();
-    let server = &config["mcpServers"]["first"];
+    let server = &config["mcpServers"]["typedpress"];
     let mut command = Command::new(server["command"].as_str().unwrap());
     command
         .args(
@@ -2489,7 +2497,7 @@ fn init_configures_an_mcp_server_that_starts_from_the_project() {
 #[test]
 fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_that_exist() {
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
     let commands: Vec<&str> = ["build", "site"]
         .iter()
         .flat_map(|group| table[*group].as_array().unwrap())
@@ -2530,7 +2538,7 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         // The compatibility line names the versions this compiler targets.
         let series = env!("CARGO_PKG_VERSION").rsplit_once('.').unwrap().0;
         assert!(
-            value("compatibility").contains(&format!("First {series} ")),
+            value("compatibility").contains(&format!("TypedPress {series} ")),
             "{name}: {}",
             value("compatibility")
         );
@@ -2547,8 +2555,8 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         // Short: depth is in the documentation it links.
         assert!(skill.lines().count() <= 120, "{name}: {} lines", skill.lines().count());
 
-        // Every `first <command>` it names, in inline code or in a shell block, is in the command
-        // table (or is `first help`).
+        // Every `typedpress <command>` it names, in inline code or in a shell block, is in the command
+        // table (or is `typedpress help`).
         // The skill's reference files count too.
         let every_file: String = files_under(&dir)
             .iter()
@@ -2557,13 +2565,17 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         let mut named = Vec::new();
         for (i, part) in every_file.split("```").enumerate() {
             if i % 2 == 1 {
-                named.extend(part.lines().map(str::trim).filter(|line| line.starts_with("first ")));
+                named.extend(
+                    part.lines()
+                        .map(str::trim)
+                        .filter(|line| line.starts_with("typedpress ")),
+                );
             } else {
                 named.extend(
                     part.split('`')
                         .skip(1)
                         .step_by(2)
-                        .filter(|code| code.starts_with("first ")),
+                        .filter(|code| code.starts_with("typedpress ")),
                 );
             }
         }
@@ -2584,19 +2596,19 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
                 .flat_map(|group| table[*group].as_array().unwrap())
                 .find(|row| row["name"] == command.as_str())
                 .unwrap_or_else(|| panic!("{name} names `{usage}`, which is not in the command table"));
-            // Each option it passes is one the command takes. `first wp` forwards WP-CLI's own.
+            // Each option it passes is one the command takes. `typedpress wp` forwards WP-CLI's own.
             if command != "wp" {
                 let takes = row["args"].as_str().unwrap();
                 for flag in words.iter().filter(|word| word.starts_with("--")) {
                     let flag = flag.split('=').next().unwrap();
                     assert!(
                         takes.contains(flag),
-                        "{name} passes {flag} to `first {command}`, which takes {takes}"
+                        "{name} passes {flag} to `typedpress {command}`, which takes {takes}"
                     );
                 }
             }
         }
-        // Every documentation page it points to is one `first mcp`'s `docs_read` serves, unless the
+        // Every documentation page it points to is one `typedpress mcp`'s `docs_read` serves, unless the
         // skill says it is not.
         for (at, _) in every_file.match_indices("`docs") {
             let path: &str = every_file[at + 1..].split('`').next().unwrap();
@@ -2619,27 +2631,27 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
     assert_eq!(
         names,
         [
-            "first-add-kind",
-            "first-add-page",
-            "first-connect-mcp",
-            "first-dev-site",
-            "first-fix-diagnostic",
-            "first-migrate",
-            "first-migrate-astro",
-            "first-write-action"
+            "typedpress-add-kind",
+            "typedpress-add-page",
+            "typedpress-connect-mcp",
+            "typedpress-dev-site",
+            "typedpress-fix-diagnostic",
+            "typedpress-migrate",
+            "typedpress-migrate-astro",
+            "typedpress-write-action"
         ]
     );
 }
 
 /// The TypeScript in the skills is what an agent will copy, so it has to compile: every fenced
-/// block that names its file (`// first/…`) is written to that path in a project, and `first check`
+/// block that names its file (`// tp/…`) is written to that path in a project, and `typedpress check`
 /// accepts the project.
 #[test]
 fn the_code_in_the_skills_compiles_as_one_project() {
     let project = tempfile::tempdir().unwrap();
     std::fs::write(
-        project.path().join("first.config.ts"),
-        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"skills\" });\n",
+        project.path().join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"skills\" });\n",
     )
     .unwrap();
     let mut written = Vec::new();
@@ -2667,7 +2679,7 @@ fn the_code_in_the_skills_compiles_as_one_project() {
                 .next()
                 .and_then(|first| first.strip_prefix("// "))
                 .map(|rest| rest.split([' ', ':']).next().unwrap())
-                .filter(|path| path.starts_with("first/"))
+                .filter(|path| path.starts_with("tp/"))
                 .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
             let target = project.path().join(path);
             assert!(!target.exists(), "{skill}: {path} is written by two blocks");
@@ -2700,18 +2712,18 @@ fn the_code_in_the_skills_compiles_as_one_project() {
     mcp.finish();
 }
 
-/// `npm create @spacefast/first` ends with `first init`: a new project has the agent files, written
+/// `npm create typedpress` ends with `typedpress init`: a new project has the agent files, written
 /// by the same generator from the template's own config. `--no-install` here, so the compiler is
-/// the one `FIRST_BIN` names.
+/// the one `TP_BIN` names.
 #[test]
 fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
     let dir = tempfile::tempdir().unwrap();
     let project = dir.path().join("Field Notes");
     let scaffolded = Command::new("node")
-        .arg(root().join("packages/create-first/bin/create-first.mjs"))
+        .arg(root().join("packages/create-typedpress/bin/create-typedpress.mjs"))
         .arg(&project)
         .arg("--no-install")
-        .env("FIRST_BIN", env!("CARGO_BIN_EXE_first"))
+        .env("TP_BIN", env!("CARGO_BIN_EXE_typedpress"))
         .output()
         .expect("node");
     assert!(scaffolded.status.success(), "{}", text(&scaffolded.stderr));
@@ -2721,15 +2733,15 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
         said.contains("AGENTS.md, .mcp.json and the agent skills describe this project"),
         "{said}"
     );
-    assert!(!said.contains("npx first init  "), "nothing left to run: {said}");
+    assert!(!said.contains("npx typedpress init  "), "nothing left to run: {said}");
     // The section is about this project: the name the scaffolder gave it and the template's kind.
     let agents = std::fs::read_to_string(project.join("AGENTS.md")).unwrap();
-    assert!(agents.starts_with("<!-- first:begin -->\n"), "{agents}");
+    assert!(agents.starts_with("<!-- typedpress:begin -->\n"), "{agents}");
     assert!(
-        agents.contains("This project is the First app `field-notes`."),
+        agents.contains("This project is the TypedPress app `field-notes`."),
         "{agents}"
     );
-    assert!(agents.contains("`/wp-json/mcp/first-field-notes`"), "{agents}");
+    assert!(agents.contains("`/wp-json/mcp/typedpress-field-notes`"), "{agents}");
     let schema = first().arg("check").arg(&project).arg("--json").output().unwrap();
     assert!(
         schema.status.success(),
@@ -2739,8 +2751,8 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
     let mcp: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(project.join(".mcp.json")).unwrap()).unwrap();
     assert_eq!(
-        mcp["mcpServers"]["first"]["args"],
-        serde_json::json!(["--no-install", "first", "mcp"])
+        mcp["mcpServers"]["typedpress"]["args"],
+        serde_json::json!(["--no-install", "typedpress", "mcp"])
     );
     assert_eq!(
         files_under(&project.join(".agents/skills")),
@@ -2750,11 +2762,11 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
         files_under(&project.join(".claude/skills")),
         files_under(&root().join("skills"))
     );
-    // Exactly what `first init` writes: nothing is out of date.
+    // Exactly what `typedpress init` writes: nothing is out of date.
     let current = init(&project, &["--check"]);
     assert_eq!(current.status.code(), Some(0), "{}", text(&current.stderr));
     // The scaffolder's own files are as before.
-    assert!(project.join("first.config.ts").is_file() && project.join("package.json").is_file());
+    assert!(project.join("typedpress.config.ts").is_file() && project.join("package.json").is_file());
 
     // A compiler that cannot do it (here: one that fails) does not undo the scaffold: the project
     // is created and the output says what to run.
@@ -2767,22 +2779,22 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
         std::fs::set_permissions(&failing, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     let scaffolded = Command::new("node")
-        .arg(root().join("packages/create-first/bin/create-first.mjs"))
+        .arg(root().join("packages/create-typedpress/bin/create-typedpress.mjs"))
         .arg(&other)
         .arg("--no-install")
-        .env("FIRST_BIN", &failing)
+        .env("TP_BIN", &failing)
         .output()
         .unwrap();
     assert!(scaffolded.status.success(), "{}", text(&scaffolded.stderr));
     assert!(
-        text(&scaffolded.stdout).contains("  npx first init "),
+        text(&scaffolded.stdout).contains("  npx typedpress init "),
         "{}",
         text(&scaffolded.stdout)
     );
-    assert!(other.join("first.config.ts").is_file() && !other.join("AGENTS.md").exists());
+    assert!(other.join("typedpress.config.ts").is_file() && !other.join("AGENTS.md").exists());
 }
 
-/// `first init --github` writes the content sync workflow at the repository's root, with the
+/// `typedpress init --github` writes the content sync workflow at the repository's root, with the
 /// project's synced folders as its push paths; reruns keep it in step until its header line is
 /// deleted. With `ACTIONLINT` set (a path to actionlint), the file is also linted.
 #[test]
@@ -2800,18 +2812,18 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
             })
             .collect();
         format!(
-            "import {{ defineConfig, collection, text, richText }} from \"first\";\n{}export default defineConfig({{ name: \"gh\" }});\n",
+            "import {{ defineConfig, collection, text, richText }} from \"typedpress\";\n{}export default defineConfig({{ name: \"gh\" }});\n",
             kinds.concat()
         )
     };
-    std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
+    std::fs::write(project.join("typedpress.config.ts"), config(&["content/posts"])).unwrap();
     // Outside a git repository there is no root for GitHub to read the workflow from: refused.
     let out = init(&project, &["--github"]);
     assert_eq!(out.status.code(), Some(1));
     assert!(text(&out.stderr).contains("git repository"), "{}", text(&out.stderr));
     let git = Command::new("git").args(["init", "-q"]).arg(repo).output().unwrap();
     assert!(git.status.success());
-    let path = repo.join(".github/workflows/first-sync.yml");
+    let path = repo.join(".github/workflows/typedpress-sync.yml");
 
     // Without --github: no workflow.
     let out = init(&project, &[]);
@@ -2824,7 +2836,7 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
         text(&out.stdout).contains(&format!(
             "wrote {}",
             std::path::Path::new("..")
-                .join(".github/workflows/first-sync.yml")
+                .join(".github/workflows/typedpress-sync.yml")
                 .display()
         )),
         "{}",
@@ -2832,15 +2844,15 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
     );
     let workflow = std::fs::read_to_string(&path).unwrap();
     for expected in [
-        "# Written by `first init --github` for site; delete this line to keep your own edits.\n",
+        "# Written by `typedpress init --github` for site; delete this line to keep your own edits.\n",
         "  push:\n    branches: [\"**\"]\n",
-        "    types: [first-content-changed]\n",
+        "    types: [typedpress-content-changed]\n",
         "  schedule:\n",
         "      - \"site/content/posts/**\"\n",
         "        working-directory: \"site\"\n",
         "  contents: write\n  pull-requests: write\n",
-        "run: npx --no-install first sync --pr --site \"$FIRST_SITE_URL\"\n",
-        "FIRST_APP_PASSWORD: ${{ secrets.FIRST_APP_PASSWORD }}\n",
+        "run: npx --no-install typedpress sync --pr --site \"$TP_SITE_URL\"\n",
+        "TP_APP_PASSWORD: ${{ secrets.TP_APP_PASSWORD }}\n",
     ] {
         assert!(workflow.contains(expected), "{expected:?} in\n{workflow}");
     }
@@ -2856,11 +2868,11 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
 
     // In step: --check passes, and a rerun without --github writes nothing.
     assert!(init(&project, &["--check"]).status.success());
-    // A new synced folder: first check says so, --check fails, and a plain rerun updates the paths.
-    std::fs::write(project.join("first.config.ts"), config(&["content/posts", "docs"])).unwrap();
+    // A new synced folder: typedpress check says so, --check fails, and a plain rerun updates the paths.
+    std::fs::write(project.join("typedpress.config.ts"), config(&["content/posts", "docs"])).unwrap();
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(
-        text(&checked.stderr).contains(".github/workflows/first-sync.yml is out of date"),
+        text(&checked.stderr).contains(".github/workflows/typedpress-sync.yml is out of date"),
         "{}",
         text(&checked.stderr)
     );
@@ -2872,11 +2884,11 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
             .contains("      - \"site/docs/**\"\n")
     );
 
-    // Another project in the same repository: its plain first init and first check leave this
+    // Another project in the same repository: its plain typedpress init and typedpress check leave this
     // project's workflow alone, and its --github refuses to take it.
     let other = repo.join("other");
     std::fs::create_dir_all(&other).unwrap();
-    std::fs::write(other.join("first.config.ts"), config(&["notes"])).unwrap();
+    std::fs::write(other.join("typedpress.config.ts"), config(&["notes"])).unwrap();
     let ours = std::fs::read_to_string(&path).unwrap();
     assert!(init(&other, &[]).status.success());
     assert_eq!(
@@ -2886,7 +2898,7 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
     );
     let checked = first().arg("check").arg(&other).output().unwrap();
     assert!(
-        !text(&checked.stderr).contains("first-sync.yml"),
+        !text(&checked.stderr).contains("typedpress-sync.yml"),
         "{}",
         text(&checked.stderr)
     );
@@ -2906,7 +2918,7 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
         .unwrap()
         .replacen("# Written by", "# Adapted from", 1);
     std::fs::write(&path, &mine).unwrap();
-    std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
+    std::fs::write(project.join("typedpress.config.ts"), config(&["content/posts"])).unwrap();
     assert!(init(&project, &[]).status.success());
     let refused = init(&project, &["--github"]);
     assert_eq!(refused.status.code(), Some(1));
@@ -2918,13 +2930,13 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
     assert_eq!(std::fs::read_to_string(&path).unwrap(), mine);
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(
-        !text(&checked.stderr).contains("first-sync.yml"),
+        !text(&checked.stderr).contains("typedpress-sync.yml"),
         "{}",
         text(&checked.stderr)
     );
 }
 
-/// What `first init` must leave alone: an author's prose that quotes a marker, the formatting of
+/// What `typedpress init` must leave alone: an author's prose that quotes a marker, the formatting of
 /// their `.mcp.json`, a link they made, the permissions of their files, a skills directory they
 /// removed, and anything outside the project.
 #[cfg(unix)]
@@ -2937,7 +2949,7 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     let read = |name: &str| std::fs::read_to_string(project.join(name)).unwrap();
 
     // A marker quoted in prose is text: the section goes after it, and a rerun keeps the prose.
-    let prose = "Do not edit below `<!-- first:begin -->`.\n\n# Team notes\n\nRule A.\n";
+    let prose = "Do not edit below `<!-- typedpress:begin -->`.\n\n# Team notes\n\nRule A.\n";
     std::fs::write(project.join("AGENTS.md"), prose).unwrap();
     // The author's .mcp.json: its numbers and layout are theirs.
     let mcp =
@@ -2946,7 +2958,7 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     assert!(init(&project, &[]).status.success());
     let agents = read("AGENTS.md");
     assert!(agents.starts_with(prose), "{agents}");
-    assert_eq!(agents.matches("\n<!-- first:begin -->\n").count(), 1);
+    assert_eq!(agents.matches("\n<!-- typedpress:begin -->\n").count(), 1);
     assert!(init(&project, &[]).status.success());
     assert!(read("AGENTS.md").starts_with(prose));
     let written = read(".mcp.json");
@@ -2956,14 +2968,14 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     );
     assert!(written.ends_with("\"x\": {\"command\": \"y\"}}}\n"), "{written}");
     let parsed: serde_json::Value = serde_json::from_str(&written).unwrap();
-    assert_eq!(parsed["mcpServers"]["first"]["args"][2], "mcp");
+    assert_eq!(parsed["mcpServers"]["typedpress"]["args"][2], "mcp");
     assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
 
     // Permissions: an existing file keeps its own; a new one gets what any new file gets.
     std::fs::set_permissions(project.join("AGENTS.md"), std::fs::Permissions::from_mode(0o664)).unwrap();
     std::fs::write(
-        project.join("first/schema.ts"),
-        read("first/schema.ts") + "\nexport const extra = table({ n: text() });\n",
+        project.join("tp/schema.ts"),
+        read("tp/schema.ts") + "\nexport const extra = table({ n: text() });\n",
     )
     .unwrap();
     assert!(init(&project, &[]).status.success());
@@ -2972,14 +2984,14 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     let fresh = dir.path().join("fresh");
     std::fs::write(&fresh, "").unwrap();
     let usual = std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode(".agents/skills/first-add-kind/SKILL.md"), usual);
+    assert_eq!(mode(".agents/skills/typedpress-add-kind/SKILL.md"), usual);
 
     // A skills directory the author deleted stays deleted, and nothing reports it out of date.
     std::fs::remove_dir_all(project.join(".claude")).unwrap();
     assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(
-        !text(&checked.stderr).contains("first init"),
+        !text(&checked.stderr).contains("typedpress init"),
         "{}",
         text(&checked.stderr)
     );
@@ -3000,7 +3012,7 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     );
     let claude = std::fs::read_to_string(linked.join("CLAUDE.md")).unwrap();
     assert!(
-        claude.starts_with("# Mine\n") && claude.contains("<!-- first:begin -->"),
+        claude.starts_with("# Mine\n") && claude.contains("<!-- typedpress:begin -->"),
         "{claude}"
     );
 
@@ -3040,7 +3052,7 @@ fn mcp_compiles_with_no_path() {
 #[test]
 fn mcp_killed_by_its_client_leaves_no_command_running() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
     let pids = tempfile::tempdir().unwrap();
     let wp = scripted_wp(&format!("sleep 600 & echo $! > {}/$$; wait", pids.path().display()));
     let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
@@ -3078,10 +3090,10 @@ fn mcp_killed_by_its_client_leaves_no_command_running() {
 #[test]
 fn mcp_dev_status_is_bounded_by_the_servers_timeout() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
-    // A site `first dev` created, from before the state file.
-    std::fs::create_dir_all(project.path().join(".first/dev")).unwrap();
-    std::fs::write(project.path().join(".first/dev/owner.json"), r#"{"created":true}"#).unwrap();
+    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    // A site `typedpress dev` created, from before the state file.
+    std::fs::create_dir_all(project.path().join(".tp/dev")).unwrap();
+    std::fs::write(project.path().join(".tp/dev/owner.json"), r#"{"created":true}"#).unwrap();
     let tools = tempfile::tempdir().unwrap();
     let npx = tools.path().join("npx");
     std::fs::write(&npx, "#!/bin/sh\nsleep 600\n").unwrap();
@@ -3091,7 +3103,7 @@ fn mcp_dev_status_is_bounded_by_the_servers_timeout() {
     }
     let mut mcp = Mcp::start(project.path(), &[], |command| {
         with_path(command, tools.path());
-        command.env("FIRST_MCP_TIMEOUT", "2");
+        command.env("TP_MCP_TIMEOUT", "2");
     });
     mcp.modern = true;
     let started = std::time::Instant::now();

@@ -53,18 +53,18 @@ jobs:
         working-directory: .
       - run: pnpm install --frozen-lockfile
       - run: pnpm wasm
-      # The landing page shows every file `first build` writes for examples/reading-list.
+      # The landing page shows every file `typedpress build` writes for examples/reading-list.
       - run: pnpm showcase
       # Fails when a generated page no longer matches the code. Run `pnpm generate` and commit.
       - run: pnpm generate:check
       - run: pnpm test
       - run: pnpm exec blume build
         env:
-          SITE_URL: https://first-docs.space.fast
+          SITE_URL: https://typedpress-docs.space.fast
       - run: pnpm exec blume validate
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:browser
-      # Every URL and feature the site served before it moved to First (tests/parity/inventory.json).
+      # Every URL and feature the site served before it moved to TypedPress (tests/parity/inventory.json).
       - run: pnpm test:parity
       # Boots each example's published blueprint in WordPress Playground and checks the app works.
       - run: pnpm test:playground

@@ -76,7 +76,7 @@ function DashboardWidgetsGrid() {
 	/*
 	 * Mark the widget as deleted adding the __meta.deleted flag.
 	 * It will prevent extending the layout with a new widget instance
-	 * through the first_admin_dashboard_widgets filter.
+	 * through the tp_admin_dashboard_widgets filter.
 	 */
 	const removeWidget = useCallback(
 		( removedWidget: DashboardWidget< unknown > ) =>

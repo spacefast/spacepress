@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 
 /**
  * Returns a {@see ClassMetadataInterface}.
@@ -31,7 +31,7 @@ interface ClassMetadataFactoryInterface
      *
      * Otherwise, a new metadata instance is created. If the factory was
      * configured with a loader, the metadata is passed to the
-     * {@link \First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader\LoaderInterface::loadClassMetadata()} method for further
+     * {@link \TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader\LoaderInterface::loadClassMetadata()} method for further
      * configuration. At last, the new object is returned.
      *
      * @throws InvalidArgumentException

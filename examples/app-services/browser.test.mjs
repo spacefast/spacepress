@@ -7,18 +7,18 @@ import { once } from 'node:events';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const example = fileURLToPath(new URL('.', import.meta.url));
-const evidence = process.env.FIRST_SERVICES_EVIDENCE;
-if (!evidence || !process.env.FIRST_SERVICES_PLAYWRIGHT) throw new Error('Set FIRST_SERVICES_EVIDENCE and FIRST_SERVICES_PLAYWRIGHT (path to an installed Playwright module)');
+const evidence = process.env.TP_SERVICES_EVIDENCE;
+if (!evidence || !process.env.TP_SERVICES_PLAYWRIGHT) throw new Error('Set TP_SERVICES_EVIDENCE and TP_SERVICES_PLAYWRIGHT (path to an installed Playwright module)');
 await mkdir(evidence, { recursive: true });
-const { chromium } = await import(pathToFileURL(process.env.FIRST_SERVICES_PLAYWRIGHT).href);
+const { chromium } = await import(pathToFileURL(process.env.TP_SERVICES_PLAYWRIGHT).href);
 const children = [];
 async function stop(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const done = once(child, 'exit'); child.kill('SIGTERM'); await done;
 }
-const env = { ...process.env, FIRST_SERVICES_RATE_SECRET: randomBytes(32).toString('hex'), FIRST_SERVICES_MAIL_TO: 'inbox@example.test', FIRST_SERVICES_MAIL_FROM: 'sender@example.test', FIRST_SERVICES_SMTP_ENCRYPTION: '' };
-delete env.FIRST_SERVICES_STRIPE_SECRET;
-delete env.FIRST_SERVICES_STRIPE_WEBHOOK_SECRET;
+const env = { ...process.env, TP_SERVICES_RATE_SECRET: randomBytes(32).toString('hex'), TP_SERVICES_MAIL_TO: 'inbox@example.test', TP_SERVICES_MAIL_FROM: 'sender@example.test', TP_SERVICES_SMTP_ENCRYPTION: '' };
+delete env.TP_SERVICES_STRIPE_SECRET;
+delete env.TP_SERVICES_STRIPE_WEBHOOK_SECRET;
 let browser;
 let site;
 try {
@@ -26,7 +26,7 @@ try {
   const lines = createInterface({ input: sink.stdout });
   const [readyLine] = await once(lines, 'line', { signal: AbortSignal.timeout(10000) }); lines.close();
   const ready = JSON.parse(readyLine);
-  env.FIRST_SERVICES_SMTP_HOST = ready.host; env.FIRST_SERVICES_SMTP_PORT = String(ready.port);
+  env.TP_SERVICES_SMTP_HOST = ready.host; env.TP_SERVICES_SMTP_PORT = String(ready.port);
   const server = spawn('php', ['-d', 'memory_limit=512M', example + 'run.php'], { env }); children.push(server);
   let log = ''; server.stderr.on('data', (data) => { log += data; });
   let url;

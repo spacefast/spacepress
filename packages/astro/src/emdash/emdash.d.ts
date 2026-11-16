@@ -1,5 +1,5 @@
-// The `emdash` modules EmDash's official templates import, as @first/astro/emdash provides them.
-// firstEmdash() adds these declarations to the project (Astro's injectTypes), so a template
+// The `emdash` modules EmDash's official templates import, as @typedpress/astro/emdash provides them.
+// tpEmdash() adds these declarations to the project (Astro's injectTypes), so a template
 // type-checks with no EmDash package installed.
 
 declare module "emdash" {
@@ -92,7 +92,7 @@ declare module "emdash/ui/search" {
 
 declare namespace App {
   interface Locals {
-    /** Always unset on a First site: a page served elsewhere can't see the WordPress session. */
+    /** Always unset on a TypedPress site: a page served elsewhere can't see the WordPress session. */
     user?: { id: number; name: string };
     emdash?: { getPublicMediaUrl?: (key: string) => string };
   }

@@ -1,5 +1,5 @@
 // Untyped JavaScript for tests/differential/language/object-reflect.ts: Object.assign,
-// Reflect.ownKeys and Object.prototype.toString.call through First's checked JavaScript dispatch.
+// Reflect.ownKeys and Object.prototype.toString.call through TypedPress's checked JavaScript dispatch.
 
 const BRAND = Symbol.for("object-reflect.brand");
 

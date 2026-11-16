@@ -3,7 +3,7 @@
 // be byte-identical. BigInts can't be JSON-serialized, so results are spelled out as strings.
 // `bigint-helpers.mjs` runs the same operations untyped. Exact arithmetic on random operands is
 // also checked against Node in tests/php/bigint_test.php.
-import { action, defineConfig } from "first";
+import { action, defineConfig } from "typedpress";
 import { bigintUntyped as bigintUntypedImpl } from "./bigint-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

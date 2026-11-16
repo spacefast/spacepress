@@ -1,5 +1,5 @@
 // Untyped JavaScript for tests/differential/language/optional-calls.ts: optional calls run
-// through First's checked JavaScript dispatch.
+// through TypedPress's checked JavaScript dispatch.
 
 export function optionalCalls() {
   const log = [];

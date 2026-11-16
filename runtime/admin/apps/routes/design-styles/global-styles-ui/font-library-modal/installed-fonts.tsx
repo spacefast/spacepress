@@ -1,7 +1,7 @@
 import type {
 	FontFamilyPreset,
 	GlobalStylesConfig,
-} from '@first-admin/global-styles-engine';
+} from '@typedpress-admin/global-styles-engine';
 import {
 	Button,
 	__experimentalConfirmDialog as ConfirmDialog,
@@ -122,7 +122,7 @@ function InstalledFonts() {
 				type: 'success',
 				message: __(
 					'Font family updated successfully.',
-					'first-admin'
+					'typedpress-admin'
 				),
 			} );
 		} catch ( error ) {
@@ -132,7 +132,7 @@ function InstalledFonts() {
 					/* translators: %s: error message */
 					__(
 						'There was an error updating the font family. %s',
-						'first-admin'
+						'typedpress-admin'
 					),
 					( error as Error ).message
 				),
@@ -167,7 +167,7 @@ function InstalledFonts() {
 		).length;
 		return sprintf(
 			/* translators: 1: Active font variants, 2: Total font variants. */
-			__( '%1$d/%2$d variants active', 'first-admin' ),
+			__( '%1$d/%2$d variants active', 'typedpress-admin' ),
 			variantsActive,
 			variantsInstalled
 		);
@@ -266,7 +266,7 @@ function InstalledFonts() {
 									<Text as="p">
 										{ __(
 											'No fonts installed.',
-											'first-admin'
+											'typedpress-admin'
 										) }
 									</Text>
 								) }
@@ -278,7 +278,7 @@ function InstalledFonts() {
 												_x(
 													'Theme',
 													'font source',
-													'first-admin'
+													'typedpress-admin'
 												)
 											}
 										</h2>
@@ -323,7 +323,7 @@ function InstalledFonts() {
 												_x(
 													'Custom',
 													'font source',
-													'first-admin'
+													'typedpress-admin'
 												)
 											}
 										</h2>
@@ -389,12 +389,12 @@ function InstalledFonts() {
 										);
 										setNotice( null );
 									} }
-									label={ __( 'Back', 'first-admin' ) }
+									label={ __( 'Back', 'typedpress-admin' ) }
 								/>
 								<Heading
 									level={ 2 }
 									size={ 13 }
-									className="first-admin-global-styles-header"
+									className="typedpress-admin-global-styles-header"
 								>
 									{ libraryFontSelected?.name }
 								</Heading>
@@ -415,14 +415,14 @@ function InstalledFonts() {
 							<Text>
 								{ __(
 									'Choose font variants. Keep in mind that too many variants could make your site slower.',
-									'first-admin'
+									'typedpress-admin'
 								) }
 							</Text>
 							<Spacer margin={ 4 } />
 							<VStack spacing={ 0 }>
 								<CheckboxControl
 									className="font-library-modal__select-all"
-									label={ __( 'Select all', 'first-admin' ) }
+									label={ __( 'Select all', 'typedpress-admin' ) }
 									checked={ isSelectAllChecked }
 									onChange={ toggleSelectAll }
 									indeterminate={ isIndeterminate }
@@ -471,7 +471,7 @@ function InstalledFonts() {
 								variant="tertiary"
 								onClick={ handleUninstallClick }
 							>
-								{ __( 'Delete', 'first-admin' ) }
+								{ __( 'Delete', 'typedpress-admin' ) }
 							</Button>
 						) }
 						<Button
@@ -481,7 +481,7 @@ function InstalledFonts() {
 							disabled={ ! fontFamiliesHasChanges }
 							accessibleWhenDisabled
 						>
-							{ __( 'Update', 'first-admin' ) }
+							{ __( 'Update', 'typedpress-admin' ) }
 						</Button>
 					</HStack>
 				</>
@@ -525,7 +525,7 @@ function ConfirmDeleteDialog( {
 				type: 'success',
 				message: __(
 					'Font family uninstalled successfully.',
-					'first-admin'
+					'typedpress-admin'
 				),
 			} );
 		} catch ( error ) {
@@ -534,7 +534,7 @@ function ConfirmDeleteDialog( {
 				message:
 					__(
 						'There was an error uninstalling the font family.',
-						'first-admin'
+						'typedpress-admin'
 					) + ( error as Error ).message,
 			} );
 		}
@@ -547,8 +547,8 @@ function ConfirmDeleteDialog( {
 	return (
 		<ConfirmDialog
 			isOpen={ isOpen }
-			cancelButtonText={ __( 'Cancel', 'first-admin' ) }
-			confirmButtonText={ __( 'Delete', 'first-admin' ) }
+			cancelButtonText={ __( 'Cancel', 'typedpress-admin' ) }
+			confirmButtonText={ __( 'Delete', 'typedpress-admin' ) }
 			onCancel={ handleCancelUninstall }
 			onConfirm={ handleConfirmUninstall }
 			size="medium"
@@ -558,7 +558,7 @@ function ConfirmDeleteDialog( {
 					/* translators: %s: Name of the font. */
 					__(
 						'Are you sure you want to delete "%s" font and all its variants and assets?',
-						'first-admin'
+						'typedpress-admin'
 					),
 					font.name
 				) }

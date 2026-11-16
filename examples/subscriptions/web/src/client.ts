@@ -1,9 +1,9 @@
-import { createClient, type ClientOptions } from "../../first/_generated/client/index.ts";
-import type { Collections } from "../../first/_generated/client/types.ts";
+import { createClient, type ClientOptions } from "../../tp/_generated/client/index.ts";
+import type { Collections } from "../../tp/_generated/client/types.ts";
 
 const page = new URL(window.location.pathname, window.location.origin);
 const options = {
-  url: "/__first/api/v1",
+  url: "/__tp/api/v1",
   auth: {
     clientId: import.meta.env.VITE_ZERO_APP_ID ?? "app_subscriptions",
     redirectUri: page.origin + page.pathname,

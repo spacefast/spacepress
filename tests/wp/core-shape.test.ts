@@ -1,4 +1,4 @@
-// The WordPress internals First relies on, read by reflection on the stack's own WordPress (the
+// The WordPress internals TypedPress relies on, read by reflection on the stack's own WordPress (the
 // floor here, the nightly and the next beta in .github/workflows/wordpress-ahead.yml): the PHP
 // suite tests/php/core_shape_test.php checks core's classes on the pinned core; this checks the
 // plugin internals that only run here (Polylang) and core's classes as the web server loads them.
@@ -10,7 +10,7 @@ import { wp } from "./env.ts";
 const shape = (php: string) => JSON.parse(wp("eval", php));
 
 test("Polylang's model and REST context, as Wp/Polylang.php and Runtime's pll_context use them", () => {
-  // First calls PLL()->model->get_language, add_language and update_default_lang. Since Polylang 3.7
+  // TypedPress calls PLL()->model->get_language, add_language and update_default_lang. Since Polylang 3.7
   // those are its backward-compatibility __call, forwarding to PLL()->model->languages (get, add,
   // update_default): both halves must still be there.
   const seen = shape(`echo wp_json_encode([
@@ -25,7 +25,7 @@ test("Polylang's model and REST context, as Wp/Polylang.php and Runtime's pll_co
   assert.deepEqual(seen, { pll: true, direct: true, forwarded: ["get", "add", "update_default"], callable: ["get_language", "add_language", "update_default_lang"], rest: true, context: true });
 });
 
-test("core's REST classes First subclasses keep the protected members it uses", () => {
+test("core's REST classes TypedPress subclasses keep the protected members it uses", () => {
   const seen = shape(`
     $m = fn ($c, $n) => method_exists($c, $n) ? (new ReflectionMethod($c, $n))->isProtected() ? 'protected' : ((new ReflectionMethod($c, $n))->isPublic() ? 'public' : 'private') : 'gone';
     $p = fn ($c, $n) => property_exists($c, $n) ? ((new ReflectionProperty($c, $n))->isProtected() ? 'protected' : 'other') : 'gone';

@@ -1,4 +1,4 @@
-import { table, defineConfig, action, db } from "first";
+import { table, defineConfig, action, db } from "typedpress";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 

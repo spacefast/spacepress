@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 /*
  * `<Comments for={item} />` and the comment policy on every path (docs/decisions/2026-11-14-comments.md):
- * tests/fixtures/comments, built by `first build`, on WordPress with php -S. Comments arrive the
+ * tests/fixtures/comments, built by `typedpress build`, on WordPress with php -S. Comments arrive the
  * three ways they can: the component's form (form-encoded, as a browser with scripts off sends it),
- * the facade's `POST /__first/api/v1/comments`, and core's `wp-comments-post.php`. Prints one JSON
+ * the facade's `POST /__tp/api/v1/comments`, and core's `wp-comments-post.php`. Prints one JSON
  * object of what each step saw.
  *
- *   FIRST_WP_THEMES=1 php tests/php/comments.php <wp-content dir>
+ *   TP_WP_THEMES=1 php tests/php/comments.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -22,24 +22,24 @@ $site = wpSite('comments', ['wpContent' => $argv[1], 'users' => ['ann' => 'subsc
     PHP, 'host' => <<<'PHP'
     <?php
     // A host that keeps cached pages, recording each purge it is asked for.
-    add_action('first_purge_urls', static function (array $paths): void {
+    add_action('tp_purge_urls', static function (array $paths): void {
         update_option('test_purges', [...get_option('test_purges', []), ...$paths], false);
     });
     PHP]]);
 wp_set_current_user(1);
-\First\db()->insert('notes', ['title' => 'Open note', 'slug' => 'open-note', 'status' => 'published']);
-\First\db()->insert('notes', ['title' => 'Draft note', 'slug' => 'draft-note', 'status' => 'draft']);
-\First\db()->insert('memos', ['title' => 'A memo', 'status' => 'published']);
-$note = (int) \First\db()->findFirst('notes', ['where' => ['slug' => 'open-note']])['id'];
-$draft = (int) \First\db()->findFirst('notes', ['where' => ['slug' => 'draft-note']])['id'];
-$memo = (int) \First\db()->findFirst('memos', [])['id'];
+\TypedPress\db()->insert('notes', ['title' => 'Open note', 'slug' => 'open-note', 'status' => 'published']);
+\TypedPress\db()->insert('notes', ['title' => 'Draft note', 'slug' => 'draft-note', 'status' => 'draft']);
+\TypedPress\db()->insert('memos', ['title' => 'A memo', 'status' => 'published']);
+$note = (int) \TypedPress\db()->findFirst('notes', ['where' => ['slug' => 'open-note']])['id'];
+$draft = (int) \TypedPress\db()->findFirst('notes', ['where' => ['slug' => 'draft-note']])['id'];
+$memo = (int) \TypedPress\db()->findFirst('memos', [])['id'];
 // What a site admin may set in Discussion settings must not change what the app declared.
 update_option('comment_registration', 0);
 update_option('comment_moderation', 1); // "hold every comment": the app's first-time policy wins
 update_option('comment_previously_approved', 0);
 update_option('thread_comments_depth', 10);
 // An approved comment already on the note, by the site admin.
-$seeded = wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'First!', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
+$seeded = wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'TypedPress!', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -75,9 +75,9 @@ function thread(string $html): array
 {
     $x = xpath($html);
     $out = [];
-    foreach ($x->query("//li[contains(@class,'first-comment')]") as $li) {
+    foreach ($x->query("//li[contains(@class,'typedpress-comment')]") as $li) {
         $depth = $x->query("ancestor::ol", $li)->length;
-        $body = trim($x->query(".//div[@class='first-comment-body']", $li)->item(0)?->textContent ?? '');
+        $body = trim($x->query(".//div[@class='typedpress-comment-body']", $li)->item(0)?->textContent ?? '');
         $out[] = str_repeat('>', $depth - 1) . $body . (str_contains($li->getAttribute('class'), 'held') ? ' (held)' : '');
     }
     return $out;
@@ -88,7 +88,7 @@ function forms(string $html): array
 {
     $x = xpath($html);
     $out = [];
-    foreach ($x->query("//form[contains(@class,'first-comments')]") as $form) {
+    foreach ($x->query("//form[contains(@class,'typedpress-comments')]") as $form) {
         $fields = [];
         foreach ($x->query(".//input[@type='hidden']", $form) as $input) {
             $fields[$input->getAttribute('name')] = $input->getAttribute('value');
@@ -142,16 +142,16 @@ $count = static fn (): int => (int) get_comments(['post_id' => $GLOBALS['note'],
 $out = [];
 // Signed out: the approved thread, a sign-in link, no form; the page stays shared.
 $anon = fetch("$url/notes/open-note/");
-$out['signed out'] = ['status' => $anon['status'], 'thread' => thread($anon['body']), 'forms' => count(forms($anon['body'])), 'sign in' => text($anon['body'], 'first-comments-sign-in'), 'cache' => $anon['headers']['cache-control'][0] ?? null];
+$out['signed out'] = ['status' => $anon['status'], 'thread' => thread($anon['body']), 'forms' => count(forms($anon['body'])), 'sign in' => text($anon['body'], 'typedpress-comments-sign-in'), 'cache' => $anon['headers']['cache-control'][0] ?? null];
 
 // Signed out, each path refused, and nothing saved.
 $before = $count();
-$facade = fetch("$url/__first/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $note, 'content' => 'anon json']));
-$form = post(['action' => '/__first/api/v1/comments', 'fields' => ['on' => (string) $note, '_first_return' => '/notes/open-note/']], 'anon form', []);
+$facade = fetch("$url/__tp/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $note, 'content' => 'anon json']));
+$form = post(['action' => '/__tp/api/v1/comments', 'fields' => ['on' => (string) $note, '_tp_return' => '/notes/open-note/']], 'anon form', []);
 $core = fetch("$url/wp-comments-post.php", 'POST', ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['comment_post_ID' => $note, 'comment' => 'anon core', 'author' => 'Anon', 'email' => 'anon@example.test']));
 $out['signed out posts'] = [
     'facade' => $facade['status'],
-    'form' => [$form['status'], text((string) $form['back']['body'], 'first-comments-error')],
+    'form' => [$form['status'], text((string) $form['back']['body'], 'typedpress-comments-error')],
     'core' => $core['status'],
     'saved' => $count() - $before,
 ];
@@ -165,7 +165,7 @@ $annFirst = (int) get_comments(['post_id' => $note, 'search' => 'Hello from Ann'
 $out['first comment'] = [
     'status' => $first['status'],
     'stored' => $status($annFirst),
-    'notice' => text((string) $first['back']['body'], 'first-comments-held'),
+    'notice' => text((string) $first['back']['body'], 'typedpress-comments-held'),
     'ann sees' => thread((string) $first['back']['body']),
     'others see' => thread(fetch("$url/notes/open-note/")['body']),
     'bo sees' => thread(fetch("$url/notes/open-note/", headers: $session('bo'))['body']),
@@ -176,7 +176,7 @@ $out['first comment'] = [
 // Once a moderator approves it, her next comment is approved at once; through the facade too.
 wp_set_comment_status($annFirst, 'approve');
 [$nonce, $cookie] = explode("\n", $nonceFor('ann'));
-$second = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $note, 'content' => 'Ann again']));
+$second = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $note, 'content' => 'Ann again']));
 $out['second comment'] = [$second['status'], json_decode($second['body'], true)['data']['status'] ?? $second['body']];
 // Bo, first time, through core's wp-comments-post.php: held, as on every other path.
 $bo = $session('bo');
@@ -188,17 +188,17 @@ $out['core path'] = [$boPost['status'], $boId > 0 ? $status($boId) : null];
 // page offers no reply form there.
 $page = fetch("$url/notes/open-note/", headers: $ann);
 $pageNonce = forms($page['body'])[0]['fields']['_wpnonce'];
-$reply = static fn (int $parent): array => ['action' => '/__first/api/v1/comments', 'fields' => ['on' => (string) $note, 'parent' => (string) $parent, '_first_return' => '/notes/open-note/', '_wpnonce' => $pageNonce]];
+$reply = static fn (int $parent): array => ['action' => '/__tp/api/v1/comments', 'fields' => ['on' => (string) $note, 'parent' => (string) $parent, '_tp_return' => '/notes/open-note/', '_wpnonce' => $pageNonce]];
 post($reply($seeded), 'depth two', $ann);
 $two = (int) get_comments(['post_id' => $note, 'search' => 'depth two', 'fields' => 'ids', 'status' => 'all'])[0];
 post($reply($two), 'depth three', $ann);
 $three = (int) get_comments(['post_id' => $note, 'search' => 'depth three', 'fields' => 'ids', 'status' => 'all'])[0];
 $deep = post($reply($three), 'depth four', $ann);
-$deepJson = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $note, 'parent' => $three, 'content' => 'depth four json']));
+$deepJson = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $note, 'parent' => $three, 'content' => 'depth four json']));
 $deepCore = fetch("$url/wp-comments-post.php", 'POST', [...$ann, 'Content-Type: application/x-www-form-urlencoded'], http_build_query(['comment_post_ID' => $note, 'comment_parent' => $three, 'comment' => 'depth four core']));
 $view = fetch("$url/notes/open-note/", headers: $ann)['body'];
 $out['depth'] = [
-    'form' => text((string) $deep['back']['body'], 'first-comments-error'),
+    'form' => text((string) $deep['back']['body'], 'typedpress-comments-error'),
     'facade' => $deepJson['status'],
     'core' => $deepCore['status'],
     'saved' => count(get_comments(['post_id' => $note, 'search' => 'depth four', 'fields' => 'ids', 'status' => 'all'])),
@@ -210,8 +210,8 @@ $out['depth'] = [
 // A draft note: no thread for a visitor who can't read it, and no comment on it either.
 wp_insert_comment(['comment_post_ID' => $draft, 'comment_content' => 'Draft talk', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
 $draftPage = fetch("$url/notes/draft-note/", headers: $ann);
-$draftList = fetch("$url/__first/api/v1/comments?post=$draft", headers: [$cookie, "X-WP-Nonce: $nonce"]);
-$draftPost = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $draft, 'content' => 'on a draft']));
+$draftList = fetch("$url/__tp/api/v1/comments?post=$draft", headers: [$cookie, "X-WP-Nonce: $nonce"]);
+$draftPost = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $draft, 'content' => 'on a draft']));
 $out['draft'] = [
     'page' => $draftPage['status'],
     'page shows' => str_contains($draftPage['body'], 'Draft talk'),
@@ -219,25 +219,25 @@ $out['draft'] = [
     'post' => $draftPost['status'],
 ];
 // An authored policy (`notices`: guests, no moderation, flat, closes after 30 days).
-\First\db()->insert('notices', ['title' => 'Open notice', 'status' => 'published']);
-\First\db()->insert('notices', ['title' => 'Old notice', 'status' => 'published', 'publishedAt' => gmdate('Y-m-d\\TH:i:s\\Z', time() - 40 * DAY_IN_SECONDS)]);
-$notice = (int) \First\db()->findFirst('notices', ['where' => ['title' => 'Open notice']])['id'];
-$old = (int) \First\db()->findFirst('notices', ['where' => ['title' => 'Old notice']])['id'];
-$guestJson = fetch("$url/__first/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $notice, 'content' => 'guest json', 'authorName' => 'Guest', 'authorEmail' => 'guest@example.test']));
+\TypedPress\db()->insert('notices', ['title' => 'Open notice', 'status' => 'published']);
+\TypedPress\db()->insert('notices', ['title' => 'Old notice', 'status' => 'published', 'publishedAt' => gmdate('Y-m-d\\TH:i:s\\Z', time() - 40 * DAY_IN_SECONDS)]);
+$notice = (int) \TypedPress\db()->findFirst('notices', ['where' => ['title' => 'Open notice']])['id'];
+$old = (int) \TypedPress\db()->findFirst('notices', ['where' => ['title' => 'Old notice']])['id'];
+$guestJson = fetch("$url/__tp/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $notice, 'content' => 'guest json', 'authorName' => 'Guest', 'authorEmail' => 'guest@example.test']));
 $guestCore = fetch("$url/wp-comments-post.php", 'POST', ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['comment_post_ID' => $notice, 'comment' => 'guest core', 'author' => 'Guest', 'email' => 'guest2@example.test']));
 $guestCoreId = (int) (get_comments(['post_id' => $notice, 'search' => 'guest core', 'fields' => 'ids', 'status' => 'all'])[0] ?? 0);
 $firstOnNotice = (int) (get_comments(['post_id' => $notice, 'search' => 'guest', 'fields' => 'ids', 'status' => 'all', 'orderby' => 'comment_ID', 'order' => 'ASC'])[0] ?? 0);
-$flatReply = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $notice, 'parent' => $firstOnNotice, 'content' => 'a reply']));
-$closed = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $old, 'content' => 'too late']));
+$flatReply = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $notice, 'parent' => $firstOnNotice, 'content' => 'a reply']));
+$closed = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $old, 'content' => 'too late']));
 // A guest gives a name and a valid email on every path, whatever the Discussion setting says.
 update_option('require_name_email', 0);
-$noName = fetch("$url/__first/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $notice, 'content' => 'no name json']));
+$noName = fetch("$url/__tp/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $notice, 'content' => 'no name json']));
 $badEmailCore = fetch("$url/wp-comments-post.php", 'POST', ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['comment_post_ID' => $notice, 'comment' => 'no name core', 'author' => 'Guest', 'email' => 'not-an-email']));
-$noNameForm = post(['action' => '/__first/api/v1/comments', 'fields' => ['on' => (string) $notice, '_first_return' => '/notes/open-note/']], 'no name form', []);
+$noNameForm = post(['action' => '/__tp/api/v1/comments', 'fields' => ['on' => (string) $notice, '_tp_return' => '/notes/open-note/']], 'no name form', []);
 $out['guest identity'] = [
     'facade' => $noName['status'],
     'core' => $badEmailCore['status'],
-    'form' => [$noNameForm['status'], text((string) $noNameForm['back']['body'], 'first-comments-error')],
+    'form' => [$noNameForm['status'], text((string) $noNameForm['back']['body'], 'typedpress-comments-error')],
     'saved' => count(get_comments(['post_id' => $notice, 'search' => 'no name', 'fields' => 'ids', 'status' => 'all'])),
 ];
 $out['authored policy'] = [
@@ -248,7 +248,7 @@ $out['authored policy'] = [
 ];
 
 // A kind without comments refuses every path.
-$memoPost = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $memo, 'content' => 'on a memo']));
+$memoPost = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $memo, 'content' => 'on a memo']));
 $out['memo'] = $memoPost['status'];
 
 // The page cache: what changes the approved thread purges the item's URL; what doesn't, doesn't.
@@ -256,12 +256,12 @@ $out['memo'] = $memoPost['status'];
 global $wpdb;
 $purged = static function (callable $event) use ($wpdb): array {
     // Each event on its own: what earlier steps of this long-lived process queued goes out first.
-    \First\Wp\Purges::flush();
+    \TypedPress\Wp\Purges::flush();
     $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'test_purges'");
     wp_cache_delete('test_purges', 'options');
     wp_set_current_user(1);
     $event();
-    \First\Wp\Purges::flush();
+    \TypedPress\Wp\Purges::flush();
     wp_set_current_user(0);
     wp_cache_delete('test_purges', 'options');
     return array_values(array_filter((array) get_option('test_purges', []), static fn (string $p): bool => str_starts_with($p, '/notes/open-note')));
@@ -271,13 +271,13 @@ $purged = static function (callable $event) use ($wpdb): array {
 $featured = fetch("$url/featured");
 $out['featured cache'] = $featured['headers']['cache-control'][0] ?? null;
 $out['featured purged'] = (static function () use ($wpdb, $note, $url): array {
-    \First\Wp\Purges::flush();
+    \TypedPress\Wp\Purges::flush();
     $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'test_purges'");
     wp_cache_delete('test_purges', 'options');
     wp_set_current_user(1);
     $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Seen on featured', 'comment_author' => 'x', 'comment_approved' => 0]);
     wp_set_comment_status($id, 'approve');
-    \First\Wp\Purges::flush();
+    \TypedPress\Wp\Purges::flush();
     wp_set_current_user(0);
     wp_cache_delete('test_purges', 'options');
     $all = (array) get_option('test_purges', []);
@@ -296,17 +296,17 @@ $out['purges'] = [
     'deleted' => $purged(static fn () => wp_delete_comment($held, true)),
     'approved then spammed' => (static function () use ($purged, $note): array {
         $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Will be spam', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
-        \First\Wp\Purges::flush();
+        \TypedPress\Wp\Purges::flush();
         return $purged(static fn () => wp_spam_comment($id));
     })(),
     'approved then trashed' => (static function () use ($purged, $note): array {
         $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Will be trashed', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
-        \First\Wp\Purges::flush();
+        \TypedPress\Wp\Purges::flush();
         return $purged(static fn () => wp_trash_comment($id));
     })(),
     'edited and approved at once' => (static function () use ($purged, $note): array {
         $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Held, then both', 'comment_author' => 'x', 'comment_approved' => 0]);
-        \First\Wp\Purges::flush();
+        \TypedPress\Wp\Purges::flush();
         return $purged(static fn () => wp_update_comment(['comment_ID' => $id, 'comment_content' => 'Edited and approved', 'comment_approved' => 1]));
     })(),
     'approved on insert' => $purged(static fn () => wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Straight in', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1])),

@@ -1,4 +1,4 @@
-//! The diagnostic contract of `first migrate app --json`: every refusal carries a stable `code`, the
+//! The diagnostic contract of `typedpress migrate app --json`: every refusal carries a stable `code`, the
 //! 0.8 source position (`file`, 1-based `line`, UTF-16 `column`), the 0.8 `feature` it names, its
 //! `v2` equivalent and a one-line `fix`. A publish response shows these to the agent that ports the
 //! app, so codes never change meaning; a new refusal kind gets a new code. Every code is listed in
@@ -32,7 +32,7 @@ pub struct Rule {
     pub example: (&'static str, &'static str),
 }
 
-const LANGUAGE: &str = "error: First code doesn't support ";
+const LANGUAGE: &str = "error: TypedPress code doesn't support ";
 
 /// `Z08_SCHEMA` when the candidate creates new tables: nothing is adopted, so the fix names the
 /// v2 declaration to write, not the 0.8 table to match.
@@ -45,7 +45,7 @@ pub static SCHEMA_FRESH: Rule = Rule {
     example: ("/schema/tasks/title", "default must be a literal scalar"),
 };
 
-/// First match wins, so specific rules come before the general ones they overlap.
+/// TypedPress match wins, so specific rules come before the general ones they overlap.
 pub static RULES: &[Rule] = &[
     // Whatever 0.8 served that the candidate does not reproduce (app/omitted.rs). Each is removed
     // by the change that carries the thing over, with no change for callers.
@@ -127,7 +127,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_OMITTED_CONFIG",
         feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall or sell, or theme.json)",
-        v2: "first.config.ts, the pages themselves or the Space's own settings",
+        v2: "typedpress.config.ts, the pages themselves or the Space's own settings",
         fix: "Recreate what the setting did in v2, or remove it if the Space doesn't need it.",
         test: |_, r| r.starts_with(omitted::CONFIG),
         example: ("/sf.jsonc/theme", "the setting is not carried over: x"),
@@ -160,7 +160,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_OMITTED_POSTS",
         feature: "0.8 native posts content (content/posts/)",
         v2: "a posts collection with sync over the content files",
-        fix: "Declare a posts collection in first.config.ts with `sync` over content/posts/, or keep the Space on 0.8.",
+        fix: "Declare a posts collection in typedpress.config.ts with `sync` over content/posts/, or keep the Space on 0.8.",
         test: |_, r| r.starts_with(omitted::POSTS),
         example: ("/content/posts", "the posts content is not carried over: x"),
     },
@@ -168,7 +168,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_OMITTED_SYNC",
         feature: "content sync of native posts",
         v2: "sync on a v2 collection",
-        fix: "Declare the collection in first.config.ts with `sync` over the content files.",
+        fix: "Declare the collection in typedpress.config.ts with `sync` over the content files.",
         test: |_, r| r.starts_with(omitted::SYNC),
         example: ("/collections/posts/sync", "content sync is not carried over: x"),
     },
@@ -176,7 +176,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CLIENT_STORAGE",
         feature: "0.8 client storage uploads",
-        v2: "v2 file buckets (files in first.config.ts)",
+        v2: "v2 file buckets (files in typedpress.config.ts)",
         fix: "Declare a file bucket and upload with client.files.<bucket>.upload from the generated v2 client.",
         test: |_, r| r.starts_with(client::TAG_STORAGE),
         example: ("/client/index.tsx", "0.8 client storage uploads: x"),
@@ -208,7 +208,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CLIENT_SIGN_IN",
         feature: "0.8 client sign-in",
-        v2: "first-identity sign-in (client.auth.signIn())",
+        v2: "typedpress-identity sign-in (client.auth.signIn())",
         fix: "Replace the 0.8 sign-in calls with client.auth.signIn() from the generated v2 client.",
         test: |_, r| r.starts_with(client::TAG_SIGN_IN),
         example: ("/client/index.tsx", "0.8 client sign-in: x"),
@@ -216,7 +216,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CLIENT_API",
         feature: "0.8 client API without a v2 bridge",
-        v2: "the generated v2 client in first/_generated/client/",
+        v2: "the generated v2 client in tp/_generated/client/",
         fix: "Port the call to the generated v2 client; the bridge covers the 0.8 hooks, useAuth, signOut and the router.",
         test: |_, r| r.starts_with(client::TAG_API),
         example: ("/client/index.tsx", "0.8 client API without a v2 bridge: x"),
@@ -382,7 +382,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_ENDPOINT_METHOD",
         feature: "endpoint method without a v2 route (OPTIONS and others)",
-        v2: "first/app/<path>/route.ts exporting GET, POST, PUT, PATCH or DELETE",
+        v2: "tp/app/<path>/route.ts exporting GET, POST, PUT, PATCH or DELETE",
         fix: "Serve the endpoint with a supported method; GET also answers HEAD.",
         test: |p, r| p.starts_with("/endpoints/") && r.contains("endpoints have no v2 route"),
         example: (
@@ -403,19 +403,19 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_ENDPOINT_RESERVED_PATH",
-        feature: "endpoint path owned by WordPress or First",
+        feature: "endpoint path owned by WordPress or TypedPress",
         v2: "a route under a path of the app's own",
         fix: "Move the endpoint to a path WordPress and Zero don't own, and update its callers.",
-        test: |_, r| r.contains("belongs to WordPress or First"),
+        test: |_, r| r.contains("belongs to WordPress or TypedPress"),
         example: (
             "/endpoints/login/path",
-            "/wp-login.php belongs to WordPress or First on v2",
+            "/wp-login.php belongs to WordPress or TypedPress on v2",
         ),
     },
     Rule {
         code: "Z08_ENDPOINT_PATH",
         feature: "endpoint path without a v2 route form",
-        v2: "first/app/ folders: lowercase literals, [param] and a final [...splat]",
+        v2: "tp/app/ folders: lowercase literals, [param] and a final [...splat]",
         fix: "Use lowercase literal and :param segments, with at most one final catch-all.",
         test: |p, r| {
             p.starts_with("/endpoints/")
@@ -450,7 +450,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_ENDPOINT_SHAPE",
         feature: "endpoint declaration or handler shape",
-        v2: "first/app/<path>/route.ts exporting (req, ctx) handlers",
+        v2: "tp/app/<path>/route.ts exporting (req, ctx) handlers",
         fix: "Declare endpoint({ method, path }, (ctx, request) => ...) with literal options.",
         test: |p, r| {
             p.starts_with("/endpoints")
@@ -468,7 +468,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CTX_AUTH_PROFILE",
         feature: "ctx.auth profile fields and methods",
         v2: "ctx.user ({ id, name, role })",
-        fix: "With Space Users, migrate with --users. Without them, keep the app on 0.8: what a First user carries for these fields waits on the Sign in with Spacefast decision.",
+        fix: "With Space Users, migrate with --users. Without them, keep the app on 0.8: what a TypedPress user carries for these fields waits on the Sign in with Spacefast decision.",
         test: |p, r| {
             p.contains("/ctx/auth/")
                 && (r.starts_with("legacy profiles and auth methods") || r.starts_with("ctx.auth profile fields"))
@@ -482,7 +482,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CTX_AUTH_USERS",
         feature: "ctx.auth.userId without Space Users",
         v2: "ctx.user.id",
-        fix: "With Space Users, migrate with --users. Without them, keep the app on 0.8: mapping Spacefast accounts and guests to First users waits on the Sign in with Spacefast decision.",
+        fix: "With Space Users, migrate with --users. Without them, keep the app on 0.8: mapping Spacefast accounts and guests to TypedPress users waits on the Sign in with Spacefast decision.",
         test: |_, r| r.starts_with("ctx.auth.userId maps only for Space Users"),
         example: (
             "/queries/me/ctx/auth/userId",
@@ -518,7 +518,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CTX_DB",
         feature: "ctx.db handle use",
-        v2: "db from \"first\"",
+        v2: "db from \"typedpress\"",
         fix: "Call ctx.db.<table> methods directly in the handler.",
         test: |p, r| p.contains("/ctx/db") && r.starts_with("unsupported context service"),
         example: (
@@ -530,17 +530,17 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CTX_CONNECTORS",
         feature: "ctx.connectors in a server handler",
         v2: "space.connectors.<role>.<tool>() from @spacefast/client, on the page",
-        fix: "Call the role from the page with @spacefast/client; the candidate keeps the role in sf.jsonc, and server code can't call connectors on First yet.",
+        fix: "Call the role from the page with @spacefast/client; the candidate keeps the role in sf.jsonc, and server code can't call connectors on TypedPress yet.",
         test: |p, _| p.contains("/ctx/connectors"),
         example: (
             "/actions/sync/ctx/connectors",
-            "server code can't call connectors on First yet",
+            "server code can't call connectors on TypedPress yet",
         ),
     },
     Rule {
         code: "Z08_CTX_SERVICE",
         feature: "ctx.{service}",
-        v2: "the matching \"first\" export (db, mail, env, fetch) or a WordPress API",
+        v2: "the matching \"typedpress\" export (db, mail, env, fetch) or a WordPress API",
         fix: "Port the service call to its v2 export, or drop it if v2 does the work.",
         test: |p, r| {
             p.contains("/ctx/")
@@ -594,7 +594,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_DB_ESCAPE",
         feature: "database handle stored or returned",
-        v2: "db from \"first\", called where it is used",
+        v2: "db from \"typedpress\", called where it is used",
         fix: "Call the table's methods where you use them instead of storing ctx.db.<table>.",
         test: |_, r| r.starts_with("database handles cannot escape"),
         example: ("/queries/q", "database handles cannot escape a handler"),
@@ -603,7 +603,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_DB_OPERATION",
         feature: "database operation without a v2 mapping",
         v2: "db.query findMany/findFirst, db.insert, db.update, db.delete",
-        fix: "Use get, insert, update, delete, or withIndex(...).order().collect/first/take/paginate.",
+        fix: "Use get, insert, update, delete, or withIndex(...).order().collect/tp/take/paginate.",
         test: |_, r| {
             r.starts_with("unsupported database operation")
                 || r.starts_with("database query must end")
@@ -703,12 +703,12 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_AUTH_CALLBACK",
         feature: "auth callbacks and providers (onGuestUpgrade)",
-        v2: "first-identity (docs/identity-api.md)",
-        fix: "Configure sign-in with first-identity and move the callback's work into an action.",
+        v2: "typedpress-identity (docs/identity-api.md)",
+        fix: "Configure sign-in with typedpress-identity and move the callback's work into an action.",
         test: |p, _| p.starts_with("/auth/"),
         example: (
             "/auth/onGuestUpgrade",
-            "identity callbacks/providers need an explicit first-identity migration",
+            "identity callbacks/providers need an explicit typedpress-identity migration",
         ),
     },
     Rule {
@@ -725,8 +725,8 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_COLLECTIONS",
         feature: "collections or sync",
-        v2: "collections in first.config.ts",
-        fix: "Declare the collection in first.config.ts.",
+        v2: "collections in typedpress.config.ts",
+        fix: "Declare the collection in typedpress.config.ts.",
         test: |p, _| p.starts_with("/collections") || p.starts_with("/sync"),
         example: ("/collections/posts", "collection collides with a schema table"),
     },
@@ -769,24 +769,24 @@ pub static RULES: &[Rule] = &[
         test: |_, r| r.contains(LANGUAGE),
         example: (
             "",
-            "generated application refused by v2 compiler: error: First code doesn't support `with`",
+            "generated application refused by v2 compiler: error: TypedPress code doesn't support `with`",
         ),
     },
     Rule {
         code: "Z08_HOST_API",
         feature: "host API without a v2 counterpart",
-        v2: "the \"first\" exports and the supported globals",
-        fix: "Replace the call with a \"first\" export, or move it to the browser.",
-        test: |_, r| r.contains("isn't available in First code"),
+        v2: "the \"typedpress\" exports and the supported globals",
+        fix: "Replace the call with a \"typedpress\" export, or move it to the browser.",
+        test: |_, r| r.contains("isn't available in TypedPress code"),
         example: (
             "",
-            "generated application refused by v2 compiler: error: `setTimeout` isn't available in First code",
+            "generated application refused by v2 compiler: error: `setTimeout` isn't available in TypedPress code",
         ),
     },
     Rule {
         code: "Z08_V2_COMPILE",
         feature: "converted code the v2 compiler refuses",
-        v2: "first check on the candidate",
+        v2: "typedpress check on the candidate",
         fix: "Fix the reported line in the 0.8 source so the converted app type-checks.",
         test: |_, r| r.starts_with("generated application refused by v2 compiler"),
         example: (
@@ -798,7 +798,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CAPSULE_FEATURE",
         feature: "capsule option without a v2 mapping",
         v2: "defineConfig options (docs/config-api.md)",
-        fix: "Remove the option or port what it does to first.config.ts.",
+        fix: "Remove the option or port what it does to typedpress.config.ts.",
         test: |_, r| {
             r.starts_with("unsupported capsule feature")
                 || r.contains("needs an explicit port")
@@ -823,7 +823,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_SOURCE_SHAPE",
         feature: "capsule source layout",
-        v2: "first.config.ts with defineConfig",
+        v2: "typedpress.config.ts with defineConfig",
         fix: "Keep one capsule({...}) default export in server/index.ts with imports and pure helpers.",
         test: |_, _| true,
         example: ("", "expected imports, pure helpers and one capsule default export"),
@@ -922,7 +922,7 @@ mod tests {
 
     #[test]
     fn the_construct_and_service_reach_the_feature() {
-        let r = "generated application refused by v2 compiler: error: First code doesn't support generators\n  --> server/index.ts:3:1";
+        let r = "generated application refused by v2 compiler: error: TypedPress code doesn't support generators\n  --> server/index.ts:3:1";
         assert_eq!(feature(rule("", r), "", r), "JavaScript construct: generators");
         let p = "/queries/q/ctx/jwt";
         assert_eq!(feature(rule(p, "unsupported context service; x"), p, ""), "ctx.jwt");

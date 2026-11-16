@@ -1,14 +1,14 @@
 # Pages (optional)
 
-A First app can render its own front end from `first/app/`: React-style TSX
+A TypedPress app can render its own front end from `tp/app/`: React-style TSX
 that the compiler turns into PHP, rendered by WordPress on each request. It is
-one way, TSX to WordPress. It is optional: without `first/app/`, WordPress
+one way, TSX to WordPress. It is optional: without `tp/app/`, WordPress
 renders the site with its theme, and nothing here loads.
 
-## `first/app/`
+## `tp/app/`
 
 ```text
-first/app/
+tp/app/
 ├── layout.tsx                 # wraps every page: export const metadata, default component
 ├── page.tsx                   # /
 ├── not-found.tsx              # the 404 for URLs no route serves, and for notFound()
@@ -44,9 +44,9 @@ no page are build errors at the file, with the fix.
 ## A page
 
 ```tsx
-// first/app/notes/[slug]/page.tsx
-import { db } from "first";
-import { Content, notFound, type PageProps, type RouteRequest } from "first/app";
+// tp/app/notes/[slug]/page.tsx
+import { db } from "typedpress";
+import { Content, notFound, type PageProps, type RouteRequest } from "typedpress/app";
 
 export const metadata = ({ params }: PageProps<"notes/[slug]">) => ({ title: params.slug, canonical: `/notes/${params.slug}` });
 
@@ -94,12 +94,12 @@ export async function POST(req: RouteRequest) {
 - `<Content value>` renders a post body through `the_content`. `<Html value>`
   places a literal as written and runs anything else through `wp_kses_post`.
 
-`first build` writes `first/_generated/routes.d.ts`. With it, `<Link href>` is
+`typedpress build` writes `tp/_generated/routes.d.ts`. With it, `<Link href>` is
 checked against the app's routes and `PageProps<"notes/[slug]">` types
-`params`. Point TypeScript at First's JSX types:
+`params`. Point TypeScript at TypedPress's JSX types:
 
 ```json
-{ "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "first" } }
+{ "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "typedpress" } }
 ```
 
 ## Forms
@@ -108,7 +108,7 @@ checked against the app's routes and `PageProps<"notes/[slug]">` types
 and works without JavaScript:
 
 ```tsx
-import { useFormState } from "first/app";
+import { useFormState } from "typedpress/app";
 import { subscribe } from "../server";
 
 export default function Page() {
@@ -125,7 +125,7 @@ export default function Page() {
 ```
 
 - The form posts form-encoded to the action's endpoint
-  (`/__first/api/v1/actions/<name>`), with a hidden `_first_return` (the page's
+  (`/__tp/api/v1/actions/<name>`), with a hidden `_tp_return` (the page's
   path and query). The action runs as the visitor, exactly as a JSON call runs
   it, and the answer is `303 See Other` back to that page.
 - Fields read as the action's input types them: `integer()` and `number()` from
@@ -150,15 +150,15 @@ export default function Page() {
 
 ## The sign-in page
 
-WordPress's wp-login.php is the site's one sign-in page: wp-admin, a layout's `guard` and First
-Identity all send people there. `first/app/login.tsx` renders it with the app's own markup,
-inside the sign-in block template (`first-login`) and its stylesheets. Without the file,
+WordPress's wp-login.php is the site's one sign-in page: wp-admin, a layout's `guard` and TypedPress
+Identity all send people there. `tp/app/login.tsx` renders it with the app's own markup,
+inside the sign-in block template (`typedpress-login`) and its stylesheets. Without the file,
 WordPress's own page shows until the owner edits that template (see [Block
 templates](#block-templates)).
 
 ```tsx
-// first/app/login.tsx
-import { LoginForm, type LoginProps } from "first/app";
+// tp/app/login.tsx
+import { LoginForm, type LoginProps } from "typedpress/app";
 
 export const metadata = { title: "Sign in" };
 
@@ -179,7 +179,7 @@ export default function Login({ messages, errors, registerUrl }: LoginProps) {
   they do to WordPress's own form:
   - the password check and every `authenticate` filter;
   - the hardening that answers an unknown user and a wrong password alike;
-  - First Identity's attempt limits;
+  - TypedPress Identity's attempt limits;
   - the second factor (Two Factor, including an Identity authenticator).
 - **What renders it.** wp-login.php's sign-in view: the first visit, a failed attempt,
   `?loggedout=true`, "check your email" and `reauth`.
@@ -207,44 +207,44 @@ See [the decision](decisions/2026-11-15-one-sign-in-page.md).
 
 ## Block templates
 
-Every `first/app/` page renders inside the active block theme's templates. The page is the
+Every `tp/app/` page renders inside the active block theme's templates. The page is the
 content, and WordPress renders the rest: the theme's header and footer template parts, its global
-styles, and whatever the owner changed in the Site Editor. The page's HTML is the `first/page`
+styles, and whatever the owner changed in the Site Editor. The page's HTML is the `tp/page`
 block ("Page content"), which a template places where the page goes.
 
-First registers these templates with `register_block_template()`. They are listed in the Site
+TypedPress registers these templates with `register_block_template()`. They are listed in the Site
 Editor, and an owner can edit them and reset them there:
 
 | Template | What it holds | Used by |
 |---|---|---|
-| `first-page` ("App page") | The theme's `header` part, the page, the theme's `footer` part. | Every page, unless a file picks another. |
-| `first-blank` ("App page without header and footer") | The page alone. | `export const template = "blank"`, and layouts that place `<TemplatePart>`. |
-| `first-login` ("Sign in") | The header part, `login.tsx`, the footer part. With no `login.tsx`, the `first/login-form` block. | wp-login.php's sign-in view. |
-| `404` | The theme's own 404 template. With `not-found.tsx`, First's default content is the header part, the page and the footer part. | A URL nothing serves, and `notFound()`. |
+| `typedpress-page` ("App page") | The theme's `header` part, the page, the theme's `footer` part. | Every page, unless a file picks another. |
+| `typedpress-blank` ("App page without header and footer") | The page alone. | `export const template = "blank"`, and layouts that place `<TemplatePart>`. |
+| `typedpress-login` ("Sign in") | The header part, `login.tsx`, the footer part. With no `login.tsx`, the `tp/login-form` block. | wp-login.php's sign-in view. |
+| `404` | The theme's own 404 template. With `not-found.tsx`, TypedPress's default content is the header part, the page and the footer part. | A URL nothing serves, and `notFound()`. |
 
 **Choosing a template.** A page or a layout may export `template`. The page's own export wins,
 then the nearest layout's:
 
 ```tsx
-// first/app/(marketing)/layout.tsx
+// tp/app/(marketing)/layout.tsx
 export const template = "blank";      // no theme header or footer: this layout draws its own
-// first/app/landing/page.tsx
+// tp/app/landing/page.tsx
 export const template = "landing";    // a template the theme or the Site Editor provides
 ```
 
-- `"theme"` (the default) is `first-page`, and `"blank"` is `first-blank`.
+- `"theme"` (the default) is `typedpress-page`, and `"blank"` is `typedpress-blank`.
 - Any other slug names a template the theme, a plugin or the owner made. A template without
-  the Page content block can't show a page: the page renders in `first-page` instead and the log
+  the Page content block can't show a page: the page renders in `typedpress-page` instead and the log
   says so.
 
 **Layouts.** Layouts nest by folder and run only for the routes under them, as in Astro. Under
-`first-page`, the theme's header and footer are the site's chrome, so the root `app/layout.tsx`
+`typedpress-page`, the theme's header and footer are the site's chrome, so the root `app/layout.tsx`
 does not render. Its `metadata` (the title template, the description) and its `guard` still
 apply. The root layout renders in three cases:
 
 - it exports `template` itself (`"theme"` keeps the theme's parts and renders it inside them);
 - the route renders in another template (`"blank"`, or a slug);
-- the active theme is a classic theme, where First prints the whole document as before.
+- the active theme is a classic theme, where TypedPress prints the whole document as before.
 
 Nested layouts always render.
 
@@ -252,8 +252,8 @@ Nested layouts always render.
 itself:
 
 ```tsx
-// first/app/studio/layout.tsx
-import { TemplatePart, type LayoutProps } from "first/app";
+// tp/app/studio/layout.tsx
+import { TemplatePart, type LayoutProps } from "typedpress/app";
 
 export default function Studio({ children }: LayoutProps) {
   return (
@@ -267,7 +267,7 @@ export default function Studio({ children }: LayoutProps) {
 ```
 
 `<TemplatePart slug tagName? className? />` renders `core/template-part`, so it shows the owner's
-edits to the part. A layout that imports it renders in `first-blank` unless it exports a
+edits to the part. A layout that imports it renders in `typedpress-blank` unless it exports a
 `template`.
 
 **What stays the same.**
@@ -275,16 +275,16 @@ edits to the part. A layout that imports it renders in `first-blank` unless it e
 - Data reads, access rules, guards, caching and purges are the router's, whatever the template.
   The template adds the theme's markup and nothing else.
 - WordPress writes the `<title>` from the page's `metadata` (through `pre_get_document_title`).
-  First adds the description, canonical and social tags to `wp_head`.
+  TypedPress adds the description, canonical and social tags to `wp_head`.
 - `<Link>` navigation swaps the page's router region, which sits inside the template. The theme's
   header and footer stay on the screen.
 - Forms, `<Live>` regions and client components render inside the page, as before.
 
 **The 404 and sign-in pages.** Both are templates an owner edits in the Site Editor. The owner can
 add text around the Page content block, or replace it. For the sign-in page, the replacement is
-the **Login form** block (`first/login-form`): it renders the same form as `<LoginForm />`, posts
+the **Login form** block (`tp/login-form`): it renders the same form as `<LoginForm />`, posts
 to wp-login.php and shows its errors. That lets an owner rebuild the sign-in page without code.
-Once the owner has saved a `first-login` template, wp-login.php renders it even when the app has
+Once the owner has saved a `typedpress-login` template, wp-login.php renders it even when the app has
 no `login.tsx`.
 
 See [the decision](decisions/2026-11-16-pages-in-block-templates.md).
@@ -292,7 +292,7 @@ See [the decision](decisions/2026-11-16-pages-in-block-templates.md).
 ## Comments
 
 ```tsx
-import { Comments, type PageProps } from "first/app";
+import { Comments, type PageProps } from "typedpress/app";
 
 export default function Note({ item }: PageProps<"notes/[slug]">) {
   return <article><h1>{item.title}</h1><Comments for={item} /></article>;
@@ -313,8 +313,8 @@ closeAfterDays }` changes any of them ([Comments](config-api.md#comments)). See
 ## Search
 
 ```tsx
-import { integer, text } from "first";
-import { Search, SearchResults, type PageProps } from "first/app";
+import { integer, text } from "typedpress";
+import { Search, SearchResults, type PageProps } from "typedpress/app";
 
 export const search = { q: text().optional(), page: integer().default(1) };
 
@@ -354,8 +354,8 @@ kind. The bare form page is cached like any other. See
 ## Live regions
 
 ```tsx
-import { notes } from "first:db";
-import { Live } from "first/app";
+import { notes } from "typedpress:db";
+import { Live } from "typedpress/app";
 
 export default async function Home() {
   const all = await notes.list({ orderBy: { id: "asc" } });
@@ -375,7 +375,7 @@ page.
   or after a write the visitor makes through the typed client. Without one it
   updates on the next poll, 2 to 30 seconds apart. `<Comments>` inside a region
   updates when a comment's approval changes. A region whose page read nothing
-  updates on the poll only. Anything that changes without a First write (the
+  updates on the poll only. Anything that changes without a TypedPress write (the
   clock, another plugin's SQL) shows within five minutes.
 - **What it costs.** A page with a live region makes one uncached request to
   WordPress when it loads, then one per poll while the tab is visible (or on a
@@ -438,9 +438,9 @@ The ruling and its alternatives are in
 ## Stylesheets and images
 
 ```tsx
-// first/app/layout.tsx
+// tp/app/layout.tsx
 import "./site.css";
-// first/app/notes/[slug]/page.tsx
+// tp/app/notes/[slug]/page.tsx
 import styles from "./note.module.css";
 import compass from "./compass.svg";
 
@@ -456,7 +456,7 @@ import compass from "./compass.svg";
   later one by path gets a number (`note_dek2`). A `"use client"` component may
   import a CSS module, and its class can depend on state.
 - `import logo from "./x.svg"` gives the file's URL.
-- Every file is copied into the app plugin under `first/app/assets/`, named by a
+- Every file is copied into the app plugin under `tp/app/assets/`, named by a
   hash of its bytes, with a year's cache. A changed file gets a new URL.
 - These are refused at the line, with the fix: `@import` (import each file from
   TSX), a relative `url(...)` (put the file in `public/` and write
@@ -467,7 +467,7 @@ import compass from "./compass.svg";
 ## Scripts
 
 ```tsx
-// first/app/layout.tsx
+// tp/app/layout.tsx
 export const metadata = { scripts: ["/app.js", "https://cdn.example.com/widget.js"] };
 ```
 
@@ -479,7 +479,7 @@ export const metadata = { scripts: ["/app.js", "https://cdn.example.com/widget.j
   element (`<my-widget data-id={id}></my-widget>`) that such a module defines.
 - For state and handlers in your own components, write a
   [client component](#client-components) instead: it needs no script file.
-- First does not bundle: a module in `public/` is served as written, so it
+- TypedPress does not bundle: a module in `public/` is served as written, so it
   imports other files by URL, not npm packages by name.
 
 ## Styles from WordPress
@@ -490,17 +490,17 @@ templates do: every `theme.json` preset as a CSS variable
 `--wp--preset--font-family--<slug>`, `--wp--preset--spacing--<slug>`), the site
 owner's Global Styles over the theme's values, then the Site Editor's
 Additional CSS. The site icon prints too. Write CSS against the variables and a
-change in First Admin's Styles screen or the Site Editor reaches your pages
+change in TypedPress Admin's Styles screen or the Site Editor reaches your pages
 without a deploy:
 
 ```css
-/* first/app/site.css */
+/* tp/app/site.css */
 .card { background: var(--wp--preset--color--primary); font-family: var(--wp--preset--font-family--body); }
 ```
 
-The values start from code. The active theme's `theme.json` (First's
-`first-default` when no installed theme is active) is the base, and
-`first/theme.json` in the project is merged over it: a theme.json document
+The values start from code. The active theme's `theme.json` (TypedPress's
+`typedpress-default` when no installed theme is active) is the base, and
+`tp/theme.json` in the project is merged over it: a theme.json document
 with `version`, `settings` and `styles` only.
 
 ```json
@@ -518,19 +518,19 @@ owner's Global Styles still override it, and resetting them returns to it.
 To keep what was designed on a site, pull it into the project:
 
 ```sh
-first styles pull            # the dev site: what you set in Styles on `first dev`
-first styles pull --site @prod
-first styles pull --check    # exit 1 when the site's styles differ from first/theme.json
+typedpress styles pull            # the dev site: what you set in Styles on `typedpress dev`
+typedpress styles pull --site @prod
+typedpress styles pull --check    # exit 1 when the site's styles differ from tp/theme.json
 ```
 
 It writes the project's file with the site's Global Styles merged over it to
-`first/theme.json`. Commit it; the next deploy starts from it. `first dev`
+`tp/theme.json`. Commit it; the next deploy starts from it. `typedpress dev`
 never pulls on its own.
 
 ### Tailwind
 
-`first build` writes `first/_generated/theme.css` from the presets of
-`first-default` and `first/theme.json`: Tailwind v4 tokens whose values are the
+`typedpress build` writes `tp/_generated/theme.css` from the presets of
+`typedpress-default` and `tp/theme.json`: Tailwind v4 tokens whose values are the
 WordPress variables.
 
 ```css
@@ -541,28 +541,28 @@ WordPress variables.
 }
 ```
 
-First doesn't run Tailwind. A project that uses it runs Tailwind's CLI and
+TypedPress doesn't run Tailwind. A project that uses it runs Tailwind's CLI and
 imports its output, a plain stylesheet, from a layout:
 
 ```css
 /* tailwind.css, the CLI's input */
 @import "tailwindcss";
-@import "./first/_generated/theme.css";
-@source "./first";
+@import "./tp/_generated/theme.css";
+@source "./tp";
 ```
 
 ```sh
-npx @tailwindcss/cli -i tailwind.css -o first/app/tailwind.css --watch
+npx @tailwindcss/cli -i tailwind.css -o tp/app/tailwind.css --watch
 ```
 
 ```tsx
-// first/app/layout.tsx
+// tp/app/layout.tsx
 import "./tailwind.css";
 ```
 
 `bg-primary` then reads `--wp--preset--color--primary`, so it follows the
 owner's color. A preset added on the site has its variable at once and a token
-after `first styles pull`. Spacing tokens are `spacing-wp-<slug>` so
+after `typedpress styles pull`. Spacing tokens are `spacing-wp-<slug>` so
 WordPress's numbered sizes don't replace Tailwind's own scale. The decision is
 in [styles from WordPress](decisions/2026-11-15-styles-from-wordpress.md).
 
@@ -570,8 +570,8 @@ in [styles from WordPress](decisions/2026-11-15-styles-from-wordpress.md).
 
 The router answers on `template_redirect` and renders the page in a block template (see [Block
 templates](#block-templates)). wp-admin, login,
-`/wp-json`, feeds, robots and First's own paths never reach it. When
-`first/app/` exists, a URL no route serves renders `not-found.tsx`. URLs
+`/wp-json`, feeds, robots and TypedPress's own paths never reach it. When
+`tp/app/` exists, a URL no route serves renders `not-found.tsx`. URLs
 WordPress itself resolves (a post, a category archive) keep the theme until a
 route serves them.
 
@@ -618,9 +618,9 @@ render is ordinary server HTML; in the browser the WordPress Interactivity API
 takes it over in place, with no second render and no bundle of its own.
 
 ```tsx
-// first/components/CheerButton.tsx
+// tp/components/CheerButton.tsx
 "use client";
-import { useState } from "first/client";
+import { useState } from "typedpress/client";
 import { cheer } from "../actions";
 
 export function CheerButton({ noteId, count: initial }: { noteId: number; count: number }) {
@@ -635,11 +635,11 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
 ```
 
 - `useState`, values derived from state and props, handlers, `useEffect`,
-  `useMount`, `useEvent`, `useRef` and `sharedState` come from `"first/client"`.
+  `useMount`, `useEvent`, `useRef` and `sharedState` come from `"typedpress/client"`.
 - `useLive(kind, query, { enabled })` is a list read the page keeps current, as
   `{ data, error, loading }`. The server answers it in the first render as the
-  visitor (`First\Live\Module::evaluate`, with its token), and the page
-  subscribes to the same read through the app's typed client (`@first/client`),
+  visitor (`TypedPress\Live\Module::evaluate`, with its token), and the page
+  subscribes to the same read through the app's typed client (`@typedpress/client`),
   so another visitor's write shows with no reload: within the client's poll (2
   to 30 seconds) without a push transport, at once with one. The query reads
   props and literals, which both sides have; a query that follows state is a
@@ -668,8 +668,8 @@ words. The design and measurements are in
 | You want | Write |
 |---|---|
 | Some pages prebuilt, the rest rendered per request, on one WordPress | `export const prerender = true` in those pages |
-| A whole site as static files, with no WordPress serving it | `defineConfig({ output: "static" })`, then `first export` |
-| Static files from a WordPress that editors use somewhere else | the same, with `first export --site https://cms.example.com` |
+| A whole site as static files, with no WordPress serving it | `defineConfig({ output: "static" })`, then `typedpress export` |
+| Static files from a WordPress that editors use somewhere else | the same, with `typedpress export --site https://cms.example.com` |
 
 A prebuilt page is what a signed-out visitor sees, rendered by the page's own
 compiled code. So it can't depend on the request. These are build errors at
@@ -690,8 +690,8 @@ Any other dynamic page lists its URLs with `staticParams`, Astro's
 `getStaticPaths`:
 
 ```tsx
-// first/app/tags/[tag]/page.tsx
-import type { PageProps, StaticParams } from "first/app";
+// tp/app/tags/[tag]/page.tsx
+import type { PageProps, StaticParams } from "typedpress/app";
 
 export const prerender = true;
 
@@ -709,9 +709,9 @@ export default function Tag({ params }: PageProps<"tags/[tag]">) {
 ### Prebuilt pages on WordPress (`prerender = true`)
 
 - **When the files are made.** After a deploy, an Action Scheduler action renders each prebuilt URL
-  and writes its HTML and Markdown to `wp-content/cache/first-prebuilt/`.
+  and writes its HTML and Markdown to `wp-content/cache/typedpress-prebuilt/`.
 - **How they are served.** The app answers from the file before WordPress parses the request, with
-  the same `Cache-Control` as a cacheable render and the header `X-First-Prebuilt: 1`.
+  the same `Cache-Control` as a cacheable render and the header `X-TypedPress-Prebuilt: 1`.
 - **What still renders per request.** A signed-in visitor, a request with a query string, and a URL
   whose file isn't written yet.
 - **After a write.** A write that changes what a prebuilt page shows deletes that page's files at
@@ -719,21 +719,21 @@ export default function Tag({ params }: PageProps<"tags/[tag]">) {
   sees the old content. Other pages keep their files.
 - **The rest of the site.** Markdown twins, `llms.txt` and the sitemap are unchanged.
 - **Hosts that can't reach their own address.** The rebuild fetches the page from the site's own
-  address. A host where that fails sets the `first_prebuild_url` filter.
+  address. A host where that fails sets the `tp_prebuild_url` filter.
 
-### A static site (`first export`)
+### A static site (`typedpress export`)
 
 ```sh
-first export                                       # writes first/dist/static/
-first export --site-url https://docs.example.com   # also writes sitemap.xml and canonical links
-first export --base /docs                          # for a site served below /docs/
+typedpress export                                       # writes tp/dist/static/
+typedpress export --site-url https://docs.example.com   # also writes sitemap.xml and canonical links
+typedpress export --base /docs                          # for a site served below /docs/
 ```
 
 The project must say `output: "static"`, where every page is prebuilt.
 `prerender = false` is a build error there.
 
-- **Where the content comes from.** Without `--site`, `first export` starts a throwaway WordPress on
-  SQLite (the one `first dev` uses) with the build installed and `first/content/` loaded, renders
+- **Where the content comes from.** Without `--site`, `typedpress export` starts a throwaway WordPress on
+  SQLite (the one `typedpress dev` uses) with the build installed and `tp/content/` loaded, renders
   every page, and removes the site.
 - **The URL layout.** It is the one GitHub Pages, Netlify, Cloudflare Pages and most static servers
   answer.
@@ -756,43 +756,43 @@ The project must say `output: "static"`, where every page is prebuilt.
   site.
 - **A page that redirects, or that `staticParams` lists but that renders a 404.**
 
-### WordPress as the CMS (`first export --site`)
+### WordPress as the CMS (`typedpress export --site`)
 
-Editors work on a hosted WordPress running the app. `first export --site https://cms.example.com`
+Editors work on a hosted WordPress running the app. `typedpress export --site https://cms.example.com`
 renders that site's published content with this checkout's pages.
 
-- **Credentials.** It needs an editor's credential in `FIRST_APP_PASSWORD` (`user:application-password`)
-  or `FIRST_TOKEN`, the same as `first sync`.
+- **Credentials.** It needs an editor's credential in `TP_APP_PASSWORD` (`user:application-password`)
+  or `TP_TOKEN`, the same as `typedpress sync`.
 - **The site must run this checkout's build.** Otherwise the export stops and says to deploy first.
 - **Rebuilding on publish.** Add the hosted site's `webhooks` config to call a CI job on publish
-  (`events: ["*"]`). The job runs `first export --site …` and uploads `first/dist/static/`.
+  (`events: ["*"]`). The job runs `typedpress export --site …` and uploads `tp/dist/static/`.
 - **Client components** call public actions on the hosted site, across origins.
 - **Comments and sign-in** happen on the hosted site.
 - **Guarded pages** can't be exported: a static file is the same for everyone.
 
 ## Publish on Spacefast
 
-`first/app/` is ordinary app source. `first sources` captures the pages,
+`tp/app/` is ordinary app source. `typedpress sources` captures the pages,
 components, stylesheets and SVGs with the rest of the app, and the host's
-`first compile-sources` compiles them into the app plugin, with no Node and
+`typedpress compile-sources` compiles them into the app plugin, with no Node and
 no separate render step. The compiled manifest lists every page in
 `pagePaths` and every handler in `routes`, so the host can hand those URLs to
 WordPress.
 
 ## From the old `pages/` renderer
 
-The separate `pages/` renderer (`@spacefast/first-pages`, `first-pages build`
-and `first/pages.json`) is gone. A project that still has `pages/` beside
-`first.config.ts` fails to build with the move as the fix, and a host refuses a
+The separate `pages/` renderer (`@typedpress/pages`, `typedpress-pages build`
+and `tp/pages.json`) is gone. A project that still has `pages/` beside
+`typedpress.config.ts` fails to build with the move as the fix, and a host refuses a
 capture that carries old-renderer pages. To port:
 
 | Before | Now |
 |---|---|
-| `pages/<path>/page.tsx` | `first/app/<path>/page.tsx` |
+| `pages/<path>/page.tsx` | `tp/app/<path>/page.tsx` |
 | `load({ content })` returning queries | `await db.query.<kind>…` in the page; reads run as the visitor |
-| `collectionPage("notes")` | `url: "/notes/:slug"` on the kind and `first/app/notes/[slug]/page.tsx`, which receives `item` |
+| `collectionPage("notes")` | `url: "/notes/:slug"` on the kind and `tp/app/notes/[slug]/page.tsx`, which receives `item` |
 | `<Show when={x}>`, `orElse(x, d)`, `count(list)` | `{x && …}`, `x ?? d`, `list.length` |
-| `<RichText value>` | `<Content value>` from `"first/app"` |
+| `<RichText value>` | `<Content value>` from `"typedpress/app"` |
 | `<Island>` with a hand-written store | a `"use client"` component |
-| `link("/x")` | `<Link href="/x">` from `"first/app"` |
+| `link("/x")` | `<Link href="/x">` from `"typedpress/app"` |
 | `generateMetadata` | `export const metadata = (props) => ({ … })` |

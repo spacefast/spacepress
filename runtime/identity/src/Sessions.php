@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity;
+namespace TypedPress\Identity;
 
 final class Sessions
 {
@@ -18,15 +18,15 @@ final class Sessions
     }
     public function __construct(private DB $db, private Security $security) {
         // Session cookies on the scoped REST surface are opt-in: a host serving its own frontend
-        // (`first_identity_rest_cookie_auth`) or a migrated host with legacy cookie aliases.
+        // (`tp_identity_rest_cookie_auth`) or a migrated host with legacy cookie aliases.
         add_filter('rest_authentication_errors', function ($result) {
             if (is_wp_error($result) || is_user_logged_in() || ($result !== null && $result !== true)
                 || !self::restCookieAuth()) { return $result; }
-            // First's API: /__first/api/v1 (identity loads without First, so the prefix is literal).
+            // TypedPress's API: /__tp/api/v1 (identity loads without TypedPress, so the prefix is literal).
             $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
             $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
             $path = $base !== '' && str_starts_with($path, $base . '/') ? substr($path, strlen($base)) : $path;
-            if ($path !== '/__first/api/v1' && !str_starts_with($path, '/__first/api/v1/')) { return $result; }
+            if ($path !== '/__tp/api/v1' && !str_starts_with($path, '/__tp/api/v1/')) { return $result; }
             // The cookie is ambient: it lends no identity to another origin's request (a sibling
             // host under the same site), a cross-site fetch, or a JSONP script include.
             $origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
@@ -60,8 +60,8 @@ final class Sessions
     }
     private static function restCookieAuth(): bool
     {
-        return (bool) apply_filters('first_identity_rest_cookie_auth', false)
-            || apply_filters('first_identity_session_cookie_aliases', []) !== [];
+        return (bool) apply_filters('tp_identity_rest_cookie_auth', false)
+            || apply_filters('tp_identity_session_cookie_aliases', []) !== [];
     }
     private static function siteOrigin(): string
     {
@@ -101,13 +101,13 @@ final class Sessions
     }
     public static function digest(string $secret): string
     {
-        return hash("sha256", "first-identity-session-v1\0" . $secret);
+        return hash("sha256", "typedpress-identity-session-v1\0" . $secret);
     }
     public function find(string $secret): ?array
     {
         $alias = false;
         if ($secret === '') {
-            foreach (apply_filters('first_identity_session_cookie_aliases', []) as $name) {
+            foreach (apply_filters('tp_identity_session_cookie_aliases', []) as $name) {
                 if (is_string($name) && is_string($_COOKIE[$name] ?? null) && $_COOKIE[$name] !== '') {
                     $secret = $_COOKIE[$name];
                     $alias = true;

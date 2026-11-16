@@ -13,7 +13,7 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "private_names_accessors_and_imported_javascript_classes_match_node",
-      "guidance": "Error, TypeError, RangeError and SyntaxError are globals in typed code, imported JavaScript and configuration evaluation, from one list (ERROR_CONSTRUCTORS in src/builtins.rs, generated into First\\Builtins for the runtime). Calling or constructing one gives name, message, String() and a frameless stack as in JavaScript. instanceof matches the constructor and Error, also for errors the runtime throws, such as the SyntaxError from JSON.parse. Classes can extend any of them. Configuration evaluation can reference them and read typeof but refuses construction, because errors are runtime values. ReferenceError, EvalError, URIError and AggregateError are not globals."
+      "guidance": "Error, TypeError, RangeError and SyntaxError are globals in typed code, imported JavaScript and configuration evaluation, from one list (ERROR_CONSTRUCTORS in src/builtins.rs, generated into TypedPress\\Builtins for the runtime). Calling or constructing one gives name, message, String() and a frameless stack as in JavaScript. instanceof matches the constructor and Error, also for errors the runtime throws, such as the SyntaxError from JSON.parse. Classes can extend any of them. Configuration evaluation can reference them and read typeof but refuses construction, because errors are runtime values. ReferenceError, EvalError, URIError and AggregateError are not globals."
     },
     {
       "id": "javascript-promises",
@@ -34,7 +34,7 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "promise_jobs_generators_and_async_iteration_match_node_in_generated_php",
-      "guidance": "ReadableStream (start/pull/cancel, default reader, tee, async iteration), WritableStream and TransformStream, with pipeTo and pipeThrough, are pull-driven chunk queues over the job queue. Byte streams, BYOB readers, size() strategies and pipeTo signals are refused at runtime. First\\JsReadableStream::fromResource wraps a PHP stream resource."
+      "guidance": "ReadableStream (start/pull/cancel, default reader, tee, async iteration), WritableStream and TransformStream, with pipeTo and pipeThrough, are pull-driven chunk queues over the job queue. Byte streams, BYOB readers, size() strategies and pipeTo signals are refused at runtime. TypedPress\\JsReadableStream::fromResource wraps a PHP stream resource."
     },
     {
       "id": "class-metaprogramming",
@@ -50,7 +50,7 @@
       "code": "F1102",
       "fixture": "tests/fixtures/reject-uninstalled-package",
       "message": "package is not installed in node_modules",
-      "guidance": "Install the package with your package manager. First reads supported local TypeScript/ESM sources; it does not install packages or execute JavaScript."
+      "guidance": "Install the package with your package manager. TypedPress reads supported local TypeScript/ESM sources; it does not install packages or execute JavaScript."
     },
     {
       "id": "installed-source-packages",
@@ -71,7 +71,7 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "symbols_and_weak_collections_match_node_in_imported_javascript",
-      "guidance": "Imported JavaScript can create symbols with Symbol(description), Symbol.for and Symbol.keyFor, and read Symbol.iterator, Symbol.asyncIterator, Symbol.toStringTag and Symbol.hasInstance. typeof is \"symbol\", identity is per symbol and Symbol.for registers one symbol per key for the request. description, toString() and String(symbol) work; implicit string or number conversion throws TypeError. Plain objects hold symbol-keyed properties apart from string keys, so Object.keys, Object.entries, for...in and JSON.stringify skip them; object spread copies enumerable ones, and Object.hasOwn sees them. Object.defineProperty accepts data descriptors: symbol keys keep writable/enumerable/configurable, string keys accept only the ordinary all-true descriptor. `key in object` and `delete object[key]` accept symbol keys. Class instances, classes and class prototypes resolve symbol keys exactly through their class chain (see class-symbol-members). Other built-in values may inherit well-known symbol methods First doesn't model, so reading, testing or writing a well-known symbol on them throws TypeError instead of guessing; other symbols on built-in values are absent."
+      "guidance": "Imported JavaScript can create symbols with Symbol(description), Symbol.for and Symbol.keyFor, and read Symbol.iterator, Symbol.asyncIterator, Symbol.toStringTag and Symbol.hasInstance. typeof is \"symbol\", identity is per symbol and Symbol.for registers one symbol per key for the request. description, toString() and String(symbol) work; implicit string or number conversion throws TypeError. Plain objects hold symbol-keyed properties apart from string keys, so Object.keys, Object.entries, for...in and JSON.stringify skip them; object spread copies enumerable ones, and Object.hasOwn sees them. Object.defineProperty accepts data descriptors: symbol keys keep writable/enumerable/configurable, string keys accept only the ordinary all-true descriptor. `key in object` and `delete object[key]` accept symbol keys. Class instances, classes and class prototypes resolve symbol keys exactly through their class chain (see class-symbol-members). Other built-in values may inherit well-known symbol methods TypedPress doesn't model, so reading, testing or writing a well-known symbol on them throws TypeError instead of guessing; other symbols on built-in values are absent."
     },
     {
       "id": "class-symbol-members",
@@ -94,7 +94,7 @@
       "code": "F4001",
       "fixture": "tests/fixtures/reject-class-well-known-symbol-method",
       "message": "only `static [Symbol.hasInstance]` is",
-      "guidance": "`Symbol.iterator`, `Symbol.asyncIterator` and `Symbol.toStringTag` class methods would change iteration and tagging protocols First's runtime doesn't route through classes. Name the method and call it explicitly. Only `static [Symbol.hasInstance]` is supported."
+      "guidance": "`Symbol.iterator`, `Symbol.asyncIterator` and `Symbol.toStringTag` class methods would change iteration and tagging protocols TypedPress's runtime doesn't route through classes. Name the method and call it explicitly. Only `static [Symbol.hasInstance]` is supported."
     },
     {
       "id": "typescript-class-symbol-method",
@@ -125,7 +125,7 @@
       "code": "F4001",
       "fixture": "tests/fixtures/reject-globalthis-host",
       "message": "depends on the host and can't be resolved at compile time",
-      "guidance": "typeof globalThis, typeof globalThis.X and globalThis.X compared with undefined are resolved at compile time when X is one of First's globals (its JavaScript typeof) or a runtime First never provides (window, document, self, location, Bun, Deno, EdgeRuntime, DOMParser, WebSocketPair, XMLHttpRequest, importScripts, WorkerGlobalScope: undefined). typeof globalThis.navigator and typeof globalThis.process are \"object\" (host-platform). Host globals such as fetch, process, navigator, crypto, Buffer, atob and timers, and any other name, are refused at the read; call supported capabilities directly instead of detecting them. Calling an absent global is refused because it always throws."
+      "guidance": "typeof globalThis, typeof globalThis.X and globalThis.X compared with undefined are resolved at compile time when X is one of TypedPress's globals (its JavaScript typeof) or a runtime TypedPress never provides (window, document, self, location, Bun, Deno, EdgeRuntime, DOMParser, WebSocketPair, XMLHttpRequest, importScripts, WorkerGlobalScope: undefined). typeof globalThis.navigator and typeof globalThis.process are \"object\" (host-platform). Host globals such as fetch, process, navigator, crypto, Buffer, atob and timers, and any other name, are refused at the read; call supported capabilities directly instead of detecting them. Calling an absent global is refused because it always throws."
     },
     {
       "id": "erased-package-typescript",
@@ -191,7 +191,7 @@
       "code": "F4001",
       "fixture": "tests/fixtures/reject-new-boolean",
       "message": "creates a wrapper object",
-      "guidance": "`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; First has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (F2001)."
+      "guidance": "`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; TypedPress has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (F2001)."
     },
     {
       "id": "prototype-literal-object",
@@ -199,7 +199,7 @@
       "code": "F1002",
       "fixture": "tests/fixtures/reject-proto-object",
       "message": "prototype setter syntax",
-      "guidance": "Only `__proto__: null` is supported. A `__proto__:` key with any other value would install a custom prototype, which First doesn't model; copy the shared properties with a spread instead, or use a computed ['__proto__'] key for an own data property."
+      "guidance": "Only `__proto__: null` is supported. A `__proto__:` key with any other value would install a custom prototype, which TypedPress doesn't model; copy the shared properties with a spread instead, or use a computed ['__proto__'] key for an own data property."
     },
     {
       "id": "prototype-literal-variable",
@@ -230,7 +230,7 @@
       "code": "F4001",
       "fixture": "tests/fixtures/reject-delete-array-element",
       "message": "would leave a hole",
-      "guidance": "First arrays are dense, and deleting an element leaves a hole that keeps the length. Use `splice(index, 1)` to remove it, or assign `undefined` to keep the length. Imported JavaScript throws RangeError at runtime instead."
+      "guidance": "TypedPress arrays are dense, and deleting an element leaves a hole that keeps the length. Use `splice(index, 1)` to remove it, or assign `undefined` to keep the length. Imported JavaScript throws RangeError at runtime instead."
     },
     {
       "id": "do-while-and-labels",
@@ -251,7 +251,7 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "typed_for_await_accepts_only_settled_sync_iterables",
-      "guidance": "In authored TypeScript, `for await` runs over arrays, tuples and strings whose elements are plain values or First's own promises, which the blocking model settles exactly. Async iterables, generators and values from imported JavaScript need the job queue and are refused there; imported JavaScript runs every `for await` through it."
+      "guidance": "In authored TypeScript, `for await` runs over arrays, tuples and strings whose elements are plain values or TypedPress's own promises, which the blocking model settles exactly. Async iterables, generators and values from imported JavaScript need the job queue and are refused there; imported JavaScript runs every `for await` through it."
     },
     {
       "id": "for-await-promise-literal",
@@ -259,7 +259,7 @@
       "code": "F4001",
       "fixture": "tests/fixtures/reject-for-await-promise-literal",
       "message": "over a promise written in an array literal",
-      "guidance": "`for await` awaits each element as the loop reaches it, but First's blocking calls would all run before the loop starts. Await each call where it is written: `for (const v of [await a(), await b()])`."
+      "guidance": "`for await` awaits each element as the loop reaches it, but TypedPress's blocking calls would all run before the loop starts. Await each call where it is written: `for (const v of [await a(), await b()])`."
     },
     {
       "id": "for-await-class-instance",
@@ -281,7 +281,7 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "language_constructs_match_node_through_generated_php",
-      "guidance": "BigInt literals, the `bigint` type, BigInt(), BigInt.asIntN/asUintN, Number(b), String(b) and b.toString(radix) compile in typed code and imported JavaScript with ECMAScript semantics, in pure PHP (First\\JsBigInt, no GMP or bcmath). Arithmetic is exact, division truncates, bitwise operators and shifts act on infinite two's complement, comparisons and loose equality compare mathematically across BigInt, number and numeric strings. Mixing BigInt and number in arithmetic, `>>>`, unary `+`, JSON serialization and Math functions throw JavaScript's TypeError; typed code refuses a static mix at the source. Configuration evaluation refuses BigInt. tests/php/bigint_test.php checks 8,800 Node-computed results."
+      "guidance": "BigInt literals, the `bigint` type, BigInt(), BigInt.asIntN/asUintN, Number(b), String(b) and b.toString(radix) compile in typed code and imported JavaScript with ECMAScript semantics, in pure PHP (TypedPress\\JsBigInt, no GMP or bcmath). Arithmetic is exact, division truncates, bitwise operators and shifts act on infinite two's complement, comparisons and loose equality compare mathematically across BigInt, number and numeric strings. Mixing BigInt and number in arithmetic, `>>>`, unary `+`, JSON serialization and Math functions throw JavaScript's TypeError; typed code refuses a static mix at the source. Configuration evaluation refuses BigInt. tests/php/bigint_test.php checks 8,800 Node-computed results."
     },
     {
       "id": "binary-data",
@@ -479,21 +479,21 @@
       "status": "supported",
       "evidence": "tests/compiler.rs",
       "test": "compiled_php_matches_node_on_every_differential_case",
-      "guidance": "Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `First\\JsMap`/`First\\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused."
+      "guidance": "Typed `Map<K, V>`, `Set<T>`, `ReadonlyMap` and `ReadonlySet` compile to `TypedPress\\JsMap`/`TypedPress\\JsSet`: insertion order, SameValueZero keys (NaN equals NaN, -0 is +0), object keys by identity, and O(1) lookup. get/set/has/delete/clear/size/forEach, keys/values/entries, for...of, spread, Array.from and array-pattern destructuring follow JavaScript's live iteration: entries added during iteration are visited, deleted ones are skipped. An empty `new Map()`/`new Set()` needs type arguments. Module-level `new Map(entries)`/`new Set(values)` of static data are built once during configuration evaluation, which can read them with has/get/size but not mutate them, and compiled code captures one shared collection per request. Type arguments are invariant, because both collections are mutable. Calling `next()` on an iterator by hand is refused in typed code but supported in checked JavaScript, which also covers array keys/values/entries. Set algebra methods and Map getOrInsert are refused."
     },
     {
       "id": "whatwg-url",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "url_vectors_agree_in_node_and_generated_php",
-      "guidance": "`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named First classes."
+      "guidance": "`URL` and `URLSearchParams` follow the WHATWG URL Standard through the bundled rowbot/url 4.2.1 parser (MIT), not PHP's parse_url. All 886 cases in web-platform-tests urltestdata.json (pinned revision, see tests/differential/URL-WPT-NOTICE.txt) produce WPT's expected href and components, and invalid input throws TypeError. Node 22 passes 879 of them; it lags the standard on seven newer cases. URLSearchParams and setter results match Node byte for byte. Supported: construction with a base, URL.parse and URL.canParse, component getters and setters, searchParams live-linked to its URL, toString/toJSON and JSON.stringify, and URLSearchParams from a string, [name, value] pairs or a record, with get/getAll/has/append/set/delete/sort/size/forEach/keys/values/entries and for...of. Refused: URL.createObjectURL/revokeObjectURL, and instanceof URL, because instanceof works only with named TypedPress classes."
     },
     {
       "id": "abort-signals-and-timers",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler",
-      "guidance": "`AbortController`, `AbortSignal` (aborted, reason, throwIfAborted, onabort, add/removeEventListener for \"abort\" with { once }), `AbortSignal.abort`, `AbortSignal.any` and `AbortSignal.timeout` follow the DOM standard. PHP has no event loop, so `abort()` dispatches synchronously in registration order, as Node does. `setTimeout`/`clearTimeout` create `First\\Timers` entries that run only while the request waits: the promise job loop calls `Timers::runNext()` once microtasks are empty. That makes a timeout an observation at the next await, never an interruption mid-statement. Waiting is capped by the request budget (`FIRST_TIMER_BUDGET_MS`, default 30000, and the remaining max_execution_time), and with FIRST_NOW pinned it advances a virtual clock. A user setTimeout still pending when the handler returns is a runtime Error naming its creation site, because in Node it would fire after the response. A non-Error abort reason, dispatchEvent and listener options other than once are refused. Nested AbortSignal.any folds to its root sources, and a throwing listener doesn't stop dispatch: the error is rethrown once every listener has run, where Node would report it as uncaught. Plugins record timers in the capability lock (`timers`). The differential cases in tests/differential/cases.ts (jsAbort, typedAbort, jsTimers) compare abort ordering, backoff sleeps and timer/microtask interleaving with Node."
+      "guidance": "`AbortController`, `AbortSignal` (aborted, reason, throwIfAborted, onabort, add/removeEventListener for \"abort\" with { once }), `AbortSignal.abort`, `AbortSignal.any` and `AbortSignal.timeout` follow the DOM standard. PHP has no event loop, so `abort()` dispatches synchronously in registration order, as Node does. `setTimeout`/`clearTimeout` create `TypedPress\\Timers` entries that run only while the request waits: the promise job loop calls `Timers::runNext()` once microtasks are empty. That makes a timeout an observation at the next await, never an interruption mid-statement. Waiting is capped by the request budget (`TP_TIMER_BUDGET_MS`, default 30000, and the remaining max_execution_time), and with TP_NOW pinned it advances a virtual clock. A user setTimeout still pending when the handler returns is a runtime Error naming its creation site, because in Node it would fire after the response. A non-Error abort reason, dispatchEvent and listener options other than once are refused. Nested AbortSignal.any folds to its root sources, and a throwing listener doesn't stop dispatch: the error is rethrown once every listener has run, where Node would report it as uncaught. Plugins record timers in the capability lock (`timers`). The differential cases in tests/differential/cases.ts (jsAbort, typedAbort, jsTimers) compare abort ordering, backoff sleeps and timer/microtask interleaving with Node."
     },
     {
       "id": "builtin-overloads",
@@ -552,7 +552,7 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "language_constructs_match_node_through_generated_php",
-      "guidance": "typeof navigator and typeof process, also through globalThis., are the constant \"object\" in compiled code and in the build-time evaluator. navigator.platform and process.platform (and navigator?.platform, process?.platform) are strings read when PHP runs, from First\\Host, with Node's names: process.platform is win32, darwin, sunos or the lower-cased PHP_OS (linux, freebsd, aix), and navigator.platform follows Node's rule over platform and CPU architecture (Win32, MacIntel, Linux x86_64, Linux arm64, FreeBSD amd64, AIX). They are never decided on the build machine. picomatch 4.0.7's isWindows compiles unchanged. Evidence: tests/differential/language/host-platform.ts; the mapping for every OS is tests/php/host_test.php. See docs/decisions/2026-11-14-host-platform-detection.md."
+      "guidance": "typeof navigator and typeof process, also through globalThis., are the constant \"object\" in compiled code and in the build-time evaluator. navigator.platform and process.platform (and navigator?.platform, process?.platform) are strings read when PHP runs, from TypedPress\\Host, with Node's names: process.platform is win32, darwin, sunos or the lower-cased PHP_OS (linux, freebsd, aix), and navigator.platform follows Node's rule over platform and CPU architecture (Win32, MacIntel, Linux x86_64, Linux arm64, FreeBSD amd64, AIX). They are never decided on the build machine. picomatch 4.0.7's isWindows compiles unchanged. Evidence: tests/differential/language/host-platform.ts; the mapping for every OS is tests/php/host_test.php. See docs/decisions/2026-11-14-host-platform-detection.md."
     },
     {
       "id": "string-from-char-code",
@@ -566,7 +566,7 @@
       "status": "refused",
       "code": "F2001",
       "fixture": "tests/fixtures/reject-lone-surrogate-char-code",
-      "message": "this makes a string with a lone UTF-16 surrogate, which First can't represent",
+      "message": "this makes a string with a lone UTF-16 surrogate, which TypedPress can't represent",
       "guidance": "Strings are stored as UTF-8, which has no lone surrogates. Pair each high surrogate with a low one, or build the character with String.fromCodePoint. At run time the same call throws a RangeError."
     },
     {
@@ -611,7 +611,7 @@
       "code": "F4001",
       "fixture": "tests/fixtures/reject-ability-unknown",
       "message": "unknown ability `acme/site-infos`",
-      "guidance": "abilities.call from \"php/wordpress\" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in first/_generated/abilities.json by `first abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability."
+      "guidance": "abilities.call from \"php/wordpress\" names an ability the build can type: one of the app's own (collections, actions, globals) or one locked in tp/_generated/abilities.json by `typedpress abilities pull --site <url>`. Any other name is refused with the closest known name; pull and commit the lock to call another plugin's ability."
     },
     {
       "id": "wordpress-ability-input",
@@ -634,15 +634,15 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "wordpress_abilities_are_typed_from_the_lock_and_the_schema",
-      "guidance": "abilities.call(\"vendor/name\", input) compiles to First\\Wp\\Abilities\\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from first/_generated/abilities.json, which build and check read without touching the network. first/_generated/db.d.ts carries the same types for the editor."
+      "guidance": "abilities.call(\"vendor/name\", input) compiles to TypedPress\\Wp\\Abilities\\Call::run, which runs core's WP_Ability::execute() for the current WordPress user. The app's own abilities are typed from the schema without a pull; others from tp/_generated/abilities.json, which build and check read without touching the network. tp/_generated/db.d.ts carries the same types for the editor."
     },
     {
       "id": "wordpress-hook-unknown",
       "status": "refused",
       "code": "F3001",
       "fixture": "tests/fixtures/reject-wp-hook-unknown",
-      "message": "`the_contnet` is not a WordPress hook First types",
-      "guidance": "A first/wp-hooks/ file or directory is named after a hook in the pinned catalog (src/wordpress/catalog.json, generated by scripts/wordpress-catalog.py from core's docblocks). Any other name is refused with the closest catalog hook, because an untyped hook would pass PHP values the compiler cannot check."
+      "message": "`the_contnet` is not a WordPress hook TypedPress types",
+      "guidance": "A tp/wp-hooks/ file or directory is named after a hook in the pinned catalog (src/wordpress/catalog.json, generated by scripts/wordpress-catalog.py from core's docblocks). Any other name is refused with the closest catalog hook, because an untyped hook would pass PHP values the compiler cannot check."
     },
     {
       "id": "wordpress-hook-filter-return",
@@ -658,7 +658,7 @@
       "code": "F3001",
       "fixture": "tests/fixtures/reject-wp-hook-no-default",
       "message": "a first/wp-hooks/ file needs a default-exported handler function",
-      "guidance": "Each first/wp-hooks/ file default-exports one handler and may export an integer `priority`. Other exports are refused; share code through an ordinary imported module."
+      "guidance": "Each tp/wp-hooks/ file default-exports one handler and may export an integer `priority`. Other exports are refused; share code through an ordinary imported module."
     },
     {
       "id": "wordpress-hook-file",
@@ -666,14 +666,14 @@
       "code": "F1003",
       "fixture": "tests/fixtures/reject-wp-hook-file",
       "message": "not a .ts handler file",
-      "guidance": "first/wp-hooks/ holds only .ts handler files (directly, or one directory deep named after the hook). Anything else is refused at its path instead of being skipped, so a handler never silently fails to register."
+      "guidance": "tp/wp-hooks/ holds only .ts handler files (directly, or one directory deep named after the hook). Anything else is refused at its path instead of being skipped, so a handler never silently fails to register."
     },
     {
       "id": "wordpress-hooks",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "wp_hooks_register_in_file_order_with_their_priorities",
-      "guidance": "first/wp-hooks/<hook>.ts and first/wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`."
+      "guidance": "tp/wp-hooks/<hook>.ts and tp/wp-hooks/<hook>/*.ts handlers compile to PHP functions typed from the catalog and register with add_filter/add_action in the app plugin; one hook's files run in file-name order at priority 10 unless a file exports `priority`."
     },
     {
       "id": "wordpress-function-unknown",
@@ -696,7 +696,7 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "wordpress_functions_run_as_the_signed_in_user",
-      "guidance": "Allowlisted WordPress functions compile to First\\Wp\\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none)."
+      "guidance": "Allowlisted WordPress functions compile to TypedPress\\Wp\\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none)."
     },
     {
       "id": "wordpress-protected-option",
@@ -704,22 +704,22 @@
       "code": "F4301",
       "fixture": "tests/fixtures/reject-wp-protected-option",
       "message": "`update_option` can't change the WordPress option `default_role`",
-      "guidance": "get_option, update_option and delete_option refuse WordPress's site settings that load code, move sign-in or change roles (active_plugins, template, stylesheet, siteurl, home, admin_email, users_can_register, default_role, {prefix}user_roles, cron, upload paths, jetpack_* and the others in runtime/First/Wp/guard.json), First's own first_* options and transients; options whose names hold secrets (salts, tokens, passwords, jetpack_private_options) can't be read either. A literal name is refused here; a name built at runtime is refused by First\\Wp\\Guard with 403 protected_option. Names compare case-insensitively, and a name outside printable ASCII is refused. wp_insert_post takes post, page or another plugin's public post type only. Keep app settings in a global, a table or an option name of the app's own."
+      "guidance": "get_option, update_option and delete_option refuse WordPress's site settings that load code, move sign-in or change roles (active_plugins, template, stylesheet, siteurl, home, admin_email, users_can_register, default_role, {prefix}user_roles, cron, upload paths, jetpack_* and the others in runtime/TypedPress/Wp/guard.json), TypedPress's own tp_* options and transients; options whose names hold secrets (salts, tokens, passwords, jetpack_private_options) can't be read either. A literal name is refused here; a name built at runtime is refused by TypedPress\\Wp\\Guard with 403 protected_option. Names compare case-insensitively, and a name outside printable ASCII is refused. wp_insert_post takes post, page or another plugin's public post type only. Keep app settings in a global, a table or an option name of the app's own."
     },
     {
       "id": "plugin-narrowed-write",
       "status": "refused",
       "code": "F4201",
       "fixture": "tests/fixtures/reject-plugin-write",
-      "message": "plugin \"seo\" writes posts.body; first/_generated/plugins.lock.json grants it only posts.summary",
-      "guidance": "A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed first/_generated/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry."
+      "message": "plugin \"seo\" writes posts.body; tp/_generated/plugins.lock.json grants it only posts.summary",
+      "guidance": "A plugin's capabilities are inferred from its compiled code, including writes made by helpers it passes a row to. The committed tp/_generated/plugins.lock.json is the grant: when the owner narrows an entry and the package source is unchanged, code beyond the entry is refused at the call that needs it. Remove the call or add the value to the entry."
     },
     {
       "id": "plugin-static-host",
       "status": "refused",
       "code": "F4201",
       "fixture": "tests/fixtures/reject-plugin-http",
-      "message": "plugin \"ping\" fetches from tracker.example.net; first/_generated/plugins.lock.json grants it only api.example.com",
+      "message": "plugin \"ping\" fetches from tracker.example.net; tp/_generated/plugins.lock.json grants it only api.example.com",
       "guidance": "A fetch URL with a written https://host/ prefix (string, template or concatenation) is checked against the plugin's locked hosts at build time. A URL built at runtime is recorded as * and checked against the locked hosts on every request and redirect hop."
     },
     {
@@ -727,30 +727,30 @@
       "status": "refused",
       "code": "F1201",
       "fixture": "tests/fixtures/reject-plugin-isolation",
-      "message": "plugin \"b\" can't import \"first-plugin-a\": it belongs to plugin \"a\"",
-      "guidance": "A plugin package imports its own modules, \"first\" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin."
+      "message": "plugin \"b\" can't import \"typedpress-plugin-a\": it belongs to plugin \"a\"",
+      "guidance": "A plugin package imports its own modules, \"typedpress\" and ordinary npm packages, compiled under its own grant. It can't import the app's modules or another registered plugin's package; its compiled helpers, captured data and class state are namespaced per plugin."
     },
     {
       "id": "plugin-app-kinds",
       "status": "refused",
       "code": "F1201",
       "fixture": "tests/fixtures/reject-plugin-db",
-      "message": "plugin \"reach\" can't import \"first:db\": the app's kinds belong to the app",
-      "guidance": "A plugin can't import \"first:db\": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it."
+      "message": "plugin \"reach\" can't import \"typedpress:db\": the app's kinds belong to the app",
+      "guidance": "A plugin can't import \"typedpress:db\": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it."
     },
     {
       "id": "host-globals",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "host_globals_match_node_through_generated_php",
-      "guidance": "Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env[\"NAME\"] (string | undefined); crypto.randomUUID(); and from \"node:crypto\" (import or a top-level const require) createHash and createHmac chains ending in digest(\"hex\" | \"base64\" | \"base64url\"), randomBytes(n).toString(encoding), randomUUID and timingSafeEqual(Buffer.from(a), Buffer.from(b)). They lower in src/compile/host.rs onto First\\Fetch (HTTPS-only egress policy), First\\Env and First\\Crypto. See config-api.md."
+      "guidance": "Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env[\"NAME\"] (string | undefined); crypto.randomUUID(); and from \"node:crypto\" (import or a top-level const require) createHash and createHmac chains ending in digest(\"hex\" | \"base64\" | \"base64url\"), randomBytes(n).toString(encoding), randomUUID and timingSafeEqual(Buffer.from(a), Buffer.from(b)). They lower in src/compile/host.rs onto TypedPress\\Fetch (HTTPS-only egress policy), TypedPress\\Env and TypedPress\\Crypto. See config-api.md."
     },
     {
       "id": "fetch-signal",
       "status": "refused",
       "code": "F4001",
       "fixture": "tests/fixtures/reject-fetch-signal",
-      "message": "fetch() `signal` isn't available in First code",
+      "message": "fetch() `signal` isn't available in TypedPress code",
       "guidance": "Every call already ends after 10 s. credentials, mode, cache and the other browser options are refused because they have no effect server-side."
     },
     {
@@ -766,7 +766,7 @@
       "status": "refused",
       "code": "F4001",
       "fixture": "tests/fixtures/reject-response-stream",
-      "message": "response streams aren't available in First code",
+      "message": "response streams aren't available in TypedPress code",
       "guidance": "The body is read in full (at most 1 MiB) before fetch() resolves. Read it with text() or json(); arrayBuffer, blob, formData and clone are refused."
     },
     {
@@ -790,7 +790,7 @@
       "status": "refused",
       "code": "F4001",
       "fixture": "tests/fixtures/reject-process-member",
-      "message": "isn't available on `process` in First code",
+      "message": "isn't available on `process` in TypedPress code",
       "guidance": "Handlers run in PHP. Only process.env.NAME and process.platform are supported."
     },
     {
@@ -798,15 +798,15 @@
       "status": "refused",
       "code": "F4001",
       "fixture": "tests/fixtures/reject-process-member-read",
-      "message": "`process.arch` isn't available in First code",
-      "guidance": "process.arch, process.version, process.versions, process.release, process.argv, process.title, process.browser and every other process member except env.NAME and platform are refused at the read: Node defines them and First has no true value for them. Detecting Node itself (process.versions.node, process.release.name) is not decided yet."
+      "message": "`process.arch` isn't available in TypedPress code",
+      "guidance": "process.arch, process.version, process.versions, process.release, process.argv, process.title, process.browser and every other process member except env.NAME and platform are refused at the read: Node defines them and TypedPress has no true value for them. Detecting Node itself (process.versions.node, process.release.name) is not decided yet."
     },
     {
       "id": "navigator-members",
       "status": "refused",
       "code": "F4001",
       "fixture": "tests/fixtures/reject-navigator-member",
-      "message": "isn't available in First code; only `navigator.platform` is",
+      "message": "isn't available in TypedPress code; only `navigator.platform` is",
       "guidance": "navigator.userAgent, navigator.language, navigator.languages, navigator.hardwareConcurrency and every other navigator member, and navigator[k], are refused at the read. Node defines them, so answering undefined would differ silently. Read navigator.platform, or test typeof navigator."
     },
     {
@@ -854,7 +854,7 @@
       "status": "refused",
       "code": "F2001",
       "fixture": "tests/fixtures/reject-node-crypto-member",
-      "message": "\"node:crypto\" has no `createCipheriv` in First code",
+      "message": "\"node:crypto\" has no `createCipheriv` in TypedPress code",
       "guidance": "node:crypto provides createHash, createHmac, randomBytes, randomUUID and timingSafeEqual. Ciphers, keys, KDFs and streams are not compiled."
     },
     {
@@ -890,12 +890,12 @@
       "guidance": "Static CommonJS may require(\"node:crypto\") (or \"crypto\"); it resolves through the same built-in module lookup as import. Other Node built-ins are refused whether imported or required."
     },
     {
-      "id": "first-fetch-import",
+      "id": "typedpress-fetch-import",
       "status": "refused",
       "code": "F2001",
-      "fixture": "tests/fixtures/reject-first-fetch-import",
-      "message": "\"first\" has no export named `fetch`",
-      "guidance": "fetch and crypto are the standard globals, not \"first\" exports. Remove them from the import."
+      "fixture": "tests/fixtures/reject-typedpress-fetch-import",
+      "message": "\"typedpress\" has no export named `fetch`",
+      "guidance": "fetch and crypto are the standard globals, not \"typedpress\" exports. Remove them from the import."
     },
     {
       "id": "build-time-namespaces",
@@ -978,7 +978,7 @@
       "status": "supported",
       "evidence": "tests/compiler.rs",
       "test": "compiled_tsx_renders_the_html_react_renders",
-      "guidance": "Functions exported under a capitalized name from `first/components/*.tsx` compile to PHP functions that return escaped HTML (`\\First\\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md."
+      "guidance": "Functions exported under a capitalized name from `tp/components/*.tsx` compile to PHP functions that return escaped HTML (`\\TypedPress\\Html`), listed in schema.php `components`; lowercase exports are ordinary helpers. Output matches react-dom/server 19.2.8 byte for byte, apart from its `<!-- -->` text separators and image preload links: null, undefined and booleans render nothing, `{0 && <b/>}` renders 0, numbers print as JavaScript prints them, arrays concatenate, entities are spelled `&amp; &lt; &gt; &quot; &#x27;`, and attributes follow React's names, boolean, style and form-element rules. `&&`, `?:`, `??`, `.map`, `.length` and string and array methods on props work as in handlers. Components are called with one typed props object; `children` is what React passes (one child as itself, several as an array, absent as undefined; type it `ReactNode`), and a component runs only when its element is placed, so children it never places never run. `key` evaluates and is dropped. Async components block until their data is in. Attributes a browser loads or navigates to (`href`, `src`, `action`, `formAction`, `data`, `poster`, `xlink:href` and others, in any letter case) allow http(s), mailto and URLs without a scheme; anything else is a build error when literal and dropped when computed. `on*` attributes never reach the HTML. See docs/decisions/2026-11-08-tsx-to-php.md."
     },
     {
       "id": "jsx-unsafe-url",
@@ -1033,15 +1033,15 @@
       "status": "refused",
       "code": "F1003",
       "fixture": "tests/fixtures/reject-jsx-config",
-      "message": "JSX files can't be part of a First config",
-      "guidance": "JSX compiles in `first/components/`, pages and \"use client\" files; modules the config imports stay plain TypeScript."
+      "message": "JSX files can't be part of a TypedPress config",
+      "guidance": "JSX compiles in `tp/components/`, pages and \"use client\" files; modules the config imports stay plain TypeScript."
     },
     {
       "id": "jsx-in-action-result",
       "status": "refused",
       "code": "F1003",
       "fixture": "tests/fixtures/reject-jsx-action",
-      "message": "JSX files can't be part of a First config",
+      "message": "JSX files can't be part of a TypedPress config",
       "guidance": "Rendered JSX exists only while a page renders, so the config (and the actions it defines) can't import a component; return data from actions and render it in a component."
     },
     {
@@ -1129,42 +1129,42 @@
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "client_components_compile_to_interactivity_stores",
-      "guidance": "A .tsx file under first/components/ that starts with \"use client\" (after comments and other directives such as \"use strict\") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, useLive (a list read the server seeds and the page keeps current), server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s."
+      "guidance": "A .tsx file under tp/components/ that starts with \"use client\" (after comments and other directives such as \"use strict\") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, useLive (a list read the server seeds and the page keeps current), server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s."
     },
     {
       "id": "jsx-comments",
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "comments_follow_the_kind_policy_on_every_path",
-      "guidance": "`<Comments for={item} />` from \"first/app\" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props."
+      "guidance": "`<Comments for={item} />` from \"typedpress/app\" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props."
     },
     {
       "id": "jsx-pagination",
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "app_router_serves_pages_on_wordpress",
-      "guidance": "`<Pagination page={search.page} pages={n} />` from \"first/app\" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page."
+      "guidance": "`<Pagination page={search.page} pages={n} />` from \"typedpress/app\" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page."
     },
     {
       "id": "jsx-search",
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "search_pages_answer_as_the_visitor",
-      "guidance": "`<Search />` and `<SearchResults q={search.q} />` from \"first/app\" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges."
+      "guidance": "`<Search />` and `<SearchResults q={search.q} />` from \"typedpress/app\" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges."
     },
     {
       "id": "jsx-live",
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "live_regions_update_in_the_browser",
-      "guidance": "`<Live id=\"notes\">…</Live>` from \"first/app\" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`)."
+      "guidance": "`<Live id=\"notes\">…</Live>` from \"typedpress/app\" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`)."
     },
     {
       "id": "jsx-form-action",
       "status": "supported",
       "evidence": "tests/app_router.rs",
       "test": "forms_work_without_javascript",
-      "guidance": "`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from \"first/app\" reads the result or the error once. `method` and `encType` on such a form, and an action form inside a \"use client\" component, are build errors."
+      "guidance": "`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from \"typedpress/app\" reads the result or the error once. `method` and `encType` on such a form, and an action form inside a \"use client\" component, are build errors."
     },
     {
       "id": "jsx-use-client-npm",
@@ -1172,7 +1172,7 @@
       "code": "F1003",
       "fixture": "tests/fixtures/reject-client-npm",
       "message": "a \"use client\" component can't import \"dayjs\"",
-      "guidance": "Client components run in the browser without a bundler: import \"first/client\" and relative modules only."
+      "guidance": "Client components run in the browser without a bundler: import \"typedpress/client\" and relative modules only."
     },
     {
       "id": "jsx-use-client-root",
@@ -1195,8 +1195,8 @@
       "status": "refused",
       "code": "F1003",
       "fixture": "tests/fixtures/reject-jsx-config-unused",
-      "message": "JSX files can't be part of a First config",
-      "guidance": "A `.tsx` module the config imports is refused even when its JSX never runs; components live in `first/components/`."
+      "message": "JSX files can't be part of a TypedPress config",
+      "guidance": "A `.tsx` module the config imports is refused even when its JSX never runs; components live in `tp/components/`."
     },
     {
       "id": "jsx-children-type-local",
@@ -1212,7 +1212,7 @@
       "code": "F4001",
       "fixture": "tests/fixtures/reject-jsx-style-case",
       "message": "is spelled `style`",
-      "guidance": "Browsers read `STYLE` and `Style` as `style`, which First narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key."
+      "guidance": "Browsers read `STYLE` and `Style` as `style`, which TypedPress narrows to the properties its type declares; write `style` in lowercase, as an attribute or a spread key."
     }
   ],
   "zero08": [
@@ -1374,7 +1374,7 @@
     },
     {
       "code": "Z08_ENDPOINT_RESERVED_PATH",
-      "feature": "endpoint path owned by WordPress or First"
+      "feature": "endpoint path owned by WordPress or TypedPress"
     },
     {
       "code": "Z08_ENDPOINT_PATH",

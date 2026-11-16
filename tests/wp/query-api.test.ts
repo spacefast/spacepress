@@ -1,6 +1,6 @@
-// The query API (spec §3): a kind imported from "first:db" has list, paginate, get, count, create,
+// The query API (spec §3): a kind imported from "typedpress:db" has list, paginate, get, count, create,
 // update and delete, run as the visitor the request runs as: access rules, draft visibility and
-// field masks apply. `<kind>.system.*` is the trusted escape hatch. Fixtures: tests/wp/app/first/lanes/rest.ts
+// field masks apply. `<kind>.system.*` is the trusted escape hatch. Fixtures: tests/wp/app/tp/lanes/rest.ts
 // (`jottings`: editors read everything, others published rows and their own; `vault`: admin-only).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";

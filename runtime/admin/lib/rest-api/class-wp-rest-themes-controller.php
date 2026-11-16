@@ -1,23 +1,23 @@
 <?php
 /**
- * REST API: First_Admin_REST_Themes_Controller class
+ * REST API: TypedPress_Admin_REST_Themes_Controller class
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  * @subpackage REST_API
  */
 
 /**
- * REST API: First Admin Themes Controller
+ * REST API: TypedPress Admin Themes Controller
  *
  * Handles theme update via the REST API.
  *
  * @TODO: Remove once the update themes endpoint is available on core (see [upstream private reference omitted])
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  * @since   1.0.0
  * @version 1.0.0
  */
-class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
+class TypedPress_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 
 	/**
 	 * Registers the routes for the controller.
@@ -29,7 +29,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 			array(
 				'args'   => array(
 					'stylesheet' => array(
-						'description'       => __( "The theme's stylesheet. This uniquely identifies the theme.", 'first-admin' ),
+						'description'       => __( "The theme's stylesheet. This uniquely identifies the theme.", 'typedpress-admin' ),
 						'type'              => 'string',
 						'sanitize_callback' => array( $this, '_sanitize_stylesheet_callback' ),
 						'validate_callback' => array( $this, 'validate_theme' ),
@@ -65,7 +65,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 
 		return new WP_Error(
 			'rest_cannot_delete_themes',
-			__( 'Sorry, you are not allowed to delete themes.', 'first-admin' ),
+			__( 'Sorry, you are not allowed to delete themes.', 'typedpress-admin' ),
 			array( 'status' => rest_authorization_required_code() )
 		);
 	}
@@ -93,7 +93,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 		if ( ! $theme->exists() ) {
 			return new WP_Error(
 				'rest_theme_not_found',
-				__( 'The requested theme does not exist.', 'first-admin' ),
+				__( 'The requested theme does not exist.', 'typedpress-admin' ),
 				array( 'status' => 404 )
 			);
 		}
@@ -106,7 +106,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 
 		return rest_ensure_response(
 			array(
-				'message' => __( 'Theme deleted successfully.', 'first-admin' ),
+				'message' => __( 'Theme deleted successfully.', 'typedpress-admin' ),
 			)
 		);
 	}
@@ -123,7 +123,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 			if ( ! current_user_can( 'switch_themes' ) && ! current_user_can( 'manage_network_themes' ) ) {
 				return new WP_Error(
 					'rest_cannot_activate_themes',
-					__( 'Sorry, you are not allowed to activate themes.', 'first-admin' ),
+					__( 'Sorry, you are not allowed to activate themes.', 'typedpress-admin' ),
 					array( 'status' => rest_authorization_required_code() )
 				);
 			}
@@ -133,7 +133,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 			if ( ! current_user_can( 'update_themes' ) ) {
 				return new WP_Error(
 					'rest_cannot_update_themes',
-					__( 'Sorry, you are not allowed to update themes.', 'first-admin' ),
+					__( 'Sorry, you are not allowed to update themes.', 'typedpress-admin' ),
 					array( 'status' => rest_authorization_required_code() )
 				);
 			}
@@ -155,7 +155,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 		if ( ! $theme->exists() ) {
 			return new WP_Error(
 				'rest_theme_not_found',
-				__( 'The requested theme does not exist.', 'first-admin' ),
+				__( 'The requested theme does not exist.', 'typedpress-admin' ),
 				array( 'status' => 404 )
 			);
 		}
@@ -163,7 +163,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 		if ( ! $theme->is_allowed() ) {
 			return new WP_Error(
 				'rest_theme_not_allowed',
-				__( 'The requested theme is not network enabled.', 'first-admin' ),
+				__( 'The requested theme is not network enabled.', 'typedpress-admin' ),
 				array( 'status' => 400 )
 			);
 		}
@@ -194,7 +194,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				if ( ! is_wp_version_compatible( $theme->get( 'RequiresWP' ) ) ) {
 					return new WP_Error(
 						'rest_theme_not_compatible',
-						__( 'The requested theme is not compatible with your WordPress version.', 'first-admin' ),
+						__( 'The requested theme is not compatible with your WordPress version.', 'typedpress-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -202,7 +202,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				if ( ! is_php_version_compatible( $theme->get( 'RequiresPHP' ) ) ) {
 					return new WP_Error(
 						'rest_theme_not_compatible',
-						__( 'The requested theme is not compatible with your PHP version.', 'first-admin' ),
+						__( 'The requested theme is not compatible with your PHP version.', 'typedpress-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -297,7 +297,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				} elseif ( false === $result ) {
 					global $wp_filesystem;
 
-					$error_message = __( 'Unable to connect to the filesystem. Please confirm your credentials.', 'first-admin' );
+					$error_message = __( 'Unable to connect to the filesystem. Please confirm your credentials.', 'typedpress-admin' );
 
 					// Pass through the error from WP_Filesystem if one was raised.
 					if ( $wp_filesystem instanceof WP_Filesystem_Base && is_wp_error( $wp_filesystem->errors ) && $wp_filesystem->errors->has_errors() ) {
@@ -313,7 +313,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 					// An unhandled error occurred.
 					return new WP_Error(
 						'rest_theme_update_failed',
-						__( 'Theme update failed.', 'first-admin' ),
+						__( 'Theme update failed.', 'typedpress-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -323,7 +323,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 		// Handle theme auto-updates setting.
 		if ( isset( $request['auto_updates']['enabled'] ) ) {
 			$next_auto_updates_enabled = rest_sanitize_boolean( $request['auto_updates']['enabled'] );
-			$auto_updates_data         = first_admin_get_theme_auto_updates_data(
+			$auto_updates_data         = tp_admin_get_theme_auto_updates_data(
 				array( 'stylesheet' => $stylesheet )
 			);
 
@@ -333,7 +333,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				if ( ! $auto_updates_data['supported'] ) {
 					return new WP_Error(
 						'rest_theme_not_auto_update_supported',
-						__( 'The requested theme does not support auto-updates.', 'first-admin' ),
+						__( 'The requested theme does not support auto-updates.', 'typedpress-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -341,7 +341,7 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				if ( $auto_updates_data['forced'] && false === $next_auto_updates_enabled ) {
 					return new WP_Error(
 						'rest_theme_auto_update_forced',
-						__( 'Auto-updates are forced for this theme and cannot be disabled.', 'first-admin' ),
+						__( 'Auto-updates are forced for this theme and cannot be disabled.', 'typedpress-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -388,6 +388,6 @@ class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 add_action(
 	'rest_api_init',
 	function () {
-		( new First_Admin_REST_Themes_Controller() )->register_routes();
+		( new TypedPress_Admin_REST_Themes_Controller() )->register_routes();
 	}
 );

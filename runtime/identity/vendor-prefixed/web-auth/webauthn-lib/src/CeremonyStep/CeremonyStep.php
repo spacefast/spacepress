@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\CeremonyStep;
+namespace TypedPress\Identity\Vendor\Webauthn\CeremonyStep;
 
-use First\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use First\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use First\Identity\Vendor\Webauthn\CredentialRecord;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use TypedPress\Identity\Vendor\Webauthn\CredentialRecord;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
 
 interface CeremonyStep
 {

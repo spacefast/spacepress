@@ -2,10 +2,10 @@
 	"name": "core-theme-fields",
 	"version": "1.0.0",
 	"dependencies": {
-		"@first-admin/admin-toolkit": "workspace:*",
+		"@typedpress-admin/admin-toolkit": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/element": "catalog:",
 		"@wordpress/html-entities": "catalog:",
 		"@wordpress/i18n": "catalog:"

@@ -5,7 +5,7 @@ export async function loginCookie(site: string, role: 'admin' | 'editor' | 'subs
  const response = await fetch(`${site}/wp-login.php`, {
   method: 'POST', redirect: 'manual',
   headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: 'wordpress_test_cookie=WP%20Cookie%20check' },
-  body: new URLSearchParams({ log: role, pwd: `first-test-${role}`, testcookie: '1' }),
+  body: new URLSearchParams({ log: role, pwd: `typedpress-test-${role}`, testcookie: '1' }),
  });
  const url = new URL(target);
  const cookies = response.headers.getSetCookie().filter((header) => {

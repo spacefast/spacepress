@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
+namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
 
-use First\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * @internal

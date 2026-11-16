@@ -59,14 +59,14 @@ own Cargo target directories. In each repository root:
 ```sh
 export CARGO_TARGET_DIR="$PWD/target"
 cargo build --locked
-mkdir -p .first/refs-pipeline
-cp docs/spikes/js-references-pipeline.config.ts .first/refs-pipeline/first.config.ts
-target/debug/first build .first/refs-pipeline --out .first/refs-pipeline/wp-content --quiet
-php docs/spikes/js-references-pipeline.php "$PWD/.first/refs-pipeline/wp-content"
+mkdir -p .tp/refs-pipeline
+cp docs/spikes/js-references-pipeline.config.ts .tp/refs-pipeline/typedpress.config.ts
+target/debug/typedpress build .tp/refs-pipeline --out .tp/refs-pipeline/wp-content --quiet
+php docs/spikes/js-references-pipeline.php "$PWD/.tp/refs-pipeline/wp-content"
 ```
 
-`--out` names the artifact explicitly: compilers before `first/dist/` wrote it
-to `.first/wp-content`, so this one path works in both worktrees.
+`--out` names the artifact explicitly: compilers before `tp/dist/` wrote it
+to `.tp/wp-content`, so this one path works in both worktrees.
 
 The fixture and PHP runner are introduced by the switch: copy both unchanged
 into the baseline worktree before building. Alternate the last command across

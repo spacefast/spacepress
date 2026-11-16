@@ -1,5 +1,5 @@
 // Untyped JavaScript for tests/differential/language/sort.ts: the files-sdk 3.1.2 sort shapes
-// verbatim, run through First's checked JavaScript dispatch, plus comparator results that need
+// verbatim, run through TypedPress's checked JavaScript dispatch, plus comparator results that need
 // ToNumber and default sorting of objects that convert themselves.
 
 const PROVIDERS = { s3: 1, gcs: 2, azure: 3, r2: 4, b2: 5, "do-spaces": 6, Local: 7, memory: 8 };

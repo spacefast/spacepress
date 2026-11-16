@@ -1,5 +1,5 @@
 {
-  "schema": "first-js-reference-pipeline",
+  "schema": "typedpress-js-reference-pipeline",
   "version": 1,
   "before": "3b73fa7d",
   "after": "handle implementation",

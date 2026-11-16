@@ -1,10 +1,10 @@
-# First Blocks — Gutenberg JSX and TSX block themes
+# TypedPress Blocks — Gutenberg JSX and TSX block themes
 
 > **Status update, 2026-11-16.** The owner withdrew the earlier ruling below ("Ignore my earlier
 > rulings. Let's do what's best for most WordPress compatibility while keeping everything."). Blocks
-> are no longer kept out of First core. First core now renders every `first/app/` page inside a
-> WordPress block template, registers its own templates and blocks (`first/page`,
-> `first/login-form`), and gives layouts `<TemplatePart>`
+> are no longer kept out of TypedPress core. TypedPress core now renders every `tp/app/` page inside a
+> WordPress block template, registers its own templates and blocks (`tp/page`,
+> `tp/login-form`), and gives layouts `<TemplatePart>`
 > ([decision](decisions/2026-11-16-pages-in-block-templates.md), [#497](https://github.com/spacefast/zero/issues/497)).
 > The package and authoring API described here are still a separate, paused piece of work (see
 > #497's "Paused block-theme compiler implementation"). The four-part ruling that follows is
@@ -13,16 +13,16 @@
 Status (historical): approved by the project owner as **an optional add-on**. That ruling
 has four parts, and every section below is read under them:
 
-1. **Separate package.** `@spacefast/first-blocks` in `packages/blocks/`,
+1. **Separate package.** `@typedpress/blocks` in `packages/blocks/`,
    installed separately, with its own npm package, version and changelog.
-   First core never imports or depends on it: not the Rust compiler, not the
-   PHP runtime, not the generated plugins, not `types/first`. A First app that
+   TypedPress core never imports or depends on it: not the Rust compiler, not the
+   PHP runtime, not the generated plugins, not `types/typedpress`. A TypedPress app that
    does not install it gets nothing new: no build step, no dependency, no
    output.
 2. **Separate output.** It builds its own artifact, a block theme (and
-   content markup), installed alongside First's plugins and never modifying
+   content markup), installed alongside TypedPress's plugins and never modifying
    them. The one coupling is the opt-in `bind.field()` binding to SCF meta,
-   and it is one-way: Blocks reads First's schema conventions; First knows
+   and it is one-way: Blocks reads TypedPress's schema conventions; TypedPress knows
    nothing about Blocks.
 3. **Separate CI.** Its jobs run only when `packages/blocks/**` or the
    contract it reads changes, so Chromium and the extra Rust build never
@@ -33,11 +33,11 @@ has four parts, and every section below is read under them:
 This document decides the package, its authoring API, how a TSX theme becomes
 a block theme, how it is built, validated and tested, and in which PRs it
 lands. It ports Spacefast's earlier Gutenberg JSX work where that work was
-right and redesigns it where First's first principles say otherwise.
+right and redesigns it where TypedPress's first principles say otherwise.
 
 Conventions: "error" = the build fails with `file:line:col` and a fix, and
 nothing is written. "WP" = WordPress 7.1, the pinned platform (`docs/design-phase2.md` §2.7).
-This package is WordPress-only by the owner's ruling (First's standalone
+This package is WordPress-only by the owner's ruling (TypedPress's standalone
 target is being retired; until that lands, commands below pass `--target wp`
 explicitly): everything this package produces is rendered by WordPress and
 nothing else.
@@ -46,22 +46,22 @@ nothing else.
 
 | Area | Decision |
 |---|---|
-| Package | `@spacefast/first-blocks`, in `packages/blocks/`. Node ≥ 22, TypeScript, pnpm with a committed lockfile, `node --test`. Its own semver version and `CHANGELOG.md`, published to npm on its own cadence; never a dependency of anything else in this repo. |
+| Package | `@typedpress/blocks`, in `packages/blocks/`. Node ≥ 22, TypeScript, pnpm with a committed lockfile, `node --test`. Its own semver version and `CHANGELOG.md`, published to npm on its own cadence; never a dependency of anything else in this repo. |
 | What it is | Two things sharing one core: **content** (TSX → serialized Gutenberg block markup) and **theme** (a directory of TSX → a complete WordPress block theme). |
-| JSX | `jsxImportSource: "@spacefast/first-blocks"`. No React, no vdom. HTML tags map to core blocks (`<p>` → `core/paragraph`), components are transparent functions, blocks are named components. Every node carries its source location, so every diagnostic has `file:line:col`. |
+| JSX | `jsxImportSource: "@typedpress/blocks"`. No React, no vdom. HTML tags map to core blocks (`<p>` → `core/paragraph`), components are transparent functions, blocks are named components. Every node carries its source location, so every diagnostic has `file:line:col`. |
 | Serializer | Core's own `createBlock()` + `serialize()` from `@wordpress/blocks` with `@wordpress/block-library` registered under happy-dom, pinned to the exact package versions WordPress 7.1 bundles. Byte-parity with each block's `save()` is what makes templates open valid in the Site Editor; nothing leaner can promise that. |
 | Codegen | `Block.Core.*`: one typed component per registered core block, generated from `getBlockTypes()` (so `supports`-derived attributes are included), committed, drift-guarded by a test. `theme.json` types generated from the official 7.1 schema. |
 | Theme output | A real block theme: `style.css` (header), `theme.json` (v3), `templates/*.html`, `parts/*.html`, `patterns/*.php`, `styles/*.json`, copied `assets/`, plus `<slug>.zip`. Installable with `wp theme install`; no executable PHP logic, only the pattern header comments WordPress requires. |
 | Theme source | `theme.config.ts` (`defineTheme`: header + typed `theme.json`), `templates/<slug>.tsx`, `parts/<slug>.tsx`, `patterns/<name>.tsx`, `styles/<name>.ts`, `assets/`. File names are the template hierarchy. |
 | Validation | Unknown core block, unknown or mistyped attribute, a `save()` that throws, `style` prop on an HTML tag, unmappable tag, missing part or pattern reference, unknown preset slug, template name outside WP's hierarchy without a custom-template declaration, `theme.json` failing the 7.1 schema: all errors with locations. Never silently dropped. |
-| First collections | Optional sugar in `@spacefast/first-blocks/first`: `bind.field("excerpt")` → the SCF block binding `{ source: "acf/field", args: { key: "first_excerpt" } }` for the meta key First writes. Pure markup; no runtime dependency on First. Query loops over First collections are **not** offered: `core/query` ignores non-viewable post types and First's are private (§5). |
+| TypedPress collections | Optional sugar in `@typedpress/blocks/tp`: `bind.field("excerpt")` → the SCF block binding `{ source: "acf/field", args: { key: "tp_excerpt" } }` for the meta key TypedPress writes. Pure markup; no runtime dependency on TypedPress. Query loops over TypedPress collections are **not** offered: `core/query` ignores non-viewable post types and TypedPress's are private (§5). |
 | Not in scope | App frontends, islands, dynamic component blocks, platform system pages, any JS app runtime, HTML→TSX, live editing, Markdown. See §9. (TSX pages and islands later landed separately in `packages/pages`; see [pages](pages.md).) |
-| Proof | `packages/blocks/tests/wp/run.sh`, one stack (own compose project, port 8840): a fresh WordPress from `tests/wp/harness.sh up --bare`; the built example theme installed from its zip and activated; front-end render; `theme.json` styles in the page; every template and part opened in the real Site Editor with no invalid or missing block, read from the editor's own store. Then the pinned platform plugins and the blog example's First artifact are installed into the same site and the binding sugar is proven on a real collection row through a real SCF field. |
-| CI | A separate workflow, `.github/workflows/blocks.yml`, with jobs `blocks` (typecheck, unit tests, codegen drift) and `blocks-wp` (the Docker proof), path-filtered to `packages/blocks/**`, the workflow file, and the contract it reads (`tests/wp/harness.sh`, `tests/wp/compose.yml`, `tests/wp/{apache,php,mu-plugins}/**`, `tests/fixtures/platform.json`, `examples/blog/**`). `ci.yml` and First core's jobs are untouched; core PRs outside those paths never run them. |
+| Proof | `packages/blocks/tests/wp/run.sh`, one stack (own compose project, port 8840): a fresh WordPress from `tests/wp/harness.sh up --bare`; the built example theme installed from its zip and activated; front-end render; `theme.json` styles in the page; every template and part opened in the real Site Editor with no invalid or missing block, read from the editor's own store. Then the pinned platform plugins and the blog example's TypedPress artifact are installed into the same site and the binding sugar is proven on a real collection row through a real SCF field. |
+| CI | A separate workflow, `.github/workflows/blocks.yml`, with jobs `blocks` (typecheck, unit tests, codegen drift) and `blocks-wp` (the Docker proof), path-filtered to `packages/blocks/**`, the workflow file, and the contract it reads (`tests/wp/harness.sh`, `tests/wp/compose.yml`, `tests/wp/{apache,php,mu-plugins}/**`, `tests/fixtures/platform.json`, `examples/blog/**`). `ci.yml` and TypedPress core's jobs are untouched; core PRs outside those paths never run them. |
 
 ## 1. Why, and what changes from the earlier work
 
-First is a data/API layer plus a typed client: "bring your own frontend". On
+TypedPress is a data/API layer plus a typed client: "bring your own frontend". On
 WordPress the frontend that is already there is the block theme. Writing one
 in TSX gives real functions, imports, loops and types where today there are
 hand-edited HTML files and a 400-line `theme.json`, while the output stays a
@@ -87,7 +87,7 @@ ported almost intact. What changes:
 
 ```
 packages/blocks/
-  package.json            name @spacefast/first-blocks, "type": "module", bin first-blocks, exact @wordpress pins
+  package.json            name @typedpress/blocks, "type": "module", bin typedpress-blocks, exact @wordpress pins
   pnpm-lock.yaml
   tsconfig.json
   README.md
@@ -98,21 +98,21 @@ packages/blocks/
     diagnostics.ts        Diagnostic { code, message, hint, loc }, formatting
     blocks.generated.ts   GENERATED: Block.Core.* and attribute types
     blocks-popular.ts     hand-written components (content + theme vocabulary)
-    index.ts              `@spacefast/first-blocks`: Block, Fragment, popular components, types
+    index.ts              `@typedpress/blocks`: Block, Fragment, popular components, types
     theme/
       define.ts           defineTheme, defineTemplate, definePattern, defineStyleVariation, preset.*
       theme-json.generated.d.ts   GENERATED from the 7.1 theme.json schema
-      index.ts            `@spacefast/first-blocks/theme`
+      index.ts            `@typedpress/blocks/theme`
     compiler/
       module.ts           bundle one TSX with esbuild, execute it, return its default export
       serialize.ts        happy-dom + @wordpress/blocks: validate attrs, createBlock, serialize
       content.ts          compileContent(file) → { markup, diagnostics }
       theme.ts            buildTheme(dir, out) → files + diagnostics
       hierarchy.ts        WordPress template slugs and their patterns
-      index.ts            `@spacefast/first-blocks/compiler`
-    first/
-      index.ts            `@spacefast/first-blocks/first`: bind.*
-    cli.ts                first-blocks build | check | content
+      index.ts            `@typedpress/blocks/compiler`
+    tp/
+      index.ts            `@typedpress/blocks/tp`: bind.*
+    cli.ts                typedpress-blocks build | check | content
   scripts/
     codegen-blocks.ts     --write regenerates blocks.generated.ts; no flags = parity check
     codegen-theme-json.ts same for theme-json.generated.d.ts from schemas/theme-7.1.json
@@ -127,12 +127,12 @@ Exports:
 
 | Subpath | Audience | Contents |
 |---|---|---|
-| `@spacefast/first-blocks` | authors | `Block`, `Fragment`, popular components, node types |
-| `@spacefast/first-blocks/jsx-runtime`, `/jsx-dev-runtime` | the TSX transform | `jsx`, `jsxs`, `jsxDEV`, `Fragment` |
-| `@spacefast/first-blocks/theme` | theme authors | `defineTheme`, `defineTemplate`, `definePattern`, `defineStyleVariation`, `preset`, `TemplatePart`, `Pattern`, `QueryLoop`, … |
-| `@spacefast/first-blocks/compiler` | tools, tests | `compileContent`, `buildTheme`, `Diagnostic` |
-| `@spacefast/first-blocks/first` | First app authors | `bind` |
-| bin `first-blocks` | everyone | `build`, `check`, `content` |
+| `@typedpress/blocks` | authors | `Block`, `Fragment`, popular components, node types |
+| `@typedpress/blocks/jsx-runtime`, `/jsx-dev-runtime` | the TSX transform | `jsx`, `jsxs`, `jsxDEV`, `Fragment` |
+| `@typedpress/blocks/theme` | theme authors | `defineTheme`, `defineTemplate`, `definePattern`, `defineStyleVariation`, `preset`, `TemplatePart`, `Pattern`, `QueryLoop`, … |
+| `@typedpress/blocks/compiler` | tools, tests | `compileContent`, `buildTheme`, `Diagnostic` |
+| `@typedpress/blocks/tp` | TypedPress app authors | `bind` |
+| bin `typedpress-blocks` | everyone | `build`, `check`, `content` |
 
 Dependencies, all pinned exactly: `esbuild` (bundle + execute authored TSX),
 `happy-dom` (the DOM `@wordpress/*` expects at import time), `@wordpress/blocks`
@@ -144,12 +144,12 @@ pins and regenerating. Dev: `typescript` 5.9.3 (as CI), `@types/node`,
 `playwright` (the Site Editor proof only), `json-schema-to-typescript`.
 
 Rules the package keeps: no Rust changes; nothing in `src/`, `runtime/`,
-`types/first/`, `tests/wp/*.test.ts`, `tests/system/`; root `.gitignore` gains
+`types/typedpress/`, `tests/wp/*.test.ts`, `tests/system/`; root `.gitignore` gains
 two lines (`packages/blocks/node_modules/`, `packages/blocks/**/dist/`). No
 `cargo test` or PHP suite learns about it. Its output is its own artifact
 (a theme directory and zip, or a markup file) that is installed next to
-First's plugins and never written into them. Versioning: `package.json`
-`version` is independent of the `first` binary's; `packages/blocks/CHANGELOG.md`
+TypedPress's plugins and never written into them. Versioning: `package.json`
+`version` is independent of the `typedpress` binary's; `packages/blocks/CHANGELOG.md`
 (Keep a Changelog format) gets an entry per user-visible change, and the
 WordPress floor the pins encode (7.1) is stated in the README and bumped as
 a minor release.
@@ -169,7 +169,7 @@ this package's license.
 
 ```tsx
 // pricing.tsx
-import { Block, Buttons, Button } from "@spacefast/first-blocks";
+import { Block, Buttons, Button } from "@typedpress/blocks";
 import { plans } from "./plans";
 
 export default function Pricing() {
@@ -228,22 +228,22 @@ those classes, never columns.
 
 `compileContent(file)` bundles the file with esbuild (`format: "esm"`,
 `platform: "neutral"`, `jsx: "automatic"`, `jsxDev: true`,
-`jsxImportSource: "@spacefast/first-blocks"`, `sourcemap: "inline"`), resolving
+`jsxImportSource: "@typedpress/blocks"`, `sourcemap: "inline"`), resolving
 the JSX runtime to this package's own copy so an author's `node_modules` cannot
 change what a page compiles to, writes the bundle to a fresh temp directory,
 imports it with source maps enabled, and calls the default export once. A
 thrown error reports with the author's file and line through the source map.
 
 Execution model, stated plainly: authored modules are **trusted code run in
-the build's own Node process**, like a `vite.config.ts` or a First
-`first.config.ts` before First's evaluator existed. The neutral platform makes
+the build's own Node process**, like a `vite.config.ts` or a TypedPress
+`typedpress.config.ts` before TypedPress's evaluator existed. The neutral platform makes
 static `node:*` imports a bundle error, which catches the common accident; it
 is not a sandbox, and `fetch`, `process`, `Date.now()` and `Math.random()`
 remain reachable. Determinism is therefore a contract the author keeps, not
 one the compiler enforces: the build runs each module once, and the
 double-build test over the compiler's fixture theme (§4.7) proves the
-*compiler* adds no nondeterminism of its own. A restricted evaluator (First's Rust evaluator
-handles `first.config.ts` this way) is the obvious upgrade if untrusted themes
+*compiler* adds no nondeterminism of its own. A restricted evaluator (TypedPress's Rust evaluator
+handles `typedpress.config.ts` this way) is the obvious upgrade if untrusted themes
 ever need building; it is out of scope here.
 
 `jsxDEV(type, props, key, isStatic, source)` receives `{fileName, lineNumber,
@@ -318,15 +318,15 @@ single serializer for content, templates, parts and patterns.
 
 ### 3.5 CLI
 
-`first-blocks content <file.tsx> [--out <file.html>]` prints or writes the
+`typedpress-blocks content <file.tsx> [--out <file.html>]` prints or writes the
 markup. It is the lowest-level tool and what the theme compiler calls per
-template. Feeding markup into a First collection is possible today without any
+template. Feeding markup into a TypedPress collection is possible today without any
 seam: the typed client (or `wp post update`) writes it to the collection's
 content `richText` column, where block markup is stored as-is as the post's
-content. First's file sync is **not** the route: its `*.html` format pulls by
+content. TypedPress's file sync is **not** the route: its `*.html` format pulls by
 stripping block delimiters and refuses server-rendered blocks (phase 2 §5.2),
 so a round trip would not preserve what this package produced. A `*.tsx` sync
-format would be a First-core seam and is deferred.
+format would be a TypedPress-core seam and is deferred.
 
 ## 4. Themes: a directory of TSX → a block theme
 
@@ -348,15 +348,15 @@ my-theme/
   assets/                copied as-is (fonts, screenshot.png, images)
 ```
 
-Output (`first-blocks build my-theme --out dist`):
+Output (`typedpress-blocks build my-theme --out dist`):
 
 ```
-dist/first-starter/
+dist/typedpress-starter/
   style.css              header only: Theme Name, Theme URI, Author, Description, Version, Requires at least 7.1,
                          Requires PHP 8.2, License, Text Domain = slug, Tags
   theme.json             version 3, $schema https://schemas.wp.org/wp/7.1/theme.json
   templates/*.html  parts/*.html  patterns/*.php  styles/*.json  readme.txt  assets/**  screenshot.png
-dist/first-starter.zip
+dist/typedpress-starter.zip
 ```
 
 No `functions.php`, no PHP logic: a theme this package builds is data. The
@@ -367,11 +367,11 @@ author adds a plugin; this package will not grow a PHP lane.
 ### 4.2 `theme.config.ts` and typed tokens
 
 ```ts
-import { defineTheme, preset } from "@spacefast/first-blocks/theme";
+import { defineTheme, preset } from "@typedpress/blocks/theme";
 
 export default defineTheme({
-  name: "First Starter",
-  slug: "first-starter",
+  name: "TypedPress Starter",
+  slug: "typedpress-starter",
   version: "0.1.0",
   description: "A block theme written in TSX.",
   author: "Spacefast",
@@ -463,7 +463,7 @@ checked by the serializer like any block):
 | Component | Block | Notes |
 |---|---|---|
 | `<TemplatePart slug="header" />` | `core/template-part` | `slug` must be a file in `parts/` → else `unknown_template_part`. `tagName`, `area` from the part's declaration. |
-| `<Pattern slug="first-starter/hero" />` | `core/pattern` | slug must be a theme pattern (§4.5) or listed in `defineTheme({ externalPatterns })`. |
+| `<Pattern slug="typedpress-starter/hero" />` | `core/pattern` | slug must be a theme pattern (§4.5) or listed in `defineTheme({ externalPatterns })`. |
 | `<QueryLoop inherit>` / `<QueryLoop postType perPage orderBy order …>` | `core/query` + `core/post-template` | exactly one of `inherit` or an explicit query (`query_mode_required`). Children are the per-post template; `NoResults`, `Pagination` are siblings inside the loop. |
 | `PostTitle PostContent PostExcerpt PostDate PostFeaturedImage PostAuthorName PostTerms ReadMore` | `core/post-*`, `core/read-more` | |
 | `SiteTitle SiteTagline SiteLogo Navigation` | `core/site-*`, `core/navigation` | `Navigation` with children `NavigationLink`/`PageList`; or `ref` for a saved menu |
@@ -507,12 +507,12 @@ same preset checks (a variation may add presets of its own).
 
 ### 4.7 `build`, `check`, determinism
 
-`first-blocks build <dir> [--out <dir>] [--zip]` runs: load `theme.config.ts`
+`typedpress-blocks build <dir> [--out <dir>] [--zip]` runs: load `theme.config.ts`
 (esbuild, same executor) → derive the file manifest → compile every template,
 part, pattern and variation (one shared block registry, deterministic order)
 → validate `theme.json` → write to a staging directory → replace `<out>/<slug>`
 atomically → zip. Any diagnostic of severity error means nothing is written.
-`first-blocks check <dir>` is the same without writing. Output is byte-stable
+`typedpress-blocks check <dir>` is the same without writing. Output is byte-stable
 for the same input (the unit suite builds its fixture theme twice and
 compares; PR 4 does the same for the example theme).
 
@@ -520,14 +520,14 @@ Diagnostics print as `templates/single.tsx:22:7 unknown_attribute: core/post-dat
 has no attribute "fmt". Did you mean "format"?` and exit 1; `--json` prints
 them as `{ code, message, hint, file, line, column }` for tools.
 
-## 5. First collections (optional sugar)
+## 5. TypedPress collections (optional sugar)
 
-`@spacefast/first-blocks/first` knows one First convention and nothing else:
+`@typedpress/blocks/tp` knows one TypedPress convention and nothing else:
 
-- `bind.field("excerpt")` → `{ source: "acf/field", args: { key: "first_excerpt" } }`,
+- `bind.field("excerpt")` → `{ source: "acf/field", args: { key: "tp_excerpt" } }`,
   the Secure Custom Fields block-binding source (SCF 6.9.7 reads
-  `$source_attrs['key']` as the field name or key) for the meta key First
-  writes (`first_<column>`), usable as
+  `$source_attrs['key']` as the field name or key) for the meta key TypedPress
+  writes (`tp_<column>`), usable as
   `<Paragraph bindings={{ content: bind.field("excerpt") }}>` which lands in
   the block's `metadata.bindings`. SCF resolves it at render time against the
   post being rendered; nothing of ours runs. Only field types SCF allows in
@@ -536,27 +536,27 @@ them as `{ code, message, hint, file, line, column }` for tools.
   documented, not detected.
 
 It emits plain block markup. A theme built with it works on any site with
-SCF and a First app plugin active, and the package has no import of First.
+SCF and a TypedPress app plugin active, and the package has no import of TypedPress.
 
 **What is deliberately not offered, and why.** A `collection("posts")`
-helper that names First's post type (`first_posts`) for `<QueryLoop postType>`
-or `single-first_posts` templates was in the first draft and is withdrawn.
+helper that names TypedPress's post type (`tp_posts`) for `<QueryLoop postType>`
+or `single-tp_posts` templates was in the first draft and is withdrawn.
 WordPress 7.1's `build_query_vars_from_query_block()` honours a
-`query.postType` only when `is_post_type_viewable()` is true; First registers
+`query.postType` only when `is_post_type_viewable()` is true; TypedPress registers
 its collections `public: false`, `publicly_queryable` unset, `rewrite:
-false`, so a loop over `first_posts` silently falls back to core `post`, and
+false`, so a loop over `tp_posts` silently falls back to core `post`, and
 an unregistered type does the same. A helper whose output looks right and
 quietly shows the wrong posts is worse than none. The same registration
-means `single-first_posts` has no front-end URL to resolve to. Both become
-possible the day a First collection can opt into being publicly viewable
-(a collection option in First core, outside this design); this package would
+means `single-tp_posts` has no front-end URL to resolve to. Both become
+possible the day a TypedPress collection can opt into being publicly viewable
+(a collection option in TypedPress core, outside this design); this package would
 then add `collection()` as a one-line helper. Until then the README says:
 a binding resolves against the post WordPress is currently rendering, so it
 reads a First row's field only when that row *is* the current post (wp-admin
 previews, a plugin's own query loop with `setup_postdata`); a theme on its
-own cannot select a collection row from a core post. Other routes to First
-data from a theme are a plugin reading the First REST API, or writing
-`first-blocks content` output into a collection's content column.
+own cannot select a collection row from a core post. Other routes to TypedPress
+data from a theme are a plugin reading the TypedPress REST API, or writing
+`typedpress-blocks content` output into a collection's content column.
 
 ## 6. Diagnostics (complete list)
 
@@ -577,11 +577,11 @@ page, archive, search, 404, front-page; `parts/` header (site title +
 navigation), footer; `patterns/` hero and a call to action; `styles/dark.ts`.
 The front page uses `<QueryLoop inherit>`; the hero pattern has several
 top-level blocks so the editor's pattern expansion is exercised. A
-`single-first_posts.tsx`-style template is *not* included (§5); instead the
+`single-tp_posts.tsx`-style template is *not* included (§5); instead the
 `single.tsx` template carries one paragraph bound with
 `bind.field("excerpt")` under the post content. On a site without SCF the
 binding source is unregistered and the paragraph shows its static fallback
-text ("No summary."), a legitimate state for a theme. With SCF and a First app
+text ("No summary."), a legitimate state for a theme. With SCF and a TypedPress app
 active, and a First row as the post being rendered, it shows that row's
 `excerpt` (or nothing when the row has none, since SCF answers `""` rather
 than `null`); a core post also shows an empty paragraph once SCF is active,
@@ -594,16 +594,16 @@ self-contained; moving it later is a one-line change.
 
 ## 8. Proof on real WordPress
 
-`packages/blocks/tests/wp/run.sh` (own stack: `FIRST_WP_PROJECT=first-blocks`,
-`FIRST_WP_PORT=8840`, overridable):
+`packages/blocks/tests/wp/run.sh` (own stack: `TP_WP_PROJECT=typedpress-blocks`,
+`TP_WP_PORT=8840`, overridable):
 
-1. `pnpm build` the package, `first-blocks build examples/starter --zip`.
+1. `pnpm build` the package, `typedpress-blocks build examples/starter --zip`.
 2. `tests/wp/harness.sh up --wp-content <empty dir> --bare`: WordPress 7.1,
    users, no plugins. No change to the harness, compose file or its mounts.
 3. **Install:** copy the zip into the CLI container (`docker compose cp`) and
-   `wp theme install /tmp/first-starter.zip`; assert `wp theme list` shows it
+   `wp theme install /tmp/typedpress-starter.zip`; assert `wp theme list` shows it
    with the header's version.
-4. **Activate:** `wp theme activate first-starter`; assert `wp theme status`
+4. **Activate:** `wp theme activate typedpress-starter`; assert `wp theme status`
    and that `wp option get stylesheet` is the slug. Create a post and a page
    through `wp post create` so templates have content.
 5. **Render:** fetch `/`, `/<post>/`, `/<page>/`, `/?s=x`, a 404: HTTP 200/404
@@ -621,12 +621,12 @@ self-contained; moving it later is a one-line change.
    `--wp--preset--color--primary` with the palette value, and a block the
    template gave `backgroundColor={theme.tokens.color.primary}` renders with
    `has-primary-background-color`. `wp theme` reports the variation `Dark`
-   through `GET /wp/v2/global-styles/themes/first-starter/variations`.
+   through `GET /wp/v2/global-styles/themes/typedpress-starter/variations`.
 7. **Validate in the Site Editor:** Playwright (Chromium) logs in as admin and,
    for every template and part the REST API lists for the active theme
    (`/wp/v2/templates` and `/wp/v2/template-parts`, keeping the records whose
    `theme` is the slug; the endpoint has no theme filter parameter), opens
-   `site-editor.php?postType=<type>&postId=first-starter//<slug>&canvas=edit`,
+   `site-editor.php?postType=<type>&postId=typedpress-starter//<slug>&canvas=edit`,
    waits (Playwright `waitForFunction`, no sleeps) until the edited entity
    record for that id is loaded, `getBlocks()` is non-empty, no
    `core/pattern` block remains in the flattened tree (the editor replaces
@@ -644,17 +644,17 @@ self-contained; moving it later is a one-line change.
 8. **Binding sugar on a real app** (same stack). Before this step, with SCF
    absent, the single template's bound paragraph on a core post shows its
    static text ("No summary."), which proves the theme degrades to a plain
-   paragraph when the binding source is unregistered. Then: `first build
+   paragraph when the binding source is unregistered. Then: `typedpress build
    examples/blog --target wp`, whose artifact already contains the resolved,
    checksum-verified dependency plugins (`secure-custom-fields`,
-   `action-scheduler`, `mcp-adapter`) beside `first-runtime` and
-   `first-app-blog`; copy all of `plugins/` from the artifact into the site's
+   `action-scheduler`, `mcp-adapter`) beside `typedpress-runtime` and
+   `typedpress-app-blog`; copy all of `plugins/` from the artifact into the site's
    `plugins/` through the harness's mounted `wp-content` and
    `wp plugin activate` in dependency order exactly as
    `tests/system/wp.test.ts` does (no separate download; `--bare` does not
    fetch the platform zips); create two posts through
-   `/wp-json/first/v1/posts`, one with an `excerpt` and one without. Because
-   First's post type is not viewable on the front end (§5), the bound
+   `/wp-json/tp/v1/posts`, one with an `excerpt` and one without. Because
+   TypedPress's post type is not viewable on the front end (§5), the bound
    paragraph is checked where SCF resolves it: `wp eval` renders the single
    template's markup with `do_blocks()` inside a `WP_Query` loop for each
    post (`setup_postdata`). The test asserts the `excerpt` text appears
@@ -665,9 +665,9 @@ self-contained; moving it later is a one-line change.
    paragraph is now empty too: an absent SCF field also returns `""`, so
    the fallback text survives only while the binding source is
    unregistered. This proves `bind.field()`
-   emits a binding SCF 6.9.7 resolves from First's meta key, on the real
+   emits a binding SCF 6.9.7 resolves from TypedPress's meta key, on the real
    pinned plugins. It adds a `cargo build` to the job.
-9. Teardown unless `FIRST_WP_KEEP=1`.
+9. Teardown unless `TP_WP_KEEP=1`.
 
 Both jobs live in their own workflow, `.github/workflows/blocks.yml`, which
 triggers on `pull_request` and `push: main` with a `paths` filter:
@@ -691,15 +691,15 @@ core PR outside the listed contract paths never runs either job.
 - Platform system pages, Tailwind/`zero.css`, a Spacefast runtime. The
   package renders nothing; WordPress is the only renderer of its output.
 - HTML/blocks → TSX (decompilation), two-way editing, live collaboration.
-- Markdown (First's sync owns it), classic themes, child themes (a `parent`
+- Markdown (TypedPress's sync owns it), classic themes, child themes (a `parent`
   header field is trivial and may land when asked), `functions.php` or any
   executable PHP (the pattern header comment in §4.5 is the one exception),
   block registration, block style variations beyond `theme.json`,
   `block.json` custom blocks.
-- A watch/dev server. `first-blocks build` is fast enough to run on save from
-  any file watcher; `first dev --wp` does not learn about themes in this phase.
-- Changes to `first build`, `first.config.ts`, the harness, or `tests/wp/`.
-  Public permalinks for First collections (§5) are flagged for core.
+- A watch/dev server. `typedpress-blocks build` is fast enough to run on save from
+  any file watcher; `typedpress dev --wp` does not learn about themes in this phase.
+- Changes to `typedpress build`, `typedpress.config.ts`, the harness, or `tests/wp/`.
+  Public permalinks for TypedPress collections (§5) are flagged for core.
 
 ## 10. PR plan
 
@@ -709,11 +709,11 @@ the package's workflow (and on the existing jobs, which it must not disturb):
 | PR | Contents | Proof |
 |---|---|---|
 | 0 | this document | review |
-| 1 | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `first-blocks content`; `.gitignore` lines; CI job `blocks` (install, `tsc --noEmit`, `node --test tests/unit/*.test.ts`) | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals including a `role: "local"` attribute from the real registry, `core/html` body preserved through `innerContent`, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
+| 1 | `packages/blocks/` skeleton (package.json, pnpm lock, tsconfig, bin), JSX runtime with locations, nodes, mapper, diagnostics, module executor, serializer with name/attribute checks, `compileContent`, `typedpress-blocks content`; `.gitignore` lines; CI job `blocks` (install, `tsc --noEmit`, `node --test tests/unit/*.test.ts`) | unit: runtime, mapping table, serializer validity and preservation by reparse, attribute refusals including a `role: "local"` attribute from the real registry, `core/html` body preserved through `innerContent`, `save_failed`, located diagnostics through a real `.tsx` (file, line, column); one golden of a page with the HTML-mapped constructs as a drift guard |
 | 2 | `scripts/codegen-blocks.ts`, `blocks.generated.ts`, `blocks-popular.ts`, `Block` namespace; `schemas/theme-7.1.json`, `codegen-theme-json.ts`, `theme-json.generated.d.ts`; the `blocks` job gains both codegen check-mode steps | codegen determinism and committed-mirror parity (drift guard); a generated component builds its node; a popular builds its tree; a `tsc` negative fixture proves a mistyped attribute is a type error |
-| 3 | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `first-blocks build/check`; a fixture theme under `tests/fixtures/theme/` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; fixture double build byte-equal |
-| 4 | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `first` sugar (`bind`) used by the example | §8 on real WordPress, both halves; unit: `bind.field` emits the SCF source and key; the example builds without diagnostics and byte-equal twice |
-| 5 | `packages/blocks/README.md` (authoring guide), `docs/blocks.md` (how it fits First), a pointer section in the root README | docs render; links resolve |
+| 3 | `defineTheme`/`defineTemplate`/`definePart`/`definePattern`/`defineStyleVariation`, `preset`, tokens, hierarchy, `buildTheme`, `theme.json` schema validation, template vocabulary, `typedpress-blocks build/check`; a fixture theme under `tests/fixtures/theme/` | one behaviour per test at the compiler level: manifest derivation and merge with declarations, part/pattern reference resolution, hierarchy acceptance per derived form, preset lookup against palette and defaults, schema acceptance and the pointer on failure, `theme.json` passthrough of `patterns`, pattern header fields read back by a real header parser, a failed build leaving the previous output intact, zip entry list; every diagnostic by the fixture that triggers it; one golden of the fixture theme's output as a drift guard; fixture double build byte-equal |
+| 4 | `examples/starter`, `tests/wp/run.sh` + tests, CI job `blocks-wp`; `typedpress` sugar (`bind`) used by the example | §8 on real WordPress, both halves; unit: `bind.field` emits the SCF source and key; the example builds without diagnostics and byte-equal twice |
+| 5 | `packages/blocks/README.md` (authoring guide), `docs/blocks.md` (how it fits TypedPress), a pointer section in the root README | docs render; links resolve |
 
 Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
 
@@ -736,22 +736,22 @@ Order is fixed; 2 could be folded into 1 if the first review prefers fewer PRs.
    only. Ruling: accepted, path-filtered to the package's own workflow.
 4. **Example inside the package**, not under `examples/`, so the add-on is
    self-contained. Move later if the examples directory wants it.
-5. **`@spacefast/first-blocks`** as the npm name (free; mirrors how
-   Spacefast scoped its earlier packages). The bare `first-blocks` name is
+5. **`@typedpress/blocks`** as the npm name (free; mirrors how
+   Spacefast scoped its earlier packages). The bare `typedpress-blocks` name is
    taken on npm.
-6. **No First-core seam in this phase.** The one real gap (publicly viewable
+6. **No TypedPress-core seam in this phase.** The one real gap (publicly viewable
    collections, §5, which would unlock query loops and single templates over
-   First post types) is reported upward rather than patched here, and the
+   TypedPress post types) is reported upward rather than patched here, and the
    helper that depended on it is withdrawn rather than shipped half-working.
 7. **Trusted execution of authored TSX** (§3.3), as every JS build tool does.
-   First core evaluates `first.config.ts` in a pure Rust evaluator; this
+   TypedPress core evaluates `typedpress.config.ts` in a pure Rust evaluator; this
    package does not, because themes are the site owner's own code and the
    block library it must run is itself a large untrusted-by-that-standard
    JavaScript dependency.
-8. **The proof installs the platform plugins and the blog example's First
+8. **The proof installs the platform plugins and the blog example's TypedPress
    artifact** into the same WordPress to exercise the binding sugar (§8 step
    8). It makes the `blocks-wp` job build the Rust binary, which roughly
    doubles its runtime; the alternative, not proving `bind.field()` at all,
-   would leave the one First-specific feature untested. Ruling: accepted,
+   would leave the one TypedPress-specific feature untested. Ruling: accepted,
    path-filtered to the package's own workflow, so core PRs outside the
    listed contract paths never pay for it.

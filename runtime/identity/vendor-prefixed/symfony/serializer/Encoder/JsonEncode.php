@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotEncodableValueException;
 
 /**
  * Encodes JSON data.

@@ -5,20 +5,20 @@
 // operator marks it. Prints the outcome of each step as JSON, then cleans up.
 declare(strict_types=1);
 
-$plugin = \First\Wp\Runtime::plugin();
+$plugin = \TypedPress\Wp\Runtime::plugin();
 $db = $plugin->connection();
-$dir = sys_get_temp_dir() . '/first-resume-' . bin2hex(random_bytes(4));
+$dir = sys_get_temp_dir() . '/typedpress-resume-' . bin2hex(random_bytes(4));
 mkdir($dir);
 file_put_contents("$dir/9999_resume.sql", implode("\n--> statement-breakpoint\n", [
     "CREATE TABLE `{prefix}resume_a` (\n\t`id` BIGINT NOT NULL,\n\tPRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
     'ALTER TABLE `{prefix}resume_a` ADD COLUMN `n` INT;',
 ]));
-$migrator = new \First\Wp\Migrator($db, $dir, $plugin->schema);
+$migrator = new \TypedPress\Wp\Migrator($db, $dir, $plugin->schema);
 $attempt = static function (callable $fn): string {
     try {
         $fn();
         return 'ok';
-    } catch (\RuntimeException|\First\HttpError $e) {
+    } catch (\RuntimeException|\TypedPress\HttpError $e) {
         return $e->getMessage();
     }
 };
@@ -33,9 +33,9 @@ try {
     $out['mark'] = $attempt(fn () => $migrator->markApplied('9999_resume:1'));
     $out['resume'] = $attempt(fn () => $migrator->migrate());
     $out['columns'] = array_column($db->run("SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wp_resume_a' ORDER BY ORDINAL_POSITION"), 'c');
-    $out['ledger'] = array_column($db->run("SELECT id FROM wp_first__migrations WHERE id LIKE '9999%' ORDER BY id"), 'id');
+    $out['ledger'] = array_column($db->run("SELECT id FROM wp_tp__migrations WHERE id LIKE '9999%' ORDER BY id"), 'id');
 } finally {
-    $db->run("DELETE FROM wp_first__migrations WHERE id LIKE '9999%'");
+    $db->run("DELETE FROM wp_tp__migrations WHERE id LIKE '9999%'");
     $db->run('DROP TABLE IF EXISTS wp_resume_a');
     unlink("$dir/9999_resume.sql");
     rmdir($dir);

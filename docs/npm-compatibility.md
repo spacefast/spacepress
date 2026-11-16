@@ -1,8 +1,8 @@
 # npm compatibility
 
-First compiles selected JavaScript and TypeScript package source into PHP. It does
+TypedPress compiles selected JavaScript and TypeScript package source into PHP. It does
 not run Node.js on the server. Install dependencies with npm, then import the
-qualified helpers from an ordinary First action.
+qualified helpers from an ordinary TypedPress action.
 
 `examples/npm-compat` compares pinned published packages under Node and freshly
 compiled PHP. Each successful route runs the generated action, not just the
@@ -10,7 +10,7 @@ compiler. Its provenance file pins the original source SHA-256 and npm tarball
 integrity; verification refuses changed source bytes even when the installed
 package reports the right version.
 
-The application example at `examples/npm-compat/app/first.config.ts` builds a link
+The application example at `examples/npm-compat/app/typedpress.config.ts` builds a link
 from user input with these unchanged published libraries:
 
 | Package | Qualified entry | Use | License |
@@ -23,20 +23,20 @@ from user input with these unchanged published libraries:
 values before interpolation. It also preserves upstream's falsy-value behavior:
 zero, false and missing values interpolate as empty strings.
 
-From `examples/npm-compat`, with `first` on PATH:
+From `examples/npm-compat`, with `typedpress` on PATH:
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
-FIRST_BIN="$(command -v first)" npm run verify -- --isolated
-first build app
-first dev app --port "$PORT"
+TP_BIN="$(command -v typedpress)" npm run verify -- --isolated
+typedpress build app
+typedpress dev app --port "$PORT"
 ```
 
 Choose an unused local port and set `PORT` first. Send an anonymous request to
-the website URL printed by `first dev`:
+the website URL printed by `typedpress dev`:
 
 ```sh
-curl "$SITE_URL/__first/api/v1/actions/link" \
+curl "$SITE_URL/__tp/api/v1/actions/link" \
   -H 'Content-Type: application/json' \
   --data '{"slug":"café & tea","title":"Tea & <scones>"}'
 ```
@@ -47,7 +47,7 @@ state. The generated PHP action executes the library algorithms.
 
 To verify in a separate npm installation without changing the example's shared
 `node_modules`, set `NPM_COMPAT_NODE_MODULES` to that installation's absolute
-`node_modules` path and use `--isolated`. Set `FIRST_WP_PLUGIN_CACHE` to a private
+`node_modules` path and use `--isolated`. Set `TP_WP_PLUGIN_CACHE` to a private
 cache when running concurrent builds. Reports and generated projects live under
 the printed temporary directory; `--only url-join --only just-template --only
 application-combined` selects the new library routes and their composition.
@@ -58,10 +58,10 @@ The probes qualify selected exports and representative inputs. They do not
 certify arbitrary npm packages, every export or every overload. Published ESM
 source routes preserve the original bytes. CommonJS source routes replace only
 the export assignment; typed routes add the explicitly recorded parameter
-annotations. Temporary `@first-npm-compat/*` packages are typed adapters, not
+annotations. Temporary `@typedpress-npm-compat/*` packages are typed adapters, not
 unchanged upstream packages. Declaration files are not automatically hydrated.
 Package TypeScript sources compile through the same checked JavaScript domain
-as `.js`: First erases their types instead of modelling them, so a package's
+as `.js`: TypedPress erases their types instead of modelling them, so a package's
 generic signatures, assertion functions, `this` types and symbol-keyed types no
 longer block compilation. Authored code receives JavaScript values from them and
 refines with `typeof`/`instanceof`.

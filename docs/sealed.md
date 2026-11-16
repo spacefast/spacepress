@@ -1,6 +1,6 @@
 # Sealed mode
 
-A site that runs only First's code can say so in its config:
+A site that runs only TypedPress's code can say so in its config:
 
 ```ts
 export default defineConfig({
@@ -14,15 +14,15 @@ With `sealed: true`, the only code that runs as a plugin is:
 
 | Code | Where it comes from |
 |---|---|
-| First's own plugins: `first-runtime`, `first-identity`, First's admin `first-admin` and the First plugin `first` that takes deployments ([docs/plugin.md](plugin.md)) (both whether or not the site has them), and the app plugin `first-app-<name>` | shipped in the compiler and built from this project (`first build`) |
-| the platform plugins First pins: Secure Custom Fields, Action Scheduler, MCP Adapter, Two Factor, and Polylang when the config sets `locales` ([wp-plugins.md](wp-plugins.md)) | exact versions with checksums in First's release |
-| the plugins the config declares under `plugins` | exact versions, with checksums in the committed `first/_generated/wp-plugins.lock.json` |
+| TypedPress's own plugins: `typedpress-runtime`, `typedpress-identity`, TypedPress's admin `typedpress-admin` and the TypedPress plugin `typedpress` that takes deployments ([docs/plugin.md](plugin.md)) (both whether or not the site has them), and the app plugin `typedpress-app-<name>` | shipped in the compiler and built from this project (`typedpress build`) |
+| the platform plugins TypedPress pins: Secure Custom Fields, Action Scheduler, MCP Adapter, Two Factor, and Polylang when the config sets `locales` ([wp-plugins.md](wp-plugins.md)) | exact versions with checksums in TypedPress's release |
+| the plugins the config declares under `plugins` | exact versions, with checksums in the committed `tp/_generated/wp-plugins.lock.json` |
 | plugin packages under `use` (`definePlugin`) | compiled into the app plugin; see [below](#plugin-packages) |
 
 Two plugins are never on the list, declared or not: `vip-block-data-api` and
 `vip-decoupled-bundle`. The Block Data API answers a post's stored content
 after an item-level check only, which shows a rich text field that one of the
-app's field rules hides, and the decoupled bundle ships that API. `first build`
+app's field rules hides, and the decoupled bundle ships that API. `typedpress build`
 refuses a sealed config that declares either, the site refuses to activate
 either, and a host that enforces the list never loads either, even if a list
 written some other way names them.
@@ -31,11 +31,11 @@ Sealed mode is off by default. With it off, activating other plugins stays
 open, as WordPress ships it, and nothing below applies: no hook is added and no
 build output changes.
 
-`first build` computes the list once, by plugin directory name, and writes the
+`typedpress build` computes the list once, by plugin directory name, and writes the
 same list everywhere it is read: `sealed.plugins` in the app's `schema.php` (what
-the running app uses), and `sealed` in `first-manifest.json`, in the hosted
+the running app uses), and `sealed` in `typedpress-manifest.json`, in the hosted
 manifest and in the build store's manifest (what a host uses). A hosted build
-can't declare WordPress plugins at all, so its list is First's and the
+can't declare WordPress plugins at all, so its list is TypedPress's and the
 platform's.
 
 On the site, a plugin counts as listed when it is the main file of a listed
@@ -53,66 +53,66 @@ WordPress 7.1 loads a request in this order (`wp-settings.php`):
    multisite `blog-*.php` pages) load only when their case arises;
 2. must-use plugins (`wp-content/mu-plugins/*.php`);
 3. network-active plugins, on multisite;
-4. active plugins, in the order of the `active_plugins` option: First's app
+4. active plugins, in the order of the `active_plugins` option: TypedPress's app
    plugin is one of them;
 5. the active theme's `functions.php`, then the rest of WordPress.
 
 An ordinary plugin can't stop another plugin that WordPress has already loaded
 in the same request, and the start-up drop-ins and every must-use plugin load
-before any plugin. So what sealed mode guarantees depends on who loads First.
+before any plugin. So what sealed mode guarantees depends on who loads TypedPress.
 
 ### On a plain WordPress host: refusals and a report
 
-First is an active plugin there. While it is active, sealed mode:
+TypedPress is an active plugin there. While it is active, sealed mode:
 
 - **refuses to activate** anything not on the list, for every user,
   administrators included: wp-admin's Plugins screen (one, bulk and network
   activation), core's REST plugins route (in every request form: `?rest_route=`,
   letter case, `_method`; `/batch/v1` doesn't take that route), and WP-CLI's
   `wp plugin activate`. All of them go through WordPress's `activate_plugin()`,
-  which asks First before it loads the plugin. In wp-admin the Activate link is
-  replaced by "Sealed: not in first.config.ts". WP-CLI prints First's refusal,
-  which names `first.config.ts`; REST answers core's own 403
+  which asks TypedPress before it loads the plugin. In wp-admin the Activate link is
+  replaced by "Sealed: not in typedpress.config.ts". WP-CLI prints TypedPress's refusal,
+  which names `typedpress.config.ts`; REST answers core's own 403
   (`rest_cannot_activate_plugin`).
 - **refuses to deactivate, from wp-admin and REST, the plugins the app runs on**:
-  First's own and the platform's. With the app stopped nothing would refuse
+  TypedPress's own and the platform's. With the app stopped nothing would refuse
   anything, so this is what keeps an administrator from switching the list off
   in the browser. Declared plugins can be deactivated and reactivated freely.
 - **reports** what is loaded, to administrators:
   - `plugins` and `networkPlugins`: active plugins that aren't on the list
     (one of the two never-listed plugins included). A plugin that was active
-    before sealed mode turned on appears here and keeps running; First never
+    before sealed mode turned on appears here and keeps running; TypedPress never
     deactivates or deletes anything.
   - `muPlugins`, `dropins`, `theme`: every must-use plugin, every drop-in
     present, and the active theme's PHP (see below). No config can list these,
     and a host's own are among them, so they are shown, not judged.
-  - where: `GET /__first/api/v1` under `runtime.wp.sealed` (`{enforced}` only for
-    anyone who isn't an administrator); `first doctor --site <url>`, whose
+  - where: `GET /__tp/api/v1` under `runtime.wp.sealed` (`{enforced}` only for
+    anyone who isn't an administrator); `typedpress doctor --site <url>`, whose
     `sealed` check fails when an unlisted plugin is active and which lists the
-    rest for information (sign in with `FIRST_APP_PASSWORD` or `FIRST_TOKEN`);
+    rest for information (sign in with `TP_APP_PASSWORD` or `TP_TOKEN`);
     and a wp-admin notice naming the unlisted active plugins.
 
 This is not a guarantee that only listed code runs, and it holds only against
 people working through WordPress. Someone with a shell is outside it:
-`wp --skip-plugins` loads no plugin (First included) and can activate or
+`wp --skip-plugins` loads no plugin (TypedPress included) and can activate or
 deactivate anything, as can writing the `active_plugins` option or the plugin
 files directly. An unlisted plugin activated that way is reported on the next
 request. A must-use plugin or drop-in placed on the server always loads.
 
-### Where the host mounts First through the build store: enforced
+### Where the host mounts TypedPress through the build store: enforced
 
-A host that mounts First with the build store loader
+A host that mounts TypedPress with the build store loader
 ([decision](decisions/2026-11-07-build-store.md)) runs its own code before
 WordPress reads its plugin list, so it can enforce the list. In a must-use
 plugin of the host's (or its `sunrise.php`), where `add_filter()` exists:
 
 ```php
-require_once "$root/runtime/$revision/first-loader.php";
-use First\Loader\Loader;
+require_once "$root/runtime/$revision/typedpress-loader.php";
+use TypedPress\Loader\Loader;
 
 $sealed = Loader::sealed($root, $build);   // null when the build isn't sealed
 if ($sealed !== null) {
-    define('FIRST_SEALED_ENFORCED', true);
+    define('TP_SEALED_ENFORCED', true);
     $filter = static fn ($active) => Loader::allowedPlugins((array) $active, $sealed);
     add_filter('option_active_plugins', $filter, PHP_INT_MAX);
     // WordPress writes the option back from what it read: keep the hidden entries stored.
@@ -129,19 +129,19 @@ Loader::load($root, $build, $options);
 
 With that, an unlisted plugin that is active in the option doesn't load, and it
 stays in the stored option: sealing a site hides it, and unsealing brings it
-back. With `FIRST_SEALED_ENFORCED` defined, the report says `enforced: "host"`.
+back. With `TP_SEALED_ENFORCED` defined, the report says `enforced: "host"`.
 The report trusts that constant; it doesn't check the host's filter.
 
 On multisite the same applies to the network's `active_sitewide_plugins` (its
 keys are the plugin files). That option is shared by every site of the network,
 so a host filters it per request with `site_option_active_sitewide_plugins` and
 must not let a write from a sealed site's request drop other sites' entries.
-First has no test on multisite; treat that part as the host's to verify.
+TypedPress has no test on multisite; treat that part as the host's to verify.
 
 The host also controls its own must-use plugins and drop-ins, so it ships only
 what it needs there. The [host contract](host-contract.md) states the list and
-these calls. First writes nothing to `wp-config.php` or the must-use plugins
-directory itself, and nothing changes for sites that don't serve a First app.
+these calls. TypedPress writes nothing to `wp-config.php` or the must-use plugins
+directory itself, and nothing changes for sites that don't serve a TypedPress app.
 
 ### Theme PHP
 
@@ -151,22 +151,22 @@ block theme renders from templates, but WordPress still includes its
 directory to register that pattern. The report names the active theme's
 `functions.php` and the number of PHP pattern files, so the owner sees that
 theme code runs. A classic theme's template files are PHP too and aren't
-counted. First's own minimal block theme ships no PHP and is never reported.
+counted. TypedPress's own minimal block theme ships no PHP and is never reported.
 
 ## Plugin packages
 
 Plugin packages (`use: [seo()]`) aren't WordPress plugins: the compiler turns
 them into PHP inside the app plugin.
 
-The compiler is their security boundary. First compiles a closed subset of
+The compiler is their security boundary. TypedPress compiles a closed subset of
 TypeScript and refuses everything else, so a plugin's compiled code can only
-call the First APIs it names: there is no `eval`, no dynamic `require`, no file
+call the TypedPress APIs it names: there is no `eval`, no dynamic `require`, no file
 or process access, and no reaching into PHP or WordPress except through the
 `php/wordpress` functions the compiler records. The compiler records every
 capability a plugin's code uses, including through its helpers and the npm
 packages it imports: reads, writes and deletes per kind, hooks, actions,
 outgoing hosts, environment variables, mail, jobs, timers, abilities, WordPress
-hooks and PHP functions. `first/_generated/plugins.lock.json` is the grant. With
+hooks and PHP functions. `tp/_generated/plugins.lock.json` is the grant. With
 `--frozen`, or when `CI` is set, a build whose plugin needs a capability the
 lock doesn't hold fails; narrowing the lock by hand makes the compiler refuse
 the code that exceeds it. A plugin can't import app modules or another plugin's
@@ -180,14 +180,14 @@ The limits:
   request's writes, as an app hook's does.
 - **A grant is as wide as it reads.** A granted read plus a granted outgoing
   host can carry what was read to that host, or by mail with a mail grant.
-  `first check --json` reports the handlers that both read and send. That report
+  `typedpress check --json` reports the handlers that both read and send. That report
   works by handler; a hook that forwards the row it was handed isn't counted as
   a read. An `http` grant of `*` is any public host.
 - **Granted PHP functions and abilities do what they do, within the guard.** A
   grant such as `php: wordpress:update_option` allows that function with any
   argument the guard below allows, and a granted ability runs another plugin's
   PHP. Read those lines of the lock as you would read the code.
-- **A local build can widen the lock.** Without `--frozen` or `CI`, `first
+- **A local build can widen the lock.** Without `--frozen` or `CI`, `typedpress
   build` adds a newly needed capability to the lock and prints the change;
   committing the lock is the approval. Build in CI (or with `--frozen`) so
   nothing is granted without a reviewed commit.
@@ -200,7 +200,7 @@ some of WordPress's settings would let that code past everything above: writing
 going through `activate_plugin()`, and `users_can_register` with `default_role`
 set to `administrator` makes every signup an administrator. So, sealed or not,
 `get_option`, `update_option` and `delete_option` refuse the options listed in
-[`runtime/First/Wp/guard.json`](../runtime/First/Wp/guard.json), each with the
+[`runtime/TypedPress/Wp/guard.json`](../runtime/TypedPress/Wp/guard.json), each with the
 reason it is there:
 
 - options that load code or pick what loads: `active_plugins`,
@@ -218,7 +218,7 @@ reason it is there:
 - options that route the site: `rewrite_rules`, `permalink_structure`,
   `show_on_front`, `page_on_front`, `page_for_posts`, `blog_public`,
   `fresh_site`;
-- First's own `first_*` options;
+- TypedPress's own `tp_*` options;
 - options that hold secrets, which can't be read either: the salts and keys
   (`auth_key`, `secret_key`, ... `*_salt`), `recovery_keys`, `mailserver_pass`,
   and any name containing `secret`, `token`, `private`, `password`, `passwd`,
@@ -231,7 +231,7 @@ build with `F4301`; a name built at runtime is refused with `403
 protected_option` before WordPress sees the call. `wp_insert_post`, which
 WordPress runs without a capability check, takes `post`, `page` or another
 plugin's public post type only, so a published `customize_changeset` can't apply
-settings and a First kind's post type can't skip its access rules. It takes only
+settings and a TypedPress kind's post type can't skip its access rules. It takes only
 the fields its type declares (`post_title`, `post_content`, ...): `ID`,
 `import_id`, `meta_input`, `tax_input` and the rest are refused with `403
 protected_post_field`, whatever the value's type said at build time, so it can't
@@ -242,12 +242,12 @@ changes roles, users, capabilities, user or post metadata, cron, or site
 options (`add_option`, `update_site_option`, ...); `guard.json` lists them under
 `neverAdmitted`, and a test fails if one is added to the catalog. An
 [`existingTable`](config-api.md#tables-first-didnt-create) can't bind
-WordPress's, First's or Action Scheduler's tables or another site's.
+WordPress's, TypedPress's or Action Scheduler's tables or another site's.
 
 ## What else stays open
 
 Sealed mode is about which code runs as a plugin. Content, media, users,
 settings and each plugin's own settings stay as they are. Installing, updating
-and deleting plugins from wp-admin are already refused on every First site
+and deleting plugins from wp-admin are already refused on every TypedPress site
 (the `pluginAndThemeInstalls` switch); translations still install, and a
 translation file is PHP that WordPress includes.

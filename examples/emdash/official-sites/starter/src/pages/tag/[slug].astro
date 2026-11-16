@@ -60,7 +60,7 @@ if (Astro.cache?.enabled) {
 		)
 	}
 	<nav aria-label="Pagination">
-		{cursor && <a href={`/tag/${term.slug}`}>First page</a>}
+		{cursor && <a href={`/tag/${term.slug}`}>TypedPress page</a>}
 		{
 			nextCursor && (
 				<a href={`/tag/${term.slug}?cursor=${encodeURIComponent(nextCursor)}`}>

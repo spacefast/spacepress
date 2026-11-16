@@ -13,7 +13,7 @@ references work in both collections and SQL tables, with the same access rules.
 The logical file resource and physical provider bucket are different concepts.
 
 ```ts
-import { defineConfig, env } from "first";
+import { defineConfig, env } from "typedpress";
 
 export default defineConfig({
   name: "catalog",
@@ -41,14 +41,14 @@ in each replica's process environment or WordPress configuration constants.
 Their values never enter generated clients, schema descriptions or provider
 error messages. All replicas must share the database and provider configuration.
 
-The transport uses MIT-licensed AsyncAWS S3 3.5.0, scoped as `First\Vendor` and
+The transport uses MIT-licensed AsyncAWS S3 3.5.0, scoped as `TypedPress\Vendor` and
 pinned with its dependencies in the runtime Composer lock. `scripts/vendor.sh runtime` reproduces the committed bundle and licenses. No signer is implemented
-in First. S3 reads/uploads stream with bounded memory and finite HTTP deadlines;
+in TypedPress. S3 reads/uploads stream with bounded memory and finite HTTP deadlines;
 image processing still needs PHP's normal memory and temporary disk budget.
 
 ## Installation, activation and readiness
 
-The provider adapter ships inside `first-runtime`; no offload plugin, Composer run
+The provider adapter ships inside `typedpress-runtime`; no offload plugin, Composer run
 or credentials are needed at build time. As with [plugin dependencies](/docs/reference/wordpress-plugins),
 installing the generated artifact does not activate it. Deploy and activate the
 manifest's dependencies, runtime and app in dependency order. Runtime registration
@@ -59,7 +59,7 @@ Do not run competing upload-directory or attachment-offload integrations togethe
 
 Activation is not provider readiness. The deployment owner still provisions the
 bucket and least-privilege grant, injects environment values on every replica,
-and runs Action Scheduler reliably. First does not create cloud accounts, buckets,
+and runs Action Scheduler reliably. TypedPress does not create cloud accounts, buckets,
 IAM policies or migrate existing disk uploads. Before routing traffic, upload and
 read a private file and image, generate a size on another replica, then delete
 them. A successful build, plugin activation or schema response alone proves none
@@ -77,7 +77,7 @@ The reviewed alternatives are existing PHP implementations; no JavaScript S3 or
 WordPress offload implementation is translated or copied. The adapter calls
 AsyncAWS's `S3Client::putObject`, `getObject`, `deleteObject` and `listObjectsV2`;
 the SDK owns signing, HTTP and XML. It leaves file identity, grants, transactions
-and durable cleanup with First's existing database owners. The exact SDK source is
+and durable cleanup with TypedPress's existing database owners. The exact SDK source is
 [`43b1f00d16f2c5c05b37337ccdc2aa1b1a24a18a`](https://github.com/async-aws/s3/tree/43b1f00d16f2c5c05b37337ccdc2aa1b1a24a18a),
 version 3.5.0 (MIT); Composer locks its transitives and scoped vendoring retains
 licenses. See dependency reproduction.
@@ -92,16 +92,16 @@ Two maintained WordPress alternatives were inspected at fixed releases:
   `Plugin::add_s3_signed_params_to_attachment_url` issues expiring provider URLs
   (six hours by default), while `delete_attachment_files` and
   `Stream_Wrapper::unlink` delete objects during core's deletion hook. Stream
-  flush writes to the pathname's object key. First would need to replace those
+  flush writes to the pathname's object key. TypedPress would need to replace those
   URL, mutation and deletion lifecycles to preserve stable editor URLs, immutable
   rollback and after-commit deletion. Its attachment hooks also do not represent
-  First's private file rows or their owner grants.
+  TypedPress's private file rows or their owner grants.
 - [WP Offload Media Lite 3.4.4](https://plugins.svn.wordpress.org/amazon-s3-and-cloudfront/tags/3.4.4/)
   (GPLv2) has attachment upload/download/remove handlers, supports local-file
   removal, and can mark each variant private through
   `as3cf_upload_object_key_as_private`. `AS3CF_SETTINGS` can supply runtime
   settings; `as3cf_aws_s3_client_args` can customize the SDK. Its item/offloaded-file
-  tables own provider manifests separately from First. In
+  tables own provider manifests separately from TypedPress. In
   `classes/integrations/media-library.php`, `delete_attachment` invokes the
   remove-provider handler and deletes the item immediately. Adapting it requires
   an additional item source for private file rows and coordination of both
@@ -109,7 +109,7 @@ Two maintained WordPress alternatives were inspected at fixed releases:
   SHA-256 is `8f7dd3b3929e51542f2148f2350eed400a0d8daa30d575d37db86da7f8296930`.
 
 Both are useful attachment-offload products. Neither is adopted as a second
-owner of First's upload state in this unit. The smaller SDK transport is the chosen
+owner of TypedPress's upload state in this unit. The smaller SDK transport is the chosen
 reuse boundary. These are source/API assessments, not claims that the alternative
 plugins passed this project's replica acceptance test. No plugin settings or
 existing provider media are overwritten to make the chosen adapter work.
@@ -118,11 +118,11 @@ existing provider media are overwritten to make the chosen adapter work.
 
 Private files retain their existing MIME/size limits, uploader ownership and
 five-minute signed API grants. S3 objects have opaque keys under a random site
-namespace and hashed app identity. File rows remain in `first__files`; attachment
+namespace and hashed app identity. File rows remain in `tp__files`; attachment
 manifests remain in WordPress postmeta. Metadata never depends on a replica's disk.
 
 Media remains publicly readable, matching the existing media API. Its originals,
-WordPress intermediate sizes, First focal crops, scaled originals and image-edit
+WordPress intermediate sizes, TypedPress focal crops, scaled originals and image-edit
 backups live in the same backend. Stable API URLs serve those bytes through PHP,
 with safe MIME/disposition headers. They can be saved in Gutenberg content without
 expiring. They are not public S3 URLs. WordPress responsive-image URLs use the same
@@ -135,7 +135,7 @@ successful return. Image editing hydrates originals and supporting variants into
 that scratch directory. Shutdown removes it, so successful work needs no persistent
 uploads volume and another replica can continue immediately.
 
-This covers First uploads and WordPress attachment uploads through the standard
+This covers TypedPress uploads and WordPress attachment uploads through the standard
 core/editor/REST APIs, image generation and image edit/restore. A plugin that writes
 directly to disk, bypasses attachment hooks, stores a filesystem pathname as its
 own durable record, or replaces upload/image hooks must integrate explicitly.
@@ -147,7 +147,7 @@ they own separate rewrite/offload contracts.
 ## Failures and recovery
 
 S3 configuration never falls back to durable local bytes. A failed upload returns
-an error. First's request transaction rolls back metadata, and new objects have
+an error. TypedPress's request transaction rolls back metadata, and new objects have
 rollback compensation. Replacements use immutable object keys, so rollback keeps
 the previous committed version. Deletions revoke database-backed download URLs at
 commit and try provider deletion afterwards. Failed deletes do not resurrect rows.
@@ -166,7 +166,7 @@ worker/cron in production. Give each app's requests a deadline below the 24-hour
 cleanup grace. Keep the namespace option with database backups. For versioned S3
 buckets, provider lifecycle rules must expire noncurrent versions/delete markers.
 
-Core WordPress writes outside First's API retain core's own metadata/error lifecycle;
+Core WordPress writes outside TypedPress's API retain core's own metadata/error lifecycle;
 they are not silently wrapped in a new transaction model. Partially completed core
 attachment operations can require ordinary WordPress metadata repair. The object
 reconciler removes bytes only after their database references disappear.

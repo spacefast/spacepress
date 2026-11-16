@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
 
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
-use First\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
-use First\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
-use First\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
+use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\MappingException;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadata;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 use Symfony\Component\Yaml\Parser;
 use Symfony\Component\Yaml\Yaml;
 

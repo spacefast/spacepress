@@ -1,1 +1,1 @@
-<?php return array('name' => 'global-edit', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/schema'), 'version' => '87628038f3573c2be5e1');
+<?php return array('name' => 'global-edit', 'dependencies' => array(), 'moduleDependencies' => array('@typedpress-admin/schema'), 'version' => 'ab5f7bc3f6d21ebd4df0');

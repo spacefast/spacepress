@@ -1,5 +1,5 @@
 // spec.md §6: the site's users aren't listed to the public. Every route WordPress ships that lets a
-// visitor enumerate users (by login, id or email) is closed while a First app is active, for every
+// visitor enumerate users (by login, id or email) is closed while a TypedPress app is active, for every
 // request form; signed-in users and credentials keep core's answers; `publicAuthors: true` opens them.
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -70,7 +70,7 @@ test("anonymous: a post's oEmbed and its REST author embed reveal no login", asy
   const author = posts[0]._embedded?.author?.[0];
   assert.ok(author === undefined || author.code === "rest_user_cannot_view", JSON.stringify(author));
   // The facade's built-in users kind agrees with core's route.
-  const facade = await get("/__first/api/v1/users");
+  const facade = await get("/__tp/api/v1/users");
   assert.equal(facade.status, 401);
 });
 
@@ -87,7 +87,7 @@ test("a guest session is a visitor: core's users routes stay closed to it", asyn
     // 403, not 401: the guest is authenticated, and still isn't allowed.
     if (path.includes("/users")) assert.equal(res.status, 403, path);
   }
-  // The guest still reads its own record, through First's API and on core's own route.
+  // The guest still reads its own record, through TypedPress's API and on core's own route.
   const me = await (await fetch(`${api}/me`, { headers: bearer })).json();
   assert.equal(me.data.id, guest.user.id);
   const own = await fetch(`${core}/users/me`, { headers: bearer });
@@ -145,19 +145,19 @@ test("signed in: core's own answers stay (the block editor lists authors)", asyn
 });
 
 test("a scoped agent credential without personal data sees no account details", async () => {
-  const out = JSON.parse(wp("first", "identity", "agent", "add", "admin", `--name=authors-${Date.now()}`)).data;
+  const out = JSON.parse(wp("typedpress", "identity", "agent", "add", "admin", `--name=authors-${Date.now()}`)).data;
   const header = { Authorization: "Basic " + btoa(`admin:${out.password}`) };
   const user = await (await fetch(`${core}/users/${admin}?context=edit`, { headers: header })).json();
   assert.deepEqual([user.email, user.username], [undefined, undefined]);
-  wp("first", "identity", "agent", "revoke", "admin", out.id);
+  wp("typedpress", "identity", "agent", "revoke", "admin", out.id);
 });
 
 test("publicAuthors: true keeps them as WordPress ships them", async () => {
-  const schema = wp("eval", "echo First\\Wp\\Runtime::plugin()->dir . '/first/app/schema.php';");
+  const schema = wp("eval", "echo TypedPress\\Wp\\Runtime::plugin()->dir . '/tp/app/schema.php';");
   const original = wp("eval", `echo base64_encode(file_get_contents('${schema}'));`);
   wp("eval", `file_put_contents('${schema}', str_replace(["    'admin' => false,\\n", "    'admin' => true,\\n"], ["    'admin' => false,\\n    'publicAuthors' => true,\\n", "    'admin' => true,\\n    'publicAuthors' => true,\\n"], file_get_contents('${schema}')));`);
   try {
-    assert.equal((await fetch(`${harness.url}/__first/api/v1`, { headers: auth("admin") }).then((r) => r.json())).data.runtime.wp.publicAuthors, true);
+    assert.equal((await fetch(`${harness.url}/__tp/api/v1`, { headers: auth("admin") }).then((r) => r.json())).data.runtime.wp.publicAuthors, true);
     assert.equal((await get("/wp-json/wp/v2/users")).status, 200);
     assert.equal((await get(`/author/${login}/`)).status, 200);
     assert.equal((await get(`/?author=${admin}`)).status, 301);

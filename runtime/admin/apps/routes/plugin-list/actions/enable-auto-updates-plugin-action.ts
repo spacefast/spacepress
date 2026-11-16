@@ -1,7 +1,7 @@
 import type { Plugin } from '@wordpress/core-data';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { backup } from '@wordpress/icons';
-import type { Action } from '@first-admin/dataviews';
+import type { Action } from '@typedpress-admin/dataviews';
 import usePluginService from '../hooks/use-plugin-service';
 import { bulkAction } from './helpers/bulk-runner';
 
@@ -15,7 +15,7 @@ export const useEnableAutoUpdatesPluginAction = (): Action< Plugin > => {
 
 	return {
 		id: 'enable-auto-updates-plugin',
-		label: __( 'Enable auto-updates', 'first-admin' ),
+		label: __( 'Enable auto-updates', 'typedpress-admin' ),
 		isPrimary: false,
 		icon: backup,
 		callback: async ( plugins: Plugin[] ) => {
@@ -37,7 +37,7 @@ export const useEnableAutoUpdatesPluginAction = (): Action< Plugin > => {
 									'Enabled auto-updates on %d plugin.',
 									'Enabled auto-updates on %d plugins.',
 									fulfilled,
-									'first-admin'
+									'typedpress-admin'
 								),
 								fulfilled
 							);
@@ -53,7 +53,7 @@ export const useEnableAutoUpdatesPluginAction = (): Action< Plugin > => {
 									'%d plugin failed to enable auto-updates.',
 									'%d plugins failed to enable auto-updates.',
 									rejected,
-									'first-admin'
+									'typedpress-admin'
 								),
 								rejected
 							);

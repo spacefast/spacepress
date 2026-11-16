@@ -6,11 +6,11 @@ declare(strict_types=1);
  * `auth: true` collections on WordPress (§6.2), in-process (tests/php/wp.php): members are WordPress
  * users, the row is the user plus usermeta, hidden columns (passwordHash, suspendedAt, guest) never
  * leave the runtime, "self" rules, role is admin-only, passwords are WordPress's. Sign-in, tokens,
- * guests and suspension belong to first-identity and are proven in tests/wp/auth.test.ts and
+ * guests and suspension belong to typedpress-identity and are proven in tests/wp/auth.test.ts and
  * tests/identity; here the viewer is the WordPress user, as a cookie or application password gives it.
  */
 
-use First\Viewer;
+use TypedPress\Viewer;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -44,7 +44,7 @@ $leaks = static function (mixed $data) use ($hidden): bool {
 // ================================================================ members are WordPress users
 
 // Members read "self", so a public create would answer whether an email is taken (#72): sign-up is
-// first-identity's; here the trusted pipeline creates members.
+// typedpress-identity's; here the trusted pipeline creates members.
 $ana = ['data' => $db->insert('members', ['email' => 'ana@example.test', 'name' => 'Ana', 'password' => 'correct horse battery'], true)[0]];
 check('trusted creation hashes a write-only password and strips hidden columns', $ana['data']['role'] === 'subscriber' && !$leaks($ana) && !array_key_exists('password', $ana['data']), $ana);
 $anaId = (int) $ana['data']['id'];
@@ -52,7 +52,7 @@ $user = get_userdata($anaId);
 check('the row is a WordPress user: id, email, display name, role', $user instanceof WP_User && $user->user_email === 'ana@example.test' && $user->display_name === 'Ana' && in_array('subscriber', $user->roles, true), $user?->to_array());
 check('the password is stored as a WordPress hash that checks out', str_starts_with($user->user_pass, '$') && wp_check_password('correct horse battery', $user->user_pass, $anaId) && !wp_check_password('wrong', $user->user_pass, $anaId));
 eq('WordPress authenticates the member with it', wp_authenticate('ana@example.test', 'correct horse battery')->ID ?? null, $anaId);
-eq('member columns live in usermeta with the collection\'s defaults', get_user_meta($anaId, 'first_plan', true), 'free');
+eq('member columns live in usermeta with the collection\'s defaults', get_user_meta($anaId, 'tp_plan', true), 'free');
 problem('a short password is refused', fn () => $db->insert('members', ['email' => 'x@example.test', 'name' => 'X', 'password' => 'short'], true, new Viewer(null)), 422, 'invalid_input', '/password');
 problem('a password with NUL is refused before hashing', fn () => $db->insert('members', ['email' => 'nul@example.test', 'name' => 'N', 'password' => "long password\0with nul"], true, new Viewer(null)), 422, 'invalid_input', '/password');
 problem('a taken email is a unique violation', fn () => $db->insert('members', ['email' => 'ana@example.test', 'name' => 'Ana 2', 'password' => 'another long one']), 409, 'unique_violation', '/email');
@@ -88,9 +88,9 @@ foreach (['bo@example.test', 'free@example.test'] as $email) {
     eq('an editor, who lists no users, is refused for a taken and a free email alike', [$status, $refused['pointer'] ?? null, $refused['detail'] ?? null], [403, '/email', "You can't set email"]);
 }
 // A scoped application password of the administrator: it creates no user and changes none of its
-// own sign-in fields, through First's abilities as through core's users route.
+// own sign-in fields, through TypedPress's abilities as through core's users route.
 [$scopedPassword, $scopedItem] = \WP_Application_Passwords::create_new_application_password($wp->userId('admin'), ['name' => 'scoped agent']);
-\First\Wp\AgentScope::store($wp->userId('admin'), $scopedItem['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+\TypedPress\Wp\AgentScope::store($wp->userId('admin'), $scopedItem['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
 $ability = static function (string $name, array $input, string $credential) use ($wp): array {
     $ch = curl_init($wp->url() . "/wp-json/wp-abilities/v1/abilities/club/$name/run");
     curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => 'POST', CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60,
@@ -104,13 +104,13 @@ $adminHash = get_userdata($wp->userId('admin'))->user_pass;
 foreach ([['email' => 'ana@example.test'], ['email' => 'by-scope@example.test'], ['email' => 'by-scope-admin@example.test', 'role' => 'admin']] as $more) {
     [$status, $refused] = $ability('members-create', $more + ['name' => 'Scoped', 'password' => 'another long one'], $scoped);
     // The email is refused first, for a taken and a free value alike: the exception is not for a scope.
-    eq('a scoped credential creates no user through an ability', [$status, $refused['code'] ?? null, $refused['data']['pointer'] ?? null], [403, 'first_forbidden', '/email']);
+    eq('a scoped credential creates no user through an ability', [$status, $refused['code'] ?? null, $refused['data']['pointer'] ?? null], [403, 'tp_forbidden', '/email']);
 }
 [$status, $refused] = $ability('members-update', ['id' => $wp->userId('admin'), 'patch' => ['email' => 'moved@example.test']], $scoped);
-eq('nor changes its own email', [$status, $refused['code'] ?? null, $refused['data']['pointer'] ?? null], [403, 'first_forbidden', '/email']);
+eq('nor changes its own email', [$status, $refused['code'] ?? null, $refused['data']['pointer'] ?? null], [403, 'tp_forbidden', '/email']);
 foreach ([['password' => 'a brand new password'], ['role' => 'editor']] as $field) {
     [$status, $refused] = $ability('members-update', ['id' => $wp->userId('admin'), 'patch' => $field], $scoped);
-    eq('nor its ' . key($field), [$status, $refused['code'] ?? null], [403, 'first_scope']);
+    eq('nor its ' . key($field), [$status, $refused['code'] ?? null], [403, 'tp_scope']);
 }
 eq('it still edits the rest of its profile', $ability('members-update', ['id' => $wp->userId('admin'), 'patch' => ['name' => 'Renamed by scope']], $scoped)[0], 200);
 wp_cache_flush();
@@ -156,7 +156,7 @@ check('/_schema never names hidden columns', !str_contains($describe, 'passwordH
 eq('role is admin-only: a member can\'t promote themself', $call('PATCH', "/members/$anaId", ['role' => 'admin'], $anaId)[0], 403);
 problem('… and even an admin can\'t clear it: role is never null', fn () => $db->update('members', ['role' => null], ['id' => $wp->userId('admin')], false, new Viewer($wp->user('admin'))), 422, 'invalid_input', '/role');
 $promoted = $db->update('members', ['role' => 'editor'], ['id' => $boId], true)[0];
-eq('a role change is the WordPress role, and the one First authenticates with', [$promoted['role'], (new WP_User($boId))->roles, \First\Wp\WpAuth::map(new WP_User($boId))['role']], ['editor', ['editor'], 'editor']);
+eq('a role change is the WordPress role, and the one TypedPress authenticates with', [$promoted['role'], (new WP_User($boId))->roles, \TypedPress\Wp\WpAuth::map(new WP_User($boId))['role']], ['editor', ['editor'], 'editor']);
 (new WP_User($boId))->set_role('administrator');
 eq('a role given by WordPress is the member\'s role', [$db->findFirst('members', ['where' => ['id' => $boId]])['role'], $call('GET', '/me', null, $boId)[1]['data']['member']['role'] ?? null], ['admin', 'admin']);
 [$s, $renamed] = $call('PATCH', "/members/$anaId", ['name' => 'Ana B', 'password' => 'a brand new password'], $anaId);
@@ -169,12 +169,12 @@ eq('the display name followed', get_userdata($anaId)->display_name, 'Ana B');
 try {
     $db->transaction(static function () use ($db, $anaId): void {
         $db->update('members', ['plan' => 'pro'], ['id' => $anaId]);
-        get_user_meta($anaId, 'first_plan', true); // a hook reads the new value
+        get_user_meta($anaId, 'tp_plan', true); // a hook reads the new value
         throw new RuntimeException('rollback');
     });
 } catch (RuntimeException) {
 }
-eq('a rolled-back member update leaves no usermeta in WordPress\'s cache', [get_user_meta($anaId, 'first_plan', true), $db->findFirst('members', ['where' => ['id' => $anaId]])['plan']], ['free', 'free']);
+eq('a rolled-back member update leaves no usermeta in WordPress\'s cache', [get_user_meta($anaId, 'tp_plan', true), $db->findFirst('members', ['where' => ['id' => $anaId]])['plan']], ['free', 'free']);
 $gone = $db->insert('members', ['email' => 'gone@example.test', 'name' => 'Gone', 'password' => 'gone password 1'], true)[0];
 $db->delete('members', ['id' => $gone['id']]);
 eq('deleting a member deletes the WordPress user', [get_userdata((int) $gone['id']), $db->findFirst('members', ['where' => ['id' => $gone['id']]])], [false, null]);
@@ -182,7 +182,7 @@ eq('deleting a member deletes the WordPress user', [get_userdata((int) $gone['id
 // ================================================================ search over members
 
 $prefix = $wp->connection()->prefix();
-$entries = static fn (int $id): array => array_column($wp->sql("SELECT `field`, `body` FROM `{$prefix}first__search` WHERE `kind` = ? AND `item` = ?", [new \First\Wp\Bytes('members'), new \First\Wp\Bytes((string) $id)]), 'body', 'field');
+$entries = static fn (int $id): array => array_column($wp->sql("SELECT `field`, `body` FROM `{$prefix}tp__search` WHERE `kind` = ? AND `item` = ?", [new \TypedPress\Wp\Bytes('members'), new \TypedPress\Wp\Bytes((string) $id)]), 'body', 'field');
 /** @return array{list<int>|int, string} the ids core's users route returns for a search and its X-WP-Total, or the error's status and code */
 $coreUsers = static function (array $params, string|int $as) use ($wp): array {
     $wp->actAs($as);
@@ -202,11 +202,11 @@ $coreUsers = static function (array $params, string|int $as) use ($wp): array {
     return [$ids, (string) ($response->get_headers()['X-WP-Total'] ?? '')];
 };
 // A user changed by WordPress itself (wp-admin's user screen, another plugin) is re-indexed: core's
-// user hooks report it, as First's own writes do.
+// user hooks report it, as TypedPress's own writes do.
 wp_update_user(['ID' => $boId, 'display_name' => 'Bo Zephyr']);
 eq('a core user update re-indexes the member', $entries($boId)['name'] ?? null, 'Bo Zephyr');
 eq('the member finds themself by the new name', array_column($call('GET', '/members', null, $boId, ['search' => 'zephyr'])[1]['data'] ?? [], 'id'), [$boId]);
-// Core's users route searches through First as the reader: the read rule ("self") decides, not core's
+// Core's users route searches through TypedPress as the reader: the read rule ("self") decides, not core's
 // `list_users`, and core's own search over login and email (fields no reader is matched on) is off.
 eq('core /wp/v2/users?search= finds the reader\'s own row', $coreUsers(['search' => 'zephyr'], $boId), [[$boId], '1']);
 eq('an administrator, whom "self" limits too, finds nobody else and counts nobody', $coreUsers(['search' => 'zephyr'], 'admin'), [[], '0']);
@@ -221,7 +221,7 @@ eq('a user deleted by WordPress leaves no entries', $entries($late), []);
 
 // ================================================================ sign-in doesn't reveal which accounts exist
 
-// The loginErrors switch (Hardening::loginErrors), with first-identity active. wp-login.php itself
+// The loginErrors switch (Hardening::loginErrors), with typedpress-identity active. wp-login.php itself
 // (the form, lost password, "check your email") is proven over HTTP in tests/wp/hardening.
 $generic = __('<strong>Error:</strong> Invalid username, email address or incorrect password.');
 $loginErrors = static function (string ...$codes): string {
@@ -269,18 +269,18 @@ $cost = static function (string $login, string $password): array {
 $pass = 'correct horse battery stapler';
 $known = $wp->addUser('known', 'subscriber', $pass);
 eq('an unknown username is a wrong password, and costs one password hash like one', [$cost('nobody', 'guess'), $cost('known', 'guess')], [['incorrect_password', 1], ['incorrect_password', 1]]);
-eq('so is an unknown email, and a wrong password for a known email is checked once (not again by first-identity)',
+eq('so is an unknown email, and a wrong password for a known email is checked once (not again by typedpress-identity)',
     [$cost('nobody@example.test', 'guess'), $cost('known@example.test', 'guess')], [['incorrect_password', 1], ['incorrect_password', 1]]);
 $twin = wp_insert_user(['user_login' => 'twin@example.test', 'user_email' => 'twin@example.test', 'user_pass' => $pass, 'role' => 'subscriber']);
 eq('a login that is also the same user\'s email is checked once, not by both of core\'s checks', [$cost('twin@example.test', 'guess'), $cost('twin@example.test', $pass)[0]], [['incorrect_password', 1], 'signed in']);
 eq('the right password still signs in, by username or email', [$cost('known@example.test', $pass)[0], $cost('known', $pass)[0]], ['signed in', 'signed in']);
 
-// first-identity's second factor: outside wp-login.php (here, a direct wp_authenticate) a password alone
+// typedpress-identity's second factor: outside wp-login.php (here, a direct wp_authenticate) a password alone
 // is refused, and only after it checks out, so a wrong password doesn't reveal the account or its factor.
 // On wp-login.php it leads to Two Factor's second step instead (tests/php/login_page.php).
-\First\Identity\Plugin::$accounts->ensure($known);
-$mfa = new \First\Identity\Mfa(\First\Identity\Plugin::$db, \First\Identity\Plugin::$security);
-$totp = \First\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($known, 'Login errors')['secret']);
+\TypedPress\Identity\Plugin::$accounts->ensure($known);
+$mfa = new \TypedPress\Identity\Mfa(\TypedPress\Identity\Plugin::$db, \TypedPress\Identity\Plugin::$security);
+$totp = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($known, 'Login errors')['secret']);
 check('the account has a second factor', $mfa->verify($known, $totp->now(), true));
 eq('with a second factor, a wrong password is a wrong password (one check), and the right one asks for the factor',
     [$cost('known@example.test', 'guess'), $cost('known', $pass)[0]], [['incorrect_password', 1], 'identity_mfa_required']);
@@ -296,7 +296,7 @@ $appPassword = static function (string $login): string {
 
     return is_wp_error($result) ? implode(',', $result->get_error_codes()) : 'signed in';
 };
-$guestId = wp_insert_user(['user_login' => 'zg_probe', 'user_pass' => wp_generate_password(32), 'role' => 'first_guest']);
+$guestId = wp_insert_user(['user_login' => 'zg_probe', 'user_pass' => wp_generate_password(32), 'role' => 'tp_guest']);
 eq('an application password for an unknown user or email, or for a guest who may not use one, gets the wrong-password error',
     array_map($appPassword, ['nobody', 'nobody@example.test', 'zg_probe', 'admin']), array_fill(0, 4, 'incorrect_password'));
 add_filter('wp_is_application_passwords_available', '__return_false');
@@ -306,19 +306,19 @@ remove_filter('wp_is_application_passwords_available', '__return_false');
 // The limiter on this harness's database (SQLite, through WordPress's MySQL translation): one row per
 // bucket, a window that starts at the first attempt and restarts once it has ended. tests/identity
 // proves the same on MariaDB.
-$security = \First\Identity\Plugin::$security;
-$identityDb = \First\Identity\Plugin::$db;
+$security = \TypedPress\Identity\Plugin::$security;
+$identityDb = \TypedPress\Identity\Plugin::$db;
 $epoch = 2_000_000_100;
-$at = static function (int $seconds) use ($epoch): void { \First\Identity\Security::$clock = static fn (): int => $epoch + $seconds; };
+$at = static function (int $seconds) use ($epoch): void { \TypedPress\Identity\Security::$clock = static fn (): int => $epoch + $seconds; };
 $attempt = static function (string $bucket, int $max) use ($security): string {
     try {
         $security->limit($bucket, $max);
         return 'ok';
-    } catch (\First\Identity\Failure $e) {
+    } catch (\TypedPress\Identity\Failure $e) {
         return $e->kind;
     }
 };
-$stored = static fn (): array => array_map(static fn (array $r): array => [(int) $r['hits'], (int) $r['expires_at']], $identityDb->rows("SELECT hits, expires_at FROM {$identityDb->prefix}limits WHERE id=%s", \First\Identity\Security::hash('corpus-probe')));
+$stored = static fn (): array => array_map(static fn (array $r): array => [(int) $r['hits'], (int) $r['expires_at']], $identityDb->rows("SELECT hits, expires_at FROM {$identityDb->prefix}limits WHERE id=%s", \TypedPress\Identity\Security::hash('corpus-probe')));
 $identityDb->run("DELETE FROM {$identityDb->prefix}limits");
 $at(299);
 eq('limiter: three attempts pass and the fourth is refused', [$attempt('corpus-probe', 3), $attempt('corpus-probe', 3), $attempt('corpus-probe', 3), $attempt('corpus-probe', 3)], ['ok', 'ok', 'ok', 'rate_limited']);
@@ -331,7 +331,7 @@ eq('limiter: full through the last second of its window', $security->limited('co
 $at(600);
 eq('limiter: an ended window holds nothing', $security->limited('corpus-probe', 3), false);
 eq('limiter: the next attempt starts a new window from one', [$attempt('corpus-probe', 3), $stored()], ['ok', [[1, $epoch + 900]]]);
-\First\Identity\Security::$clock = null;
+\TypedPress\Identity\Security::$clock = null;
 $identityDb->run("DELETE FROM {$identityDb->prefix}limits");
 
 require dirname(__DIR__) . '/identity/native-auth-storage.php';

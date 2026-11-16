@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\AttestationStatement;
+namespace TypedPress\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
 use function sprintf;
-use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use First\Identity\Vendor\Webauthn\TrustPath\TrustPath;
+use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use TypedPress\Identity\Vendor\Webauthn\TrustPath\TrustPath;
 
 class AttestationStatement
 {

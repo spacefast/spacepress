@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__.'/bootstrap.php';
-use First\Identity\Plugin;
+use TypedPress\Identity\Plugin;
 $db=Plugin::$db;$tag=bin2hex(random_bytes(6));
 $a=Plugin::$accounts->emailLogin('owner-a-'.$tag.'@example.test');$b=Plugin::$accounts->emailLogin('owner-b-'.$tag.'@example.test');$email='contended-'.$tag.'@example.test';
 $db->transaction(function()use($a,$b,$email,&$process,&$pipes){

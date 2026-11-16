@@ -1,7 +1,7 @@
 ---
-// An example in two parts. First its config, whole, rendered when the site is built: it is what
+// An example in two parts. TypedPress its config, whole, rendered when the site is built: it is what
 // the reader writes, so it never scrolls. Then an explorer with every file of the example and every
-// file `first build` writes for it: a searchable tree, and a viewer of fixed height that scrolls.
+// file `typedpress build` writes for it: a searchable tree, and a viewer of fixed height that scrolls.
 // The viewer fetches a file from public/files/ when someone opens it. The open file is in the URL
 // (#file=...), so it can be linked. A button runs the example in WordPress Playground.
 import { readFileSync } from "node:fs";
@@ -17,17 +17,17 @@ interface Props {
 }
 const { name } = Astro.props;
 const { app, files } = manifest(name);
-const entry = "first.config.ts";
+const entry = "typedpress.config.ts";
 const written = files.filter((file) => isWritten(file.path));
 const built = files.filter((file) => isBuilt(file.path));
-const plugins = "first/dist/wp-content/plugins";
-const appPlugin = `${plugins}/first-app-${app}`;
+const plugins = "tp/dist/wp-content/plugins";
+const appPlugin = `${plugins}/typedpress-app-${app}`;
 const parents = (file: string) => file.split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/"));
 const options = {
 	id: `files-${name}`,
 	paths: files.map((file) => file.path),
 	initialExpansion: "closed" as const,
-	initialExpandedPaths: [...new Set([...written.flatMap((file) => parents(file.path)), "first", "first/dist", "first/dist/wp-content", plugins, appPlugin, `${appPlugin}/first/app`])],
+	initialExpandedPaths: [...new Set([...written.flatMap((file) => parents(file.path)), "first", "tp/dist", "tp/dist/wp-content", plugins, appPlugin, `${appPlugin}/tp/app`])],
 	flattenEmptyDirectories: true,
 	search: true,
 	initialVisibleRowCount: 16,
@@ -39,12 +39,12 @@ const json = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
 const count = (n: number) => n.toLocaleString("en-US");
 ---
 
-<section class="explorer not-prose" data-entry={entry} data-first-open={`${appPlugin}/first/app/functions.php`} data-manifest={`/files/${name}.json`} data-blueprint={`/files/${name}.blueprint.json`} aria-label={`examples/${name}`}>
+<section class="explorer not-prose" data-entry={entry} data-tp-open={`${appPlugin}/tp/app/functions.php`} data-manifest={`/files/${name}.json`} data-blueprint={`/files/${name}.blueprint.json`} aria-label={`examples/${name}`}>
 	<div class="explorer-config">
 		<CodeFile name={entry} contents={configText} />
 	</div>
 	<header class="explorer-bar">
-		<span><strong>{count(files.length)}</strong> files: <strong>{written.length}</strong> you write, <strong>{count(built.length)}</strong> from <code>first build</code>. Every one opens.</span>
+		<span><strong>{count(files.length)}</strong> files: <strong>{written.length}</strong> you write, <strong>{count(built.length)}</strong> from <code>typedpress build</code>. Every one opens.</span>
 		<button class="explorer-run" type="button">Run in WordPress</button>
 	</header>
 	<div class="explorer-body">

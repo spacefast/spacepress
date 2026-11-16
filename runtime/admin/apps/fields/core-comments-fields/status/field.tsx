@@ -1,7 +1,7 @@
-import type { Field } from '@first-admin/dataviews';
+import type { Field } from '@typedpress-admin/dataviews';
 import type { Comment } from '@wordpress/core-data';
 import { Badge } from '@wordpress/ui';
-import { SelectControl } from '@first-admin/design-system';
+import { SelectControl } from '@typedpress-admin/design-system';
 import { __ } from '@wordpress/i18n';
 
 function isValidStatus( value: string ) {
@@ -12,29 +12,29 @@ const getStatusConfig = ( status: string ) => {
 	if ( status === 'approved' ) {
 		return {
 			intent: 'none' as const,
-			label: __( 'Approved', 'first-admin' ),
+			label: __( 'Approved', 'typedpress-admin' ),
 		};
 	} else if ( status === 'hold' ) {
 		return {
 			intent: 'low' as const,
-			label: __( 'Unapproved', 'first-admin' ),
+			label: __( 'Unapproved', 'typedpress-admin' ),
 		};
 	} else if ( status === 'spam' ) {
 		return {
 			intent: 'none' as const,
-			label: __( 'Spam', 'first-admin' ),
+			label: __( 'Spam', 'typedpress-admin' ),
 		};
 	} else if ( status === 'trash' ) {
 		return {
 			intent: 'none' as const,
-			label: __( 'Trash', 'first-admin' ),
+			label: __( 'Trash', 'typedpress-admin' ),
 		};
 	}
 
 	// For unknown statuses.
 	return {
 		intent: 'none' as const,
-		label: __( 'Unknown', 'first-admin' ),
+		label: __( 'Unknown', 'typedpress-admin' ),
 	};
 };
 

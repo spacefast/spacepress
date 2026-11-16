@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace First\Identity;
+namespace TypedPress\Identity;
 
-use First\Identity\Vendor\Webauthn\{
+use TypedPress\Identity\Vendor\Webauthn\{
     PublicKeyCredentialCreationOptions,
     PublicKeyCredentialRequestOptions,
     PublicKeyCredentialRpEntity,
@@ -21,20 +21,20 @@ use First\Identity\Vendor\Webauthn\{
 
 final class Passkeys
 {
-    private \First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface $serializer;
-    private \First\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory $factory;
+    private \TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface $serializer;
+    private \TypedPress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory $factory;
     private string $host;
     public function __construct(private DB $db, private Security $security)
     {
-        $manager = new \First\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager(
+        $manager = new \TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager(
             [
-                new \First\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport(),
+                new \TypedPress\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport(),
             ],
         );
-        $this->serializer = (new \First\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory(
+        $this->serializer = (new \TypedPress\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory(
             $manager,
         ))->create();
-        $this->factory = new \First\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory();
+        $this->factory = new \TypedPress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory();
         $this->factory->setAllowedOrigins([untrailingslashit(home_url())]);
         $this->host = wp_parse_url(home_url(), PHP_URL_HOST);
     }

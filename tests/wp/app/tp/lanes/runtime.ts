@@ -1,0 +1,66 @@
+// Lane fragment for the WP test app; only this lane edits this file. Every kind, action and job it
+// exports registers under its export name, and a name another lane or the app uses fails the build.
+//
+// Lane K1 (runtime gaps): `legs` is a post-backed localized child of the localized `tours` (lane
+// H), for `with` resolving each parent row's children in that row's locale through Polylang.
+// `bulkTourPrice` is one trusted update over two rows of a translation group (hooks once per row).
+// `guest_carts` (cascade) and `guest_notes` (set null) are rows a member owns, for guest pruning.
+// `big_counts` holds integers past 2^53 (BIGINT): compiled arithmetic on them must match JS.
+import { action, collection, db, integer, text, table, ref } from "typedpress";
+import { tours } from "./locales.ts";
+import { members } from "./auth.ts";
+
+export const legs = collection({
+  title: text().localized(),
+  tourId: ref(() => tours).optional().onDelete("cascade"),
+}, { title: "title", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+
+export const guestCarts = table({
+  memberId: ref(() => members).onDelete("cascade"),
+}, { access: { read: "anyone", create: "authenticated" } });
+
+export const guestNotes = table({
+  body: text(),
+  memberId: ref(() => members).optional(),
+}, { access: { read: "anyone", create: "authenticated" } });
+
+export const bigCounts = table({ n: integer() }, { access: { read: "anyone", create: "editor" } });
+
+export const nativeHandler = action({
+  input: { title: text(), count: integer() },
+  access: "anyone", agents: false,
+  handler(input) {
+    input.title = input.title.trim();
+    input.count += 1;
+    return { title: input.title, count: input.count };
+  },
+});
+
+// Arithmetic in compiled code on a stored integer and on an input one, past 2^53. The stored row
+// is still found by its exact value.
+export const bigMath = action({
+  input: { id: integer(), m: integer() },
+  access: "editor",
+  agents: false,
+  async handler({ id, m }) {
+    const row = await db.query.bigCounts.findFirst({ where: { id } });
+    if (!row) return null;
+    const n = row.n;
+    let k = n;
+    const old = k++;
+    const again = await db.query.bigCounts.findFirst({ where: { n } });
+    return [old - 1, n + 1, n - 1, n * 1, -n, k, m + 1, m - n, n + m, String(n + 0), again ? again.id : null];
+  },
+});
+
+export const bulkTourPrice = action({
+  input: { a: integer(), b: integer(), price: integer() },
+  access: "editor",
+  agents: false,
+  async handler({ a, b, price }) {
+    const rows = await db.update(tours).set({ price }).where({ id: { in: [a, b] } }).returning();
+    return rows.length;
+  },
+});
+/** Top-level options this lane owns (e.g. webhooks, media, locales). */
+export const config = {};

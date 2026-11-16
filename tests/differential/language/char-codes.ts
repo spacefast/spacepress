@@ -3,7 +3,7 @@
 // unit, so surrogate pairs combine; fromCodePoint takes code points and throws a RangeError outside
 // 0..0x10FFFF. Every action runs under Node and as compiled PHP; the JSON results must be
 // byte-identical, in typed TypeScript and in imported JavaScript.
-import { action, defineConfig } from "first";
+import { action, defineConfig } from "typedpress";
 import { charCodes } from "./char-codes-helpers.mjs";
 
 function typedImpl(): string[] {

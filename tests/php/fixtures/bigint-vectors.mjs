@@ -1,5 +1,5 @@
 // Writes tests/php/fixtures/bigint-vectors.json: random BigInt operands and Node's result for each
-// operation that tests/php/bigint_test.php checks First\JsBigInt against. Seeded, so reruns are stable.
+// operation that tests/php/bigint_test.php checks TypedPress\JsBigInt against. Seeded, so reruns are stable.
 let seed = 12345;
 const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
 const big = () => {

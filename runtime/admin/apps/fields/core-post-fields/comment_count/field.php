@@ -2,12 +2,12 @@
 /**
  * Comment count field definition for core post fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'          => 'text',
-	'label'         => __( 'Comments', 'first-admin' ),
+	'label'         => __( 'Comments', 'typedpress-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 );

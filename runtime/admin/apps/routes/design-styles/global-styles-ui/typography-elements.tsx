@@ -44,7 +44,7 @@ function ElementItem( { parentMenu, element, label }: ElementItemProps ) {
 		<NavigationButtonAsItem path={ parentMenu + '/typography/' + element }>
 			<HStack justify="flex-start">
 				<FlexItem
-					className="first-admin-global-styles-screen-typography__indicator"
+					className="typedpress-admin-global-styles-screen-typography__indicator"
 					aria-hidden="true"
 					style={ {
 						fontFamily: fontFamily ?? 'serif',
@@ -58,7 +58,7 @@ function ElementItem( { parentMenu, element, label }: ElementItemProps ) {
 						...extraStyles,
 					} }
 				>
-					{ __( 'Aa', 'first-admin' ) }
+					{ __( 'Aa', 'typedpress-admin' ) }
 				</FlexItem>
 				<FlexItem>{ label }</FlexItem>
 			</HStack>
@@ -71,32 +71,32 @@ function TypographyElements() {
 
 	return (
 		<VStack spacing={ 3 }>
-			<Subtitle level={ 3 }>{ __( 'Elements', 'first-admin' ) }</Subtitle>
+			<Subtitle level={ 3 }>{ __( 'Elements', 'typedpress-admin' ) }</Subtitle>
 			<ItemGroup isBordered isSeparated>
 				<ElementItem
 					parentMenu={ parentMenu }
 					element="text"
-					label={ __( 'Text', 'first-admin' ) }
+					label={ __( 'Text', 'typedpress-admin' ) }
 				/>
 				<ElementItem
 					parentMenu={ parentMenu }
 					element="link"
-					label={ __( 'Links', 'first-admin' ) }
+					label={ __( 'Links', 'typedpress-admin' ) }
 				/>
 				<ElementItem
 					parentMenu={ parentMenu }
 					element="heading"
-					label={ __( 'Headings', 'first-admin' ) }
+					label={ __( 'Headings', 'typedpress-admin' ) }
 				/>
 				<ElementItem
 					parentMenu={ parentMenu }
 					element="caption"
-					label={ __( 'Captions', 'first-admin' ) }
+					label={ __( 'Captions', 'typedpress-admin' ) }
 				/>
 				<ElementItem
 					parentMenu={ parentMenu }
 					element="button"
-					label={ __( 'Buttons', 'first-admin' ) }
+					label={ __( 'Buttons', 'typedpress-admin' ) }
 				/>
 			</ItemGroup>
 		</VStack>

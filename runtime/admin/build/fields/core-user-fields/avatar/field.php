@@ -2,12 +2,12 @@
 /**
  * Avatar field definition for core user fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Avatar', 'first-admin' ),
+	'label'              => __( 'Avatar', 'typedpress-admin' ),
 	'enableSorting'      => false,
 	'enableHiding'       => false,
 	'enableGlobalSearch' => false,

@@ -14,9 +14,9 @@ type HookFunctions = indexmap::IndexMap<(String, schema::HookKind), Vec<(Option<
 
 pub struct Built {
     pub plugins: Option<wp_plugins::Config>,
-    /// Every file under `first/_generated/client/`.
+    /// Every file under `tp/_generated/client/`.
     pub client_files: Vec<(String, Vec<u8>)>,
-    /// `first/_generated/openapi.json`: the app's HTTP API, from the same schema as the client.
+    /// `tp/_generated/openapi.json`: the app's HTTP API, from the same schema as the client.
     pub openapi: serde_json::Value,
     pub schema: schema::Schema,
     pub functions_php: String,
@@ -24,41 +24,41 @@ pub struct Built {
     /// New migration files, `(name, SQL)`; empty when the schema did not change.
     pub migrations: Vec<(String, String)>,
     pub gen_ts: String,
-    /// `first/_generated/routes.d.ts`, when the app has `first/app/` routes.
+    /// `tp/_generated/routes.d.ts`, when the app has `tp/app/` routes.
     pub routes_ts: Option<String>,
     /// Destructive steps in the new migrations.
     pub warnings: Vec<String>,
     /// Declared WordPress plugins outside `wp_plugins/supported.json`; they still install.
     pub unsupported_plugins: Vec<String>,
     pub hints: Vec<String>,
-    /// `first/_generated/plugins.lock.json` as this build settled it (None without plugins or a lock).
+    /// `tp/_generated/plugins.lock.json` as this build settled it (None without plugins or a lock).
     pub plugin_lock: Option<serde_json::Value>,
     /// What changed in the lock, one line each, for the command line.
     pub plugin_changes: Vec<String>,
-    /// Each plugin's locked and inferred grant and read→send flows, for `first check --json`.
+    /// Each plugin's locked and inferred grant and read→send flows, for `typedpress check --json`.
     pub plugin_report: serde_json::Value,
     /// Abilities (and later hooks and functions) the compiled code uses from WordPress.
     pub wordpress_uses: Vec<compile::WordPressUse>,
-    /// With `runtimeSchema`: which fields the project's source names (`first/app/references.php`).
+    /// With `runtimeSchema`: which fields the project's source names (`tp/app/references.php`).
     pub references: Option<serde_json::Value>,
-    /// `first/theme.json`, when the project has one: shipped as the app plugin's `first/app/theme.json`.
+    /// `tp/theme.json`, when the project has one: shipped as the app plugin's `tp/app/theme.json`.
     pub theme: Option<serde_json::Value>,
-    /// `first/_generated/theme.css`, with `first/theme.json`: Tailwind v4 tokens on WordPress's preset
+    /// `tp/_generated/theme.css`, with `tp/theme.json`: Tailwind v4 tokens on WordPress's preset
     /// variables ([`crate::theme`]).
     pub theme_css: Option<String>,
 }
 
 /// The schema ledger, committed with the project: `snapshot.json` and the numbered SQL that
 /// `Wp\Migrator` applies. Lives with the other generated files (spec §1).
-pub const LEDGER: &str = "first/_generated/migrations";
+pub const LEDGER: &str = "tp/_generated/migrations";
 /// Where the ledger lived before `_generated/`. A project that still has it is refused (see
 /// [`moved_ledger`]) rather than built as a first build, which would plan every table again.
-pub const OLD_LEDGER: &str = "first/migrations";
+pub const OLD_LEDGER: &str = "tp/migrations";
 
 /// The refusal for a project whose ledger is still at [`OLD_LEDGER`].
 pub fn moved_ledger() -> Diag {
     Diag::new(Span::NONE, format!("{OLD_LEDGER}/ moved to {LEDGER}/")).help(format!(
-        "move it with `mkdir -p first/_generated && rmdir {LEDGER} 2>/dev/null; git mv {OLD_LEDGER} {LEDGER}`, then build again"
+        "move it with `mkdir -p tp/_generated && rmdir {LEDGER} 2>/dev/null; git mv {OLD_LEDGER} {LEDGER}`, then build again"
     ))
 }
 
@@ -67,12 +67,12 @@ pub fn moved_ledger() -> Diag {
 pub struct Previous {
     pub snapshot: serde_json::Value,
     pub next_migration: u32,
-    /// Refuse any plugin grant `first/_generated/plugins.lock.json` doesn't already hold (CI, `--frozen`).
+    /// Refuse any plugin grant `tp/_generated/plugins.lock.json` doesn't already hold (CI, `--frozen`).
     pub frozen: bool,
 }
 
 impl Previous {
-    /// A first build: nothing to diff against, `0001_init.sql`.
+    /// A typedpress build: nothing to diff against, `0001_init.sql`.
     pub fn none() -> Self {
         Self::from_project(None, []).expect("an absent snapshot is valid")
     }
@@ -146,7 +146,7 @@ pub fn build(
     previous: impl FnOnce() -> Result<Previous, Diag>,
     runtime: impl Fn(&str) -> Option<&'static [u8]>,
 ) -> Result<Built, Diag> {
-    // A checkout from before `first/_generated/` would have its locks ignored (and replaced) and an old
+    // A checkout from before `tp/_generated/` would have its locks ignored (and replaced) and an old
     // client loaded as app code. A stored source bundle maps those paths instead (`layout::current`).
     let root = program.modules[program.entry]
         .path
@@ -352,7 +352,7 @@ pub fn build(
         crate::services_config::parse(&config, &ev, &schema, config_span).map_err(|d| d.phase(diag::Code::Schema))?;
     let services_php = services.as_ref().map(crate::services_config::php).unwrap_or_default();
     let functions_php = format!(
-        "<?php\n\n// Generated by `first build` from first.config.ts. Do not edit.\n\ndeclare(strict_types=1);\n\nnamespace FirstApp;\n\n{}",
+        "<?php\n\n// Generated by `typedpress build` from typedpress.config.ts. Do not edit.\n\ndeclare(strict_types=1);\n\nnamespace TypedPressApp;\n\n{}",
         functions + &services_php + &crate::content_page::functions_php(&schema)
     );
     let previous = previous_value;
@@ -486,7 +486,7 @@ pub fn build(
 
 /// Sets `adopted_as` on every `existingTable` collection: the registry key its binding was first
 /// built under, carried in the snapshot (`adoptedAs`) across `was` renames. A Zero 0.8 table's name
-/// ends in a digest over that key, which the runtime checks (`First\Wp\Guard::names`). A table
+/// ends in a digest over that key, which the runtime checks (`TypedPress\Wp\Guard::names`). A table
 /// stored without `adoptedAs` (a snapshot from before it) gives its stored name, not the current
 /// key, which may be a later alias; only a binding new in this build takes its key.
 fn adopted_names(schema: &mut schema::Schema, previous: &serde_json::Value) {
@@ -511,7 +511,7 @@ fn adopted_names(schema: &mut schema::Schema, previous: &serde_json::Value) {
     }
 }
 
-/// Each `first/wp-hooks/` file becomes a root: its default export is the handler, an optional
+/// Each `tp/wp-hooks/` file becomes a root: its default export is the handler, an optional
 /// `export const priority = <integer>` its priority (default 10, so a hook's files run in file order).
 /// The hook must be in the catalog; the handler is typed from it when it compiles.
 fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
@@ -524,13 +524,16 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
             end: 0,
         };
         let Some(hook) = crate::wordpress::hook(&file.hook) else {
-            let mut d = Diag::new(span, format!("`{}` is not a WordPress hook First types", file.hook));
+            let mut d = Diag::new(
+                span,
+                format!("`{}` is not a WordPress hook TypedPress types", file.hook),
+            );
             d = match diag::suggest(&file.hook, crate::wordpress::hook_names()) {
                 Some(s) => d.help(format!(
-                    "did you mean `{s}`? Rename the file or directory under first/wp-hooks/"
+                    "did you mean `{s}`? Rename the file or directory under tp/wp-hooks/"
                 )),
                 None => d.help(format!(
-                    "first/wp-hooks/ supports: {}",
+                    "tp/wp-hooks/ supports: {}",
                     crate::wordpress::hook_names().collect::<Vec<_>>().join(", ")
                 )),
             };
@@ -584,7 +587,7 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
     Ok(())
 }
 
-/// Every function exported from a `first/components/` file under a capitalized name becomes a
+/// Every function exported from a `tp/components/` file under a capitalized name becomes a
 /// compiled component, called with one props object (docs/decisions/2026-11-08-tsx-to-php.md).
 /// The capital is React's own rule for what a JSX tag can name; other exports are helpers and are
 /// ignored, as in any module.
@@ -677,7 +680,7 @@ fn read_plugin_lock(program: &loader::Program, path: &Path) -> Result<Option<ser
     serde_json::from_str(&text).map(Some).map_err(|e| bad(e.to_string()))
 }
 
-/// `first/_generated/abilities.json` beside the program's `first.config.ts`, through the program's file system,
+/// `tp/_generated/abilities.json` beside the program's `typedpress.config.ts`, through the program's file system,
 /// so a hosted source bundle (rooted at its own module directory, whatever `project` names) and the
 /// browser read the same lock the command line does. Absent means no locked abilities.
 fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilities::Locked>, Diag> {
@@ -699,7 +702,7 @@ fn read_lock(program: &loader::Program) -> Result<Vec<crate::wordpress::abilitie
     crate::wordpress::abilities::parse_lock(&text).map_err(|m| Diag::new(Span::NONE, m).phase(diag::Code::Import))
 }
 
-/// `first/theme.json` beside the program's `first.config.ts`, read like the abilities lock so the
+/// `tp/theme.json` beside the program's `typedpress.config.ts`, read like the abilities lock so the
 /// command line, the browser and a hosted source bundle see the same file. Absent means no styles of
 /// the project's own.
 fn read_theme(program: &loader::Program) -> Result<Option<serde_json::Value>, Diag> {
@@ -765,9 +768,9 @@ mod tests {
         for nested in ["wp", "sqlite"] {
             let error = Previous::from_project(None, [nested, "0001_init.sql"]).unwrap_err();
             assert!(
-                error.message.starts_with(&format!(
-                    "first/_generated/migrations/{nested}/ is from an earlier layout"
-                )),
+                error
+                    .message
+                    .starts_with(&format!("tp/_generated/migrations/{nested}/ is from an earlier layout")),
                 "{}",
                 error.message
             );

@@ -51,7 +51,7 @@ pub enum Action {
     /// Fields (JSON Pointers) both sides changed differently, or `/` for a delete against an edit.
     Conflict(Vec<String>),
     Refused(String),
-    /// A deletion can't be inferred this run (first run or an unreadable file in the directory).
+    /// A deletion can't be inferred this run (typedpress run or an unreadable file in the directory).
     Skip(String),
 }
 
@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn first_run_never_deletes() {
+    fn tp_run_never_deletes() {
         let r = item("a", None);
         assert_eq!(
             plan(None, &Remote::Live(r.clone()), None, false, None),

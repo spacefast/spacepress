@@ -14,7 +14,7 @@ use crate::client_component::{Analysis, Binding, refuse};
 
 /// The name a `useLive` field's server answer is read through: `<prefix><field>` resolves to the
 /// seeded `{ data, error, loading }` ([`Compiler::client_live_seed`]).
-pub(super) const LIVE_SEED: &str = "__first_live_";
+pub(super) const LIVE_SEED: &str = "__tp_live_";
 
 /// The client component being compiled: its analysis, and whether the root element is still to come.
 pub(super) struct ClientCtx {
@@ -113,7 +113,7 @@ impl Compiler<'_, '_> {
                 parts.push(format!("{} => {local}", php_str(&name)));
             }
             extra.push(format!(
-                "'data-wp-context' => \\First\\Islands::context({}, [{}])",
+                "'data-wp-context' => \\TypedPress\\Islands::context({}, [{}])",
                 php_str(&self.client.as_ref().expect("client").analysis.namespace),
                 parts.join(", ")
             ));
@@ -262,10 +262,10 @@ impl Compiler<'_, '_> {
         if alone {
             return Ok((php, Some(r)));
         }
-        // `data-first-text` marks the span as the compiler's, not the author's.
+        // `data-tp-text` marks the span as the compiler's, not the author's.
         Ok((
             format!(
-                "\\First\\Html::element('span', ['data-wp-text' => {}, 'data-first-text' => ''], {php})",
+                "\\TypedPress\\Html::element('span', ['data-wp-text' => {}, 'data-tp-text' => ''], {php})",
                 php_str(&r)
             ),
             None,
@@ -542,14 +542,14 @@ impl Compiler<'_, '_> {
                     };
                     let template = self.client_template(branch, None)?;
                     out.push(format!(
-                        "\\First\\Html::children(({php_test}) ? \\First\\Islands::eachChild({}, {}) : null, \\First\\Islands::template({}, {}, {template}, 'context.firstShown'))",
+                        "\\TypedPress\\Html::children(({php_test}) ? \\TypedPress\\Islands::eachChild({}, {}) : null, \\TypedPress\\Islands::template({}, {}, {template}, 'context.firstShown'))",
                         rendered,
                         php_str(&format!("{}::{}", self.client.as_ref().expect("client").analysis.namespace, path)),
-                        php_str("data-wp-each--first-shown"),
+                        php_str("data-wp-each--tp-shown"),
                         php_str(&path),
                     ));
                 }
-                Ok(format!("\\First\\Html::children({})", out.join(", ")))
+                Ok(format!("\\TypedPress\\Html::children({})", out.join(", ")))
             }
         }
     }
@@ -627,7 +627,7 @@ impl Compiler<'_, '_> {
             })
             .collect::<String>();
         Ok(format!(
-            "\\First\\Html::children(\\First\\Islands::eachChild({}, {}), \\First\\Islands::template({}, {}, {template}, {}))",
+            "\\TypedPress\\Html::children(\\TypedPress\\Islands::eachChild({}, {}), \\TypedPress\\Islands::template({}, {}, {template}, {}))",
             rendered,
             php_str(&format!("{namespace}::{path}")),
             php_str(&format!("data-wp-each--{item_attr}")),
@@ -637,7 +637,7 @@ impl Compiler<'_, '_> {
     }
 
     /// A `useLive` field's first value: the read answered now, as the visitor, through the same
-    /// evaluation the subscription endpoint runs (`First\Live\Module::evaluate`), with the read's
+    /// evaluation the subscription endpoint runs (`TypedPress\Live\Module::evaluate`), with the read's
     /// descriptor and token beside it for the browser's subscription. Typed `{ data, error,
     /// loading }`, with `data` as the kind query API types the read.
     pub(super) fn client_live_seed(&mut self, field: &str, span: Span) -> Result<Out> {
@@ -675,7 +675,7 @@ impl Compiler<'_, '_> {
         state.insert("error".to_string(), (Ty::union([Ty::Obj(error), Ty::Undefined]), false));
         state.insert("loading".to_string(), (Ty::Bool, false));
         Ok(Out::atom(
-            format!("\\First\\Islands::live({}, {}, {on})", php_str(&kind), q.php),
+            format!("\\TypedPress\\Islands::live({}, {}, {on})", php_str(&kind), q.php),
             Ty::Obj(state),
         ))
     }

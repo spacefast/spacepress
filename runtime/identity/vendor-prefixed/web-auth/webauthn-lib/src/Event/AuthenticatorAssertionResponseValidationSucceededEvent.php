@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Event;
+namespace TypedPress\Identity\Vendor\Webauthn\Event;
 
 use LogicException;
 use function sprintf;
-use First\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use First\Identity\Vendor\Webauthn\CredentialRecord;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use TypedPress\Identity\Vendor\Webauthn\CredentialRecord;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
 
 class AuthenticatorAssertionResponseValidationSucceededEvent
 {

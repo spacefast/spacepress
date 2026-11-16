@@ -1,11 +1,11 @@
-import { useFieldCollections } from '@first-admin/core-data-next';
-import { useViewConfig } from '@first-admin/views';
-import { Page, unlock } from '@first-admin/admin-toolkit';
+import { useFieldCollections } from '@typedpress-admin/core-data-next';
+import { useViewConfig } from '@typedpress-admin/views';
+import { Page, unlock } from '@typedpress-admin/admin-toolkit';
 import { useParams, useNavigate } from '@wordpress/route';
 import { Button, Icon } from '@wordpress/ui';
 import { decodeEntities } from '@wordpress/html-entities';
 import { __, sprintf } from '@wordpress/i18n';
-import { store as firstAdminStore, type StoreSelectors } from '@first-admin/boot';
+import { store as tpAdminStore, type StoreSelectors } from '@typedpress-admin/boot';
 import { select, useSelect, useDispatch } from '@wordpress/data';
 import {
 	__experimentalGrid as Grid,
@@ -19,8 +19,8 @@ import type { User } from '@wordpress/core-data';
 import { store as noticesStore } from '@wordpress/notices';
 import { useMemo, useState, useCallback, useRef } from '@wordpress/element';
 import { moreVertical, arrowUpRight } from '@wordpress/icons';
-import { DataForm } from '@first-admin/dataviews';
-import { useTrack } from '@first-admin/telemetry';
+import { DataForm } from '@typedpress-admin/dataviews';
+import { useTrack } from '@typedpress-admin/telemetry';
 import {
 	isInviteUser,
 	isPendingInvite,
@@ -60,10 +60,10 @@ export function UserProfileBreadcrumbs( {
 		<HStack spacing={ 2 } justify="flex-start">
 			<Page.Breadcrumbs items={ breadcrumbItems } />
 			{ showBadges && showPendingInviteBadge && (
-				<Badge>{ __( 'Pending invite', 'first-admin' ) }</Badge>
+				<Badge>{ __( 'Pending invite', 'typedpress-admin' ) }</Badge>
 			) }
 			{ showBadges && showStoreOwnerBadge && isInviteMode && (
-				<Badge>{ __( 'Store owner', 'first-admin' ) }</Badge>
+				<Badge>{ __( 'Store owner', 'typedpress-admin' ) }</Badge>
 			) }
 		</HStack>
 	);
@@ -117,7 +117,7 @@ export function UserEditContent( {
 			return {
 				currentUser: getCurrentUser(),
 				partnerContext: (
-					select( firstAdminStore ) as StoreSelectors
+					select( tpAdminStore ) as StoreSelectors
 				 ).getDashboardContext().partner,
 			};
 		},
@@ -198,7 +198,7 @@ export function UserEditContent( {
 				void createSuccessNotice(
 					sprintf(
 						/* translators: %s: user name or email */
-						__( '%s updated.', 'first-admin' ),
+						__( '%s updated.', 'typedpress-admin' ),
 						dataRef.current
 							? getUserDisplayName( dataRef.current )
 							: ''
@@ -219,7 +219,7 @@ export function UserEditContent( {
 					'message' in error &&
 					typeof error.message === 'string'
 						? decodeEntities( error.message )
-						: __( 'Could not update user.', 'first-admin' );
+						: __( 'Could not update user.', 'typedpress-admin' );
 				void createErrorNotice( message, {
 					type: 'snackbar',
 					id: 'update-user-error',
@@ -250,11 +250,11 @@ export function UserEditContent( {
 	// Determine breadcrumb items
 	const breadcrumbItems = breadcrumbs || [
 		{
-			label: __( 'Users', 'first-admin' ),
+			label: __( 'Users', 'typedpress-admin' ),
 			to: '/users/list/all',
 		},
 		{
-			label: data.email || __( 'User', 'first-admin' ),
+			label: data.email || __( 'User', 'typedpress-admin' ),
 		},
 	];
 
@@ -291,7 +291,7 @@ export function UserEditContent( {
 						>
 							{ sprintf(
 								/* translators: %s: partner dashboard name (e.g. "Woo Store") */
-								__( 'Manage profile in %s', 'first-admin' ),
+								__( 'Manage profile in %s', 'typedpress-admin' ),
 								partnerContext.dashboard_name
 							) }
 							<Icon icon={ arrowUpRight } size={ 16 } />
@@ -304,7 +304,7 @@ export function UserEditContent( {
 									<TriggerButton
 										icon={ moreVertical }
 										size="compact"
-										label={ __( 'Actions', 'first-admin' ) }
+										label={ __( 'Actions', 'typedpress-admin' ) }
 									/>
 								}
 							/>
@@ -315,7 +315,7 @@ export function UserEditContent( {
 									} }
 								>
 									<Menu.ItemLabel>
-										{ __( 'Delete', 'first-admin' ) }
+										{ __( 'Delete', 'typedpress-admin' ) }
 									</Menu.ItemLabel>
 								</Menu.Item>
 							</Menu.Popover>

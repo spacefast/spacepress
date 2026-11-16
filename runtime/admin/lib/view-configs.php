@@ -5,21 +5,21 @@
  * From the upstream bootstrap (upstream-metadata/next-admin.php), names normalized; the admin page
  * and the user and term routes read them through the view-config route.
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 /**
  * Configure layout views for core WordPress entities.
  */
 add_filter(
-	'first_admin_entity_view_config_root_user',
+	'tp_admin_entity_view_config_root_user',
 	function ( $config ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
 		// Return complete configuration object for users.
 		return array(
 			'labels'          => array(
-				'title'            => __( 'Users', 'first-admin' ),
-				'description'      => __( 'Manage user accounts and permissions', 'first-admin' ),
-				'add_button_label' => __( 'Add New User', 'first-admin' ),
+				'title'            => __( 'Users', 'typedpress-admin' ),
+				'description'      => __( 'Manage user accounts and permissions', 'typedpress-admin' ),
+				'add_button_label' => __( 'Add New User', 'typedpress-admin' ),
 			),
 			'default_view'    => array(
 				'type'       => 'table',
@@ -64,7 +64,7 @@ add_filter(
 				'fields' => array(
 					array(
 						'id'       => 'user_info',
-						'label'    => __( 'User details', 'first-admin' ),
+						'label'    => __( 'User details', 'typedpress-admin' ),
 						'children' => array(
 							array(
 								'id'       => 'user_email',
@@ -91,7 +91,7 @@ add_filter(
 				'fields' => array(
 					array(
 						'id'       => 'user_info',
-						'label'    => __( 'User details', 'first-admin' ),
+						'label'    => __( 'User details', 'typedpress-admin' ),
 						'children' => array(
 							'avatar',
 							'username',
@@ -113,8 +113,8 @@ add_filter(
 					),
 					array(
 						'id'       => 'admin_preferences',
-						'label'    => __( 'Admin', 'first-admin' ),
-						'children' => array( 'first_admin_developer_mode' ),
+						'label'    => __( 'Admin', 'typedpress-admin' ),
+						'children' => array( 'tp_admin_developer_mode' ),
 					),
 				),
 			),
@@ -122,12 +122,12 @@ add_filter(
 			'tabs'            => array(
 				array(
 					'slug'    => 'all',
-					'label'   => __( 'All', 'first-admin' ),
+					'label'   => __( 'All', 'typedpress-admin' ),
 					'filters' => array(),
 				),
 				array(
 					'slug'    => 'administrator',
-					'label'   => __( 'Administrator', 'first-admin' ),
+					'label'   => __( 'Administrator', 'typedpress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -138,7 +138,7 @@ add_filter(
 				),
 				array(
 					'slug'    => 'editor',
-					'label'   => __( 'Editor', 'first-admin' ),
+					'label'   => __( 'Editor', 'typedpress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -149,7 +149,7 @@ add_filter(
 				),
 				array(
 					'slug'    => 'author',
-					'label'   => __( 'Author', 'first-admin' ),
+					'label'   => __( 'Author', 'typedpress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -160,7 +160,7 @@ add_filter(
 				),
 				array(
 					'slug'    => 'contributor',
-					'label'   => __( 'Contributor', 'first-admin' ),
+					'label'   => __( 'Contributor', 'typedpress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -171,7 +171,7 @@ add_filter(
 				),
 				array(
 					'slug'    => 'subscriber',
-					'label'   => __( 'Subscriber', 'first-admin' ),
+					'label'   => __( 'Subscriber', 'typedpress-admin' ),
 					'filters' => array(
 						array(
 							'field'    => 'roles',
@@ -190,7 +190,7 @@ add_filter(
  *
  * @param string $taxonomy Taxonomy slug.
  */
-function first_admin_register_taxonomy_view_config( $taxonomy ) {
+function tp_admin_register_taxonomy_view_config( $taxonomy ) {
 	static $registered_taxonomy_view_configs = array();
 
 	if ( isset( $registered_taxonomy_view_configs[ $taxonomy ] ) ) {
@@ -200,7 +200,7 @@ function first_admin_register_taxonomy_view_config( $taxonomy ) {
 	$registered_taxonomy_view_configs[ $taxonomy ] = true;
 
 	add_filter(
-		"first_admin_entity_view_config_taxonomy_{$taxonomy}",
+		"tp_admin_entity_view_config_taxonomy_{$taxonomy}",
 		function ( $config ) use ( $taxonomy ) {
 			$taxonomy_object = get_taxonomy( $taxonomy );
 
@@ -244,7 +244,7 @@ function first_admin_register_taxonomy_view_config( $taxonomy ) {
 								'type' => 'card',
 							),
 							/* translators: %s: Taxonomy singular name. */
-							'label'    => sprintf( __( '%s details', 'first-admin' ), $taxonomy_object->labels->singular_name ?? $taxonomy ),
+							'label'    => sprintf( __( '%s details', 'typedpress-admin' ), $taxonomy_object->labels->singular_name ?? $taxonomy ),
 							'children' => array( 'name', 'description', 'parent' ),
 						),
 						array(
@@ -252,7 +252,7 @@ function first_admin_register_taxonomy_view_config( $taxonomy ) {
 							'layout'   => array(
 								'type' => 'card',
 							),
-							'label'    => __( 'Additional options', 'first-admin' ),
+							'label'    => __( 'Additional options', 'typedpress-admin' ),
 							'children' => array( 'slug' ),
 						),
 					),
@@ -268,7 +268,7 @@ function first_admin_register_taxonomy_view_config( $taxonomy ) {
 								'type' => 'card',
 							),
 							/* translators: %s: Taxonomy singular name. */
-							'label'    => sprintf( __( '%s details', 'first-admin' ), $taxonomy_object->labels->singular_name ?? $taxonomy ),
+							'label'    => sprintf( __( '%s details', 'typedpress-admin' ), $taxonomy_object->labels->singular_name ?? $taxonomy ),
 							'children' => array( 'name', 'description', 'parent' ),
 						),
 						array(
@@ -276,7 +276,7 @@ function first_admin_register_taxonomy_view_config( $taxonomy ) {
 							'layout'   => array(
 								'type' => 'card',
 							),
-							'label'    => __( 'Additional options', 'first-admin' ),
+							'label'    => __( 'Additional options', 'typedpress-admin' ),
 							'children' => array( 'slug' ),
 						),
 					),
@@ -296,6 +296,6 @@ add_action(
 	 * @param string $taxonomy Newly registered taxonomy slug.
 	 */
 	function ( $taxonomy ) {
-		first_admin_register_taxonomy_view_config( $taxonomy );
+		tp_admin_register_taxonomy_view_config( $taxonomy );
 	}
 );

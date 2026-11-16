@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 /*
  * One sign-in page (docs/decisions/2026-11-15-one-sign-in-page.md), over HTTP on WordPress with
- * php -S: tests/fixtures/login-page, built by `first build`, with First Identity and Two Factor
- * active. wp-login.php renders first/app/login.tsx and still runs WordPress's sign-in; an account
+ * php -S: tests/fixtures/login-page, built by `typedpress build`, with TypedPress Identity and Two Factor
+ * active. wp-login.php renders tp/app/login.tsx and still runs WordPress's sign-in; an account
  * with Identity MFA finishes on Two Factor's second step there; /identity sends a browser to
  * wp-login.php and treats its WordPress sign-in as signed in. Prints one JSON object: label => observed.
  *
@@ -17,18 +17,18 @@ require __DIR__ . '/wp.php';
 $site = wpSite('login-page', ['wpContent' => $argv[1], 'identity' => true, 'users' => ['reader' => 'subscriber'], 'muPlugins' => ['identity-http' => <<<'PHP'
     <?php
     // php -S speaks HTTP only; Identity allows that on a local site with this switch.
-    define('FIRST_IDENTITY_DEV_HTTP', true);
+    define('TP_IDENTITY_DEV_HTTP', true);
     PHP]]);
 $url = $site->url();
 $password = 'correct horse battery stapler';
 $reader = $site->addUser('ana', 'subscriber', $password);
 $mfaUser = $site->addUser('mo', 'subscriber', $password);
-\First\Identity\Plugin::$accounts->ensure($mfaUser);
-$mfa = new \First\Identity\Mfa(\First\Identity\Plugin::$db, \First\Identity\Plugin::$security);
-$totp = \First\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($mfaUser, 'Login page')['secret']);
+\TypedPress\Identity\Plugin::$accounts->ensure($mfaUser);
+$mfa = new \TypedPress\Identity\Mfa(\TypedPress\Identity\Plugin::$db, \TypedPress\Identity\Plugin::$security);
+$totp = \TypedPress\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($mfaUser, 'Login page')['secret']);
 $mfa->verify($mfaUser, $totp->now(), true) || throw new RuntimeException('MFA setup failed');
 $recovery = $mfa->recoveryCodes($mfaUser);
-$app = \First\Identity\Applications::add('Login page app', 'http://127.0.0.1:18999/callback', 'http://127.0.0.1:18999', 'app_login_page');
+$app = \TypedPress\Identity\Applications::add('Login page app', 'http://127.0.0.1:18999/callback', 'http://127.0.0.1:18999', 'app_login_page');
 $site->actAs(null);
 $site->startServer();
 
@@ -105,10 +105,10 @@ function view(array $r): array
         'inputs' => $inputs,
         'errors' => $texts("//p[@class='problem']"),
         'notices' => $texts("//p[@class='notice']"),
-        'stylesheet' => str_contains($r['body'], 'first/app/assets/site-'),
+        'stylesheet' => str_contains($r['body'], 'tp/app/assets/site-'),
         'robots' => str_contains($r['body'], 'noindex'),
         'cache' => $r['headers']['cache-control'][0] ?? null,
-        'methods link' => $texts("//p[@class='first-identity-methods']/a")[0] ?? null,
+        'methods link' => $texts("//p[@class='typedpress-identity-methods']/a")[0] ?? null,
     ];
 }
 
@@ -208,15 +208,15 @@ $out['token'] = ['status' => $token['status'], 'sub' => json_decode($userinfo['b
 // The account screens open for the signed-in browser; Identity's REST knows it by its identity cookie.
 $account = $anon->go('/identity/account');
 $out['identity signed in'] = ['status' => $account['status'], 'app' => str_contains($account['body'], 'identity-root')];
-$me = $anon->go('/wp-json/first-identity/v1/account');
+$me = $anon->go('/wp-json/typedpress-identity/v1/account');
 $out['identity rest'] = ['status' => $me['status'], 'id' => json_decode($me['body'], true)['data']['account']['id'] ?? null];
 // prompt=login wants a sign-in made after the request: wp-login.php with reauth.
 $fresh = $anon->go("/identity/authorize?$query&prompt=login");
 $out['prompt login'] = ['location' => $fresh['location'], 'identity cookie' => isset($anon->cookies['zi_session'])];
 // Signing out of Identity signs this browser out of WordPress too, and the other way round.
 $anon->go("/identity/account");
-preg_match('#"csrf":"([0-9a-f]{64})"#', $anon->go('/wp-json/first-identity/v1/account')['body'], $c);
-$signout = $anon->go('/wp-json/first-identity/v1/sign-out', [], ["Origin: $url", 'X-Identity-CSRF: ' . ($c[1] ?? '')]);
+preg_match('#"csrf":"([0-9a-f]{64})"#', $anon->go('/wp-json/typedpress-identity/v1/account')['body'], $c);
+$signout = $anon->go('/wp-json/typedpress-identity/v1/sign-out', [], ["Origin: $url", 'X-Identity-CSRF: ' . ($c[1] ?? '')]);
 $out['identity sign-out'] = ['status' => $signout['status'], 'wordpress signed in' => $anon->signedIn(), 'identity cookie' => isset($anon->cookies['zi_session'])];
 $after = $anon->go('/identity/account');
 $out['after sign-out'] = ['status' => $after['status'], 'to login' => str_starts_with((string) $after['location'], $login)];

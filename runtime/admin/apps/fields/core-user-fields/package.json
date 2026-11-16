@@ -2,8 +2,8 @@
 	"name": "core-user-fields",
 	"version": "1.0.0",
 	"dependencies": {
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

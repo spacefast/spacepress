@@ -1000,13 +1000,13 @@
   },
   {
     "name": "globalNamespaceKinds",
-    "declarations": "import {db as namespaceDb,jobs as namespaceJobs} from 'first'; const foldedNamespaceKinds=[typeof JSON,typeof console,typeof namespaceDb,typeof namespaceJobs];",
+    "declarations": "import {db as namespaceDb,jobs as namespaceJobs} from 'typedpress'; const foldedNamespaceKinds=[typeof JSON,typeof console,typeof namespaceDb,typeof namespaceJobs];",
     "expression": "[typeof Math,...foldedNamespaceKinds]",
     "fold": true
   },
   {
     "name": "dollarBindingsUseLiteralPhpNames",
-    "expression": "(() => {const $a=1,$b=2,a$b=3;const __first_local_2461=4;const $sum=($n:number)=>$n+$a;const café=6;return [$a,$b,a$b,__first_local_2461,$sum(5),café];})()",
+    "expression": "(() => {const $a=1,$b=2,a$b=3;const __tp_local_2461=4;const $sum=($n:number)=>$n+$a;const café=6;return [$a,$b,a$b,__tp_local_2461,$sum(5),café];})()",
     "fold": true
   },
   {

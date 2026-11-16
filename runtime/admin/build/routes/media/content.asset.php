@@ -1,1 +1,1 @@
-<?php return array('name' => 'media', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/schema'), 'version' => '0dbe2fa9c3841a4564cb');
+<?php return array('name' => 'media', 'dependencies' => array(), 'moduleDependencies' => array('@typedpress-admin/schema'), 'version' => '0d0ced020b1728855606');

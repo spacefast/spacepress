@@ -30,7 +30,7 @@ $notes['key'] = 'notes';
 $notes['label'] = 'Notes';
 $notes['relations'] = [];
 $notes['url'] = '/notes/:id';
-$notes['wp'] = ['postType' => 'first_notes', 'groupKey' => 'group_first_notes', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_notes_'];
+$notes['wp'] = ['postType' => 'tp_notes', 'groupKey' => 'group_tp_notes', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_notes_'];
 $notes['access']['read'] = ['fn' => 'notes__access__read'];
 $notes['columns']['name']['access'] = ['read' => ['role' => 'editor']];
 $schema['collections']['notes'] = $notes;
@@ -42,7 +42,7 @@ $topics['relations'] = [];
 $topics['slug'] = 'slug';
 $topics['columns']['slug'] = ['type' => 'slug', 'source' => 'name', 'access' => ['read' => ['role' => 'editor']]];
 $topics['columns']['email']['unique'] = false;
-$topics['wp'] = ['postType' => 'first_topics', 'groupKey' => 'group_first_topics', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_topics_'];
+$topics['wp'] = ['postType' => 'tp_topics', 'groupKey' => 'group_tp_topics', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_topics_'];
 $schema['collections']['topics'] = $topics;
 $stories = $schema['collections']['authors'];
 $stories['key'] = 'stories';
@@ -51,33 +51,33 @@ $stories['relations'] = [];
 $stories['url'] = '/stories/:topic.slug/:id';
 $stories['columns']['email']['unique'] = false;
 $stories['columns']['topic'] = ['type' => 'integer', 'references' => ['collection' => 'topics', 'column' => 'id', 'onDelete' => 'set null']];
-$stories['wp'] = ['postType' => 'first_stories', 'groupKey' => 'group_first_stories', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_stories_'];
+$stories['wp'] = ['postType' => 'tp_stories', 'groupKey' => 'group_tp_stories', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_stories_'];
 $schema['collections']['stories'] = $stories;
 $wp = wpSite('search', [
     'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
-        function comments__afterUpdate(\First\JsObject $row, \First\JsObject $ctx)
+        function comments__afterUpdate(\TypedPress\JsObject $row, \TypedPress\JsObject $ctx)
         {
-            if (str_contains((string) \First\Js::prop($row, 'body'), 'rewrite me')) {
-                \First\Seam::update('comments', new \First\JsObject(['body' => 'Rewritten by the hook']), ['id' => \First\Js::prop($row, 'id')]);
+            if (str_contains((string) \TypedPress\Js::prop($row, 'body'), 'rewrite me')) {
+                \TypedPress\Seam::update('comments', new \TypedPress\JsObject(['body' => 'Rewritten by the hook']), ['id' => \TypedPress\Js::prop($row, 'id')]);
             }
         }
 
-        function notes__access__read(\First\JsObject $ctx)
+        function notes__access__read(\TypedPress\JsObject $ctx)
         {
-            $user = \First\Js::prop($ctx, 'user');
+            $user = \TypedPress\Js::prop($ctx, 'user');
 
-            return $user !== null && in_array(\First\Js::prop($user, 'role'), ['editor', 'admin'], true) ? true : ['email' => ['ne' => 'hidden@example.test']];
+            return $user !== null && in_array(\TypedPress\Js::prop($user, 'role'), ['editor', 'admin'], true) ? true : ['email' => ['ne' => 'hidden@example.test']];
         }
         PHP,
     'users' => ['ed' => 'editor', 'alice' => 'author', 'sub' => 'subscriber'],
 ]);
-$db = \First\db();
+$db = \TypedPress\db();
 $prefix = $wp->connection()->prefix();
 $index = static fn (string $kind): array => array_map(static fn (array $r): string => $r['field'] . ':' . $r['body'],
-    $wp->sql("SELECT `field`, `body` FROM `{$prefix}first__search` WHERE `kind` = ? ORDER BY `item`, `field`", [new \First\Wp\Bytes($kind)]));
-$bytes = static fn (string $s): \First\Wp\Bytes => new \First\Wp\Bytes($s);
+    $wp->sql("SELECT `field`, `body` FROM `{$prefix}tp__search` WHERE `kind` = ? ORDER BY `item`, `field`", [new \TypedPress\Wp\Bytes($kind)]));
+$bytes = static fn (string $s): \TypedPress\Wp\Bytes => new \TypedPress\Wp\Bytes($s);
 
 wp_set_current_user(1);
 $public = $db->insert('posts', ['title' => 'Brewing green tea', 'body' => '<!-- wp:paragraph --><p>Steep the leaves &amp; wait.</p><!-- /wp:paragraph -->', 'status' => 'published'], true)[0];
@@ -96,7 +96,7 @@ check('the draft is indexed too: whether it shows is the read\'s decision', in_a
 wp_set_current_user(1);
 $db->update('posts', ['title' => 'Brewing oolong'], ['id' => $public['id']]);
 check('an update replaces the row\'s entries', in_array('title:Brewing oolong', $index('posts'), true) && !in_array('title:Brewing green tea', $index('posts'), true), $index('posts'));
-// wp-admin's and core REST's saves run First's hooks through EditorSave, and report the same way.
+// wp-admin's and core REST's saves run TypedPress's hooks through EditorSave, and report the same way.
 wp_update_post(['ID' => $public['id'], 'post_title' => 'Brewing green tea']);
 check('a core save (wp-admin, /wp/v2) re-indexes the row', in_array('title:Brewing green tea', $index('posts'), true), $index('posts'));
 $gone = $db->insert('posts', ['title' => 'Ephemeral tea', 'status' => 'published'], true)[0];
@@ -118,7 +118,7 @@ $db->delete('comments', ['id' => $hooked['id']]);
 // A write that changes no searchable field leaves the row's entries alone (WooCommerce's product
 // lookup table does the same: class-wc-product-data-store-cpt.php, update_lookup_table only when a
 // looked-up prop changed). A planted entry shows whether they were rewritten.
-$plant = static fn () => $wp->exec("UPDATE `{$prefix}first__search` SET `body` = 'Planted' WHERE `kind` = ? AND `item` = ? AND `field` = ?",
+$plant = static fn () => $wp->exec("UPDATE `{$prefix}tp__search` SET `body` = 'Planted' WHERE `kind` = ? AND `item` = ? AND `field` = ?",
     [$bytes('posts'), $bytes((string) $public['id']), $bytes('title')]);
 $plant();
 $db->update('posts', ['tags' => ['news']], ['id' => $public['id']]);
@@ -139,8 +139,8 @@ wp_set_current_user(0);
 // ---------------------------------------------------------------- `search` on a kind, as the reader
 
 $ids = static fn (array $rows): array => array_map(static fn (array $r): int => (int) $r['id'], $rows);
-$as = static fn (?string $who): \First\Viewer => new \First\Viewer($who === null ? null : $wp->user($who));
-$list = static fn (string $kind, string $q, ?string $who, array $extra = []): array => $ids(\First\Seam::asVisitor($as($who),
+$as = static fn (?string $who): \TypedPress\Viewer => new \TypedPress\Viewer($who === null ? null : $wp->user($who));
+$list = static fn (string $kind, string $q, ?string $who, array $extra = []): array => $ids(\TypedPress\Seam::asVisitor($as($who),
     static fn (): array => $db->findMany($kind, ['where' => [], 'columns' => ['id' => true]] + $extra + ['search' => $q], $as($who))));
 
 eq('a visitor finds the published post by a word of its title', $list('posts', 'green', null), [$public['id']]);
@@ -182,7 +182,7 @@ eq('and what an editor may read', [$status, $found], [200, [$public['id'], $draf
 $core = static function (array $params, ?string $who) use ($wp): array {
     $wp->actAs($who);
     try {
-        $request = new \WP_REST_Request('GET', '/wp/v2/first_posts');
+        $request = new \WP_REST_Request('GET', '/wp/v2/tp_posts');
         $request->set_query_params($params + ['per_page' => 50]);
         $response = rest_do_request($request);
     } finally {
@@ -205,7 +205,7 @@ eq('search_columns=post_title matches the title only', $core(['search' => 'leave
 eq('and finds it by its title', $core(['search' => 'green', 'search_columns' => ['post_title']], null), [$public['id']]);
 // A table's core route searches too.
 $wp->actAs('sub');
-$tableRequest = new \WP_REST_Request('GET', '/wp/v2/first_comments');
+$tableRequest = new \WP_REST_Request('GET', '/wp/v2/tp_comments');
 $tableRequest->set_query_params(['search' => 'lovely']);
 $tableRows = rest_get_server()->response_to_data(rest_do_request($tableRequest), false);
 wp_set_current_user(0);
@@ -252,36 +252,36 @@ $coreSearch = static function (array $params, ?string $who) use ($wp): array {
 $hits = static fn (array $found): array => array_map(static fn (array $r): string => $r['subtype'] . ':' . $r['id'], $found[1]);
 // The request the block editor's link picker sends (core-data's fetchLinkSuggestions): type=post, no subtype.
 $picker = $coreSearch(['search' => 'green', 'per_page' => 20, 'type' => 'post'], null);
-eq('the link picker\'s request finds core\'s posts and First\'s items together', [$picker[0], $hits($picker), $picker[2]],
-    [200, ["post:$corePost", "first_posts:{$public['id']}"], 2]);
-$item = array_values(array_filter($picker[1], static fn (array $r): bool => $r['subtype'] === 'first_posts'))[0] ?? [];
+eq('the link picker\'s request finds core\'s posts and TypedPress\'s items together', [$picker[0], $hits($picker), $picker[2]],
+    [200, ["post:$corePost", "tp_posts:{$public['id']}"], 2]);
+$item = array_values(array_filter($picker[1], static fn (array $r): bool => $r['subtype'] === 'tp_posts'))[0] ?? [];
 eq('an item comes in core\'s shape: its id, title, address, type and post type', array_diff_key($item, ['_links' => true]),
-    ['id' => $public['id'], 'title' => 'Brewing green tea', 'url' => get_permalink($public['id']), 'type' => 'post', 'subtype' => 'first_posts']);
+    ['id' => $public['id'], 'title' => 'Brewing green tea', 'url' => get_permalink($public['id']), 'type' => 'post', 'subtype' => 'tp_posts']);
 eq('with core\'s links to the item and its type', [$item['_links']['self'][0]['href'] ?? null, $item['_links']['about'][0]['href'] ?? null],
-    [rest_url('wp/v2/first_posts/' . $public['id']), rest_url('wp/v2/types/first_posts')]);
+    [rest_url('wp/v2/tp_posts/' . $public['id']), rest_url('wp/v2/types/tp_posts')]);
 check('its address is the kind\'s own', str_contains((string) get_permalink($public['id']), '/blog/'), get_permalink($public['id']));
 eq('without a type, core\'s default type (post) answers the same', $hits($coreSearch(['search' => 'green'], null)), $hits($picker));
-eq('subtype narrows it to one kind', $hits($coreSearch(['search' => 'green', 'subtype' => 'first_posts'], null)), ["first_posts:{$public['id']}"]);
+eq('subtype narrows it to one kind', $hits($coreSearch(['search' => 'green', 'subtype' => 'tp_posts'], null)), ["tp_posts:{$public['id']}"]);
 eq('or to core\'s post types alone', $hits($coreSearch(['search' => 'green', 'subtype' => 'post'], null)), ["post:$corePost"]);
 eq('a draft is not found, by a visitor or an editor (core lists published posts only)',
     [$hits($coreSearch(['search' => 'teapots'], null)), $hits($coreSearch(['search' => 'teapots'], 'ed'))], [[], []]);
 eq('a word only in a field the reader may not read finds nothing', $coreSearch(['search' => 'mentions'], null)[1], []);
-eq('the editor, who reads it, finds the item', $hits($coreSearch(['search' => 'mentions'], 'ed')), ["first_posts:{$secret['id']}"]);
+eq('the editor, who reads it, finds the item', $hits($coreSearch(['search' => 'mentions'], 'ed')), ["tp_posts:{$secret['id']}"]);
 eq('a kind the reader may not read is left out, not refused', [$coreSearch(['search' => 'writer'], null)[0], $hits($coreSearch(['search' => 'writer'], null))], [200, []]);
 eq('a reader of the kind finds its item', count($hits($coreSearch(['search' => 'writer'], 'sub'))), 1);
-eq('a row the read rule hides is neither found nor counted', [$hits($found = $coreSearch(['search' => 'jasmine'], null)), $found[2]], [["first_notes:{$visibleNote['id']}"], 1]);
+eq('a row the read rule hides is neither found nor counted', [$hits($found = $coreSearch(['search' => 'jasmine'], null)), $found[2]], [["tp_notes:{$visibleNote['id']}"], 1]);
 eq('a title the reader may not read is not shown', $found[1][0]['title'] ?? null, '');
 eq('nor is a word of it matched', $coreSearch(['search' => 'visible'], null)[1], []);
 $edFound = $coreSearch(['search' => 'jasmine'], 'ed');
 eq('an editor finds both published rows, with their titles', [$hits($edFound), array_column($edFound[1], 'title')],
-    [["first_notes:{$visibleNote['id']}", "first_notes:{$hiddenNote['id']}"], ['Visible jasmine', 'Hidden jasmine']]);
-// Pages run over core's results, then First's items, as one list.
+    [["tp_notes:{$visibleNote['id']}", "tp_notes:{$hiddenNote['id']}"], ['Visible jasmine', 'Hidden jasmine']]);
+// Pages run over core's results, then TypedPress's items, as one list.
 $pageOf = static fn (int $page) => $coreSearch(['search' => 'green', 'per_page' => 1, 'page' => $page], null);
 eq('page 1 holds core\'s result, page 2 the item, and both count 2', [[$hits($pageOf(1)), $pageOf(1)[2]], [$hits($pageOf(2)), $pageOf(2)[2]]],
-    [[["post:$corePost"], 2], [["first_posts:{$public['id']}"], 2]]);
+    [[["post:$corePost"], 2], [["tp_posts:{$public['id']}"], 2]]);
 eq('a page past the end is core\'s 400', $pageOf(3)[0], 400);
 eq('exclude leaves an item out', $hits($coreSearch(['search' => 'green', 'exclude' => [$public['id']]], null)), ["post:$corePost"]);
-eq('include keeps only the items named', $hits($coreSearch(['search' => 'green', 'include' => [$public['id']]], null)), ["first_posts:{$public['id']}"]);
+eq('include keeps only the items named', $hits($coreSearch(['search' => 'green', 'include' => [$public['id']]], null)), ["tp_posts:{$public['id']}"]);
 // An address that would show a slug the reader may not read is not given: the kind isn't searched for them.
 wp_set_current_user(1);
 $topic = $db->insert('topics', ['name' => 'Secret topic', 'email' => 't@example.test', 'status' => 'published'], true)[0];
@@ -289,7 +289,7 @@ $story = $db->insert('stories', ['name' => 'Oolong story', 'email' => 's@example
 wp_set_current_user(0);
 // (A subscriber reads the kind, as `authors` it was cloned from; only editors read a topic's slug.)
 eq('a kind whose address shows a referenced slug hidden from the reader is not searched for them', $coreSearch(['search' => 'oolong'], 'sub')[1], []);
-eq('an editor, who reads that slug, finds the item', $hits($coreSearch(['search' => 'oolong'], 'ed')), ["first_stories:{$story['id']}"]);
+eq('an editor, who reads that slug, finds the item', $hits($coreSearch(['search' => 'oolong'], 'ed')), ["tp_stories:{$story['id']}"]);
 // Another plugin's handler of `post` that declares no subtypes still answers `subtype=any`.
 $plugin = new class extends \WP_REST_Search_Handler {
     public function __construct() { $this->type = 'post'; }
@@ -305,14 +305,14 @@ remove_filter('wp_rest_search_handlers', $swap, 10);
 $wrapped = array_values(array_filter($handlers, static fn ($h) => $h->get_type() === 'post'))[0];
 $anyRequest = new \WP_REST_Request('GET', '/wp/v2/search');
 $anyRequest->set_query_params(['search' => 'green', 'subtype' => ['any'], 'page' => 1, 'per_page' => 10]);
-check('the plugin\'s handler is the one wrapped', $wrapped instanceof \First\Wp\SearchHandler);
-eq('its results for subtype=any are kept, before First\'s', $wrapped->search_items($anyRequest), ['ids' => [987654, $public['id']], 'total' => 2]);
+check('the plugin\'s handler is the one wrapped', $wrapped instanceof \TypedPress\Wp\SearchHandler);
+eq('its results for subtype=any are kept, before TypedPress\'s', $wrapped->search_items($anyRequest), ['ids' => [987654, $public['id']], 'total' => 2]);
 wp_set_current_user(1);
 $db->delete('stories', ['id' => $story['id']]);
 $db->delete('topics', ['id' => $topic['id']]);
 wp_set_current_user(0);
 $subtypes = rest_get_server()->get_routes()['/wp/v2/search'][0]['args']['subtype']['items']['enum'] ?? [];
-check('the kinds with addresses are subtypes of post, next to core\'s', array_intersect(['post', 'page', 'first_posts', 'first_authors', 'first_notes'], $subtypes) === ['post', 'page', 'first_posts', 'first_authors', 'first_notes'], $subtypes);
+check('the kinds with addresses are subtypes of post, next to core\'s', array_intersect(['post', 'page', 'tp_posts', 'tp_authors', 'tp_notes'], $subtypes) === ['post', 'page', 'tp_posts', 'tp_authors', 'tp_notes'], $subtypes);
 wp_set_current_user(1);
 wp_delete_post($corePost, true);
 foreach ([$visibleNote, $hiddenNote, $draftNote] as $note) {
@@ -325,67 +325,67 @@ wp_set_current_user(0);
 // Enough rows for more than one batch: each run queues the next, and rows stay searchable meanwhile.
 wp_set_current_user(1);
 $many = [];
-for ($n = 0; $n < \First\Search\Index::BATCH + 5; $n++) {
+for ($n = 0; $n < \TypedPress\Search\Index::BATCH + 5; $n++) {
     $many[] = (int) $db->insert('comments', ['postId' => $public['id'], 'name' => 'Bulk', 'body' => "Bulk note $n", 'approved' => true], true)[0]['id'];
 }
-$wp->exec("DELETE FROM `{$prefix}first__search` WHERE `kind` = ? AND `item` = ?", [$bytes('comments'), $bytes((string) $many[0])]);
+$wp->exec("DELETE FROM `{$prefix}tp__search` WHERE `kind` = ? AND `item` = ?", [$bytes('comments'), $bytes((string) $many[0])]);
 // A stale entry of a row that no longer exists, and of a field that is no longer searchable.
-$wp->exec("INSERT INTO `{$prefix}first__search` (`kind`, `item`, `field`, `body`) VALUES (?, ?, ?, 'Orphan tea'), (?, ?, ?, 'Stale tea')",
+$wp->exec("INSERT INTO `{$prefix}tp__search` (`kind`, `item`, `field`, `body`) VALUES (?, ?, ?, 'Orphan tea'), (?, ?, ?, 'Stale tea')",
     [$bytes('comments'), $bytes('999999'), $bytes('body'), $bytes('comments'), $bytes((string) $approved['id']), $bytes('postId')]);
-$jobs = static fn (): array => $wp->sql("SELECT `input` FROM `{$prefix}first__jobs` WHERE `job` = ? AND `state` = 'pending'", [\First\Search\Index::JOB]);
+$jobs = static fn (): array => $wp->sql("SELECT `input` FROM `{$prefix}tp__jobs` WHERE `job` = ? AND `state` = 'pending'", [\TypedPress\Search\Index::JOB]);
 $before = count($jobs());
-\First\Search\Index::rebuild(['kind' => 'comments', 'after' => null]);
+\TypedPress\Search\Index::rebuild(['kind' => 'comments', 'after' => null]);
 $next = array_values(array_filter(array_map(static fn (array $j): array => json_decode($j['input'], true), $jobs()), static fn (array $i): bool => $i['kind'] === 'comments' && $i['after'] !== null));
 eq('a full batch queues the next run, after its last row', [count($jobs()) - $before, count($next)], [1, 1]);
 eq('the first run re-indexed the row whose entry was missing', $list('comments', 'bulk', 'sub') !== [] && in_array($many[0], $list('comments', 'bulk', 'sub'), true), true);
 check('rows not yet reached stay searchable: nothing was cleared first', in_array('body:Orphan tea', $index('comments'), true) && count($list('comments', 'bulk', 'sub')) === count($many), count($list('comments', 'bulk', 'sub')));
-\First\Search\Index::rebuild($next[0]);
+\TypedPress\Search\Index::rebuild($next[0]);
 check('the last run removes entries of rows that are gone and of fields no longer searchable',
     !in_array('body:Orphan tea', $index('comments'), true) && !in_array('postId:Stale tea', $index('comments'), true), $index('comments'));
 eq('and every row is still found', count($list('comments', 'bulk', 'sub')), count($many));
 check('a run of an older build\'s rebuild does nothing', (static function () use ($wp, $prefix, $bytes): bool {
-    $wp->exec("DELETE FROM `{$prefix}first__search` WHERE `kind` = ?", [$bytes('posts')]);
-    \First\Search\Index::rebuild(['kind' => 'posts', 'after' => null, 'generation' => 'older']);
+    $wp->exec("DELETE FROM `{$prefix}tp__search` WHERE `kind` = ?", [$bytes('posts')]);
+    \TypedPress\Search\Index::rebuild(['kind' => 'posts', 'after' => null, 'generation' => 'older']);
 
-    return $wp->sql("SELECT 1 FROM `{$prefix}first__search` WHERE `kind` = ?", [$bytes('posts')]) === [];
+    return $wp->sql("SELECT 1 FROM `{$prefix}tp__search` WHERE `kind` = ?", [$bytes('posts')]) === [];
 })());
-\First\Search\Index::rebuild(['kind' => 'posts', 'after' => null]);
+\TypedPress\Search\Index::rebuild(['kind' => 'posts', 'after' => null]);
 wp_set_current_user(0);
 eq('the reindex job brings an emptied kind back', $list('posts', 'green', null), [$public['id']]);
 
 // ---------------------------------------------------------------- only on storage this build migrated
 
-// A build whose migrations haven't all run (WP-CLI before `first migrate`, a refused build, a ledger
+// A build whose migrations haven't all run (WP-CLI before `typedpress migrate`, a refused build, a ledger
 // rewound by hand) may name a kind with no table: the check that queues rebuilds counts each kind's
 // rows, so it waits for the migrations instead of failing every request.
-$plugin = \First\Wp\Plugin::instance();
-$ledger = $wp->sql('SELECT * FROM `{prefix}first__migrations` WHERE `app` = ?', [$wp->app()->schema->name()]);
+$plugin = \TypedPress\Wp\Plugin::instance();
+$ledger = $wp->sql('SELECT * FROM `{prefix}tp__migrations` WHERE `app` = ?', [$wp->app()->schema->name()]);
 check('the fixture site has migrations to rewind', $ledger !== [] && $plugin->migrated());
-$wp->exec('DELETE FROM `{prefix}first__migrations` WHERE `app` = ?', [$wp->app()->schema->name()]);
-delete_option('first_search_shape');
+$wp->exec('DELETE FROM `{prefix}tp__migrations` WHERE `app` = ?', [$wp->app()->schema->name()]);
+delete_option('tp_search_shape');
 $pendingBefore = count($jobs());
-\First\Search\Index::reindexChanged();
-eq('with a migration pending, nothing is counted or queued, and the shape is left unrecorded', [$plugin->migrated(), count($jobs()) - $pendingBefore, get_option('first_search_shape', null)], [false, 0, null]);
+\TypedPress\Search\Index::reindexChanged();
+eq('with a migration pending, nothing is counted or queued, and the shape is left unrecorded', [$plugin->migrated(), count($jobs()) - $pendingBefore, get_option('tp_search_shape', null)], [false, 0, null]);
 foreach ($ledger as $row) {
-    $wp->exec('INSERT INTO `{prefix}first__migrations` (`' . implode('`, `', array_keys($row)) . '`) VALUES (' . implode(', ', array_fill(0, count($row), '?')) . ')', array_values($row));
+    $wp->exec('INSERT INTO `{prefix}tp__migrations` (`' . implode('`, `', array_keys($row)) . '`) VALUES (' . implode(', ', array_fill(0, count($row), '?')) . ')', array_values($row));
 }
-\First\Search\Index::reindexChanged();
-check('once migrated, the check runs and records the shape', $plugin->migrated() && is_array(get_option('first_search_shape', null)));
+\TypedPress\Search\Index::reindexChanged();
+check('once migrated, the check runs and records the shape', $plugin->migrated() && is_array(get_option('tp_search_shape', null)));
 
 // ---------------------------------------------------------------- an index table from before keys were bytes
 
 // The first release stored ids as text (case-insensitive): the runtime's table upgrade replaces such
 // a table, and every kind is indexed again by the next request's check.
-$wp->exec("DROP TABLE `{$prefix}first__search`");
-$wp->exec("CREATE TABLE `{$prefix}first__search` (`kind` varchar(64) NOT NULL, `item` varchar(191) NOT NULL, `field` varchar(64) NOT NULL, `body` LONGTEXT NOT NULL, PRIMARY KEY (`kind`, `item`, `field`))");
-$wp->exec("INSERT INTO `{$prefix}first__search` VALUES ('posts', '1', 'title', 'Old table tea')");
-\First\Wp\Runtime::applySystemTables();
-$type = static fn (): ?string => $wp->sql('SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$prefix . 'first__search', 'item'])[0]['DATA_TYPE'] ?? null;
-eq('the old table is replaced by one with byte keys, and its rows are gone', [$type(), $wp->sql("SELECT COUNT(*) AS n FROM `{$prefix}first__search`")[0]['n']], ['varbinary', 0]);
-eq('the recorded shape is cleared, so the next request queues a rebuild of every kind', get_option('first_search_shape', null), null);
-\First\Wp\Runtime::applySystemTables();
-$wp->exec("INSERT INTO `{$prefix}first__search` (`kind`, `item`, `field`, `body`) VALUES (?, ?, ?, 'Kept')", [$bytes('posts'), $bytes('1'), $bytes('title')]);
-\First\Wp\Runtime::applySystemTables();
-eq('a table that already has byte keys is kept as it is', (int) $wp->sql("SELECT COUNT(*) AS n FROM `{$prefix}first__search`")[0]['n'], 1);
+$wp->exec("DROP TABLE `{$prefix}tp__search`");
+$wp->exec("CREATE TABLE `{$prefix}tp__search` (`kind` varchar(64) NOT NULL, `item` varchar(191) NOT NULL, `field` varchar(64) NOT NULL, `body` LONGTEXT NOT NULL, PRIMARY KEY (`kind`, `item`, `field`))");
+$wp->exec("INSERT INTO `{$prefix}tp__search` VALUES ('posts', '1', 'title', 'Old table tea')");
+\TypedPress\Wp\Runtime::applySystemTables();
+$type = static fn (): ?string => $wp->sql('SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$prefix . 'tp__search', 'item'])[0]['DATA_TYPE'] ?? null;
+eq('the old table is replaced by one with byte keys, and its rows are gone', [$type(), $wp->sql("SELECT COUNT(*) AS n FROM `{$prefix}tp__search`")[0]['n']], ['varbinary', 0]);
+eq('the recorded shape is cleared, so the next request queues a rebuild of every kind', get_option('tp_search_shape', null), null);
+\TypedPress\Wp\Runtime::applySystemTables();
+$wp->exec("INSERT INTO `{$prefix}tp__search` (`kind`, `item`, `field`, `body`) VALUES (?, ?, ?, 'Kept')", [$bytes('posts'), $bytes('1'), $bytes('title')]);
+\TypedPress\Wp\Runtime::applySystemTables();
+eq('a table that already has byte keys is kept as it is', (int) $wp->sql("SELECT COUNT(*) AS n FROM `{$prefix}tp__search`")[0]['n'], 1);
 
 finish('search_test');

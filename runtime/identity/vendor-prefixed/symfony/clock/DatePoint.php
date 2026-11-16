@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Clock;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Clock;
 
 /**
  * An immmutable DateTime with stricter error handling and return types than the native one.

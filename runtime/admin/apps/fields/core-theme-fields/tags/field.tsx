@@ -1,6 +1,6 @@
 import type { Theme } from '@wordpress/core-data';
 import { decodeEntities } from '@wordpress/html-entities';
-import type { Field } from '@first-admin/dataviews';
+import type { Field } from '@typedpress-admin/dataviews';
 import { extractTagsFromTheme } from './utils';
 
 export function ThemeTags( { item }: { item: Theme } ) {

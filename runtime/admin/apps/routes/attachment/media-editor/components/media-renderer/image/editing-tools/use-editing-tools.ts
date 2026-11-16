@@ -1,4 +1,4 @@
-import { useImageCropper, type Flip } from '@first-admin/image-cropper';
+import { useImageCropper, type Flip } from '@typedpress-admin/image-cropper';
 import { useEffect, useCallback } from '@wordpress/element';
 import useGetAspectRatios from '../../../../hooks/use-get-aspect-ratios';
 import { ratioToNumber, type AspectRatio } from './aspect-ratio';

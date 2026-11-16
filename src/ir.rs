@@ -1,4 +1,4 @@
-//! First's own intermediate form. oxc's arena AST is lowered into this once per
+//! TypedPress's own intermediate form. oxc's arena AST is lowered into this once per
 //! module (see `lower.rs`); both backends read it: the build-time evaluator
 //! (`eval.rs`) and the PHP compiler (`compile.rs`). Anything outside the
 //! supported subset is rejected during lowering, so neither backend has to
@@ -482,7 +482,7 @@ pub enum ExprKind {
     Jsx(P<Jsx>),
 }
 
-/// One JSX node. Its value is rendered HTML (`\First\Html` at run time).
+/// One JSX node. Its value is rendered HTML (`\TypedPress\Html` at run time).
 #[derive(Debug, Clone)]
 pub struct Jsx {
     pub kind: JsxKind,

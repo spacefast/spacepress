@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\String\Exception;
+namespace TypedPress\Identity\Vendor\Symfony\Component\String\Exception;
 
 interface ExceptionInterface extends \Throwable
 {

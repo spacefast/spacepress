@@ -1,1 +1,1 @@
-<?php return array('name' => 'collection-edit', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/schema'), 'version' => '3780a8d1e4c681701fbb');
+<?php return array('name' => 'collection-edit', 'dependencies' => array(), 'moduleDependencies' => array('@typedpress-admin/schema'), 'version' => '08fc639a6a1d41e42b2f');

@@ -287,7 +287,7 @@ pub fn parse(config: &Value, ev: &Evaluator<'_>, schema: &Schema, span: Span) ->
 pub fn php(services: &Json) -> String {
     format!(
         r#"
-\add_filter('first_services_config', static function (array $config): array {{
+\add_filter('tp_services_config', static function (array $config): array {{
     $authored = {};
     foreach (['forms', 'search', 'products'] as $key) {{
         if (isset($authored[$key])) {{

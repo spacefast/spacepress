@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 
-const site = process.env.FIRST_SITE?.replace(/\/$/, "");
-const password = process.env.FIRST_APP_PASSWORD;
-const otherPassword = process.env.FIRST_OTHER_APP_PASSWORD;
-assert.ok(site && password, "Set FIRST_SITE and FIRST_APP_PASSWORD=user:application-password.");
-const api = `${site}/__first/api/v1`;
+const site = process.env.TP_SITE?.replace(/\/$/, "");
+const password = process.env.TP_APP_PASSWORD;
+const otherPassword = process.env.TP_OTHER_APP_PASSWORD;
+assert.ok(site && password, "Set TP_SITE and TP_APP_PASSWORD=user:application-password.");
+const api = `${site}/__tp/api/v1`;
 
 async function request(method, path, body, credential = password, extraHeaders = {}) {
   const headers = { ...extraHeaders };
@@ -25,7 +25,7 @@ async function request(method, path, body, credential = password, extraHeaders =
 async function ok(method, path, body, credential = password, headers = {}) {
   const response = await request(method, path, body, credential, headers);
   assert.ok(response.status >= 200 && response.status < 300, `${method} ${path} failed`);
-  assert.ok(Object.hasOwn(response.json, "data"), `${path} lacks a First response envelope`);
+  assert.ok(Object.hasOwn(response.json, "data"), `${path} lacks a TypedPress response envelope`);
   return response.json.data;
 }
 
@@ -40,8 +40,8 @@ const action = (name, input, credential = password, headers = {}) =>
 const day = (offset) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 
 if (process.argv.includes("--stamps")) {
-  const id = Number(process.env.FIRST_STAMP_LOAN_ID);
-  assert.ok(Number.isSafeInteger(id) && id > 0, "Set FIRST_STAMP_LOAN_ID to the ID printed by the first run.");
+  const id = Number(process.env.TP_STAMP_LOAN_ID);
+  assert.ok(Number.isSafeInteger(id) && id > 0, "Set TP_STAMP_LOAN_ID to the ID printed by the first run.");
   const loan = await ok("GET", `/loans/${id}`);
   assert.equal(loan.returnedOn, null);
   assert.ok(loan.dueOn < day(0));
@@ -112,7 +112,7 @@ if (process.argv.includes("--stamps")) {
     await problem("POST", "/things", { name: `Foreign bin ${run}`, binId: bin.id }, 404, "not_found", otherPassword);
     console.log("PASS: a second WordPress user cannot read or lend another owner's rows.");
   } else {
-    console.log("SKIP: cross-owner checks require FIRST_OTHER_APP_PASSWORD.");
+    console.log("SKIP: cross-owner checks require TP_OTHER_APP_PASSWORD.");
   }
 
   await problem("POST", "/actions/giveBack", { loanId: loan.id, returnedOn: day(-5) }, 422, "invalid_input");
@@ -127,8 +127,8 @@ if (process.argv.includes("--stamps")) {
   assert.equal(available[0].availableQuantity, 1);
 
   const stampLoan = await action("lend", input);
-  console.log(`FIRST_STAMP_LOAN_ID=${stampLoan.id}`);
+  console.log(`TP_STAMP_LOAN_ID=${stampLoan.id}`);
   console.log(`Demo rows retained: bin=${bin.id}, thing=${thing.id}, person=${person.id}, loan=${stampLoan.id}`);
   console.log("PASS: collection CRUD, owner protection, all five actions, search, quantity exhaustion, lending replay, return replay, and overdue dates.");
-  console.log("Run Action Scheduler, then rerun with --stamps and FIRST_STAMP_LOAN_ID to verify the stored stamp.");
+  console.log("Run Action Scheduler, then rerun with --stamps and TP_STAMP_LOAN_ID to verify the stored stamp.");
 }

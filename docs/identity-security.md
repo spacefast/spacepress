@@ -1,4 +1,4 @@
-# First Identity: security and operations
+# TypedPress Identity: security and operations
 
 ## Account model
 
@@ -10,7 +10,7 @@ Password sign-in verifies one fixed hash for every algorithm/cost profile presen
 
 Sensitive credential mutations lock account then initiating session and recheck account state, session ownership, expiry, revocation and five-minute reverification. Revocation uses the same lock order. Nested operations use savepoints. One-use challenges expire in five minutes and permit at most five attempts; invitation secrets expire in seven days. Challenge failures are committed independently before credential transactions so failed-attempt counts are not rolled back.
 
-Guests (`first_guest`, created by the First runtime) are ordinary WordPress users without an email. Verifying an email while signed in as a guest attaches it to that user; an address owned by another account never merges into a guest. Passwords, email codes, provider sign-in and passkeys all enter the same MFA gate before creating an identity session. On wp-login.php an MFA-enabled account's right password leads to Two Factor's second step, which checks Identity's factor (`First\Identity\TwoFactorProvider`) before any cookie is set; every other native password sign-in (XML-RPC, REST, a plugin calling `wp_authenticate`, a site without Two Factor) is denied for it. Authenticator TOTP accepts only the current timestep; reuse is rejected. Recovery codes are high-entropy, hashed and single-use. A primary verified recovery address is required before removing provider/passkey credentials.
+Guests (`tp_guest`, created by the TypedPress runtime) are ordinary WordPress users without an email. Verifying an email while signed in as a guest attaches it to that user; an address owned by another account never merges into a guest. Passwords, email codes, provider sign-in and passkeys all enter the same MFA gate before creating an identity session. On wp-login.php an MFA-enabled account's right password leads to Two Factor's second step, which checks Identity's factor (`TypedPress\Identity\TwoFactorProvider`) before any cookie is set; every other native password sign-in (XML-RPC, REST, a plugin calling `wp_authenticate`, a site without Two Factor) is denied for it. Authenticator TOTP accepts only the current timestep; reuse is rejected. Recovery codes are high-entropy, hashed and single-use. A primary verified recovery address is required before removing provider/passkey credentials.
 
 ## Sessions, permissions and logout
 
@@ -77,21 +77,21 @@ Cookie-authenticated writes require the canonical identity Origin or a registere
 
 Incoming OIDC requires provider-pinned algorithms, validated JWKS keys, exact issuer/audience, nonce and time checks. Provider identities use immutable issuer + subject. UserInfo and ID-token subjects must agree. Code, PKCE, state, browser-bound challenge and replay checks are independent.
 
-Deploy behind HTTPS with the correct trusted proxy configuration. Exclude identity HTML/API from shared caches. The development HTTP override requires both `FIRST_IDENTITY_DEV_HTTP=true` and WordPress's `local` environment; do not enable it on public deployments.
+Deploy behind HTTPS with the correct trusted proxy configuration. Exclude identity HTML/API from shared caches. The development HTTP override requires both `TP_IDENTITY_DEV_HTTP=true` and WordPress's `local` environment; do not enable it on public deployments.
 
 ## Maintenance and diagnostics
 
-`wp first identity maintenance` sends at most 30 due webhook deliveries per run. A delivery gets a two-minute processing lease, up to eight attempts and exponential retry delays. Delivery is at least once: consumers deduplicate by `First-Event-Id`. Requests do not follow redirects and WordPress's safe HTTP client rejects private-network destinations.
+`wp typedpress identity maintenance` sends at most 30 due webhook deliveries per run. A delivery gets a two-minute processing lease, up to eight attempts and exponential retry delays. Delivery is at least once: consumers deduplicate by `TypedPress-Event-Id`. Requests do not follow redirects and WordPress's safe HTTP client rejects private-network destinations.
 
-The signature header is `First-Signature: t=<unix>,v1=<hex HMAC-SHA256>`. Verify HMAC over the exact bytes `<timestamp>.<body>`, use constant-time comparison, and reject stale timestamps such as those older than five minutes. Store the signing secret securely. **Identity → Authentication** shows recent status/attempts; it displays a new secret only once. CLI equivalents are `wp first identity webhook-add <https-url>`, `webhooks`, and `webhook-remove <id>`.
+The signature header is `TypedPress-Signature: t=<unix>,v1=<hex HMAC-SHA256>`. Verify HMAC over the exact bytes `<timestamp>.<body>`, use constant-time comparison, and reject stale timestamps such as those older than five minutes. Store the signing secret securely. **Identity → Authentication** shows recent status/attempts; it displays a new secret only once. CLI equivalents are `wp typedpress identity webhook-add <https-url>`, `webhooks`, and `webhook-remove <id>`.
 
 Use a real cron scheduler every minute for reliable retries; the fallback WordPress event is hourly and depends on traffic. Monitor `email.accepted`/`email.failed`, `provider.rejected`, account/session events and webhook HTTP statuses. Email acceptance indicates `wp_mail` transport acceptance only. SMTP delivery, bounce handling and inbox acceptance remain transport responsibilities. Authentication rate limits are stored in the database and use both network and account buckets.
 
-Rotate signing keys with `wp first identity rotate-keys`. Back up the database and WordPress salts together. Changing secure-auth salts makes stored encrypted secrets unreadable and requires explicit operational recovery. Never log codes, cookies, tokens, private keys or client secrets.
+Rotate signing keys with `wp typedpress identity rotate-keys`. Back up the database and WordPress salts together. Changing secure-auth salts makes stored encrypted secrets unreadable and requires explicit operational recovery. Never log codes, cookies, tokens, private keys or client secrets.
 
 ## Privacy and lifecycle
 
-Users export their profile, connections, session metadata, organization memberships, passkey metadata and events. Exports omit credential secrets. Deletion requests immediately suspend the local account. An administrator completes erasure from People or `wp first identity erase <id>`. Sole organization owners must transfer ownership, and WordPress administrators must transfer administration first. Erasure removes identity credentials and metadata, anonymizes the WordPress account, removes roles and preserves authored content under the retained numeric author ID. It is idempotent. WordPress privacy exporter/eraser callbacks are registered.
+Users export their profile, connections, session metadata, organization memberships, passkey metadata and events. Exports omit credential secrets. Deletion requests immediately suspend the local account. An administrator completes erasure from People or `wp typedpress identity erase <id>`. Sole organization owners must transfer ownership, and WordPress administrators must transfer administration first. Erasure removes identity credentials and metadata, anonymizes the WordPress account, removes roles and preserves authored content under the retained numeric author ID. It is idempotent. WordPress privacy exporter/eraser callbacks are registered.
 
 Uninstall preserves all data. Backups, external webhook recipients and other plugins' metadata have separate retention policies. V1 uses English UI copy; full localization and enterprise federation/provisioning are not claimed.
 

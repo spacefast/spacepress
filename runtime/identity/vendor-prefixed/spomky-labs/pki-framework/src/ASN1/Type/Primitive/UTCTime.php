@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
 use DateTimeImmutable;
 use DateTimeZone;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\BaseTime;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
-use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\BaseTime;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
+use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
 
 /**
  * Implements *UTCTime* type.

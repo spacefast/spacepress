@@ -1,17 +1,17 @@
-// The First compiler core in the browser: `compiler.wasm` is `src/wasm.rs` built for
+// The TypedPress compiler core in the browser: `compiler.wasm` is `src/wasm.rs` built for
 // wasm32-unknown-unknown. One call compiles a whole config from memory; the diagnostics envelope is
-// the one `first check --json` prints.
+// the one `typedpress check --json` prints.
 
 export interface Request {
-  /** The project's name: the app plugin is `first-app-<name>`. */
+  /** The project's name: the app plugin is `typedpress-app-<name>`. */
   name: string;
-  /** Sources by project-relative path; `first.config.ts` is the entry. */
+  /** Sources by project-relative path; `typedpress.config.ts` is the entry. */
   files: Record<string, string>;
-  /** The last build's `first/_generated/migrations/snapshot.json`, or null for a first build. */
+  /** The last build's `tp/_generated/migrations/snapshot.json`, or null for a first build. */
   previous?: unknown;
-  /** The file names beside that snapshot; they number the next migration like `first build` does. */
+  /** The file names beside that snapshot; they number the next migration like `typedpress build` does. */
   migrationFiles?: string[];
-  /** Refuse plugin grants beyond `first/_generated/plugins.lock.json` in `files`, like `first check --frozen` and CI. */
+  /** Refuse plugin grants beyond `tp/_generated/plugins.lock.json` in `files`, like `typedpress check --frozen` and CI. */
   frozen?: boolean;
 }
 
@@ -35,9 +35,9 @@ export interface Diagnostic {
   group: string;
 }
 
-/** `first check --json`'s envelope (docs/compiler-diagnostics.md). */
+/** `typedpress check --json`'s envelope (docs/compiler-diagnostics.md). */
 export interface Envelope {
-  schema: "first-diagnostics";
+  schema: "typedpress-diagnostics";
   version: number;
   compilerVersion: string;
   ok: boolean;
@@ -61,14 +61,14 @@ export interface Output {
   unsupportedPlugins: string[];
   hints: string[];
   /**
-   * Every file of the `first-app-<name>` plugin `first build` writes, by path below the plugins
-   * directory: the `.sql` files under `first/_generated/migrations/` in the request and this
-   * compile's new migrations. Its `first/app/openapi.json` is the app's API as an OpenAPI 3.1
-   * document, the file `first build` also writes to `first/_generated/openapi.json`.
+   * Every file of the `typedpress-app-<name>` plugin `typedpress build` writes, by path below the plugins
+   * directory: the `.sql` files under `tp/_generated/migrations/` in the request and this
+   * compile's new migrations. Its `tp/app/openapi.json` is the app's API as an OpenAPI 3.1
+   * document, the file `typedpress build` also writes to `tp/_generated/openapi.json`.
    */
   appPlugin: Record<string, string>;
-  /** First's plugins for this app, in activation order. */
-  firstPlugins: string[];
+  /** TypedPress's plugins for this app, in activation order. */
+  tpPlugins: string[];
   /** The WordPress.org plugins the app needs, dependencies first. */
   wordpressPlugins: { slug: string; version: string }[];
 }
@@ -81,9 +81,9 @@ export interface Compiled {
 
 interface Exports {
   memory: WebAssembly.Memory;
-  first_alloc(len: number): number;
-  first_compile(ptr: number, len: number): number;
-  first_free(ptr: number, len: number): void;
+  tp_alloc(len: number): number;
+  tp_compile(ptr: number, len: number): number;
+  tp_free(ptr: number, len: number): void;
 }
 
 /**
@@ -120,18 +120,18 @@ export class Compiler {
     return parsed;
   }
 
-  /** The response as the compiler serialized it, for byte-for-byte comparison with `first check --json`. */
+  /** The response as the compiler serialized it, for byte-for-byte comparison with `typedpress check --json`. */
   compileToJson(request: Request): string {
-    const { memory, first_alloc, first_compile, first_free } = this.#exports;
+    const { memory, tp_alloc, tp_compile, tp_free } = this.#exports;
     const bytes = new TextEncoder().encode(JSON.stringify(request));
     // Pointers cross the boundary as i32; addresses past 2 GiB come back negative.
-    const input = first_alloc(bytes.length) >>> 0;
+    const input = tp_alloc(bytes.length) >>> 0;
     new Uint8Array(memory.buffer, input, bytes.length).set(bytes);
-    // first_compile takes ownership of the request buffer.
-    const output = first_compile(input, bytes.length) >>> 0;
+    // tp_compile takes ownership of the request buffer.
+    const output = tp_compile(input, bytes.length) >>> 0;
     const length = new DataView(memory.buffer, output, 4).getUint32(0, true);
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, output + 4, length));
-    first_free(output, 4 + length);
+    tp_free(output, 4 + length);
     return text;
   }
 }

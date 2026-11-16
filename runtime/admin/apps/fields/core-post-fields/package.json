@@ -2,9 +2,9 @@
 	"name": "core-post-fields",
 	"version": "1.0.0",
 	"dependencies": {
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/lazy-editor": "workspace:*",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
+		"@typedpress-admin/lazy-editor": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/block-editor": "catalog:",
 		"@wordpress/blocks": "catalog:",
 		"@wordpress/components": "catalog:",

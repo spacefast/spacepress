@@ -1,17 +1,17 @@
 # The API reference
 
-`first add api-reference` wrote these files. They are yours: change the markup, the styles and
+`typedpress add api-reference` wrote these files. They are yours: change the markup, the styles and
 the URLs as you like.
 
 | File | Serves |
 | --- | --- |
-| `first/app/api/page.tsx` | `/api`: every operation, by tag |
-| `first/app/api/[tag]/[operation]/page.tsx` | `/api/<tag>/<operation>`: one operation |
-| `first/components/ApiFields.tsx` | the list of an operation's parameters, body or response fields |
+| `tp/app/api/page.tsx` | `/api`: every operation, by tag |
+| `tp/app/api/[tag]/[operation]/page.tsx` | `/api/<tag>/<operation>`: one operation |
+| `tp/components/ApiFields.tsx` | the list of an operation's parameters, body or response fields |
 
-Both pages read `apiReference()` from `"first/content"`. It returns the OpenAPI document
-`first build` writes for this app (`first/_generated/openapi.json`), as the site serves it at
-`/__first/api/v1/openapi.json`, so the reference follows the schema on every build.
+Both pages read `apiReference()` from `"typedpress/content"`. It returns the OpenAPI document
+`typedpress build` writes for this app (`tp/_generated/openapi.json`), as the site serves it at
+`/__tp/api/v1/openapi.json`, so the reference follows the schema on every build.
 
 - Each operation has `method`, `path`, `summary`, `description` and `access`, `params`, `body`
   and `responses` as field lists, and `curl` and `fetch` samples.

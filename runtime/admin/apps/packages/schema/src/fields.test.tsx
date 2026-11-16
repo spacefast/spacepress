@@ -6,7 +6,7 @@ import { EditingObjects, columns, type Row } from './model';
 import { fromNative, toNative } from './api';
 
 test('native repeater edits retain provenance, JSON row identity and returned-field masking after removal', async () => {
-	window.firstAdmin = { native: { posts: { path: '/wp/v2/first_posts', postType: 'first_posts', metaPrefix: 'first_' } }, readable: [], role: 'admin' };
+	window.tpAdmin = { native: { posts: { path: '/wp/v2/tp_posts', postType: 'tp_posts', metaPrefix: 'tp_' } }, readable: [], role: 'admin' };
 	const fields = columns({
 		payload: { type: 'json' },
 		entries: { type: 'repeater', fields: {
@@ -78,7 +78,7 @@ test('native repeater edits retain provenance, JSON row identity and returned-fi
 });
 
 test('changing a returned block layout creates editable nested groups without exposing masked siblings', async () => {
-	window.firstAdmin = { native: {}, readable: [], role: 'admin' };
+	window.tpAdmin = { native: {}, readable: [], role: 'admin' };
 	const fields = columns({
 		sections: { type: 'blocks', layouts: {
 			old: { hidden: { type: 'text' }, payload: { type: 'json' } },
@@ -109,7 +109,7 @@ test('changing a returned block layout creates editable nested groups without ex
 });
 
 test('create permissions differ from update permissions even for new items inside an existing record', async () => {
-	window.firstAdmin = { native: {}, readable: [], role: 'editor' };
+	window.tpAdmin = { native: {}, readable: [], role: 'editor' };
 	const fields = columns({
 		createOnly: { type: 'text', access: { read: false, create: 'anyone', update: false } },
 		updateOnly: { type: 'text', access: { create: false, update: 'editor' } },

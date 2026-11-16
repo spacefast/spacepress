@@ -18,7 +18,7 @@ def render():
         "# Tested compiler compatibility", "",
         "Generated from `tests/compatibility/registry.json`; run `python3 scripts/compiler-contracts.py` to update.", "",
         "This is a growing evidence inventory, not an exhaustive language specification. Refusals are verified by running",
-        "`first check --json` on each registered fixture in `tests/compiler_contracts.rs`. Supported behavior and intentional",
+        "`typedpress check --json` on each registered fixture in `tests/compiler_contracts.rs`. Supported behavior and intentional",
         "differences link to their executable evidence. A silent, undocumented mismatch is a bug, not an exclusion.", "",
         "String semantics here describe the current implementation; changes require updating the evidence and this registry.", "",
     ]
@@ -31,7 +31,7 @@ def render():
         evidence = entry["fixture"] if status == "refused" else entry["evidence"]
         assert (ROOT / evidence).exists(), f"missing evidence: {evidence}"
         if status == "refused":
-            assert (ROOT / evidence / "first.config.ts").is_file()
+            assert (ROOT / evidence / "typedpress.config.ts").is_file()
             assert entry["code"].startswith("F") and entry["message"]
         if status != "refused":
             test = entry["test"]

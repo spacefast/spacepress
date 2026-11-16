@@ -1,43 +1,43 @@
 ---
 title: TypeScript to PHP
-description: How first build turns your hooks, actions, jobs, routes, access rules and the npm code they import into PHP that runs inside WordPress.
+description: How typedpress build turns your hooks, actions, jobs, routes, access rules and the npm code they import into PHP that runs inside WordPress.
 sidebar:
   order: 2
 ---
 
-Your server code is TypeScript. WordPress runs PHP. `first build` compiles one into the other, once, on your machine. The compiler is written in Rust and runs only at build time. On the server there is no Node.js and no JavaScript engine: the app is PHP functions and a PHP runtime library.
+Your server code is TypeScript. WordPress runs PHP. `typedpress build` compiles one into the other, once, on your machine. The compiler is written in Rust and runs only at build time. On the server there is no Node.js and no JavaScript engine: the app is PHP functions and a PHP runtime library.
 
 ## What gets compiled
 
 The config is not compiled as a whole. It is evaluated, and the functions inside it are compiled:
 
-| In `first.config.ts` | Becomes |
+| In `typedpress.config.ts` | Becomes |
 | --- | --- |
-| Tables, collections, fields, relations | Data in `first/app/schema.php`, and SQL in `first/_generated/migrations/` |
-| Hooks (`beforeCreate`, `afterCreate`, …) | A PHP function per hook in `first/app/functions.php` |
-| `action()` and `job()` handlers, and `first/app/**/route.ts` handlers | A PHP function per handler, in the same file |
+| Tables, collections, fields, relations | Data in `tp/app/schema.php`, and SQL in `tp/_generated/migrations/` |
+| Hooks (`beforeCreate`, `afterCreate`, …) | A PHP function per hook in `tp/app/functions.php` |
+| `action()` and `job()` handlers, and `tp/app/**/route.ts` handlers | A PHP function per handler, in the same file |
 | Access functions (`read: (ctx) => …`) | A PHP function per rule |
 | Helpers they call, local or from npm | PHP functions in the same file |
 
 ## The steps
 
-1. **Parse.** The compiler reads `first.config.ts` and every module it imports, local files and installed npm packages, with the [OXC](https://oxc.rs) TypeScript parser. It never installs or runs a package.
+1. **Parse.** The compiler reads `typedpress.config.ts` and every module it imports, local files and installed npm packages, with the [OXC](https://oxc.rs) TypeScript parser. It never installs or runs a package.
 2. **Lower.** It turns the syntax tree into its own intermediate form. A construct outside the supported subset fails here, with its location and what to write instead.
 3. **Evaluate.** It runs the config as pure data: helpers, spreads, loops and factories work, but there is no I/O, no clock and no randomness, and a step budget stops runaway loops. Functions stored in the result are kept, not called.
 4. **Extract.** It reads the schema out of the evaluated value, checks every config rule, and lists the functions that need PHP.
 5. **Type-check and compile.** Each function is type-checked against the schema, so a hook knows its row's fields. It becomes native PHP wherever the types make that safe. Where JavaScript and PHP differ (truthiness, `+` on values of unknown type, string indexes, sort order) the PHP calls a helper on the runtime's `Js` class. Where neither is sound, the build fails.
 
-The browser build of the same compiler runs in the [playground](/playground). It gives the same diagnostics as `first check --json`.
+The browser build of the same compiler runs in the [playground](/playground). It gives the same diagnostics as `typedpress check --json`.
 
 ## A hook, before and after
 
-This is `first/lib/owner.ts` and the `reads` hooks from [`examples/reading-list`](/examples/reading-list):
+This is `tp/lib/owner.ts` and the `reads` hooks from [`examples/reading-list`](/examples/reading-list):
 
-<RepoFile path="examples/reading-list/first/lib/owner.ts" />
+<RepoFile path="examples/reading-list/tp/lib/owner.ts" />
 
-The compiler writes this for the `beforeCreate` hook. `signedIn` from `first/lib/owner.ts` is its own PHP function, called directly:
+The compiler writes this for the `beforeCreate` hook. `signedIn` from `tp/lib/owner.ts` is its own PHP function, called directly:
 
-<CompiledExcerpt example="reading-list" from="function signedIn(\First\JsObject $ctx)" toLine="}" />
+<CompiledExcerpt example="reading-list" from="function signedIn(\TypedPress\JsObject $ctx)" toLine="}" />
 
 <CompiledExcerpt example="reading-list" from="function reads__beforeCreate(" toLine="}" />
 
@@ -61,7 +61,7 @@ The package must be installed (`npm ci`) before you build. Its source must use t
 
 ## The PHP runtime
 
-The compiled functions call a shared library, the `first-runtime` plugin. Every app uses the same copy.
+The compiled functions call a shared library, the `typedpress-runtime` plugin. Every app uses the same copy.
 
 | JavaScript | PHP |
 | --- | --- |
@@ -88,9 +88,9 @@ Two differences are known and tested. Everything else that compiles is meant to 
 
 Code outside the subset fails the build. It never compiles into something that behaves differently. This config adds a number to a JSON field of unknown type:
 
-<RepoFile path="tests/fixtures/reject-ambiguous-plus/first.config.ts" name="first.config.ts" />
+<RepoFile path="tests/fixtures/reject-ambiguous-plus/typedpress.config.ts" name="typedpress.config.ts" />
 
-The diagnostic is printed under the line, with a fix. The same message comes from `first check`, `first build` and the playground. Other refusals include:
+The diagnostic is printed under the line, with a fix. The same message comes from `typedpress check`, `typedpress build` and the playground. Other refusals include:
 
 - The clock or randomness while the config is evaluated. Use them in a handler, or `timestamp().defaultNow()`.
 - `localeCompare`. Collation depends on the host, so the result wouldn't be repeatable. Use `<` and `>`.

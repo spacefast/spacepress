@@ -42,7 +42,7 @@ export default async function importPosts(
 
 		if ( mdFiles.length === 0 ) {
 			noticesDispatch.createErrorNotice(
-				__( 'Please drop Markdown (.md) files only.', 'first-admin' ),
+				__( 'Please drop Markdown (.md) files only.', 'typedpress-admin' ),
 				{ type: 'snackbar' }
 			);
 			return;
@@ -61,7 +61,7 @@ export default async function importPosts(
 						// translators: %1$d: percentage, %2$d: current file number, %3$d: total files, %4$s: file name
 						__(
 							'[%1$d%% - %2$d/%3$d] Importing "%4$s"',
-							'first-admin'
+							'typedpress-admin'
 						),
 						percentage,
 						i + 1,
@@ -102,7 +102,7 @@ export default async function importPosts(
 				noticesDispatch.createErrorNotice(
 					sprintf(
 						// translators: %1$s: file name, %2$s: error message
-						__( 'Failed to import "%1$s": %2$s', 'first-admin' ),
+						__( 'Failed to import "%1$s": %2$s', 'typedpress-admin' ),
 						file.name,
 						errorMessage
 					),
@@ -122,7 +122,7 @@ export default async function importPosts(
 						'Imported %1$d post from Markdown files',
 						'Imported %1$d posts from Markdown files',
 						importedCount,
-						'first-admin'
+						'typedpress-admin'
 					),
 					importedCount
 				),

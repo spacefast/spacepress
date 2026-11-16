@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Denormalizer;
+namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
 
 use function assert;
 use const FILTER_VALIDATE_URL;
 use function filter_var;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 use Throwable;
-use First\Identity\Vendor\Webauthn\Url;
+use TypedPress\Identity\Vendor\Webauthn\Url;
 
 /**
  * Normalizes Url objects to absolute HTTPS URLs.

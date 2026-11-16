@@ -1,8 +1,8 @@
 <?php declare(strict_types = 1);
 
-namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr;
+namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
 use function sprintf;
 
 class ConstExprArrayItemNode implements ConstExprNode

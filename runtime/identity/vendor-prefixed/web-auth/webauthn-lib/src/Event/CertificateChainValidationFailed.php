@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Event;
+namespace TypedPress\Identity\Vendor\Webauthn\Event;
 
 final readonly class CertificateChainValidationFailed implements WebauthnEvent
 {

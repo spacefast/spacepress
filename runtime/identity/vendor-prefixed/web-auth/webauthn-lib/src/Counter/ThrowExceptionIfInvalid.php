@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\Webauthn\Counter;
+namespace TypedPress\Identity\Vendor\Webauthn\Counter;
 
-use First\Identity\Vendor\Psr\Log\LoggerInterface;
-use First\Identity\Vendor\Psr\Log\NullLogger;
-use function first_identity_vendor_trigger_deprecation as trigger_deprecation;
-use First\Identity\Vendor\Webauthn\CredentialRecord;
-use First\Identity\Vendor\Webauthn\Exception\CounterException;
-use First\Identity\Vendor\Webauthn\MetadataService\CanLogData;
-use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use TypedPress\Identity\Vendor\Psr\Log\LoggerInterface;
+use TypedPress\Identity\Vendor\Psr\Log\NullLogger;
+use function typedpress_identity_vendor_trigger_deprecation as trigger_deprecation;
+use TypedPress\Identity\Vendor\Webauthn\CredentialRecord;
+use TypedPress\Identity\Vendor\Webauthn\Exception\CounterException;
+use TypedPress\Identity\Vendor\Webauthn\MetadataService\CanLogData;
+use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
 
 final class ThrowExceptionIfInvalid implements CounterChecker, CanLogData
 {
@@ -27,7 +27,7 @@ final class ThrowExceptionIfInvalid implements CounterChecker, CanLogData
     public function check(CredentialRecord $credentialRecord, int $currentCounter): void
     {
         if ($credentialRecord instanceof PublicKeyCredentialSource) {
-            first_identity_vendor_trigger_deprecation(
+            typedpress_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3',
                 'Passing a PublicKeyCredentialSource to "%s::check()" is deprecated, pass a CredentialRecord instead.',

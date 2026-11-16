@@ -9,43 +9,43 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
+namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
 
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprArrayNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprFalseNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprFloatNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNullNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprTrueNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstFetchNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ArrayShapeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ArrayTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\CallableTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ConstTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\GenericTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IntersectionTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\NullableTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ObjectShapeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ThisTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\TypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\UnionTypeNode;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
-use First\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
-use First\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\BackedEnumType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\GenericType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
-use First\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprArrayNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprFalseNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprFloatNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNullNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprTrueNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstFetchNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ArrayShapeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ArrayTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\CallableTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ConstTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\GenericTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\IntersectionTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\NullableTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ObjectShapeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\ThisTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\TypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\UnionTypeNode;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
+use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\InvalidArgumentException;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\BackedEnumType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\BuiltinType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\GenericType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\ObjectType;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
+use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
 
 /**
  * Resolves type for a given string.

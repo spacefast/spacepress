@@ -52,7 +52,7 @@
 <body>
 
 <h1>Building a TypedPress app</h1>
-<p class="lede">The whole path, from an empty folder to a running site, in the new names. Code that says <code>typedpress</code> or <code>tp/</code> is spelled <code>first</code> and <code>first/</code> on <code>main</code> today.</p>
+<p class="lede">The whole path, from an empty folder to a running site, in the new names. Code that says <code>typedpress</code> or <code>tp/</code> is spelled <code>first</code> and <code>tp/</code> on <code>main</code> today.</p>
 <div class="legend">
   <span><span class="b built">Built</span> on <code>main</code> at 9decbf162, under the old names</span>
   <span><span class="b ruled">Ruled</span> you decided it, no code yet</span>
@@ -212,9 +212,9 @@ export function LikeButton({ id, count: start }: { id: number; count: number }) 
 <h2><span class="n">4</span>What you get without writing it</h2>
 <div class="scroll"><table>
 <tr><th>Thing</th><th>What it is</th><th>Status</th></tr>
-<tr><td>TypedPress Admin</td><td>the default admin at <code>/wp-admin/new/</code>; classic wp-admin stays beside it</td><td><span class="b built">Built</span> as First Admin; not run in this check</td></tr>
+<tr><td>TypedPress Admin</td><td>the default admin at <code>/wp-admin/new/</code>; classic wp-admin stays beside it</td><td><span class="b built">Built</span> as TypedPress Admin; not run in this check</td></tr>
 <tr><td>Editor</td><td>the WordPress editor for every collection, with drafts and revisions</td><td><span class="b built">Built</span></td></tr>
-<tr><td>API</td><td><code>/__tp/api/v1</code>, typed from your schema</td><td><span class="b built">Built</span> at <code>/__first/api/v1</code></td></tr>
+<tr><td>API</td><td><code>/__tp/api/v1</code>, typed from your schema</td><td><span class="b built">Built</span> at <code>/__tp/api/v1</code></td></tr>
 <tr><td>Sign-in</td><td>email code, password, passkeys, MFA, Google, guests</td><td><span class="b built">Built</span></td></tr>
 <tr><td>Files</td><td>media library and private buckets</td><td><span class="b built">Built</span></td></tr>
 <tr><td>Live reads</td><td><code>subscribe()</code> on any read</td><td><span class="b built">Built</span>, by polling</td></tr>
@@ -422,7 +422,7 @@ export default defineConfig({
 <p><span class="b ruled">Ruled</span> (2026-11-15) Agents inside an app are secondary and are built isolated, later. One scheduling mechanism for everything. WordPress's own parts are used wherever they exist. On Spacefast the models are Spacefast's; on any other WordPress the site's Connectors supply them. What is needed now is the list of seams, so the add-on can be built without changing the core, and so people can build chat, channels and memory themselves.</p>
 <div class="scroll"><table>
 <tr><th>Part of an agent</th><th>Comes from</th><th>State</th></tr>
-<tr><td>Tools</td><td>the app's queries, mutations and kind operations, each already registered as a WordPress ability with input and output schemas (<code>runtime/First/Wp/Abilities/Register.php</code>)</td><td><span class="b built">Built</span></td></tr>
+<tr><td>Tools</td><td>the app's queries, mutations and kind operations, each already registered as a WordPress ability with input and output schemas (<code>runtime/TypedPress/Wp/Abilities/Register.php</code>)</td><td><span class="b built">Built</span></td></tr>
 <tr><td>The call to the model</td><td>core's <code>wp_ai_client_prompt()</code>; <code>using_abilities()</code> hands abilities to the model as tools, and core's resolver runs the calls it asks for</td><td>in WordPress 7.2-beta5; no typed binding in <code>"php/wordpress"</code></td></tr>
 <tr><td>Model and key</td><td>core Connectors (Settings, Connectors). A key is read from an environment variable, then a PHP constant, then the database. Anthropic, Google and OpenAI are listed by default</td><td>in WordPress 7.2-beta5</td></tr>
 <tr><td>Schedules and background runs</td><td><code>cron()</code> and <code>job()</code> on Action Scheduler (API ruling 10). The add-on adds no schedule form</td><td><span class="b ruled">Ruled</span>, built as <code>job({...})</code></td></tr>

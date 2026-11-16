@@ -1,5 +1,5 @@
 {
-	"name": "@first-admin/post-list",
+	"name": "@typedpress-admin/post-list",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -13,15 +13,15 @@
 		}
 	},
 	"dependencies": {
-		"@first-admin/admin-toolkit": "workspace:*",
-		"@first-admin/attachment-importer": "workspace:*",
-		"@first-admin/core-data-next": "workspace:*",
-		"@first-admin/design-system": "workspace:*",
-		"@first-admin/fields-next": "workspace:*",
-		"@first-admin/image-cropper": "workspace:*",
-		"@first-admin/views": "workspace:*",
-		"@first-admin/telemetry": "workspace:*",
-		"@first-admin/dataviews": "workspace:*",
+		"@typedpress-admin/admin-toolkit": "workspace:*",
+		"@typedpress-admin/attachment-importer": "workspace:*",
+		"@typedpress-admin/core-data-next": "workspace:*",
+		"@typedpress-admin/design-system": "workspace:*",
+		"@typedpress-admin/fields-next": "workspace:*",
+		"@typedpress-admin/image-cropper": "workspace:*",
+		"@typedpress-admin/views": "workspace:*",
+		"@typedpress-admin/telemetry": "workspace:*",
+		"@typedpress-admin/dataviews": "workspace:*",
 		"@wordpress/block-editor": "catalog:",
 		"@wordpress/commands": "catalog:",
 		"@wordpress/components": "catalog:",

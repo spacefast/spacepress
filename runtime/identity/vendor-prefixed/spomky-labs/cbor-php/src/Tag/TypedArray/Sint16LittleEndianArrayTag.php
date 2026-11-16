@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace TypedPress\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 77: an array of signed 16 bit integers, little endian.

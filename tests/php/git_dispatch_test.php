@@ -3,22 +3,22 @@
 declare(strict_types=1);
 
 /*
- * Content in git, the site's half (runtime/First/Sync/GitDispatch.php), on WordPress in-process
+ * Content in git, the site's half (runtime/TypedPress/Sync/GitDispatch.php), on WordPress in-process
  * (tests/php/wp.php): a save of a synced record, in wp-admin or through the API, queues one debounced
- * `repository_dispatch` to the repository; saves in the window join it; `first sync`'s own writes send
+ * `repository_dispatch` to the repository; saves in the window join it; `typedpress sync`'s own writes send
  * none; the job runs on Action Scheduler and POSTs to a local stand-in for GitHub's API. The token is
  * read from the environment, else from the Secrets API, which is never replaced by an option.
  * WordPress 7.1 has no Secrets API: a must-use plugin stands in for it, with WordPress 7.2's
  * function names, so both halves are proven.
  */
 
-use First\Sync\GitDispatch;
+use TypedPress\Sync\GitDispatch;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 // A stand-in for GitHub's API: records each POST (path, headers, body) and answers with $inbox/status.
-$inbox = sys_get_temp_dir() . '/first-git-dispatch-' . bin2hex(random_bytes(4));
+$inbox = sys_get_temp_dir() . '/typedpress-git-dispatch-' . bin2hex(random_bytes(4));
 @mkdir($inbox);
 file_put_contents("$inbox/serve.php", <<<'PHP'
     <?php
@@ -88,34 +88,34 @@ $schema = [
 // went, and writable only while the test turns it on.
 $secrets = <<<'PHP'
     <?php
-    final class First_Test_Secrets extends WP_Secrets_Provider {
+    final class TypedPress_Test_Secrets extends WP_Secrets_Provider {
         public function get(string $name, string $version, bool $network = false) {
-            return isset($GLOBALS['firstTestSecrets'][$name]) && $version === WP_Secret_Version::CURRENT
-                ? new WP_Secret($name, $GLOBALS['firstTestSecrets'][$name], substr(hash('sha256', $GLOBALS['firstTestSecrets'][$name]), 0, 8)) : null;
+            return isset($GLOBALS['tpTestSecrets'][$name]) && $version === WP_Secret_Version::CURRENT
+                ? new WP_Secret($name, $GLOBALS['tpTestSecrets'][$name], substr(hash('sha256', $GLOBALS['tpTestSecrets'][$name]), 0, 8)) : null;
         }
         public function set(string $name, #[\SensitiveParameter] $value, bool $network = false, bool $needs_rotation = false, ?string $action = null) {
-            if (empty($GLOBALS['firstTestSecretsOn'])) { return new WP_Error('read_only', 'off'); }
-            $GLOBALS['firstTestSecrets'][$name] = (string) $value;
+            if (empty($GLOBALS['tpTestSecretsOn'])) { return new WP_Error('read_only', 'off'); }
+            $GLOBALS['tpTestSecrets'][$name] = (string) $value;
             return true;
         }
-        public function delete(string $name, bool $network = false) { unset($GLOBALS['firstTestSecrets'][$name]); return true; }
+        public function delete(string $name, bool $network = false) { unset($GLOBALS['tpTestSecrets'][$name]); return true; }
         public function retire_previous(string $name, bool $network = false) { return true; }
         public function list_secrets(string $name_prefix = '', bool $network = false) { return []; }
         public function get_label(): string { return 'test'; }
         public function get_protection_boundary(): string { return 'test'; }
-        public function is_writable(): bool { return !empty($GLOBALS['firstTestSecretsOn']); }
+        public function is_writable(): bool { return !empty($GLOBALS['tpTestSecretsOn']); }
     }
-    $GLOBALS['wp_secrets_provider'] = new First_Test_Secrets();
+    $GLOBALS['wp_secrets_provider'] = new TypedPress_Test_Secrets();
     PHP;
 $wp = wpSite('git-dispatch', ['schema' => $schema, 'users' => ['ed' => 'editor'], 'muPlugins' => ['secrets' => $secrets]]);
 $db = $wp->app()->db;
-putenv("FIRST_GITHUB_API_URL=http://127.0.0.1:$port");
-putenv('FIRST_NOW=2026-11-13T10:00:00.000Z');
+putenv("TP_GITHUB_API_URL=http://127.0.0.1:$port");
+putenv('TP_NOW=2026-11-13T10:00:00.000Z');
 
-$pending = static fn () => $wp->sql("SELECT * FROM {prefix}first__jobs WHERE `job` = ? AND `state` IN ('pending', 'running', 'failed') ORDER BY `createdAt`", [GitDispatch::JOB]);
-$all = static fn () => $wp->sql('SELECT * FROM {prefix}first__jobs WHERE `job` = ?', [GitDispatch::JOB]);
+$pending = static fn () => $wp->sql("SELECT * FROM {prefix}tp__jobs WHERE `job` = ? AND `state` IN ('pending', 'running', 'failed') ORDER BY `createdAt`", [GitDispatch::JOB]);
+$all = static fn () => $wp->sql('SELECT * FROM {prefix}tp__jobs WHERE `job` = ?', [GitDispatch::JOB]);
 /** Due Action Scheduler actions, run by its own queue runner, as cron runs them. */
-$drain = static fn () => ActionScheduler_QueueRunner::instance()->run('First tests');
+$drain = static fn () => ActionScheduler_QueueRunner::instance()->run('TypedPress tests');
 $asEditor = static function (callable $fn) use ($wp) {
     wp_set_current_user($wp->userId('ed'));
     try {
@@ -135,7 +135,7 @@ eq('a repository that is not owner/name is refused', $wp->cli('git-dispatch', 's
 
 // A save in wp-admin (core's wp_insert_post as the editor) of a synced record queues one dispatch,
 // due after the window.
-$postId = $asEditor(static fn () => wp_insert_post(['post_type' => 'first_docs', 'post_status' => 'publish', 'post_title' => 'Written in wp-admin', 'post_content' => 'Hello'], true));
+$postId = $asEditor(static fn () => wp_insert_post(['post_type' => 'tp_docs', 'post_status' => 'publish', 'post_title' => 'Written in wp-admin', 'post_content' => 'Hello'], true));
 check('wp-admin saved the post', is_int($postId) && $postId > 0, $postId);
 $queued = $pending();
 eq('a wp-admin save queues one dispatch', count($queued), 1);
@@ -149,13 +149,13 @@ eq('saves in the window join the one waiting dispatch', count($pending()), 1);
 $db->transaction(static fn () => $db->insert('notes', ['title' => 'Unsynced'], true));
 eq('a save of an unsynced kind joins nothing and queues nothing', count($all()), 1);
 
-// `first sync`'s own writes (the /sync routes) send nothing: cancel the waiting one, then sync a record.
+// `typedpress sync`'s own writes (the /sync routes) send nothing: cancel the waiting one, then sync a record.
 [$code] = $wp->cli('jobs', 'cancel', $queued[0]['id']);
 eq('the waiting dispatch is cancelled', $code, 0);
-$record = ['uid' => 'zr_0123456789abcdef0123', 'fields' => ['title' => 'From a file', 'slug' => 'from-a-file'], 'body' => 'Pushed by first sync.'];
+$record = ['uid' => 'zr_0123456789abcdef0123', 'fields' => ['title' => 'From a file', 'slug' => 'from-a-file'], 'body' => 'Pushed by typedpress sync.'];
 [$status, , $out] = $wp->handle('POST', '/sync/docs', json_encode(['record' => $record, 'expect' => 'absent']), 'ed');
-eq('first sync pushes a record', $status, 201);
-eq("first sync's writes queue no dispatch", count($pending()), 0);
+eq('typedpress sync pushes a record', $status, 201);
+eq("typedpress sync's writes queue no dispatch", count($pending()), 0);
 
 // A rolled-back save sends nothing.
 try {
@@ -170,49 +170,49 @@ eq('a rolled-back save queues nothing', count($pending()), 0);
 // No token anywhere: the dispatch fails loudly (and retries); nothing reaches GitHub.
 $asEditor(static fn () => wp_update_post(['ID' => $postId, 'post_title' => 'Needs a token']));
 $job = $pending()[0];
-putenv('FIRST_NOW=2026-11-13T10:01:00.000Z');
-$run = \First\Jobs\Runner::run($job['id']);
-check('without a token the attempt fails and says why', ($run['state'] ?? null) === 'failed' && str_contains($run['error'] ?? '', 'FIRST_GITHUB_DISPATCH_TOKEN'), $run);
+putenv('TP_NOW=2026-11-13T10:01:00.000Z');
+$run = \TypedPress\Jobs\Runner::run($job['id']);
+check('without a token the attempt fails and says why', ($run['state'] ?? null) === 'failed' && str_contains($run['error'] ?? '', 'TP_GITHUB_DISPATCH_TOKEN'), $run);
 eq('…and sends nothing', $received(), []);
 
 // Without the Secrets API a token is refused, never stored in the database.
 $stdin = static fn (string $token) => fopen('data://text/plain,' . rawurlencode($token), 'r');
-$GLOBALS['firstTestSecretsOn'] = false;
+$GLOBALS['tpTestSecretsOn'] = false;
 problem('set --token without a Secrets API is refused', static fn () => GitDispatch::storeToken('ghp_secret_value'), 409, 'secrets_unavailable');
 $leak = (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}options WHERE `option_value` LIKE '%ghp_secret_value%'");
 eq('…and the token is in no option', $leak, 0);
 
 // With the Secrets API: the token is stored there, the dispatch runs on Action Scheduler.
-$GLOBALS['firstTestSecretsOn'] = true;
+$GLOBALS['tpTestSecretsOn'] = true;
 GitDispatch::storeToken('ghp_secret_value');
-eq('the token goes to the Secrets API', $GLOBALS['firstTestSecrets'][GitDispatch::SECRET] ?? null, 'ghp_secret_value');
+eq('the token goes to the Secrets API', $GLOBALS['tpTestSecrets'][GitDispatch::SECRET] ?? null, 'ghp_secret_value');
 eq('…never to an option', (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}options WHERE `option_value` LIKE '%ghp_secret_value%'"), 0);
 [, $status] = $wp->cli('git-dispatch', 'status');
 eq('status names where the token is, never the token', [$status['data']['token'] ?? null, str_contains(json_encode($status), 'ghp_')], ['secrets', false]);
-putenv('FIRST_NOW=2026-11-13T10:02:00.000Z');
-$wp->exec("UPDATE {prefix}actionscheduler_actions SET `scheduled_date_gmt` = '2000-01-01 00:00:00', `scheduled_date_local` = '2000-01-01 00:00:00' WHERE `hook` = ? AND `status` = 'pending'", [\First\Wp\Jobs\ActionSchedulerQueue::HOOK]);
+putenv('TP_NOW=2026-11-13T10:02:00.000Z');
+$wp->exec("UPDATE {prefix}actionscheduler_actions SET `scheduled_date_gmt` = '2000-01-01 00:00:00', `scheduled_date_local` = '2000-01-01 00:00:00' WHERE `hook` = ? AND `status` = 'pending'", [\TypedPress\Wp\Jobs\ActionSchedulerQueue::HOOK]);
 $drain();
 $sent = $received();
 eq('Action Scheduler ran the dispatch: one request', count($sent), 1);
 eq('…a POST to /repos/<owner>/<name>/dispatches', $sent[0]['line'] ?? null, 'POST /repos/acme/site/dispatches HTTP/1.1');
 eq('…with the token as a bearer', $sent[0]['headers']['authorization'] ?? null, 'Bearer ghp_secret_value');
 $body = json_decode($sent[0]['body'] ?? 'null', true);
-eq('…and the event type the workflow listens for', [$body['event_type'] ?? null, isset($body['client_payload']['site'])], ['first-content-changed', true]);
-eq('the dispatch is done', $wp->scalar('SELECT `state` FROM {prefix}first__jobs WHERE `id` = ?', [$job['id']]), 'done');
+eq('…and the event type the workflow listens for', [$body['event_type'] ?? null, isset($body['client_payload']['site'])], ['typedpress-content-changed', true]);
+eq('the dispatch is done', $wp->scalar('SELECT `state` FROM {prefix}tp__jobs WHERE `id` = ?', [$job['id']]), 'done');
 
 // After it ran, the next save starts a new window; the environment's token wins over the stored one.
-putenv('FIRST_GITHUB_DISPATCH_TOKEN=ghp_from_env');
+putenv('TP_GITHUB_DISPATCH_TOKEN=ghp_from_env');
 $asEditor(static fn () => wp_update_post(['ID' => $postId, 'post_title' => 'A later edit']));
 $next = $pending();
 eq('a save after the dispatch queues a new one', count($next), 1);
 file_put_contents("$inbox/status", '403');
-$run = \First\Jobs\Runner::run($next[0]['id']);
+$run = \TypedPress\Jobs\Runner::run($next[0]['id']);
 check("GitHub's refusal fails the attempt with a hint, without the token", ($run['state'] ?? null) === 'failed' && str_contains($run['error'] ?? '', '403') && !str_contains($run['error'] ?? '', 'ghp_'), $run);
 $log = $received();
 eq('…sent with the environment token', end($log)['headers']['authorization'] ?? null, 'Bearer ghp_from_env');
-putenv('FIRST_GITHUB_DISPATCH_TOKEN');
+putenv('TP_GITHUB_DISPATCH_TOKEN');
 
 [$code, $out] = $wp->cli('git-dispatch', 'clear', '--token');
-eq('clear removes the repository and the stored token', [$code, array_key_exists('repository', $out['data'] ?? []) ? $out['data']['repository'] : 'x', $GLOBALS['firstTestSecrets'][GitDispatch::SECRET] ?? null], [0, null, null]);
+eq('clear removes the repository and the stored token', [$code, array_key_exists('repository', $out['data'] ?? []) ? $out['data']['repository'] : 'x', $GLOBALS['tpTestSecrets'][GitDispatch::SECRET] ?? null], [0, null, null]);
 
 finish('git-dispatch');

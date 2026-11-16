@@ -2,12 +2,12 @@
 /**
  * Recently active field definition for core plugins fields collection
  *
- * @package First_Admin
+ * @package TypedPress_Admin
  */
 
 return array(
 	'type'         => 'boolean',
-	'label'        => __( 'Recently active', 'first-admin' ),
+	'label'        => __( 'Recently active', 'typedpress-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => false,
 );

@@ -13,7 +13,7 @@ import { isRTL, __ } from '@wordpress/i18n';
 import { chevronLeft, chevronRight } from '@wordpress/icons';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
-import type { GlobalStylesConfig } from '@first-admin/global-styles-engine';
+import type { GlobalStylesConfig } from '@typedpress-admin/global-styles-engine';
 import { IconWithCurrentColor } from './icon-with-current-color';
 import { NavigationButtonAsItem } from './navigation-button';
 import RootMenu from './root-menu';
@@ -49,13 +49,13 @@ function ScreenRoot() {
 		<Card
 			size="small"
 			isBorderless
-			className="first-admin-global-styles-screen-root"
+			className="typedpress-admin-global-styles-screen-root"
 			isRounded={ false }
 		>
 			<CardBody>
 				<VStack spacing={ 4 }>
-					<Card className="first-admin-global-styles-screen-root__active-style-tile">
-						<CardMedia className="first-admin-global-styles-screen-root__active-style-tile-preview">
+					<Card className="typedpress-admin-global-styles-screen-root__active-style-tile">
+						<CardMedia className="typedpress-admin-global-styles-screen-root__active-style-tile-preview">
 							<PreviewStyles />
 						</CardMedia>
 					</Card>
@@ -64,7 +64,7 @@ function ScreenRoot() {
 							<NavigationButtonAsItem path="/variations">
 								<HStack justify="space-between">
 									<FlexItem>
-										{ __( 'Browse styles', 'first-admin' ) }
+										{ __( 'Browse styles', 'typedpress-admin' ) }
 									</FlexItem>
 									<IconWithCurrentColor
 										icon={
@@ -90,14 +90,14 @@ function ScreenRoot() {
 				>
 					{ __(
 						'Customize the appearance of specific blocks for the whole site.',
-						'first-admin'
+						'typedpress-admin'
 					) }
 				</Spacer>
 				<ItemGroup>
 					<NavigationButtonAsItem path="/blocks">
 						<HStack justify="space-between">
 							<FlexItem>
-								{ __( 'Blocks', 'first-admin' ) }
+								{ __( 'Blocks', 'typedpress-admin' ) }
 							</FlexItem>
 							<IconWithCurrentColor
 								icon={ isRTL() ? chevronLeft : chevronRight }
@@ -119,14 +119,14 @@ function ScreenRoot() {
 						>
 							{ __(
 								'Add your own CSS to customize the appearance and layout of your site.',
-								'first-admin'
+								'typedpress-admin'
 							) }
 						</Spacer>
 						<ItemGroup>
 							<NavigationButtonAsItem path="/css">
 								<HStack justify="space-between">
 									<FlexItem>
-										{ __( 'Additional CSS', 'first-admin' ) }
+										{ __( 'Additional CSS', 'typedpress-admin' ) }
 									</FlexItem>
 									<IconWithCurrentColor
 										icon={

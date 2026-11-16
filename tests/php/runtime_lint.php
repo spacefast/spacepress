@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
-// Every PHP file First's own plugins ship (runtime/, embedded into the compiler) parses. `first build`
-// lints only the app plugin it generates: First's plugins are the same bytes for every build, so they
+// Every PHP file TypedPress's own plugins ship (runtime/, embedded into the compiler) parses. `typedpress build`
+// lints only the app plugin it generates: TypedPress's plugins are the same bytes for every build, so they
 // are checked once here instead of in every build.
 require __DIR__ . '/harness.php';
 $root = realpath(__DIR__ . '/../../runtime');

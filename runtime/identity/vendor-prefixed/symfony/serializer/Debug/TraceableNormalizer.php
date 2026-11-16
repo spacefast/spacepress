@@ -9,15 +9,15 @@
  * file that was distributed with this source code.
  */
 
-namespace First\Identity\Vendor\Symfony\Component\Serializer\Debug;
+namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Debug;
 
-use First\Identity\Vendor\Symfony\Component\Serializer\DataCollector\SerializerDataCollector;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use First\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\DataCollector\SerializerDataCollector;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
 
 /**
  * Collects some data about normalization.

@@ -1,8 +1,8 @@
 // The WordPress half of the system suite. tests/system/run.sh builds examples/site with
-// `first build` and boots a fresh WordPress with users and nothing else; this file installs
+// `typedpress build` and boots a fresh WordPress with users and nothing else; this file installs
 // the artifact the way a site owner would (copy wp-content/plugins in, activate with WP-CLI), checks
 // the install, runs the shared journey through the generated client against core /wp/v2 (the
-// editor) and /__first/api/v1 (the app), then walks the plugin lifecycle: upgrade, deactivate,
+// editor) and /__tp/api/v1 (the app), then walks the plugin lifecycle: upgrade, deactivate,
 // reactivate, uninstall.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { createClient, type Client } from "../../examples/site/first/_generated/client/index.ts";
+import { createClient, type Client } from "../../examples/site/tp/_generated/client/index.ts";
 import { siteJourney, type EditorPost, type Role } from "./journey.ts";
 import { clientOf, copySite, doctor, failing, receiver, repo, sync, upgrade, work, first } from "./project.ts";
 
@@ -18,19 +18,19 @@ interface Receipt {
   url: string;
   users: Record<Exclude<Role, "anonymous">, { id: number; appPassword: string }>;
 }
-/** The frontend the site owner registers with first-identity (wp.test.ts registers it on install). */
+/** The frontend the site owner registers with typedpress-identity (wp.test.ts registers it on install). */
 const frontend = { clientId: "app_site", redirectUri: "" };
 const receipt: Receipt = JSON.parse(readFileSync(join(repo, "tests/system/.harness.json"), "utf8"));
 const wpContent = join(repo, "tests/system/.wp-content");
-const api = `${receipt.url}/__first/api/v1`;
+const api = `${receipt.url}/__tp/api/v1`;
 const core = `${receipt.url}/wp-json/wp/v2`;
 const harness = join(repo, "tests/wp/harness.sh");
 const project = join(work, "wp-site");
 const artifact = join(work, "wp-artifact");
 
 /** The order a site owner activates in: each plugin after every plugin its header requires. */
-// First Admin ships with every build and registers only once the app has (plugins_loaded order): last.
-const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "first-runtime", "first-identity", "first-app-site", "first-admin"];
+// TypedPress Admin ships with every build and registers only once the app has (plugins_loaded order): last.
+const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "typedpress-runtime", "typedpress-identity", "typedpress-app-site", "typedpress-admin"];
 
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const wpFails = (...args: string[]) => {
@@ -47,7 +47,7 @@ const basic = (role: Exclude<Role, "anonymous">) => ({ Authorization: "Basic " +
 const headers = (role: Role) => (role === "anonymous" ? {} : basic(role));
 const client = (role: Role): Client => createClient({ url: api, headers: headers(role) });
 
-/** The HTTP status of the FirstError `fn` throws. */
+/** The HTTP status of the TypedPressError `fn` throws. */
 async function assertRejects(fn: () => Promise<unknown>, status: number) {
   await assert.rejects(fn, (e: { status?: number }) => e.status === status);
 }
@@ -79,18 +79,18 @@ async function wpRest(role: Exclude<Role, "anonymous">, method: string, path: st
   return json;
 }
 
-/** The post screen's SCF fields for a First post: `first_<column>`, blocks rows keyed by acf_fc_layout. */
+/** The post screen's SCF fields for a TypedPress post: `tp_<column>`, blocks rows keyed by acf_fc_layout. */
 function acf(p: EditorPost) {
   return {
-    first_dek: p.dek, first_cover: p.cover, first_manuscript: p.manuscript, first_topics: p.topics, first_featured: p.featured, first_authorId: p.authorId,
-    first_seo: p.seo, first_related: p.related,
-    first_sections: (p.sections ?? []).map(({ layout, ...fields }) => ({ acf_fc_layout: layout, ...fields })),
+    tp_dek: p.dek, tp_cover: p.cover, tp_manuscript: p.manuscript, tp_topics: p.topics, tp_featured: p.featured, tp_authorId: p.authorId,
+    tp_seo: p.seo, tp_related: p.related,
+    tp_sections: (p.sections ?? []).map(({ layout, ...fields }) => ({ acf_fc_layout: layout, ...fields })),
   };
 }
 
 /**
  * A reader signs in as the site's frontend would: the client's signIn() sends the browser to the
- * first-identity screens, the reader signs in with their password and approves, and the issuer sends
+ * typedpress-identity screens, the reader signs in with their password and approves, and the issuer sends
  * the browser back, where the client's handleCallback() finishes. The browser here is the page's
  * sessionStorage and location (only while signing in), and fetch with the identity session cookie
  * for the screens.
@@ -115,7 +115,7 @@ async function browserSignIn(email: string, password: string): Promise<Client> {
     }
     const authorize = new URL(at);
     const origin = receipt.url;
-    const signedIn = await fetch(`${origin}/wp-json/first-identity/v1/sign-in/password`, {
+    const signedIn = await fetch(`${origin}/wp-json/typedpress-identity/v1/sign-in/password`, {
       method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ login: email, password }),
     });
     assert.equal(signedIn.status, 200, await signedIn.clone().text());
@@ -152,27 +152,27 @@ test("installing the artifact: activation order, platform requirements, doctor",
   assert.deepEqual(readdirSync(join(artifact, "plugins")).filter((n) => !n.endsWith(".zip")).sort(), [...ORDER].sort());
   install(artifact);
   // Requires Plugins refuses to activate a plugin before its dependencies, so order matters.
-  assert.match(wpFails("plugin", "activate", "first-app-site"), /requires 6 plugins.*Action Scheduler, First Runtime, MCP Adapter, Polylang, Secure Custom Fields, Two Factor/s);
-  assert.match(wpFails("plugin", "activate", "first-runtime"), /requires 4 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields, Two Factor/s);
+  assert.match(wpFails("plugin", "activate", "typedpress-app-site"), /requires 6 plugins.*Action Scheduler, TypedPress Runtime, MCP Adapter, Polylang, Secure Custom Fields, Two Factor/s);
+  assert.match(wpFails("plugin", "activate", "typedpress-runtime"), /requires 4 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields, Two Factor/s);
   assert.deepEqual(active(), []);
   // This site sits behind a published port its own container can't reach, so the owner routes the
   // private-files probe to the web server's in-network name, with the filter that exists for hosts.
-  wp("eval", `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/probe-route.php', base64_decode('${Buffer.from("<?php\nadd_filter('first_private_probe_url', fn ($u) => str_replace(home_url(), 'http://wordpress', $u));\n").toString("base64")}'));`);
+  wp("eval", `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/probe-route.php', base64_decode('${Buffer.from("<?php\nadd_filter('tp_private_probe_url', fn ($u) => str_replace(home_url(), 'http://wordpress', $u));\n").toString("base64")}'));`);
   wp("plugin", "activate", ...ORDER);
   assert.deepEqual(active().sort(), [...ORDER].sort());
 
   // The runtime created the shared system tables; the app ran its migrations.
-  assert.equal(wp("option", "get", "first_runtime_tables"), wp("eval", "echo \\First\\Wp\\Runtime::tablesVersion();"));
-  assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update"]);
+  assert.equal(wp("option", "get", "tp_runtime_tables"), wp("eval", "echo \\TypedPress\\Wp\\Runtime::tablesVersion();"));
+  assert.deepEqual(sql("SELECT id FROM wp_tp__migrations"), ["0001_init", "0002_update"]);
   // Feature lanes add shared runtime tables of their own; the app's are these.
-  const tables = sql("SHOW TABLES LIKE 'wp\\_first\\_%'");
-  for (const table of ["wp_first__migrations", "wp_first__revisions", "wp_first_comments", "wp_first_subscribers"]) {
+  const tables = sql("SHOW TABLES LIKE 'wp\\_tp\\_%'");
+  for (const table of ["wp_tp__migrations", "wp_tp__revisions", "wp_tp_comments", "wp_tp_subscribers"]) {
     assert.ok(tables.includes(table), `${table} missing from ${tables}`);
   }
 
   // The editor screen: SCF shows seo.metaTitle only while seo.noindex is off (the config's showIf).
-  const logic = JSON.parse(wp("eval", "echo wp_json_encode(acf_get_field('field_first_posts_seo_metaTitle')['conditional_logic']);"));
-  assert.deepEqual(logic, [[{ field: "field_first_posts_seo_noindex", operator: "==", value: "0" }]]);
+  const logic = JSON.parse(wp("eval", "echo wp_json_encode(acf_get_field('field_tp_posts_seo_metaTitle')['conditional_logic']);"));
+  assert.deepEqual(logic, [[{ field: "field_tp_posts_seo_noindex", operator: "==", value: "0" }]]);
 
   // doctor reads the artifact and the live site, against the same platform policy activation used.
   const diagnosis = doctor(project, "--out", artifact, "--site", receipt.url);
@@ -202,13 +202,13 @@ test("installing the artifact: activation order, platform requirements, doctor",
   wp("config", "set", "SITE_HOOK_URL", `http://host.docker.internal:${hook.port}/hook`, "--type=constant");
   wp("config", "set", "SITE_HOOK_SECRET", hookSecret, "--type=constant");
 
-  // The site's frontend signs readers in through first-identity's screens: register it once.
+  // The site's frontend signs readers in through typedpress-identity's screens: register it once.
   frontend.redirectUri = `${receipt.url}/signed-in`;
-  wp("first", "identity", "app", "add", "--name=The First Review", `--redirect=${frontend.redirectUri}`, `--origin=${receipt.url}`, `--id=${frontend.clientId}`);
+  wp("typedpress", "identity", "app", "add", "--name=The TypedPress Review", `--redirect=${frontend.redirectUri}`, `--origin=${receipt.url}`, `--id=${frontend.clientId}`);
 
   // The journey's author writes as an authors row the admin creates over the API.
   const userId = receipt.users.author.id;
-  [{ id: authorId }] = JSON.parse(wp("first", "insert", "authors", JSON.stringify({ name: "Ada Author", userId }))).data;
+  [{ id: authorId }] = JSON.parse(wp("typedpress", "insert", "authors", JSON.stringify({ name: "Ada Author", userId }))).data;
 });
 
 test("the site journey on WordPress", async (t) => {
@@ -226,20 +226,20 @@ test("the site journey on WordPress", async (t) => {
           return media.id;
         },
         async saveDraft(p) {
-          const saved = await wpRest("editor", "POST", "/first_posts", { title: p.title, content: p.body, status: "draft", acf: acf(p) });
+          const saved = await wpRest("editor", "POST", "/tp_posts", { title: p.title, content: p.body, status: "draft", acf: acf(p) });
           return saved.id;
         },
         async publish(id) {
-          await wpRest("editor", "POST", `/first_posts/${id}`, { status: "publish" });
+          await wpRest("editor", "POST", `/tp_posts/${id}`, { status: "publish" });
         },
       },
       async runJobs() {
-        wp("action-scheduler", "run", "--hooks=first_job");
+        wp("action-scheduler", "run", "--hooks=tp_job");
       },
       sync: (dir) => sync(dir, receipt.url, `editor:${receipt.users.editor.appPassword}`),
       async runRetries() {
         // A retry is a pending Action Scheduler action dated at the job's backoff: run each one now.
-        for (const id of sql("SELECT action_id FROM wp_actionscheduler_actions WHERE hook = 'first_job' AND status = 'pending'")) {
+        for (const id of sql("SELECT action_id FROM wp_actionscheduler_actions WHERE hook = 'tp_job' AND status = 'pending'")) {
           wp("action-scheduler", "action", "run", id);
         }
       },
@@ -248,7 +248,7 @@ test("the site journey on WordPress", async (t) => {
         // WordPress's own path: a `future` post with its `publish_future_post` cron event. The clock
         // can't move, so the post's date is pulled into the past for the run and restored after (§9.1).
         const due = at.slice(0, 19).replace("T", " ");
-        const [id] = sql(`SELECT ID FROM wp_posts WHERE post_type = 'first_posts' AND post_status = 'future' AND post_date_gmt = '${due}'`);
+        const [id] = sql(`SELECT ID FROM wp_posts WHERE post_type = 'tp_posts' AND post_status = 'future' AND post_date_gmt = '${due}'`);
         assert.ok(id, "the scheduled post is a WordPress `future` post");
         const events = JSON.parse(wp("cron", "event", "list", "--hook=publish_future_post", "--fields=args", "--format=json"));
         assert.ok(events.some((e: { args: number[] }) => String(e.args[0]) === id), "scheduling queued WordPress's cron event");
@@ -265,13 +265,13 @@ test("the site journey on WordPress", async (t) => {
         install(artifact);
         // The new plugin is on disk and nobody opens wp-admin: the next public API request migrates.
         // PHP's opcache revalidates files every couple of seconds, so poll that request.
-        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update"]);
+        assert.deepEqual(sql("SELECT id FROM wp_tp__migrations"), ["0001_init", "0002_update"]);
         const deadline = Date.now() + 30_000;
-        while (sql("SELECT id FROM wp_first__migrations").length < 3) {
+        while (sql("SELECT id FROM wp_tp__migrations").length < 3) {
           assert.ok(Date.now() < deadline, "the upgrade's migration never ran");
           assert.equal((await fetch(`${api}/comments?limit=1`)).status, 200, "the site serves throughout the upgrade");
         }
-        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update", "0003_update"]);
+        assert.deepEqual(sql("SELECT id FROM wp_tp__migrations"), ["0001_init", "0002_update", "0003_update"]);
         assert.deepEqual(failing(doctor(project, "--out", artifact, "--site", receipt.url)), []);
         return clientOf(project, (make, role) => make({ url: api, headers: headers(role) }));
       },
@@ -282,7 +282,7 @@ test("the site journey on WordPress", async (t) => {
 
 test("an agent works the site over MCP with each user's REST permissions", async () => {
   const mcp = async (role: Exclude<Role, "anonymous">) => {
-    const url = `${receipt.url}/wp-json/mcp/first-site`;
+    const url = `${receipt.url}/wp-json/mcp/typedpress-site`;
     let headers: Record<string, string> = { ...basic(role), "content-type": "application/json", accept: "application/json, text/event-stream" };
     let id = 0;
     const call = async (method: string, params?: unknown) => {
@@ -291,7 +291,7 @@ test("an agent works the site over MCP with each user's REST permissions", async
       assert.ok("result" in body, `${method}: ${JSON.stringify(body)}`);
       return { body: body.result, session: res.headers.get("mcp-session-id") };
     };
-    const init = await call("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "first-system", version: "1" } });
+    const init = await call("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "typedpress-system", version: "1" } });
     assert.ok(init.session, "initialize returns an Mcp-Session-Id");
     headers = { ...headers, "mcp-session-id": init.session, "mcp-protocol-version": init.body.protocolVersion };
     await fetch(url, { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });
@@ -345,7 +345,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
       subscribers: await admin.subscribers.list({ orderBy: { id: "asc" }, limit: 200 }),
       announcements: await editor.announcements.list({ orderBy: { id: "asc" }, limit: 200 }),
       // Members are WordPress users; nobody but each member reads them over the API, so read them as the site owner.
-      members: JSON.parse(wp("first", "find", "members", JSON.stringify({ orderBy: { id: "asc" } }))).data,
+      members: JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ orderBy: { id: "asc" } }))).data,
       settings: await anon.globals.settings.get(),
       media,
       // Every original and generated size, by the bytes served.
@@ -367,54 +367,54 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.ok(before.revisions.some((r) => r.length > 0), "no revisions to preserve");
   assert.ok([...before.files, ...before.manuscripts].every((entry) => entry.includes(200)), "every file was served before");
 
-  wp("plugin", "deactivate", "first-admin", "first-app-site", "first-identity", "first-runtime");
+  wp("plugin", "deactivate", "typedpress-admin", "typedpress-app-site", "typedpress-identity", "typedpress-runtime");
   assert.equal((await fetch(`${api}/posts`)).status, 404, "the app's routes go away with the plugin");
-  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site", "first-admin");
+  wp("plugin", "activate", "typedpress-runtime", "typedpress-identity", "typedpress-app-site", "typedpress-admin");
   assert.deepEqual(await snapshot(), before);
-  assert.deepEqual(sql("SELECT CONCAT(app, '/', id) FROM wp_first__migrations"), ["site/0001_init", "site/0002_update", "site/0003_update"], "reactivation re-applies nothing");
+  assert.deepEqual(sql("SELECT CONCAT(app, '/', id) FROM wp_tp__migrations"), ["site/0001_init", "site/0002_update", "site/0003_update"], "reactivation re-applies nothing");
 
   // Uninstall (delete in wp-admin): options, capabilities and scheduled actions go, content stays.
-  const caps = () => JSON.parse(wp("eval", "echo wp_json_encode(array_map(fn ($r) => array_values(array_filter(array_keys($r->capabilities), fn ($c) => str_contains($c, 'first_') || $c === 'unrelated_cap')), wp_roles()->role_objects));"));
+  const caps = () => JSON.parse(wp("eval", "echo wp_json_encode(array_map(fn ($r) => array_values(array_filter(array_keys($r->capabilities), fn ($c) => str_contains($c, 'tp_') || $c === 'unrelated_cap')), wp_roles()->role_objects));"));
   // Something else grants this app's capability to a role of its own, plus its own capabilities,
   // including one for a post type whose name merely ends like the app's.
   wp("role", "create", "desk", "Desk");
-  wp("cap", "add", "desk", "edit_first_posts", "unrelated_cap", "edit_acme_first_posts");
+  wp("cap", "add", "desk", "edit_tp_posts", "unrelated_cap", "edit_acme_tp_posts");
   // Capabilities of the app's post types come from its access rules (map_meta_cap), not from roles:
   // activation grants none, and the editor's edit rights are the posts rules' answer.
   assert.deepEqual(caps().editor, [], "activation grants no role a capability");
-  const can = () => wp("eval", "echo wp_json_encode([user_can(get_user_by('login', 'editor'), 'edit_others_first_posts'), user_can(get_user_by('login', 'subscriber'), 'edit_others_first_posts')]);");
+  const can = () => wp("eval", "echo wp_json_encode([user_can(get_user_by('login', 'editor'), 'edit_others_tp_posts'), user_can(get_user_by('login', 'subscriber'), 'edit_others_tp_posts')]);");
   assert.equal(can(), "[true,false]", "posts' update rule lets editors edit any post, not subscribers");
-  // Pending work in the app's and the runtime's groups, and in a group that isn't First's.
+  // Pending work in the app's and the runtime's groups, and in a group that isn't TypedPress's.
   const seeded = JSON.parse(wp("eval", "echo wp_json_encode([as_schedule_single_action(time() + 3600, 'not_zero', [], 'someone-else')]);"));
-  const [maintain] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE g.slug = 'first' AND a.hook = 'first_jobs_maintain' AND a.status = 'pending'");
+  const [maintain] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE g.slug = 'first' AND a.hook = 'tp_jobs_maintain' AND a.status = 'pending'");
   const status = (id: string | number) => sql(`SELECT status FROM wp_actionscheduler_actions WHERE action_id = ${id}`)[0];
-  const pending = () => sql("SELECT CONCAT(g.slug, ':', a.hook) FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE a.status = 'pending' AND (g.slug LIKE 'first%' OR g.slug = 'someone-else') ORDER BY 1");
-  assert.ok(pending().includes("first:first_jobs_maintain"), pending().join(","));
+  const pending = () => sql("SELECT CONCAT(g.slug, ':', a.hook) FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g USING (group_id) WHERE a.status = 'pending' AND (g.slug LIKE 'typedpress%' OR g.slug = 'someone-else') ORDER BY 1");
+  assert.ok(pending().includes("typedpress:tp_jobs_maintain"), pending().join(","));
   // A job queued and not yet run: publishing a post enqueues notifyReaders under key publish-<id>.
   const pendingPost = await editor.posts.create({ title: "Queued at uninstall", status: "draft" });
   await editor.posts.update(pendingPost.id, { status: "published" });
-  const [queued] = sql(`SELECT id FROM wp_first__jobs WHERE job = 'notifyReaders' AND \`key\` = 'publish-${pendingPost.id}' AND state = 'pending'`);
+  const [queued] = sql(`SELECT id FROM wp_tp__jobs WHERE job = 'notifyReaders' AND \`key\` = 'publish-${pendingPost.id}' AND state = 'pending'`);
   assert.ok(queued, "the publish queued a job");
-  const options = "('first_site_schema', 'first_runtime_tables', 'first_runtime_secret', 'first_runtime_private_ok', 'first_runtime_private_checked')";
+  const options = "('tp_site_schema', 'tp_runtime_tables', 'tp_runtime_secret', 'tp_runtime_private_ok', 'tp_runtime_private_checked')";
   assert.equal(sql(`SELECT COUNT(*) FROM wp_options WHERE option_name IN ${options}`)[0], "5");
-  const posts = sql("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'first_posts'")[0];
-  // The owner deactivates everything, Action Scheduler included, then deletes First's plugins.
-  wp("plugin", "deactivate", "first-admin", "first-app-site", "first-identity", "first-runtime", "mcp-adapter", "action-scheduler");
-  wp("plugin", "uninstall", "first-admin", "first-app-site", "first-identity", "first-runtime");
-  // The harness's own must-use helpers aren't First's plugins; only regular plugins can be deleted.
-  assert.deepEqual(JSON.parse(wp("plugin", "list", "--status=active,inactive", "--field=name", "--format=json")).filter((n: string) => n.startsWith("first-")), []);
+  const posts = sql("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'tp_posts'")[0];
+  // The owner deactivates everything, Action Scheduler included, then deletes TypedPress's plugins.
+  wp("plugin", "deactivate", "typedpress-admin", "typedpress-app-site", "typedpress-identity", "typedpress-runtime", "mcp-adapter", "action-scheduler");
+  wp("plugin", "uninstall", "typedpress-admin", "typedpress-app-site", "typedpress-identity", "typedpress-runtime");
+  // The harness's own must-use helpers aren't TypedPress's plugins; only regular plugins can be deleted.
+  assert.deepEqual(JSON.parse(wp("plugin", "list", "--status=active,inactive", "--field=name", "--format=json")).filter((n: string) => n.startsWith("typedpress-")), []);
   const left = caps();
-  assert.deepEqual(Object.values(left).flat().filter((c) => !["unrelated_cap", "edit_acme_first_posts"].includes(c)), [], "no role keeps a capability for the app's post types, whoever granted it");
-  assert.deepEqual(left.desk.sort(), ["edit_acme_first_posts", "unrelated_cap"], "capabilities that aren't the app's stay");
+  assert.deepEqual(Object.values(left).flat().filter((c) => !["unrelated_cap", "edit_acme_tp_posts"].includes(c)), [], "no role keeps a capability for the app's post types, whoever granted it");
+  assert.deepEqual(left.desk.sort(), ["edit_acme_tp_posts", "unrelated_cap"], "capabilities that aren't the app's stay");
   // The runtime's own maintenance action is canceled (Action Scheduler inactive, so in its tables);
   // the app's queued delivery is its content and stays; a stranger's action is untouched.
   assert.deepEqual([status(maintain), status(seeded[0])], ["canceled", "pending"]);
-  assert.ok(pending().includes("first-site:first_job"), "the queued job's delivery is kept for a reinstall");
+  assert.ok(pending().includes("typedpress-site:tp_job"), "the queued job's delivery is kept for a reinstall");
   assert.equal(sql(`SELECT COUNT(*) FROM wp_options WHERE option_name IN ${options}`)[0], "0");
-  assert.deepEqual(sql(`SELECT state FROM wp_first__jobs WHERE id = '${queued}'`), ["pending"], "queued work is kept");
-  assert.equal(sql("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'first_posts'")[0], posts);
-  assert.equal(sql("SELECT COUNT(*) FROM wp_first_comments")[0], String(before.comments.length));
-  assert.ok(Number(sql("SELECT COUNT(*) FROM wp_options WHERE option_name LIKE 'first\\_global\\_settings\\_%'")[0]) > 0, "globals are content");
+  assert.deepEqual(sql(`SELECT state FROM wp_tp__jobs WHERE id = '${queued}'`), ["pending"], "queued work is kept");
+  assert.equal(sql("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'tp_posts'")[0], posts);
+  assert.equal(sql("SELECT COUNT(*) FROM wp_tp_comments")[0], String(before.comments.length));
+  assert.ok(Number(sql("SELECT COUNT(*) FROM wp_options WHERE option_name LIKE 'tp\\_global\\_settings\\_%'")[0]) > 0, "globals are content");
   wp("role", "delete", "desk");
   wp("plugin", "activate", "action-scheduler", "mcp-adapter");
   wp("eval", "as_unschedule_all_actions('not_zero');");
@@ -422,7 +422,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   // Installing the same build again picks the content straight back up. The runtime minted a new
   // signing secret on reinstall, so links signed before are dead; the snapshot fetches fresh ones.
   install(artifact);
-  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site", "first-admin");
+  wp("plugin", "activate", "typedpress-runtime", "typedpress-identity", "typedpress-app-site", "typedpress-admin");
   const after = await snapshot();
   const queuedIndex = after.posts.findIndex((p) => p.id === pendingPost.id);
   assert.ok(queuedIndex >= 0, "the post published just before uninstall is still there");
@@ -431,6 +431,6 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.deepEqual(after, before);
   assert.deepEqual([caps().editor, can()], [[], "[true,false]"], "the reinstalled app's rules decide again, still with no role caps");
   // The reinstalled app runs the work queued before the uninstall.
-  wp("action-scheduler", "run", "--hooks=first_job");
-  assert.deepEqual(sql(`SELECT state FROM wp_first__jobs WHERE id = '${queued}'`), ["done"]);
+  wp("action-scheduler", "run", "--hooks=tp_job");
+  assert.deepEqual(sql(`SELECT state FROM wp_tp__jobs WHERE id = '${queued}'`), ["done"]);
 });

@@ -2,7 +2,7 @@
 // tag helpers and String.raw for regex and path text. Every action runs under Node and as
 // compiled PHP; the JSON results must be byte-identical. `tagged-templates-helpers.mjs` runs the
 // same shapes untyped.
-import { action, defineConfig } from "first";
+import { action, defineConfig } from "typedpress";
 import { taggedUntyped as taggedUntypedImpl } from "./tagged-templates-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

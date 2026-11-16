@@ -1,4 +1,4 @@
-// The first-admin plugin on a WordPress installed below the origin root (lane A, design §2.4): the
+// The typedpress-admin plugin on a WordPress installed below the origin root (lane A, design §2.4): the
 // mount, wp-admin and login URLs it derives all carry the sub-path, so a direct route resolves and
 // the classic frame is pointed at the real wp-admin. The stack is ../admin/subdir-run.sh's; the
 // receipt's url is http://host/blog.
@@ -22,7 +22,7 @@ function bootPayload(html: string): { menuItems: any[]; context: Record<string, 
 
 test("the admin is installed below the site root and derives every URL from it", async () => {
   assert.equal(subdir, "/blog", "this lane runs WordPress at /blog");
-  assert.equal(wp("plugin", "get", "first-admin", "--field=status"), "active");
+  assert.equal(wp("plugin", "get", "typedpress-admin", "--field=status"), "active");
 
   // WP-CLI activated the plugin; the first web request writes its rule into this install's .htaccess.
   assert.equal((await fetch(`${site}/`)).status, 200);
@@ -36,7 +36,7 @@ test("the admin is installed below the site root and derives every URL from it",
   const page = await fetch(`${site}/wp-admin/new/media`, { headers: { cookie: await loginCookie(site, "editor", `${site}/wp-admin/new/media`) } });
   assert.equal(page.status, 200);
   const html = await page.text();
-  assert.ok(html.includes('id="first-admin-app"'));
+  assert.ok(html.includes('id="typedpress-admin-app"'));
   const { context, menuItems } = bootPayload(html);
   assert.equal(context.mount_url, `${site}/wp-admin/new/`);
   assert.equal(context.admin_url, `${site}/wp-admin/`);

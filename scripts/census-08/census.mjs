@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Census of live Zero 0.8 Spaces against `first migrate app --from zero-0.8`.
+// Census of live Zero 0.8 Spaces against `typedpress migrate app --from zero-0.8`.
 //
 //   node scripts/census-08/census.mjs --data <dir> --zero <label>=<binary> [--zero ...]
 //        [--users] [--jobs N] [--json <summary.json>] [--per-space <detail.json>]

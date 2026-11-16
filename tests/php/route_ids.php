@@ -7,7 +7,7 @@ declare(strict_types=1);
  * tests/fixtures/route-ids built twice, the second time with its page.tsx and page.md moved to new
  * folders, installed over the first on one WordPress site. Prints the Pages each build stored.
  *
- *   FIRST_WP_THEMES=1 php tests/php/route_ids.php <first wp-content> <second wp-content>
+ *   TP_WP_THEMES=1 php tests/php/route_ids.php <first wp-content> <second wp-content>
  */
 
 require __DIR__ . '/wp.php';
@@ -15,11 +15,11 @@ require __DIR__ . '/wp.php';
 $site = wpSite('route-ids', ['wpContent' => $argv[1]]);
 $site->actAs(null);
 $pages = static function (): array {
-    \First\Wp\RoutePages::instance()?->reconcile();
+    \TypedPress\Wp\RoutePages::instance()?->reconcile();
 
     $out = [];
     foreach (get_posts(['post_type' => 'page', 'post_status' => ['publish', 'private', 'draft', 'trash'], 'numberposts' => -1, 'orderby' => 'ID', 'order' => 'ASC', 'suppress_filters' => true]) as $post) {
-        $route = get_post_meta($post->ID, '_first_route', true);
+        $route = get_post_meta($post->ID, '_tp_route', true);
         if ($route !== '') {
             $out[$post->post_title] = ['id' => $post->ID, 'status' => $post->post_status, 'link' => wp_make_link_relative(get_permalink($post))];
         }
@@ -33,7 +33,7 @@ $get = static fn (string $path): int => (int) (function () use ($url, $path) { $
 // A request stores the build's Pages: code Pages and page.md Pages alike.
 $out = ['first served' => [$get('/about'), $get('/colophon')]];
 $out['first'] = $pages();
-$app = glob($site->dir . '/content/plugins/first-app-*')[0];
+$app = glob($site->dir . '/content/plugins/typedpress-app-*')[0];
 $site->stopServer();
 exec('rm -rf ' . escapeshellarg($app));
 wpCopy($argv[2] . '/plugins/' . basename($app), $app);

@@ -30,19 +30,19 @@ export default function DocumentBar( {
 	}, [] );
 
 	return (
-		<div className="first-admin-media-editor-document-bar">
+		<div className="typedpress-admin-media-editor-document-bar">
 			{ icon && (
-				<span className="first-admin-media-editor-document-bar__icon-layout">
+				<span className="typedpress-admin-media-editor-document-bar__icon-layout">
 					<Icon icon={ icon } />
 				</span>
 			) }
 			<Button
-				className="first-admin-media-editor-document-bar__command"
+				className="typedpress-admin-media-editor-document-bar__command"
 				onClick={ () => openCommandCenter() }
 				size="compact"
 			>
 				<motion.div
-					className="first-admin-media-editor-document-bar__title"
+					className="typedpress-admin-media-editor-document-bar__title"
 					// Force entry animation when the back button is added or removed.
 					initial={
 						mountedRef.current
@@ -59,14 +59,14 @@ export default function DocumentBar( {
 					transition={ isReducedMotion ? { duration: 0 } : undefined }
 				>
 					<Text size="body" as="h1">
-						<span className="first-admin-media-editor-document-bar__post-title">
+						<span className="typedpress-admin-media-editor-document-bar__post-title">
 							{ title
 								? stripHTML( title )
-								: __( 'No title', 'first-admin' ) }
+								: __( 'No title', 'typedpress-admin' ) }
 						</span>
 					</Text>
 				</motion.div>
-				<span className="first-admin-media-editor-document-bar__shortcut">
+				<span className="typedpress-admin-media-editor-document-bar__shortcut">
 					{ displayShortcut.primary( 'k' ) }
 				</span>
 			</Button>

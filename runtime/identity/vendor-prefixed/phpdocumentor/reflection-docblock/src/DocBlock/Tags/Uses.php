@@ -11,15 +11,15 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
-use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
-use First\Identity\Vendor\phpDocumentor\Reflection\Fqsen;
-use First\Identity\Vendor\phpDocumentor\Reflection\FqsenResolver;
-use First\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
-use First\Identity\Vendor\phpDocumentor\Reflection\Utils;
-use First\Identity\Vendor\Webmozart\Assert\Assert;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\DescriptionFactory;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Fqsen;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\FqsenResolver;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Types\Context as TypeContext;
+use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Utils;
+use TypedPress\Identity\Vendor\Webmozart\Assert\Assert;
 
 use function array_key_exists;
 use function explode;

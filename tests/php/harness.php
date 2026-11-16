@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /* Tiny assertion harness shared by the PHP suites. */
 
-use First\App;
+use TypedPress\App;
 
 $passed = 0;
 $failed = 0;

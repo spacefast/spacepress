@@ -59,11 +59,6 @@ final class Surfaces
     /** Records that the administrator role was given `first_apply_schema` once, so it is never given again. */
     private const GRANTED = 'first_schema_apply_granted';
 
-    /**
-     * Gives the administrator role `first_apply_schema` the first time an app with runtime schema
-     * changes runs on the site, and never again: from then on it is an ordinary capability, and
-     * `wp cap remove administrator first_apply_schema` (or `wp user remove-cap`) takes it away for good.
-     */
     /** Whether {@see grant()} has nothing left to do. */
     public static function granted(): bool
     {
@@ -72,6 +67,11 @@ final class Surfaces
         return $plugin === null || SchemaVersions::of($plugin) === null || get_option(self::GRANTED) !== false;
     }
 
+    /**
+     * Gives the administrator role `first_apply_schema` the first time an app with runtime schema
+     * changes runs on the site, and never again: from then on it is an ordinary capability, and
+     * `wp cap remove administrator first_apply_schema` (or `wp user remove-cap`) takes it away for good.
+     */
     public static function grant(): void
     {
         $plugin = Runtime::plugin();

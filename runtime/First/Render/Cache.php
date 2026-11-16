@@ -113,8 +113,11 @@ final class Cache
         }
         $now = gmdate('Y-m-d\TH:i:s.000\Z');
         self::run('DELETE FROM {reads} WHERE "url" = ?', [$url]);
-        // Multi-row inserts, BATCH rows each, so a statement stays far below any packet limit
-        // (a row is at most 191 + 191 + 512 + 24 bytes).
+        // Multi-row inserts, BATCH rows each. A row's parameters are at most (191 + 191 + 512)
+        // characters of utf8mb4, 4 bytes each, plus the 24-byte timestamp: 3,600 bytes, so a statement
+        // carries at most 100 × 3,600 = 360,000 bytes of parameters. That is below the default
+        // max_allowed_packet of MySQL 8 (64 MiB) and MariaDB (16 MiB); it is not checked against the
+        // server's own setting, so a server set below about 360 KB would refuse a full batch.
         foreach (array_chunk(array_values($wanted), self::BATCH) as $chunk) {
             $params = [];
             foreach ($chunk as [$kind, $item]) {

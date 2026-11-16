@@ -19,7 +19,7 @@ type Refusal = { code: string; name: string; rows: number; fix: string; message:
 type Problem = { status: number; code: string; refusals: Refusal[]; drop: string[] };
 
 function migrate(...flags: string[]): { data?: { applied: string[] }; error?: Problem } {
-  return JSON.parse(wpTry("first", "migrate", ...flags));
+  return JSON.parse(wpTry("typedpress", "migrate", ...flags));
 }
 
 function refused(...flags: string[]): Problem {

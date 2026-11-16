@@ -267,4 +267,5 @@ GPL-2.0-or-later, and don't copy GPL code into the MIT side.
 
 Use the Node version in `.node-version` for verification. The differential sort
 tests compare the runtime with that V8 version, including comparator call order;
-updating Node requires checking that oracle explicitly.
+updating Node requires checking that oracle explicitly. 22.23.4 is the floor Astro 7.4
+sets (`packages/astro`), and ships the same V8 (12.4.254.21) as 22.22.3.

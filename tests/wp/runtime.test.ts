@@ -56,7 +56,7 @@ const age = (id: number, days: number) => {
 };
 const user = (id: number) => sql(`SELECT ID FROM wp_users WHERE ID = ${id}`).length === 1;
 const runPrune = () => {
-  const [action] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g ON g.group_id = a.group_id WHERE a.hook = 'typedpress.prune-guests' AND a.status = 'pending' AND g.slug = 'first'");
+  const [action] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g ON g.group_id = a.group_id WHERE a.hook = 'typedpress.prune-guests' AND a.status = 'pending' AND g.slug = 'typedpress'");
   assert.ok(action, "the recurring action is scheduled in group first");
   wp("action-scheduler", "action", "run", action.action_id);
 };

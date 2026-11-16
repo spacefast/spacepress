@@ -13,7 +13,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 cd "$repo"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-system}" TP_WP_PORT="${TP_WP_PORT:-8809}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-system}" TP_WP_PORT="${TP_WP_PORT:-8809}"
 # Every build of the example shares one checksum-verified download cache for the platform plugins.
 export TP_WP_PLUGIN_CACHE="${TP_WP_PLUGIN_CACHE:-$repo/.tp/cache/plugins}"
 

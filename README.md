@@ -250,7 +250,7 @@ console.log(await first.actions.publishedCount({}));        // { count: 1 }
 Every argument and result is typed from your schema: `with` keys, filters,
 `orderBy`, action inputs and outputs. The post is a real WordPress post, so it
 is also in `wp-admin` under Posts. Browser apps sign members in with
-`typedpress.auth.signIn()`, which goes through the first-identity screens given a
+`typedpress.auth.signIn()`, which goes through the typedpress-identity screens given a
 `clientId` and `redirectUri`; see the client's generated README for sessions,
 guests and server-to-server auth.
 

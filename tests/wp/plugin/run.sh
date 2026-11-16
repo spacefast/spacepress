@@ -15,7 +15,7 @@ harness="$here/../harness.sh"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 first="$target/debug/typedpress"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-plugin}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-plugin}"
 export TP_WP_PORT="${TP_WP_PORT:-8905}"
 work="$(mktemp -d)"
 cleanup() {
@@ -60,12 +60,12 @@ wp config set TP_VARIABLES "['GREETING' => 'hello from wp-config']" --raw >/dev/
 [[ $("$first" login "$url" --no-browser 2>&1) == *"does not have the TypedPress plugin active"* ]] || fail "typedpress login names the missing plugin on a site without it"
 browser login admin typedpress-test-admin
 browser upload-plugin "$work/typedpress.zip"
-wp plugin is-active first || fail "uploading and activating typedpress.zip activates the TypedPress plugin"
+wp plugin is-active typedpress || fail "uploading and activating typedpress.zip activates the TypedPress plugin"
 ok "typedpress.zip uploads and activates through wp-admin's Upload Plugin"
 
 # Activating TypedPress installed and activated what it depends on, each pinned by checksum.
 active=$(wp plugin list --status=active --field=name | sort | tr '\n' ' ')
-[[ $active == "action-scheduler first mcp-adapter secure-custom-fields two-factor " ]] || fail "activating TypedPress installs and activates the four pinned plugins: $active"
+[[ $active == "action-scheduler mcp-adapter secure-custom-fields two-factor typedpress " ]] || fail "activating TypedPress installs and activates the four pinned plugins: $active"
 screen=$(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress')
 [[ $screen == *"TypedPress installed and activated the plugins it needs: Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, Two Factor 0.17.0."* ]] || fail "the TypedPress screen says what activation installed: $screen"
 [[ $screen == *"No TypedPress app is deployed to this site yet."* && $screen != *"Not installed"* && $screen == *"typedpress login $url"* ]] || fail "the TypedPress screen is ready and shows the commands: $screen"
@@ -112,7 +112,7 @@ out=$(push) || fail "the first deploy: $out"
 tp_build=$(wp option get tp_live_build)
 [[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "TypedPress's API answers for the deployed app"
 curl -s "$url/about" > "$work/about.html"
-[[ $(cat "$work/about.html") == *"<h1>About this app</h1>"* ]] || fail "a first/app/ page renders"
+[[ $(cat "$work/about.html") == *"<h1>About this app</h1>"* ]] || fail "a tp/app/ page renders"
 # The image the page imports is the app's own file: its URL is under the public copy, and answers.
 image=$(grep -o -m1 "$url/wp-content/typedpress-assets/app/[^\"' ]*\.svg" "$work/about.html" || true)
 [[ -n $image && $(curl -s "$image") == *"<circle"* ]] || fail "the page's imported image is served from wp-content/typedpress-assets: ${image:-not on the page}"

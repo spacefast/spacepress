@@ -13,7 +13,7 @@ harness="$here/../harness.sh"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 first="$target/debug/typedpress"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-plugin-ms}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-plugin-ms}"
 export TP_WP_PORT="${TP_WP_PORT:-8907}"
 work="$(mktemp -d)"
 cleanup() {
@@ -79,7 +79,7 @@ local_admin="newsadmin:$(wp user application-password create newsadmin lane --po
 docker cp "$work/typedpress.zip" "$("$harness" compose ps -q cli)":/tmp/typedpress.zip >/dev/null
 wp plugin install /tmp/typedpress.zip --activate-network >/dev/null
 network=$(wp plugin list --status=active-network --field=name | sort | tr '\n' ' ')
-[[ $network == "action-scheduler first mcp-adapter secure-custom-fields two-factor " ]] || fail "activating TypedPress for the network activates what it depends on for the network: $network"
+[[ $network == "action-scheduler mcp-adapter secure-custom-fields two-factor typedpress " ]] || fail "activating TypedPress for the network activates what it depends on for the network: $network"
 for site in "$url" "$news" "$shop"; do
   [[ $(curl -s -u "$super" "$site/wp-json/typedpress-deploy/v1/site" | json ready) == true ]] || fail "$site is ready for a deployment"
 done

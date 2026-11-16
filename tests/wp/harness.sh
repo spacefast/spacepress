@@ -25,7 +25,7 @@ set -euo pipefail
 caller="$PWD"   # relative --wp-content paths are the caller's, not this directory's
 cd "$(dirname "$0")"
 export TP_WP_PORT="${TP_WP_PORT:-8790}"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-test}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-test}"
 # Compose lowercases and strips other characters, so distinct inputs could share one stack.
 [[ $TP_WP_PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "TP_WP_PROJECT must match ^[a-z0-9][a-z0-9_-]*\$" >&2; exit 2; }
 export TP_WP_UID="$(id -u)" TP_WP_GID="$(id -g)"
@@ -40,7 +40,7 @@ compose() {
   docker compose -p "$TP_WP_PROJECT" "${files[@]}" "$@"
 }
 wp() { compose exec -T cli wp "$@"; }
-sql() { compose exec -T db mariadb -uwordpress -pfirst-test-db wordpress --batch -e "$1"; }
+sql() { compose exec -T db mariadb -uwordpress -ptypedpress-test-db wordpress --batch -e "$1"; }
 
 # Provider provisioning is separate from installing/activating the WordPress artifact.
 # Only the named disposable resources are owned here; a repeated setup retains their bytes.

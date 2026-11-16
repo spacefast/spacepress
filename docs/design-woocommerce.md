@@ -33,7 +33,41 @@ Exact configuration syntax and field names remain to be finalized.
 
 Sync covers authored fields such as names, descriptions, prices and taxonomy assignments.
 Stock quantities, sales counters and orders are operational state, not synced
-content. An optional initial stock value is create-only and must never reset stock on sync.
+content. Configure inventory through Woo administration initially; source files contain neither
+current nor initial stock quantities.
+
+### Proposed v1 product field list
+
+Keep the initial writable and synced catalog surface small. This is the complete proposed list,
+not just the fields shown in a minimal example:
+
+| Field | Purpose |
+| --- | --- |
+| `uid` | Required persistent source identity; immutable |
+| `name` | Product name |
+| `slug` | Optional editable URL slug; Woo derives it on creation when absent |
+| `sku` | Optional merchant SKU, independent of identity |
+| `status` | `draft`, `pending`, `private` or `publish`; new products default to draft |
+| Markdown body | Full product description |
+| `shortDescription` | Optional short description |
+| `regularPrice` | Exact decimal price in the store currency |
+| `salePrice` | Optional immediate sale price; no scheduling in v1 |
+| `images` | Ordered project-relative image paths with optional alt text; first image is primary |
+| `categories` | Product category UIDs |
+| `tags` | Product tag UIDs |
+
+Products created through this interface are simple physical products. A source file supplies
+`uid` and `name`; a product offered for sale needs a valid price. Exact required-field validation
+for unpublished drafts follows Woo. Reuse existing sync omission/clearing semantics rather
+than invent an independent field-ownership mode.
+
+Defer `backorders`, `manageStock`, stock quantity, initial stock, `soldIndividually`, weight,
+dimensions, shipping class, tax class, catalog visibility controls, featured products and sale
+schedules from the writable/synced API. Keep those settings available in Woo administration and
+preserve them on sync. Newly created products use Woo's normal defaults for omitted settings.
+Read projections still expose current price, purchasability and availability so the storefront
+reflects Woo's actual state. Cart quantities, shipping rates and totals continue to be validated
+and calculated by Woo; omitting shipping dimensions from source does not remove checkout shipping.
 
 ## Sync integration
 
@@ -75,7 +109,7 @@ uid: zr_8b3e7c9d2a104f65b012
 name: Ceramic mug
 slug: ceramic-mug
 sku: MUG-BLUE
-status: published
+status: publish
 regularPrice: "24.00"
 categories:
   - zr_15a702bc4d8e6390fa12
@@ -134,7 +168,7 @@ for application dashboards. These are proposed boundaries; names below are illus
 
 | Resource | Initial operations | Data contract |
 | --- | --- | --- |
-| Products | List, get, create, update, trash; seed and sync | Stable source identity and Woo ID, SKU, slug, name, descriptions, status, visibility, simple product type, prices, images, stock configuration and availability, shipping dimensions |
+| Products | List, get, create, update, trash; seed and sync | The v1 field list above; reads additionally expose native runtime ID, current price, purchasability and availability |
 | Categories and tags | Existing taxonomy/terms API, extended to bind Woo taxonomies and support product relationships | Native term ID, stable source identity, name, slug; categories also have a parent. No separate commerce category/tag CRUD API |
 | Cart | Read current cart, add item, change quantity, remove item, update destination, choose shipping rate | Session-scoped lines, current prices, availability, discounts, shipping choices, taxes, fees and Woo-calculated totals |
 | Checkout | Complete the current cart through Woo; presentation to be selected by a spike | Session continuity, address and shipping validation, supported payment integration, order result and receipt |
@@ -294,8 +328,8 @@ payments are deferred. Use Woo's default emails initially; custom email authorin
 
 ## Decisions still needed
 
-- **Product sync details:** finalize front-matter field names and the sync field allowlist;
-  implement Woo conflict detection through the existing baseline and merge contract.
+- **Product sync details:** confirm the proposed v1 field list above; implement Woo conflict
+  detection through the existing baseline and merge contract.
 - **Source authoring details:** how new files receive their required persistent UIDs; confirm
   project-relative image paths and define pulled-image naming and replacement behavior.
 - **Checkout presentation:** choose after the in-app block versus custom-form spike.

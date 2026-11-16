@@ -559,6 +559,7 @@ fn convert(
         return Ok(());
     }
     let checked_root = PathBuf::from("/candidate");
+    if let Ok(dump) = std::env::var("SCRATCH_DUMP_CANDIDATE") { for (path, text) in &sources { let p = std::path::Path::new(&dump).join(path); let _ = std::fs::create_dir_all(p.parent().unwrap()); let _ = std::fs::write(p, text); } }
     let memory = crate::wasm::Memory::new(
         sources
             .iter()

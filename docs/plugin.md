@@ -44,7 +44,7 @@ under Users, Profile, Application Passwords.
    well under 1 MB). A tree the site already holds is not sent again.
 3. Prints what installing it would change: tables, each migration, pages, the search index, URL
    rules. Nothing of the app's code runs for this.
-4. Installs it and makes it live. `--dry-run` stops after step 3.
+4. Installs it and makes it live. `--dry-run` stops after step 3, and it neither updates the site's TypedPress plugin nor installs the plugins the app needs: it says what a push would do, and stops before uploading when a needed plugin is missing.
 
 The migration is planned against the site, not against `tp/_generated/migrations/` in the
 project: the site's own ledger is what its database ran. If someone else deployed while your build

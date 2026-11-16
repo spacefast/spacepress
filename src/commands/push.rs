@@ -70,17 +70,22 @@ fn run(args: &[String]) -> Result<(), String> {
                 env!("CARGO_PKG_VERSION")
             ));
         }
-        let zip = super::plugin::archive().map_err(|e| e.to_string())?;
-        let sha = hex(Sha256::digest(&zip));
-        api.upload("/plugin", &[("sha256", &sha)], &zip)
-            .map_err(|e| format!("updating the TypedPress plugin on {site}: {e}"))?;
-        info = api.get("/site", &[]).map_err(|e| e.to_string())?;
-        if info["pluginHash"].as_str() != Some(ours.as_str()) {
-            return Err(format!(
-                "{site} still runs another TypedPress plugin after the update. Upload the one `typedpress plugin` writes in wp-admin."
-            ));
+        // A dry run changes nothing on the site but the uploaded build, which is not live.
+        if dry {
+            println!("--dry-run: a push would update the TypedPress plugin on the site from {theirs}");
+        } else {
+            let zip = super::plugin::archive().map_err(|e| e.to_string())?;
+            let sha = hex(Sha256::digest(&zip));
+            api.upload("/plugin", &[("sha256", &sha)], &zip)
+                .map_err(|e| format!("updating the TypedPress plugin on {site}: {e}"))?;
+            info = api.get("/site", &[]).map_err(|e| e.to_string())?;
+            if info["pluginHash"].as_str() != Some(ours.as_str()) {
+                return Err(format!(
+                    "{site} still runs another TypedPress plugin after the update. Upload the one `typedpress plugin` writes in wp-admin."
+                ));
+            }
+            println!("updated the TypedPress plugin on the site");
         }
-        println!("updated the TypedPress plugin on the site");
     }
     if info["protocol"].as_u64() != Some(remote::PROTOCOL) {
         return Err(format!(
@@ -195,14 +200,20 @@ fn run(args: &[String]) -> Result<(), String> {
     // The plugins a build needs are not a choice: push installs them, pinned by checksum.
     if !missing.is_empty() {
         println!("the site is missing plugins this app needs: {}", missing.join(", "));
-        let answer = api
-            .post("/requirements", &json!({ "pins": pins }), &[])
-            .map_err(|e| e.to_string())?;
-        for installed in answer["installed"].as_array().into_iter().flatten() {
-            println!("installed {} on the site", installed.as_str().unwrap_or("a plugin"));
+        // The site opens no deployment while a plugin the app needs is missing, so a dry run ends here.
+        if dry {
+            println!("--dry-run: a push would install them, then upload and plan this build; nothing changed on {site}");
+            return Ok(());
+        } else {
+            let answer = api
+                .post("/requirements", &json!({ "pins": pins }), &[])
+                .map_err(|e| e.to_string())?;
+            for installed in answer["installed"].as_array().into_iter().flatten() {
+                println!("installed {} on the site", installed.as_str().unwrap_or("a plugin"));
+            }
+            // The app may run now that its plugins are back.
+            info = api.get("/site", &[]).map_err(|e| e.to_string())?;
         }
-        // The app may run now that its plugins are back.
-        info = api.get("/site", &[]).map_err(|e| e.to_string())?;
     }
 
     // The same source compiles to the same two trees whatever it was compared with. That is only

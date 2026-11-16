@@ -60,12 +60,12 @@ wp config set TP_VARIABLES "['GREETING' => 'hello from wp-config']" --raw >/dev/
 [[ $("$first" login "$url" --no-browser 2>&1) == *"does not have the TypedPress plugin active"* ]] || fail "typedpress login names the missing plugin on a site without it"
 browser login admin typedpress-test-admin
 browser upload-plugin "$work/typedpress.zip"
-wp plugin is-active first || fail "uploading and activating typedpress.zip activates the TypedPress plugin"
+wp plugin is-active typedpress || fail "uploading and activating typedpress.zip activates the TypedPress plugin"
 ok "typedpress.zip uploads and activates through wp-admin's Upload Plugin"
 
 # Activating TypedPress installed and activated what it depends on, each pinned by checksum.
 active=$(wp plugin list --status=active --field=name | sort | tr '\n' ' ')
-[[ $active == "action-scheduler first mcp-adapter secure-custom-fields two-factor " ]] || fail "activating TypedPress installs and activates the four pinned plugins: $active"
+[[ $active == "action-scheduler mcp-adapter secure-custom-fields two-factor typedpress " ]] || fail "activating TypedPress installs and activates the four pinned plugins: $active"
 screen=$(browser screen 'admin.php?page=typedpress-setup' '<div class="wrap"><h1>TypedPress')
 [[ $screen == *"TypedPress installed and activated the plugins it needs: Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, Two Factor 0.17.0."* ]] || fail "the TypedPress screen says what activation installed: $screen"
 [[ $screen == *"No TypedPress app is deployed to this site yet."* && $screen != *"Not installed"* && $screen == *"typedpress login $url"* ]] || fail "the TypedPress screen is ready and shows the commands: $screen"
@@ -173,13 +173,17 @@ ok "a second push applies only the new migration and keeps content"
 # plugin is made another one here by changing the hash it reports; push replaces it with its own.
 "$harness" compose exec -T wordpress sed -i "s/define('TP_PLUGIN_HASH', '[0-9a-f]*')/define('TP_PLUGIN_HASH', '$(printf '0%.0s' {1..64})')/" /var/www/html/wp-content/plugins/typedpress/typedpress.php
 [[ $(curl -s -u "$admin" "$api/site" | json pluginHash) == 0000* ]] || fail "the site reports the changed plugin"
+out=$(push --dry-run) || fail "a dry run to a site with another TypedPress plugin: $out"
+[[ $out == *"--dry-run: a push would update the TypedPress plugin"* && $(curl -s -u "$admin" "$api/site" | json pluginHash) == 0000* ]] || fail "a dry run leaves the site's plugin alone: $out"
 out=$(push) || fail "a push to a site with another TypedPress plugin: $out"
 [[ $out == *"updated the TypedPress plugin on the site"* && $(curl -s -u "$admin" "$api/site" | json pluginHash) != 0000* ]] || fail "push replaces the site's plugin with the one it carries: $out"
 [[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "the app keeps running across the plugin update"
 wp plugin deactivate two-factor >/dev/null
+out=$(push --dry-run) || fail "a dry run to a site missing a plugin the build needs: $out"
+[[ $out == *"--dry-run: a push would install them"*"nothing changed"* && $(wp plugin is-active two-factor || echo inactive) == inactive ]] || fail "a dry run installs nothing: $out"
 out=$(push) || fail "a push to a site missing a plugin the build needs: $out"
 [[ $out == *"the site is missing plugins this app needs: two-factor 0.17.0 (found 0.17.0, inactive)"*"installed Two Factor 0.17.0 on the site"* && $(wp plugin is-active two-factor && echo active) == active ]] || fail "push names the plugin the build needs and brings it back: $out"
-ok "push updates the site's TypedPress plugin and installs the plugins a build needs, with an app live"
+ok "push updates the site's TypedPress plugin and installs the plugins a build needs, with an app live; a dry run does neither"
 
 # ---- a sealed app ---------------------------------------------------------------------------------
 # A sealed app lets only listed plugins run. The TypedPress plugin is one of TypedPress's own: it is on every

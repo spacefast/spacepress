@@ -416,6 +416,13 @@ test("the classic route's earlier address /legacy/<slug> redirects to /classic/<
   const query = await fetch(`${site}/wp-admin/admin.php?page=typedpress-admin&p=${encodeURIComponent("/legacy/options-media.php")}`, { headers: { cookie }, redirect: "manual" });
   assert.equal(query.status, 301);
   assert.equal(new URL(query.headers.get("location")!).searchParams.get("p"), "/classic/options-media.php");
+  // A bookmark with a query (a plugin page) keeps it, in the encoding the classic route reads.
+  const plugin = await fetch(`${site}/wp-admin/new/legacy/admin.php%3Fpage%3Dtypedpress-identity%26tab%3Dclients`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(plugin.status, 301);
+  assert.equal(plugin.headers.get("location"), `${site}/wp-admin/new/classic/admin.php%253Fpage%253Dtypedpress-identity%2526tab%253Dclients`);
+  const pluginQuery = await fetch(`${site}/wp-admin/admin.php?page=typedpress-admin&p=${encodeURIComponent("/legacy/admin.php%3Fpage%3Dtypedpress-identity")}`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(pluginQuery.status, 301);
+  assert.equal(new URL(pluginQuery.headers.get("location")!).searchParams.get("p"), "/classic/admin.php%253Fpage%253Dtypedpress-identity");
 });
 
 test("the sidebar reaches classic-only screens through /classic/ and leaves out what the app turned off", async () => {

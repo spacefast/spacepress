@@ -169,11 +169,12 @@ function tp_admin_redirect_classic_page() {
 
 /**
  * The route's earlier address, `/legacy/<slug>`, for links saved before it was renamed: the same
- * page at `/classic/<slug>`.
+ * page at `/classic/<slug>`. A legacy slug was encoded once (`admin.php%3Fpage%3Dx`); it is
+ * decoded and encoded the way {@see tp_admin_classic_route()} writes it, so its query survives.
  *
  * @param string $route The TypedPress Admin route the request asked for.
  * @return string|null The route to redirect to, or null.
  */
 function tp_admin_renamed_route( $route ) {
-	return preg_match( '#^/legacy(/.*)$#', $route, $m ) ? '/classic' . $m[1] : null;
+	return preg_match( '#^/legacy/(.+)$#', $route, $m ) ? tp_admin_classic_route( rawurldecode( $m[1] ) ) : null;
 }

@@ -82,7 +82,7 @@ final class ActionSchedulerQueue
             }
         });
         // Installing, not serving: a managed build prepares and schedules from initialize.
-        add_action('action_scheduler_init', static fn () => Runtime::managed() ? null : self::install(), 0);
+        add_action('action_scheduler_init', static fn () => Runtime::installs() ? self::install() : null, 0);
     }
 
     /** TypedPress's Action Scheduler groups, the jobs left without an action, and the daily maintenance. */
@@ -95,6 +95,20 @@ final class ActionSchedulerQueue
         if (!as_has_scheduled_action(self::MAINTAIN, [], 'typedpress')) {
             as_schedule_recurring_action(time() + 3600, DAY_IN_SECONDS, self::MAINTAIN, [], 'typedpress');
         }
+    }
+
+    /** What {@see install()} leaves: the groups prepared for this app and the maintenance scheduled. */
+    public static function installed(): bool
+    {
+        $plugin = Runtime::plugin();
+
+        return $plugin === null || (get_option(self::PREPARED) === self::prepared($plugin) && as_has_scheduled_action(self::MAINTAIN, [], 'typedpress'));
+    }
+
+    /** A runtime that changes what preparing checks or creates bumps the version, so sites prepare again. */
+    private static function prepared(\TypedPress\Wp\Plugin $plugin): string
+    {
+        return 'v1:typedpress,typedpress-' . $plugin->schema->name();
     }
 
     /**
@@ -110,8 +124,7 @@ final class ActionSchedulerQueue
             return; // storage is behind this build; a later request prepares
         }
         $groups = ['typedpress', 'typedpress-' . $plugin->schema->name()];
-        // A runtime that changes what preparing checks or creates bumps the version, so sites prepare again.
-        $done = 'v1:' . implode(',', $groups);
+        $done = self::prepared($plugin);
         if (get_option(self::PREPARED) === $done) {
             return;
         }

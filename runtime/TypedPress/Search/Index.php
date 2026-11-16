@@ -79,7 +79,7 @@ final class Index
             // After every build and every runtime update, once storage matches the build: kinds whose
             // searchable fields changed since they were last indexed are rebuilt by a queued job. One
             // cached option read when nothing changed. A managed build does it from initialize.
-            add_action('wp_loaded', static fn () => \TypedPress\Wp\Runtime::managed() ? null : self::reindexChanged());
+            add_action('wp_loaded', static fn () => \TypedPress\Wp\Runtime::installs() ? self::reindexChanged() : null);
             // Users written outside TypedPress's pipeline (wp_insert_user, wp_update_user, the profile
             // form, identity's sign-up) report nothing: the member's entries follow core's user
             // hooks instead, re-read from the stored row. Inside a TypedPress write this repeats what
@@ -319,10 +319,9 @@ final class Index
         if ($plugin === null) {
             return false;
         }
-        $plugin->app();
         $previous = get_option(self::SHAPE, null);
 
-        return (is_array($previous) ? $previous : []) !== self::shape(db()->schema()->collections());
+        return (is_array($previous) ? $previous : []) !== self::shape($plugin->schema->collections());
     }
 
     /** @return array<string, list<string>> each searchable kind's fields */
@@ -349,16 +348,17 @@ final class Index
         if ($plugin === null || $plugin->unavailable() !== null) {
             return;
         }
-        $plugin->app();
-        if (!Storage::ready()) {
-            return;
-        }
-        $shape = self::shape(db()->schema()->collections());
+        // Compared before the app boots: a schema with no searchable field, or none changed, does nothing.
+        $shape = self::shape($plugin->schema->collections());
         $previous = get_option(self::SHAPE, null);
         $previous = is_array($previous) ? $previous : [];
+        if ($previous === $shape) {
+            return;
+        }
+        $plugin->app();
         // Only on storage this build migrated: a kind's table may not exist before its migration (a
         // WP-CLI command, a refused or held-back build), and counting its rows would fail.
-        if ($previous === $shape || !$plugin->migrated()) {
+        if (!Storage::ready() || !$plugin->migrated()) {
             return;
         }
         db()->transaction(static function () use ($shape, $previous): void {

@@ -109,7 +109,7 @@ test("adopts original rows and keeps legacy action results and mutation atomicit
     assert.equal(refused.status, 503);
     assert.ok(typeof problem === "object" && problem !== null && "code" in problem);
     assert.equal(problem.code, "unavailable");
-    const cli: unknown = JSON.parse(wpTry("first", "migrate"));
+    const cli: unknown = JSON.parse(wpTry("typedpress", "migrate"));
     assert.ok(typeof cli === "object" && cli !== null && "error" in cli);
     assert.ok(typeof cli.error === "object" && cli.error !== null && "status" in cli.error && "code" in cli.error);
     assert.equal(cli.error.status, 500);

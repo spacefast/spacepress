@@ -68,7 +68,7 @@ test("read-only: every write is refused on every route, reads work, and nothing 
   scoped(await call(header, "POST", `${abilities}/${app}/touch-notes/run`, { input: {} }), "ability that writes");
   // Request forms: rest_route, letter case and trailing slash, method overrides, batch.
   scoped(await call(header, "POST", `${site}/?rest_route=/wp/v2/tp_notes`, { title: "w" }), "rest_route");
-  scoped(await call(header, "POST", `${site}/wp-json/WP/V2/TypedPress_Notes/`, { title: "w" }), "case and slash");
+  scoped(await call(header, "POST", `${site}/wp-json/WP/V2/TP_Notes/`, { title: "w" }), "case and slash");
   scoped(await call(header, "GET", `${core}/tp_notes?_method=POST`, undefined), "?_method=POST on a GET");
   scoped(await call(header, "POST", `${api}/notes?_method=PATCH`, { title: "w" }), "facade ?_method=PATCH");
   scoped(await call(header, "POST", `${core}/tp_notes`, { title: "w" }, { "X-HTTP-Method-Override": "PUT" }), "X-HTTP-Method-Override");
@@ -274,7 +274,7 @@ test("existing passwords keep working exactly as before; grant and revoke act on
   assert.equal((await call(header, "GET", `${api}/notes`)).status, 401);
   // `--abilities` with no list is an error, never "every ability".
   const before = JSON.parse(wp("typedpress", "identity", "agent", "list", "author")).data.length;
-  const refused = JSON.parse(wpTry("first", "identity", "agent", "add", "author", `--name=noval-${run}`, "--abilities"));
+  const refused = JSON.parse(wpTry("typedpress", "identity", "agent", "add", "author", `--name=noval-${run}`, "--abilities"));
   assert.equal(refused.error.code, "invalid_command", JSON.stringify(refused));
   assert.equal(JSON.parse(wp("typedpress", "identity", "agent", "list", "author")).data.length, before, "no password was created");
 });

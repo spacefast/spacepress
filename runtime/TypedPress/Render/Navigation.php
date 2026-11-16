@@ -49,7 +49,7 @@ final class Navigation
         if (!self::$used || !function_exists('wp_register_script_module')) {
             return;
         }
-        wp_register_script_module('typedpress-router', $url, [['id' => '@wordpress/interactivity', 'import' => 'static'], ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic']], null);
+        wp_register_script_module('typedpress-router', $url, [['id' => '@wordpress/interactivity', 'import' => 'static'], ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic']], \TypedPress\Islands::runtimeVersion());
         wp_enqueue_script_module('typedpress-router');
         wp_interactivity_process_directives(self::region() . '</div>');
     }

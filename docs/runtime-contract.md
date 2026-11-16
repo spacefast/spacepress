@@ -32,9 +32,21 @@ Every TypedPress file starts with `declare(strict_types=1);`. Namespace `TypedPr
     tp/app/functions.php             generated: compiled hooks, actions, helpers (namespace TypedPressApp)
     tp/app/openapi.json              generated: the API as OpenAPI 3.1, served at /__tp/api/v1/openapi.json
     tp/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
+    tp/app/client/typedpress-client.js   the typed client as a browser module (`@typedpress/client`), minified
+    tp/app/client-version.php       `return '<12 hex>';`: digest of typedpress-client.js, its script version
+    tp/app/client/<stem>.<12 hex>.js  "use client" stores, minified; the hex is SHA-256 of these bytes
+    tp/app/client/.htaccess         an immutable year-long Cache-Control for those stores only
     public/...                         copied from <project>/public if present
   *.zip                                the same plugins, packaged
 ```
+
+Script modules with fixed names carry a version so a browser never keeps a copy from an earlier
+build: `@typedpress/client` is registered with `client-version.php`'s digest, and the runtime's
+`@typedpress/live` (`tp/Render/client/live.js`) and `typedpress-router` (`router.js`) with
+`TP_RUNTIME_HASH` (a digest of the runtime's `TypedPress/` files), or the release version when a
+build-store mount defines no such constant. The content-hashed store modules need no version.
+The app plugin's copies of these modules are minified (`oxc_minifier`, names of functions and
+classes kept); the committed `tp/_generated/client/client.js` and `client.d.ts` stay readable.
 
 ### Build output reuse
 
@@ -386,7 +398,12 @@ function db(): Db;   // namespace TypedPress, in Db.php, returns Db::instance()
 - `where`: filter (below).
 - `orderBy`: `['name' => 'asc', 'createdAt' => 'desc']`.
 - `limit`, `offset`: ints.
-- `columns`: `['id' => true, 'name' => true]` → only those keys.
+- `columns`: `['id' => true, 'name' => true]` → only those keys. The SQL selects
+  (and joins) only those, plus the primary key, the fields `with` loads and the
+  keys it joins on, a relation's partition column, a localized kind's `locale`
+  and `translations`, and what read extensions declare they read. It selects
+  every column when a read extension declares nothing, or a field's read rule is
+  a function (it sees the whole row).
 - `with`: `['location' => true, 'items' => ['where' => ..., 'orderBy' => ..., 'limit' => ..., 'with' => ...]]`.
   `one` relations attach a row or null; `many` attach a list. Load with one
   extra query per relation per level (`WHERE fk IN (...)`), never N+1.
@@ -432,8 +449,10 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
   and decode. Lookup receives nonempty collection pages, not system-media rows.
   Mutation results (including receipt replay) and revision snapshots also prime
   their page before read transforms; callbacks may run again after write hooks.
-- `onRead(rows, collection, ?viewer)` transforms decoded rows before `with` and
-  projection; also applies to revision reads and returning write responses.
+- `onRead(rows, collection, ?viewer, reads: ?fn(collection, ?viewer): list<string>)`
+  transforms decoded rows before `with` and projection; also applies to revision
+  reads and returning write responses. `reads` names the columns it reads beside
+  the ones the query keeps; without it every read selects every column.
   Revision restore authorizes first, then uses the full stored snapshot; display
   transforms never supply persistence input. Internal mutation selection keeps
   authorization filters and passes full decoded storage rows to normalization,
@@ -491,7 +510,37 @@ or guarded `callable(Store): void` upgrades (a column check against
 `information_schema` before `ADD COLUMN`). `apply(Store)` rejects request
 transactions before running SQL or guards; the runtime applies registrations
 on activation and on the first request after an update, outside request
-transactions. `Store` exposes `afterCommit(callable)` and
+transactions.
+
+On a plugin-installed site, the checks behind "the first request after an
+update" (the stored-name upgrade, the system tables, the app's migration ledger,
+Action Scheduler groups and recurring actions, route and content Pages, Polylang
+languages, the search index shape, the runtime-schema capability) run until one
+request finds them all in place. That request records the autoloaded option
+`tp_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
+`schema.php`, the system-tables version, the runtime version and hash, the UTC
+day and the active plugins (the site's and, on multisite, the network's). On
+multisite each site keeps its own. While it matches, requests skip those checks,
+as a managed build always does (`Runtime::installs()`); a managed site never
+records it. It is recorded at the end of `wp_loaded` only after each check is
+read again and passes, so a failed, refused or held install never records it;
+the checks run once more after the write, and the marker is removed if they no
+longer pass or this request dropped it meanwhile. Dropping it always deletes the
+stored row, whatever this request cached about it. A
+new build, a runtime update, a plugin change or a new day finds no match.
+Activating, deactivating or migrating the app, a change to an option those checks
+keep or to an app route's Page, a cancelled Action Scheduler action, and a recurring
+action whose next run could not be scheduled delete it. A managed build's Polylang
+languages don't depend on it: they are provisioned on its first request that has Polylang.
+
+What it deliberately no longer re-checks on every request, until the marker is
+gone (at the latest the next UTC day): storage changed without WordPress's
+option hooks, such as the migration ledger or system tables rewritten by hand, a
+database restored from a backup taken before an install step, or an option
+those checks keep edited with SQL. After such a change, drop the marker so the
+next request checks everything: `wp option delete tp_installed` (or
+`DELETE FROM <prefix>options WHERE option_name = 'tp_installed'`, then flush
+the object cache). `Store` exposes `afterCommit(callable)` and
 `applySystemStatements(list<string>)` for these seams.
 
 `Wp\Scf::fieldFilter(fn)` transforms each fully-built field, including nested
@@ -553,7 +602,7 @@ route); the facade maps input and output only. Everything else → 404 problem.
 | `POST /actions/{name}` (`GET` when readonly) | `/wp-abilities/v1/abilities/<app>/<name>/run` | 200 `{data: result}` |
 | `GET /me`, `/settings`, `/menus[/{location}]` | `/wp/v2/users/me`, `/wp/v2/settings`, `/wp/v2/menu-locations` + `/wp/v2/menu-items` | 200 `{data}` |
 | `/auth/*`, `/sync/*`, `/services/*`, `/files/*`, `/media/{id}/file/*` | TypedPress's own routes (no core route) | as each documents |
-| `GET /openapi.json` | the app plugin's `tp/app/openapi.json` (`TypedPress\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` |
+| `GET /openapi.json` | the app plugin's `tp/app/openapi.json` (`TypedPress\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` and an `ETag` that is the digest of the encoded body sent (built from one read of the file); a matching `If-None-Match` is an empty 304; an unreadable file is a 404, never a 304 |
 
 Kinds are the app's collections, tables and users kind, plus WordPress's
 own (`posts`, `pages`, `comments`, `media`, `categories`, `tags`, `menus`)
@@ -819,12 +868,29 @@ listens and purges those URLs from Batcache and the edge. With no listener
   `batcache_cancel()`. Each cacheable render records the rows it read in
   `tp__app_reads` (kind, row id or `*` for a listing, path with query),
   under the address WordPress links the page at (`/notes/a/` for a visit to
-  `/notes/a`). A committed write to a kind adds every recorded path that read
+  `/notes/a`): one read of what the path recorded last, and nothing written
+  when the render read the same rows; otherwise the path's rows are replaced
+  with inserts of 100 rows each. A committed write to a kind adds every recorded path that read
   that row or listed the kind, with its `.md` twin, to the same announcement
   as the paths above: one `tp_purge_urls` call per committed transaction.
   The router answers a page with or without its trailing slash, so both
   spellings are purged. More than 200 paths in that call becomes `/*`, a
   whole-host purge. Nothing is recorded or announced without a listener.
+- **Prebuilt pages** (`Render\Prebuilt::serve`) open the file once, hash that
+  handle in 64 KiB chunks, rewind it and stream it (`fpassthru`), so the `ETag`
+  (an xxh128 digest of exactly the bytes sent) and `Content-Length` (from
+  `fstat` on the handle) name one version. TypedPress itself never reads the page
+  into a string; with PHP output buffering on, the buffer holds the streamed body,
+  as it does for `readfile`. A matching `If-None-Match` (itself, its weak form, a list of quoted
+  tags, or `*` alone; a comma or `*` inside a tag's quotes is part of that tag, and a field that
+  is not such a list names nothing) gets an
+  empty 304 that keeps the page's `Cache-Control`; it and HEAD read the file only
+  for the hash. The validator is checked only after every
+  gate that decides the file is this request's answer (no query string,
+  signed-in cookie, Markdown negotiation, gated site). A file that can't be
+  opened, stat'ed, hashed or rewound, whose read returns nothing before its end,
+  or whose bytes read differ from its stat size renders as usual, never a 304,
+  and gets no prebuilt header.
 - **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
   (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
   or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack

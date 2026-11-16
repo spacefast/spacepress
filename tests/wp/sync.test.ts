@@ -326,7 +326,7 @@ test("sync on WordPress", async (t) => {
     const [{ ID }] = sql(`SELECT post_id AS ID FROM wp_postmeta WHERE meta_key = '_tp_uid' AND meta_value = '${guideUid}'`);
     const read = JSON.parse(wp("typedpress", "run", "blog/guides-sync-read", `--input=${JSON.stringify({ after: Number(ID) - 1, first: 1 })}`, "--user=editor")).data;
     assert.deepEqual(read.records, [(await pull("guides")).get(guideUid)]);
-    const denied = JSON.parse(wpTry("first", "run", "blog/guides-sync-read", "--input={}", "--user=author"));
+    const denied = JSON.parse(wpTry("typedpress", "run", "blog/guides-sync-read", "--input={}", "--user=author"));
     assert.ok("error" in denied, JSON.stringify(denied));
   });
 

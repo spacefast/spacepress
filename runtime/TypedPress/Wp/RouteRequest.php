@@ -8,7 +8,7 @@ namespace TypedPress\Wp;
  * The request a `tp/app/` HTTP handler receives (`route.ts`, or a page's own POST/PUT/…): who
  * calls, its URL and its query, as WordPress REST decides them (suspension refused like every
  * other channel):
- * - a first-identity Bearer token authenticates every method;
+ * - a typedpress-identity Bearer token authenticates every method;
  * - a cookie session authenticates GET and HEAD, and an unsafe method only with the REST nonce in
  *   `X-WP-Nonce`, so a cross-site form cannot act as a signed-in visitor;
  * - an application password is never a route credential, on any method.

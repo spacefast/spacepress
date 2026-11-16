@@ -307,9 +307,11 @@ pub fn build(
     // Generator B: each `"use client"` component's store module, content-hashed.
     for analysis in islands {
         let source = analysis.store().map_err(|d| d.phase(diag::Code::Compile))?;
+        // Named by the bytes the app plugin serves, which are immutable under that name.
+        let shipped = crate::minify::module(&source);
         let hash: String = {
             use sha2::{Digest, Sha256};
-            crate::hex(&Sha256::digest(source.as_bytes())[..6])
+            crate::hex(&Sha256::digest(shipped.as_bytes())[..6])
         };
         let stem = analysis
             .namespace
@@ -322,6 +324,7 @@ pub fn build(
             schema::Island {
                 file: format!("{stem}.{hash}.js"),
                 source,
+                shipped,
                 actions: analysis.server_actions.iter().cloned().collect(),
                 live: !analysis.live.is_empty(),
             },

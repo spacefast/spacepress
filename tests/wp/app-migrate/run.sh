@@ -5,7 +5,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 wp="$(cd "$here/.." && pwd)"
 repo="$(cd "$wp/../.." && pwd)"
 cd "$repo"
-export TP_WP_PROJECT="${TP_WP_APP_MIGRATE_PROJECT:-first-wp-app-migrate}"
+export TP_WP_PROJECT="${TP_WP_APP_MIGRATE_PROJECT:-typedpress-wp-app-migrate}"
 export TP_WP_PORT="${TP_WP_APP_MIGRATE_PORT:-8798}"
 # The Space whose 0.8 tables the app binds (existingTable); TypedPress refuses any other Space's.
 export TP_WP_SPACE_ID=spc_migrate_test
@@ -34,7 +34,7 @@ sed -e 's/\.unique()//' -e 's/ref(() => contacts)/integer()/' -e 's/ref(contacts
 "$first" build "$work/indexes" --quiet >/dev/null
 docker compose -p "$TP_WP_PROJECT" cp "$work/indexes/tp/dist/wp-content/plugins/typedpress-app-adoption-indexes" cli:/tmp/typedpress-app-migrate-indexes >/dev/null 2>&1
 docker compose -p "$TP_WP_PROJECT" cp "$here/indexes.php" cli:/tmp/typedpress-app-migrate-indexes.php >/dev/null 2>&1
-docker compose -p "$TP_WP_PROJECT" exec -T db mariadb -uroot -pfirst-test-root -e \
+docker compose -p "$TP_WP_PROJECT" exec -T db mariadb -uroot -ptypedpress-test-root -e \
   "CREATE DATABASE tp_adopt_other; GRANT ALL ON tp_adopt_other.* TO 'wordpress'@'%';"
 "$wp/harness.sh" wp eval-file /tmp/typedpress-app-migrate-indexes.php
 # A separate source candidate proves the portable typedpress-identity gate on a fresh site. Its connector

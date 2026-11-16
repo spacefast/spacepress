@@ -12,7 +12,7 @@ repo="$(cd "$wp/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-target}"
 [[ $target == /* ]] || target="$repo/$target"
 first="$target/debug/typedpress"
-compose() { docker compose -p "${TP_WP_PROJECT:-first-wp-test}" "$@"; }
+compose() { docker compose -p "${TP_WP_PROJECT:-typedpress-wp-test}" "$@"; }
 
 "$first" build "$here/members" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-members"

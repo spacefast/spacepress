@@ -15,7 +15,7 @@ harness="$here/../harness.sh"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 first="$target/debug/typedpress"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-plugin}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-plugin}"
 export TP_WP_PORT="${TP_WP_PORT:-8905}"
 work="$(mktemp -d)"
 cleanup() {
@@ -155,7 +155,7 @@ out=$(push) || fail "the first deploy: $out"
 tp_build=$(wp option get tp_live_build)
 [[ $(curl -s "$url/__tp/api/v1" | json data.name) == pluginlane ]] || fail "TypedPress's API answers for the deployed app"
 curl -s "$url/about" > "$work/about.html"
-[[ $(cat "$work/about.html") == *"<h1>About this app</h1>"* ]] || fail "a first/app/ page renders"
+[[ $(cat "$work/about.html") == *"<h1>About this app</h1>"* ]] || fail "a tp/app/ page renders"
 # The image the page imports is the app's own file: its URL is under the public copy, and answers.
 image=$(grep -o -m1 "$url/wp-content/typedpress-assets/app/[^\"' ]*\.svg" "$work/about.html" || true)
 [[ -n $image && $(curl -s "$image") == *"<circle"* ]] || fail "the page's imported image is served from wp-content/typedpress-assets: ${image:-not on the page}"

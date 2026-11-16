@@ -15,7 +15,7 @@
 //   promoteDue(at)      publish the post scheduled for `at` (its cron event); may return the client to read with.
 //   upgrade()           rebuild the app with project.ts's additive `upgrade`, install it, prove the
 //                       migration ran, and return clients for the new build.
-//   signIn(email, pw)   a reader signs in (the first-identity screens' authorization-code flow,
+//   signIn(email, pw)   a reader signs in (the typedpress-identity screens' authorization-code flow,
 //                       finished by the client's own handleCallback()) and gets a client holding that session.
 
 import assert from "node:assert/strict";

@@ -28,7 +28,7 @@ test("the built artifact ships typedpress-admin and the harness activated it aft
     wp_deregister_script('wp-color-picker');
     wp_deregister_style('wp-color-picker');
     wp_register_script('wp-color-picker', '/wp-admin/js/color-picker.min.js', ['iris'], 'plugin-kept', true);
-    wp_add_inline_script('wp-color-picker', 'window.firstPickerConfig = true;', 'before');
+    wp_add_inline_script('wp-color-picker', 'window.tpPickerConfig = true;', 'before');
     wp_register_style('wp-color-picker', '/wp-admin/css/color-picker.min.css', ['wp-components'], 'style-kept');
     wp_enqueue_script('wp-color-picker');
     wp_deregister_script('iris');
@@ -47,13 +47,13 @@ test("the built artifact ships typedpress-admin and the harness activated it aft
   assert.match(assets.data.styles['wp-color-picker'].src, /color-picker/);
   assert.equal(assets.data.scripts['wp-color-picker'].version, 'plugin-kept');
   assert.equal(assets.data.styles['wp-color-picker'].version, 'style-kept');
-  assert.match(assets.data.inline_scripts.before['wp-color-picker'], /window.firstPickerConfig = true/);
+  assert.match(assets.data.inline_scripts.before['wp-color-picker'], /window.tpPickerConfig = true/);
 });
 
 test("/wp-admin/new/ asks anonymous visitors to sign in and serves the committed build to users", async () => {
   // WP-CLI activated the plugin; the first web request writes the rule into .htaccess.
   assert.equal((await fetch(`${site}/`)).status, 200);
-  assert.equal(wp("option", "get", "tp_admin_rewrite"), JSON.parse(readFileSync(`${content}typedpress-manifest.json`, "utf8")).tp);
+  assert.equal(wp("option", "get", "tp_admin_rewrite"), JSON.parse(readFileSync(`${content}typedpress-manifest.json`, "utf8")).typedpress);
   assert.match(wp("eval", "echo file_get_contents(ABSPATH . '.htaccess');"), /^RewriteRule \^wp-admin\/new\(\/\.\*\)\?\$ \/?wp-admin\/admin\.php\?page=typedpress-admin \[L\]$/m);
   const anon = await fetch(`${site}/wp-admin/new/`, { redirect: "manual" });
   assert.equal(anon.status, 302);
@@ -363,8 +363,8 @@ test("without developer mode, a classic page opened as a page is framed in Typed
     ["", "/wp-admin/new/"],
     ["index.php", "/wp-admin/new/"],
     ["options-permalink.php", "/wp-admin/new/classic/options-permalink.php"],
-    ["edit-comments.php?comment_status=moderated", "/wp-admin/new/classic/edit-comments.php%3Fcomment_status%3Dmoderated"],
-    ["tools.php?page=typedpress-screen-test-admin-only", "/wp-admin/new/classic/tools.php%3Fpage%3Dtypedpress-screen-test-admin-only"],
+    ["edit-comments.php?comment_status=moderated", "/wp-admin/new/classic/edit-comments.php%253Fcomment_status%253Dmoderated"],
+    ["tools.php?page=typedpress-screen-test-admin-only", "/wp-admin/new/classic/tools.php%253Fpage%253Dtypedpress-screen-test-admin-only"],
   ]) {
     const response = await open(path, "document");
     assert.equal(response.status, 302, path);
@@ -416,6 +416,13 @@ test("the classic route's earlier address /legacy/<slug> redirects to /classic/<
   const query = await fetch(`${site}/wp-admin/admin.php?page=typedpress-admin&p=${encodeURIComponent("/legacy/options-media.php")}`, { headers: { cookie }, redirect: "manual" });
   assert.equal(query.status, 301);
   assert.equal(new URL(query.headers.get("location")!).searchParams.get("p"), "/classic/options-media.php");
+  // A bookmark with a query (a plugin page) keeps it, in the encoding the classic route reads.
+  const plugin = await fetch(`${site}/wp-admin/new/legacy/admin.php%3Fpage%3Dtypedpress-identity%26tab%3Dclients`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(plugin.status, 301);
+  assert.equal(plugin.headers.get("location"), `${site}/wp-admin/new/classic/admin.php%253Fpage%253Dtypedpress-identity%2526tab%253Dclients`);
+  const pluginQuery = await fetch(`${site}/wp-admin/admin.php?page=typedpress-admin&p=${encodeURIComponent("/legacy/admin.php%3Fpage%3Dtypedpress-identity")}`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(pluginQuery.status, 301);
+  assert.equal(new URL(pluginQuery.headers.get("location")!).searchParams.get("p"), "/classic/admin.php%253Fpage%253Dtypedpress-identity");
 });
 
 test("the sidebar reaches classic-only screens through /classic/ and leaves out what the app turned off", async () => {

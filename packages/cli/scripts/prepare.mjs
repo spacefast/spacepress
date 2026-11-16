@@ -11,5 +11,5 @@ for (const entry of await readdir(sourceTypes, { withFileTypes: true })) {
     await copyFile(new URL(entry.name, sourceTypes), new URL(entry.name, packageTypes));
   }
 }
-await copyFile(new URL('../../../LICENSE-MIT', import.meta.url), new URL('../LICENSE', import.meta.url));
+await copyFile(new URL('../../../LICENSE', import.meta.url), new URL('../LICENSE', import.meta.url));
 await copyFile(new URL('../../../runtime/TypedPress/Cli/commands.json', import.meta.url), new URL('../lib/commands.json', import.meta.url));

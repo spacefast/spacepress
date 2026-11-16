@@ -591,7 +591,7 @@ On Spacefast, every TypedPress Space also serves the client at \`/__tp/client.js
 
 ## Use it
 
-${fence("ts", `import { createClient } from "./tp/_generated/client/index.ts";\n\nconst first = createClient();\nconst notes = await first.notes.list({ where: { title: "Hello" } });`)}
+${fence("ts", `import { createClient } from "./tp/_generated/client/index.ts";\n\nconst client = createClient();\nconst notes = await client.notes.list({ where: { title: "Hello" } });`)}
 
 The client unwraps \`data\`, so \`list()\` returns the rows themselves.
 

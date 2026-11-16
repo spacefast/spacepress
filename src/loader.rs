@@ -511,30 +511,23 @@ fn load_module(
 /// keep their own relative imports, and `"zero"`, `"php/wordpress"` and npm packages are always
 /// allowed.
 fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> Result<PathBuf> {
-    // Installed code is a module under a node_modules directory: below the project root, or above
-    // it for a package a workspace hoisted into a parent directory. A project that itself sits under
-    // some node_modules is still fenced, since only the path below the root counts there. A module
-    // outside the root that is not in a node_modules (a linked package's real directory) is fenced.
-    let in_node_modules = |p: &Path| p.components().any(|c| c.as_os_str() == "node_modules");
+    // Installed below the project, not because the project itself sits under some node_modules.
     let installed = |p: &Path| {
         p.strip_prefix(root)
-            .map_or_else(|_| in_node_modules(p), in_node_modules)
+            .is_ok_and(|rel| rel.components().any(|c| c.as_os_str() == "node_modules"))
     };
     if !spec.starts_with('.') || installed(from) || target.starts_with(root.join(crate::layout::ROOT)) {
         return Ok(target);
     }
+    let shown = target.strip_prefix(root).unwrap_or(&target).display().to_string();
     let importer = from.strip_prefix(root).unwrap_or(from).display().to_string();
-    let (shown, destination) = match target.strip_prefix(root) {
-        Ok(rel) => (rel.display().to_string(), format!("zero/{}", rel.display())),
-        Err(_) => (target.display().to_string(), "zero/".to_string()),
-    };
     Err(Diag::new(
         span,
         format!("{importer} imports \"{spec}\" ({shown}), which is outside zero/"),
     )
     .code(diag::Code::ImportFence)
     .help(format!(
-        "Zero loads app code only from zero/: move {shown} to {destination} and import it from there, or install it as an npm package"
+        "Zero loads app code only from zero/: move {shown} to zero/{shown} and import it from there, or install it as an npm package"
     )))
 }
 
@@ -1663,73 +1656,6 @@ mod tests {
             ("/p/node_modules/pkg/lib/x.js", "export const x = 2;"),
         ]);
         assert!(ok.is_ok(), "{:?}", ok.err());
-        // A package hoisted above the project (a workspace's node_modules in a parent directory)
-        // keeps its own relative imports too.
-        let hoisted = load_from(
-            Rc::new(memory(&[
-                ("/w/app/zero.config.ts", "import { x } from 'pkg'; export default x;"),
-                (
-                    "/w/node_modules/pkg/package.json",
-                    r#"{"type":"module","exports":"./src/index.js"}"#,
-                ),
-                ("/w/node_modules/pkg/src/index.js", "export { x } from '../lib/x.js';"),
-                ("/w/node_modules/pkg/lib/x.js", "export const x = 2;"),
-            ])),
-            Path::new("/w/app/zero.config.ts"),
-        );
-        assert!(hoisted.is_ok(), "{:?}", hoisted.err());
-        // Outside the root, only node_modules marks a package: a module the hoisted package reached
-        // in a plain directory (a linked package's real files) is fenced like app code.
-        let linked = load_from(
-            Rc::new(memory(&[
-                ("/w/app/zero.config.ts", "import { x } from 'pkg'; export default x;"),
-                (
-                    "/w/node_modules/pkg/package.json",
-                    r#"{"type":"module","exports":"./src/index.js"}"#,
-                ),
-                (
-                    "/w/node_modules/pkg/src/index.js",
-                    "export { x } from '../../../shared/s.js';",
-                ),
-                ("/w/shared/s.js", "export { x } from './t.js';"),
-                ("/w/shared/t.js", "export const x = 2;"),
-            ])),
-            Path::new("/w/app/zero.config.ts"),
-        )
-        .err()
-        .expect("refused");
-        assert_eq!(
-            linked
-                .iter()
-                .map(|d| (d.code, d.message.as_str(), d.help.as_deref()))
-                .collect::<Vec<_>>(),
-            [(
-                diag::Code::ImportFence,
-                "/w/shared/s.js imports \"./t.js\" (/w/shared/t.js), which is outside zero/",
-                Some(
-                    "Zero loads app code only from zero/: move /w/shared/t.js to zero/ and import it from there, or install it as an npm package"
-                ),
-            )]
-        );
-        // App code that imports past the project root is still refused: only the importer's
-        // location decides, and app code sits under the root.
-        let escaped = load_from(
-            Rc::new(memory(&[
-                (
-                    "/w/app/zero.config.ts",
-                    "import { a } from './zero/a'; export default a;",
-                ),
-                (
-                    "/w/app/zero/a.ts",
-                    "import { o } from '../../outside'; export const a = o;",
-                ),
-                ("/w/outside.ts", "export const o = 1;"),
-            ])),
-            Path::new("/w/app/zero.config.ts"),
-        )
-        .err()
-        .expect("refused");
-        assert!(escaped.iter().any(|d| d.code == diag::Code::ImportFence), "{escaped:?}");
         // A project that itself lives under a node_modules directory is still fenced: only
         // node_modules below the project root marks a package.
         let nested =

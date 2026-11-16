@@ -248,6 +248,9 @@ fn require_static_coercion(value: &Value, span: Span) -> R<()> {
     visit(value, span, &mut HashSet::new())
 }
 
+/// The fields every `wp.posts` kind has: the post row's own columns.
+pub const POST_FIELDS: &[&str] = &["id", "title", "slug", "content", "excerpt", "status", "publishedAt"];
+
 /// Names exported by `"first"`.
 pub const TP_EXPORTS: &[&str] = &[
     "collection",
@@ -287,6 +290,7 @@ pub const TP_EXPORTS: &[&str] = &[
     "definePlugin",
     "adminScreen",
     "item",
+    "wp",
 ];
 /// Type-only exports of `"first"`: importable, erased.
 const TP_TYPES: &[&str] = &[
@@ -2566,6 +2570,28 @@ impl<'p> Evaluator<'p> {
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
             ),
+            // WordPress's own kinds. Posts are the first; the others say so.
+            Value::Builtin(Builtin::Wp) => match prop {
+                "posts" => Ok(Value::Builtin(Builtin::WpPosts)),
+                "pages" | "media" | "users" | "comments" | "categories" | "tags" | "menus" | "settings" => err_help(
+                    span,
+                    format!("`wp.{prop}` isn't supported yet: `wp.posts` is the one WordPress kind an app can use"),
+                    "use `wp.posts.extend({ ... }, { url })` for WordPress's posts, or `wp.posts.clone({ ... })` for a kind like them",
+                ),
+                _ => err_help(
+                    span,
+                    format!("`wp` has no kind `{prop}`"),
+                    "`wp.posts` is WordPress's posts",
+                ),
+            },
+            Value::Builtin(Builtin::WpPosts) if matches!(prop, "extend" | "clone") => {
+                Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
+            }
+            Value::Builtin(Builtin::WpPosts) => err_help(
+                span,
+                format!("`wp.posts` has no `{prop}`"),
+                "`wp.posts.extend(fields, { url })` adds fields to WordPress's posts; `wp.posts.clone(fields, options)` makes another kind like them",
+            ),
             Value::Builtin(Builtin::Global("globalThis")) => match global_member(prop) {
                 GlobalMember::Provided("Infinity") => Ok(Value::Num(f64::INFINITY)),
                 GlobalMember::Provided("NaN") => Ok(Value::Num(f64::NAN)),
@@ -2771,6 +2797,82 @@ impl<'p> Evaluator<'p> {
         }
     }
 
+    /// `wp.posts.extend(fields, options)` and `wp.posts.clone(fields, options)`: a kind with posts'
+    /// own fields (title, slug, content, excerpt, status, publishedAt) and the authored ones.
+    fn wp_posts(&mut self, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
+        let post = match m {
+            "extend" => PostKind::Native,
+            "clone" => PostKind::Clone,
+            _ => unreachable!("get_prop binds extend and clone only"),
+        };
+        if args.len() > 2 {
+            return err(span, format!("`wp.posts.{m}()` takes fields and options"));
+        }
+        let mut args = args.into_iter();
+        let fields = match args.next() {
+            None | Some(Value::Undef) => Value::object(IndexMap::new()),
+            Some(v) => v,
+        };
+        let columns = self.fields_object(
+            &fields,
+            span,
+            &format!(
+                "`wp.posts.{m}()` takes an object of fields first: `wp.posts.{m}({{ cover: media().optional() }})`"
+            ),
+        )?;
+        let options = match args.next() {
+            None | Some(Value::Undef) => None,
+            Some(o @ Value::Object(_)) => Some(o),
+            Some(other) => {
+                return err(
+                    span,
+                    format!("`wp.posts.{m}()` options must be an object, not {}", other.describe()),
+                );
+            }
+        };
+        // Posts' own fields, stored in the post row itself (post_title, post_name, post_content,
+        // post_excerpt, post_status, post_date_gmt). An authored field can't take their names.
+        for (name, b) in &columns {
+            if POST_FIELDS.contains(&name.as_str()) {
+                return err_help(
+                    b.span,
+                    format!("`{name}` is built into every post; delete this field"),
+                    format!(
+                        "`wp.posts.{m}()` kinds have id, title, slug, content, excerpt, status and publishedAt; add only the fields posts don't have"
+                    ),
+                );
+            }
+        }
+        let mut title = ColBuilder::new(ColType::Text, span);
+        title.optional = false;
+        let mut slug = ColBuilder::new(ColType::Slug, span);
+        slug.source = Some("title".into());
+        let mut content = ColBuilder::new(ColType::RichText, span);
+        content.optional = true;
+        let mut excerpt = ColBuilder::new(ColType::Text, span);
+        excerpt.optional = true;
+        excerpt.multiline = true;
+        let mut all = IndexMap::new();
+        all.insert("id".to_string(), Rc::new(legacy::id(span)));
+        all.insert("title".to_string(), Rc::new(title));
+        all.insert("slug".to_string(), Rc::new(slug));
+        all.insert("content".to_string(), Rc::new(content));
+        all.insert("excerpt".to_string(), Rc::new(excerpt));
+        all.extend(columns);
+        let value = Value::Collection(Rc::new(CollectionVal {
+            kind: StorageKind::Collection,
+            table: OnceCell::new(),
+            columns: all,
+            options,
+            span,
+            hooks: RefCell::new(Vec::new()),
+            indexes: RefCell::new(Vec::new()),
+            post: Some(post),
+        }));
+        self.built.push(value.clone());
+        Ok(value)
+    }
+
     fn call_builtin(&mut self, b: &Builtin, args: Vec<Value>, span: Span) -> R<Value> {
         let name = match b {
             Builtin::Collection(kind) => Some(kind.builder()),
@@ -2854,6 +2956,7 @@ impl<'p> Evaluator<'p> {
                     span,
                     hooks: RefCell::new(Vec::new()),
                     indexes: std::cell::RefCell::new(Vec::new()),
+                    post: None,
                 }));
                 self.built.push(value.clone());
                 Ok(value)
@@ -3131,6 +3234,11 @@ impl<'p> Evaluator<'p> {
             Builtin::Db => err(
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
+            ),
+            Builtin::Wp | Builtin::WpPosts => err_help(
+                span,
+                "`wp` and `wp.posts` aren't functions",
+                "write `export const posts = wp.posts.extend({ ... }, { url: \"/blog/:slug\" })`",
             ),
             Builtin::HttpError => err(span, "use `new HttpError(status, code, message)`"),
             Builtin::Global(g) => call_global(g, &args, span),
@@ -3927,6 +4035,7 @@ impl<'p> Evaluator<'p> {
             }
             Value::Column(c) if self.legacy && legacy::MODIFIERS.contains(&m) => legacy::modifier(c, m, &args, span),
             Value::Column(c) => column_method(c, m, &args, span),
+            Value::Builtin(Builtin::WpPosts) => self.wp_posts(m, args, span),
             // `.on({ beforeCreate, ... })` (spec §2.8, ruling 18): handlers in call order; returns the kind.
             Value::Collection(c) if m == "on" => {
                 let extra = args.len() > 1;
@@ -4298,6 +4407,7 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "definePlugin" => Builtin::DefinePlugin,
         "adminScreen" => Builtin::AdminScreen,
         "item" => Builtin::Item,
+        "wp" => Builtin::Wp,
         "action" => Builtin::Action,
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,

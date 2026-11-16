@@ -58,7 +58,8 @@ final class SchemaLock
     public static function apply(Schema $schema): void
     {
         foreach ($schema->collections() as $spec) {
-            if (isset($spec['wp']['postType'])) {
+            // WordPress's own posts aren't the app's to lock: other plugins' fields on posts keep working.
+            if (isset($spec['wp']['postType']) && !($spec['native'] ?? false)) {
                 self::$postTypes[self::norm($spec['wp']['postType'])] = true;
             }
         }

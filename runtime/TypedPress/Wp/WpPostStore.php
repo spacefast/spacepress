@@ -215,6 +215,7 @@ final class WpPostStore implements Store
                 $col === ($spec['title'] ?? null) => new ColumnRef('{a}.post_title', '', '', 'scalar'),
                 $col === ($spec['content'] ?? null) => new ColumnRef('{a}.post_content', '', '', 'scalar'),
                 $col === ($spec['slug'] ?? null) => new ColumnRef('{a}.post_name', '', '', 'scalar'),
+                $col === ($spec['excerpt'] ?? null) => new ColumnRef("NULLIF({a}.post_excerpt, '')", '', "NULLIF({a}.post_excerpt, '')", 'scalar'),
                 $system && $col === 'parent' && ($spec['hierarchical'] ?? false) => new ColumnRef('NULLIF({a}.post_parent, 0)', '', 'NULLIF({a}.post_parent, 0)', 'scalar'),
                 $system && $col === 'order' && ($spec['hierarchical'] ?? false) => new ColumnRef('{a}.menu_order', '', '{a}.menu_order', 'scalar'),
                 $system && $col === 'status' => new ColumnRef("CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END", '', '', 'scalar'),
@@ -415,7 +416,7 @@ final class WpPostStore implements Store
     {
         $post = [];
         $map = [];
-        foreach (['title' => 'post_title', 'content' => 'post_content', 'slug' => 'post_name'] as $designation => $field) {
+        foreach (['title' => 'post_title', 'content' => 'post_content', 'slug' => 'post_name', 'excerpt' => 'post_excerpt'] as $designation => $field) {
             if (is_string($spec[$designation] ?? null) && $spec[$designation] !== '') {
                 $map[$spec[$designation]] = $field;
             }
@@ -533,7 +534,7 @@ final class WpPostStore implements Store
     /** True when the column lives in postmeta (an SCF field), not in a wp_posts column. */
     public function isMeta(array $spec, string $col): bool
     {
-        if ($col === $spec['primaryKey'] || $col === ($spec['title'] ?? null) || $col === ($spec['content'] ?? null) || $col === ($spec['slug'] ?? null)) {
+        if ($col === $spec['primaryKey'] || $col === ($spec['title'] ?? null) || $col === ($spec['content'] ?? null) || $col === ($spec['slug'] ?? null) || $col === ($spec['excerpt'] ?? null)) {
             return false;
         }
 
@@ -843,7 +844,7 @@ final class WpPostStore implements Store
             ? (string) ($row[$spec[$designation]] ?? '') : (string) $parent->$native;
         $post = [
             'post_type' => 'revision', 'post_status' => self::STAGED_STATUS, 'post_parent' => $pk, 'post_name' => self::stagedName($pk),
-            'post_title' => $field('title', 'post_title'), 'post_content' => $field('content', 'post_content'), 'post_excerpt' => $parent->post_excerpt,
+            'post_title' => $field('title', 'post_title'), 'post_content' => $field('content', 'post_content'), 'post_excerpt' => $field('excerpt', 'post_excerpt'),
             'post_author' => $userId ?? 0, 'post_date' => current_time('mysql'), 'post_date_gmt' => current_time('mysql', true),
         ] + ($rid === null ? [] : ['ID' => $rid]);
         $id = $this->db->core(static fn () => $rid === null ? wp_insert_post(wp_slash($post), true) : wp_update_post(wp_slash($post), true));

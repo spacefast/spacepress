@@ -1,4 +1,4 @@
-import { collection, table, text, slug, richText, json, integer, timestamp } from "typedpress";
+import { wp, collection, table, text, slug, richText, json, integer, timestamp } from "typedpress";
 
 // The docs: each file under content/docs/ is one doc. Its name is its slug, its folder its
 // parent, and a folder's index.md the page the folder stands for.
@@ -9,14 +9,15 @@ export const docs = collection({
   description: text().optional(),
 }, { label: "Docs", hierarchical: true, url: "/docs/:path", sync: "content/docs/**/*.md", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
-// The blog. Posts are WordPress content: written in the WordPress editor or TypedPress Admin, or as
-// Markdown in content/posts/. `tp/app/blog/[slug]/page.tsx` renders each one in the site's layout.
-export const posts = collection({
-  title: text().min(1).max(140),
-  slug: slug({ source: "title" }),
-  content: richText().optional(),
-  excerpt: text({ multiline: true }).max(300).optional(),
-}, { label: "Posts", url: "/blog/:slug", sync: "content/posts/*.md", access: { read: "anyone", create: "author", update: "author", delete: "editor" } });
+// The blog: WordPress's own posts. Written in the WordPress editor, TypedPress Admin, or as Markdown in
+// content/posts/; `tp/app/blog/[slug]/page.tsx` renders each one in the site's layout. Posts have their
+// title, slug, content and excerpt already; WordPress's capabilities decide who writes them.
+export const posts = wp.posts.extend({}, {
+  label: "Posts", url: "/blog/:slug", sync: "content/posts/*.md",
+  // WordPress's own comments: signed-in people may write one; a commenter's first comment waits
+  // for approval, and replies nest two deep.
+  comments: { moderation: "first-time", threaded: 2 },
+});
 
 // A playground edit someone saved to share: the example it started from and the files they changed.
 // Anyone may save one (through `share` in tp/server.ts, which checks its size) and nobody lists

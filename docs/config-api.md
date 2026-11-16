@@ -499,6 +499,53 @@ export const posts = collection({ title: text() }, { comments: { guests: true, m
 An unknown option or an impossible value fails the build and names the fix. `types` is
 reserved for comment types and refused until they exist.
 
+### WordPress's posts
+
+`wp` from `"typedpress"` holds WordPress's own kinds. `wp.posts` is the one an app can use today;
+`wp.pages`, `wp.media` and the others fail the build with "isn't supported yet". There is one way to
+do each thing:
+
+| You want | You write |
+|---|---|
+| WordPress's posts, with fields of your own | `export const posts = wp.posts.extend(fields, { url })` |
+| another kind with everything posts have, and its own rows | `export const notes = wp.posts.clone(fields, options)` |
+
+```ts
+import { wp, media, integer, text } from "typedpress";
+
+// WordPress's posts, at /blog/<slug>, with a cover and a reading time.
+export const posts = wp.posts.extend({
+  cover: media({ accept: "image" }).optional(),
+  minutes: integer().min(1).optional(),
+}, { url: "/blog/:slug", sync: "content/posts/*.md" });
+
+// Release notes: like posts (comments, drafts, revisions), stored as their own post type.
+export const notes = wp.posts.clone({ version: text().max(20) }, { url: "/releases/:slug" });
+```
+
+- **Fields.** Both kinds have `id`, `title`, `slug`, `content`, `excerpt`, `status` and `publishedAt`,
+  stored in the post itself (`post_title`, `post_name`, `post_content`, `post_excerpt`,
+  `post_status`, `post_date_gmt`). Authoring one of those names fails the build. Your fields are
+  post meta `tp_<field>`, edited in the block editor's sidebar and TypedPress Admin.
+- **`extend`** keeps core's `post` type: the block editor, categories, tags, sticky posts, feeds,
+  revisions and other plugins all see the same posts. It must be exported as `posts`, and `url` is
+  required: it is each post's address, built by core's `post_link`, and WordPress's other
+  addresses for a post (`/<slug>/`, `?p=`) redirect there. WordPress keeps slugs unique.
+- **`clone`** registers its own post type, `tp_<name>` (at most 17 characters, or `storageName`), with
+  the same fields and behaviour; `url` is optional, as on a collection.
+- **Options:** `url`, `comments` (on unless `false`; the [comments](#comments) options otherwise),
+  `access`, `label`, `sync`, `uid`, `agents`, `api`, `staged`, and `storageName` on `clone`.
+  Posts always have drafts and revisions and never nest, so `drafts`, `revisions`, `hierarchical`,
+  `title` and `content` are refused.
+- **Who writes.** On `extend`, WordPress's capabilities decide first, exactly as in wp-admin: an author
+  writes and publishes their own posts, an editor anyone's. `access` (default: anyone reads, authors
+  write) can only narrow that. A `clone`'s rules are its own, as on a collection.
+- **Moving a collection to WordPress's posts.** A deploy that changes `export const posts = collection(...)`
+  to `wp.posts.extend(...)` turns the collection's items (post type `tp_posts`) into WordPress posts
+  in place: the same ids, fields, uids, revisions and comments; a field named `excerpt` becomes the
+  post's own excerpt. Nothing is deleted. The design is in
+  [native posts](decisions/2026-11-16-native-posts.md).
+
 ### Files that moved into `tp/_generated/`
 
 A checkout from before `tp/_generated/` is refused until its committed

@@ -201,7 +201,9 @@ final class PostsController extends \WP_REST_Posts_Controller
     public function update_item_permissions_check($request)
     {
         $allowed = parent::update_item_permissions_check($request);
-        if (!is_wp_error($allowed) || $allowed->get_error_code() !== 'rest_cannot_edit') {
+        // WordPress's own posts: core's capability refused, and the app's rules only narrow it.
+        if (!is_wp_error($allowed) || $allowed->get_error_code() !== 'rest_cannot_edit'
+            || (Plugin::instance()?->schema->collection($this->collection)['native'] ?? false)) {
             return $allowed;
         }
         $post = $this->get_post($request['id']);
@@ -238,7 +240,7 @@ final class PostsController extends \WP_REST_Posts_Controller
         $plugin = Plugin::instance() ?? throw new \LogicException('No TypedPress app');
         $spec = $plugin->schema->collection($this->collection);
         $data = [];
-        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null] as $param => $col) {
+        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null, 'excerpt' => $spec['excerpt'] ?? null] as $param => $col) {
             if ($col !== null && $request->has_param($param)) {
                 $v = $request->get_param($param);
                 $data[$col] = is_array($v) ? ($v['raw'] ?? null) : $v;

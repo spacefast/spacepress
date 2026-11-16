@@ -348,6 +348,7 @@ final class Kinds
                 $spec['title'] ?? null => 'title',
                 $spec['content'] ?? null => 'content',
                 $spec['slug'] ?? null => 'slug',
+                $spec['excerpt'] ?? null => 'excerpt',
                 default => null,
             };
             if ($designation !== null) {

@@ -100,8 +100,15 @@ final class CoreAccess
             if ($collection === null) {
                 return $caps;
             }
+            $allowed = self::postAllowed($collection, $cap, $post, $userId);
+            // WordPress's own posts: core's capabilities decide writes first, and the app's rule can only
+            // narrow them. Reading is the rule's (with draft visibility): core's `read_post` asks for `read`,
+            // which a visitor reading a published post doesn't have.
+            if ($cap !== 'read_post' && (self::schema()->collection($collection)['native'] ?? false)) {
+                return $allowed ? $caps : ['do_not_allow'];
+            }
 
-            return self::grant(self::postAllowed($collection, $cap, $post, $userId));
+            return self::grant($allowed);
         }
         if (in_array($cap, ['edit_term', 'delete_term', 'assign_term'], true)) {
             $term = isset($args[0]) ? get_term((int) $args[0]) : null;
@@ -207,6 +214,9 @@ final class CoreAccess
         if (self::$primitives === null) {
             self::$primitives = [];
             foreach (self::postBacked() as $name => $spec) {
+                if ($spec['native'] ?? false) {
+                    continue; // core's posts keep core's type-wide capabilities (edit_posts, publish_posts)
+                }
                 $t = $spec['wp']['postType'];
                 self::$primitives += [
                     "create_$t" => [$name, 'create'],
@@ -353,7 +363,8 @@ final class CoreAccess
                 unset($data[(string) (self::schema()->collection($def['references']['collection'])['wp']['taxonomy'] ?? '')]);
             }
             match ($col) {
-                $spec['content'] ?? null => self::unset($data, ['content', 'excerpt']),
+                $spec['content'] ?? null => self::unset($data, ($spec['excerpt'] ?? null) === null ? ['content', 'excerpt'] : ['content']),
+                $spec['excerpt'] ?? null => self::unset($data, ['excerpt']),
                 $spec['slug'] ?? null => self::unset($data, ['slug', 'generated_slug', 'permalink_template', 'link']),
                 default => is_array($data['acf'] ?? null) ? self::unset($data['acf'], [$spec['wp']['metaPrefix'] . $col, $spec['wp']['metaPrefix'] . $col . '_source']) : null,
             };
@@ -667,7 +678,7 @@ final class CoreAccess
     {
         $spec = self::schema()->collection($collection);
         $data = [];
-        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null] as $param => $col) {
+        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null, 'excerpt' => $spec['excerpt'] ?? null] as $param => $col) {
             if ($col !== null && $request->has_param($param)) {
                 $v = $request->get_param($param);
                 $data[$col] = is_array($v) ? ($v['raw'] ?? null) : $v;

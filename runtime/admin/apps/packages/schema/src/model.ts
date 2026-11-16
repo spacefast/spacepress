@@ -45,6 +45,8 @@ export type Collection = {
 	title?: string;
 	content?: string;
 	slug?: string;
+	/** WordPress posts' own excerpt (`wp.posts` kinds): core's `excerpt`, not a meta field. */
+	excerpt?: string;
 	storage?: string;
 	access: Row;
 };
@@ -147,6 +149,7 @@ export function parseSchema(value: unknown): Schema {
 						title: text(c.title),
 						content: text(c.content),
 						slug: text(c.slug),
+						excerpt: text(c.excerpt),
 						storage: text(c.storage) ?? text(c.kind),
 						access: map(c.access),
 					},

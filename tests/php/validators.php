@@ -68,6 +68,17 @@ $out['prebuilt 304 keeps the cache policy'] = fetch("$url/about", ['If-None-Matc
 $out['prebuilt signed in'] = [fetch("$url/about", [$cookie, 'If-None-Match: ' . $about['etag']])['status'], fetch("$url/about", [$cookie])['prebuilt']];
 // A HEAD gets the same validator.
 $out['prebuilt head'] = fetch("$url/about", [], 'HEAD')['etag'] === $about['etag'];
+// The validator is the bytes served: another content of the same length, with the same modification
+// time, is a 200 with the new body for a client holding the old tag (review 1, B5).
+$aboutFile = \First\Render\Prebuilt::dir() . '/about.html';
+clearstatcache();
+$mtime = filemtime($aboutFile);
+$changed = substr_replace($about['body'], 'ABOUT', (int) strpos($about['body'], 'About'), 5);
+file_put_contents($aboutFile, $changed);
+touch($aboutFile, $mtime);
+clearstatcache();
+$replaced = fetch("$url/about", ['If-None-Match: ' . $about['etag']]);
+$out['prebuilt same size and mtime'] = [strlen($changed) === strlen($about['body']), filemtime($aboutFile) === $mtime, $replaced['status'], $replaced['body'] === $changed, $replaced['etag'] !== $about['etag']];
 
 // ---- the OpenAPI document --------------------------------------------------------------------------
 $doc = fetch("$url/__first/api/v1/openapi.json");
@@ -82,6 +93,21 @@ $out['openapi follows the site'] = [$renamed['etag'] !== $doc['etag'], json_deco
 $file = json_decode((string) file_get_contents($site->plugin()->dir . '/first/app/openapi.json'), false);
 $file->servers = [['url' => \First\Wp\Facade::url(), 'description' => 'Renamed']];
 $out['openapi bytes'] = $renamed['body'] === json_encode($file, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+// The same document bytes with another modification time keep their tag; other bytes of the same
+// length and time get another (review 1, B5).
+$built = $site->plugin()->dir . '/first/app/openapi.json';
+touch($built, filemtime($built) + 3600);
+clearstatcache();
+$touched = fetch("$url/__first/api/v1/openapi.json");
+$bytes = (string) file_get_contents($built);
+clearstatcache();
+$builtTime = filemtime($built);
+file_put_contents($built, str_replace('"openapi": "3.1.0"', '"openapi": "3.1.1"', $bytes));
+touch($built, $builtTime);
+clearstatcache();
+$edited = fetch("$url/__first/api/v1/openapi.json", ['If-None-Match: ' . $touched['etag']]);
+file_put_contents($built, $bytes);
+$out['openapi tag follows the bytes'] = [$touched['etag'] === $renamed['etag'], $edited['status'], json_decode($edited['body'], true)['openapi'] ?? null, $edited['etag'] !== $touched['etag']];
 
 // ---- the facade's reads stay private -----------------------------------------------------------------
 $list = fetch("$url/__first/api/v1/notes");

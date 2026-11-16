@@ -52,7 +52,8 @@ function get(string $url, array $headers = [], ?string $body = null): array
 $none = ['app server' => false, 'default server' => false, 'abilities' => 0];
 eq('an API list builds no MCP server and no abilities', get("$url/__tp/api/v1/posts"), [200, $none]);
 eq('signed in, the same', get("$url/__tp/api/v1/posts", [$basic])[1], $none);
-eq('an action through the API runs, and builds the abilities it runs only', get("$url/__tp/api/v1/actions/publishedCount", [$basic, 'Content-Type: application/json'], '{}')[0], 200);
+// An action is dispatched through the abilities API, so the abilities are registered; still no MCP server.
+eq('an action through the API runs: abilities are registered, no MCP server is built', get("$url/__tp/api/v1/actions/publishedCount", [$basic, 'Content-Type: application/json'], '{}'), [200, ['app server' => false, 'default server' => false, 'abilities' => 1]]);
 [$status, $built] = get("$url/wp-json/mcp/typedpress-blog", [$basic, 'Content-Type: application/json', 'Accept: application/json, text/event-stream'], json_encode(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize',
     'params' => ['protocolVersion' => '2025-11-25', 'capabilities' => new stdClass(), 'clientInfo' => ['name' => 'test', 'version' => '1']]]));
 eq('the app\'s MCP route answers on /wp-json, with both servers', [$status, $built['app server'] ?? null, $built['default server'] ?? null], [200, true, true]);

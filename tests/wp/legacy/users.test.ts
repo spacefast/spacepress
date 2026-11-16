@@ -12,7 +12,7 @@ import { sql, wp, wpTry } from "../env.ts";
 
 const site = JSON.parse(readFileSync(process.env.ZERO_LEGACY_USERS!, "utf8"));
 const { ada, bo, cy, other } = site.ids;
-const migrate = (...flags: string[]) => JSON.parse(wpTry("first", "migrate-legacy-users", "--space=legacy-space", ...flags));
+const migrate = (...flags: string[]) => JSON.parse(wpTry("typedpress", "migrate-legacy-users", "--space=legacy-space", ...flags));
 const member = (id: number) => JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id } }))).data[0] ?? null;
 const meta = () => sql("SELECT user_id, meta_key, meta_value FROM wp_usermeta ORDER BY umeta_id");
 const identity = () => sql("SELECT wp_user_id, status FROM wp_tp_identity_accounts ORDER BY wp_user_id");

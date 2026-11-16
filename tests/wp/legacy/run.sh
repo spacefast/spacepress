@@ -37,16 +37,16 @@ rsync -a --delete "$app/tp/dist/wp-content/" "$wp/.wp-content-legacy/"
 "$wp/harness.sh" up --wp-content "$wp/.wp-content-legacy" > "$wp/.harness-legacy.json"
 if [[ -n ${ZERO_ORIGINAL:-} ]]; then
   "$here/stage.sh" > "$wp/.legacy-site.json"
-  docker compose -p "${TP_WP_PROJECT:-first-wp-test}" exec -T cli rm -f /var/www/html/wp-content/mu-plugins/typedpress-legacy-kernel.php
+  docker compose -p "${TP_WP_PROJECT:-typedpress-wp-test}" exec -T cli rm -f /var/www/html/wp-content/mu-plugins/typedpress-legacy-kernel.php
   [[ ${TP_UPDATE_FIXTURES:-0} == 1 ]] && cp "$wp/.legacy-site.json" "$here/site.json"
 else
-  docker compose -p "${TP_WP_PROJECT:-first-wp-test}" cp "$here/site.json" cli:/tmp/typedpress-legacy-site.json >/dev/null 2>&1
-  docker compose -p "${TP_WP_PROJECT:-first-wp-test}" cp "$here/replay.php" cli:/tmp/typedpress-legacy-replay.php >/dev/null 2>&1
+  docker compose -p "${TP_WP_PROJECT:-typedpress-wp-test}" cp "$here/site.json" cli:/tmp/typedpress-legacy-site.json >/dev/null 2>&1
+  docker compose -p "${TP_WP_PROJECT:-typedpress-wp-test}" cp "$here/replay.php" cli:/tmp/typedpress-legacy-replay.php >/dev/null 2>&1
   "$wp/harness.sh" wp eval-file /tmp/typedpress-legacy-replay.php /tmp/typedpress-legacy-site.json >/dev/null
   cp "$here/site.json" "$wp/.legacy-site.json"
 fi
 # The release, inside the container, for tests that plan against a variant of the new schema.
-docker compose -p "${TP_WP_PROJECT:-first-wp-test}" cp "$here/content-model.php" cli:/tmp/typedpress-legacy-release.php >/dev/null 2>&1
+docker compose -p "${TP_WP_PROJECT:-typedpress-wp-test}" cp "$here/content-model.php" cli:/tmp/typedpress-legacy-release.php >/dev/null 2>&1
 TP_WP_HARNESS="$wp/.harness-legacy.json" ZERO_LEGACY_SITE="$wp/.legacy-site.json" TP_BIN="$first" \
   node --test --test-concurrency=1 "$here/legacy.test.ts"
 # Native posts are adopted only for the named Space, retaining IDs and their native body.
@@ -57,6 +57,6 @@ export default capsule({collections:{posts:{publicRead:true}}});
 TS
 "$first" migrate app --from zero-0.8 "$app/native" --out "$app/native-out" >/dev/null
 "$first" build "$app/native-out" --quiet >/dev/null
-docker compose -p "${TP_WP_PROJECT:-first-wp-test}" cp "$app/native-out/tp/dist/wp-content/plugins/typedpress-app-migrated-app/tp/app/schema.php" cli:/tmp/typedpress-native-posts-schema.php >/dev/null 2>&1
-docker compose -p "${TP_WP_PROJECT:-first-wp-test}" cp "$here/native.php" cli:/tmp/typedpress-native-posts-proof.php >/dev/null 2>&1
+docker compose -p "${TP_WP_PROJECT:-typedpress-wp-test}" cp "$app/native-out/tp/dist/wp-content/plugins/typedpress-app-migrated-app/tp/app/schema.php" cli:/tmp/typedpress-native-posts-schema.php >/dev/null 2>&1
+docker compose -p "${TP_WP_PROJECT:-typedpress-wp-test}" cp "$here/native.php" cli:/tmp/typedpress-native-posts-proof.php >/dev/null 2>&1
 "$wp/harness.sh" wp eval-file /tmp/typedpress-native-posts-proof.php

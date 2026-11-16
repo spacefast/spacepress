@@ -9,7 +9,7 @@ use TypedPress\HttpError;
 
 /**
  * WP identity (§5.1, §6.2): whoever WordPress authenticated for this request: cookie + nonce,
- * application password, or a first-identity Bearer access token (resolved by typedpress-identity's
+ * application password, or a typedpress-identity Bearer access token (resolved by typedpress-identity's
  * `determine_current_user` filter, after core's). TypedPress maps capabilities onto the role ladder,
  * `tp_guest` onto `guest`, and refuses suspended accounts on every channel.
  */

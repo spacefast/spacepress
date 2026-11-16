@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lane A, run by ../run.sh after the main suites on the same stack: the first-admin plugin on a
+# Lane A, run by ../run.sh after the main suites on the same stack: the typedpress-admin plugin on a
 # WordPress installed below the origin root (http://host/blog/), where every URL the plugin
 # derives (its mount, wp-admin, login) carries the sub-path. Until `typedpress build` emits the plugin,
 # this lane stages its PHP next to the built app the way the binary will, substituting the same

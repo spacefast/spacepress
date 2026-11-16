@@ -13,7 +13,7 @@ repo="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 bin="$target/debug/typedpress"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-first-wp-store}"
+export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-store}"
 export TP_WP_PORT="${TP_WP_PORT:-8901}"
 work="$(mktemp -d)"
 cleanup() { "$here/harness.sh" down; rm -rf "$work"; }

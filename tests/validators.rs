@@ -66,6 +66,13 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
     // Signed in: the page renders per request, whatever the client cached.
     assert_eq!(seen["prebuilt signed in"], json!([200, false]));
     assert_eq!(seen["prebuilt head"], true);
+    // One read: the tag names the body sent even when the file changes between opens; an unreadable
+    // file renders as usual for `*` and `""`, never a 304.
+    assert_eq!(
+        seen["prebuilt replaced between reads"],
+        json!([200, true, "OLD-BODY", true])
+    );
+    assert_eq!(seen["prebuilt unreadable"], json!([[200, false], [200, false]]));
     // Same size and modification time, other bytes: the old tag no longer matches.
     assert_eq!(
         seen["prebuilt same size and mtime"],
@@ -78,6 +85,7 @@ fn prebuilt_pages_and_the_openapi_document_answer_if_none_match() {
     assert_eq!(seen["openapi validators"], validated);
     assert_eq!(seen["openapi follows the site"], json!([true, "Renamed"]));
     assert_eq!(seen["openapi bytes"], true);
+    assert_eq!(seen["openapi unreadable"], json!([404, 404]));
     // Only the bytes decide the tag: a new mtime keeps it, an equal-length edit changes it.
     assert_eq!(seen["openapi tag follows the bytes"], json!([true, 200, "3.1.1", true]));
     // The facade's reads depend on who asks: never shareable, never answered from a validator.

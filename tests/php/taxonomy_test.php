@@ -217,4 +217,70 @@ check('and selects no other term field or meta join', !str_contains($termSql, 'A
     eq('a term no item carries deletes', count($probe->delete('tags', ['id' => $free['id']], true, $editor)), 1);
 })();
 
+// A term delete removes the term from items as the viewer's own update of each: an item they can read
+// but not update keeps the term, and the delete refuses.
+(static function () use ($db, $fixture): void {
+    $term = $db->insert('tags', ['name' => 'Read-only post link'], true)[0];
+    $post = $db->insert('posts', ['title' => 'Readable protected post', 'labels' => [$term['id']], 'status' => 'published'], true)[0];
+    $raw = require "$fixture/schema.php";
+    $raw['collections']['posts']['access']['read'] = ['role' => 'anyone'];
+    $raw['collections']['posts']['access']['update'] = ['role' => 'admin'];
+    $probe = new \TypedPress\Db($db->store(), new \TypedPress\Schema($raw), $db->media());
+    $editor = new \TypedPress\Viewer(['id' => 7, 'name' => 'ed', 'role' => 'editor']);
+    problem('editor cannot directly remove protected post term', fn () => $probe->update('posts', ['labels' => []], ['id' => $post['id']], false, $editor), 403, 'forbidden');
+    $result = null;
+    try { $probe->delete('tags', ['id' => $term['id']], false, $editor); $result = ['status' => 200]; }
+    catch (\Throwable $e) { $result = \TypedPress\App::problem($e); }
+    $links = wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']);
+    eq('deleting term must enforce linked post update rule', [$result['status'], $links], [409, [$term['id']]]);
+})();
+
+
+// The delete check reads only the posts that carry the term: unrelated password-protected posts are
+// never loaded, however many or large, at 128M.
+(static function () use ($db, $fixture, $wp): void {
+    $term = $db->insert('tags', ['name' => 'Only a public post carries this'], true)[0];
+    $db->insert('posts', ['title' => 'Public link', 'labels' => [$term['id']], 'status' => 'published'], true);
+    $hiddenId = \TypedPress\Wp\Plugin::instance()->connection()->core(static fn () => wp_insert_post(['post_type' => 'tp_posts', 'post_title' => 'Unrelated hidden post', 'post_status' => 'publish', 'post_password' => 'not-a-credential-fixture', 'post_content' => 'Unrelated hidden content'], true));
+    check('an unrelated protected post was seeded', is_int($hiddenId));
+    $raw = require "$fixture/schema.php";
+    $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create(new \TypedPress\Schema($raw), $db->store()->db), new \TypedPress\Schema($raw), $db->media());
+    $visitor = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    {
+        $payload = str_repeat('x', 2 * 1024 * 1024);
+        $wp->connection()->run('UPDATE wp_posts SET post_content = ? WHERE ID = ?', [$payload, $hiddenId]);
+        unset($payload);
+        $cols = 'post_author, post_date, post_date_gmt, post_content, post_title, post_excerpt, post_status, comment_status, ping_status, post_password, post_name, to_ping, pinged, post_modified, post_modified_gmt, post_content_filtered, post_parent, guid, menu_order, post_type, post_mime_type, comment_count';
+        for ($i = 0; $i < 6; $i++) {
+            $wp->connection()->run("INSERT INTO wp_posts ($cols) SELECT $cols FROM wp_posts WHERE post_type = ? AND post_password = ?", ['tp_posts', 'not-a-credential-fixture']);
+        }
+        echo "hidden-volume setup: 1 * 2^6 unrelated protected posts * 2 MiB content; lowering request memory to 128M\n";
+    }
+    $limit = ini_get('memory_limit');
+    ini_set('memory_limit', '128M');
+    wp_cache_flush();
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('hidden post is not cached before viewer delete', wp_cache_get($hiddenId, 'posts'), false);
+    try { $probe->delete('tags', ['id' => $term['id']], false, $visitor); $result = ['status' => 200]; }
+    catch (\Throwable $e) { $result = \TypedPress\App::problem($e); }
+    ini_set('memory_limit', $limit);
+    $cached = wp_cache_get($hiddenId, 'posts');
+    eq('the viewer\'s check loads no unrelated protected post', $cached !== false, false);
+    eq('… and the delete answers as it would without them (a subscriber can\'t update the public post)', $result['status'], 409);
+})();
+
+
+// A draft hidden by status alone refuses the term delete for a subscriber.
+(static function () use ($db, $fixture): void {
+    $term = $db->insert('tags', ['name' => 'Draft-only link'], true)[0];
+    $post = $db->insert('posts', ['title' => 'Draft-only owner', 'labels' => [$term['id']], 'status' => 'draft'], true)[0];
+    $raw = require "$fixture/schema.php";
+    $raw['taxonomies']['tags']['access']['delete'] = ['role' => 'anyone'];
+    $probe = new \TypedPress\Db($db->store(), new \TypedPress\Schema($raw), $db->media());
+    $visitor = new \TypedPress\Viewer(['id' => 7777, 'name' => 'visitor', 'role' => 'subscriber']);
+    problem('draft-only term owner refuses deletion for subscriber', fn () => $probe->delete('tags', ['id' => $term['id']], false, $visitor), 409, 'reference_violation');
+    eq('refused draft-only term owner retains link', wp_get_object_terms($post['id'], 'tp_tags', ['fields' => 'ids']), [$term['id']]);
+})();
+
 finish('taxonomy');

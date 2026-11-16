@@ -996,15 +996,13 @@ final class Db
     }
 
     /**
-     * A viewer's delete acts on the rows that reference this one only when the viewer can read every
-     * one of them (docs/decisions/2026-11-16-per-row-delete-visibility.md). It looks at the rows
-     * referencing this row, never at whole tables, and decides by counting them twice, once trusted and
-     * once as the viewer, so no referencing row is loaded before the decision and none it can't read is
-     * returned, written or cascaded. Every refusal is the same body ({@see hiddenReference()}), whatever
-     * the table, the depth or how many rows are hidden. Visible cascades are followed to every depth
-     * before any referential write; set null / set default branches with rows keep the generated-value
-     * preflight. When a registered read extension may hide rows (Extensions::constraintReadsSafe()),
-     * counts can't prove anything, and any relationship to this collection refuses, as #72 did.
+     * Before a viewer's delete writes anything: every row that references this one must be readable by
+     * the viewer (docs/decisions/2026-11-16-per-row-delete-visibility.md). The rows referencing this
+     * row are counted twice in SQL, trusted and as the viewer, WordPress's trash included, without
+     * loading them; visible cascades are followed to every depth. Any difference, a referencing column
+     * or referenced key that may be hidden, or a read extension that may hide rows, is the one refusal
+     * ({@see hiddenReference()}). What the delete then does to those rows is the viewer's own writes
+     * ({@see viewerReferentialWrites()}).
      */
     private function refuseHiddenReferences(string $collection, array $row, Viewer $viewer, array &$seen = []): void
     {
@@ -1014,124 +1012,157 @@ final class Db
             return;
         }
         $seen[$at] = true;
-        foreach ($this->schema->kinds() as $child => $spec) {
-            $child = (string) $child;
-            foreach ($spec['columns'] as $col => $def) {
-                $ref = $def['references'] ?? null;
-                if ($ref === null || $ref['collection'] !== $collection) {
-                    continue;
-                }
-                if (FieldAccess::mayHide($parent['columns'][$ref['column']], $viewer) || FieldAccess::mayHide($def, $viewer)
-                    || !Extensions::constraintReadsSafe()) {
-                    throw self::hiddenReference();
-                }
-                $value = $row[$ref['column']] ?? null;
-                if ($value === null) {
-                    continue;
-                }
-                $many = $def['type'] === 'refList';
-                // A many-ref's referencing rows are the owners of links to this row, filtered in SQL.
-                $where = [(string) $col => $many ? ['has' => $value] : $value];
-                // The trusted count includes rows in WordPress's trash: they keep their links and
-                // references, and core's term delete removes those links too.
-                $trusted = $this->countRows($child, $where, null, [], true);
-                if ($trusted === 0) {
-                    continue;
-                }
-                $extra = ($spec['localized'] ?? false) ? ['locale' => '*'] : [];
-                try {
-                    $visible = $this->countRows($child, $where, $viewer, $extra);
-                } catch (HttpError) {
-                    throw self::hiddenReference();
-                }
-                if ($visible !== $trusted) {
-                    throw self::hiddenReference();
-                }
-                if ($many) {
-                    continue; // a deleted target only loses its links
-                }
-                $action = strtolower($ref['onDelete'] ?? 'no action');
-                if ($action === 'cascade' || $action === 'set null' || $action === 'set default') {
-                    // The referential write is the viewer's too: their own delete or update rule on
-                    // the child must cover every referencing row (all of them are readable by now).
-                    try {
-                        $covered = $this->countRows($child, $where, $viewer, $extra, false, $action === 'cascade' ? 'delete' : 'update');
-                    } catch (HttpError) {
-                        $covered = -1;
-                    }
-                    if ($covered !== $trusted) {
-                        throw Access::deny($viewer->user, ($action === 'cascade' ? 'delete' : 'update') . " $child rows");
-                    }
-                }
-                if ($action === 'cascade') {
-                    foreach ($this->findMany($child, ['where' => $where] + $extra, $viewer) as $dependent) {
-                        $this->refuseHiddenReferences($child, $dependent, $viewer, $seen);
-                    }
-                } elseif ($action === 'set null' || $action === 'set default') {
-                    $this->requireReferentialUpdateVisibility($child, $spec, (string) $col, $def, $action, $viewer);
+        foreach ($this->referencing($collection, $row) as [$child, $spec, $col, $def, $where]) {
+            if (FieldAccess::mayHide($parent['columns'][$def['references']['column']], $viewer) || FieldAccess::mayHide($def, $viewer)
+                || !Extensions::constraintReadsSafe()) {
+                throw self::hiddenReference();
+            }
+            $trusted = $this->countRows($child, $where, null);
+            if ($trusted === 0) {
+                continue;
+            }
+            try {
+                $visible = $this->countRows($child, $where, $viewer);
+            } catch (HttpError) {
+                throw self::hiddenReference();
+            }
+            if ($visible !== $trusted) {
+                throw self::hiddenReference();
+            }
+            if ($def['type'] !== 'refList' && strtolower($def['references']['onDelete'] ?? 'no action') === 'cascade') {
+                foreach ($this->referencingRows($child, $spec, $where, $viewer) as $dependent) {
+                    $this->refuseHiddenReferences($child, $dependent, $viewer, $seen);
                 }
             }
         }
     }
 
     /**
-     * {@see count()} for a write's own check, on the store's connection, without marking a render's
-     * reads. $withTrash counts posts in WordPress's trash too (trusted counts only). $op 'update' or
-     * 'delete' adds the viewer's own rule for that operation to their read guards.
+     * What a viewer's delete does to the rows that reference it is that viewer's own writes, through
+     * the path a direct request takes: a cascade is their delete of each child, set null / set default
+     * their update of it, and a `ref().many()` link (a taxonomy's terms too) their update of the owner
+     * without that id. Collection and field rules see the real patch; hooks, extensions and listeners
+     * run as for a direct write. Any refusal, or a row their rule doesn't reach, is the one refusal,
+     * and the request's transaction rolls the whole delete back.
      */
-    private function countRows(string $collection, array $where, ?Viewer $viewer, array $extra = [], bool $withTrash = false, ?string $op = null): int
+    private function viewerReferentialWrites(string $collection, array $row, Viewer $viewer): void
+    {
+        foreach ($this->referencing($collection, $row) as [$child, $spec, $col, $def, $where]) {
+            $many = $def['type'] === 'refList';
+            $action = strtolower($def['references']['onDelete'] ?? ($many ? 'cascade' : 'no action'));
+            if (!in_array($action, ['cascade', 'set null', 'set default'], true)) {
+                continue; // restrict: refused by the pipeline below, on rows the viewer can read
+            }
+            $expected = $this->countRows($child, $where, null);
+            if ($expected === 0) {
+                continue; // nothing to write: no generator runs either
+            }
+            $pk = $spec['primaryKey'];
+            $target = $row[$def['references']['column']];
+            $written = 0;
+            $write = function () use ($child, $spec, $col, $def, $where, $viewer, $many, $action, $pk, $target, &$written): void {
+                foreach ($this->referencingRows($child, $spec, $where, $viewer) as $dependent) {
+                    $one = [$pk => $dependent[$pk]];
+                    if ($many) {
+                        $patch = [$col => array_values(array_filter($dependent[$col] ?? [], static fn ($id) => !Js::strictEq($id, $target)))];
+                        $written += count($this->update($child, $patch, $one, true, $viewer) ?? []);
+                    } elseif ($action === 'cascade') {
+                        $written += count($this->delete($child, $one, true, $viewer) ?? []);
+                    } else {
+                        $value = $action === 'set default' && isset($def['default']) ? Schema::generate($def['default'], $def) : null;
+                        $written += count($this->update($child, [$col => $value], $one, true, $viewer) ?? []);
+                    }
+                }
+            };
+            try {
+                $this->withTrashFor($child, $write);
+            } catch (HttpError $e) {
+                throw $e->status >= 400 && $e->status < 500 ? self::hiddenReference() : $e;
+            }
+            if ($written !== $expected) {
+                throw self::hiddenReference();
+            }
+        }
+    }
+
+    /**
+     * The columns of other kinds that reference $row, each with a filter for the rows that do.
+     *
+     * @return list<array{string, array, string, array, array}> child, its spec, column, column def, where
+     */
+    private function referencing(string $collection, array $row): array
+    {
+        $out = [];
+        foreach ($this->schema->kinds() as $child => $spec) {
+            foreach ($spec['columns'] as $col => $def) {
+                $ref = $def['references'] ?? null;
+                if ($ref === null || $ref['collection'] !== $collection || ($row[$ref['column']] ?? null) === null) {
+                    continue;
+                }
+                $value = $row[$ref['column']];
+                // A many-ref's referencing rows are the owners of links to this row, filtered in SQL.
+                $out[] = [(string) $child, $spec, (string) $col, $def, [(string) $col => $def['type'] === 'refList' ? ['has' => $value] : $value]];
+            }
+        }
+
+        return $out;
+    }
+
+    /** The referencing rows as $viewer reads them, every locale, WordPress's trash included. */
+    private function referencingRows(string $child, array $spec, array $where, Viewer $viewer): array
+    {
+        $opts = ['where' => $where] + (($spec['localized'] ?? false) ? ['locale' => '*'] : []);
+
+        return $this->withTrashFor($child, fn () => $this->scopedVisibility($child, $where, fn () => $this->findMany($child, $opts, $viewer)));
+    }
+
+    /**
+     * How many rows match $where, trusted or as $viewer, in SQL, WordPress's trash included: trashed
+     * posts keep their references and links (core's term delete removes those links too).
+     */
+    private function countRows(string $collection, array $where, ?Viewer $viewer): int
     {
         $store = $this->store;
         if (!$store instanceof Wp\CompositeStore) {
             throw new \LogicException('Counting referencing rows needs the WordPress store');
         }
-        $count = function () use ($collection, $where, $viewer, $extra, $op, $store): int {
-            if ($op !== null && $viewer !== null) {
-                $q = $this->current(function () use ($collection, $where, $viewer, $extra, $op): array {
-                    $opts = Seam::query($collection, ['where' => $where] + $extra, $this->schema);
-                    $q = $this->compileRead($collection, $opts, '', $viewer, null, $this->writeGuards($collection, $op, $viewer, null));
-                    $q['sql'] = 'SELECT COUNT(*) AS n FROM (' . $q['sql'] . ') first_count';
+        $extra = $viewer !== null && ($this->schema->collection($collection)['localized'] ?? false) ? ['locale' => '*'] : [];
 
-                    return $q;
-                });
-            } else {
-                $q = $this->countQuery($collection, $where, $viewer, $extra);
-            }
+        return $this->withTrashFor($collection, fn () => $this->scopedVisibility($collection, $where, function () use ($collection, $where, $viewer, $extra, $store): int {
+            $q = $this->countQuery($collection, $where, $viewer, $extra);
 
             return (int) ($store->db->run($q['sql'], $q['params'])[0]['n'] ?? 0);
-        };
-
-        return $withTrash && $store->isPostBacked($collection) ? $store->posts->withTrash($count) : $count();
+        }));
     }
 
-    /** The one refusal for a delete that rows the viewer can't read may depend on: it names no table, row or count. */
-    private static function hiddenReference(): HttpError
+    private function withTrashFor(string $collection, callable $fn): mixed
     {
-        return new HttpError(409, 'reference_violation', 'Rows you can\'t read may reference this row');
+        $store = $this->store;
+
+        return $store instanceof Wp\CompositeStore && $store->isPostBacked($collection) ? $store->posts->withTrash($fn) : $fn();
     }
 
     /**
-     * A set null / set default write on visible rows runs as a referential effect, but its errors belong
-     * to the viewer: potential generated values (the new key, on-update columns, anything a beforeUpdate
-     * hook may write into a unique or reference column) are preflighted, so their outcome can't depend on
-     * values the viewer can't read.
+     * Run $fn with WordPress's post visibility (password-protected posts) decided only for the rows
+     * matching $where, so a viewer's read of them loads no other post.
      */
-    private function requireReferentialUpdateVisibility(string $child, array $spec, string $col, array $def, string $action, Viewer $viewer): void
+    private function scopedVisibility(string $collection, array $where, callable $fn): mixed
     {
-        $inputs = [$col => $action === 'set default' ? ($def['default'] ?? ['value' => null]) : ['value' => null]];
-        foreach ($spec['columns'] as $name => $column) {
-            if ($name !== $col && isset($column['onUpdate'])) {
-                $inputs[$name] = $column['onUpdate'];
-            }
+        $store = $this->store;
+        if (!$store instanceof Wp\CompositeStore || !$store->isPostBacked($collection)) {
+            return $fn();
         }
-        if (isset($spec['hooks']['beforeUpdate'])) {
-            foreach ($spec['columns'] as $name => $column) {
-                if ($name !== $spec['primaryKey'] && (($column['unique'] ?? false) || isset($column['references']))) {
-                    $inputs[$name] = ['fn' => true]; // a hook may replace any constraint value
-                }
-            }
-        }
-        $this->requireGeneratedVisibility($child, $inputs, $viewer);
+        $opts = ['where' => $where];
+        $q = $this->current(fn () => Sql::select($this->schema, $this->store, $collection, Seam::query($collection, $opts, $this->schema)));
+        $pk = $this->schema->collection($collection)['primaryKey'];
+
+        return $store->posts->withVisibilityScope(new SqlPredicate('SELECT `' . $pk . '` FROM (' . $q['sql'] . ') tp_scope', $q['params']), $fn);
+    }
+
+    /** The one refusal for a delete that rows the viewer can't read, or can't write, may depend on. */
+    private static function hiddenReference(): HttpError
+    {
+        return new HttpError(409, 'reference_violation', 'Rows you can\'t read may reference this row');
     }
 
     /** Incoming foreign keys can reject a key change or propagate it into another hidden branch. */
@@ -1180,6 +1211,7 @@ final class Db
     {
         if ($viewer !== null) {
             $this->refuseHiddenReferences($collection, $row, $viewer);
+            $this->viewerReferentialWrites($collection, $row, $viewer);
         }
         $spec = $this->schema->collection($collection);
         foreach ($this->schema->kinds() as $child => $cspec) {

@@ -1642,11 +1642,11 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         $parent = $probe->insert('rw_parents', ['ownerId' => 7], true)[0];
         $kid = $probe->insert('rw_kids', ['ownerId' => 7, 'parentId' => $parent['id']], true)[0];
         problem('a child the viewer may read but not delete', fn () => $probe->delete('rw_kids', ['id' => $kid['id']], false, $me), 403, 'forbidden');
-        problem('… refuses its parent\'s cascade the same way', fn () => $probe->delete('rw_parents', ['id' => $parent['id']], false, $me), 403, 'forbidden');
+        problem('… so its parent\'s cascade, that viewer\'s delete of it, refuses with the one body', fn () => $probe->delete('rw_parents', ['id' => $parent['id']], false, $me), 409, 'reference_violation');
         eq('… and both rows stay', [$probe->findFirst('rw_parents', ['where' => ['id' => $parent['id']]]) !== null, $probe->findFirst('rw_kids', ['where' => ['id' => $kid['id']]]) !== null], [true, true]);
         $probe->delete('rw_kids', ['id' => $kid['id']]);
         $ref = $probe->insert('rw_refs', ['ownerId' => 7, 'parentId' => $parent['id']], true)[0];
-        problem('set null on a child the viewer may not update refuses', fn () => $probe->delete('rw_parents', ['id' => $parent['id']], false, $me), 403, 'forbidden');
+        problem('set null on a child the viewer may not update refuses', fn () => $probe->delete('rw_parents', ['id' => $parent['id']], false, $me), 409, 'reference_violation');
         eq('… and keeps its reference', $probe->findFirst('rw_refs', ['where' => ['id' => $ref['id']]])['parentId'], $parent['id']);
         $probe->delete('rw_refs', ['id' => $ref['id']]);
         $GLOBALS['rw_generated'] = 0;
@@ -1656,6 +1656,113 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         \TypedPress\Db::setInstance($previous);
         unset($GLOBALS['rw_generated']);
     }
+})();
+
+// Third review of #516: delete side effects are the viewer's own writes, so a data-dependent update
+// rule, a field update rule, a link owner's update rule and an extension-written value all hold.
+(static function () use ($db): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $table = static fn (string $name, array $cols, array $access = [], array $hooks = []): array => ['primaryKey' => 'id', 'editor' => false, 'table' => "tp_rv_$name", 'columns' => ['id' => $id] + $cols, 'access' => $access + $open, 'hooks' => $hooks];
+    $ref = ['type' => 'integer', 'references' => ['collection' => 'rv_parents', 'column' => 'id', 'onDelete' => 'set null']];
+    $owned = ['fn' => static fn (array $ctx) => ['ownerId' => 7]];
+    $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => \TypedPress\Schema::SERIES, 'collections' => [
+        'rv_parents' => $table('parents', ['ownerId' => ['type' => 'integer']], ['read' => $owned]),
+        'rv_data' => $table('data', ['parentId' => $ref], ['update' => ['fn' => static fn (array $ctx) => $ctx['data'] === null || !array_key_exists('parentId', $ctx['data'])]]),
+        'rv_field' => $table('field', ['parentId' => $ref + ['access' => ['update' => ['role' => 'admin']]]]),
+        'rv_tags' => $table('tags', ['name' => ['type' => 'text']]),
+        'rv_cards' => $table('cards', ['name' => ['type' => 'text'], 'tags' => ['type' => 'refList', 'references' => ['collection' => 'rv_tags', 'column' => 'id', 'onDelete' => 'cascade', 'join' => 'rv_cards_tags']]], ['update' => ['role' => 'admin']]) + ['relations' => ['tags' => ['kind' => 'many', 'collection' => 'rv_tags', 'from' => 'id', 'to' => 'id', 'through' => ['table' => 'rv_cards_tags', 'from' => 'owner_id', 'to' => 'target_id']]]],
+        'rv_extension' => $table('extension', ['parentId' => $ref, 'backupId' => ['type' => 'integer', 'access' => ['read' => ['role' => 'admin']]]]),
+    ]]);
+    foreach (['parents' => 'ownerId BIGINT', 'data' => 'parentId BIGINT', 'field' => 'parentId BIGINT', 'tags' => 'name LONGTEXT', 'cards' => 'name LONGTEXT', 'extension' => 'parentId BIGINT, backupId BIGINT'] as $name => $cols) {
+        $wp->exec("CREATE TABLE {prefix}tp_rv_$name (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, " . ($cols === '' ? '' : "$cols, ") . 'PRIMARY KEY(id)) ENGINE=InnoDB');
+    }
+    $wp->exec('CREATE TABLE {prefix}tp_rv_cards_tags (owner_id BIGINT UNSIGNED NOT NULL, target_id BIGINT UNSIGNED NOT NULL, position INT NOT NULL, PRIMARY KEY(owner_id,target_id)) ENGINE=InnoDB');
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $previous = \TypedPress\Db::instance();
+    \TypedPress\Db::setInstance($probe);
+    $me = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    $answer = static function (callable $write): array {
+        try { $write(); return ['status' => 200]; }
+        catch (\Throwable $e) { return \TypedPress\App::problem($e); }
+    };
+    try {
+        $parent = $probe->insert('rv_parents', ['ownerId' => 7], true)[0];
+        $kid = $probe->insert('rv_data', ['parentId' => $parent['id']], true)[0];
+        problem('direct set-null is denied by the data-dependent update rule', fn () => $probe->update('rv_data', ['parentId' => null], ['id' => $kid['id']], false, $me), 403, 'forbidden');
+        $deleted = $answer(fn () => $probe->delete('rv_parents', ['id' => $parent['id']], false, $me));
+        $value = $probe->findFirst('rv_data', ['where' => ['id' => $kid['id']]])['parentId'];
+        eq('deleting parent must enforce actual patch in child update rule', [$deleted['status'], $value], [409, $parent['id']]);
+
+        $parent = $probe->insert('rv_parents', ['ownerId' => 7], true)[0];
+        $kid = $probe->insert('rv_field', ['parentId' => $parent['id']], true)[0];
+        problem('direct set-null is denied by field update rule', fn () => $probe->update('rv_field', ['parentId' => null], ['id' => $kid['id']], false, $me), 403, 'forbidden', '/parentId');
+        $deleted = $answer(fn () => $probe->delete('rv_parents', ['id' => $parent['id']], false, $me));
+        $value = $probe->findFirst('rv_field', ['where' => ['id' => $kid['id']]])['parentId'];
+        eq('deleting parent must enforce child field update rule', [$deleted['status'], $value], [409, $parent['id']]);
+
+        $tag = $probe->insert('rv_tags', ['name' => 'review'], true)[0];
+        $card = $probe->insert('rv_cards', ['name' => 'review', 'tags' => [$tag['id']]], true)[0];
+        problem('direct unlink is denied by owner row update rule', fn () => $probe->update('rv_cards', ['tags' => []], ['id' => $card['id']], false, $me), 403, 'forbidden');
+        $deleted = $answer(fn () => $probe->delete('rv_tags', ['id' => $tag['id']], false, $me));
+        $links = $probe->findFirst('rv_cards', ['where' => ['id' => $card['id']]])['tags'];
+        eq('deleting target must enforce link owner update rule', [$deleted['status'], $links], [409, [$tag['id']]]);
+
+        \TypedPress\Extensions::onWrite(static function (string $op, string $collection, array &$patch, ?array $existing): void {
+            if ($op === 'update' && $collection === 'rv_extension') {
+                $GLOBALS['rv_write_runs'] = ($GLOBALS['rv_write_runs'] ?? 0) + 1;
+                $patch['parentId'] = $existing['backupId'];
+            }
+        });
+        \TypedPress\Extensions::onWritten(static function (string $op, string $collection): void {
+            if ($op === 'update' && $collection === 'rv_extension') { $GLOBALS['rv_written_runs'] = ($GLOBALS['rv_written_runs'] ?? 0) + 1; }
+        });
+        $hiddenParent = $probe->insert('rv_parents', ['ownerId' => 8], true)[0];
+        $answers = [];
+        foreach ([null, $hiddenParent['id']] as $backup) {
+            $parent = $probe->insert('rv_parents', ['ownerId' => 7], true)[0];
+            $probe->insert('rv_extension', ['parentId' => $parent['id'], 'backupId' => $backup], true);
+            $GLOBALS['rv_write_runs'] = $GLOBALS['rv_written_runs'] = 0;
+            $answers[] = [$answer(fn () => $probe->delete('rv_parents', ['id' => $parent['id']], false, $me)), $GLOBALS['rv_write_runs'], $GLOBALS['rv_written_runs']];
+        }
+        // An extension that writes a hidden value into a reference discloses it on a direct update too;
+        // the delete's set null is that same update, with the same listeners, refused with the one body.
+        eq('an extension-written reference answers as the viewer\'s own update does, with the same listeners', [$answers[0][0]['status'], $answers[0][2], $answers[1][0]['status'], $answers[1][0]['detail'] ?? null, $answers[1][2]], [200, 1, 409, "Rows you can't read may reference this row", 0]);
+    } finally { \TypedPress\Db::setInstance($previous); }
+})();
+
+
+// A hidden nondefault-locale child refuses before any hook; a visible one cascades and runs its hook.
+(static function () use ($db): void {
+    $wp = $GLOBALS['wp'];
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true];
+    $any = ['role' => 'anyone'];
+    $open = ['read' => $any, 'create' => $any, 'update' => $any, 'delete' => $any];
+    $schema = new \TypedPress\Schema(['locales' => ['default' => 'en', 'all' => ['en', 'fr'], 'fallback' => true], 'collections' => [
+        'rv_lparent' => ['editor' => false, 'primaryKey' => 'id', 'table' => 'tp_rv_lparent', 'columns' => ['id' => $id, 'name' => ['type' => 'text']], 'access' => $open],
+        'rv_lchild' => ['editor' => false, 'localized' => true, 'primaryKey' => 'id', 'table' => 'tp_rv_lchild', 'columns' => [
+            'id' => $id, 'ownerId' => ['type' => 'integer'], 'locale' => ['type' => 'text', 'system' => true],
+            'translationGroup' => ['type' => 'text', 'system' => true, 'hidden' => true],
+            'translations' => ['type' => 'json', 'system' => true, 'derived' => true],
+            'parentId' => ['type' => 'integer', 'references' => ['collection' => 'rv_lparent', 'column' => 'id', 'onDelete' => 'cascade']]],
+            'access' => ['read' => ['fn' => static fn () => ['ownerId' => 7]]] + $open,
+            'hooks' => ['beforeDelete' => static function (): void { $GLOBALS['rv_child_before']++; }]],
+    ]]);
+    $wp->exec('CREATE TABLE {prefix}tp_rv_lparent (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_rv_lchild (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, ownerId BIGINT, locale LONGTEXT, translationGroup LONGTEXT, parentId BIGINT, PRIMARY KEY(id)) ENGINE=InnoDB');
+    $probe = new \TypedPress\Db(\TypedPress\Wp\CompositeStore::create($schema, $wp->connection()), $schema, $db->media());
+    $viewer = new \TypedPress\Viewer(['id' => 7, 'name' => 'me', 'role' => 'subscriber']);
+    $parent = $probe->insert('rv_lparent', ['name' => 'localized control'], true)[0];
+    $wp->connection()->run('INSERT INTO wp_tp_rv_lchild (ownerId, locale, parentId) VALUES (8, ?, ?)', ['fr', $parent['id']]);
+    $GLOBALS['rv_child_before'] = 0;
+    problem('hidden nondefault-locale cascade child refuses', fn () => $probe->delete('rv_lparent', ['id' => $parent['id']], false, $viewer), 409, 'reference_violation');
+    eq('no hidden child beforeDelete hook ran', $GLOBALS['rv_child_before'], 0);
+    $wp->connection()->run('UPDATE wp_tp_rv_lchild SET ownerId = 7 WHERE parentId = ?', [$parent['id']]);
+    $probe->delete('rv_lparent', ['id' => $parent['id']], false, $viewer);
+    eq('visible nondefault-locale cascade runs its hook', $GLOBALS['rv_child_before'], 1);
+    eq('visible nondefault-locale cascade removes child', $probe->findMany('rv_lchild'), []);
 })();
 
 // PR #516 review: a referential update on visible rows can't answer with hidden values, a many-ref
@@ -1712,7 +1819,16 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             $probe->insert('r_hooked', ['parentId' => $parent['id'], 'backupId' => $backup], true);
             $answers[] = $answer(fn () => $probe->delete('r_parents', ['id' => $parent['id']], false, $me));
         }
-        eq('a hook that may write a reference answers alike whether the hidden value it copies is empty or not', [$answers[0]['status'], $answers[0] == $answers[1]], [409, true]);
+        $direct = [];
+        foreach ([null, $theirs['id']] as $backup) {
+            $p = $probe->insert('r_parents', ['ownerId' => 7], true)[0];
+            $h = $probe->insert('r_hooked', ['parentId' => $p['id'], 'backupId' => $backup], true)[0];
+            $direct[] = $answer(fn () => $probe->update('r_hooked', ['parentId' => null], ['id' => $h['id']], false, $me));
+        }
+        // The app's hook copies a value into a reference the viewer reads: a direct update discloses it
+        // through its answer, and a delete's set null, that viewer's update of the same row, answers alike.
+        eq('a referential set null answers as the viewer\'s own update of the row does', [$answers[0]['status'], $answers[1]['status']], [$direct[0]['status'], $direct[1]['status'] === 200 ? 200 : 409]);
+        eq('… and a refusal is the one body', $answers[1], ['type' => 'about:blank', 'title' => 'Reference violation', 'status' => 409, 'code' => 'reference_violation', 'detail' => "Rows you can't read may reference this row"]);
         $probe->delete('r_hooked', ['parentId' => ['isNull' => false]]);
         $answers = [];
         foreach ([null, $theirs['id']] as $generated) {
@@ -1721,7 +1837,7 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             $probe->insert('r_defaulted', ['parentId' => $parent['id']], true);
             $answers[] = $answer(fn () => $probe->delete('r_parents', ['id' => $parent['id']], false, $me));
         }
-        eq('set default answers alike whatever the generated reference is', [$answers[0]['status'], $answers[0] == $answers[1]], [409, true]);
+        eq('set default runs the app\'s generator as the viewer\'s update: a visible target applies, a hidden one refuses with the one body', [$answers[0]['status'], $answers[1]['status'], $answers[1]['detail'] ?? null], [200, 409, "Rows you can't read may reference this row"]);
 
         $tag = $probe->insert('r_tags', ['name' => 't'], true)[0];
         $probe->insert('r_cards', ['ownerId' => 7, 'tags' => [$tag['id']]], true);

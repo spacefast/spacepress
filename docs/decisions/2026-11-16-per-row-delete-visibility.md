@@ -14,36 +14,46 @@ bin, a subscription or a place.
 
 ## Decision
 
-A viewer's delete looks only at the rows that reference this row:
+A viewer's delete looks only at the rows that reference this row, and what it does to them is that
+viewer's own writes:
 
-1. It counts, trusted, the rows whose referencing column holds this row's key (for a
-   `ref().many()`, including a taxonomy's terms, the owners of links to it). It never inspects a
-   whole table, and it loads no row before deciding, so hidden volume can't change the answer.
-2. It counts the same rows as the viewer. When the counts differ, or the referencing column or the
-   referenced key may be hidden from the viewer, the delete is refused with
-   `409 reference_violation`, detail `Rows you can't read may reference this row`, no pointer. Every
-   refusal has that body: it names no table, depth or count. Hidden rows are never returned,
-   written or cascaded.
-3. Under `onDelete: "cascade"` the check repeats for each visible child, to every depth, before any
-   referential write.
-4. When every referencing row is visible, `onDelete` applies as it did: `restrict` refuses,
-   `setNull` and `setDefault` update through the pipeline, `cascade` deletes through the pipeline.
-   A `setNull` or `setDefault` branch with rows keeps #72's generated-value preflight: the value it
-   writes, on-update columns and anything a `beforeUpdate` hook may write into a unique or reference
-   column must be visible to the viewer, so the answer can't depend on a hidden value. Nothing new
-   is hard-deleted; WordPress's trash stays an unpublish
+1. **Visibility, before anything is written.** It counts, trusted and as the viewer, the rows whose
+   referencing column holds this row's key (for a `ref().many()`, including a taxonomy's terms, the
+   owners of links to it), in SQL, WordPress's trash included, without loading them. It never
+   inspects a whole table, and password visibility is decided for those rows only, so hidden volume
+   elsewhere can't change the answer. When the counts differ, when the referencing column or the
+   referenced key may be hidden, or when a read extension that may hide rows is registered
+   (`Extensions::constraintReadsSafe()` is false), the delete is refused. Under `cascade` this repeats
+   for each visible child, to every depth.
+2. **Side effects are ordinary writes by the same viewer.** A cascade is the viewer's delete of each
+   child; `setNull` / `setDefault` the viewer's update of it with the real patch; a `ref().many()` or
+   term link the viewer's update of the owner without that id. Each takes the path a direct request
+   takes: the collection rule with the real patch, field rules, `beforeUpdate` / `beforeDelete` hooks,
+   `Extensions::onWrite` and listeners, generated values. Restrict is refused by the pipeline as
+   before. All of it is one transaction.
+3. **One refusal.** Any 4xx from any side effect, a hidden row, or a side effect that reaches fewer
+   rows than reference the deleted one, is `409 reference_violation`, detail
+   `Rows you can't read may reference this row`, no pointer, and the whole delete rolls back. Nothing
+   is hard-deleted that a direct request wouldn't delete; WordPress's trash stays an unpublish
    ([2026-11-14-trash-is-unpublish.md](2026-11-14-trash-is-unpublish.md)).
-5. When a read extension is registered that may hide rows (`Extensions::constraintReadsSafe()` is
-   false), counts can't prove visibility, and any relationship to this collection refuses, as #72 did.
-6. Trusted writes (hooks, CLI, jobs) are not checked, as before.
+4. Trusted writes (hooks, CLI, jobs) are not checked, as before.
 
 ## Costs
 
-- A viewer allowed to delete a row learns one bit: whether some row they cannot read references it.
-  They learn it only for rows they may delete, and never how many rows, which rows, or their values.
-  Databases with row-level security make the same trade for foreign keys.
-- The check costs two counts per referencing column, plus a read of each visible cascaded row.
-- `beforeDelete` hooks run before the check; a refusal rolls their writes back with the transaction.
+- A viewer allowed to delete a row learns whether some row they can't read references it: one bit,
+  only for rows they may delete, never how many, which or their values.
+- A side effect answers exactly as the viewer's own direct write of that row would. When an app's hook,
+  generator or extension makes that direct write's outcome depend on a value the viewer can't read,
+  the delete's outcome depends on it the same way (success, or the one refusal); the delete adds no
+  disclosure the direct write doesn't already have. The earlier preflight that refused every such
+  branch outright is gone, with the special-case checks below.
+- `beforeDelete` hooks run before the checks; a refusal rolls their database writes back with the
+  transaction, but not external effects such as mail or HTTP.
+- The check costs two counts per referencing column, plus a read of each visible referencing row.
+
+Replaced by ordinary writes and deleted: the per-branch authorization counts for cascade and set null,
+the set null / set default generated-value preflight (`requireReferentialUpdateVisibility`), and
+`requireDeleteVisibility`'s whole-table check.
 
 ## Tests
 

@@ -28,6 +28,8 @@ final class WpPostStore implements Store
     private array $sources = [];
     /** Trashed posts are read too ({@see withTrash()}). */
     private bool $trashVisible = false;
+    /** While set, a signed-in viewer's password guard covers only these post IDs ({@see withVisibilityScope()}). */
+    private ?\TypedPress\SqlPredicate $visibilityScope = null;
     /** @var array<string, array> Request-local SQL visibility guards. */
     private array $visibility = [];
     private int $visibilityGeneration = -1;
@@ -94,8 +96,26 @@ final class WpPostStore implements Store
         return false;
     }
 
+    /**
+     * Run $fn with password visibility decided only for posts in $scope (SQL selecting post IDs), so a
+     * check about a few rows loads no other post. Nothing is cached for the scoped answer.
+     */
+    public function withVisibilityScope(\TypedPress\SqlPredicate $scope, callable $fn): mixed
+    {
+        $previous = $this->visibilityScope;
+        $this->visibilityScope = $scope;
+        try {
+            return $fn();
+        } finally {
+            $this->visibilityScope = $previous;
+        }
+    }
+
     public function readGuards(string $collection, \TypedPress\Viewer $viewer): array
     {
+        if ($this->visibilityScope !== null && $viewer->user !== null) {
+            return $this->passwordHidden($collection, $viewer, $this->visibilityScope);
+        }
         if ($this->visibilityGeneration !== CoreAccess::generation()) {
             $this->visibility = [];
             $this->visibilityGeneration = CoreAccess::generation();
@@ -117,11 +137,23 @@ final class WpPostStore implements Store
             );
             return $this->visibility[$key] = $hidden === [] ? [] : [$guard];
         }
+        return $this->visibility[$key] = $this->passwordHidden($collection, $viewer, null);
+    }
+
+    /**
+     * The signed-in viewer's guard against password-protected posts they can't open: every such post
+     * of the kind, or only those in $scope (then no other post is loaded). A post that can't be loaded
+     * fails closed.
+     */
+    private function passwordHidden(string $collection, \TypedPress\Viewer $viewer, ?\TypedPress\SqlPredicate $scope): array
+    {
+        $spec = $this->schema->collection($collection);
         $hidden = [];
         $acceptedPasswords = [];
         $posts = $this->db->run(
-            'SELECT ID FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND HEX(post_password) NOT IN (?, ?)',
-            [$spec['wp']['postType'], '', '30'],
+            'SELECT ID FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND HEX(post_password) NOT IN (?, ?)'
+            . ($scope === null ? '' : ' AND ID IN (' . $scope->sql . ')'),
+            [$spec['wp']['postType'], '', '30', ...($scope?->params ?? [])],
         );
         _prime_post_caches(array_map('intval', array_column($posts, 'ID')), false, false);
         foreach ($posts as $row) {
@@ -130,13 +162,14 @@ final class WpPostStore implements Store
             if (!$post instanceof \WP_Post) {
                 throw new HttpError(503, 'storage_unavailable', 'Post storage is unavailable. Please retry.');
             }
-            if (!($acceptedPasswords[$post->post_password] ??= $this->passwordAccepted($post, $collection, $viewer))
+            $password = $post->post_password;
+            if (!($acceptedPasswords[$password] ??= $this->passwordAccepted($password, $collection, $viewer))
                 && ($viewer->user === null || !user_can($viewer->user['id'], 'edit_post', $id))) {
                 $hidden[] = $id;
             }
         }
 
-        return $this->visibility[$key] = $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
+        return $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
     }
 
     private function passwordGuard(string $collection, \TypedPress\Viewer $viewer, array $spec): \TypedPress\SqlPredicate
@@ -180,11 +213,11 @@ final class WpPostStore implements Store
         }
     }
 
-    private function passwordAccepted(\WP_Post $post, string $collection, \TypedPress\Viewer $viewer): bool
+    private function passwordAccepted(string $password, string $collection, \TypedPress\Viewer $viewer): bool
     {
         $proof = $this->readPassword;
         if ($proof !== null && $proof['collection'] === $collection && $proof['viewer']->user === $viewer->user
-            && hash_equals($post->post_password, $proof['password'])) {
+            && hash_equals($password, $proof['password'])) {
             return true;
         }
         // Match WordPress's post-password cookie, without its REST filter borrowing the ambient user's edit authority.
@@ -194,7 +227,7 @@ final class WpPostStore implements Store
         }
         require_once ABSPATH . WPINC . '/class-phpass.php';
 
-        return (new \PasswordHash(8, true))->CheckPassword($post->post_password, $hash);
+        return (new \PasswordHash(8, true))->CheckPassword($password, $hash);
     }
 
     private function buildSource(string $collection): Source

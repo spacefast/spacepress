@@ -182,6 +182,47 @@ eq('a cancellation between the check and the write leaves no marker', [$pending(
 check('so the next request checks and schedules it again', $status === 200 && in_array('scheduled actions', checks($statements), true) && $pending(), [checks($statements), $pending()]);
 check('and records the marker', $marker() !== null, $marker());
 
+// The other process's cancellation (review 3): the maintenance action goes, but this process's
+// forget() doesn't run (its hook is detached for that step). Only the check after the write can
+// remove the marker.
+\TypedPress\Wp\InstallMarker::forget();
+request($url, '/');
+wp_cache_flush();
+\TypedPress\Wp\InstallMarker::forget();
+wp_cache_flush();
+check('the maintenance action is scheduled before the second race', $pending());
+\TypedPress\Wp\InstallMarker::$beforeWrite = static function (): void {
+    global $wp_filter;
+    $saved = $wp_filter['action_scheduler_canceled_action'] ?? null;
+    unset($wp_filter['action_scheduler_canceled_action']);
+    try {
+        as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress');
+    } finally {
+        if ($saved !== null) {
+            $wp_filter['action_scheduler_canceled_action'] = $saved;
+        }
+    }
+};
+(new ReflectionProperty(\TypedPress\Wp\InstallMarker::class, 'current'))->setValue(null, []);
+\TypedPress\Wp\InstallMarker::record();
+\TypedPress\Wp\InstallMarker::$beforeWrite = null;
+wp_cache_flush();
+eq('a cancellation by another process (no forget() here) leaves no marker either', [$pending(), $marker()], [false, null]);
+request($url, '/');
+check('and the next request schedules the action again', $pending());
+
+// A request that read the marker as absent (cached in notoptions) still deletes it when another
+// request wrote it since (review 3): forget() never trusts its own cached miss.
+\TypedPress\Wp\InstallMarker::forget();
+wp_cache_flush();
+eq('no marker, and this process caches the miss', get_option('tp_installed'), false);
+$wp->exec("INSERT INTO {prefix}options (option_name, option_value, autoload) VALUES ('tp_installed', 'written-by-another-request', 'on')");
+eq('the row exists, the cache still says absent', [count($wp->sql("SELECT 1 FROM {prefix}options WHERE option_name = 'tp_installed'")), get_option('tp_installed')], [1, false]);
+\TypedPress\Wp\InstallMarker::forget();
+eq('forget() deletes the row anyway', count($wp->sql("SELECT 1 FROM {prefix}options WHERE option_name = 'tp_installed'")), 0);
+wp_cache_flush();
+request($url, '/');
+
 // ---- the app's own install options drop the marker (tp_<app>_schema, _refused, _route_pages, _content) ---
 foreach (['tp_blog_schema', 'tp_blog_refused', 'tp_blog_route_pages', 'tp_blog_content'] as $option) {
     request($url, '/');

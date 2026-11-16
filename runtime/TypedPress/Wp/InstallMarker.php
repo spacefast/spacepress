@@ -71,9 +71,10 @@ final class InstallMarker
         $blog = get_current_blog_id();
         self::$current[$blog] = false;
         self::$forgotten[$blog] = (self::$forgotten[$blog] ?? 0) + 1;
-        if (get_option(self::OPTION) !== false) {
-            delete_option(self::OPTION);
-        }
+        // Unconditionally: this request may have cached the marker as absent (notoptions) before
+        // another request wrote it. delete_option() looks the row up in the database itself (one
+        // SELECT when there is none); forget() runs only on install and invalidation events.
+        delete_option(self::OPTION);
 
         return true;
     }

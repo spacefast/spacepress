@@ -2188,6 +2188,61 @@ fn forms_submit_in_place_in_the_browser() {
         "{seen}"
     );
     assert_eq!(seen["ranOnce"], serde_json::json!({ "posts": 1, "rows": 1 }), "{seen}");
+    // A `<Link>` to a page slower than the post: the post's answer isn't rendered while the link's
+    // page loads, and the navigation the click started finishes.
+    assert_eq!(
+        seen["slowLink"],
+        serde_json::json!({ "beforeLink": { "url": "/?ref=nav", "voted": false }, "url": "/other", "other": true, "marker": "same document" }),
+        "{seen}"
+    );
+    // Two forms at once, the older answer last: the newer page stays, and the older form says so.
+    assert_eq!(
+        seen["overtaken"],
+        serde_json::json!({ "done": "Subscribed two@example.test for 2 (weekly: false)", "voted": false, "message": 1 }),
+        "{seen}"
+    );
+    // A FormData that ignores the submitter: the pressed button's value is sent, once.
+    assert_eq!(
+        seen["oldFormData"],
+        serde_json::json!({ "voted": "Voted maybe", "choices": [["maybe"]] }),
+        "{seen}"
+    );
+    // A button the page it comes back to renders disabled stays disabled; the page's status
+    // message is announced politely, outside the router region.
+    assert_eq!(
+        seen["serverDisabled"],
+        serde_json::json!({ "disabled": true, "marked": false }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["announced"],
+        serde_json::json!(["polite", "The poll is closed.", true]),
+        "{seen}"
+    );
+    // The page the action comes back to is a 404 now: shown in place, with no error message.
+    let gone = &seen["gone"];
+    assert_eq!(
+        (&gone["missing"], &gone["error"], &gone["marker"]),
+        (
+            &serde_json::json!("No such entry"),
+            &serde_json::json!(false),
+            &serde_json::json!("same document")
+        ),
+        "{seen}"
+    );
+    assert!(gone["url"].as_str().unwrap_or("").starts_with("/entries/"), "{seen}");
+    // A `<Live>` update doesn't copy the error message; the next submit removes it.
+    assert_eq!(
+        seen["errorBox"],
+        serde_json::json!({ "afterLive": 1, "afterSubmit": 0 }),
+        "{seen}"
+    );
+    // A region answer newer than the submit's page: after the swap the region still has it.
+    assert_eq!(
+        seen["newerRegion"],
+        serde_json::json!({ "before": true, "newer": true }),
+        "{seen}"
+    );
     // The router module can't load: the browser posts the form itself, nothing sent before; the
     // address bar loses `?_flash` when the page's module runs.
     assert_eq!(

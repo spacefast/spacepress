@@ -24,8 +24,11 @@ const SUBMITS = 'button:not([type]), button[type="submit"], input[type="submit"]
 //   older than one already on the page is dropped;
 // - `renders`: how many submit answers were rendered, so a `<Live>` answer held during one knows;
 // - `living`, `live`: whether a `<Live>` swap is in progress, and a promise for its end, which a
-//   submit waits for before rendering.
-const forms = (globalThis[Symbol.for("tp/forms")] ??= { pending: 0, idle: Promise.resolve(), ticket: 0, last: 0, renders: 0, living: false, live: Promise.resolve() });
+//   submit waits for before rendering;
+// - `navigations`: how many `<Link>` navigations started, so a submit's answer that arrives after
+//   one is dropped (the router changes the URL only once the next page has loaded).
+const forms = (globalThis[Symbol.for("tp/forms")] ??= { pending: 0, idle: Promise.resolve(), ticket: 0, last: 0, renders: 0, living: false, live: Promise.resolve(), navigations: 0 });
+forms.navigations ??= 0;
 let idleNow = () => {};
 const begin = () => {
   if (forms.pending++ === 0) forms.idle = new Promise((resolve) => { idleNow = resolve; });
@@ -101,8 +104,8 @@ const nativeSubmit = (form, submitter) => {
 };
 
 // A failure after the post may have reached the server: said in the form, in a live region, and
-// not sent again.
-const showError = (form) => {
+// not sent again. Also said on a form whose answer a later submit's answer overtook.
+const showError = (form, message) => {
   let box = form.querySelector(":scope > [data-tp-form-error]");
   if (!box) {
     box = document.createElement("p");
@@ -112,7 +115,28 @@ const showError = (form) => {
     box.setAttribute("aria-live", "assertive");
     form.append(box);
   }
-  box.textContent = getConfig("tp/router")?.failed || "Something went wrong sending this form. Reload the page to see whether it went through.";
+  const config = getConfig("tp/router") ?? {};
+  box.textContent = (message === "overtaken" ? config.overtaken : config.failed) ||
+    (message === "overtaken" ? "Another form on this page was sent after this one, so this one's result isn't shown. Reload the page to see it." : "Something went wrong sending this form. Reload the page to see whether it went through.");
+};
+
+// After a submit's page is swapped in: a polite announcement of what came back. A paragraph the
+// page shows with `role="status"` or `role="alert"` (a flash message) is what it says, else the
+// page's title. One visually hidden live region per page, outside the router region.
+const announce = () => {
+  let region = document.getElementById("tp-form-announcer");
+  if (!region) {
+    region = document.createElement("div");
+    region.id = "tp-form-announcer";
+    region.setAttribute("aria-live", "polite");
+    region.setAttribute("aria-atomic", "true");
+    region.style.cssText = "position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0";
+    document.body.append(region);
+  }
+  const said = document.querySelector('[data-wp-router-region] [role="status"], [data-wp-router-region] [role="alert"]:not([data-tp-form-error])');
+  const text = (said?.textContent ?? "").trim() || document.title;
+  region.textContent = "";
+  setTimeout(() => { region.textContent = text; }, 50);
 };
 
 store("tp/router", {
@@ -121,6 +145,8 @@ store("tp/router", {
       const { ref } = getElement();
       if (!sameSite(event, ref)) return;
       event.preventDefault();
+      // Counted before anything waits: a submit whose answer comes in after this click drops it.
+      forms.navigations++;
       const { actions } = yield import("@wordpress/interactivity-router");
       yield actions.navigate(ref.href);
     }),
@@ -144,31 +170,47 @@ store("tp/router", {
       if (form.hasAttribute(PENDING)) return;
       // The body the browser would send, with the pressed button, collected before anything is disabled.
       const body = new URLSearchParams();
-      for (const [name, value] of new FormData(form, submitter)) body.append(name, typeof value === "string" ? value : value.name);
+      // `new FormData(form, submitter)` adds the pressed button in browsers since 2023; an older one
+      // ignores (or rejects) the second argument, and the button is added here instead.
+      let data;
+      try {
+        data = new FormData(form, submitter);
+      } catch {
+        data = new FormData(form);
+      }
+      for (const [name, value] of data) body.append(name, typeof value === "string" ? value : value.name);
+      if (submitter?.name && !data.getAll(submitter.name).includes(submitter.value ?? "")) body.append(submitter.name, submitter.value ?? "");
       // Pending: `aria-busy` on the form (style `form[aria-busy="true"]`) and its enabled submit
       // buttons (inside it, or outside with `form="id"`) disabled, each marked so only those are
       // enabled again. The focused element gets focus back if the swap drops it.
       const focused = document.activeElement;
       const buttons = [...document.querySelectorAll(SUBMITS)].filter((b) => b.form === form && !b.disabled);
-      form.querySelector(":scope > [data-tp-form-error]")?.remove();
+      form.querySelectorAll("[data-tp-form-error]").forEach((box) => box.remove());
       form.setAttribute(PENDING, "");
       form.setAttribute("aria-busy", "true");
       for (const b of buttons) {
         b.setAttribute(PENDING, "");
         b.disabled = true;
       }
-      const done = () => {
-        form.removeAttribute(PENDING);
-        form.removeAttribute("aria-busy");
+      // The buttons back as they were before the swap, so the router's diff applies the server's
+      // `disabled` to them (it never touches what the page set by hand), and only the ones this
+      // submit disabled.
+      const release = () => {
         for (const b of buttons) {
           if (!b.hasAttribute(PENDING)) continue;
           b.removeAttribute(PENDING);
           b.disabled = false;
         }
+      };
+      const done = () => {
+        form.removeAttribute(PENDING);
+        form.removeAttribute("aria-busy");
+        release();
         if (focused instanceof HTMLElement && focused.isConnected && (document.activeElement === document.body || document.activeElement === null)) focused.focus({ preventScroll: true });
       };
       // Where the visitor is now: a navigation while the post is in flight wins over its answer.
       const from = pagePath(window.location.href);
+      const navigations = forms.navigations;
       const ticket = begin();
       let keepPending = false;
       try {
@@ -186,7 +228,12 @@ store("tp/router", {
         try {
           response = yield fetch(url.href, { method: "POST", body, credentials: "same-origin", redirect: "follow", headers: { Accept: "text/html" } });
           const type = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-          if (response.ok && type === "text/html" && new URL(response.url).origin === window.location.origin) html = yield response.text();
+          // A page from this site: a 2xx, or any page the action's 303 came back to. The action ran
+          // and the page it returns to may now answer 404 (a deleted post's own page) or 500; that
+          // page is what the visitor sees, as without JavaScript. Handed to the router as `html`,
+          // it is swapped in like any other (the router's own 200-only check is for pages it fetches).
+          const page = type === "text/html" && new URL(response.url).origin === window.location.origin;
+          if (page && (response.ok || (response.redirected && response.status >= 400))) html = yield response.text();
         } catch {
           // No answer, or one cut off: the post may have run. Not sent again.
           html = null;
@@ -209,10 +256,15 @@ store("tp/router", {
         // is still where they submitted from, the form is still on the page, and no later submit's
         // answer is on the page already.
         yield forms.live;
-        if (pagePath(window.location.href) !== from || !form.isConnected || ticket < forms.last) return;
+        if (forms.navigations !== navigations || pagePath(window.location.href) !== from || !form.isConnected) return;
+        if (ticket < forms.last) {
+          showError(form, "overtaken");
+          return;
+        }
         forms.last = ticket;
         forms.renders++;
         const href = withoutMarker(response.url);
+        release();
         // `force` puts this render in the router's page cache under the page's URL, so going back
         // to it shows what the visitor last saw, and nothing fetches the page again. Coming back to
         // the page the form is on replaces its history entry instead of adding one.
@@ -222,6 +274,7 @@ store("tp/router", {
           replace: pagePath(href) === from,
           screenReaderAnnouncement: false,
         });
+        announce();
       } finally {
         if (!keepPending) done();
         end();

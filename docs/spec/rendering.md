@@ -184,12 +184,12 @@ components defined inside render.
   `/__tp/api/v1/actions/<name>`, `303` to the hidden `_tp_return` path
   with `?_flash=<id>`, the flash a sealed read-once cookie; the marked render
   is `private, no-store` ([pages.md](../pages.md#forms)).
-- With JavaScript, an Interactivity store submits it with `fetch`, keeps
-  `pending`, `error` and `result` in context, and updates in place. As built:
-  `data-wp-on--submit="actions.submit"` in `tp/router` sends the same body
-  with `fetch`, which follows the 303, and the HTML it gets goes to the router's
-  `navigate({ html, force })`; the router diffs the region. `pending` shows as
-  `aria-busy` on the form, not in `useFormState()`
+- With JavaScript, `data-wp-on--submit="actions.submit"` in `tp/router` sends
+  the same body with `fetch`, which follows the 303, and the page it comes back
+  to goes to the router's `navigate({ html, force })`: the router diffs the
+  region, and the page updates in place. `error`, `result` and `values` come
+  from the flash that page read, as without JavaScript; nothing is kept in
+  client context. While the post is in flight the form has `aria-busy="true"`
   ([decision](../decisions/2026-11-14-forms-without-javascript.md#follow-up-2026-11-16-the-javascript-submit)).
 - `useFormState()` reads `error`, `result` and `values`; its `pending` is always
   `false`.

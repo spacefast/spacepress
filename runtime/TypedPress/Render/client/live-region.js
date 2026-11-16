@@ -13,19 +13,20 @@ const client = createClient({ nonce: getConfig("tp/live").nonce || undefined });
 const html = new Map(); // region id → the HTML now on the page
 
 // Shared with client/router.js's form submit (the same object, whichever module runs first).
-const forms = (globalThis[Symbol.for("tp/forms")] ??= { pending: 0, idle: Promise.resolve(), ticket: 0, last: 0, renders: 0, living: false, live: Promise.resolve() });
+const forms = (globalThis[Symbol.for("tp/forms")] ??= { pending: 0, idle: Promise.resolve(), ticket: 0, last: 0, renders: 0, living: false, live: Promise.resolve(), navigations: 0 });
 
-async function apply(id, region) {
+async function apply(id, region, again) {
   // One swap at a time, and none while a form's post is in flight: both hand the router a whole
-  // page for this URL, and the later one would undo the other. If a submit's answer rendered while
-  // this one waited, that page is newer than this answer: it is dropped, and the next answer for
-  // the region is applied whatever it is.
+  // page for this URL, and the later one would undo the other. If a submit's page rendered while
+  // this answer waited, either may be the newer region, so the answer isn't applied: the region
+  // asks again (`again`), and that answer, from after the submit, is current. Dropping it outright
+  // would leave the region stale, since the server answers "not modified" to the old token.
   for (;;) {
     if (forms.pending > 0) {
       const seen = forms.renders;
       await forms.idle;
       if (forms.renders !== seen) {
-        html.delete(id);
+        again();
         return;
       }
       continue;
@@ -47,6 +48,9 @@ async function apply(id, region) {
     if (el instanceof HTMLFormElement) el.removeAttribute("aria-busy");
     else el.removeAttribute("disabled");
   }
+  // A form's error message (client/router.js) is the browser's, not the server's: left out of the
+  // copy, so the swap doesn't make it part of the page.
+  doc.querySelectorAll("[data-tp-form-error]").forEach((box) => box.remove());
   forms.living = true;
   const run = (async () => {
     try {
@@ -88,7 +92,11 @@ function watch(element) {
       parsed.innerHTML = answer.html;
       if (parsed.innerHTML === html.get(id)) return;
       html.set(id, parsed.innerHTML);
-      apply(id, answer.html);
+      apply(id, answer.html, () => {
+        // What the submit's page put in the region, then a fresh ask.
+        html.set(id, element.isConnected ? element.innerHTML : document.querySelector(`[data-tp-live="${CSS.escape(id)}"]`)?.innerHTML ?? "");
+        subscribe(kinds, undefined);
+      });
     }, undefined, initial);
   };
   // The server-rendered region is the first answer: delivered now, and its token sent with the first

@@ -147,8 +147,11 @@ for a read-once result.
 **Pending is an attribute, not state.** While the post is in flight the form
 has `aria-busy="true"` and `data-tp-pending`. Its enabled submit buttons,
 including ones outside it with `form="id"`, are disabled and get
-`data-tp-pending`, and only those are enabled again afterwards. A button the
-page disabled stays disabled. A second submit of the form while one is in
+`data-tp-pending`, and only those are enabled again afterwards. They are
+enabled just before the router swaps the page in, so the router's diff sets
+`disabled` to what the new page renders: the diff never touches an attribute
+the script set by hand. The form keeps `aria-busy` until the swap is done. A
+button the page disabled stays disabled. A second submit of the form while one is in
 flight does nothing. Authors style `form[aria-busy="true"]`.
 `useFormState().pending` stays `false`: the page is server-rendered, and a
 client copy of the form state would be a second state system for a few hundred
@@ -171,23 +174,39 @@ also leaves the submit to the browser for:
 
 An answer that came back to a page without a router region is loaded with a
 full navigation to its URL, without the marker. That is a second request for the
-page, so its flash is gone by then.
+page, so its flash is gone by then. A page the 303 came back to that answers 404
+or 500 (a deleted post's own page, say) is still that page: it is swapped in
+like a 200, because the action ran and that page is what the visitor sees without
+JavaScript. Only an answer that isn't a redirect needs a 2xx.
+
+On success the page's flash message, its first `role="status"` or
+`role="alert"` element in the region, is announced politely through one
+visually hidden live region outside the router region. Without one, the page's
+title is announced.
 
 Errors (422, a refused origin, an expired nonce) already come back as a 303 to
 the page with the error in the flash, so they take the same path as success.
 
-**Late answers lose.** Each submit records the page it was sent from and takes
-a page-wide sequence number. Its answer is not rendered if any of these holds:
+**Late answers lose.** Each submit records the page it was sent from, how many
+`<Link>` navigations had started, and a page-wide sequence number. Its answer is
+not rendered if any of these holds:
 
-- the URL changed meanwhile (a `<Link>` click, back);
+- a `<Link>` navigation started meanwhile (counted when it is clicked, because
+  the router changes the URL only once the next page has loaded, and rendering
+  the answer before then would cancel that navigation);
+- the URL changed meanwhile (back);
 - the form is no longer on the page;
-- a later submit's answer is already on the page.
+- a later submit's answer is already on the page. That form shows a message
+  saying its result isn't shown, so a dropped answer is never silent.
 
 **`<Live>` swaps and submits take turns.** Both hand the router a whole page
 for the current URL, so the later one would undo the earlier. client/live-region.js
 waits while a submit is in flight. If a submit's page rendered while it waited,
-that page is newer than its answer, so it drops the answer and applies the next
-one in full. A submit waits for a `<Live>` swap in progress before rendering.
+it doesn't apply the answer it held, since either could be newer. Instead the
+region asks again without its token, and the answer to that ask, from after the
+submit, is applied. Dropping it outright would leave the region stale, because
+the server answers "not modified" to the old token. The copy also leaves out a
+form's error message (`data-tp-form-error`). A submit waits for a `<Live>` swap in progress before rendering.
 The copy of the document a `<Live>` swap builds has the pending markers
 (`data-tp-pending`, the form's `aria-busy`, the disabled buttons) taken out.
 The shared counters live on `globalThis[Symbol.for("tp/forms")]`, which

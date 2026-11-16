@@ -38,3 +38,23 @@ export const sign = action({
     return name;
   },
 });
+
+// Removes the entry the page at /entries/:id shows: the page the form comes back to is a 404 now.
+export const remove = action({
+  input: { id: integer() },
+  access: "anyone",
+  async handler({ id }) {
+    await db.delete(entries).where({ id });
+    return id;
+  },
+});
+
+// Closes the poll: the page it comes back to renders its button disabled.
+export const close = action({
+  input: {},
+  access: "anyone",
+  async handler() {
+    await db.insert(entries).values({ name: "closed" });
+    return true;
+  },
+});

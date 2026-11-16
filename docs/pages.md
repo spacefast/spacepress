@@ -155,7 +155,11 @@ export default function Page() {
   script can't load. A form outside the root layout's region, one with
   `target`, `enctype` or a submit button with `formtarget` or `formenctype`,
   posts as without JavaScript. An answer that comes back to a page without a
-  router region loads that page with a full navigation.
+  router region loads that page with a full navigation. A page the action
+  comes back to that is now a 404 (after a delete, say) is shown in place, as
+  without JavaScript.
+- After the swap, the page's first `role="status"` element (your success
+  message) is announced to screen readers, or the page title if there is none.
 - A page with a form stays cacheable for signed-out visitors: it carries no
   nonce. A page rendered for a signed-in user carries the REST nonce; without
   it, the action runs signed out. A post with another site's `Origin` is

@@ -141,7 +141,6 @@ final class Db
                 $pks = $this->store->promoteDue((string) $name, $now);
                 if ($pks !== []) {
                     $out[$name] = $pks;
-                    Realtime\Module::promoted((string) $name, $pks);
                 }
             }
         }

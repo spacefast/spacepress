@@ -9,12 +9,10 @@ namespace Zero\Wp;
  * outside `/wp-json`. Matched on `do_parse_request` before WordPress resolves a query, served from
  * the compiled handler in one transaction, and exited: no theme, no template, no rewrite rules.
  *
- * Who calls, as WordPress REST decides it (suspension refused like every other channel):
- * - a zero-identity Bearer token authenticates every method;
- * - a cookie session authenticates GET and HEAD, and an unsafe method only with the REST nonce in
- *   `X-WP-Nonce`, so a cross-site form cannot act as a signed-in visitor;
- * - an application password is never a route credential, on any method.
- * Anything else runs anonymously. A `signature` route ignores the session entirely.
+ * Who calls: the WordPress user of the request (cookie session, suspension refused like every other
+ * channel). A cookie only authenticates GET and HEAD; an unsafe method needs the REST nonce in
+ * `X-WP-Nonce`, otherwise the request runs anonymously, so a cross-site form cannot act as a
+ * signed-in visitor. A `signature` route ignores the session entirely.
  */
 final class HttpRoutes
 {
@@ -24,9 +22,10 @@ final class HttpRoutes
             return;
         }
         add_filter('do_parse_request', static function (bool $parse) use ($plugin): bool {
-            if ($parse) {
-                self::serve($plugin);
+            if (!$parse || $plugin->unavailable() !== null) {
+                return $parse;
             }
+            self::serve($plugin);
 
             return $parse;
         }, 0);
@@ -34,19 +33,14 @@ final class HttpRoutes
 
     private static function serve(Plugin $plugin): void
     {
-        $path = self::path();
-        if ($path === null) {
-            return;
-        }
-        // While storage is behind, a path a route claims answers 503 like /wp-json/zero/v1, so a
-        // webhook sender retries instead of taking WordPress's 404 as a missing endpoint.
-        if ($plugin->unavailable() !== null) {
-            if (\Zero\App::routePathFor($plugin->schema, $path)) {
-                self::emit(503, ['Content-Type' => 'application/problem+json', 'Retry-After' => '5'], (string) \Zero\Js::jsonStringify([
-                    'type' => 'about:blank', 'title' => 'Service unavailable', 'status' => 503, 'code' => 'unavailable', 'detail' => Plugin::UNAVAILABLE,
-                ]));
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        $path = (string) (parse_url($uri, PHP_URL_PATH) ?? '/');
+        $base = rtrim((string) (parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
+        if ($base !== '') {
+            if ($path !== $base && !str_starts_with($path, $base . '/')) {
+                return;
             }
-            return;
+            $path = substr($path, strlen($base)) ?: '/';
         }
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $app = $plugin->app();
@@ -72,7 +66,11 @@ final class HttpRoutes
             }
         }
         try {
-            $user = self::caller($method, $headers);
+            $user = WpAuth::current();
+            if ($user !== null && !in_array($method, ['GET', 'HEAD'], true)
+                && wp_verify_nonce((string) ($headers['x-wp-nonce'] ?? ''), 'wp_rest') === false) {
+                $user = null;
+            }
         } catch (\Zero\HttpError $error) {
             $problem = \Zero\App::problem($error);
             self::emit($problem['status'], ['Content-Type' => 'application/problem+json'], (string) \Zero\Js::jsonStringify($problem));
@@ -82,50 +80,6 @@ final class HttpRoutes
         $query = (string) ($_SERVER['QUERY_STRING'] ?? (parse_url($uri, PHP_URL_QUERY) ?? ''));
         [$status, $out, $body] = $app->serveRoute($match, $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user);
         self::emit($status, $out, $body);
-    }
-
-    /**
-     * The route caller per the class comment. WpAuth::current() still runs first, so a failed
-     * Bearer or a suspended account answers its problem rather than running anonymously.
-     *
-     * @param array<string, string> $headers
-     */
-    private static function caller(string $method, array $headers): ?array
-    {
-        $user = WpAuth::current();
-        if ($user === null) {
-            return null;
-        }
-        if (IdentityBridge::available() && \Zero\Identity\Bearer::token() !== null) {
-            return $user;
-        }
-        // Core records an application password it accepted here; such a caller is refused below.
-        $application = $GLOBALS['wp_rest_application_password_status'] ?? null;
-        if ($application instanceof \WP_User) {
-            return null;
-        }
-        // The remaining channel is the cookie: unsafe methods need the REST nonce.
-        if (!in_array($method, ['GET', 'HEAD'], true)
-            && wp_verify_nonce((string) ($headers['x-wp-nonce'] ?? ''), 'wp_rest') === false) {
-            return null;
-        }
-
-        return $user;
-    }
-
-    /** The request path below the site's home path, or null when the request is outside it. */
-    private static function path(): ?string
-    {
-        $path = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
-        $base = rtrim((string) (parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
-        if ($base !== '') {
-            if ($path !== $base && !str_starts_with($path, $base . '/')) {
-                return null;
-            }
-            $path = substr($path, strlen($base)) ?: '/';
-        }
-
-        return $path;
     }
 
     /** @param array<string, string> $headers */

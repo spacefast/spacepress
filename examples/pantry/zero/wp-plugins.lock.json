@@ -21,7 +21,7 @@
       },
       "sha256": "719d81aa1250615acfd8256f0acc8c13f1712f1ae398c3d5883c8b166024fe9b",
       "requires": [],
-      "treeSha256": "520cfc35562436a1ded3e2666c5dd619c6cbd1fe595fd59c2d3b4a2405fee7ba"
+      "treeSha256": "330514bd6b335f55b5ea83696a661b8b422ee28d6ac241ffa014a767073139d7"
     },
     {
       "slug": "secure-custom-fields",

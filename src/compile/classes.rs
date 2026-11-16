@@ -43,7 +43,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 && let Pat::Id(name, _) = &p.pat
                 && let Some((ty, _)) = fields.get_mut(name)
             {
-                *ty = Ty::union([ty.clone(), Ty::Undefined]);
+                *ty = ty.clone().nullable();
             }
         }
         Ty::Instance(identity.clone(), Box::new(Ty::Obj(fields)))
@@ -100,7 +100,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         env.vars.borrow_mut().insert(
             ":class".into(),
             Binding {
-                initialized: true,
                 value: Value::Class(class.clone()),
                 mutable: false,
                 module_level: false,
@@ -190,7 +189,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .as_ref()
                 .is_some_and(|f| f.params.iter().skip(1).any(|p| p.span == field.span));
             let ty = if field.init.is_none() && !parameter_property {
-                Ty::union([ty, Ty::Undefined])
+                ty.nullable()
             } else {
                 ty
             };
@@ -248,7 +247,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         constructing_env.vars.borrow_mut().insert(
             ":constructing".into(),
             Binding {
-                initialized: true,
                 value: Value::Bool(true),
                 mutable: false,
                 module_level: false,
@@ -280,7 +278,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     format!("\\ZeroApp\\{helper}($__zero_this)")
                 }
-                None => "\\Zero\\Js::undefined()".into(),
+                None => "null".into(),
             };
             field_body.push_str(&format!("    $__zero_this->p[{}] = {value};\n", php_str(&field.name)));
         }
@@ -347,7 +345,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         }
         validate_captured_data(&static_data, c.span, &mut HashSet::new())?;
-        let data = self.captured_data(&static_data)?;
+        let data = self.captured_data(&static_data, false)?;
         let parent_php = parent
             .map(|id| format!("\\ZeroApp\\{}()", self.classes[&id].name))
             .unwrap_or("null".into());
@@ -370,7 +368,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let Ty::Fn(params, _) = signature else { unreachable!() };
         let argv = self.plain_args(args)?;
         if argv.len() > params.len() && !matches!(params.last(), Some(Ty::Rest(_)))
-            || params.iter().skip(argv.len()).any(|t| !accepts_omission(t))
+            || params
+                .iter()
+                .skip(argv.len())
+                .any(|t| !t.is_nullable() && !matches!(t, Ty::Rest(_)))
         {
             return err(span, "wrong number of class arguments");
         }
@@ -426,7 +427,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let php = if is_static {
             format!("{}->get({})", receiver.wrapped(), php_str(prop))
         } else {
-            format!("\\Zero\\Js::dataGet({}, {})", receiver.php, php_str(prop))
+            format!("\\Zero\\Js::prop({}, {})", receiver.php, php_str(prop))
         };
         Ok(Out::atom(
             php,
@@ -607,7 +608,7 @@ fn initializing_instance(instance: &Ty) -> Ty {
         Box::new(Ty::Obj(
             fields
                 .iter()
-                .map(|(k, (t, _))| (k.clone(), (Ty::union([t.clone(), Ty::Undefined]), true)))
+                .map(|(k, (t, _))| (k.clone(), (t.clone().nullable(), true)))
                 .collect(),
         )),
     )

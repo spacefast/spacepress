@@ -8,7 +8,7 @@ namespace Zero;
  * JavaScript semantics in PHP. See docs/runtime-contract.md ("class Js").
  *
  * Strings use UTF-8 storage and UTF-16 indexes. Arrays and objects retain handle
- * identity; explicit undefined has a sentinel.
+ * identity; explicit undefined has a sentinel (typed missing reads may be null).
  */
 final class Js
 {
@@ -21,6 +21,9 @@ final class Js
 
     private const MAX_TIME = 8.64e15;
 
+    /** @var array<string, RegExp> */
+    private static array $regexCache = [];
+
     // ---------------------------------------------------------------- conversions
 
     public static function str(mixed $v): string
@@ -31,12 +34,13 @@ final class Js
             $v === null => 'null',
             is_bool($v) => $v ? 'true' : 'false',
             is_int($v), is_float($v) => self::numStr($v),
-            $v instanceof JsArray, $v instanceof JsArguments, $v instanceof JsObject => self::str(self::dynamicPrimitive($v, 'string')),
-            $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
+            $v instanceof JsArray => self::join($v),
+            $v instanceof JsObject => '[object Object]',
+            $v instanceof JsArguments, $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace => self::dynamicObjectTag($v),
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
-            $v instanceof \Closure => throw new JsError('Function string coercion is not supported', 'TypeError'),
+            $v instanceof \Closure => 'function () { [native code] }',
             $v instanceof \Stringable => (string) $v,
             default => '[object Object]',
         };
@@ -103,24 +107,20 @@ final class Js
     {
         for ($p = 0; $p < 17; $p++) {
             $s = sprintf('%.' . $p . 'e', $x);
-            [$mantissa, $exp] = explode('e', $s);
-            $nearest = (int) str_replace('.', '', $mantissa);
-            $power = (int) $exp - $p;
-            // Binary boundaries have asymmetric rounding intervals.
-            foreach ([$nearest, $nearest - 1, $nearest + 1] as $candidate) {
-                if ((float) ($candidate . 'e' . $power) === $x) {
-                    $digits = (string) $candidate;
-                    return [rtrim($digits, '0'), strlen($digits) + $power];
-                }
+            if ((float) $s === $x) {
+                break;
             }
         }
-        throw new \LogicException('Finite double has no round-tripping decimal');
+        [$mantissa, $exp] = explode('e', $s);
+        $digits = rtrim(str_replace('.', '', $mantissa), '0');
+
+        return [$digits === '' ? '0' : $digits, (int) $exp + 1];
     }
 
     public static function toNumber(mixed $v): int|float
     {
         if ($v instanceof JsDate) { return $v->milliseconds; }
-        if ($v instanceof JsObject || $v instanceof JsArray || $v instanceof JsArguments) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
+        if ($v instanceof JsObject) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
         if (is_int($v)) {
             return self::n($v);
         }
@@ -132,6 +132,9 @@ final class Js
         }
         if (is_bool($v)) {
             return (int) $v;
+        }
+        if ($v instanceof JsArray) {
+            return self::toNumber(self::str($v));
         }
         if (!is_string($v)) {
             return NAN;
@@ -183,9 +186,6 @@ final class Js
         if ($used === 0) {
             return NAN;
         }
-        if ($r !== 10 && ($r & ($r - 1)) !== 0 && $value > 9007199254740991) {
-            throw new JsError('parseInt with this radix requires a safe integer result', 'RangeError');
-        }
         if ($r === 10 && $used > 15) {
             $value = (float) substr($s, 0, $used); // correctly rounded, like V8
         }
@@ -218,10 +218,6 @@ final class Js
     private static function parseDigits(string $s, int $radix): array
     {
         $value = 0;
-        $width = match ($radix) { 2 => 1, 4 => 2, 8 => 3, 16 => 4, 32 => 5, default => null };
-        $bits = '';
-        $bitLength = 0;
-        $sticky = false;
         $len = strlen($s);
         for ($i = 0; $i < $len; $i++) {
             $c = ord($s[$i]);
@@ -234,25 +230,9 @@ final class Js
             if ($d >= $radix) {
                 break;
             }
-            if ($width === null) {
-                $value = $value * $radix + $d;
-            } else {
-                $piece = str_pad(decbin($d), $width, '0', STR_PAD_LEFT);
-                if ($bitLength === 0) { $piece = ltrim($piece, '0'); }
-                $room = max(0, 54 - strlen($bits));
-                $bits .= substr($piece, 0, $room);
-                $sticky = $sticky || str_contains(substr($piece, $room), '1');
-                $bitLength += strlen($piece);
-            }
+            $value = $value * $radix + $d; // int overflows to float on its own
         }
-        if ($width !== null) {
-            $value = bindec(substr($bits, 0, 53));
-            if ($bitLength > 1024) { $value = INF; }
-            elseif ($bitLength > 53) {
-                if ($bits[53] === '1' && ($sticky || ($value & 1) === 1)) { $value++; }
-                $value *= 2.0 ** ($bitLength - 53);
-            }
-        }
+
         return [$value, $i];
     }
 
@@ -300,12 +280,12 @@ final class Js
 
     public static function mul(int|float $a, int|float $b): int|float
     {
-        return self::num((float) self::n($a) * (float) self::n($b));
+        return self::n(self::n($a) * self::n($b));
     }
 
-    public static function neg(mixed $a): int|float
+    public static function neg(int|float $a): int|float
     {
-        return -(float) self::toNumber($a);
+        return -self::n($a);
     }
 
     /** Postfix `x++` / `x--` (`$step` 1 or -1): steps the place like add() and returns the old value. */
@@ -323,56 +303,28 @@ final class Js
         return $x = self::add($x, $step);
     }
 
-    public static function mathTranscendental(string $method, int|float $x): int|float
-    {
-        if (is_nan($x)) { return NAN; }
-        if ($method === 'log') {
-            if ($x < 0) { return NAN; }
-            if ($x == 0) { return -INF; }
-            if ($x == 1) { return 0; }
-            if ($x === INF) { return INF; }
-        } elseif ($method === 'exp') {
-            if ($x == 0) { return 1; }
-            if ($x === -INF) { return 0; }
-            if ($x === INF) { return INF; }
-        }
-        throw new JsError('Math.' . $method . ' requires an IEEE special value or an exact identity; engine-dependent rounding is not supported', 'RangeError');
-    }
-
-    /** Exact powers, square roots and IEEE special values; refuse engine-dependent rounding. */
+    /**
+     * `a ** b` / `Math.pow`. An integer power is computed exactly, then rounded to the nearest double
+     * past ±2^53 (n()), so every result a double can hold exactly (2 ** 60) matches JS. ECMA-262 leaves
+     * inexact powers implementation-approximated: engines (and V8 vs this runtime) may differ in the last
+     * binary digit there, e.g. 3 ** 35.
+     */
     public static function pow(int|float $a, int|float $b): int|float
     {
-        [$a, $b] = [(float) self::n($a), (float) self::n($b)];
-        if ($b == 0) { return 1; }
-        if (is_nan($a) || is_nan($b) || (abs($a) == 1 && is_infinite($b))) { return NAN; }
-        $odd = is_finite($b) && floor($b) == $b && fmod(abs($b), 2.0) == 1;
-        if ($a == 0) {
-            $negative = fdiv(1.0, $a) < 0 && $odd;
-            return $b < 0 ? ($negative ? -INF : INF) : ($negative ? -0.0 : 0);
+        // ECMA-262 Number::exponentiate, where PHP's pow differs: x ** NaN is NaN (PHP: 1 ** NaN = 1) and
+        // (±1) ** ±Infinity is NaN (PHP: 1).
+        if (is_nan((float) $b) || (is_infinite((float) $b) && abs($a) == 1)) {
+            return NAN;
         }
-        if (is_infinite($a)) {
-            $negative = $a < 0 && $odd;
-            return $b < 0 ? ($negative ? -0.0 : 0) : ($negative ? -INF : INF);
-        }
-        if (is_infinite($b)) { return (abs($a) > 1) === ($b > 0) ? INF : 0; }
-        if ($a < 0 && floor($b) != $b) { return NAN; }
-        if ($b == 1) { return self::num($a); }
-        if ($b == 2) { return self::num($a * $a); }
-        if ($b == 0.5) { return self::num(sqrt($a)); }
-        $binary = unpack('Nhi/Nlo', pack('E', abs($a)));
-        $exponent = ($binary['hi'] >> 20) & 2047;
-        $fraction = (($binary['hi'] & 0xfffff) << 32) | $binary['lo'];
-        $binaryBase = $exponent === 0 ? $fraction > 0 && ($fraction & ($fraction - 1)) === 0 : $fraction === 0;
-        if ($binaryBase && floor($b) == $b) { return self::num($a ** $b); }
-        if (floor($a) == $a && floor($b) == $b && $b >= 0 && $b <= 53) {
-            $result = 1.0;
-            for ($i = 0; $i < $b; $i++) {
-                $result *= $a;
-                if (abs($result) > 9007199254740991) { throw new JsError('Power requires an exact supported result; engine-dependent rounding is not supported', 'RangeError'); }
+        [$a, $b] = [self::n($a), self::n($b)]; // operands as JS numbers, like add()
+        if (is_int($a) && is_int($b) && $b >= 0) {
+            $p = $a ** $b;
+            if (is_int($p)) {
+                return self::n($p);
             }
-            return self::num($result);
         }
-        throw new JsError('Power requires an exact supported result; engine-dependent rounding is not supported', 'RangeError');
+
+        return self::num((float) $a ** (float) $b);
     }
 
     private static function jsNumbers(mixed $v): mixed
@@ -396,9 +348,8 @@ final class Js
     }
 
     /** Truncate toward zero, keeping float type (and -0). */
-    public static function trunc(int|float $f): float
+    private static function trunc(float $f): float
     {
-        $f = (float) self::n($f);
         return $f < 0 ? ceil($f) : floor($f);
     }
 
@@ -422,7 +373,7 @@ final class Js
     }
 
     /** ToIntegerOrInfinity: NaN → 0, truncation toward zero. */
-    public static function toInteger(int|float $n): int|float
+    private static function toInteger(int|float $n): int|float
     {
         if (is_int($n)) {
             return $n;
@@ -492,7 +443,7 @@ final class Js
         return self::strictEq($a, $b);
     }
 
-    public static function isInteger(mixed $v = null): bool
+    public static function isInteger(mixed $v): bool
     {
         return is_int($v) || (is_float($v) && is_finite($v) && floor($v) === $v);
     }
@@ -509,13 +460,11 @@ final class Js
         return $function ??= static fn (mixed $value = null): bool => self::isFinite($value);
     }
 
-    public static function toFixed(int|float $n, mixed $digits = 0): string
+    public static function toFixed(int|float $n, int $digits = 0): string
     {
-        $digits = self::toInteger(self::toNumber($digits));
         if ($digits < 0 || $digits > 100) {
             throw new JsError('toFixed() digits argument must be between 0 and 100', 'RangeError');
         }
-        $digits = (int) $digits;
         if (is_int($n)) {
             return $n . ($digits > 0 ? '.' . str_repeat('0', $digits) : '');
         }
@@ -677,9 +626,7 @@ final class Js
     {
         $i = self::toInteger($i);
 
-        if ($i < 0) { return ''; }
-        $value = self::strAt($s, $i);
-        return $value === JsUndefined::Value ? '' : $value;
+        return $i < 0 ? '' : self::strAt($s, $i) ?? '';
     }
 
     /** `String.prototype.length`: UTF-16 code units (astral characters count twice). */
@@ -689,7 +636,7 @@ final class Js
     }
 
     /** `s.at(i)` and `s[i]`: one code unit, relative indexes allowed. */
-    public static function strAt(string $s, mixed $i = 0): string|JsUndefined
+    public static function strAt(string $s, mixed $i = 0): ?string
     {
         $i = self::toNumber($i);
         $u = self::units($s);
@@ -697,17 +644,17 @@ final class Js
         $i = self::toInteger($i);
         $i = $i < 0 ? $len + $i : $i;
         if ($i < 0 || $i >= $len) {
-            return JsUndefined::Value;
+            return null;
         }
 
         return self::unitSlice($u, (int) $i, (int) $i + 1);
     }
 
     /** Numeric bracket access names a property, so only nonnegative integer indexes exist. */
-    public static function strIndex(string $s, int|float $i): string|JsUndefined
+    public static function strIndex(string $s, int|float $i): ?string
     {
         if (!is_finite($i) || $i < 0 || floor($i) !== (float) $i) {
-            return JsUndefined::Value;
+            return null;
         }
 
         return self::strAt($s, $i);
@@ -716,12 +663,11 @@ final class Js
     /** String.prototype.indexOf for strings, Array.prototype.indexOf for lists. */
     public static function indexOf(string|JsArray $s, mixed $needle, mixed $from = 0): int
     {
+        $from = self::toNumber($from);
         if ($s instanceof JsArray) {
             $len = count($s->a);
-            if ($len === 0) { return -1; }
-            $from = self::toNumber($from);
             for ($i = self::relIndex($from, $len); $i < $len; $i++) {
-                if (array_key_exists($i, $s->a) && self::strictEq($s->a[$i], $needle)) {
+                if (self::strictEq($s->a[$i], $needle)) {
                     return $i;
                 }
             }
@@ -730,7 +676,6 @@ final class Js
         }
         $u = self::units($s);
         $n = self::units(self::str($needle));
-        $from = self::toNumber($from);
         // A byte match at an odd offset straddles two units; keep looking.
         for ($at = 2 * self::clampIndex($from, intdiv(strlen($u), 2)); ($found = strpos($u, $n, $at)) !== false; $at = $found + 1) {
             if ($found % 2 === 0) {
@@ -748,19 +693,17 @@ final class Js
      */
     public static function lastIndexOf(string|JsArray $s, mixed $needle, mixed ...$fromArg): int
     {
+        $from = $fromArg === [] ? null : self::toNumber($fromArg[0]);
         if ($s instanceof JsArray) {
-            $len = count($s->a);
-            if ($len === 0) { return -1; }
-            $from = $fromArg === [] ? null : self::toNumber($fromArg[0]);
             // fromIndex: relative to the end when negative, clamped to the last element.
-            $last = $len - 1;
+            $last = count($s->a) - 1;
             if ($from !== null) {
                 // Clamp before the cast: -Infinity or -1e20 must search nothing, not index 0.
                 $f = self::toInteger($from);
-                $last = (int) ($f < 0 ? max($len + $f, -1) : min($f, $last));
+                $last = (int) ($f < 0 ? max(count($s->a) + $f, -1) : min($f, $last));
             }
             for ($i = $last; $i >= 0; $i--) {
-                if (array_key_exists($i, $s->a) && self::strictEq($s->a[$i], $needle)) {
+                if (self::strictEq($s->a[$i], $needle)) {
                     return $i;
                 }
             }
@@ -770,7 +713,6 @@ final class Js
         $u = self::units($s);
         $n = self::units(self::str($needle));
         $len = intdiv(strlen($u), 2);
-        $from = $fromArg === [] ? null : self::toNumber($fromArg[0]);
         $start = $from === null || is_nan($from) ? $len : self::clampIndex($from, $len);
         if ($n === '') {
             return $start;
@@ -805,9 +747,6 @@ final class Js
 
             return new JsArray(array_slice($parts, 0, $lim));
         }
-        if (!str_contains($sep->flags, 'u') && preg_match('/[\\x{10000}-\\x{10FFFF}]/u', $s) === 1) {
-            throw new JsError('RegExp split on astral text requires the u flag', 'RangeError');
-        }
         if ($s === '') {
             return new JsArray($sep->matchAt($s, 0) !== null ? [] : [$s]);
         }
@@ -830,7 +769,7 @@ final class Js
                 return new JsArray($out);
             }
             foreach ($groups as $g) {
-                $out[] = $g ?? JsUndefined::Value;
+                $out[] = $g;
                 if (count($out) === $lim) {
                     return new JsArray($out);
                 }
@@ -900,14 +839,13 @@ final class Js
         return preg_replace('/[' . self::WS . ']+$/uD', '', $s) ?? rtrim($s);
     }
 
-    public static function replace(string $s, string|RegExp $pattern, string|callable $replacement): string
+    public static function replace(string $s, string|RegExp $pattern, string|callable $replacement, bool $dynamic = false): string
     {
         if ($pattern instanceof RegExp) {
-            if ($pattern->sticky) { throw new JsError('Sticky replacement is not supported', 'TypeError'); }
             if ($pattern->global) { $pattern->lastIndex = 0; }
-            $matches = $pattern->global ? $pattern->matchAll($s) : array_filter([$pattern->execMatch($s)]);
+            $matches = $pattern->global ? $pattern->matchAll($s) : array_filter([$pattern->matchAt($s, 0)]);
 
-            return self::applyReplacements($s, $matches, $replacement, $pattern->hasNamedGroups());
+            return self::applyReplacements($s, $matches, $replacement, $pattern->hasNamedGroups(), $dynamic);
         }
         $pos = strpos($s, $pattern);
         if ($pos === false) {
@@ -917,14 +855,14 @@ final class Js
         return self::applyReplacements($s, [[$pos, $pos + strlen($pattern), [], []]], $replacement, false);
     }
 
-    public static function replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string
+    public static function replaceAll(string $s, string|RegExp $pattern, string|callable $replacement, bool $dynamic = false): string
     {
         if ($pattern instanceof RegExp) {
             if (!$pattern->global) {
                 throw new JsError('replaceAll must be called with a global RegExp', 'TypeError');
             }
 
-            return self::replace($s, $pattern, $replacement);
+            return self::replace($s, $pattern, $replacement, $dynamic);
         }
         $matches = [];
         $plen = strlen($pattern);
@@ -944,7 +882,7 @@ final class Js
     /**
      * @param iterable<array{int, int, list<?string>, array<string, ?string>}> $matches byte ranges + captures
      */
-    private static function applyReplacements(string $s, iterable $matches, string|callable $replacement, bool $named): string
+    private static function applyReplacements(string $s, iterable $matches, string|callable $replacement, bool $named, bool $dynamic = false): string
     {
         $out = '';
         $last = 0;
@@ -958,9 +896,9 @@ final class Js
             if (is_string($replacement)) {
                 $rep = self::expandReplacement($replacement, $s, $start, $end, $groups, $named ? $names : null, $between);
             } else {
-                $captures = array_map(static fn ($value) => $value ?? JsUndefined::Value, $groups);
+                $captures = $dynamic ? array_map(static fn ($value) => $value ?? JsUndefined::Value, $groups) : $groups;
                 $args = [...$captures, self::length(substr($s, 0, $start)) + ($between ? 1 : 0), $s];
-                if ($named) { $args[] = new JsObject(array_map(static fn ($value) => $value ?? JsUndefined::Value, $names), null, true); }
+                if ($dynamic && $named) { $args[] = new JsObject(array_map(static fn ($value) => $value ?? JsUndefined::Value, $names)); }
                 $rep = self::str($replacement($matched, ...$args));
             }
             if ($between && $rep !== '') {
@@ -1027,30 +965,16 @@ final class Js
         return str_repeat($s, (int) $n);
     }
 
-    /** JavaScript string ordering compares UTF-16 code units. */
-    public static function stringCompare(string $a, string $b): int
+    /** Byte comparison (documented deviation from locale-aware collation). */
+    public static function localeCompare(string $a, string $b): int
     {
-        return strcmp(mb_convert_encoding($a, 'UTF-16BE', 'UTF-8'), mb_convert_encoding($b, 'UTF-16BE', 'UTF-8')) <=> 0;
-    }
-
-    public static function sign(int|float $value): int|float
-    {
-        return is_nan((float) $value) || $value == 0 ? $value : ($value < 0 ? -1 : 1);
-    }
-
-    public static function round(int|float $value): int|float
-    {
-        if (!is_finite((float) $value) || $value == 0) { return $value; }
-        if ($value < 0 && $value >= -0.5) { return -0.0; }
-        $floor = floor($value);
-        return self::n($value - $floor < 0.5 ? $floor : $floor + 1);
+        return strcmp($a, $b) <=> 0;
     }
 
     /** @return ?list<?string> */
     public static function strMatch(string $s, RegExp $re): ?JsArray
     {
         if ($re->global) {
-            $re->lastIndex = 0;
             $all = [];
             foreach ($re->matchAll($s) as [$start, $end]) {
                 $all[] = substr($s, $start, $end - $start);
@@ -1058,14 +982,16 @@ final class Js
 
             return $all === [] ? null : new JsArray($all);
         }
-        return self::dynamicRegExpExec($re, $s);
+        $m = $re->matchAt($s, 0);
+
+        return $m === null ? null : new JsArray([substr($s, $m[0], $m[1] - $m[0]), ...$m[2]]);
     }
 
     // ---------------------------------------------------------------- regexp
 
     public static function re(string $source, string $flags): RegExp
     {
-        return new RegExp($source, $flags);
+        return self::$regexCache[$flags . '/' . $source] ??= new RegExp($source, $flags);
     }
 
     // ---------------------------------------------------------------- arrays
@@ -1073,14 +999,6 @@ final class Js
     public static function index(int|float $i): ?int
     {
         return self::isInteger($i) && $i >= 0 && $i <= 4294967294 ? (int) $i : null;
-    }
-
-    public static function nativeArrayReceiver(JsArray $receiver, string $method): JsArray
-    {
-        if (array_key_exists($method, $receiver->p)) {
-            throw new JsError('Own array method overrides are not supported by typed calls', 'TypeError');
-        }
-        return $receiver;
     }
 
     public static function get(?JsArray $a, int|float $i): mixed
@@ -1092,9 +1010,9 @@ final class Js
         return $index === null ? null : ($a->a[$index] ?? null);
     }
 
-    public static function setAt(JsArray|JsUndefined|null $a, int|float $i, mixed $value): mixed
+    public static function setAt(?JsArray $a, int|float $i, mixed $value): mixed
     {
-        if (self::isNullish($a)) {
+        if ($a === null) {
             throw new JsError('Cannot set properties of null or undefined', 'TypeError');
         }
         $index = self::index($i);
@@ -1119,18 +1037,12 @@ final class Js
         return $o->p[self::key($key)] ?? null;
     }
 
-    public static function set(JsObject|JsClass|JsUndefined|null $o, string $key, mixed $value): mixed
+    public static function set(JsObject|JsClass|null $o, string $key, mixed $value): mixed
     {
-        if (self::isNullish($o)) {
+        if ($o === null) {
             throw new JsError('Cannot set properties of null or undefined', 'TypeError');
         }
-        if ($o instanceof JsClass) {
-            if ($key === '__proto__' && !$o->has($key)) { throw new JsError('Prototype mutation is not supported', 'TypeError'); }
-            return $o->set($key, $value);
-        }
-        if ($key === '__proto__' && !$o->nullPrototype && !array_key_exists($key, $o->p)) {
-            throw new JsError('Prototype mutation is not supported', 'TypeError');
-        }
+        if ($o instanceof JsClass) { return $o->set($key, $value); }
         $o->p[$key] = $value;
         return $value;
     }
@@ -1149,7 +1061,16 @@ final class Js
     /** += needs the actual primitive types, including an absent old property. */
     public static function plus(mixed $a, mixed $b, bool $missing): mixed
     {
-        return self::dynamicBinary('+', $missing ? JsUndefined::Value : $a, $b);
+        if ($a instanceof JsArray || $a instanceof JsObject || $a instanceof RegExp) {
+            $a = self::str($a);
+        }
+        if ($b instanceof JsArray || $b instanceof JsObject || $b instanceof RegExp) {
+            $b = self::str($b);
+        }
+        if (is_string($a) || is_string($b)) {
+            return ($missing ? 'undefined' : self::str($a)) . self::str($b);
+        }
+        return self::add($missing ? NAN : self::toNumber($a), self::toNumber($b));
     }
 
     /** A fixed-length walk may read only elements that still exist. */
@@ -1167,7 +1088,7 @@ final class Js
             $value = self::element($a, $i);
             if (self::truthy($f($value, $i, $a))) { return $value; }
         }
-        return JsUndefined::Value;
+        return null;
     }
 
     public static function findIndex(JsArray $a, callable $f): int
@@ -1185,7 +1106,7 @@ final class Js
             $value = self::element($a, $i);
             if (self::truthy($f($value, $i, $a))) { return $value; }
         }
-        return JsUndefined::Value;
+        return null;
     }
 
     public static function findLastIndex(JsArray $a, callable $f): int
@@ -1231,42 +1152,39 @@ final class Js
         return $out;
     }
 
-    public static function forEach(JsArray $a, callable $f): JsUndefined
+    public static function forEach(JsArray $a, callable $f): void
     {
         for ($i = 0, $len = count($a->a); $i < $len; $i++) {
             $value = self::element($a, $i);
             $f($value, $i, $a);
         }
-        return JsUndefined::Value;
     }
 
     public static function includes(JsArray $a, mixed $value, mixed $from = 0): bool
     {
         $len = count($a->a);
-        if ($len === 0) { return false; }
         $from = self::toInteger(self::toNumber($from));
         $start = $from < 0 ? max(0, $len + $from) : min($from, $len);
         for ($i = (int) $start; $i < $len; $i++) {
-            $item = array_key_exists($i, $a->a) ? $a->a[$i] : JsUndefined::Value;
-            if (self::sameValueZero($item, $value)) { return true; }
+            if (self::sameValueZero($a->a[$i], $value)) { return true; }
         }
         return false;
     }
 
-    private static ?\SplObjectStorage $stringArrays = null;
-
-    public static function join(JsArray $a, mixed $sep = JsUndefined::Value): string
+    public static function join(JsArray $a, string $sep = ','): string
     {
-        $len = count($a->a);
-        $sep = $sep === JsUndefined::Value ? ',' : self::str($sep);
-        $stack = self::$stringArrays ??= new \SplObjectStorage();
+        return self::arrayString($a, $sep, new \SplObjectStorage());
+    }
+
+    private static function arrayString(JsArray $a, string $sep, \SplObjectStorage $stack): string
+    {
         if ($stack->offsetExists($a)) { return ''; }
         $stack->offsetSet($a);
         try {
             $parts = [];
-            for ($i = 0; $i < $len; $i++) {
-                $value = $a->a[$i] ?? JsUndefined::Value;
-                $parts[] = self::isNullish($value) ? '' : self::str($value);
+            for ($i = 0, $len = count($a->a); $i < $len; $i++) {
+                $value = $a->a[$i];
+                $parts[] = self::isNullish($value) ? '' : ($value instanceof JsArray ? self::arrayString($value, ',', $stack) : self::str($value));
             }
             return implode($sep, $parts);
         } finally { $stack->offsetUnset($a); }
@@ -1282,10 +1200,10 @@ final class Js
 
     public static function arrAt(JsArray $a, mixed $i = 0): mixed
     {
+        $i = self::toNumber($i);
         $len = count($a->a);
-        $i = self::toInteger(self::toNumber($i));
-        if ($i < 0) { $i += $len; }
-        return $i >= 0 && $i < $len && array_key_exists((int) $i, $a->a) ? $a->a[(int) $i] : JsUndefined::Value;
+        $i = self::toInteger($i);
+        return self::get($a, $i < 0 ? $len + $i : $i);
     }
 
     public static function push(JsArray $a, mixed ...$values): int
@@ -1300,8 +1218,8 @@ final class Js
         return count($a->a);
     }
 
-    public static function pop(JsArray $a): mixed { return $a->a === [] ? JsUndefined::Value : array_pop($a->a); }
-    public static function shift(JsArray $a): mixed { return $a->a === [] ? JsUndefined::Value : array_shift($a->a); }
+    public static function pop(JsArray $a): mixed { return array_pop($a->a); }
+    public static function shift(JsArray $a): mixed { return array_shift($a->a); }
 
     public static function concat(JsArray $a, mixed ...$items): JsArray
     {
@@ -1358,55 +1276,20 @@ final class Js
 
     public static function toSorted(JsArray $a, ?callable $cmp = null): JsArray { return self::sorted($a, $cmp); }
 
-    private static ?\WeakMap $sortComparators = null;
-
-    public static function sortComparator(\Closure $callback, array $keys, bool $descending): \Closure
-    {
-        self::$sortComparators ??= new \WeakMap();
-        self::$sortComparators[$callback] = [$keys, $descending];
-        return $callback;
-    }
-
     public static function sorted(JsArray $a, ?callable $cmp = null): JsArray
     {
-        $items = [];
-        $undefined = 0;
-        foreach ($a->a as $item) {
-            if ($item === JsUndefined::Value) { $undefined++; }
-            else { $items[] = $item; }
-        }
-        $tail = array_fill(0, $undefined, JsUndefined::Value);
+        $items = $a->a;
         if ($cmp !== null) {
-            if (!$cmp instanceof \Closure || !isset(self::$sortComparators[$cmp])) {
-                throw new JsError('Sorting requires a numeric key-difference comparator', 'TypeError');
-            }
-            [$keys, $descending] = self::$sortComparators[$cmp];
-            if (count($items) < 2) { return new JsArray([...$items, ...$tail]); }
-            $keyed = [];
-            foreach ($items as $item) {
-                $key = $item;
-                foreach ($keys as $property) {
-                    if ($key instanceof JsClass) { throw new JsError('Sorting class keys is not supported', 'TypeError'); }
-                    $key = self::dynamicGet($key, $property);
-                }
-                if (is_object($key)) { throw new JsError('Sorting requires finite primitive keys', 'TypeError'); }
-                $key = self::toNumber($key);
-                if (!is_finite((float) $key)) { throw new JsError('Sorting requires finite primitive keys', 'RangeError'); }
-                $keyed[] = [$key, $item];
-            }
-            usort($keyed, static fn (array $x, array $y): int => $descending ? $y[0] <=> $x[0] : $x[0] <=> $y[0]);
-            return new JsArray([...array_column($keyed, 1), ...$tail]);
-        }
-        if (count($items) < 2) { return new JsArray([...$items, ...$tail]); }
-        foreach ($items as $item) {
-            if (is_object($item)) {
-                throw new JsError('Default sorting of objects requires an explicit comparator', 'TypeError');
-            }
+            usort($items, static function (mixed $x, mixed $y) use ($cmp): int {
+                $r = self::toNumber($cmp($y, $x));
+                return $r > 0 ? -1 : ($r < 0 ? 1 : 0);
+            });
+            return new JsArray($items);
         }
         $keyed = [];
         foreach ($items as $item) { $keyed[] = [mb_convert_encoding(self::str($item), 'UTF-16BE', 'UTF-8'), $item]; }
         usort($keyed, static fn (array $x, array $y): int => strcmp($x[0], $y[0]) <=> 0);
-        return new JsArray([...array_column($keyed, 1), ...$tail]);
+        return new JsArray(array_column($keyed, 1));
     }
 
     public static function with(JsArray $a, int|float $index, mixed $value): JsArray
@@ -1500,13 +1383,11 @@ final class Js
         return is_float($x) && $x === 0.0 && fdiv(1, $x) < 0;
     }
 
-    public static function range(int|float $n, callable $f): JsArray
+    public static function range(int $n, callable $f): JsArray
     {
-        $n = max(0, self::toInteger($n));
-        if ($n > 5000000) { throw new JsError('Array.from result is too large', 'RangeError'); }
         $out = [];
         for ($i = 0; $i < $n; $i++) {
-            $out[] = $f(JsUndefined::Value, $i);
+            $out[] = $f(null, $i);
         }
 
         return new JsArray($out);
@@ -1539,15 +1420,10 @@ final class Js
         return new JsArray(array_map(static fn ($key) => new JsArray([(string) $key, $o->p[$key]]), self::ownKeys($o->p)));
     }
 
-    public static function fromEntries(mixed $entries): JsObject
+    public static function fromEntries(JsArray $entries): JsObject
     {
         $out = new JsObject();
-        foreach (self::dynamicIterator($entries) as $entry) {
-            if (!$entry instanceof JsArray && !$entry instanceof JsArguments && !$entry instanceof JsObject) { throw new JsError('Iterator value is not an entry object', 'TypeError'); }
-            $key = self::dynamicGet($entry, '0');
-            $value = self::dynamicGet($entry, '1');
-            $out->p[self::key($key)] = $value;
-        }
+        foreach ($entries->a as $entry) { $out->p[self::key($entry->a[0])] = $entry->a[1] ?? null; }
         return $out;
     }
 
@@ -1564,7 +1440,7 @@ final class Js
     public static function hasOwn(JsObject|JsArray $o, mixed $key): bool
     {
         $key = self::key($key);
-        if ($o instanceof JsObject || array_key_exists($key, $o->p)) { return array_key_exists($key, $o->p); }
+        if ($o instanceof JsObject) { return array_key_exists($key, $o->p); }
         if ($key === 'length') { return true; }
         if (!preg_match('/^(?:0|[1-9][0-9]*)$/D', $key)) { return false; }
         $index = self::index((float) $key);
@@ -1589,13 +1465,6 @@ final class Js
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
         if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
-        if ($value instanceof JsNamespace) {
-            if (!$structured) { return $value; }
-            if ($seen->offsetExists($value)) { return $seen[$value]; }
-            $copy = new JsObject();
-            $seen[$value] = $copy;
-            return $copy;
-        }
         if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsDate || $value instanceof JsArguments) {
             if ($seen->offsetExists($value)) { return $seen[$value]; }
             $copy = match (true) {
@@ -1619,7 +1488,7 @@ final class Js
         if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof RegExp || $value instanceof JsError) {
             if ($seen->offsetExists($value)) { return $seen[$value]; }
             if ($value instanceof JsError) {
-                $copy = new JsError($value->getMessage(), $value->jsName, $value->hasMessage);
+                $copy = new JsError($value->getMessage(), $value->jsName);
                 $seen[$value] = $copy;
                 return $copy;
             }
@@ -1628,7 +1497,7 @@ final class Js
                 $seen[$value] = $copy;
                 return $copy;
             }
-            $copy = $value instanceof JsObject ? new JsObject(nullPrototype: !$structured && $value->nullPrototype) : new JsArray();
+            $copy = $value instanceof JsObject ? new JsObject() : new JsArray();
             $seen[$value] = $copy;
             if ($value instanceof JsObject) {
                 foreach (self::ownKeys($value->p) as $key) { $copy->p[$key] = self::copyGraph($value->p[$key], $seen, $structured); }
@@ -1652,12 +1521,6 @@ final class Js
 
     private static function jsonValueTree(mixed $value, \SplObjectStorage $stack): mixed
     {
-        if ($value instanceof JsObject || $value instanceof JsArray || $value instanceof JsArguments) {
-            $custom = array_key_exists('toJSON', $value->p)
-                ? $value->p['toJSON'] instanceof \Closure
-                : $value instanceof JsObject && ($value->class?->hasMethod('toJSON') ?? false);
-            if ($custom) { throw new JsError('Custom toJSON callbacks are not supported', 'TypeError'); }
-        }
         if ($value === JsUndefined::Value) { return null; }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
         if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError) { return new \stdClass(); }
@@ -1829,7 +1692,6 @@ final class Js
      */
     public static function decodeJson(string $s, int $depth = 512): mixed
     {
-        $s = preg_replace('~"(?:[^"\\\\]|\\\\.)*"(*SKIP)(*F)|(?<![eE])-0(?=[\s,\]}]|$)~', '-0.0', $s);
         try {
             return self::fromJson(json_decode($s, false, $depth, JSON_THROW_ON_ERROR));
         } catch (\JsonException $e) {
@@ -1949,14 +1811,16 @@ final class Js
     /** new Date(v).getTime() */
     public static function date(mixed $v): int|float
     {
-        if ($v instanceof JsDate) { return $v->milliseconds; }
-        $v = self::dynamicPrimitive($v);
         if (is_int($v) || is_float($v)) {
             return self::timeClip((float) $v);
         }
         if ($v === null || is_bool($v)) {
             return (int) $v;
         }
+        if ($v instanceof JsArray) {
+            $v = self::str($v);
+        }
+
         return is_string($v) ? self::parseDate($v) : NAN;
     }
 
@@ -1969,14 +1833,16 @@ final class Js
         return (int) self::trunc($t);
     }
 
-    /** ES date-time string format; no zone = UTC. */
+    /** ES date-time string format (plus a space separator and ±HHmm offsets); no zone = UTC. */
     private static function parseDate(string $s): int|float
     {
         $re = '/^([+-]\d{6}|\d{4})(?:-(\d{2})(?:-(\d{2}))?)?'
-            . '(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})?)?$/D';
-        if (!preg_match($re, $s, $m) || str_starts_with($s, '-000000')
-            || (($m[4] ?? '') !== '' && (($m[2] ?? '') === '' || ($m[3] ?? '') === ''))) {
-            throw new JsError('Date strings require the supported ISO format', 'RangeError');
+            . '(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:?\d{2})?)?$/D';
+        if (!preg_match($re, $s, $m)) {
+            return NAN;
+        }
+        if ($m[1] === '-000000') {
+            return NAN;
         }
         $y = (int) $m[1];
         $mo = ($m[2] ?? '') === '' ? 1 : (int) $m[2];
@@ -2032,11 +1898,6 @@ final class Js
         return [$yoe + $era * 400 + ($m <= 2 ? 1 : 0), $m, $d];
     }
 
-    public static function dateJSON(int|float $ms): ?string
-    {
-        return is_finite((float) $ms) ? self::iso($ms) : null;
-    }
-
     /** Date.prototype.toISOString */
     public static function iso(int|float $ms): string
     {
@@ -2070,13 +1931,12 @@ final class Js
         return random_int(0, (1 << 53) - 1) / 9007199254740992.0;
     }
 
-    public static function log(string $level, mixed ...$args): JsUndefined
+    public static function log(string $level, mixed ...$args): void
     {
         $parts = array_map(
             static fn ($a) => is_array($a) || (is_object($a) && !$a instanceof RegExp) ? (self::jsonStringify($a) ?? 'undefined') : self::str($a),
             $args,
         );
         error_log('[zero] ' . ($level === 'log' ? '' : $level . ': ') . implode(' ', $parts));
-        return JsUndefined::Value;
     }
 }

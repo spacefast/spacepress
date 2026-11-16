@@ -343,14 +343,13 @@ eq('multi-row insert + explicit timestamp normalized', $attic['updatedAt'], '200
 $items = $db->insert('items', [
     ['name' => 'hammer', 'qty' => 2, 'price' => 9.5, 'locationId' => $garage['id']],
     ['name' => 'nails', 'qty' => 100, 'price' => 2, 'locationId' => $garage['id'], 'seenAt' => 0],
-    ['name' => 'box', 'price' => \Zero\Js::undefined(), 'seenAt' => \Zero\Js::undefined()],
+    ['name' => 'box'],
     ['name' => 'lamp', 'qty' => 3.0, 'locationId' => $attic['id'], 'seenAt' => '2024-03-01T01:30:00+02:00', 'bestBefore' => '2024-02-29'],
 ], true);
 [$hammer, $nails, $box, $lamp] = $items;
 eq('beforeCreate return value replaces data', names($items), ['Hammer', 'Nails', 'Box', 'Lamp']);
 eq('every column key present, nulls included', array_keys($box), ['id', 'name', 'qty', 'price', 'seenAt', 'bestBefore', 'locationId']);
 eq('default value + nullable columns', [$box['qty'], $box['price'], $box['locationId']], [1, null, null]);
-eq('explicit undefined persists as SQL null', $db->findFirst('items', ['where' => ['id' => $box['id']]])['price'], null);
 check('integral float accepted for integer, int for real', $lamp['qty'] === 3 && $nails['price'] === 2.0, [$lamp['qty'], $nails['price']]);
 eq('timestamp from epoch ms and from offset string (normalized back onto a leap day)', [$nails['seenAt'], $lamp['seenAt']], ['1970-01-01T00:00:00.000Z', '2024-02-29T23:30:00.000Z']);
 eq('date column', $lamp['bestBefore'], '2024-02-29');

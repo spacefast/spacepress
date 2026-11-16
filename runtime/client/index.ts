@@ -88,16 +88,6 @@ export interface CollectionClient<K extends CollectionKey> {
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
   update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
   delete(id: IdOf<K>): Promise<Row<K>>;
-  /**
-   * Runs `list(q)` now and again whenever this collection (or a collection loaded through `with`)
-   * changes. Every refresh is the normal access-checked read; change notices carry no rows.
-   * Returns a function that stops watching.
-   */
-  watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
-    q: ListQuery<K, ExactWith<K, W>> | undefined,
-    onRows: (rows: RowWith<K, W>[]) => void,
-    onError?: (error: ZeroError) => void,
-  ): () => void;
   revisions: {
     /** Newest first. Needs `update` access on the row. */
     list(id: IdOf<K>): Promise<RevisionSummary[]>;
@@ -182,55 +172,6 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
   schema(): Promise<unknown>;
 };
 
-/** One committed transaction's changes, as the runtime's `zero_realtime_changes` hook sends them. */
-export interface ChangeNotice {
-  id: string;
-  at: string;
-  /** `ids: null` means "some rows changed": too many to list, or ids withheld from a shared room. */
-  changes: { collection: string; ops: ("create" | "update" | "delete")[]; ids: (string | number)[] | null }[];
-}
-
-/**
- * Delivers change notices from the host (Cast, a WebSocket relay, Pusher, ...). Zero ships none.
- * `connect` starts delivery and returns a stop function; call `status("live")` once notices flow
- * and `status("down")` when they stop, so the client polls meanwhile.
- */
-export interface RealtimeTransport {
-  connect(deliver: (notice: ChangeNotice) => void, status: (state: "live" | "down") => void): () => void;
-}
-
-export interface RealtimeOptions {
-  /** The transport. Default: the one a host registered with `registerRealtimeTransport`; `false` = polling only. */
-  transport?: RealtimeTransport | false;
-  /** Refresh watched reads this often while no transport is live. Default 30000; `false` turns polling off. */
-  pollMs?: number | false;
-  /**
-   * A slow safety refresh while the transport is live, covering a notice the transport lost.
-   * Default 60000 with up to ±20% jitter per refresh; `false` turns it off.
-   */
-  livePollMs?: number | false;
-}
-
-/**
- * The page-wide registry, on `globalThis` so a host script and an app bundle that each carry their
- * own copy of this client still meet.
- */
-interface Registry {
-  transport?: RealtimeTransport;
-  waiters: Set<() => void>;
-}
-function registry(): Registry {
-  const g = globalThis as { __zeroRealtime?: Registry };
-  return (g.__zeroRealtime ??= { waiters: new Set() });
-}
-
-/** For host scripts: every client on this page, created before or after, uses this transport by default. */
-export function registerRealtimeTransport(transport: RealtimeTransport): void {
-  const r = registry();
-  r.transport = transport;
-  for (const wake of [...r.waiters]) wake();
-}
-
 export interface ClientOptions {
   /** Base URL including the REST prefix: "https://x.test/wp-json/zero/v1". Default: `/wp-json/zero/v1` on the page's origin. */
   url?: string;
@@ -241,8 +182,6 @@ export interface ClientOptions {
   headers?: Record<string, string>;
   /** Frontend sign-in (design §6.2). */
   auth?: AuthOptions;
-  /** Live updates for `watch`. */
-  realtime?: RealtimeOptions;
 }
 
 export interface AuthOptions {
@@ -763,91 +702,12 @@ export function createClient(options: ClientOptions = {}): Client {
     },
   };
 
-  // One transport connection per client while anything is watched; polling while it is not live.
-  const rtOpts = options.realtime ?? {};
-  const pollMs = rtOpts.pollMs === undefined ? 30_000 : rtOpts.pollMs;
-  const livePollMs = rtOpts.livePollMs === undefined ? 60_000 : rtOpts.livePollMs;
-  const listeners = new Set<{ collections: ReadonlySet<string>; onChange: (n: ChangeNotice | null) => void }>();
-  let disconnect: (() => void) | null = null;
-  let live = false;
-  // One timer: `pollMs` while down, `livePollMs` (jittered) while live. Rearmed after each refresh.
-  let poller: ReturnType<typeof setTimeout> | null = null;
-  let pollerLive = false;
-  const dispatch = (notice: ChangeNotice | null) => {
-    for (const l of [...listeners]) {
-      if (notice === null || notice.changes.some((c) => l.collections.has(c.collection))) l.onChange(notice);
-    }
-  };
-  const syncPolling = () => {
-    const every = live ? livePollMs : pollMs;
-    const want = listeners.size > 0 && every !== false;
-    if (poller !== null && (!want || pollerLive !== live)) {
-      clearTimeout(poller);
-      poller = null;
-    }
-    if (!want || poller !== null) return;
-    pollerLive = live;
-    // Jitter only the live safety poll: every tab of a busy page must not refresh at once.
-    const delay = live ? Math.round((every as number) * (0.8 + Math.random() * 0.4)) : (every as number);
-    poller = setTimeout(() => {
-      poller = null;
-      dispatch(null);
-      syncPolling();
-    }, delay);
-  };
-  const connect = () => {
-    if (disconnect !== null || listeners.size === 0 || rtOpts.transport === false) return;
-    const transport = rtOpts.transport ?? registry().transport;
-    if (!transport || typeof transport.connect !== "function") return;
-    registry().waiters.delete(connect);
-    let current = true;
-    const stop = transport.connect(
-      (notice) => {
-        if (current && isObject(notice) && Array.isArray(notice.changes)) dispatch(notice);
-      },
-      (state) => {
-        if (!current) return;
-        const was = live;
-        live = state === "live";
-        syncPolling();
-        // Back online: catch up on whatever changed while the transport was down.
-        if (live && !was) dispatch(null);
-      },
-    );
-    disconnect = () => {
-      current = false;
-      live = false;
-      stop();
-    };
-  };
-  const realtime = {
-    subscribe(collections: readonly string[], onChange: (notice: ChangeNotice | null) => void): () => void {
-      const entry = { collections: new Set(collections), onChange };
-      listeners.add(entry);
-      registry().waiters.add(connect);
-      connect();
-      syncPolling();
-      return () => {
-        listeners.delete(entry);
-        if (listeners.size === 0) {
-          registry().waiters.delete(connect);
-          disconnect?.();
-          disconnect = null;
-        }
-        syncPolling();
-      };
-    },
-  };
-
   function collection(key: CollectionKey) {
     const desc: { path: string } = SCHEMA.collections[key];
     const path = `/${seg(desc.path)}`;
     const one = (id: string | number) => `${path}/${seg(id)}`;
-    const list = (q?: Json) => request("GET", path, { query: listParams(q) });
     return {
-      list,
-      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: ZeroError) => void) =>
-        watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
+      list: (q?: Json) => request("GET", path, { query: listParams(q) }),
       get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
       create: (data: unknown) => request("POST", path, { json: data }),
       update: (id: string | number, patch: unknown) => request("PATCH", one(id), { json: patch }),
@@ -904,76 +764,7 @@ export function createClient(options: ClientOptions = {}): Client {
     schema: () => request("GET", "/_schema"),
   };
   for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key as CollectionKey);
-  hubs.set(client, realtime);
   return client as unknown as Client;
-}
-
-type Hub = { subscribe(collections: readonly string[], onChange: (notice: ChangeNotice | null) => void): () => void };
-const hubs = new WeakMap<object, Hub>();
-
-/**
- * Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
- * transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
- * express: an action's result, a `get`, a global. Returns a function that stops watching.
- */
-export function watch<T>(
-  client: Client,
-  collections: readonly CollectionKey[],
-  read: () => Promise<T>,
-  onResult: (value: T) => void,
-  onError?: (error: ZeroError) => void,
-): () => void {
-  const hub = hubs.get(client) ?? (() => {
-    throw new TypeError("watch() needs a client from createClient()");
-  })();
-  return watchWith(hub, collections, read, onResult, onError);
-}
-
-function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: ZeroError) => void): () => void {
-  // Coalesced: one read in flight; changes during it schedule exactly one more.
-  let stopped = false;
-  let running = false;
-  let again = false;
-  const refresh = async (): Promise<void> => {
-    if (running) {
-      again = true;
-      return;
-    }
-    running = true;
-    try {
-      do {
-        again = false;
-        try {
-          const value = await read();
-          if (!stopped) onResult(value);
-        } catch (e) {
-          if (!stopped) onError?.(e instanceof ZeroError ? e : networkError(String(e)));
-        }
-      } while (again && !stopped);
-    } finally {
-      running = false;
-    }
-  };
-  const unsubscribe = hub.subscribe(collections, () => void refresh());
-  void refresh();
-  return () => {
-    stopped = true;
-    unsubscribe();
-  };
-}
-
-/** The collection and every collection its `with` loads: a change to any of them refreshes the read. */
-function dependencies(key: string, w: unknown, seen = new Set<string>()): string[] {
-  seen.add(key);
-  const relations: Record<string, { collection?: string }> = (SCHEMA.collections as Record<string, { relations?: Record<string, { collection?: string }> }>)[key]?.relations ?? {};
-  if (isObject(w)) {
-    for (const [name, v] of Object.entries(w)) {
-      const target = relations[name]?.collection;
-      if (!v || typeof target !== "string" || seen.has(target)) continue;
-      dependencies(target, isObject(v) ? v.with : undefined, seen);
-    }
-  }
-  return [...seen];
 }
 
 /** Problem documents map field by field; WordPress core errors (`{ code, message, data: { status } }`) are mapped onto the same shape. */

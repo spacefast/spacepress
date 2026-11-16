@@ -142,7 +142,7 @@ final class Runtime
             if ($problems !== []) {
                 throw new \RuntimeException(implode('; ', $problems));
             }
-            self::$plugin = new Plugin($dir, $mainFile, $schema);
+            self::$plugin = new Plugin($dir, $mainFile);
             self::$appFile = $mainFile;
             \Zero\Extensions::schemaDescribe(static function (array $description): array {
                 $description['runtime']['wp'] = Platform::versions();

@@ -4,8 +4,6 @@
 mod archive;
 #[cfg(feature = "cli")]
 pub mod assembly;
-#[cfg(feature = "cli")]
-mod patches;
 pub mod version;
 
 use serde::{Deserialize, Serialize};

@@ -1,5 +1,7 @@
 # WordPress 7.2-beta5 is the floor
 
+Superseded by [2026-11-17-wordpress-7-1-floor](2026-11-17-wordpress-7-1-floor.md): the floor is 7.1 again, the release Spacefast runs.
+
 First required WordPress 7.1 ([2026-11-07](2026-11-07-wp-core-apis.md) kept
 it there because 7.2 wasn't out). Ruling, 2026-11-14: First may require a
 beta, and the minimum is 7.2-beta5. Nobody runs First in production yet, so

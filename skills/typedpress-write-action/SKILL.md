@@ -1,7 +1,7 @@
 ---
 name: typedpress-write-action
 description: "Use when adding server logic to a TypedPress project: an `action()` a client or agent calls (a mutation, a computed read), or a `job()` that runs in the background after a request (send mail, recompute, call another service)."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Write an action or a job

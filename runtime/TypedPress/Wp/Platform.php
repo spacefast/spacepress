@@ -6,13 +6,13 @@ namespace TypedPress\Wp;
 final class Platform
 {
     /**
-     * The oldest WordPress TypedPress boots on: 7.2's fifth beta, for the script modules, Entity fields and
-     * actions, and connectors core 7.2 ships. Compared with PHP's version_compare against the whole
-     * version string, so later betas, RCs, nightlies of 7.2 (`7.2-beta5-65525`), 7.2 and above pass, and
-     * 7.1.x, 7.2-beta4 and 7.2's alphas don't. Core's is_wp_version_compatible() drops the suffix
-     * first and would let every 7.2 pre-release through.
+     * The oldest WordPress TypedPress boots on: 7.1, the release Spacefast runs
+     * (docs/decisions/2026-11-17-wordpress-7-1-floor.md). Where 7.2 adds an API (entity fields and
+     * actions, the Secrets API, core's content abilities), TypedPress uses it when present. Compared
+     * with PHP's version_compare against the whole version string, so 7.1.x, 7.2's pre-releases and
+     * later pass, and 7.0.x and 7.1's own pre-releases don't.
      */
-    public const WORDPRESS = '7.2-beta5';
+    public const WORDPRESS = '7.1';
     public const PHP = '8.2';
     public const MYSQL = '8.0';
     public const MARIADB = '10.11';

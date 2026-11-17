@@ -90,9 +90,8 @@ export function blueprint({ platform, tpPlugins, wordpressPlugins, landingPage, 
 	return {
 		$schema: "https://playground.wordpress.net/blueprint-schema.json",
 		meta: { title: "TypedPress example", author: "TypedPress" },
-		// "beta" is Playground's build of WordPress's current beta or RC (7.2-beta5 today). "latest" is still
-		// 7.1, below TypedPress's floor (tests/fixtures/platform.json); it goes back to "latest" once 7.2 ships.
-		preferredVersions: { php: platform.php, wp: "beta" },
+		// "latest" is WordPress's current release, at or above TypedPress's floor (tests/fixtures/platform.json).
+		preferredVersions: { php: platform.php, wp: "latest" },
 		features: { networking: true },
 		login: true,
 		landingPage,

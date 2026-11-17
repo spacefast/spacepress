@@ -642,6 +642,6 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y rsync
       - name: Identity acceptance on PHP ${{ matrix.php }}
         env:
-          IDENTITY_WORDPRESS_IMAGE: wordpress:beta-7.2-beta5-php${{ matrix.php }}-apache
+          IDENTITY_WORDPRESS_IMAGE: wordpress:7.1.0-php${{ matrix.php }}-apache
           IDENTITY_CLI_IMAGE: wordpress:cli-php${{ matrix.php }}
         run: tests/identity/run.sh

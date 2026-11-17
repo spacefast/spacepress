@@ -8,8 +8,8 @@ declare(strict_types=1);
  * `repository_dispatch` to the repository; saves in the window join it; `typedpress sync`'s own writes send
  * none; the job runs on Action Scheduler and POSTs to a local stand-in for GitHub's API. The token is
  * read from the environment, else from the Secrets API, which is never replaced by an option.
- * WordPress 7.1 has no Secrets API: a must-use plugin stands in for it, with WordPress 7.2's
- * function names, so both halves are proven.
+ * WordPress 7.1 has no Secrets API: a must-use plugin stands in for it there, with WordPress 7.2's
+ * function names, so both halves are proven on either.
  */
 
 use TypedPress\Sync\GitDispatch;
@@ -85,9 +85,19 @@ $schema = [
 ];
 // WordPress 7.2's Secrets API with a provider of the test's own, as a host registers one
 // ($wp_secrets_provider): kept in a global, never in an option, so the test can tell where the token
-// went, and writable only while the test turns it on.
+// went, and writable only while the test turns it on. On 7.1, functions with 7.2's names stand in,
+// and the API is there only while tpTestSecretsApi is on.
 $secrets = <<<'PHP'
     <?php
+    if (!class_exists('WP_Secrets_Provider')) {
+        final class WP_Secret { public function __construct(private string $v) {} public function reveal(): string { return $this->v; } }
+        function wp_is_secrets_api_available(): bool { return !empty($GLOBALS['tpTestSecretsApi']); }
+        function wp_secrets_provider_is_writable(): bool { return !empty($GLOBALS['tpTestSecretsOn']); }
+        function wp_set_secret(string $name, string $value) { $GLOBALS['tpTestSecrets'][$name] = $value; return true; }
+        function wp_get_secret(string $name) { return isset($GLOBALS['tpTestSecrets'][$name]) ? new WP_Secret($GLOBALS['tpTestSecrets'][$name]) : null; }
+        function wp_delete_secret(string $name) { unset($GLOBALS['tpTestSecrets'][$name]); return true; }
+        return;
+    }
     final class TypedPress_Test_Secrets extends WP_Secrets_Provider {
         public function get(string $name, string $version, bool $network = false) {
             return isset($GLOBALS['tpTestSecrets'][$name]) && $version === WP_Secret_Version::CURRENT
@@ -107,8 +117,10 @@ $secrets = <<<'PHP'
     }
     $GLOBALS['wp_secrets_provider'] = new TypedPress_Test_Secrets();
     PHP;
+$GLOBALS['tpTestSecretsApi'] = true;
 $wp = wpSite('git-dispatch', ['schema' => $schema, 'users' => ['ed' => 'editor'], 'muPlugins' => ['secrets' => $secrets]]);
 $db = $wp->app()->db;
+$coreSecrets = class_exists('TypedPress_Test_Secrets');
 putenv("TP_GITHUB_API_URL=http://127.0.0.1:$port");
 putenv('TP_NOW=2026-11-13T10:00:00.000Z');
 
@@ -167,7 +179,26 @@ try {
 }
 eq('a rolled-back save queues nothing', count($pending()), 0);
 
-// No token anywhere: the dispatch fails loudly (and retries); nothing reaches GitHub.
+// No token and no Secrets API to keep one (WordPress 7.1): a dispatch could only fail, so a save queues
+// none, `status` says why, and a token is refused, never stored in the database.
+$stdin = static fn (string $token) => fopen('data://text/plain,' . rawurlencode($token), 'r');
+if (!$coreSecrets) {
+    $GLOBALS['tpTestSecretsApi'] = false;
+    $asEditor(static fn () => wp_update_post(['ID' => $postId, 'post_title' => 'Nowhere to keep a token']));
+    eq('without a token or a Secrets API, a save queues nothing', count($pending()), 0);
+    [$code, $status] = $wp->cli('git-dispatch', 'status');
+    check('…and status says why', $code === 0 && str_contains($status['data']['problem'] ?? '', 'TP_GITHUB_DISPATCH_TOKEN'), $status);
+    problem('set --token without a Secrets API is refused', static fn () => GitDispatch::storeToken('ghp_secret_value'), 409, 'secrets_unavailable');
+    eq('…and the token is in no option', (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}options WHERE `option_value` LIKE '%ghp_secret_value%'"), 0);
+    putenv('TP_GITHUB_DISPATCH_TOKEN=ghp_from_env');
+    $asEditor(static fn () => wp_update_post(['ID' => $postId, 'post_title' => 'Token in the environment']));
+    eq('a token in the environment is enough: the save queues a dispatch', count($pending()), 1);
+    $wp->cli('jobs', 'cancel', $pending()[0]['id']);
+    putenv('TP_GITHUB_DISPATCH_TOKEN');
+    $GLOBALS['tpTestSecretsApi'] = true;
+}
+
+// A Secrets API without a token in it: the dispatch fails loudly (and retries); nothing reaches GitHub.
 $asEditor(static fn () => wp_update_post(['ID' => $postId, 'post_title' => 'Needs a token']));
 $job = $pending()[0];
 putenv('TP_NOW=2026-11-13T10:01:00.000Z');
@@ -175,10 +206,9 @@ $run = \TypedPress\Jobs\Runner::run($job['id']);
 check('without a token the attempt fails and says why', ($run['state'] ?? null) === 'failed' && str_contains($run['error'] ?? '', 'TP_GITHUB_DISPATCH_TOKEN'), $run);
 eq('…and sends nothing', $received(), []);
 
-// Without the Secrets API a token is refused, never stored in the database.
-$stdin = static fn (string $token) => fopen('data://text/plain,' . rawurlencode($token), 'r');
+// Where the Secrets API takes no writes, a token is refused, never stored in the database.
 $GLOBALS['tpTestSecretsOn'] = false;
-problem('set --token without a Secrets API is refused', static fn () => GitDispatch::storeToken('ghp_secret_value'), 409, 'secrets_unavailable');
+problem('set --token where the Secrets API takes no writes is refused', static fn () => GitDispatch::storeToken('ghp_secret_value'), 409, 'secrets_unavailable');
 $leak = (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}options WHERE `option_value` LIKE '%ghp_secret_value%'");
 eq('…and the token is in no option', $leak, 0);
 

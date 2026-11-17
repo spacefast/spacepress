@@ -41,8 +41,15 @@ final class Seed
             throw new HttpError(400, 'invalid_command', 'Seed records directory does not exist.', '/records');
         }
         $plugin->app();
-        $files = array_merge(glob(rtrim($directory, '/') . '/*.json') ?: [], glob(rtrim($directory, '/') . '/*.php') ?: []);
-        if ($files === false) { throw new \RuntimeException('Cannot list seed records'); }
+        $entries = @scandir($directory);
+        if ($entries === false) { throw new \RuntimeException('Cannot list seed records'); }
+        $files = [];
+        foreach ($entries as $entry) {
+            // Like the previous glob patterns, ignore hidden files and other extensions.
+            if ($entry[0] !== '.' && (str_ends_with($entry, '.json') || str_ends_with($entry, '.php'))) {
+                $files[] = rtrim($directory, '/') . '/' . $entry;
+            }
+        }
         sort($files, SORT_STRING);
         $files = self::ordered($plugin, $files);
         $plan = static function () use ($plugin, $files, $dry): array {

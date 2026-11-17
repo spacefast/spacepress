@@ -65,6 +65,8 @@ $zoneIds = array_keys($zones);
 $methodIds = array_map(static fn ($z) => array_keys($z['shipping_methods']), $zones);
 \TypedPress\Commerce\Module::initialize($plugin);
 eq('unchanged source does not recreate shipping methods', array_map(static fn ($z) => array_keys($z['shipping_methods']), WC_Shipping_Zones::get_zones()), $methodIds);
+wp_cache_set('notoptions', ['tp_' . $plugin->schema->name() . '_shipping' => true], 'options');
+eq('shipping inspection ignores a stale negative marker cache', \TypedPress\Commerce\Module::plan($plugin), []);
 $extra = new WC_Shipping_Zone(); $extra->set_zone_name('Admin addition'); $extra->save();
 $shippingSnapshot = static function (): array {
     $state = [];
@@ -129,10 +131,15 @@ $originalSeed = file_get_contents($seedFile); $seedInput = require $seedFile;
 $waitingUid = \TypedPress\Sync\Uid::mint();
 $seedInput['records'][] = ['uid' => $waitingUid, 'fields' => ['name' => 'Must not be reseeded']];
 file_put_contents($seedFile, '<?php return ' . var_export($seedInput, true) . ';');
-wp_cache_set('tp_' . $plugin->schema->name() . '_seed', 'stale-before-lock', 'options');
-\TypedPress\Commerce\Module::onInit($plugin);
+$seedKey = 'tp_' . $plugin->schema->name() . '_seed';
+foreach (['old value', 'missing option'] as $cached) {
+    wp_cache_delete($seedKey, 'options'); wp_cache_delete('alloptions', 'options');
+    if ($cached === 'old value') { wp_cache_set($seedKey, 'stale-before-lock', 'options'); }
+    else { wp_cache_set('notoptions', [$seedKey => true], 'options'); }
+    \TypedPress\Commerce\Module::onInit($plugin);
+    eq('a waiting standalone seed rechecks its committed version after cached ' . $cached, $db->findFirst('products', ['where' => ['uid' => $waitingUid]]), null);
+}
 file_put_contents($seedFile, $originalSeed);
-eq('a waiting standalone seed rechecks the committed version instead of running again', $db->findFirst('products', ['where' => ['uid' => $waitingUid]]), null);
 $directories = wc_get_container()->get(\Automattic\WooCommerce\Internal\ProductDownloads\ApprovedDirectories\Register::class);
 $approvalCount = $directories->count(true);
 problem('oversized download directories are input errors', fn () => $db->insert('products', ['name' => 'Bad download', 'downloadable' => true, 'downloads' => [['id' => 'bad', 'name' => 'Bad', 'file' => 'https://example.test/' . str_repeat('a', 260) . '/file.pdf']]], true, $admin), 422, 'invalid_input', '/downloads');

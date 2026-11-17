@@ -134,7 +134,7 @@ final class Module
                 if (get_option($key) !== $version) {
                     \TypedPress\Wp\Migrator::locked($plugin->connection(), 'commerce_seed', static function () use ($plugin, $key, $version): void {
                         // A request waiting for the first seed must see its committed marker.
-                        wp_cache_delete($key, 'options'); wp_cache_delete('alloptions', 'options');
+                        wp_cache_delete($key, 'options'); wp_cache_delete('alloptions', 'options'); wp_cache_delete('notoptions', 'options');
                         if (get_option($key) === $version) { return; }
                         \TypedPress\Sync\Seed::run($plugin, $plugin->dir . '/tp/app/seed');
                         update_option($key, $version, false);
@@ -182,7 +182,7 @@ final class Module
         $store = $plugin->schema->commerce(); if ($store === null || !array_key_exists('shipping', $store)) { return []; }
         $key = 'tp_' . $plugin->schema->name() . '_shipping';
         $hash = hash('sha256', (string) wp_json_encode($store['shipping']));
-        wp_cache_delete($key, 'options'); wp_cache_delete('alloptions', 'options');
+        wp_cache_delete($key, 'options'); wp_cache_delete('alloptions', 'options'); wp_cache_delete('notoptions', 'options');
         return get_option($key) === ['source' => $hash, 'state' => self::shippingState()] ? [] : [Runtime::step('commerce-shipping', 'commerce-shipping')];
     }
     public static function initialize(Plugin $plugin): void

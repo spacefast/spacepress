@@ -370,6 +370,8 @@ eq('independent line edits merge', $merge("a\n\nb\n\nc\n", "A\n\nb\n\nc\n", "a\n
 eq('the same line edited twice conflicts', $merge("a\n\nb\n", "a\n\nX\n", "a\n\nY\n"), ['merged' => null, 'conflicts' => [['ours' => "X\n", 'theirs' => "Y\n", 'line' => 3]]]);
 
 $seedDir = sys_get_temp_dir() . '/tp-cycle-seed-' . bin2hex(random_bytes(4)); mkdir($seedDir);
+file_put_contents($seedDir . '/.ignored.json', 'not seed input');
+file_put_contents($seedDir . '/README.txt', 'not seed input');
 $writeSeed = static function (string $name, array $records) use ($seedDir): void {
     file_put_contents($seedDir . '/' . $name . '.json', wp_json_encode(['collection' => $name, 'format' => 'json', 'records' => $records]));
 };
@@ -398,5 +400,16 @@ $writeSeed('seedAuthors', [['uid' => $newAuthorUid, 'fields' => ['name' => 'New 
 $outside = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
 eq('a dependency cycle is seeded before an outside collection that references it', [$outside['seedAuthors']['created'], $outside['aSeedItems']['updated']], [1, 1]);
 eq('the outside record resolves the new target inside the schema cycle', $db->findFirst('aSeedItems', ['where' => ['id' => $item['id']]])['peer'], $db->findFirst('seedAuthors', ['where' => ['uid' => $newAuthorUid]])['id']);
-foreach (['seedAuthors', 'seedArticles', 'aSeedItems'] as $name) { unlink($seedDir . '/' . $name . '.json'); } rmdir($seedDir);
+chmod($seedDir, 0000); clearstatcache(true, $seedDir);
+try {
+    // A root test runner can still read mode-000 directories; exercise real permission errors elsewhere.
+    if (!is_readable($seedDir)) {
+        $listingFailed = false;
+        try { \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir); }
+        catch (RuntimeException $e) { $listingFailed = $e->getMessage() === 'Cannot list seed records'; }
+        check('unreadable seed contents throw instead of acknowledging an empty seed', $listingFailed);
+    }
+} finally { chmod($seedDir, 0700); }
+foreach (['seedAuthors', 'seedArticles', 'aSeedItems'] as $name) { unlink($seedDir . '/' . $name . '.json'); }
+unlink($seedDir . '/.ignored.json'); unlink($seedDir . '/README.txt'); rmdir($seedDir);
 finish('sync');

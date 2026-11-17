@@ -2441,8 +2441,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             Stmt::Throw(e) => {
-                let v = self.throw_value(e)?;
+                let (v, json_arguments) = self.throw_value(e)?;
+                if json_arguments {
+                    let _ = writeln!(
+                        out,
+                        "{p}// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- HttpError arguments become JSON problem data; escape at the output sink."
+                    );
+                }
                 let _ = writeln!(out, "{p}throw {v};");
+                if json_arguments {
+                    let _ = writeln!(
+                        out,
+                        "{p}// phpcs:enable WordPress.Security.EscapeOutput.ExceptionNotEscaped"
+                    );
+                }
             }
             Stmt::Try {
                 block,
@@ -2653,7 +2665,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    fn throw_value(&mut self, e: &Expr) -> Result<String> {
+    fn throw_value(&mut self, e: &Expr) -> Result<(String, bool)> {
         if let ExprKind::New { callee, args, .. } = &e.kind {
             let callee_v = match &callee.kind {
                 ExprKind::Ident(n) => self.resolve(n, callee.span)?,
@@ -2662,10 +2674,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             match callee_v {
                 Resolved::Global(g) if ERROR_CONSTRUCTORS.contains(&g) => {
                     self.fx().throws.insert("\\TypedPress\\JsError");
-                    return self.error_constructor(g, args).map(|value| value.php);
+                    return self.error_constructor(g, args).map(|value| (value.php, false));
                 }
                 Resolved::Value(Value::Builtin(Builtin::HttpError), _) => {
                     let mut parts = Vec::new();
+                    let mut json_arguments = false;
                     for (i, a) in args.iter().enumerate() {
                         let ArrEl::Item(a) = a else {
                             return err(e.span, "spread arguments aren't supported here");
@@ -2683,6 +2696,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 ),
                             );
                         }
+                        json_arguments |= !(literal_php(&v) || literal_position(a));
                         parts.push(if i == 0 {
                             format!("(int) {}", v.wrapped())
                         } else {
@@ -2693,7 +2707,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         return err(e.span, "HttpError takes (status, code, message)");
                     }
                     self.fx().throws.insert("\\TypedPress\\HttpError");
-                    return Ok(format!("new \\TypedPress\\HttpError({})", parts.join(", ")));
+                    return Ok((
+                        format!("new \\TypedPress\\HttpError({})", parts.join(", ")),
+                        json_arguments,
+                    ));
                 }
                 _ => {}
             }
@@ -2701,13 +2718,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let v = self.expr(e)?;
         if v.ty == Ty::Error {
             self.fx().throws.insert("\\TypedPress\\JsError");
-            return Ok(v.php);
+            return Ok((v.php, false));
         }
         let module = self.fx().module;
         if self.javascript_module(module) || self.error_instance(&v.ty) {
             let v = self.finish_value(v, e.span)?;
             self.fx().throws.insert("\\Throwable");
-            return Ok(format!("\\TypedPress\\Js::throwable({})", v.php));
+            return Ok((format!("\\TypedPress\\Js::throwable({})", v.php), false));
         }
         err_help(
             e.span,
@@ -3927,7 +3944,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         } else {
                             let tmp = self.tmp_var();
                             Out::new(
-                                format!("(\\TypedPress\\Js::isNullish({tmp} = {}) ? {} : {tmp})", a.php, b.php),
+                                format!(
+                                    "(\\TypedPress\\Js::isNullish({}) ? {} : {tmp})",
+                                    php_lazy_assignment(&tmp, &a.php),
+                                    b.php
+                                ),
                                 ty,
                             )
                         }
@@ -3946,7 +3967,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         // `x || y` / `x && y` return an operand, not a boolean.
                         let tmp = self.tmp_var();
-                        let test = self.truthy(&Out::new(format!("{tmp} = {}", a.php), a.ty.clone()));
+                        let test = self.truthy(&Out::new(php_lazy_assignment(&tmp, &a.php), a.ty.clone()));
                         let (yes, no) = if *op == LogOp::Or {
                             (tmp.clone(), b.wrapped())
                         } else {
@@ -11439,6 +11460,12 @@ fn php_doc_text(text: &str) -> String {
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect()
+}
+
+fn php_lazy_assignment(target: &str, value: &str) -> String {
+    format!(
+        "/* phpcs:ignore Squiz.PHP.DisallowMultipleAssignments,WordPress.CodeAnalysis.AssignmentInTernaryCondition,Generic.CodeAnalysis.AssignmentInCondition -- Preserve lazy evaluation and a single operand read. */ {target} = {value}"
+    )
 }
 
 fn php_function_doc(summary: &str, parameters: &str, returns: &str) -> String {

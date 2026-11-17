@@ -3,27 +3,37 @@ Generate the fixed PHP audit corpus from the repository root:
 ```sh
 composer install --working-dir=examples/php-standards
 cargo run --locked --example php-standards -- /tmp/tp-php
-composer --working-dir=examples/php-standards run check-layout -- /tmp/tp-php
-examples/php-standards/vendor/bin/phpcs --standard=WordPress --report=summary /tmp/tp-php
+composer --working-dir=examples/php-standards run check -- /tmp/tp-php
+# Inspect intentional exceptions without honoring their annotations:
+examples/php-standards/vendor/bin/phpcs --standard=WordPress --ignore-annotations --report=summary /tmp/tp-php
 find /tmp/tp-php -name '*.php' -exec php -l {} \;
 ```
 
 The locked Composer tools use WordPress Coding Standards 3.4.1 for development
 and CI only. Ordinary TypedPress builds do not require PHP or Composer for layout.
-`check-layout` enforces twenty-one WordPress layout, naming and documentation rules
-implemented by the compiler, using WordPress's own sniff configuration. The
-full audit intentionally also reports the rules not yet implemented. Kitchen-sink
-compiled functions pass the full WordPress standard, which quick CI also enforces.
+`check` and quick CI enforce the full WordPress standard across the three compiled
+outputs, using WordPress's own sniff configuration. Generated annotations explain
+the intentional exceptions rather than excluding rules from the standard.
 
 The corpus covers pantry, kitchen-sink and blog compiled functions. The original
-baseline had 1199 errors and 73 warnings; the audit now finds 5 errors and
-3 warnings. The expression pass reduces the preceding 27 errors / 38 warnings
+baseline had 1199 errors and 73 warnings. The audit passes with generated
+annotations enabled; `--ignore-annotations` exposes the remaining 5 errors and
+3 warnings. The expression pass reduced the preceding 27 errors / 38 warnings
 by using existing runtime nullish/property checks through two small helpers and
 omitting grouping parentheses around standalone assignments. The remaining
 findings concern assignments inside lazy expressions/conditions and escaping
 of exception arguments. None are automatically fixable by PHPCBF. Exception
 messages are serialized into JSON problems by the runtime, so adding HTML
 escaping here would alter API data.
+Lazy operand-cache assignments carry an inline `phpcs:ignore` for
+`Squiz.PHP.DisallowMultipleAssignments`,
+`WordPress.CodeAnalysis.AssignmentInTernaryCondition` and
+`Generic.CodeAnalysis.AssignmentInCondition`. Dynamic `HttpError` arguments have
+a statement-scoped disable/enable pair for
+`WordPress.Security.EscapeOutput.ExceptionNotEscaped`; literal-only constructors
+need no annotation. Each annotation gives its reason. Other rules and later
+statements remain checked; there are no file-wide disables.
+
 Schema and shipped runtime PHP are outside this corpus. Do not edit generated
 files as a substitute for fixing the compiler.
 

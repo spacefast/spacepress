@@ -19,7 +19,7 @@ namespace TypedPressApp;
  * @return bool|array The compiled return value.
  */
 function posts__access__read( \TypedPress\JsObject $ctx ) {
-	return ( \TypedPress\Js::truthy( ( ! \TypedPress\Js::isNullish( $__t1 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ) ? ( ! ( \TypedPress\Js::dataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'role' ) === 'subscriber' ) ) : $__t1 ) ) ? true : array( 'status' => 'published' );
+	return ( \TypedPress\Js::truthy( ( ! \TypedPress\Js::isNullish( /* phpcs:ignore Squiz.PHP.DisallowMultipleAssignments,WordPress.CodeAnalysis.AssignmentInTernaryCondition,Generic.CodeAnalysis.AssignmentInCondition -- Preserve lazy evaluation and a single operand read. */ $__t1 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ) ? ( ! ( \TypedPress\Js::dataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'role' ) === 'subscriber' ) ) : $__t1 ) ) ? true : array( 'status' => 'published' );
 }
 
 /**
@@ -64,7 +64,7 @@ function comments__access__read( \TypedPress\JsObject $ctx ) {
  * @return \TypedPress\JsUndefined The compiled return value.
  */
 function posts__before_create( \TypedPress\JsObject $data, \TypedPress\JsObject $ctx ) {
-	if ( \TypedPress\Js::truthy( ( $__t1 = \TypedPress\Js::isNullish( ( $data->p['authorId'] ?? \TypedPress\Js::dataGet( $data, 'authorId' ) ) ) ) ? ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) : $__t1 ) ) {
+	if ( \TypedPress\Js::truthy( ( /* phpcs:ignore Squiz.PHP.DisallowMultipleAssignments,WordPress.CodeAnalysis.AssignmentInTernaryCondition,Generic.CodeAnalysis.AssignmentInCondition -- Preserve lazy evaluation and a single operand read. */ $__t1 = \TypedPress\Js::isNullish( ( $data->p['authorId'] ?? \TypedPress\Js::dataGet( $data, 'authorId' ) ) ) ) ? ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) : $__t1 ) ) {
 		$author = \TypedPress\Seam::findFirst( 'authors', array( 'where' => array( 'userId' => \TypedPress\Js::dataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'id' ) ) ) );
 		if ( ! \TypedPress\Js::isNullish( $author ) ) {
 			$__t2             = $data;
@@ -84,7 +84,7 @@ function posts__before_create( \TypedPress\JsObject $data, \TypedPress\JsObject 
  * @return \TypedPress\JsUndefined The compiled return value.
  */
 function comments__after_create( \TypedPress\JsObject $row, \TypedPress\JsObject $ctx ) {
-	if ( \TypedPress\Js::truthy( ( ! \TypedPress\Js::isNullish( $__t1 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ) ? ( ! ( \TypedPress\Js::dataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'role' ) === 'subscriber' ) ) : $__t1 ) ) {
+	if ( \TypedPress\Js::truthy( ( ! \TypedPress\Js::isNullish( /* phpcs:ignore Squiz.PHP.DisallowMultipleAssignments,WordPress.CodeAnalysis.AssignmentInTernaryCondition,Generic.CodeAnalysis.AssignmentInCondition -- Preserve lazy evaluation and a single operand read. */ $__t1 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ) ? ( ! ( \TypedPress\Js::dataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'role' ) === 'subscriber' ) ) : $__t1 ) ) {
 		\TypedPress\Seam::update( 'comments', ( new \TypedPress\JsObject( array( 'approved' => true ) ) ), array( 'id' => ( $row->p['id'] ?? \TypedPress\Js::dataGet( $row, 'id' ) ) ) );
 	}
 	return \TypedPress\Js::undefined();
@@ -108,7 +108,9 @@ function action__approve_comment( \TypedPress\JsObject $__t1 ) {
 	$__t5 = $__t5 || 0 >= \count( $__t4->a );
 	$row  = ( $__t5 ? \TypedPress\Js::undefined() : \TypedPress\Js::dynamicGet( $__t4, 0 ) );
 	if ( ! ( ! \TypedPress\Js::isNullish( $row ) ) ) {
+		// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- HttpError arguments become JSON problem data; escape at the output sink.
 		throw new \TypedPress\HttpError( (int) 404, 'not_found', \implode( '', array( 'No comment ', \TypedPress\Js::numStr( $id ) ) ) );
+		// phpcs:enable WordPress.Security.EscapeOutput.ExceptionNotEscaped
 	}
 	return $row;
 }

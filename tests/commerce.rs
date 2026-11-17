@@ -56,8 +56,20 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
             "export const shop = store({currency:'EUR',country:'PL'}); export const orders=order({api:{create:true}});",
             "read-only",
         ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL'}); export const inventory=table({name:text()},{storageName:'store'});",
+            "store is reserved",
+        ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL'}); export const products=product({sync:'content/products/**/*.md'});",
+            "needs a hierarchical kind",
+        ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL'}); export const tags=productTag({sync:'content/tags/**/*.md'});",
+            "needs a hierarchical kind",
+        ),
     ] {
-        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,order}} from 'typedpress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,productTag,order,table,text}} from 'typedpress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
         let out = cli("check", project.path());
         assert!(!out.status.success(), "accepted {exports}");
         assert!(
@@ -150,6 +162,17 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
             .unwrap()
     };
     success(add());
+    let checkout = project.path().join("tp/app/(shop)/checkout/page.md");
+    let checkout_body = std::fs::read_to_string(&checkout).unwrap();
+    std::fs::write(
+        &checkout,
+        checkout_body.replace("woocommerce/checkout", "woocommerce/checkout-fields"),
+    )
+    .unwrap();
+    let refused = cli("check", project.path());
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("native Checkout Block"));
+    std::fs::write(checkout, checkout_body).unwrap();
     assert_eq!(
         std::fs::read_to_string(project.path().join("tp/app/layout.tsx")).unwrap(),
         layout
@@ -172,6 +195,15 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     )
     .unwrap();
     assert_eq!(manifest["requires"]["woocommerce"], ">=11.3.0");
+    std::fs::write(project.path().join("insert.ts"), "import type {RegisteredKinds} from 'typedpress'; const input:RegisteredKinds['products']['$inferInsert']={name:'New product'}; const name:string=input.name;").unwrap();
+    std::fs::write(project.path().join("tsconfig.json"), serde_json::to_vec(&serde_json::json!({"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"bundler","strict":true,"noEmit":true,"types":[],"paths":{"typedpress":[Path::new(env!("CARGO_MANIFEST_DIR")).join("types/typedpress/index.d.ts")]}},"include":["insert.ts","tp/_generated/db.d.ts"]})).unwrap()).unwrap();
+    success(
+        Command::new(std::env::var("TSC").unwrap_or_else(|_| "tsc".into()))
+            .arg("-p")
+            .arg(project.path())
+            .output()
+            .expect("tsc must be installed for generated insert contracts"),
+    );
     let out = Command::new("php")
         .args(["-d", "memory_limit=1G"])
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/commerce_test.php"))

@@ -768,7 +768,7 @@ pub fn gen_ts(schema: &Schema) -> String {
             php_str(kind),
             value,
             col.authored_not_null(),
-            col.authored_has_default(),
+            col.authored_has_default() || col.read_only,
             col.localized,
             col.primary_key
         )

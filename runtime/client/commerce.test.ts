@@ -12,6 +12,16 @@ test("cart money keeps exact minor units and currency precision", () => {
   assert.equal(wooDecimal("-5", 2), "-0.05");
   assert.throws(() => wooDecimal("1.2", 2));
 });
+test("cart fees retain Woo's distinct keys and exact amounts", async () => {
+  const client = createCartClient({ fetch: (async () => Response.json({ ...empty, fees: [
+    { key: 'handling', name: 'Handling', totals: { total: '125', total_tax: '25' } },
+    { key: 'gift', name: 'Gift wrap', totals: { total: '200', total_tax: '0' } },
+  ] })) as typeof fetch });
+  assert.deepEqual((await client.get()).fees, [
+    { id: 'handling', name: 'Handling', total: '1.25', totalTax: '0.25' },
+    { id: 'gift', name: 'Gift wrap', total: '2.00', totalTax: '0.00' },
+  ]);
+});
 test("cart writes initialize and rotate the Woo nonce in one cookie session, serialized", async () => {
   const calls: { url: string; init: RequestInit }[] = [];
   const client = createCartClient({ fetch: (async (url, init) => {

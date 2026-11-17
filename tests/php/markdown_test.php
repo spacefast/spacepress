@@ -112,6 +112,7 @@ eq('an escaped < is text, never an element', str_contains(Markdown::toBlocks("a 
 $nativeCheckout = '<!-- wp:woocommerce/checkout --><div class="wp-block-woocommerce-checkout"></div><!-- /wp:woocommerce/checkout -->';
 $nativeStored = Markdown::toBlocks("Before checkout.\n\n" . $nativeCheckout . "\n\nAfter checkout.");
 check('native blocks stay serialized between Markdown paragraphs', str_contains($nativeStored, $nativeCheckout) && substr_count($nativeStored, '<!-- wp:paragraph -->') === 2);
+problem('native page blocks cannot round-trip through a Markdown sync record', static fn () => Markdown::fromBlocks($nativeStored), 422, 'not_representable');
 $quotedBlock = Markdown::toBlocks("```html\n<!-- wp:woocommerce/checkout /-->\n```\n\n" . $nativeCheckout);
 check('serialized block examples inside fences remain code', str_contains($quotedBlock, '<!-- wp:code') && str_contains($quotedBlock, '&lt;!-- wp:woocommerce/checkout /--&gt;') && substr_count($quotedBlock, '<!-- wp:woocommerce/checkout') === 1);
 foreach (["Use `<!-- wp:woocommerce/checkout /-->` to add checkout.", "    <!-- wp:woocommerce/checkout /-->"] as $example) {

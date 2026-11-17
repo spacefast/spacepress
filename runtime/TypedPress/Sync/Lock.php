@@ -37,7 +37,8 @@ final class Lock
         }
         if ($spec['taxonomy'] ?? false) {
             $meta = $connection->wpdb()->termmeta;
-            return $connection->run("SELECT meta_value FROM `$meta` WHERE term_id = ? AND meta_key = '_tp_uid' FOR UPDATE", [$pk])[0]['meta_value'] ?? null;
+            $uid = $connection->run("SELECT meta_value FROM `$meta` WHERE term_id = ? AND meta_key = '_tp_uid' FOR UPDATE", [$pk])[0]['meta_value'] ?? null;
+            return $uid === null || $uid === '' ? null : (string) $uid;
         }
         if (Trash::postBacked($spec)) {
             $meta = $connection->wpdb()->postmeta;

@@ -348,7 +348,6 @@ final class Register
     {
         $k = self::kebab($name);
         $agents = (bool) ($spec['agents'] ?? true);
-        if (($spec['commerce'] ?? '') === 'order' && !\TypedPress\Wp\AgentScope::may('personal')) { $agents = false; }
         $rules = Access::collectionRules($spec);
         $row = JsonSchema::row($spec);
         $pk = $spec['columns'][$spec['primaryKey']]['type'] === 'integer' ? ['type' => 'integer'] : ['type' => 'string'];

@@ -80,18 +80,7 @@ final class Module
                 if (in_array($id, ['cod', 'bacs', 'cheque'], true)) { foreach (['option_', 'default_option_'] as $prefix) { add_filter($prefix . 'woocommerce_' . $id . '_settings', static fn ($settings) => array_replace(is_array($settings) ? $settings : [], ['enabled' => 'yes'])); } }
             }
         }
-        add_action('init', static function () use ($plugin): void {
-            $type = get_post_type_object('product'); if ($type) { $type->show_in_abilities = false; }
-            if (Runtime::installs()) { self::initialize($plugin); }
-            if (!Runtime::managed() && is_file($plugin->dir . '/tp/app/seed-version.php') && $plugin->unavailable() === null) {
-                $version = require $plugin->dir . '/tp/app/seed-version.php';
-                $key = 'tp_' . $plugin->schema->name() . '_seed';
-                if (get_option($key) !== $version) {
-                    \TypedPress\Sync\Seed::run($plugin, $plugin->dir . '/tp/app/seed');
-                    update_option($key, $version, false);
-                }
-            }
-        }, 20);
+        add_action('init', static fn () => self::onInit($plugin), 20);
         // Source-owned fields are visibly locked, including disabled v1 features.
         add_filter('woocommerce_get_settings_products', static fn ($settings) => self::settings($settings, $options), PHP_INT_MAX);
         foreach (['general', 'tax', 'accounts', 'email'] as $section) { add_filter('woocommerce_get_settings_' . $section, static fn ($settings) => self::settings($settings, $options), PHP_INT_MAX); }
@@ -105,8 +94,9 @@ final class Module
         }
         foreach (['pre_delete_post', 'pre_trash_post'] as $hook) { add_filter($hook, static fn ($check, $post) => $post instanceof \WP_Post && $post->ID === self::checkoutPage($plugin) ? false : $check, PHP_INT_MAX, 2); }
         add_filter('wp_insert_post_data', static function (array $data, array $input) use ($plugin): array {
-            if ((int) ($input['ID'] ?? 0) === self::checkoutPage($plugin) && !str_contains($data['post_content'] ?? '', '<!-- wp:woocommerce/checkout')) {
-                $data['post_content'] = get_post_field('post_content', (int) $input['ID']);
+            $id = (int) ($input['ID'] ?? 0);
+            if ($id > 0 && $id === self::checkoutPage($plugin) && !has_block('woocommerce/checkout', $data['post_content'] ?? '')) {
+                $data['post_content'] = get_post_field('post_content', $id);
             }
             return $data;
         }, PHP_INT_MAX, 2);
@@ -129,6 +119,30 @@ final class Module
         }, 0);
         foreach (['woocommerce_product_set_stock', 'woocommerce_product_set_stock_status'] as $hook) {
             add_action($hook, static function ($subject) use ($plugin): void { $id = $subject instanceof \WC_Product ? $subject->get_id() : (int) $subject; $post = get_post($id); if ($post) { \TypedPress\Wp\Purges::saved($plugin, $id, $post); self::changed($plugin, 'product', $id); } }, 10, 1);
+        }
+    }
+
+    /** Request-time installation keeps wp-admin usable on failure; managed initialization still throws. */
+    public static function onInit(Plugin $plugin): void
+    {
+        $type = get_post_type_object('product'); if ($type) { $type->show_in_abilities = false; }
+        try {
+            if (Runtime::installs()) { self::initialize($plugin); }
+            if (!Runtime::managed() && is_file($plugin->dir . '/tp/app/seed-version.php') && $plugin->unavailable() === null) {
+                $version = require $plugin->dir . '/tp/app/seed-version.php';
+                $key = 'tp_' . $plugin->schema->name() . '_seed';
+                if (get_option($key) !== $version) {
+                    \TypedPress\Sync\Seed::run($plugin, $plugin->dir . '/tp/app/seed');
+                    update_option($key, $version, false);
+                }
+            }
+        } catch (\Throwable $e) {
+            $problem = $e->getMessage();
+            $plugin->refuse($problem); \TypedPress\Wp\InstallMarker::forget();
+            error_log('[typedpress] ' . $problem);
+            add_action('admin_notices', static function () use ($problem): void {
+                if (current_user_can('manage_options')) { printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('TypedPress: ' . $problem)); }
+            });
         }
     }
 
@@ -251,11 +265,21 @@ final class Module
         }
         return $path;
     }
+    public static function downloadDirectory(string $file): string
+    {
+        try { $parent = (new \Automattic\WooCommerce\Internal\Utilities\URL($file))->get_parent_url(); }
+        catch (\Automattic\WooCommerce\Internal\Utilities\URLException $e) { throw \TypedPress\HttpError::invalidInput($e->getMessage(), '/downloads'); }
+        if (!is_string($parent) || mb_strlen(trailingslashit($parent)) > 256) { throw \TypedPress\HttpError::invalidInput('Downloads need a valid directory URL of at most 256 characters', '/downloads'); }
+        return $parent;
+    }
     public static function approveDownload(string $file): void
     {
         $register = wc_get_container()->get(\Automattic\WooCommerce\Internal\ProductDownloads\ApprovedDirectories\Register::class);
-        $parent = substr($file, 0, (int) strrpos($file, '/') + 1);
-        $id = $register->add_approved_directory($parent, true); $register->enable_by_id($id);
+        try {
+            $id = $register->add_approved_directory(self::downloadDirectory($file), true); $register->enable_by_id($id);
+        } catch (\Automattic\WooCommerce\Internal\Utilities\URLException | \Automattic\WooCommerce\Internal\ProductDownloads\ApprovedDirectories\ApprovedDirectoriesException $e) {
+            throw \TypedPress\HttpError::invalidInput($e->getMessage(), '/downloads');
+        }
     }
     public static function information(Plugin $plugin): array
     {

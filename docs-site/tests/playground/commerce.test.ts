@@ -148,6 +148,10 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   await page.getByRole('button', { name: 'Increase Ceramic mug quantity' }).click();
   await page.getByText('Total 63.00 EUR').waitFor();
   await expect(page.getByRole('button', { name: 'Increase Ceramic mug quantity' })).toBeFocused();
+  const miniCart = page.locator('shop-mini-cart a');
+  await miniCart.focus();
+  await page.evaluate(async () => { const client = await import('@typedpress/client'); await client.cart.get(); });
+  await expect(miniCart).toBeFocused();
   let quantityWrites = 0;
   const countQuantity = (request: { url(): string }) => { if (request.url().endsWith('/cart/update-item')) quantityWrites++; };
   page.on('request', countQuantity);
@@ -160,6 +164,16 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   assert.equal(quantityWrites, 1, 'controls stay disabled while a quantity write is pending');
   page.off('request', countQuantity);
   await page.getByRole('button', { name: 'Decrease Ceramic mug quantity' }).click();
+  await page.getByText('Total 63.00 EUR').waitFor();
+  await page.evaluate(async () => { const { cart } = await import('@typedpress/client'); const data = await cart.get(); await cart.update(data.items[0].key, 9); });
+  await expect(page.locator('shop-cart input[type=radio]')).toHaveCount(2);
+  const selectedRate = await page.locator('shop-cart input[type=radio]:checked').getAttribute('data-cart-control');
+  await page.route('**/cart/select-shipping-rate', route => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: 'shipping_failed', message: 'Try shipping again.' }) }));
+  await page.locator('shop-cart input[type=radio]:not(:checked)').check();
+  await expect(page.getByRole('alert')).toHaveText('Try shipping again.');
+  assert.equal(await page.locator('shop-cart input[type=radio]:checked').getAttribute('data-cart-control'), selectedRate);
+  await page.unroute('**/cart/select-shipping-rate');
+  await page.evaluate(async () => { const { cart } = await import('@typedpress/client'); const data = await cart.get(); await cart.update(data.items[0].key, 2); });
   await page.getByText('Total 63.00 EUR').waitFor();
   await page.getByLabel('Shipping country', { exact: true }).selectOption('DE');
   await page.getByLabel('Shipping postcode', { exact: true }).fill('10115');

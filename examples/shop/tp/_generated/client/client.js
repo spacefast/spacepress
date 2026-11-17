@@ -1330,7 +1330,7 @@ function wooCart(data) {
 			totals: { totalDiscount: decimal(coupon.totals.total_discount) }
 		})),
 		fees: (data.fees ?? []).map((fee) => ({
-			id: fee.id,
+			id: fee.key,
 			name: fee.name,
 			total: decimal(fee.totals.total),
 			totalTax: decimal(fee.totals.total_tax)

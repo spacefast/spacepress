@@ -122,6 +122,7 @@ final class Store implements \TypedPress\Store
     {
         $setters = ['name' => 'name', 'slug' => 'slug', 'description' => 'description', 'shortDescription' => 'short_description', 'sku' => 'sku', 'price' => 'regular_price', 'virtual' => 'virtual', 'downloadable' => 'downloadable', 'categories' => 'category_ids', 'tags' => 'tag_ids'];
         try {
+            $downloads = null;
             foreach ($values as $key => $value) {
                 if (isset($setters[$key])) { $p->{'set_' . $setters[$key]}(in_array($key, ['virtual', 'downloadable'], true) ? (bool) $value : ($value ?? '')); }
                 elseif ($key === 'uid') { $p->update_meta_data('_tp_uid', $value); }
@@ -133,10 +134,15 @@ final class Store implements \TypedPress\Store
                         if (isset($seen[$entry['id']]) || $entry['id'] === '') { throw HttpError::invalidInput('Download ids must be nonempty and unique', '/downloads'); }
                         $seen[$entry['id']] = true;
                         $d = new \WC_Product_Download(); $d->set_id($entry['id']); $d->set_name($entry['name']); $d->set_file($entry['file']);
-                        Module::approveDownload($entry['file']); $downloads[] = $d;
+                        Module::downloadDirectory($entry['file']); $downloads[] = $d;
                     }
-                    $p->set_downloads($downloads);
                 }
+            }
+            if ($downloads !== null) {
+                // Woo validates approved directories in set_downloads, so approval must precede
+                // that setter. All input is checked first; the shared write transaction owns both.
+                foreach ($downloads as $download) { Module::approveDownload($download->get_file()); }
+                $p->set_downloads($downloads);
             }
             if (!$p->get_id() && !isset($values['status'])) { $p->set_status('publish'); }
             $this->db->core(static fn () => $p->save());

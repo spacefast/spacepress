@@ -169,6 +169,11 @@ eq('site id is stable', req('GET', '/_schema')[1]['site']['id'], $described['sit
 
 // ================================================================ push: create, unchanged, stale, normalized
 
+$nativeUid = 'zr_bbbbbbbbbbbbbbbbbbbb';
+$nativeRecord = ['uid' => $nativeUid, 'fields' => ['title' => 'Native block'], 'body' => '<!-- wp:woocommerce/checkout /-->'];
+isProblem('unrepresentable native blocks are refused before a sync insert', req('POST', '/sync/notes', ['record' => $nativeRecord, 'expect' => 'absent']), 422, 'not_representable');
+eq('the refused native block was never stored', $db->findFirst('notes', ['where' => ['uid' => $nativeUid]]), null);
+
 $noteUid = 'zr_aaaaaaaaaaaaaaaaaaaa';
 $record = ['uid' => $noteUid, 'fields' => ['title' => 'TypedPress', 'slug' => 'first', 'meta' => ['b' => 1, 'a' => [true]], 'authorId' => $ada['uid'], 'status' => 'draft', 'publishedAt' => null],
     'body' => "# Hello\n\nWorld.\n"];

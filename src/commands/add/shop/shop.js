@@ -3,7 +3,8 @@ const element = (name, text, className) => { const e = document.createElement(na
 const amount = (value, currency) => `${value} ${currency}`;
 class MiniCart extends HTMLElement {
   connectedCallback() {
-    const show = data => { const link = element('a', `Cart (${data.itemsCount})`); link.href = '/cart'; this.replaceChildren(link); };
+    const link = this.querySelector('a') || this.appendChild(element('a')); link.href = '/cart';
+    const show = data => { link.textContent = `Cart (${data.itemsCount})`; };
     this.stop = cart.subscribe(show); cart.get().catch(() => {});
   }
   disconnectedCallback() { this.stop?.(); }
@@ -33,10 +34,11 @@ class Cart extends HTMLElement {
     this.focusControl = this.contains(document.activeElement) ? document.activeElement.dataset.cartControl : undefined;
     for (const control of this.querySelectorAll('button,input,select')) control.disabled = true;
     try { await action(); }
-    catch (error) { const message = element('p', error.message, 'shop-error'); message.setAttribute('role', 'alert'); this.appendChild(message); }
+    catch (error) { if (this.data) this.render(this.data); const message = element('p', error.message, 'shop-error'); message.setAttribute('role', 'alert'); this.appendChild(message); }
     finally { this.busy = false; for (const control of this.querySelectorAll('button,input,select')) control.disabled = false; this.focusControl = undefined; }
   }
   render(data) {
+    this.data = data;
     const focus = this.focusControl || (this.contains(document.activeElement) ? document.activeElement.dataset.cartControl : undefined);
     const previousCountry = this.querySelector('[aria-label="Shipping country"]');
     const previousPostcode = this.querySelector('[name="postcode"]');

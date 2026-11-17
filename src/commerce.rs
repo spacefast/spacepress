@@ -25,7 +25,11 @@ pub fn store(config: &IndexMap<String, Value>, schema: &mut Schema, span: Span) 
     };
     let data = to_json(&value.config).ok_or_else(|| Diag::new(value.span, "store settings must be static data"))?;
     validate_store(&data).map_err(|e| Diag::new(value.span, e))?;
-    if schema.collections.values().any(|c| c.key == "store") {
+    if schema
+        .collections
+        .values()
+        .any(|c| c.key == "store" || c.table == "store")
+    {
         return Err(Diag::new(span, "store is reserved for the store information API"));
     }
     schema.store = Some(data);
@@ -282,10 +286,15 @@ pub fn kind(value: &CollectionVal, schema: &mut Schema) -> Result<()> {
         }
     }
     if let Some(pattern) = o.get("sync") {
-        c.sync = Some(crate::extract::sync_config(
+        let sync = crate::extract::sync_config(
             text(Some(pattern), "sync").map_err(|e| Diag::new(value.span, e))?,
             value.span,
-        )?);
+        )?;
+        if sync["nested"] == true && !c.hierarchical {
+            return Err(Diag::new(value.span, "a `**` sync pattern needs a hierarchical kind")
+                .help("use a flat pattern such as content/products/*.md"));
+        }
+        c.sync = Some(sync);
     }
     if let Some(url) = o.get("url") {
         let url = text(Some(url), "url").map_err(|e| Diag::new(value.span, e))?;
@@ -607,7 +616,7 @@ pub fn pages(schema: &Schema, span: Span) -> Result<()> {
             format!("commerce checkout needs a page.md at {checkout}"),
         ));
     };
-    if page.status() != "publish" || !page.body.contains("<!-- wp:woocommerce/checkout") {
+    if page.status() != "publish" || !page.body.contains("<!-- wp:woocommerce/checkout ") {
         return Err(Diag::new(
             span,
             "the checkout page must be public and contain Woo's native Checkout Block",

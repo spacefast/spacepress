@@ -246,7 +246,12 @@ final class Wire
 
     private static function bodyIn(array $spec, string $body): string
     {
-        return self::markdown($spec) ? Markdown::toBlocks($body) : $body;
+        if (!self::markdown($spec)) { return $body; }
+        $blocks = Markdown::toBlocks($body);
+        // A Markdown sync record must be readable again before any write or hook runs.
+        // Native page.md blocks use toBlocks directly; nonrepresentable sync content uses *.html.
+        Markdown::fromBlocks($blocks);
+        return $blocks;
     }
 
     /** uid of each referenced row, per reference column; rows without one get one now. */

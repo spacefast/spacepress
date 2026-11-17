@@ -47,6 +47,17 @@ $originalCheckout = get_post_field('post_content', $checkout);
 wp_update_post(['ID' => $checkout, 'post_content' => 'Removed checkout']);
 eq('an editor cannot remove the Checkout Block', get_post_field('post_content', $checkout), $originalCheckout);
 eq('checkout cannot be trashed', wp_trash_post($checkout), false);
+wp_update_post(['ID' => $checkout, 'post_content' => '<!-- wp:woocommerce/checkout-fields /-->']);
+eq('a similarly named block cannot replace checkout', get_post_field('post_content', $checkout), $originalCheckout);
+$checkoutRoute = get_post_meta($checkout, \TypedPress\Wp\ContentPages::META, true);
+delete_post_meta($checkout, \TypedPress\Wp\ContentPages::META);
+$newPage = wp_insert_post(['post_type' => 'page', 'post_status' => 'draft', 'post_title' => 'Before checkout', 'post_content' => 'Keep this new content.']);
+eq('new content survives when no checkout Page exists', get_post_field('post_content', $newPage), 'Keep this new content.');
+update_post_meta($checkout, \TypedPress\Wp\ContentPages::META, $checkoutRoute); wp_delete_post($newPage, true);
+$unidentifiedTerm = wp_insert_term('Empty UID term', 'product_cat')['term_id'];
+add_term_meta($unidentifiedTerm, '_tp_uid', '');
+eq('an empty term UID is treated as missing', $db->transaction(static fn () => \TypedPress\Sync\Lock::uid('categories', $unidentifiedTerm)), null);
+wp_delete_term($unidentifiedTerm, 'product_cat');
 $zoneIds = array_keys($zones);
 $methodIds = array_map(static fn ($z) => array_keys($z['shipping_methods']), $zones);
 \TypedPress\Commerce\Module::initialize($plugin);
@@ -87,6 +98,11 @@ eq('repeat deploy preserves merchant price edits', wc_get_product($mug['id'])->g
 eq('repeat deploy preserves operational stock', wc_get_product($mug['id'])->get_stock_quantity(), 2);
 eq('repeat deploy preserves download ids', array_keys(wc_get_product($guide['id'])->get_downloads()), ['field-guide']);
 check('repeat deploy creates nothing', array_sum(array_column($seed, 'created')) === 0);
+$directories = wc_get_container()->get(\Automattic\WooCommerce\Internal\ProductDownloads\ApprovedDirectories\Register::class);
+$approvalCount = $directories->count(true);
+problem('oversized download directories are input errors', fn () => $db->insert('products', ['name' => 'Bad download', 'downloadable' => true, 'downloads' => [['id' => 'bad', 'name' => 'Bad', 'file' => 'https://example.test/' . str_repeat('a', 260) . '/file.pdf']]], true, $admin), 422, 'invalid_input', '/downloads');
+problem('a later invalid field prevents download approval', fn () => $db->insert('products', ['name' => 'Bad SKU', 'downloads' => [['id' => 'later', 'name' => 'Later', 'file' => 'https://not-approved.example.test/file.pdf']], 'sku' => 'MUG-BLUE'], true, $admin), 422, 'product_invalid_sku');
+eq('failed product writes leave no approved directories', $directories->count(true), $approvalCount);
 $order = wc_create_order();
 $order->add_product(wc_get_product($guide['id']), 1);
 $order->set_billing_email('buyer@example.test'); $order->set_billing_first_name('Test'); $order->set_billing_last_name('Buyer');
@@ -148,9 +164,10 @@ eq('explicit sync retirement uses Woo CRUD and its lifecycle hook', [get_post_st
 // A stock update bypasses post save; both the product and any page that listed it must purge.
 $purged = [];
 add_action('tp_purge_urls', static function ($urls) use (&$purged): void { $purged = array_merge($purged, $urls); });
+$stocked = wc_get_product($guide['id']); $stocked->set_manage_stock(true); $stocked->save();
+\TypedPress\Wp\Purges::flush(); $purged = [];
 \TypedPress\Render\Cache::record('/products/field-guide', ['products' => ['ids' => [$guide['id']], 'listed' => false]]);
 \TypedPress\Render\Cache::record('/catalog-stock-test', ['products' => ['ids' => [], 'listed' => true]]);
-$stocked = wc_get_product($guide['id']); $stocked->set_manage_stock(true); $stocked->save();
 wc_update_product_stock($stocked, 3);
 \TypedPress\Wp\Purges::flush();
 $purgedPaths = array_map(static fn ($url) => rtrim($url, '/'), $purged);
@@ -186,6 +203,14 @@ eq('personal grant permits authorized order reads', $request('/__tp/api/v1/order
 eq('even a personal write agent cannot use Woo REST', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('even a personal write agent cannot use Woo core aliases', $request('/wp-json/wp/v2/product')[0], 403);
 eq('orders remain read-only with every grant', $request('/__tp/api/v1/orders', 'POST', [])[0], 405);
+// A request-time install failure refuses TypedPress and leaves core admin available for repairs.
+\TypedPress\Wp\InstallMarker::forget(); delete_option('tp_shop_shipping');
+add_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
+\TypedPress\Commerce\Module::onInit($plugin);
+check('request installation failure is caught and remains retryable', str_contains($plugin->unavailable() ?? '', 'Could not add source shipping method') && !get_option(\TypedPress\Wp\InstallMarker::OPTION));
+remove_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
+\TypedPress\Commerce\Module::initialize($plugin);
+eq('repair can finish shipping installation after the request failure', \TypedPress\Commerce\Module::plan($plugin), []);
 $log = $site->debugLog();
 check('commerce runtime has no PHP warnings or fatal errors', !preg_match('/PHP (Warning|Fatal error):/', $log), $log);
 finish('commerce');

@@ -97,6 +97,7 @@ foreach ( \TypedPress\Wp\Runtime::plugin()->schema->collections() as $name => $c
     $type = isset( $collection['wp']['postType'] ) ? get_post_type_object( $collection['wp']['postType'] ) : null;
     if ( $type && $type->show_in_rest ) {
         $terms = array();
+        $rest_terms = true;
         foreach ( $collection['columns'] as $column => $def ) {
             if ( ! \TypedPress\Wp\PostMeta::terms( $def ) ) {
                 continue;
@@ -105,7 +106,15 @@ foreach ( \TypedPress\Wp\Runtime::plugin()->schema->collections() as $name => $c
             $taxonomy = get_taxonomy( $target['wp']['taxonomy'] );
             if ( $taxonomy && $taxonomy->show_in_rest ) {
                 $terms[ $column ] = $taxonomy->rest_base ?: $taxonomy->name;
+            } else {
+                // Keep this collection on TypedPress's form/API: core REST cannot
+                // represent every assignment, and terms are never post meta.
+                $rest_terms = false;
+                break;
             }
+        }
+        if ( ! $rest_terms ) {
+            continue;
         }
         $tp_admin_native[ $name ] = array( 'postType' => $type->name, 'terms' => $terms, 'path' => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ) );
     }

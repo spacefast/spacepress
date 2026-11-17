@@ -30,9 +30,21 @@ PORT
   # Keep the mount stable, even if a caller later rebuilds the source artifact.
   mkdir -p "$run_root/wp-content"
   cp -a "$run_root/app/tp/dist/wp-content/." "$run_root/wp-content/"
+  mkdir -p "$run_root/wp-content/plugins/coediting-non-rest-taxonomy"
+  cp "$here/non-rest-taxonomy.php" "$run_root/wp-content/plugins/coediting-non-rest-taxonomy/coediting-non-rest-taxonomy.php"
   export TP_WP_CONTENT="$run_root/wp-content"
   printf 'project=%s\nport=%s\ncontent=%s\nreceipt=%s\n' "$TP_WP_PROJECT" "$TP_WP_PORT" "$TP_WP_CONTENT" "$TP_WP_HARNESS" > "$run_root/ownership.txt"
   "$repo/tests/wp/harness.sh" up --wp-content "$TP_WP_CONTENT" > "$TP_WP_HARNESS"
+  "$repo/tests/wp/harness.sh" wp plugin activate coediting-non-rest-taxonomy >/dev/null
+  initial_tag="$("$repo/tests/wp/harness.sh" wp term create tp_hidden_tags 'Initial fixture tag' --porcelain)"
+  replacement_tag="$("$repo/tests/wp/harness.sh" wp term create tp_hidden_tags 'Replacement fixture tag' --porcelain)"
+  python3 - "$TP_WP_HARNESS" "$initial_tag" "$replacement_tag" <<'TAGS'
+import json,sys
+receipt = json.load(open(sys.argv[1]))
+receipt['coeditingTags'] = {'initial': int(sys.argv[2]), 'replacement': int(sys.argv[3])}
+with open(sys.argv[1], 'w') as output:
+    json.dump(receipt, output)
+TAGS
   "$repo/tests/wp/harness.sh" wp option update gutenberg-experiments '{"gutenberg-real-time-collaboration":true}' --format=json >/dev/null
   echo "Coediting local stack retained: $run_root/ownership.txt"
 else

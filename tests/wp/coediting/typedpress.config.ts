@@ -1,4 +1,7 @@
-import { collection, db, defineConfig, integer, richText, table, text } from "typedpress";
+import { collection, db, defineConfig, integer, richText, table, taxonomy, terms, text } from "typedpress";
+
+export const hiddenTags = taxonomy({});
+export const articles = collection({ title: text(), labels: terms(hiddenTags) });
 
 export const edits = table({
   documentId: integer(), title: text(), summary: text().optional(), actor: text(),

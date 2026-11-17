@@ -101,12 +101,37 @@ check('upstream collaboration experiment is enabled', wp_is_collaboration_enable
 check('the unrestricted collection is eligible', Coediting::eligible('documents'));
 check('eligible collection is enabled for the upstream editor', !wp_is_post_type_collaboration_disabled('tp_documents'));
 check('field-restricted collection is disabled for the upstream editor', wp_is_post_type_collaboration_disabled('tp_fieldread'));
+check('a create-only editor uses ordinary editing', wp_is_post_type_collaboration_disabled('tp_noupdate'));
 $postType = get_post_type_object('tp_documents');
 $namespace = $postType->rest_namespace;
 $postType->rest_namespace = 'custom/v1';
 check('a custom REST namespace cannot opt into collaboration', !Coediting::eligible('documents'));
 check('a custom REST namespace cannot authorize opaque meta', !Coediting::authorizeMeta(true, Coediting::DOCUMENT, $pid));
 $postType->rest_namespace = $namespace;
+wp_set_current_user(0);
+
+// Core's Add New editor already owns a post ID before its first save.
+$createOnly = (int) wp_insert_post(['post_type' => 'tp_noupdate', 'post_status' => 'auto-draft',
+    'post_author' => $site->userId('editor'), 'post_title' => '']);
+eq('a create-only editor can still make an ordinary first save', native('POST', "/wp/v2/tp_noupdate/$createOnly",
+    ['title' => 'Created without collaboration', 'status' => 'draft'])->get_status(), 200);
+$auto = (int) wp_insert_post(['post_type' => 'tp_documents', 'post_status' => 'auto-draft',
+    'post_author' => $site->userId('editor'), 'post_title' => '']);
+$autoRoom = "postType/tp_documents:$auto";
+refused('another user cannot join an authors auto-draft', native('POST', '/wp-sync/v1/updates',
+    ['rooms' => [pollRoom($autoRoom)]], 'admin'), [$autoRoom]);
+eq('the author can start their own auto-draft room', native('POST', '/wp-sync/v1/updates',
+    ['rooms' => [pollRoom($autoRoom)]])->get_status(), 200);
+$firstSave = native('POST', "/wp/v2/tp_documents/$auto", [
+    'title' => 'First collaborative save', 'status' => 'draft',
+    'content' => '<p>First body</p>', 'meta' => [Coediting::DOCUMENT => 'first document', 'excerpt' => 'First field'],
+]);
+eq('the authors first save accepts content fields and CRDT state together',
+    [$firstSave->get_status(), $firstSave->get_data()['title']['raw'] ?? null,
+        $firstSave->get_data()['meta']['excerpt'] ?? null, get_post($auto)->post_status],
+    [200, 'First collaborative save', 'First field', 'draft']);
+$site->actAs('editor');
+eq('the first save persists the authorized CRDT document', get_post_meta($auto, Coediting::DOCUMENT, true), 'first document');
 wp_set_current_user(0);
 
 // Core post roles keep separate publishing authority, even among trusted HTML editors.
@@ -229,7 +254,7 @@ check('fresh schema fingerprint is available', preg_match('/^[a-f0-9]{64}$/D', $
 $freshHeaders = [Coediting::HEADER . ': ' . json_encode(['tp_documents' => $freshFingerprint])];
 [$status, $data] = httpNative('POST', '/wp-sync/v1/updates', ['rooms' => [pollRoom($room, 303)]], $site->appPassword('editor'), $freshHeaders);
 eq('new schema starts an empty relay namespace', [$status, $data['rooms'][0]['updates'] ?? null], [200, []]);
-eq('previous schema relay history is retained', $site->sql("SELECT p.ID, m.meta_key, m.meta_value FROM {prefix}posts p LEFT JOIN {prefix}postmeta m ON m.post_id = p.ID WHERE p.post_type = 'wp_sync_storage' AND p.ID IN (SELECT post_id FROM {prefix}postmeta WHERE meta_key = 'wp_sync_update_data') ORDER BY p.ID, m.meta_id"), array_values(array_filter($storageBefore, static fn ($row) => in_array($row['meta_key'], ['wp_sync_update_data', 'wp_sync_awareness_state'], true))));
+eq('previous schema relay history is retained', $site->sql("SELECT p.ID, m.meta_key, m.meta_value FROM {prefix}posts p JOIN {prefix}postmeta m ON m.post_id = p.ID WHERE p.post_type = 'wp_sync_storage' AND m.meta_key = 'wp_sync_update_data' ORDER BY p.ID, m.meta_id"), array_values(array_filter($storageBefore, static fn ($row) => $row['meta_key'] === 'wp_sync_update_data')));
 [$status, $autosave] = httpNative('POST', "/wp/v2/tp_documents/$pid/autosaves", ['title' => 'Autosaved new schema', 'content' => '<!-- wp:paragraph --><p>Changed body</p><!-- /wp:paragraph -->', 'crdt_snapshot' => 'new schema autosave'], $site->appPassword('editor'), $freshHeaders);
 check('upstream creates a revision autosave under the new schema', $status >= 200 && $status < 300 && ($autosave['id'] ?? $pid) !== $pid, ['status' => $status, 'data' => $autosave]);
 $probe = 'require ' . var_export(__DIR__ . '/wp.php', true) . '; wpLoad(' . var_export($site->dir, true) . '); wp_set_current_user(' . $site->userId('editor') . '); echo get_post_meta(' . (int) ($autosave['id'] ?? 0) . ', \\TypedPress\\Wp\\Coediting::SNAPSHOT, true);';

@@ -112,6 +112,9 @@ field access rules at any depth, and reference, media, file, or reference-list
 fields disable collaboration for the collection. Ordinary editing remains
 available.
 
+Only the author can join an auto-draft before its first save. A user who can
+create records but cannot update them keeps ordinary editing.
+
 These restrictions apply on the server to both sync endpoints and persisted
 documents. The relay contains opaque Yjs updates, so TypedPress cannot redact
 individual fields or authorize each participant's changes inside them. Hooks
@@ -158,6 +161,8 @@ media details, with crop/rotate/flip tools and WordPress-native image saving. Ty
 editor with typed native REST fields and TypedPress's existing authorization.
 Taxonomy assignments use their native taxonomy properties; classic wp-admin
 continues to use Secure Custom Fields.
+If a plugin hides a referenced taxonomy from core REST, the collection uses
+TypedPress's normal form and API to preserve its assignments.
 Database tables use TypedPress's table forms and relation pickers. Hiding navigation
 never grants or revokes access: the server remains the authority.
 

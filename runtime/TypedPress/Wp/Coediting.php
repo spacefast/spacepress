@@ -44,12 +44,15 @@ final class Coediting
         $spec = $plugin->schema->collection($collection);
         $rules = Access::collectionRules($spec);
         $type = isset($spec['wp']['postType']) ? get_post_type_object($spec['wp']['postType']) : null;
+        $viewer = CoreAccess::viewer();
 
         // Native posts retain core's role-specific publish/author capabilities. A peer's
         // save must not lend that authority to another participant's opaque updates.
         return !($spec['native'] ?? false) && $type !== null && ($type->rest_namespace ?: 'wp/v2') === 'wp/v2'
             && ($spec['content'] ?? null) !== null
-            && !isset($rules['read']['fn']) && !isset($rules['update']['fn']) && self::fields($spec['columns']);
+            && !isset($rules['read']['fn']) && !isset($rules['update']['fn']) && self::fields($spec['columns'])
+            && $viewer !== null && Access::evaluate($rules['read'], $viewer, 'read') === true
+            && Access::evaluate($rules['update'], $viewer, 'update') === true;
     }
 
     private static function fields(array $fields): bool
@@ -81,7 +84,8 @@ final class Coediting
         $type = Plugin::instance()->schema->collection($collection)['wp']['postType'];
 
         return $post instanceof \WP_Post && $post->post_type === $type && $post->post_password === ''
-            && in_array($post->post_status, ['draft', 'pending', 'publish', 'future', 'private'], true)
+            && (in_array($post->post_status, ['draft', 'pending', 'publish', 'future', 'private'], true)
+                || ($post->post_status === 'auto-draft' && (int) $post->post_author === $viewer->user['id']))
             && current_user_can('edit_post', $id)
             && CoreAccess::covers($collection, 'read', $id, $viewer)
             && CoreAccess::covers($collection, 'update', $id, $viewer);

@@ -140,6 +140,10 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 		await expect(title(pages[1])).toHaveText(`Shared title ${run}`);
 		await expect(paragraph(pages[1])).toContainText(`editor-${run}`);
 		await expect(paragraph(pages[1])).toContainText(`admin-${run}`);
+		await title(pages[1]).fill(`Rejoined title ${run}`);
+		await expect(title(pages[0])).toHaveText(`Rejoined title ${run}`);
+		const afterRejoin = await request.get(`${site}/wp-json/wp/v2/tp_documents/${id}?context=edit`, { headers: auth('admin') });
+		expect(object(object(await afterRejoin.json()).title).raw).toBe(`Shared title ${run}`);
 		expect(successfulSyncHeaders.length).toBeGreaterThan(0);
 		expect(failedSync).toEqual([]);
 		expect(errors).toEqual([]);
@@ -148,4 +152,33 @@ test('upstream collaboration merges simultaneous text edits, shares fields, and 
 	} finally {
 		await Promise.all(contexts.map((context) => context.close()));
 	}
+});
+
+test('a taxonomy without core REST keeps its assignments through the TypedPress form transport', async ({ page, request }) => {
+	const run = Date.now();
+	const tags = object(harness.coeditingTags);
+	if (typeof tags.initial !== 'number' || typeof tags.replacement !== 'number')
+		throw new Error('Expected the fixture terms seeded by WP-CLI without REST.');
+	const ids = [tags.initial, tags.replacement];
+	const created = await request.post(`${site}/__tp/api/v1/articles`, {
+		headers: auth('admin'), data: { title: `Taxonomy ${run}`, labels: [ids[0]] },
+	});
+	expect(created.status(), await created.text()).toBe(201);
+	const article = object(object(await created.json()).data);
+	if (typeof article.id !== 'number') throw new Error('Expected a fixture article id.');
+	await page.goto(`${site}/wp-login.php`);
+	await submitSignIn(page, 'admin', 'typedpress-test-admin');
+	await page.goto(`${site}/wp-admin/new/collections/articles/${article.id}`);
+	await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(`Taxonomy ${run}`);
+	const result = await page.evaluate(async ({ id, replacement }) => {
+		const moduleName = '@typedpress-admin/schema';
+		const api: typeof import('../packages/schema/src/api') = await import(moduleName);
+		const spec = await api.collectionSpec('articles');
+		const before = await api.read(spec, String(id));
+		const after = await api.save(spec, { labels: [replacement] }, String(id));
+		return { before: before.row.labels, after: after.labels, native: api.native('articles') ?? null };
+	}, { id: article.id, replacement: ids[1] });
+	expect(result).toEqual({ before: [ids[0]], after: [ids[1]], native: null });
+	const saved = await request.get(`${site}/__tp/api/v1/articles/${article.id}`, { headers: auth('admin') });
+	expect(object(object(await saved.json()).data).labels).toEqual([ids[1]]);
 });

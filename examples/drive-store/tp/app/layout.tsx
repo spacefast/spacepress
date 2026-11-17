@@ -22,11 +22,11 @@ export default async function RootLayout({ children }: LayoutProps) {
   return (
     <div className="shell">
       <header className="top">
-        <Link href="/" className="brand"><span className="platter" aria-hidden="true"></span>{shop.shopName}</Link>
+        <Link href="/" className="brand" prefetch><span className="platter" aria-hidden="true"></span>{shop.shopName}</Link>
         <nav className="nav">
-          <Link href="/">Catalog</Link>
-          <Link href="/orders">My orders</Link>
-          <Link href="/staff">Staff</Link>
+          <Link href="/" prefetch>Catalog</Link>
+          <Link href="/orders" prefetch>My orders</Link>
+          <Link href="/staff" prefetch>Staff</Link>
           <a href="/?feed=rss2&post_type=tp_drives">RSS</a>
         </nav>
         <p className="who">{signedIn ? <a href="/wp-login.php?action=logout">Sign out</a> : <a href="/wp-login.php">Sign in</a>}</p>

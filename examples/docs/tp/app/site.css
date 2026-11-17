@@ -1,11 +1,13 @@
-:root { --ink: #1f2328; --muted: #59636e; --line: #d1d9e0; --accent: #0969da; --bg: #fff; }
-@media (prefers-color-scheme: dark) { :root { --ink: #e6edf3; --muted: #9198a1; --line: #3d444d; --accent: #4493f8; --bg: #0d1117; } }
-body.typedpress-app { margin: 0; color: var(--ink); background: var(--bg); font: 16px/1.6 system-ui, sans-serif; }
+.typedpress-app {
+  --ink: var(--tp--color--foreground); --bg: var(--tp--color--background); --accent: var(--tp--color--link);
+  --muted: color-mix(in srgb, var(--ink) 62%, var(--bg));
+  --line: color-mix(in srgb, var(--ink) 18%, var(--bg));
+}
 .typedpress-app :where(a) { color: var(--accent); }
-.masthead { display: flex; justify-content: space-between; padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--line); }
+.masthead { display: flex; justify-content: space-between; padding: calc(var(--tp--spacing--block) / 2) var(--tp--spacing--page); border-bottom: 1px solid var(--line); }
 .masthead nav a { margin-left: 1rem; }
-.home, .docs { max-width: 72rem; margin: 0 auto; padding: 1.5rem; }
-.docs { display: grid; grid-template-columns: 14rem minmax(0, 1fr) 12rem; gap: 2rem; }
+.home, .docs { max-width: var(--tp--width--wide); margin: 0 auto; padding: var(--tp--spacing--block) 0; }
+.docs { display: grid; grid-template-columns: 14rem minmax(0, 1fr) 12rem; gap: var(--tp--spacing--block); }
 .sidebar ul { list-style: none; margin: 0; padding-left: 0.75rem; }
 .sidebar > ul { padding-left: 0; }
 .sidebar .current > a { font-weight: 600; color: var(--ink); }

@@ -14,6 +14,7 @@ namespace TypedPress\Wp;
 final class ThemeStyles
 {
     public const FILE = 'tp/app/theme.json';
+    private const HANDLE = 'typedpress-theme';
 
     /** @var array<string, mixed>|null the shipped document, read once */
     private static ?array $data = null;
@@ -38,6 +39,52 @@ final class ThemeStyles
     public static function merge(\WP_Theme_JSON_Data $theme): \WP_Theme_JSON_Data
     {
         return self::$data === null ? $theme : $theme->update_with(self::$data);
+    }
+
+    /** Current theme and owner styles, available to app CSS and the generated Tailwind utilities. */
+    public static function enqueue(): void
+    {
+        if (wp_style_is(self::HANDLE, 'enqueued')) {
+            return;
+        }
+        $styles = [
+            'color--background' => [['color', 'background'], 'Canvas'],
+            'color--foreground' => [['color', 'text'], 'CanvasText'],
+            'color--link' => [['elements', 'link', 'color', 'text'], 'var(--tp--color--foreground)'],
+            'font-family--body' => [['typography', 'fontFamily'], 'inherit'],
+            'font-size--body' => [['typography', 'fontSize'], 'inherit'],
+            'line-height--body' => [['typography', 'lineHeight'], 'inherit'],
+            'spacing--block' => [['spacing', 'blockGap'], '1.5rem'],
+            'spacing--page' => [['spacing', 'padding', 'left'], '1.25rem'],
+        ];
+        $css = '';
+        foreach ($styles as $name => [$path, $fallback]) {
+            $value = wp_get_global_styles($path);
+            // A two-axis block gap uses its vertical spacing for the app's gap scale.
+            if ($name === 'spacing--block' && is_array($value)) {
+                $value = $value['top'] ?? null;
+            }
+            $css .= self::declaration('--tp--' . $name, $value, $fallback);
+        }
+        foreach (['content' => '40rem', 'wide' => '64rem'] as $name => $fallback) {
+            $css .= self::declaration('--tp--width--' . $name, wp_get_global_settings(['layout', $name . 'Size']), $fallback);
+        }
+        wp_register_style(self::HANDLE, false, [], null);
+        wp_enqueue_style(self::HANDLE);
+        wp_add_inline_style(self::HANDLE, 'body.typedpress-app{' . $css . '}');
+    }
+
+    /** Theme data crosses into an inline stylesheet here, so reject extra declarations and markup. */
+    private static function declaration(string $name, mixed $value, string $fallback): string
+    {
+        if (is_int($value) || is_float($value)) {
+            $value = (string) $value;
+        }
+        $css = is_string($value) && $value !== '' && strpbrk($value, ';{}<>') === false
+            ? safecss_filter_attr($name . ':' . $value)
+            : '';
+
+        return ($css === '' ? $name . ':' . $fallback : $css) . ';';
     }
 
     /**

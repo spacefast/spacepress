@@ -30,11 +30,11 @@ export default async function Drive({ item, search }: PageProps<"drives/[slug]",
   const switchTo = otherRow && otherRow.slug ? `/drives/${otherRow.slug}` : inLang(`/drives/${item.slug ?? ""}`, other);
   return (
     <>
-      <p className="crumbs">{lang === "en" ? <Link href="/">{w.back}</Link> : <a href={inLang("/", lang)}>{w.back}</a>}</p>
+      <p className="crumbs"><Link href={inLang("/", lang)} prefetch>{w.back}</Link></p>
       <article className="product">
         <div>
           <h1>{drive.name}</h1>
-          <p className="lang"><a href={switchTo}>{w.language}</a></p>
+          <p className="lang"><Link href={switchTo} prefetch>{w.language}</Link></p>
           {drive.summary ? <p className="lede">{drive.summary}</p> : null}
           <dl className="facts">
             <dt>{w.capacity}</dt><dd>{size(item.capacityGb)} {mediaName(item.media)}</dd>

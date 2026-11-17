@@ -23,7 +23,7 @@ export default async function Catalog({ search }: PageProps<"/", Search>) {
         <h1>{lang === "tr" ? "Test edilmiş ikinci el diskler" : "Tested, graded, second-hand drives"}</h1>
         <p className="muted">{w.demo}</p>
         <p className="lang">
-          {lang === "tr" ? <Link href="/">{w.language}</Link> : <a href="/?language=tr">{w.language}</a>}
+          {lang === "tr" ? <Link href="/" prefetch>{w.language}</Link> : <Link href="/?language=tr" prefetch>{w.language}</Link>}
         </p>
       </section>
 
@@ -44,7 +44,7 @@ export default async function Catalog({ search }: PageProps<"/", Search>) {
       <ul className="cards">
         {rows.map((d) => (
           <li className="card">
-            <h2><a href={d.href}>{d.name}</a></h2>
+            <h2><Link href={d.href} prefetch>{d.name}</Link></h2>
             <p className="muted">{d.brand} {d.model} · {size(d.capacityGb)} {mediaName(d.media)}</p>
             {d.summary ? <p>{d.summary}</p> : null}
             <p className="row">

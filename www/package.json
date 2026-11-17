@@ -5,6 +5,7 @@
   "scripts": {
     "build": "bun scripts/build.mjs",
     "test": "node --test tests/site.test.mjs",
+    "test:wordpress": "node --test tests/wordpress-integration.test.mjs",
     "seed": "node scripts/seed.mjs"
   },
   "dependencies": {
@@ -12,6 +13,8 @@
     "@pierre/trees": "1.0.0"
   },
   "devDependencies": {
-    "playwright-core": "1.57.0"
+    "@tailwindcss/cli": "4.1.18",
+    "playwright-core": "1.57.0",
+    "tailwindcss": "4.1.18"
   }
 }

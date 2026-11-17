@@ -122,6 +122,23 @@ into `public/play-data.json` by `scripts/run-data.ts`.
 SITE_URL=http://localhost:8960 node --test tests/site.test.mjs
 ```
 
+The WordPress integration check uses a running, seeded Drive Store. It checks
+direct canonical links, navigation without a document reload, and real Tailwind
+utilities against the active theme:
+
+```sh
+DRIVE_STORE_URL=http://localhost:8932 bun run test:wordpress
+```
+
+To also check a Site Editor change without rebuilding Tailwind, pass the local
+compiler and project. This test changes the local site's Global Styles and
+restores their original content afterwards. It refuses non-local sites.
+
+```sh
+TP_BIN=../target/release/typedpress TP_PROJECT=../examples/drive-store \
+  DRIVE_STORE_URL=http://localhost:8932 bun run test:wordpress
+```
+
 Ten tests against the running site: the guide's sections and drawn code, the guide without
 JavaScript, phone width, the docs' navigation and highlighted code, an edit that builds a
 migration and is shared and reopened, an announced syntax error, the examples page with its JSON

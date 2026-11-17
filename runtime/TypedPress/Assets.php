@@ -32,6 +32,7 @@ final class Assets
             add_action('wp_enqueue_scripts', static fn () => self::enqueue($files), PHP_INT_MAX);
             return;
         }
+        Wp\ThemeStyles::enqueue();
         foreach ($files as $file) {
             $handle = 'typedpress-app-' . sanitize_key(str_replace('.', '-', $file));
             wp_enqueue_style($handle, self::url($file), [], null);

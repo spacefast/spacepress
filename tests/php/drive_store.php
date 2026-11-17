@@ -59,6 +59,13 @@ function texts(string $html, string $query): array
     return $out;
 }
 
+/** Link paths and their query, excluding the harness's temporary origin. */
+function paths(string $html, string $query): array
+{
+    return array_map(static fn (string $href): string => (string) parse_url($href, PHP_URL_PATH)
+        . (($search = parse_url($href, PHP_URL_QUERY)) !== null ? '?' . $search : ''), texts($html, $query));
+}
+
 /** The form on $html that posts to a URL ending in $suffix: its action and its inputs. */
 function form(string $html, string $suffix): array
 {
@@ -117,11 +124,19 @@ $out['catalog'] = [
     'status' => $home['status'],
     'title' => texts($home['body'], '//title'),
     'names' => texts($home['body'], "$cards//h2"),
-    'links' => texts($home['body'], "$cards//h2/a/@href"),
+    'links' => paths($home['body'], "$cards//h2/a/@href"),
     'feed link' => texts($home['body'], "//link[@type='application/rss+xml' and contains(@href,'tp_drives')]/@href") !== [],
 ];
 $tr = fetch("$url/?language=tr");
-$out['catalog tr'] = ['summaries' => texts($tr['body'], "$cards/p[2]"), 'links' => texts($tr['body'], "$cards//h2/a/@href"), 'stock' => texts($tr['body'], "$cards//span[@class='muted']")];
+$out['catalog tr'] = ['summaries' => texts($tr['body'], "$cards/p[2]"), 'links' => paths($tr['body'], "$cards//h2/a/@href"), 'stock' => texts($tr['body'], "$cards//span[@class='muted']")];
+$out['catalog direct'] = [];
+foreach ([$home, $tr] as $catalog) {
+    foreach (texts($catalog['body'], "$cards//h2/a/@href") as $href) {
+        $response = fetch(str_starts_with($href, '/') ? $url . $href : $href);
+        $out['catalog direct'][] = [$response['status'], $response['headers']['location'] ?? null];
+    }
+}
+$out['catalog navigation'] = count(texts($home['body'], "$cards//h2/a[@data-tp-template='tp-blank' and @data-wp-on--click='actions.navigate' and @data-wp-on--mouseenter='actions.prefetch']"));
 $out['search'] = texts(fetch("$url/?q=samsung")['body'], "$cards//h2");
 $out['filter'] = texts(fetch("$url/?media=nvme")['body'], "$cards//h2");
 
@@ -131,13 +146,13 @@ $out['product'] = [
     'status' => $page['status'],
     'h1' => texts($page['body'], '//h1'),
     'stock' => texts($page['body'], "//aside[@class='buybox']//p[@class='muted']"),
-    'switch' => texts($page['body'], "//p[@class='lang']/a/@href"),
+    'switch' => paths($page['body'], "//p[@class='lang']/a/@href"),
     'reviews' => texts($page['body'], "//section[@class='reviews']//a"),
 ];
 // A translation is served at its own slug (the kind's pattern, without Polylang's `/tr/` prefix),
 // and so is its Markdown twin; WordPress links it there too.
 $pageTr = fetch("$url/drives/wd-red-plus-4tb-tr/");
-$out['product tr'] = ['status' => $pageTr['status'], 'lede' => texts($pageTr['body'], "//p[@class='lede']"), 'facts' => texts($pageTr['body'], "//dl[@class='facts']/dt"), 'switch' => texts($pageTr['body'], "//p[@class='lang']/a/@href")];
+$out['product tr'] = ['status' => $pageTr['status'], 'lede' => texts($pageTr['body'], "//p[@class='lede']"), 'facts' => texts($pageTr['body'], "//dl[@class='facts']/dt"), 'switch' => paths($pageTr['body'], "//p[@class='lang']/a/@href")];
 $twinTr = fetch("$url/drives/wd-red-plus-4tb-tr.md");
 $out['twin tr'] = [$twinTr['status'], strtok($twinTr['body'], "\n")];
 $trId = (int) array_values(array_filter(\TypedPress\db()->findMany('drives', ['locale' => '*']), static fn (array $r): bool => $r['slug'] === 'wd-red-plus-4tb-tr'))[0]['id'];

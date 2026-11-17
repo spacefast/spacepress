@@ -72,7 +72,8 @@ final class Seed
                 if (!is_array($records) || !array_is_list($records)) {
                     throw HttpError::invalidInput('Seed records must be a list.', '/records');
                 }
-                if (isset($spec['columns']['parent']['references'])) {
+                // Only taxonomy hierarchies need parent-first records; ordinary references may cycle.
+                if (($spec['taxonomy'] ?? false) && isset($spec['columns']['parent']['references'])) {
                     $pending = $records; $records = []; $done = [];
                     while ($pending !== []) {
                         $progress = false;

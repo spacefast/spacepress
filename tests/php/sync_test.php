@@ -106,6 +106,11 @@ foreach (['seedAuthors' => 'seedArticles', 'seedArticles' => 'seedAuthors', 'aSe
         ],
     ];
 }
+$schema['collections']['seedNodes'] = $schema['collections']['seedAuthors'];
+$schema['collections']['seedNodes']['sync']['dir'] = 'content/seedNodes';
+$schema['collections']['seedNodes']['columns']['parent'] = $schema['collections']['seedNodes']['columns']['peer'];
+$schema['collections']['seedNodes']['columns']['parent']['references']['collection'] = 'seedNodes';
+unset($schema['collections']['seedNodes']['columns']['peer']);
 $wp = wpSite('sync', ['schema' => $schema, 'functions' => $functions, 'users' => ['ed' => 'editor', 'au' => 'author']]);
 $app = $wp->app();
 $db = \TypedPress\db();
@@ -400,6 +405,15 @@ $writeSeed('seedAuthors', [['uid' => $newAuthorUid, 'fields' => ['name' => 'New 
 $outside = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
 eq('a dependency cycle is seeded before an outside collection that references it', [$outside['seedAuthors']['created'], $outside['aSeedItems']['updated']], [1, 1]);
 eq('the outside record resolves the new target inside the schema cycle', $db->findFirst('aSeedItems', ['where' => ['id' => $item['id']]])['peer'], $db->findFirst('seedAuthors', ['where' => ['uid' => $newAuthorUid]])['id']);
+$nodes = $db->insert('seedNodes', [['name' => 'A'], ['name' => 'B']], true);
+$writeSeed('seedNodes', [['uid' => $nodes[0]['uid'], 'fields' => ['name' => 'A', 'parent' => $nodes[0]['uid']]]]);
+$selfReference = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('an ordinary parent reference can seed an existing self-reference', $selfReference['seedNodes']['updated'], 1);
+$writeSeed('seedNodes', [['uid' => $nodes[0]['uid'], 'fields' => ['name' => 'A', 'parent' => $nodes[1]['uid']]], ['uid' => $nodes[1]['uid'], 'fields' => ['name' => 'B', 'parent' => $nodes[0]['uid']]]]);
+$parentCycle = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('ordinary parent reference cycles resolve existing targets', $parentCycle['seedNodes']['updated'], 2);
+eq('ordinary parent reference cycles store both target identities', [$db->findFirst('seedNodes', ['where' => ['id' => $nodes[0]['id']]])['parent'], $db->findFirst('seedNodes', ['where' => ['id' => $nodes[1]['id']]])['parent']], [$nodes[1]['id'], $nodes[0]['id']]);
+eq('repeating an ordinary parent cycle seed is unchanged', \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir)['seedNodes']['unchanged'], 2);
 chmod($seedDir, 0000); clearstatcache(true, $seedDir);
 try {
     // A root test runner can still read mode-000 directories; exercise real permission errors elsewhere.
@@ -410,6 +424,6 @@ try {
         check('unreadable seed contents throw instead of acknowledging an empty seed', $listingFailed);
     }
 } finally { chmod($seedDir, 0700); }
-foreach (['seedAuthors', 'seedArticles', 'aSeedItems'] as $name) { unlink($seedDir . '/' . $name . '.json'); }
+foreach (['seedAuthors', 'seedArticles', 'aSeedItems', 'seedNodes'] as $name) { unlink($seedDir . '/' . $name . '.json'); }
 unlink($seedDir . '/.ignored.json'); unlink($seedDir . '/README.txt'); rmdir($seedDir);
 finish('sync');

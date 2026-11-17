@@ -51,11 +51,18 @@ async function checkout(page: Page) {
   const response = await page.goto(new URL('/checkout', base).href);
   assert.match(response!.headers()['cache-control']!, /private.*no-store/);
   await page.getByLabel('Email address', { exact: true }).fill('buyer@example.test');
-  await page.getByLabel('First name', { exact: true }).fill('Test');
-  await page.getByLabel('Last name', { exact: true }).fill('Buyer');
-  await page.getByLabel('Address', { exact: true }).fill('Rynek 2');
-  await page.getByLabel('Postal code', { exact: true }).fill('31-042');
-  await page.getByLabel('City', { exact: true }).fill('Kraków');
+  const sameBilling = page.getByRole('checkbox', { name: 'Use same address for billing', exact: true });
+  if (await sameBilling.count()) await sameBilling.check();
+  for (const name of ['Shipping address', 'Billing address']) {
+    const address = page.getByRole('group', { name, exact: true });
+    if (!await address.count()) continue;
+    await address.getByLabel('Country/Region', { exact: true }).selectOption('PL');
+    await address.getByLabel('First name', { exact: true }).fill('Test');
+    await address.getByLabel('Last name', { exact: true }).fill('Buyer');
+    await address.getByLabel('Address', { exact: true }).fill('Rynek 2');
+    await address.getByLabel('Postal code', { exact: true }).fill('31-042');
+    await address.getByLabel('City', { exact: true }).fill('Kraków');
+  }
   await expect(page.getByRole('button', { name: 'Place Order', exact: true })).toBeEnabled();
 }
 
@@ -114,8 +121,10 @@ after(async () => { await browser?.close(); await wordpress?.[Symbol.asyncDispos
 
 test('fresh storefront, cart, shipping, stock rejection and native stock gateway checkout', { timeout: 120_000 }, async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.setDefaultTimeout(20_000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const catalog = await page.goto(new URL('/shop', base).href);
+  await expect(page.getByRole('link', { name: 'Everyday objects' })).toBeVisible();
   assert.match(catalog!.headers()['cache-control']!, /public/);
   for (const [old, canonical] of [['/product/ceramic-mug', '/products/ceramic-mug'], ['/product-category/home', '/shop/home'], ['/?post_type=product', '/shop']]) {
     const alias = await page.request.get(new URL(old, base).href, { maxRedirects: 0 });
@@ -139,6 +148,19 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   await page.getByRole('button', { name: 'Increase Ceramic mug quantity' }).click();
   await page.getByText('Total 63.00 EUR').waitFor();
   await expect(page.getByRole('button', { name: 'Increase Ceramic mug quantity' })).toBeFocused();
+  let quantityWrites = 0;
+  const countQuantity = (request: { url(): string }) => { if (request.url().endsWith('/cart/update-item')) quantityWrites++; };
+  page.on('request', countQuantity);
+  await page.evaluate(() => {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('shop-cart button'));
+    buttons.find(button => button.getAttribute('aria-label') === 'Increase Ceramic mug quantity')!.click();
+    buttons.find(button => button.getAttribute('aria-label') === 'Decrease Ceramic mug quantity')!.click();
+  });
+  await page.getByText('Total 87.00 EUR').waitFor();
+  assert.equal(quantityWrites, 1, 'controls stay disabled while a quantity write is pending');
+  page.off('request', countQuantity);
+  await page.getByRole('button', { name: 'Decrease Ceramic mug quantity' }).click();
+  await page.getByText('Total 63.00 EUR').waitFor();
   await page.getByLabel('Shipping country', { exact: true }).selectOption('DE');
   await page.getByLabel('Shipping postcode', { exact: true }).fill('10115');
   await page.getByRole('button', { name: 'Estimate shipping' }).click();
@@ -146,6 +168,7 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   await expect(page.getByLabel('Shipping country', { exact: true })).toHaveValue('DE');
   await expect(page.getByLabel('Shipping postcode', { exact: true })).toHaveValue('10115');
   await expect(page.getByRole('button', { name: 'Estimate shipping' })).toBeFocused();
+  await page.screenshot({ path: path.join(tmpdir(), 'typedpress-commerce-cart.png'), fullPage: true });
   await page.getByLabel('Shipping country', { exact: true }).selectOption('PL');
   await page.getByLabel('Shipping postcode', { exact: true }).fill('31-042');
   await page.getByRole('button', { name: 'Estimate shipping' }).click();

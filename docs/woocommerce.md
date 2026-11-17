@@ -14,8 +14,9 @@ typedpress dev
 
 The module creates `tp/shop.ts`, two source products, terms, a mini-cart component, browser
 cart code and storefront pages under `tp/app/(shop)/`. The route group's layout supplies the
-shop styles and scripts even when the app already has a root layout. Existing files remain
-untouched. Visit `/shop`; `/wp-admin/` remains the merchant interface for inventory and orders.
+shop styles and scripts even when the app already has a root layout. It selects the blank block
+template so its own header and cart remain visible. Existing files remain untouched.
+Visit `/shop`; `/wp-admin/` remains the merchant interface for inventory and orders.
 
 ## Declarations
 

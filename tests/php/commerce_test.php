@@ -5,10 +5,10 @@ declare(strict_types=1);
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
-$wp = wpSite('commerce', ['wpContent' => $argv[1], 'users' => ['ed' => 'editor'], 'server' => true]);
-$plugin = $wp->plugin();
-$db = $wp->app()->db;
-$admin = new \TypedPress\Viewer(['id' => $wp->userId('admin'), 'name' => 'Admin', 'role' => 'admin']);
+$site = wpSite('commerce', ['wpContent' => $argv[1], 'users' => ['ed' => 'editor'], 'server' => true]);
+$plugin = $site->plugin();
+$db = $site->app()->db;
+$admin = new \TypedPress\Viewer(['id' => $site->userId('admin'), 'name' => 'Admin', 'role' => 'admin']);
 $guest = new \TypedPress\Viewer(null);
 $products = $db->findMany('products', ['orderBy' => ['id' => 'asc']], $guest);
 eq('a fresh installation seeds both native products', count($products), 2);
@@ -53,6 +53,7 @@ $methodIds = array_map(static fn ($z) => array_keys($z['shipping_methods']), $zo
 eq('unchanged source does not recreate shipping methods', array_map(static fn ($z) => array_keys($z['shipping_methods']), WC_Shipping_Zones::get_zones()), $methodIds);
 $extra = new WC_Shipping_Zone(); $extra->set_zone_name('Admin addition'); $extra->save();
 eq('shipping drift is included in the install plan', array_column(\TypedPress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
+check('the runtime inspection includes pending commerce installation', in_array('commerce-shipping', array_column(\TypedPress\Wp\Runtime::installPlan(), 'id'), true));
 $noMethods = static fn () => [];
 add_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
 $shippingFailed = false;
@@ -65,7 +66,7 @@ eq('successful shipping retry clears the install plan', \TypedPress\Commerce\Mod
 check('the API exposes storefront-visible products to guests', count($products) === 2);
 problem('guests cannot write products', fn () => $db->insert('products', ['name' => 'No'], true, $guest), 401, 'unauthenticated');
 problem('guests cannot read orders', fn () => $db->findMany('orders', [], $guest), 401, 'unauthenticated');
-problem('editors cannot read orders', fn () => $db->findMany('orders', [], new \TypedPress\Viewer(['id' => $wp->userId('ed'), 'name' => 'Editor', 'role' => 'editor'])), 403, 'forbidden');
+problem('editors cannot read orders', fn () => $db->findMany('orders', [], new \TypedPress\Viewer(['id' => $site->userId('ed'), 'name' => 'Editor', 'role' => 'editor'])), 403, 'forbidden');
 problem('numeric prices are refused before text coercion', fn () => $db->update('products', ['price' => 12.5], ['id' => $mug['id']], false, $admin), 422, 'invalid_input', '/price');
 $db->update('products', ['status' => 'draft'], ['id' => $mug['id']], false, $admin);
 eq('a draft is not public', count($db->findMany('products', [], $guest)), 1);
@@ -98,6 +99,7 @@ eq('the stable download id is preserved on the entitlement', $downloads[0]['down
 $read = json_decode(\TypedPress\Js::jsonStringify($db->findFirst('orders', ['where' => ['id' => $order->get_id()]], $admin)), true);
 eq('authorized order reads carry purchase snapshots', $read['lines'][0]['name'], 'Field guide');
 eq('authorized order reads carry billing', $read['billing']['email'], 'buyer@example.test');
+eq('guest-order customer values and null filters agree', $db->findFirst('orders', ['where' => ['id' => $order->get_id(), 'customer' => null]], $admin)['customer'], null);
 $historicalTax = new WC_Order_Item_Tax(); $historicalTax->set_label('Historical VAT'); $historicalTax->set_tax_total('1.23'); $order->add_item($historicalTax);
 $historicalCoupon = new WC_Order_Item_Coupon(); $historicalCoupon->set_code('historical'); $historicalCoupon->set_discount('2.00'); $order->add_item($historicalCoupon);
 $order->set_cart_tax('1.23'); $order->set_discount_total('2.00'); $order->save();
@@ -151,13 +153,14 @@ add_action('tp_purge_urls', static function ($urls) use (&$purged): void { $purg
 $stocked = wc_get_product($guide['id']); $stocked->set_manage_stock(true); $stocked->save();
 wc_update_product_stock($stocked, 3);
 \TypedPress\Wp\Purges::flush();
-check('native stock updates purge item and listing reads', in_array('/products/field-guide', $purged, true) && in_array('/catalog-stock-test', $purged, true), $purged);
+$purgedPaths = array_map(static fn ($url) => rtrim($url, '/'), $purged);
+check('native stock updates purge item and listing reads', in_array('/products/field-guide', $purgedPaths, true) && in_array('/catalog-stock-test', $purgedPaths, true), $purged);
 
 // Real HTTP authentication: the administrator's capability never bypasses the credential's scope.
-[$password, $item] = WP_Application_Passwords::create_new_application_password($wp->userId('admin'), ['name' => 'Commerce test agent']);
-\TypedPress\Wp\AgentScope::store($wp->userId('admin'), $item['uuid'], \TypedPress\Wp\AgentScope::DEFAULT);
-$request = static function (string $path, string $method = 'GET', ?array $body = null, array $headers = []) use ($wp, $password): array {
-    $ch = curl_init($wp->url() . $path);
+[$password, $item] = WP_Application_Passwords::create_new_application_password($site->userId('admin'), ['name' => 'Commerce test agent']);
+\TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], \TypedPress\Wp\AgentScope::DEFAULT);
+$request = static function (string $path, string $method = 'GET', ?array $body = null, array $headers = []) use ($site, $password): array {
+    $ch = curl_init($site->url() . $path);
     $responseHeaders = [];
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_CUSTOMREQUEST => $method, CURLOPT_HTTPHEADER => ['Authorization: Basic ' . base64_encode('admin:' . $password), 'Content-Type: application/json', 'Accept: application/json, text/event-stream', ...$headers],
         CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$responseHeaders): int { $parts = explode(':', $line, 2); if (count($parts) === 2) { $responseHeaders[strtolower(trim($parts[0]))] = trim($parts[1]); } return strlen($line); }]);
@@ -178,11 +181,11 @@ eq('a read-only agent cannot edit a product', $request('/__tp/api/v1/products/' 
 eq('Woo REST cannot bypass the app scope', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('Woo core product REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product')[0], 403);
 eq('Woo core term REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product_cat')[0], 403);
-\TypedPress\Wp\AgentScope::store($wp->userId('admin'), $item['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+\TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
 eq('personal grant permits authorized order reads', $request('/__tp/api/v1/orders')[0], 200);
 eq('even a personal write agent cannot use Woo REST', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('even a personal write agent cannot use Woo core aliases', $request('/wp-json/wp/v2/product')[0], 403);
 eq('orders remain read-only with every grant', $request('/__tp/api/v1/orders', 'POST', [])[0], 405);
-$log = $wp->debugLog();
+$log = $site->debugLog();
 check('commerce runtime has no PHP warnings or fatal errors', !preg_match('/PHP (Warning|Fatal error):/', $log), $log);
 finish('commerce');

@@ -1,11 +1,12 @@
 .typedpress-app {
+  --page-gutter: clamp(1rem, var(--tp--spacing--page, 1.5rem), 3rem);
   --ink: var(--tp--color--foreground); --bg: var(--tp--color--background); --accent: var(--tp--color--link);
   --muted: color-mix(in srgb, var(--ink) 62%, var(--bg));
   --line: color-mix(in srgb, var(--ink) 18%, var(--bg));
 }
 .typedpress-app :where(a) { color: var(--accent); }
-.masthead { padding: calc(var(--tp--spacing--block) / 2) var(--tp--spacing--page); border-bottom: 1px solid var(--line); font-weight: 600; }
-main { max-width: var(--tp--width--content); margin: 0 auto; padding: var(--tp--spacing--block) 0; }
+.masthead { box-sizing: border-box; max-width: calc(var(--tp--width--content) + var(--page-gutter) * 2); margin: 0 auto; padding: calc(var(--tp--spacing--block) / 2) var(--page-gutter); border-bottom: 1px solid var(--line); font-weight: 600; }
+main { width: min(calc(100% - var(--page-gutter) * 2), var(--tp--width--content)); margin: 0 auto; padding: var(--tp--spacing--block) 0; }
 .plants { list-style: none; padding: 0; }
 .plants li { padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
 .plants p { margin: 0.25rem 0 0; color: var(--muted); }

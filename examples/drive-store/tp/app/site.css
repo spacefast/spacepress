@@ -1,4 +1,5 @@
 .typedpress-app {
+  --page-gutter: clamp(1rem, var(--tp--spacing--page, 1.5rem), 3rem);
   --bg: var(--tp--color--background); --ink: var(--tp--color--foreground);
   --panel: color-mix(in srgb, var(--bg) 97%, var(--ink));
   --muted: color-mix(in srgb, var(--ink) 62%, var(--bg));
@@ -11,7 +12,7 @@
 * { box-sizing: border-box; }
 .typedpress-app :where(a) { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
-.shell { max-width: var(--tp--width--wide); margin: 0 auto; padding-bottom: calc(var(--tp--spacing--block) * 2); }
+.shell { width: min(calc(100% - var(--page-gutter) * 2), var(--tp--width--wide)); margin: 0 auto; padding-bottom: calc(var(--tp--spacing--block) * 2); }
 .top { display: flex; flex-wrap: wrap; gap: calc(var(--tp--spacing--block) / 2) var(--tp--spacing--block); align-items: center; padding: var(--tp--spacing--block) 0; border-bottom: 1px solid var(--line); }
 .brand { display: flex; gap: 10px; align-items: center; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
 .platter { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--muted); background: radial-gradient(circle, var(--bg) 0 3px, var(--muted) 3px 4px, var(--panel) 4px 9px, var(--muted) 9px 10px, var(--line) 10px); }
@@ -33,7 +34,7 @@ input, select, button { font: inherit; padding: 8px 10px; border-radius: 8px; bo
 button { cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
-.cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
 .card h2 { margin: 0; font-size: 16px; }
 .card p { margin: 0; }

@@ -3361,9 +3361,16 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
             seen[page]["styleOrder"][0], "global-styles-inline-css",
             "{page}: {seen}"
         );
+        assert_eq!(seen[page]["styleOrder"][1], "late-theme-inline-css", "{page}: {seen}");
+        assert_eq!(
+            seen[page]["styleOrder"].as_array().unwrap().last().unwrap(),
+            "owner-override-inline-css",
+            "{page}: {seen}"
+        );
+        assert_eq!(seen[page]["ownerCss"], true, "{page}: {seen}");
         assert_eq!(
             seen[page]["styleOrder"].as_array().unwrap().len(),
-            seen[page]["links"].as_array().unwrap().len() + 1,
+            seen[page]["links"].as_array().unwrap().len() + 3,
             "{page}: {seen}"
         );
     }

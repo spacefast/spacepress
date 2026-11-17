@@ -90,6 +90,27 @@ test("generated catalog links answer directly at their canonical URLs", async ()
   } finally { await context.close(); }
 });
 
+test("catalog keeps page gutters even when the theme has no page padding", async () => {
+  const { context, page } = await open();
+  try {
+    for (const width of [1280, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const zeroThemePadding of [false, true]) {
+        await page.evaluate((zero) => {
+          if (zero) document.body.style.setProperty("--tp--spacing--page", "0px");
+          else document.body.style.removeProperty("--tp--spacing--page");
+        }, zeroThemePadding);
+        const edges = await page.locator(".shell").evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return { left: box.left, right: innerWidth - box.right, viewport: innerWidth, scroll: document.documentElement.scrollWidth };
+        });
+        assert.ok(edges.left >= 16 && edges.right >= 16, `catalog has no comfortable gutter: ${JSON.stringify(edges)}`);
+        assert.ok(edges.scroll <= edges.viewport, `catalog overflows: ${JSON.stringify(edges)}`);
+      }
+    }
+  } finally { await context.close(); }
+});
+
 test("product navigation and Back preserve the document and support hover prefetch", async () => {
   const { context, page } = await open();
   try {

@@ -27,9 +27,9 @@ final class Assets
      */
     public static function enqueue(array $files): void
     {
-        if (!did_action('wp_enqueue_scripts')) {
-            // Theme and block styles set the base; the page's imports override it in import order.
-            add_action('wp_enqueue_scripts', static fn () => self::enqueue($files), PHP_INT_MAX);
+        if (!did_action('wp_print_styles')) {
+            // Include theme styles queued during wp_head before WordPress prints the queue.
+            add_action('wp_print_styles', static fn () => self::enqueue($files), PHP_INT_MAX);
             return;
         }
         Wp\ThemeStyles::enqueue();

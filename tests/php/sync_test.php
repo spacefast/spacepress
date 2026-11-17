@@ -94,7 +94,7 @@ $functions = <<<'PHP'
     function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \TypedPress\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \TypedPress\JsObject(), default => $patch }; }
     PHP;
 
-foreach (['seedAuthors' => 'seedArticles', 'seedArticles' => 'seedAuthors'] as $name => $target) {
+foreach (['seedAuthors' => 'seedArticles', 'seedArticles' => 'seedAuthors', 'aSeedItems' => 'seedAuthors'] as $name => $target) {
     $schema['collections'][$name] = [
         'primaryKey' => 'id', 'editor' => false, 'uid' => true, 'sync' => ['dir' => 'content/' . $name, 'format' => 'json'],
         'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
@@ -391,5 +391,12 @@ eq('cyclic references are stored as their actual target identities', [$seedAutho
 $writeSeed('seedAuthors', [['uid' => \TypedPress\Sync\Uid::mint(), 'fields' => ['name' => 'Missing target', 'peer' => \TypedPress\Sync\Uid::mint()]]]);
 $writeSeed('seedArticles', []);
 problem('an actual missing seed reference is still refused', fn () => \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir), 422, 'sync_missing_reference', '/fields/peer');
-foreach (['seedAuthors', 'seedArticles'] as $name) { unlink($seedDir . '/' . $name . '.json'); } rmdir($seedDir);
+$itemUid = \TypedPress\Sync\Uid::mint(); $newAuthorUid = \TypedPress\Sync\Uid::mint();
+$item = $db->insert('aSeedItems', ['uid' => $itemUid, 'name' => 'Existing item'], true)[0];
+$writeSeed('aSeedItems', [['uid' => $itemUid, 'fields' => ['name' => 'Existing item', 'peer' => $newAuthorUid]]]);
+$writeSeed('seedAuthors', [['uid' => $newAuthorUid, 'fields' => ['name' => 'New author']]]);
+$outside = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('a dependency cycle is seeded before an outside collection that references it', [$outside['seedAuthors']['created'], $outside['aSeedItems']['updated']], [1, 1]);
+eq('the outside record resolves the new target inside the schema cycle', $db->findFirst('aSeedItems', ['where' => ['id' => $item['id']]])['peer'], $db->findFirst('seedAuthors', ['where' => ['uid' => $newAuthorUid]])['id']);
+foreach (['seedAuthors', 'seedArticles', 'aSeedItems'] as $name) { unlink($seedDir . '/' . $name . '.json'); } rmdir($seedDir);
 finish('sync');

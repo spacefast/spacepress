@@ -124,6 +124,15 @@ eq('repeat deploy preserves merchant price edits', wc_get_product($mug['id'])->g
 eq('repeat deploy preserves operational stock', wc_get_product($mug['id'])->get_stock_quantity(), 2);
 eq('repeat deploy preserves download ids', array_keys(wc_get_product($guide['id'])->get_downloads()), ['field-guide']);
 check('repeat deploy creates nothing', array_sum(array_column($seed, 'created')) === 0);
+$seedFile = $plugin->dir . '/tp/app/seed/products.php';
+$originalSeed = file_get_contents($seedFile); $seedInput = require $seedFile;
+$waitingUid = \TypedPress\Sync\Uid::mint();
+$seedInput['records'][] = ['uid' => $waitingUid, 'fields' => ['name' => 'Must not be reseeded']];
+file_put_contents($seedFile, '<?php return ' . var_export($seedInput, true) . ';');
+wp_cache_set('tp_' . $plugin->schema->name() . '_seed', 'stale-before-lock', 'options');
+\TypedPress\Commerce\Module::onInit($plugin);
+file_put_contents($seedFile, $originalSeed);
+eq('a waiting standalone seed rechecks the committed version instead of running again', $db->findFirst('products', ['where' => ['uid' => $waitingUid]]), null);
 $directories = wc_get_container()->get(\Automattic\WooCommerce\Internal\ProductDownloads\ApprovedDirectories\Register::class);
 $approvalCount = $directories->count(true);
 problem('oversized download directories are input errors', fn () => $db->insert('products', ['name' => 'Bad download', 'downloadable' => true, 'downloads' => [['id' => 'bad', 'name' => 'Bad', 'file' => 'https://example.test/' . str_repeat('a', 260) . '/file.pdf']]], true, $admin), 422, 'invalid_input', '/downloads');

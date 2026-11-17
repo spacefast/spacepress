@@ -44,23 +44,7 @@ final class Seed
         $files = array_merge(glob(rtrim($directory, '/') . '/*.json') ?: [], glob(rtrim($directory, '/') . '/*.php') ?: []);
         if ($files === false) { throw new \RuntimeException('Cannot list seed records'); }
         sort($files, SORT_STRING);
-        $remaining = $files; $files = []; $done = [];
-        while ($remaining !== []) {
-            $progress = false;
-            foreach ($remaining as $i => $file) {
-                $name = pathinfo($file, PATHINFO_FILENAME); $spec = $plugin->schema->collection($name);
-                $deps = [];
-                foreach ($spec['columns'] as $col) { $target = $col['references']['collection'] ?? null; if ($target !== null && $target !== $name && (is_file(rtrim($directory, '/') . '/' . $target . '.json') || is_file(rtrim($directory, '/') . '/' . $target . '.php'))) { $deps[] = $target; } }
-                if (array_diff($deps, array_keys($done)) !== []) { continue; }
-                $files[] = $file; $done[$name] = true; unset($remaining[$i]); $progress = true;
-            }
-            if (!$progress) {
-                // Like migration ordering, keep schema cycles in source order. Their actual values
-                // can be null/omitted or already stored; Wire still validates every supplied UID.
-                $files = [...$files, ...array_values($remaining)];
-                break;
-            }
-        }
+        $files = self::ordered($plugin, $files);
         $plan = static function () use ($plugin, $files, $dry): array {
             $receipt = [];
             foreach ($files as $file) {
@@ -114,6 +98,40 @@ final class Seed
         if (!$dry) { return $plan(); }
         try { return $plugin->connection()->transaction($plan); }
         catch (SeedDryRun $rollback) { return $rollback->counts; }
+    }
+
+    /** Dependencies first; schema cycles stay together, in deterministic source order. */
+    private static function ordered(Plugin $plugin, array $files): array
+    {
+        $names = array_fill_keys(array_map(static fn ($file) => pathinfo($file, PATHINFO_FILENAME), $files), true);
+        $dependencies = [];
+        foreach ($names as $name => $_) {
+            $dependencies[$name] = [];
+            foreach ($plugin->schema->collection($name)['columns'] as $column) {
+                $target = $column['references']['collection'] ?? null;
+                if ($target !== null && isset($names[$target])) { $dependencies[$name][] = $target; }
+            }
+        }
+        // Tarjan's traversal emits each strongly connected component after its dependencies.
+        // Cyclic schemas can have null/omitted or already-stored references; Wire checks actual UIDs.
+        $indices = []; $low = []; $stack = []; $active = []; $ordered = [];
+        $visit = static function (string $name) use (&$visit, &$indices, &$low, &$stack, &$active, &$ordered, $dependencies, $files): void {
+            $indices[$name] = $low[$name] = count($indices);
+            $stack[] = $name; $active[$name] = true;
+            foreach ($dependencies[$name] as $target) {
+                if (!isset($indices[$target])) {
+                    $visit($target); $low[$name] = min($low[$name], $low[$target]);
+                } elseif (isset($active[$target])) { $low[$name] = min($low[$name], $indices[$target]); }
+            }
+            if ($low[$name] !== $indices[$name]) { return; }
+            $component = [];
+            do { $member = array_pop($stack); unset($active[$member]); $component[$member] = true; } while ($member !== $name);
+            foreach ($files as $file) {
+                if (isset($component[pathinfo($file, PATHINFO_FILENAME)])) { $ordered[] = $file; }
+            }
+        };
+        foreach ($names as $name => $_) { if (!isset($indices[$name])) { $visit($name); } }
+        return $ordered;
     }
 }
 

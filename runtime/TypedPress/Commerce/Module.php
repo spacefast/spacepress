@@ -132,8 +132,13 @@ final class Module
                 $version = require $plugin->dir . '/tp/app/seed-version.php';
                 $key = 'tp_' . $plugin->schema->name() . '_seed';
                 if (get_option($key) !== $version) {
-                    \TypedPress\Sync\Seed::run($plugin, $plugin->dir . '/tp/app/seed');
-                    update_option($key, $version, false);
+                    \TypedPress\Wp\Migrator::locked($plugin->connection(), 'commerce_seed', static function () use ($plugin, $key, $version): void {
+                        // A request waiting for the first seed must see its committed marker.
+                        wp_cache_delete($key, 'options'); wp_cache_delete('alloptions', 'options');
+                        if (get_option($key) === $version) { return; }
+                        \TypedPress\Sync\Seed::run($plugin, $plugin->dir . '/tp/app/seed');
+                        update_option($key, $version, false);
+                    });
                 }
             }
         } catch (\Throwable $e) {

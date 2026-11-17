@@ -409,6 +409,9 @@ fn multiline_arrays(source: &str) -> String {
                     start = group.commas[separator] + 1;
                     separator += 1;
                 }
+                while start < *arrow && ["//", "/*", "#"].iter().any(|prefix| value(start).starts_with(prefix)) {
+                    start += 1;
+                }
                 let width = source[tokens[start].start..tokens[*arrow].start]
                     .trim_end()
                     .chars()
@@ -536,6 +539,21 @@ mod mechanical_tests {
 
 #[cfg(test)]
 mod multiline_tests {
+    #[test]
+    fn comments_after_array_commas_do_not_widen_the_following_key() {
+        for source in [
+            "return ['a' => 1, // keep\n 'b' => 2];",
+            "return ['a' => 1, /* keep */ 'b' => 2];",
+            "return ['a' => 1, # keep\n 'b' => 2];",
+        ] {
+            let output = super::format(source);
+            let columns: Vec<_> = output.lines().filter_map(|line| line.find("=>")).collect();
+            assert_eq!(columns.len(), 2, "{output}");
+            assert_eq!(columns[0], columns[1], "{output}");
+            assert_eq!(super::format(&output), output);
+        }
+    }
+
     #[test]
     fn a_line_comment_before_an_array_arrow_keeps_its_terminating_newline() {
         let output = super::format("return ['a' // key\n => 1, 'b' => 2];");

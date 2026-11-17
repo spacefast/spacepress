@@ -12,7 +12,10 @@ The compiler refuses `locales` with "locales are turned off for now". The code
 stays: the runtime, Polylang install, client types and every locale test are
 untouched. Only `TYPEDPRESS_LOCALES=1` lets `locales` through. `.cargo/config.toml`
 and the CI workflows set it so the suite keeps exercising the feature; a released
-binary, `typedpress dev` and the browser playground never see it. The examples and
+binary, `typedpress dev` and the browser playground never see it. The `tests/wp`
+lanes that build locale apps outside cargo (`run.sh`, `store-install-run.sh`) export it
+themselves; `scripts/check-examples.sh` and `check-generated.sh` unset it, so examples
+keep building as users build them. The examples and
 the user-facing guide no longer use or mention locales.
 
 Existing sites are not migrated: a site built with `locales` keeps its Polylang

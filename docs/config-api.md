@@ -423,7 +423,7 @@ Phase-2 modifiers:
   visibility only, as SCF conditional logic on WordPress. Scalar siblings, ANDed,
   with a top-level `OR`. It never hides data from the API.
 - `.localized()`: the field is translated per locale (text, richText, json,
-  select, group, repeater, blocks). See [Locales](#locales).
+  select, group, repeater, blocks). Turned off for now with `locales`. See [Locales](#locales).
 - `file(bucket)`: a column holding a private file's id from an exported `files()` bucket. See [Files](#files).
 
 Each modifier is checked against the column kind (design §1.2): `.max()` on a
@@ -775,6 +775,10 @@ export default function Api() {
   throwaway WordPress the export renders on.
 
 ## Locales
+
+**Turned off for now.** Setting `locales` fails the build with "locales are turned
+off for now"; leave it out. The rest of this section describes the feature for when it
+comes back.
 
 ```ts
 locales: { default: "en", all: ["en", "de"] },   // fallback: true by default

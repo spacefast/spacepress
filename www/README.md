@@ -139,7 +139,7 @@ TP_BIN=../target/release/typedpress TP_PROJECT=../examples/drive-store \
   DRIVE_STORE_URL=http://localhost:8932 bun run test:wordpress
 ```
 
-Ten tests against the running site: the guide's sections and drawn code, the guide without
+`tests/site.test.mjs` checks the guide's sections and drawn code, the guide without
 JavaScript, phone width, the docs' navigation and highlighted code, an edit that builds a
 migration and is shared and reopened, an announced syntax error, the examples page with its JSON
 and its playground link, the blog from the menu to a post and its comments, the newest posts on the home page, and that a visitor can neither start the star job nor list `/shares`. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are

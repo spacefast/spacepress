@@ -104,7 +104,7 @@ remove_all_filters('pre_wp_mail');
 $bodies = [];
 add_action('phpmailer_init', static function ($mailer) use (&$bodies): void {
     $mailer->isSendmail();
-    $mailer->Sendmail = '/bin/true';
+    $mailer->Sendmail = '/usr/bin/true';
 }, PHP_INT_MIN);
 add_action('phpmailer_init', static function ($mailer) use (&$bodies): void {
     $bodies[] = ['to' => array_keys($mailer->getAllRecipientAddresses())[0], 'alt' => $mailer->AltBody];

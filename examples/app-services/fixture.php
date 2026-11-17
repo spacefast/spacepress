@@ -17,7 +17,9 @@ function servicesArtifact(): array
 
 function servicesRemoveArtifact(string $directory): void
 {
-    if (!preg_match('#^/tmp/typedpress-wp-services-artifact-[a-f0-9]{8}$#D', $directory)) {
+    $temporary = realpath(sys_get_temp_dir());
+    if ($temporary === false || realpath(dirname($directory)) !== $temporary
+        || !preg_match('/^typedpress-wp-services-artifact-[a-f0-9]{8}$/D', basename($directory))) {
         throw new RuntimeException('Refusing to remove an unowned artifact path');
     }
     exec('rm -rf -- ' . escapeshellarg($directory), $output, $status);

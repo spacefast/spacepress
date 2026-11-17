@@ -6132,12 +6132,14 @@ export default [values.map(truth), applyEach(Boolean, values), values.filter(glo
     #[test]
     fn missing_default_export_points_to_the_current_file_after_repeated_loads() {
         let tmp = tempfile::tempdir().unwrap();
+        // The loader and CLI keep canonical project paths (macOS aliases /var to /private/var).
+        let root = tmp.path().canonicalize().unwrap();
         for name in ["first.ts", "second.ts"] {
-            let entry = tmp.path().join(name);
+            let entry = root.join(name);
             std::fs::write(&entry, "export const value = 1;").unwrap();
             let program = crate::loader::load(&entry).unwrap();
             let error = super::Evaluator::new(&program).run().unwrap_err();
-            let rendered = crate::diag::render(&error, tmp.path());
+            let rendered = crate::diag::render(&error, &root);
             assert!(rendered.contains(&format!("--> {name}:1:1")), "{rendered}");
         }
     }

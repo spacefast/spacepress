@@ -642,6 +642,8 @@ mod tests {
     }
 
     #[test]
+    // APFS rejects this fixture at creation; Linux permits the filename the reader must refuse.
+    #[cfg(target_os = "linux")]
     fn a_migration_file_name_that_is_not_utf8_is_an_error_not_skipped() {
         use std::os::unix::ffi::OsStrExt as _;
         let project = tempfile::tempdir().unwrap();

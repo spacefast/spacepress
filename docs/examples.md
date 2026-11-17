@@ -32,7 +32,7 @@ REST routes, writes posts and users, handles media, and connects custom fields.
 Runtime sources and plugin bootstrap templates are labeled separately from generated files.
 
 The example combines pages, events, member profiles, event registrations and an activity log.
-It includes options-backed site settings, English/German content, image sizes, private PDF
+It includes options-backed site settings, image sizes, private PDF
 handouts, a queued activity job and a pinned Classic Editor dependency. Webhooks read
 `KITCHEN_WEBHOOK_URL` and `KITCHEN_WEBHOOK_SECRET` from the server environment.
 
@@ -59,7 +59,6 @@ that:
   private files (`posts.deck`).
 - **Jobs and webhooks:** a reader's comment queues `notifyEditors`, and every
   post change goes out as a signed webhook to `BLOG_HOOK_URL`.
-- **Translations:** posts are in English and German.
 
 Build it, turn the generated client into browser JS, build again so the
 plugin ships that page, then start the persistent Studio site and
@@ -78,8 +77,8 @@ node examples/blog/build-client.mjs
 These commands assume Studio printed `http://localhost:8787`; substitute its
 actual URL in the registration and sync commands if different. The page is at
 `http://localhost:8787/wp-content/plugins/typedpress-app-blog/public/`.
-Its Sign in button goes through the first-identity screens; it switches between
-English and German and takes comments. Send its committed posts to the site with
+Its Sign in button goes through the first-identity screens, and the page takes
+comments. Send its committed posts to the site with
 `TP_APP_PASSWORD=admin:<application password> typedpress sync examples/blog`,
 using the password created above. Stop it with `typedpress dev stop examples/blog`;
 the next start retains its content and uploads. Omit `--no-watch` to keep

@@ -39,16 +39,6 @@ final class Authors
         add_filter('request', static fn (array $vars): array => self::archive($schema, $vars), PHP_INT_MAX);
         // With a users kind the sitemap stays and lists only the users a visitor may read ({@see Sitemap}).
         add_filter('wp_sitemaps_add_provider', static fn (mixed $provider, string $name): mixed => $name === 'users' && !self::public($schema) && self::kind($schema) === null ? false : $provider, 10, 2);
-        // A removed provider's sitemap is a 404. WordPress 7.2 sends it from render_sitemaps(); 7.1
-        // returns without one, and the theme answers 200. Core renders every sitemap it has and exits
-        // at priority 10, so a sitemap request still here and not a 404 names a removed provider.
-        add_action('template_redirect', static function (): void {
-            if (get_query_var('sitemap') && !is_404()) { // truthy, as core and Sitemap test it
-                $GLOBALS['wp_query']->set_404();
-                status_header(404);
-                nocache_headers();
-            }
-        }, 11);
         add_filter('oembed_response_data', static function (mixed $data, mixed $post = null) use ($schema): mixed {
             if (!is_array($data) || self::visible($schema, $post instanceof \WP_Post ? (int) $post->post_author : 0)) {
                 return $data;

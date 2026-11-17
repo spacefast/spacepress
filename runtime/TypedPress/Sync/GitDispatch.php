@@ -36,6 +36,8 @@ final class GitDispatch
     private const KEY = 'dispatch';
     private const WINDOW_S = 60;
     private const NO_SECRETS = 'TP_GITHUB_DISPATCH_TOKEN is not set, and this WordPress has no Secrets API to keep one (it is in WordPress 7.2): saves send nothing, and the hourly sync still runs';
+    private const UNAVAILABLE = 'TP_GITHUB_DISPATCH_TOKEN is not set, and the Secrets API is unavailable (its provider or key is broken), so a stored token cannot be read';
+    private const NO_TOKEN = 'no token is set: wp typedpress git-dispatch set --token, or TP_GITHUB_DISPATCH_TOKEN';
     private const USAGE = 'Usage: git-dispatch status | set --repo=<owner/name> [--token] (the token on stdin) | clear [--token]';
 
     /** True while `typedpress sync`'s own routes write: those changes are already in the run that made them. */
@@ -92,14 +94,16 @@ final class GitDispatch
 
     /**
      * Why a save sends nothing, or null when it can: a repository, and a token in the environment or a
-     * Secrets API that may hold one. Without either a dispatch could only fail, so none is queued.
+     * Secrets API that may hold one. Without either (WordPress 7.1) a dispatch could only fail, so none
+     * is queued. A Secrets API that is there but unavailable may hold one once it is fixed: the save
+     * queues, and the dispatch fails loudly and retries.
      */
     private static function problem(): ?string
     {
         if (self::repository() === null) {
             return 'no repository is set: wp typedpress git-dispatch set --repo=<owner/name>';
         }
-        if ((Env::get('TP_GITHUB_DISPATCH_TOKEN') ?? '') === '' && !self::secretsAvailable()) {
+        if ((Env::get('TP_GITHUB_DISPATCH_TOKEN') ?? '') === '' && !function_exists('wp_get_secret')) {
             return self::NO_SECRETS;
         }
 
@@ -126,11 +130,11 @@ final class GitDispatch
             return [$token, 'environment'];
         }
         if (!self::secretsAvailable()) {
-            return [null, self::NO_SECRETS];
+            return [null, function_exists('wp_get_secret') ? self::UNAVAILABLE : self::NO_SECRETS];
         }
         $secret = wp_get_secret(self::SECRET);
         if ($secret === null) {
-            return [null, 'no token is set: wp typedpress git-dispatch set --token, or TP_GITHUB_DISPATCH_TOKEN'];
+            return [null, self::NO_TOKEN];
         }
         if (function_exists('is_wp_error') && is_wp_error($secret)) {
             // Stored but unreadable now (key or provider): a retry may succeed; never ask for a new one.
@@ -183,9 +187,11 @@ final class GitDispatch
     {
         $env = Env::get('TP_GITHUB_DISPATCH_TOKEN');
         $stored = false;
+        $unreadable = null;
         if (($env === null || $env === '') && self::secretsAvailable()) {
             $secret = wp_get_secret(self::SECRET);
             $stored = $secret !== null && !(function_exists('is_wp_error') && is_wp_error($secret));
+            $unreadable = $secret !== null && !$stored ? 'the dispatch token is stored but unreadable: ' . $secret->get_error_message() : null;
         }
 
         $token = ($env ?? '') !== '' ? 'environment' : ($stored ? 'secrets' : null);
@@ -197,7 +203,7 @@ final class GitDispatch
             'secretsApi' => function_exists('wp_is_secrets_api_available') ? wp_is_secrets_api_available() : null,
             'event' => self::EVENT,
             // Why a save sends nothing now, or null when it sends a dispatch.
-            'problem' => self::problem() ?? ($token === null ? 'no token is set: wp typedpress git-dispatch set --token, or TP_GITHUB_DISPATCH_TOKEN' : null),
+            'problem' => self::problem() ?? ($token !== null ? null : (!self::secretsAvailable() ? self::UNAVAILABLE : ($unreadable ?? self::NO_TOKEN))),
         ];
     }
 

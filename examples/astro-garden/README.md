@@ -12,7 +12,8 @@ lives in that TypedPress app (WordPress); this site reads it at build time with
 | Rendered by | PHP in WordPress, on each request (cached at the edge) | Astro, once per build, as static files |
 | An edit in wp-admin shows | at once | after the next build, which pulls only the changed plants |
 
-Both render the body from WordPress's own HTML of the same content, and use the same stylesheet.
+Both render the body from WordPress's own HTML of the same content. The TypedPress app inherits
+the active WordPress theme's colors, typography and spacing; this Astro site uses its own stylesheet.
 
 ## Run it
 
@@ -31,12 +32,14 @@ Astro 7.4 needs Node 22.23.4 or newer.
 
 [`twins.test.mjs`](twins.test.mjs) builds the TypedPress app, seeds its plants as a publish does, serves
 it on WordPress-on-SQLite, builds this site against it, and reads both in Chromium: the same list,
-the same plant pages and text, the same stylesheet. An edit then shows on the TypedPress app at once,
+plant pages and text, with each renderer's expected colors. An edit then shows on the TypedPress app at once,
 and here after a rebuild whose log says `plants: 1 changed`.
 
 ```sh
 node --test examples/astro-garden/twins.test.mjs
 ```
+
+Set `CHROMIUM` to an installed Chromium executable when using a browser outside Playwright's Linux cache.
 
 ## On Spacefast
 

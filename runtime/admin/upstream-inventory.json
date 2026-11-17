@@ -1521,8 +1521,8 @@
       "source": "lib/pages/admin.php",
       "sha256": "4ee77e2840097e35aaf3e71552ec27f95995df31fca41766e9fadf05cc155c84",
       "path": "lib/pages/admin.php",
-      "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "3613198e22028c7748acd9e899ce90dff569cccb98cd3bc9fb13830a35852876",
+      "adaptation": "TypedPress admin boot and native collection transport, including taxonomy REST field names",
+      "adaptedSha256": "5f658aa080637577a4738884aabc9e9a9c12f972d32e8cb771b788e141ad5284",
       "normalizedSha256": "a52a5f84bd89933a49bbfcac90a69d8fee37d8a47c3eb2f23ca073e3aa09c81f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/pages/admin.php"
     },

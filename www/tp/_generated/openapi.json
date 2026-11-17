@@ -1484,8 +1484,8 @@
         "tags": ["Posts"],
         "operationId": "posts.delete",
         "summary": "Delete from posts",
-        "x-typedpress-access": "editor",
-        "description": "Deletes one posts row for good and returns the row as it was.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "author",
+        "description": "Deletes one posts row for good and returns the row as it was.\n\nAccess: Users with the `author` role or a higher one may do this.",
         "parameters": [
           {
             "name": "id",
@@ -2291,8 +2291,8 @@
         "tags": ["Sync"],
         "operationId": "sync.posts.trash",
         "summary": "Trash a synced posts row",
-        "x-typedpress-access": "editor",
-        "description": "Moves the row of a deleted content file to the trash, when the row still matches `expect`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "author",
+        "description": "Moves the row of a deleted content file to the trash, when the row still matches `expect`.\n\nAccess: Users with the `author` role or a higher one may do this.",
         "requestBody": {
           "required": true,
           "description": "The row's uid and the digest it expects.",
@@ -5251,10 +5251,10 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer" },
-          "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+          "title": { "type": "string" },
           "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
           "content": { "type": ["string", "null"] },
-          "excerpt": { "type": ["string", "null"], "maxLength": 300 },
+          "excerpt": { "type": ["string", "null"] },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
           "uid": { "type": ["string", "null"] },
@@ -5267,10 +5267,10 @@
       "PostInsert": {
         "type": "object",
         "properties": {
-          "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+          "title": { "type": "string" },
           "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
           "content": { "type": ["string", "null"] },
-          "excerpt": { "type": ["string", "null"], "maxLength": 300 },
+          "excerpt": { "type": ["string", "null"] },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "integer", "null"] },
           "uid": { "type": ["string", "null"] }
@@ -5280,10 +5280,10 @@
       "PostPatch": {
         "type": "object",
         "properties": {
-          "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+          "title": { "type": "string" },
           "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
           "content": { "type": ["string", "null"] },
-          "excerpt": { "type": ["string", "null"], "maxLength": 300 },
+          "excerpt": { "type": ["string", "null"] },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "integer", "null"] },
           "_rev": {

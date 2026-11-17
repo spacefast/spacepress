@@ -364,7 +364,7 @@ final class Changes
     /** Whether a collection column is stored as post meta (PostMeta::fields' rule). */
     public static function meta(array $spec, string $field, array $definition): bool
     {
-        return !in_array($field, [$spec['primaryKey'] ?? 'id', $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null], true) && !($definition['system'] ?? false);
+        return !in_array($field, [$spec['primaryKey'] ?? 'id', $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null, $spec['excerpt'] ?? null], true) && !($definition['system'] ?? false);
     }
 
     /** Whether a runtime field may have this name ({@see named()}'s rule, as a yes or no). */

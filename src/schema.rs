@@ -432,6 +432,10 @@ pub struct Collection {
     pub title: Option<String>,
     pub content: Option<String>,
     pub slug: Option<String>,
+    /// `wp.posts` kinds: the field stored as the post's own excerpt (`post_excerpt`).
+    pub excerpt: Option<String>,
+    /// `wp.posts.extend()`: WordPress's own `post` type, not a post type of TypedPress's.
+    pub native: bool,
     pub columns: IndexMap<String, Column>,
     pub relations: IndexMap<String, Relation>,
     /// Hook → compiled PHP function name.
@@ -482,6 +486,16 @@ impl Collection {
             || self.title.as_deref() == Some(col)
             || self.content.as_deref() == Some(col)
             || self.slug.as_deref() == Some(col)
+            || self.excerpt.as_deref() == Some(col)
+    }
+
+    /// The WordPress post type an editor kind's items are: `post` for `wp.posts.extend()`, else `tp_<name>`.
+    pub fn post_type(&self) -> String {
+        if self.native {
+            "post".into()
+        } else {
+            format!("tp_{}", self.table)
+        }
     }
 }
 

@@ -173,7 +173,7 @@ final class EditorSave
     private static function checkColumns(string $collection, array $values, ?array $before): void
     {
         $spec = Plugin::instance()?->schema->collection($collection) ?? [];
-        $core = array_filter([$spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null]);
+        $core = array_filter([$spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null, $spec['excerpt'] ?? null]);
         $values = array_intersect_key($values, array_flip($core));
         if ($values === []) {
             return;

@@ -4,34 +4,35 @@ export function Data() {
   return (
     <>
       <Section id="data" />
-      <p><Built /> A <b>kind</b> is one sort of thing your app stores. There are six, and each always stores in the same place.</p>
+      <p><Built /> A <b>kind</b> is one sort of thing your app stores. Each always stores in the same place.</p>
       <div className="scroll"><table>
       <tr><th>You write</th><th>Use it for</th><th>WordPress stores it as</th></tr>
-      <tr><td><code>collection()</code></td><td>what people write and publish: posts, pages, products</td><td>a post type with a field group, drafts and revisions</td></tr>
+      <tr><td><code>wp.posts.extend()</code></td><td>WordPress's own posts, with fields of yours</td><td>core's posts, your fields as post meta; WordPress's capabilities decide who writes</td></tr>
+      <tr><td><code>wp.posts.clone()</code></td><td>another kind like posts: release notes, recipes</td><td>its own post type with posts' fields, comments, drafts and revisions</td></tr>
+      <tr><td><code>collection()</code></td><td>what people write and publish: products, docs</td><td>a post type with a field group, drafts and revisions</td></tr>
       <tr><td><code>table()</code></td><td>rows your app filters, sorts, counts and joins</td><td>its own SQL table with typed columns and foreign keys</td></tr>
       <tr><td><code>taxonomy()</code></td><td>topics, tags, categories</td><td>a WordPress taxonomy with term fields</td></tr>
       <tr><td><code>global()</code></td><td>one record of site settings</td><td>a registered setting</td></tr>
       <tr><td><code>files()</code></td><td>private files with signed download links</td><td>a file bucket; files never get a public URL</td></tr>
       <tr><td><code>wp.users.extend()</code></td><td>your own fields on users</td><td>WordPress users and user meta; no second user table. <Decided /> name; written <code>userProjection()</code> today</td></tr>
       </table></div>
-      <Code file="tp/schema.ts">{`import { collection, table, taxonomy, global, files, file,
-         text, richText, integer, select, ref, media } from "typedpress";
+      <Code file="tp/schema.ts">{`import { wp, collection, table, taxonomy, global, files, file,
+         text, integer, select, ref, media } from "typedpress";
 
 export const authors = collection({
   name: text().max(80),
   avatar: media({ accept: "image" }).optional(),
 });
 
-export const posts = collection({
-  title: text().max(200),
-  body: richText(),
-  writer: ref(authors),
+// WordPress's posts: title, slug, content, excerpt, drafts and comments are already there.
+export const posts = wp.posts.extend({
+  cover: media({ accept: "image" }).optional(),
+  writer: ref(authors).optional(),
   views: integer().default(0),
-}, {
-  url: "/blog/:slug",
-  comments: true,
-  access: { read: "anyone", create: "author", update: "author", delete: "editor" },
-});
+}, { url: "/blog/:slug" });
+
+// Another kind like posts, with its own rows.
+export const notes = wp.posts.clone({ version: text().max(20) }, { url: "/releases/:slug" });
 
 export const topics = taxonomy({ color: text().optional() }, { url: "/topics/:slug", on: [posts] });
 

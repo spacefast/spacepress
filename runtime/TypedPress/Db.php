@@ -424,7 +424,8 @@ final class Db
             throw Access::deny($viewer->user, "read $collection");
         }
         $guards = is_array($r) ? [$r] : [];
-        if (($spec['drafts'] ?? false) && Access::isShorthand($rule)
+        // WordPress's own posts: who reads a draft is core's answer, applied by the store's guards.
+        if (($spec['drafts'] ?? false) && Access::isShorthand($rule) && !($spec['native'] ?? false)
             && ($viewer->user === null || Schema::roleRank($viewer->user['role']) < Schema::roleRank('editor'))) {
             $guards[] = ['status' => 'published'];
         }

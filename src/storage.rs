@@ -80,7 +80,7 @@ fn kind(c: &Collection, snapshot: &Json) -> Json {
     let mut out = json!({ "in": place, "fields": fields });
     match place {
         "posts" => {
-            out["postType"] = format!("tp_{}", c.table).into();
+            out["postType"] = c.post_type().into();
             out["hierarchical"] = c.hierarchical.into();
             out["localized"] = c.localized.into();
         }
@@ -112,6 +112,8 @@ fn at(c: &Collection, place: &str, table: &str, name: &str, col: &Column) -> Jso
                 core("post_title")
             } else if c.content.as_deref() == Some(name) {
                 core("post_content")
+            } else if c.excerpt.as_deref() == Some(name) {
+                core("post_excerpt")
             } else if c.slug.as_deref() == Some(name) {
                 core("post_name")
             } else if col.system && c.hierarchical && name == "parent" {

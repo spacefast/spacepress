@@ -29,8 +29,8 @@ pub fn render(schema: &Schema) -> Option<String> {
     for c in &collections {
         let _ = writeln!(
             out,
-            "    <custom-type translate=\"1\">tp_{}</custom-type>",
-            xml(&c.table)
+            "    <custom-type translate=\"1\">{}</custom-type>",
+            xml(&c.post_type())
         );
     }
     out.push_str("  </custom-types>\n  <custom-fields>\n");

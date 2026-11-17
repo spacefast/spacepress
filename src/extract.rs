@@ -142,6 +142,31 @@ const CONFIG_KEYS: &[&str] = &[
     "output",
     "runtimeSchema",
 ];
+/// `wp.posts.extend(fields, options)`: what may change about WordPress's own posts.
+const POST_OPTIONS: &[&str] = &[
+    "url", "comments", "access", "label", "sync", "uid", "agents", "api", "staged",
+];
+/// `wp.posts.clone(fields, options)`: the same, and its own stored name.
+const POST_CLONE_OPTIONS: &[&str] = &[
+    "url",
+    "comments",
+    "access",
+    "label",
+    "sync",
+    "uid",
+    "agents",
+    "api",
+    "staged",
+    "storageName",
+];
+
+fn post_call(post: PostKind) -> &'static str {
+    match post {
+        PostKind::Native => "wp.posts.extend()",
+        PostKind::Clone => "wp.posts.clone()",
+    }
+}
+
 const COLLECTION_OPTIONS: &[&str] = &[
     "storageName",
     "existingTable",
@@ -478,6 +503,11 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     "use a name of at most {MAX_TAXONOMY_TABLE} characters, or give it a shorter `storageName`"
                 )));
             }
+            // WordPress's posts are one kind, and its name is theirs.
+            if c.post == Some(PostKind::Native) && key != "posts" {
+                return Err(Diag::new(c.span, format!("WordPress's posts are exported as `posts`, not `{key}`"))
+                    .help("write `export const posts = wp.posts.extend({ ... }, { url })`; for another kind like posts, use `wp.posts.clone(...)`"));
+            }
             if c.table.set(table.clone()).is_err() {
                 return Err(Diag::new(span, "a definition can only be registered once"));
             }
@@ -500,6 +530,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     title: None,
                     content: None,
                     slug: None,
+                    excerpt: None,
+                    native: false,
                     columns: IndexMap::new(),
                     relations: IndexMap::new(),
                     hooks: IndexMap::new(),
@@ -617,6 +649,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.title = opts.title;
         coll.content = opts.content;
         coll.slug = opts.slug;
+        coll.excerpt = c.post.map(|_| "excerpt".to_string());
+        coll.native = c.post == Some(PostKind::Native);
         coll.access = opts.access;
         coll.api = opts.api;
         coll.uid = opts.uid;
@@ -1578,8 +1612,38 @@ fn collection_options(
             )),
         }
     };
+    // `wp.posts.extend()` and `.clone()`: posts' own fields are built in, and storage is posts'.
+    if let Some(post) = c.post {
+        let call = post_call(post);
+        let allowed: &[&str] = match post {
+            PostKind::Native => POST_OPTIONS,
+            PostKind::Clone => POST_CLONE_OPTIONS,
+        };
+        for k in o.keys() {
+            if !allowed.contains(&k.as_str()) {
+                let mut d = Diag::new(span(k), format!("{call} has no option `{k}`"));
+                d = match k.as_str() {
+                    "title" | "content" | "drafts" | "revisions" | "hierarchical" => {
+                        d.help("posts always have their title, content, drafts and revisions, and don't nest")
+                    }
+                    "storageName" | "existingTable" | "was" => {
+                        d.help("WordPress's posts are stored as core's `post` type; use `wp.posts.clone()` for a kind of your own")
+                    }
+                    _ => match suggest(k, allowed.iter().copied()) {
+                        Some(s) => d.help(format!("did you mean `{s}`?")),
+                        None => d.help(format!("the options are {}", allowed.join(", "))),
+                    },
+                };
+                return Err(d);
+            }
+        }
+        if post == PostKind::Native && matches!(o.get("url"), None | Some(Value::Undef)) {
+            return Err(Diag::new(c.span, "`wp.posts.extend()` needs a `url`")
+                .help("say where a post lives: `wp.posts.extend({}, { url: \"/blog/:slug\" })`"));
+        }
+    }
     for k in o.keys() {
-        if !COLLECTION_OPTIONS.contains(&k.as_str()) {
+        if c.post.is_none() && !COLLECTION_OPTIONS.contains(&k.as_str()) {
             let mut d = Diag::new(span(k), format!("{}() has no option `{k}`", c.kind.builder()));
             if k == "editor" {
                 d = d.help(match c.kind {
@@ -1682,9 +1746,13 @@ fn collection_options(
     };
     // spec.md §2.3: `comments: true | { guests?, moderation?, threaded?, closeAfterDays?, types? }`;
     // comments are off on every kind that doesn't turn them on.
-    let comment_policy = comment_policy(o.get("comments"), ev, span("comments"), editor)?;
+    // Posts take comments unless `comments: false` (WordPress's own posts do).
+    let comment_policy = match o.get("comments") {
+        None | Some(Value::Undef) if c.post.is_some() => Some(crate::schema::CommentPolicy::default()),
+        given => comment_policy(given, ev, span("comments"), editor)?,
+    };
 
-    if editor && c.table().len() > MAX_POST_TYPE_TABLE {
+    if editor && c.post != Some(PostKind::Native) && c.table().len() > MAX_POST_TYPE_TABLE {
         return Err(Diag::new(
             c.span,
             format!(
@@ -1896,8 +1964,10 @@ fn collection_options(
         }
     };
 
-    // access
+    // access. WordPress's own posts default to what core already allows (authors write, core's
+    // capabilities decide whose posts): the rules narrow core's capabilities, never widen them.
     let owner = Owner::Collection(c.table().to_string());
+    let native = c.post == Some(PostKind::Native);
     let mut access: IndexMap<String, Access> = ACCESS_OPS
         .iter()
         .map(|op| {
@@ -1905,6 +1975,8 @@ fn collection_options(
                 op.to_string(),
                 if *op == "read" {
                     Access::anyone()
+                } else if native {
+                    Access::Role("author".into())
                 } else {
                     Access::editor()
                 },

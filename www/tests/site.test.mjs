@@ -171,6 +171,22 @@ test("home: the newest posts are listed at the end of the guide", async () => {
   await close();
 });
 
+test("blog posts are WordPress's own posts, at the blog's address only", async () => {
+  // The API lists them, as anyone reads them, and each is at /blog/<slug>.
+  const listed = await (await fetch(base + "/__tp/api/v1/posts")).json();
+  assert.ok(listed.data.length > 0, "no posts");
+  const post = listed.data[0];
+  // WordPress's own address for a post (/%postname%/, ?p=) sends the reader to the blog's.
+  for (const other of [`/${post.slug}/`, `/?p=${post.id}`]) {
+    const response = await fetch(base + other, { redirect: "manual" });
+    assert.equal(response.status, 301, other);
+    assert.match(response.headers.get("location") ?? "", new RegExp(`/blog/${post.slug}/?$`), other);
+  }
+  // WordPress's core route answers the same post: it is core's `post` type.
+  const core = await (await fetch(`${base}/wp-json/wp/v2/posts/${post.id}`)).json();
+  assert.equal(core.slug, post.slug);
+});
+
 test("the star job can only be started by an admin", async () => {
   const response = await fetch(`${base}/__tp/api/v1/actions/refreshStarsNow`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   assert.ok([401, 403].includes(response.status), `POST refreshStarsNow answered ${response.status}`);

@@ -119,7 +119,9 @@ add_action('plugins_loaded',static function(){if(!class_exists('WC_Gateway_COD')
 }, { timeout: 300_000 });
 after(async () => { await browser?.close(); await wordpress?.[Symbol.asyncDispose](); rmSync(project, { recursive: true, force: true }); });
 
-test('fresh storefront, cart, shipping, stock rejection and native stock gateway checkout', { timeout: 120_000 }, async () => {
+// These long journeys issue many PHP-WASM requests; shared CI runners can take over two minutes.
+// Keep individual browser/assertion deadlines short so missing UI still fails promptly.
+test('fresh storefront, cart, shipping, stock rejection and native stock gateway checkout', { timeout: 240_000 }, async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.setDefaultTimeout(20_000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
@@ -263,7 +265,7 @@ test('dummy gateway decline/retry, native paid download grants, receipt and emai
   await context.close();
 });
 
-test('real CLI sync pushes, pulls, conflicts, retries and preserves Woo operational data', { timeout: 180_000 }, async () => {
+test('real CLI sync pushes, pulls, conflicts, retries and preserves Woo operational data', { timeout: 240_000 }, async () => {
   await sync();
   const file = path.join(project, 'content/products/ceramic-mug.md');
   const original = readFileSync(file, 'utf8');

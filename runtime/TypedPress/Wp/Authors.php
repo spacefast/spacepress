@@ -43,7 +43,7 @@ final class Authors
         // returns without one, and the theme answers 200. Core renders every sitemap it has and exits
         // at priority 10, so a sitemap request still here and not a 404 names a removed provider.
         add_action('template_redirect', static function (): void {
-            if (get_query_var('sitemap') !== '' && !is_404()) {
+            if (get_query_var('sitemap') && !is_404()) { // truthy, as core and Sitemap test it
                 $GLOBALS['wp_query']->set_404();
                 status_header(404);
                 nocache_headers();

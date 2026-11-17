@@ -8,7 +8,7 @@
         }
     },
     "scripts": {
-        "check-layout": "phpcs --standard=WordPress --sniffs=Generic.WhiteSpace.ScopeIndent,PEAR.Functions.FunctionCallSignature,Generic.WhiteSpace.ArbitraryParenthesesSpacing,Squiz.Functions.FunctionDeclarationArgumentSpacing,WordPress.WhiteSpace.ControlStructureSpacing,Universal.Arrays.DisallowShortArraySyntax,NormalizedArrays.Arrays.ArrayBraceSpacing,Generic.Formatting.MultipleStatementAlignment,WordPress.WhiteSpace.OperatorSpacing,WordPress.Arrays.ArrayKeySpacingRestrictions,PSR2.Files.EndFileNewline,Generic.Formatting.DisallowMultipleStatements,Squiz.Functions.MultiLineFunctionDeclaration"
+        "check-layout": "phpcs --standard=WordPress --sniffs=Generic.WhiteSpace.ScopeIndent,PEAR.Functions.FunctionCallSignature,Generic.WhiteSpace.ArbitraryParenthesesSpacing,Squiz.Functions.FunctionDeclarationArgumentSpacing,WordPress.WhiteSpace.ControlStructureSpacing,Universal.Arrays.DisallowShortArraySyntax,NormalizedArrays.Arrays.ArrayBraceSpacing,Generic.Formatting.MultipleStatementAlignment,WordPress.WhiteSpace.OperatorSpacing,WordPress.Arrays.ArrayKeySpacingRestrictions,PSR2.Files.EndFileNewline,Generic.Formatting.DisallowMultipleStatements,Squiz.Functions.MultiLineFunctionDeclaration,WordPress.Arrays.ArrayDeclarationSpacing,NormalizedArrays.Arrays.CommaAfterLast"
     },
     "license": "MIT"
 }

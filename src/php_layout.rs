@@ -3,7 +3,7 @@
 //! this pass lays out parentheses and spells array literals as `array(...)`. Indexing
 //! retains square brackets. The compiler lowers destructuring to explicit assignments.
 
-pub(crate) fn format(source: &str) -> String {
+fn tokenize(source: &str) -> Vec<std::ops::Range<usize>> {
     let bytes = source.as_bytes();
     let mut tokens = Vec::new();
     let mut i = 0;
@@ -65,6 +65,11 @@ pub(crate) fn format(source: &str) -> String {
         }
         tokens.push(start..i);
     }
+    tokens
+}
+
+pub(crate) fn format(source: &str) -> String {
+    let tokens = tokenize(source);
     let value = |n: usize| &source[tokens[n].clone()];
     let mut cast = vec![false; tokens.len()];
     for n in 0..tokens.len().saturating_sub(2) {
@@ -146,7 +151,6 @@ pub(crate) fn format(source: &str) -> String {
             _ => {}
         }
     }
-    let assignment_gaps = assignment_gaps(source, &tokens);
     let layout_token = |n: usize| match (value(n), arrays[n]) {
         ("[", true) => "(",
         ("]", true) => ")",
@@ -169,8 +173,6 @@ pub(crate) fn format(source: &str) -> String {
                 || right == "!"
             {
                 out.push(' ');
-            } else if assignment_gaps[n] > 0 {
-                out.extend(std::iter::repeat_n(' ', assignment_gaps[n]));
             } else {
                 out.push_str(gap);
             }
@@ -188,7 +190,8 @@ pub(crate) fn format(source: &str) -> String {
     while out.ends_with("\n\n") {
         out.pop();
     }
-    out
+    let out = multiline_arrays(&out);
+    align_assignments(&out)
 }
 
 fn constant_string(value: &str) -> bool {
@@ -233,7 +236,20 @@ fn assignment_gaps(source: &str, tokens: &[std::ops::Range<usize>]) -> Vec<usize
                 .is_some_and(|t| !matches!(&source[t.clone()], "=" | ">"))
             && !source[token.end..tokens[n + 1].start].contains('\n')
         {
-            candidates.push((line, indent, n + 1, source[token.clone()].chars().count()));
+            let mut depth = 0;
+            let last = tokens.iter().skip(n + 2).find(|t| {
+                match &source[(*t).clone()] {
+                    "(" | "[" | "{" => depth += 1,
+                    ")" | "]" | "}" => depth -= 1,
+                    ";" if depth == 0 => return true,
+                    _ => {}
+                }
+                false
+            });
+            let end_line = last.map_or(line, |t| {
+                line + source[token.start..t.end].bytes().filter(|b| *b == b'\n').count()
+            });
+            candidates.push((line, indent, n + 1, source[token.clone()].chars().count(), end_line));
         }
     }
     let mut gaps = vec![0; tokens.len()];
@@ -241,18 +257,171 @@ fn assignment_gaps(source: &str, tokens: &[std::ops::Range<usize>]) -> Vec<usize
     while start < candidates.len() {
         let mut end = start + 1;
         while end < candidates.len()
-            && candidates[end].0 == candidates[end - 1].0 + 1
+            && candidates[end].0 == candidates[end - 1].4 + 1
             && candidates[end].1 == candidates[start].1
         {
             end += 1;
         }
         let width = candidates[start..end].iter().map(|c| c.3).max().unwrap();
-        for (_, _, token, len) in &candidates[start..end] {
+        for (_, _, token, len, _) in &candidates[start..end] {
             gaps[*token] = width - len + 1;
         }
         start = end;
     }
     gaps
+}
+
+// Array layout can introduce line breaks into enclosing calls. Work on the
+// already-spelled PHP so short and long array input follow the same path.
+fn multiline_arrays(source: &str) -> String {
+    struct Group {
+        open: usize,
+        close: usize,
+        parent: Option<usize>,
+        array: bool,
+        commas: Vec<usize>,
+        arrows: Vec<usize>,
+        multiline: bool,
+    }
+    let tokens = tokenize(source);
+    let value = |n: usize| &source[tokens[n].clone()];
+    let mut groups: Vec<Group> = Vec::new();
+    let mut stack: Vec<usize> = Vec::new();
+    let mut closed = vec![None; tokens.len()];
+    for n in 0..tokens.len() {
+        match value(n) {
+            "(" | "[" | "{" => {
+                groups.push(Group {
+                    open: n,
+                    close: n,
+                    parent: stack.last().copied(),
+                    array: value(n) == "(" && n > 0 && value(n - 1) == "array",
+                    commas: Vec::new(),
+                    arrows: Vec::new(),
+                    multiline: false,
+                });
+                stack.push(groups.len() - 1);
+            }
+            ")" | "]" | "}" => {
+                let group = stack.pop().expect("emitted delimiters match");
+                groups[group].close = n;
+                closed[n] = Some(group);
+            }
+            "," => {
+                if let Some(group) = stack.last() {
+                    groups[*group].commas.push(n);
+                }
+            }
+            "=" if n + 1 < tokens.len() && value(n + 1) == ">" => {
+                if n > 0 && closed[n - 1].is_some_and(|g| groups[g].open > 0 && value(groups[g].open - 1) == "fn") {
+                    continue;
+                }
+                if let Some(group) = stack.last() {
+                    groups[*group].arrows.push(n);
+                }
+            }
+            _ => {}
+        }
+    }
+    for i in 0..groups.len() {
+        if groups[i].array && !groups[i].arrows.is_empty() && groups[i].commas.iter().any(|n| *n + 1 < groups[i].close)
+        {
+            let mut group = Some(i);
+            while let Some(n) = group {
+                if value(groups[n].open) != "(" {
+                    break;
+                }
+                groups[n].multiline = true;
+                group = groups[n].parent;
+            }
+        }
+    }
+    let mut gaps: Vec<Option<String>> = vec![None; tokens.len()];
+    let mut commas = vec![false; tokens.len()];
+    for group in groups.iter().filter(|g| g.multiline) {
+        let mut root = group;
+        let mut depth = 0;
+        while let Some(parent) = root.parent.filter(|p| groups[*p].multiline) {
+            root = &groups[parent];
+            depth += 1;
+        }
+        let line_start = source[..tokens[root.open].start].rfind('\n').map_or(0, |n| n + 1);
+        let base: String = source[line_start..tokens[root.open].start]
+            .chars()
+            .take_while(|c| matches!(c, ' ' | '\t'))
+            .collect();
+        let indent = base + &"\t".repeat(depth);
+        let inner = format!("{indent}\t");
+        gaps[group.open + 1] = Some(format!("\n{inner}"));
+        gaps[group.close] = Some(format!("\n{indent}"));
+        for comma in &group.commas {
+            if comma + 1 < group.close {
+                let mut next = comma + 1;
+                while next < group.close && ["//", "/*", "#"].iter().any(|p| value(next).starts_with(p)) {
+                    next += 1;
+                }
+                if next < group.close {
+                    gaps[next] = Some(format!("\n{inner}"));
+                }
+            }
+        }
+        if group.array {
+            let last = (group.open + 1..group.close)
+                .rev()
+                .find(|n| !["//", "/*", "#"].iter().any(|prefix| value(*n).starts_with(prefix)))
+                .expect("multiline array has items");
+            commas[last] = value(last) != ",";
+            let mut start = group.open + 1;
+            let mut separator = 0;
+            let mut keys = Vec::new();
+            for arrow in &group.arrows {
+                while separator < group.commas.len() && group.commas[separator] < *arrow {
+                    start = group.commas[separator] + 1;
+                    separator += 1;
+                }
+                let width = source[tokens[start].start..tokens[*arrow].start]
+                    .trim_end()
+                    .chars()
+                    .count();
+                keys.push((*arrow, width));
+            }
+            if let Some(width) = keys.iter().map(|(_, w)| *w).max() {
+                for (arrow, len) in keys {
+                    gaps[arrow] = Some(" ".repeat(width - len + 1));
+                }
+            }
+        }
+    }
+    let mut out = String::with_capacity(source.len());
+    let mut end = 0;
+    for (n, token) in tokens.iter().enumerate() {
+        out.push_str(gaps[n].as_deref().unwrap_or(&source[end..token.start]));
+        out.push_str(&source[token.clone()]);
+        if commas[n] {
+            out.push(',');
+        }
+        end = token.end;
+    }
+    out.push_str(&source[end..]);
+    out
+}
+
+fn align_assignments(source: &str) -> String {
+    let tokens = tokenize(source);
+    let gaps = assignment_gaps(source, &tokens);
+    let mut out = String::with_capacity(source.len());
+    let mut end = 0;
+    for (n, token) in tokens.iter().enumerate() {
+        if gaps[n] > 0 {
+            out.extend(std::iter::repeat_n(' ', gaps[n]));
+        } else {
+            out.push_str(&source[end..token.start]);
+        }
+        out.push_str(&source[token.clone()]);
+        end = token.end;
+    }
+    out.push_str(&source[end..]);
+    out
 }
 
 #[cfg(test)]
@@ -316,5 +485,35 @@ mod mechanical_tests {
             super::format("$a[0] = $a['k']; $a[] = $a[\"k\"];"),
             "$a[0] = $a['k']; $a[] = $a[\"k\"];"
         );
+    }
+}
+
+#[cfg(test)]
+mod multiline_tests {
+    #[test]
+    fn reflows_nested_arrays_and_calls_with_aligned_keys_and_optional_commas() {
+        let source = "\treturn f(['a' => 1, 'long' => g(['x' => 2, 'y' => 3])]);\n";
+        let output = super::format(source);
+        assert!(output.contains("f(\n\t\tarray("), "{output}");
+        assert!(output.contains("'a'    => 1,\n"), "{output}");
+        assert!(output.contains("'y' => 3,\n"), "{output}");
+        assert_eq!(super::format(&output), output);
+    }
+
+    #[test]
+    fn keeps_callback_arrows_out_of_key_alignment_and_comments_out_of_values() {
+        assert_eq!(
+            super::format("return [fn($x) => $x, fn($y) => $y];"),
+            "return array( fn( $x ) => $x, fn( $y ) => $y );"
+        );
+        let source = "return ['a' => fn($x) => $x, 'long' => 2 /* keep [x] */];";
+        let output = super::format(source);
+        assert!(output.contains("'a'    => fn( $x ) => $x,"), "{output}");
+        assert!(output.contains("2, /* keep [x] */"), "{output}");
+        assert_eq!(super::format(&output), output);
+        let output = super::format("return ['a' => 1, // keep\n 'b' => 2 // last\n];");
+        assert!(output.contains("1, // keep"), "{output}");
+        assert!(output.contains("2, // last"), "{output}");
+        assert_eq!(super::format(&output), output);
     }
 }

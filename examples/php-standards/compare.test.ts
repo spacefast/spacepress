@@ -30,12 +30,13 @@ function compare(before: string | null, after: string | null) {
 test('accepts nested literal syntax changes while preserving indexing and casts', () => {
     assert.equal(compare(
         "$v = (array)$input; return [1, ['k' => 2], []][0];",
-        "$v = (array) $input; return array( 1, array( 'k' => 2 ), array() )[0];",
+        "$v = (array) $input; return array( 1, array( 'k' => 2, ), array(), )[0];",
     ), 0);
 });
 
 test('rejects changed indexes, literals, comments, and casts', () => {
     assert.equal(compare('return [1][0];', 'return array(1)[1];'), 1);
+    assert.equal(compare('return f(1);', 'return f(1,);'), 1);
     assert.equal(compare("return ['[x]'];", "return array('array(x)');"), 1);
     assert.equal(compare('/* [x] */ return [];', '/* array(x) */ return array();'), 1);
     assert.equal(compare('return (array)$x;', 'return (object)$x;'), 1);

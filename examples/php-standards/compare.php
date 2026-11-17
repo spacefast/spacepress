@@ -32,6 +32,15 @@ function tokens( $file ) {
 		if ( is_array( $token ) && T_ARRAY === $token[0] && '(' === ( $tokens[ $i + 1 ] ?? null ) ) {
 			continue;
 		}
+		if ( ',' === $token ) {
+			$next = $i + 1;
+			while ( isset( $tokens[ $next ] ) && is_array( $tokens[ $next ] ) && in_array( $tokens[ $next ][0], array( T_COMMENT, T_DOC_COMMENT ), true ) ) {
+				++$next;
+			}
+			if ( ']' === ( $tokens[ $next ] ?? null ) || ( ')' === ( $tokens[ $next ] ?? null ) && end( $parentheses ) ) ) {
+				continue;
+			}
+		}
 		if ( '(' === $token ) {
 			$is_array      = $i > 0 && is_array( $tokens[ $i - 1 ] ) && T_ARRAY === $tokens[ $i - 1 ][0];
 			$parentheses[] = $is_array;
@@ -55,7 +64,7 @@ foreach ( $before_files as $before ) {
 		);
 	};
 	if ( $normalize( tokens( $before ) ) !== $normalize( tokens( $after ) ) ) {
-		fwrite( STDERR, basename( $before ) . " changed tokens beyond whitespace/array syntax\n" );
+		fwrite( STDERR, basename( $before ) . " changed tokens beyond whitespace/array syntax or optional array commas\n" );
 		exit( 1 );
 	}
 }

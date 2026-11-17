@@ -48,6 +48,7 @@ jobs:
         run: |
           cargo run --locked --example php-standards -- "$RUNNER_TEMP/php-standards"
           composer --working-dir=examples/php-standards run check-layout -- "$RUNNER_TEMP/php-standards"
+          examples/php-standards/vendor/bin/phpcs --standard=WordPress "$RUNNER_TEMP/php-standards/kitchen-sink-functions.php"
   # Three shards in parallel: the compiler suites and the npm comparison (about 26 minutes); the
   # slowest test targets, `slow` (app_migrate, app_router, config_migrate, sync and wp_plugins);
   # and fmt, clippy, every other test target and the acceptance scripts, `rest`. Test targets

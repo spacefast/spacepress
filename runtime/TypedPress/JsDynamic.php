@@ -121,6 +121,12 @@ trait JsDynamic
 
     public static function undefined(): JsUndefined { return JsUndefined::Value; }
     public static function isNullish(mixed $value): bool { return $value === null || $value === JsUndefined::Value; }
+
+    /** The compiler uses this eager fallback only for literal values with no side effects. */
+    public static function coalesce(mixed $value, mixed $fallback): mixed
+    {
+        return self::isNullish($value) ? $fallback : $value;
+    }
     public static function requirePresent(mixed $value): mixed
     {
         if (self::isNullish($value)) { throw new JsError('Cannot read properties of null or undefined', 'TypeError'); }
@@ -203,6 +209,12 @@ trait JsDynamic
             $hidden = $value->hidden['stack'] = self::str($value);
         }
         return $hidden;
+    }
+
+    /** A named optional property read; computed keys still need a lazy guard in compiled code. */
+    public static function optionalDataGet(mixed $value, string $key): mixed
+    {
+        return self::isNullish($value) ? JsUndefined::Value : self::dataGet($value, $key);
     }
 
     public static function dataGet(mixed $value, mixed $key): mixed

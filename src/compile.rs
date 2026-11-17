@@ -3920,11 +3920,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let ty = logical_result_type(*op, &a.ty, &b.ty);
                 match op {
                     LogOp::Nullish => {
-                        let tmp = self.tmp_var();
-                        Out::new(
-                            format!("(\\TypedPress\\Js::isNullish({tmp} = {}) ? {} : {tmp})", a.php, b.php),
-                            ty,
-                        )
+                        // A literal fallback can be passed eagerly without observing a read,
+                        // allocation or side effect on a branch JavaScript would skip.
+                        if literal_php(&b) || literal_position(r) {
+                            Out::atom(format!("\\TypedPress\\Js::coalesce({}, {})", a.php, b.php), ty)
+                        } else {
+                            let tmp = self.tmp_var();
+                            Out::new(
+                                format!("(\\TypedPress\\Js::isNullish({tmp} = {}) ? {} : {tmp})", a.php, b.php),
+                                ty,
+                            )
+                        }
                     }
                     LogOp::Or | LogOp::And => {
                         if a.ty.is_bool() && b.ty.is_bool() {
@@ -5752,7 +5758,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             ),
                         );
                     }
-                    (Self::write_place(&write, &result.php), result.ty)
+                    (Self::write_place(&write, &result.php, statement), result.ty)
                 }
                 AssignOp::Log(l) => {
                     if !assignable(&v.ty, &place.constraint) {
@@ -5771,7 +5777,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         LogOp::Or => self.truthy(&Out::atom(old.clone(), place.read.ty)),
                         LogOp::And => format!("!({})", self.truthy(&Out::atom(old.clone(), place.read.ty))),
                     };
-                    (format!("({keep} ? {old} : {})", Self::write_place(&write, &v.php)), ty)
+                    (
+                        format!("({keep} ? {old} : {})", Self::write_place(&write, &v.php, false)),
+                        ty,
+                    )
                 }
             };
             return Ok(Out::new(Self::assignment_sequence(steps, result, statement), ty));
@@ -5789,7 +5798,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         Ok(Out::new(
-            Self::assignment_sequence(steps, Self::write_place(&write, &v.php), statement),
+            Self::assignment_sequence(steps, Self::write_place(&write, &v.php, statement), statement),
             v.ty,
         ))
     }
@@ -6011,7 +6020,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ),
             );
         }
-        steps.push(Self::write_place(&write, &value));
+        steps.push(Self::write_place(&write, &value, false));
         if let ExprKind::Ident(name) = &target.kind {
             self.set_local_ty(name, ty);
         }
@@ -6066,11 +6075,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    fn write_place(write: &CapturedPlace, value: &str) -> String {
+    fn write_place(write: &CapturedPlace, value: &str, statement: bool) -> String {
         match write {
-            CapturedPlace::Binding(binding) => format!("({binding} = {value})"),
+            CapturedPlace::Binding(binding) => {
+                if statement {
+                    format!("{binding} = {value}")
+                } else {
+                    format!("({binding} = {value})")
+                }
+            }
             CapturedPlace::Object { receiver, key } => format!("\\TypedPress\\Js::set({receiver}, {key}, {value})"),
-            CapturedPlace::NativeObject { receiver, key } => format!("({receiver}->p[{key}] = {value})"),
+            CapturedPlace::NativeObject { receiver, key } => {
+                if statement {
+                    format!("{receiver}->p[{key}] = {value}")
+                } else {
+                    format!("({receiver}->p[{key}] = {value})")
+                }
+            }
             CapturedPlace::Array { receiver, key } => format!("\\TypedPress\\Js::setAt({receiver}, {key}, {value})"),
             CapturedPlace::Dynamic { receiver, key } => {
                 format!("\\TypedPress\\Js::dynamicSet({receiver}, {key}, {value})")
@@ -6110,7 +6131,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ));
         }
         let value = format!("\\TypedPress\\Js::add({old}, {})", if inc { "1" } else { "-1" });
-        let written = Self::write_place(&write, &value);
+        let written = Self::write_place(&write, &value, false);
         let result = if prefix {
             written
         } else {
@@ -6726,17 +6747,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let map = matches!(base, Ty::Map(_));
                 // Every shape the receiver can have is a plain object (`JsObject`), never an array.
                 let plain_objects = base.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_)));
-                let php = guarded(self, &|x| {
-                    // Present non-null values skip the checked read; absent keys, null values and any
-                    // receiver that is not a JsObject (null, undefined, a primitive: `??` reads them
-                    // without a diagnostic) keep dataGet's semantics. Beyond a proven parameter, the
-                    // receiver must be a local no assignment replaces, read as a plain variable.
-                    if (native_object && !map && !opt_field) || (plain_objects && stable_local && is_php_variable(x)) {
-                        format!("({x}->p[{0}] ?? \\TypedPress\\Js::dataGet({x}, {0}))", php_str(prop))
-                    } else {
-                        format!("\\TypedPress\\Js::dataGet({x}, {})", php_str(prop))
-                    }
-                });
+                let php = if optional && o.ty.is_nullable() {
+                    format!("\\TypedPress\\Js::optionalDataGet({}, {})", o.php, php_str(prop))
+                } else {
+                    guarded(self, &|x| {
+                        // Present non-null values skip the checked read; absent keys, null values and any
+                        // receiver that is not a JsObject (null, undefined, a primitive: `??` reads them
+                        // without a diagnostic) keep dataGet's semantics. Beyond a proven parameter, the
+                        // receiver must be a local no assignment replaces, read as a plain variable.
+                        if (native_object && !map && !opt_field)
+                            || (plain_objects && stable_local && is_php_variable(x))
+                        {
+                            format!("({x}->p[{0}] ?? \\TypedPress\\Js::dataGet({x}, {0}))", php_str(prop))
+                        } else {
+                            format!("\\TypedPress\\Js::dataGet({x}, {})", php_str(prop))
+                        }
+                    })
+                };
                 let ft = if map || opt_field {
                     Ty::union([ft, Ty::Undefined])
                 } else {

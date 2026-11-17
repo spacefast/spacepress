@@ -12,15 +12,18 @@ The locked Composer tools use WordPress Coding Standards 3.4.1 for development
 and CI only. Ordinary TypedPress builds do not require PHP or Composer for layout.
 `check-layout` enforces twenty-one WordPress layout, naming and documentation rules
 implemented by the compiler, using WordPress's own sniff configuration. The
-full audit intentionally also reports the rules not yet implemented.
+full audit intentionally also reports the rules not yet implemented. Kitchen-sink
+compiled functions pass the full WordPress standard, which quick CI also enforces.
 
 The corpus covers pantry, kitchen-sink and blog compiled functions. The original
-baseline had 1199 errors and 73 warnings; the compiler now emits 27 errors and
-38 warnings. Function documentation removes the last 27 missing-comment errors
-from the preceding 54-error result. The remaining findings concern assignments
-inside expressions/conditions and escaping of exception arguments. None are
-automatically fixable by PHPCBF. Exception messages are serialized into JSON
-problems by the runtime, so adding HTML escaping here would alter API data.
+baseline had 1199 errors and 73 warnings; the audit now finds 5 errors and
+3 warnings. The expression pass reduces the preceding 27 errors / 38 warnings
+by using existing runtime nullish/property checks through two small helpers and
+omitting grouping parentheses around standalone assignments. The remaining
+findings concern assignments inside lazy expressions/conditions and escaping
+of exception arguments. None are automatically fixable by PHPCBF. Exception
+messages are serialized into JSON problems by the runtime, so adding HTML
+escaping here would alter API data.
 Schema and shipped runtime PHP are outside this corpus. Do not edit generated
 files as a substitute for fixing the compiler.
 
@@ -28,8 +31,9 @@ The compiler applies layout to its assembled functions, including
 service and content-page helpers. It copies quoted strings and comments verbatim,
 keeps empty argument lists and casts compact, and preserves multiline indentation.
 Array literals use long syntax; indexing retains square brackets, with computed
-keys spaced and literal string/integer keys compact. Adjacent bare-variable
-assignments at the same indentation are aligned, including multiline values.
+keys spaced and literal string/integer keys compact. Adjacent simple
+assignments at the same indentation are aligned, including property/index targets
+and multiline values.
 Multi-item associative arrays use one item per line, aligned keys and a trailing
 comma. Enclosing calls are reflowed with one argument per line. Destructuring
 is lowered to explicit assignments before layout, rather than PHP destructuring.
@@ -44,6 +48,14 @@ transitive exception analysis. Destructured/rest parameters and async/generator
 wrappers document their actual PHP calling conventions. Shared callable helpers
 also document their return type. Comments escape source text that could terminate
 PHPDoc, and omit source paths outside the project to keep builds reproducible.
+
+Named optional data-property reads evaluate the receiver once through
+`Js::optionalDataGet`; computed keys retain a lazy guard. Nullish coalescing uses
+`Js::coalesce` only for literal fallbacks with no reads, allocations or side effects.
+Other fallbacks retain their lazy expression form. These helpers ship in the runtime
+bundled with the compiler. Assignment statements keep target capture and RHS order;
+assignments used as values retain their grouping. The PHP/Node regression fixture
+`tests/differential/language/php-expressions.ts` checks these distinctions.
 
 For a formatting-only comparison against an earlier generated corpus:
 
@@ -64,9 +76,9 @@ retain their source spelling. Only control-flow paths that can fall through emit
 the undefined fallback, using the compiler's existing completion analysis.
 
 The token comparator is for formatting revisions. Binding/function renames, the new file
-header and omitted unreachable returns intentionally fail comparison against older
-revisions; validate those through the binding/control-flow regression fixture and
-PHP/Node differential tests rather than weakening token comparison.
+header, omitted unreachable returns and expression lowering intentionally fail
+comparison against older revisions; validate those through regression fixtures
+and PHP/Node differential tests rather than weakening token comparison.
 
 Generated PHP function names and corresponding handler metadata use snake_case.
 The existing function allocator resolves spelling collisions. Async body and job

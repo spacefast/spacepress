@@ -212,8 +212,40 @@ fn constant_string(value: &str) -> bool {
     true
 }
 
-// Align only bare-variable assignments at the start of consecutive, equally
-// indented lines. Token boundaries keep literal/comment contents opaque.
+// Find the assignment after a variable and its property/index path, without
+// mistaking an assignment inside a call or key expression for the outer one.
+fn assignment_operator(source: &str, tokens: &[std::ops::Range<usize>], start: usize) -> Option<usize> {
+    let value = |n: usize| tokens.get(n).map(|t| &source[t.clone()]);
+    let mut n = start + 1;
+    loop {
+        match value(n)? {
+            "=" if !matches!(value(n + 1), Some("=" | ">")) => return Some(n),
+            "-" if value(n + 1) == Some(">") => {
+                let property = value(n + 2)?;
+                if !property.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '$')) {
+                    return None;
+                }
+                n += 3;
+            }
+            "[" => {
+                let mut depth = 1;
+                n += 1;
+                while depth > 0 {
+                    match value(n)? {
+                        "[" => depth += 1,
+                        "]" => depth -= 1,
+                        _ => {}
+                    }
+                    n += 1;
+                }
+            }
+            _ => return None,
+        }
+    }
+}
+
+// Align assignments at the start of consecutive, equally indented lines.
+// Token boundaries keep literal/comment contents opaque.
 fn assignment_gaps(source: &str, tokens: &[std::ops::Range<usize>]) -> Vec<usize> {
     let mut candidates = Vec::new();
     let mut line = 0;
@@ -230,14 +262,11 @@ fn assignment_gaps(source: &str, tokens: &[std::ops::Range<usize>]) -> Vec<usize
         let indent = &source[line_start..token.start];
         if source[token.clone()].starts_with('$')
             && indent.bytes().all(|b| b == b'\t' || b == b' ')
-            && tokens.get(n + 1).is_some_and(|t| &source[t.clone()] == "=")
-            && tokens
-                .get(n + 2)
-                .is_some_and(|t| !matches!(&source[t.clone()], "=" | ">"))
-            && !source[token.end..tokens[n + 1].start].contains('\n')
+            && let Some(equal) = assignment_operator(source, tokens, n)
+            && !source[token.end..tokens[equal].start].contains('\n')
         {
             let mut depth = 0;
-            let last = tokens.iter().skip(n + 2).find(|t| {
+            let last = tokens.iter().skip(equal + 1).find(|t| {
                 match &source[(*t).clone()] {
                     "(" | "[" | "{" => depth += 1,
                     ")" | "]" | "}" => depth -= 1,
@@ -249,7 +278,8 @@ fn assignment_gaps(source: &str, tokens: &[std::ops::Range<usize>]) -> Vec<usize
             let end_line = last.map_or(line, |t| {
                 line + source[token.start..t.end].bytes().filter(|b| *b == b'\n').count()
             });
-            candidates.push((line, indent, n + 1, source[token.clone()].chars().count(), end_line));
+            let width = source[token.start..tokens[equal].start].trim_end().chars().count();
+            candidates.push((line, indent, equal, width, end_line));
         }
     }
     let mut gaps = vec![0; tokens.len()];
@@ -468,6 +498,19 @@ mod array_tests {
 
 #[cfg(test)]
 mod mechanical_tests {
+    #[test]
+    fn aligns_variable_property_and_index_assignments_together() {
+        let output = super::format("$a = 1;\n$object->p[$key] = 2;\n$array[0] = 3;\n");
+        let columns: Vec<_> = output.lines().map(|line| line.find('=').unwrap()).collect();
+        assert!(columns.iter().all(|column| *column == columns[0]), "{output}");
+        assert_eq!(super::format(&output), output);
+        let call = "$f($value = 1);\n$object->method($other = 2);\n";
+        assert_eq!(
+            super::format(call),
+            "$f( $value = 1 );\n$object->method( $other = 2 );\n"
+        );
+    }
+
     #[test]
     fn aligns_assignment_groups_and_spaces_negation_and_computed_keys() {
         let source = "$x = 1;\n$long_name = '!';\n\n$x = !$long_name;\n$z = $items[$i + 1];\n\n";

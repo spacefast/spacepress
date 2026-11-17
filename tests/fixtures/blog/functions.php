@@ -30,7 +30,7 @@ function posts__access__read( \TypedPress\JsObject $ctx ) {
  * @return bool|array The compiled return value.
  */
 function posts__access__update( \TypedPress\JsObject $ctx ) {
-	return ( ( ( \TypedPress\Js::isNullish( $__t1 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ? \TypedPress\Js::undefined() : \TypedPress\Js::dataGet( $__t1, 'role' ) ) === 'admin' ) || ( ( \TypedPress\Js::isNullish( $__t2 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ? \TypedPress\Js::undefined() : \TypedPress\Js::dataGet( $__t2, 'role' ) ) === 'editor' ) ) ? true : array( 'authorId' => array( 'userId' => ( \TypedPress\Js::isNullish( $__t5 = ( \TypedPress\Js::isNullish( $__t3 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ? \TypedPress\Js::undefined() : \TypedPress\Js::dataGet( $__t3, 'id' ) ) ) ? -1 : $__t5 ) ) );
+	return ( ( \TypedPress\Js::optionalDataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'role' ) === 'admin' ) || ( \TypedPress\Js::optionalDataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'role' ) === 'editor' ) ) ? true : array( 'authorId' => array( 'userId' => \TypedPress\Js::coalesce( \TypedPress\Js::optionalDataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'id' ), -1 ) ) );
 }
 
 /**
@@ -67,9 +67,9 @@ function posts__before_create( \TypedPress\JsObject $data, \TypedPress\JsObject 
 	if ( \TypedPress\Js::truthy( ( $__t1 = \TypedPress\Js::isNullish( ( $data->p['authorId'] ?? \TypedPress\Js::dataGet( $data, 'authorId' ) ) ) ) ? ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) : $__t1 ) ) {
 		$author = \TypedPress\Seam::findFirst( 'authors', array( 'where' => array( 'userId' => \TypedPress\Js::dataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'id' ) ) ) );
 		if ( ! \TypedPress\Js::isNullish( $author ) ) {
-			$__t2 = $data;
-			$__t3 = 'authorId';
-			( $__t2->p[ $__t3 ] = ( $author->p['id'] ?? \TypedPress\Js::dataGet( $author, 'id' ) ) );
+			$__t2             = $data;
+			$__t3             = 'authorId';
+			$__t2->p[ $__t3 ] = ( $author->p['id'] ?? \TypedPress\Js::dataGet( $author, 'id' ) );
 		}
 	}
 	return \TypedPress\Js::undefined();

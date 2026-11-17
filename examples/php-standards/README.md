@@ -10,23 +10,19 @@ find /tmp/tp-php -name '*.php' -exec php -l {} \;
 
 The locked Composer tools use WordPress Coding Standards 3.4.1 for development
 and CI only. Ordinary TypedPress builds do not require PHP or Composer for layout.
-`check-layout` enforces nineteen WordPress layout, naming and file-documentation rules
+`check-layout` enforces twenty-one WordPress layout, naming and documentation rules
 implemented by the compiler, using WordPress's own sniff configuration. The
 full audit intentionally also reports the rules not yet implemented.
 
 The corpus covers pantry, kitchen-sink and blog compiled functions. The original
-baseline had 1199 errors and 73 warnings. Tab indentation and declaration braces
-reduced it to 1037 errors; parentheses layout reached 303 errors. Long array
-literals reached 127 errors. Operator/index spacing, assignment alignment, helper
-bodies and final newlines reached 102 errors and 45 warnings. Multiline
-associative arrays and enclosing calls reduce it to 94 errors and 45 warnings
-(1105 fewer errors and 28 fewer warnings than baseline). Snake_case PHP local
-bindings, omission of unreachable fallback returns and a file-level PHPDoc header
-bring it to 70 errors and 38 warnings (1129 fewer errors and 35 fewer warnings
-than baseline). Snake_case function allocation reduces it further to 54 errors
-and 38 warnings (1145 fewer errors than baseline). No remaining findings
-in this corpus are automatically fixable by PHPCBF. Function documentation and semantic/security checks remain separate work. Schema
-and shipped runtime PHP are outside this corpus. Do not edit generated files as a substitute for fixing the compiler.
+baseline had 1199 errors and 73 warnings; the compiler now emits 27 errors and
+38 warnings. Function documentation removes the last 27 missing-comment errors
+from the preceding 54-error result. The remaining findings concern assignments
+inside expressions/conditions and escaping of exception arguments. None are
+automatically fixable by PHPCBF. Exception messages are serialized into JSON
+problems by the runtime, so adding HTML escaping here would alter API data.
+Schema and shipped runtime PHP are outside this corpus. Do not edit generated
+files as a substitute for fixing the compiler.
 
 The compiler applies layout to its assembled functions, including
 service and content-page helpers. It copies quoted strings and comments verbatim,
@@ -39,6 +35,15 @@ comma. Enclosing calls are reflowed with one argument per line. Destructuring
 is lowered to explicit assignments before layout, rather than PHP destructuring.
 The emitter uses quoted PHP strings, not heredocs or inline HTML; keep that
 contract when adding new emitters.
+
+Compiled source callbacks have PHPDoc with project-relative source locations,
+allocated PHP parameter names, their native PHP types and inferred return types.
+Types without a known PHP representation use `mixed`. Explicit throw statements
+record their exception classes within the current function; this does not attempt
+transitive exception analysis. Destructured/rest parameters and async/generator
+wrappers document their actual PHP calling conventions. Shared callable helpers
+also document their return type. Comments escape source text that could terminate
+PHPDoc, and omit source paths outside the project to keep builds reproducible.
 
 For a formatting-only comparison against an earlier generated corpus:
 

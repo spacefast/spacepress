@@ -387,7 +387,10 @@ fn multiline_arrays(source: &str) -> String {
             }
             if let Some(width) = keys.iter().map(|(_, w)| *w).max() {
                 for (arrow, len) in keys {
-                    gaps[arrow] = Some(" ".repeat(width - len + 1));
+                    let original = &source[tokens[arrow - 1].end..tokens[arrow].start];
+                    if !original.contains('\n') {
+                        gaps[arrow] = Some(" ".repeat(width - len + 1));
+                    }
                 }
             }
         }
@@ -490,6 +493,19 @@ mod mechanical_tests {
 
 #[cfg(test)]
 mod multiline_tests {
+    #[test]
+    fn a_line_comment_before_an_array_arrow_keeps_its_terminating_newline() {
+        let output = super::format("return ['a' // key\n => 1, 'b' => 2];");
+        assert!(output.contains("// key\n"), "{output}");
+        let tokens = super::tokenize(&output);
+        let arrows = tokens
+            .windows(2)
+            .filter(|pair| &output[pair[0].clone()] == "=" && &output[pair[1].clone()] == ">")
+            .count();
+        assert_eq!(arrows, 2, "an array item was swallowed by a line comment: {output}");
+        assert_eq!(super::format(&output), output);
+    }
+
     #[test]
     fn reflows_nested_arrays_and_calls_with_aligned_keys_and_optional_commas() {
         let source = "\treturn f(['a' => 1, 'long' => g(['x' => 2, 'y' => 3])]);\n";

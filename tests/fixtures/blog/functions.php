@@ -11,22 +11,58 @@ declare( strict_types=1 );
 
 namespace TypedPressApp;
 
+/**
+ * Execute the compiled TypeScript callback at `typedpress.config.ts:42`.
+ *
+ * @param \TypedPress\JsObject $ctx TypeScript parameter `ctx`.
+ *
+ * @return bool|array The compiled return value.
+ */
 function posts__access__read( \TypedPress\JsObject $ctx ) {
 	return ( \TypedPress\Js::truthy( ( ! \TypedPress\Js::isNullish( $__t1 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ) ? ( ! ( \TypedPress\Js::dataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'role' ) === 'subscriber' ) ) : $__t1 ) ) ? true : array( 'status' => 'published' );
 }
 
+/**
+ * Execute the compiled TypeScript callback at `typedpress.config.ts:44`.
+ *
+ * @param \TypedPress\JsObject $ctx TypeScript parameter `ctx`.
+ *
+ * @return bool|array The compiled return value.
+ */
 function posts__access__update( \TypedPress\JsObject $ctx ) {
 	return ( ( ( \TypedPress\Js::isNullish( $__t1 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ? \TypedPress\Js::undefined() : \TypedPress\Js::dataGet( $__t1, 'role' ) ) === 'admin' ) || ( ( \TypedPress\Js::isNullish( $__t2 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ? \TypedPress\Js::undefined() : \TypedPress\Js::dataGet( $__t2, 'role' ) ) === 'editor' ) ) ? true : array( 'authorId' => array( 'userId' => ( \TypedPress\Js::isNullish( $__t5 = ( \TypedPress\Js::isNullish( $__t3 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ? \TypedPress\Js::undefined() : \TypedPress\Js::dataGet( $__t3, 'id' ) ) ) ? -1 : $__t5 ) ) );
 }
 
+/**
+ * Execute the compiled TypeScript callback at `typedpress.config.ts:59`.
+ *
+ * @param mixed $v TypeScript parameter `v`.
+ *
+ * @return string|bool The compiled return value.
+ */
 function comments__validate__body( $v ) {
 	return ( \TypedPress\Js::dynamicCallMethod( $v, 'includes', new \TypedPress\JsArray( array( 'http://' ) ) ) ) ? 'No links in comments' : true;
 }
 
+/**
+ * Execute the compiled TypeScript callback at `typedpress.config.ts:63`.
+ *
+ * @param \TypedPress\JsObject $ctx TypeScript parameter `ctx`.
+ *
+ * @return bool|array The compiled return value.
+ */
 function comments__access__read( \TypedPress\JsObject $ctx ) {
 	return ( ! \TypedPress\Js::isNullish( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ) ? true : array( 'approved' => true );
 }
 
+/**
+ * Execute the compiled TypeScript callback at `typedpress.config.ts:48`.
+ *
+ * @param \TypedPress\JsObject $data TypeScript parameter `data`.
+ * @param \TypedPress\JsObject $ctx  TypeScript parameter `ctx`.
+ *
+ * @return \TypedPress\JsUndefined The compiled return value.
+ */
 function posts__before_create( \TypedPress\JsObject $data, \TypedPress\JsObject $ctx ) {
 	if ( \TypedPress\Js::truthy( ( $__t1 = \TypedPress\Js::isNullish( ( $data->p['authorId'] ?? \TypedPress\Js::dataGet( $data, 'authorId' ) ) ) ) ? ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) : $__t1 ) ) {
 		$author = \TypedPress\Seam::findFirst( 'authors', array( 'where' => array( 'userId' => \TypedPress\Js::dataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'id' ) ) ) );
@@ -39,6 +75,14 @@ function posts__before_create( \TypedPress\JsObject $data, \TypedPress\JsObject 
 	return \TypedPress\Js::undefined();
 }
 
+/**
+ * Execute the compiled TypeScript callback at `typedpress.config.ts:65`.
+ *
+ * @param \TypedPress\JsObject $row TypeScript parameter `row`.
+ * @param \TypedPress\JsObject $ctx TypeScript parameter `ctx`.
+ *
+ * @return \TypedPress\JsUndefined The compiled return value.
+ */
 function comments__after_create( \TypedPress\JsObject $row, \TypedPress\JsObject $ctx ) {
 	if ( \TypedPress\Js::truthy( ( ! \TypedPress\Js::isNullish( $__t1 = ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ) ) ) ? ( ! ( \TypedPress\Js::dataGet( ( $ctx->p['user'] ?? \TypedPress\Js::dataGet( $ctx, 'user' ) ), 'role' ) === 'subscriber' ) ) : $__t1 ) ) {
 		\TypedPress\Seam::update( 'comments', ( new \TypedPress\JsObject( array( 'approved' => true ) ) ), array( 'id' => ( $row->p['id'] ?? \TypedPress\Js::dataGet( $row, 'id' ) ) ) );
@@ -46,6 +90,15 @@ function comments__after_create( \TypedPress\JsObject $row, \TypedPress\JsObject
 	return \TypedPress\Js::undefined();
 }
 
+/**
+ * Execute the compiled TypeScript callback at `typedpress.config.ts:87`.
+ *
+ * @param \TypedPress\JsObject $__t1 Destructured TypeScript argument.
+ *
+ * @throws \TypedPress\HttpError When the source callback throws.
+ *
+ * @return \TypedPress\JsObject The compiled return value.
+ */
 function action__approve_comment( \TypedPress\JsObject $__t1 ) {
 	$__t2 = \TypedPress\Js::requirePresent( $__t1 );
 	$id   = \TypedPress\Js::dataGet( $__t2, 'id' );
@@ -60,6 +113,11 @@ function action__approve_comment( \TypedPress\JsObject $__t1 ) {
 	return $row;
 }
 
+/**
+ * Execute the compiled TypeScript callback at `typedpress.config.ts:97`.
+ *
+ * @return \TypedPress\JsObject The compiled return value.
+ */
 function action__published_count() {
 	$rows = \TypedPress\Seam::findMany(
 		'posts',

@@ -375,6 +375,8 @@ struct FnCtx {
     ret: Option<Ty>,
     /// Inferred return types (when no annotation).
     returns: Vec<Ty>,
+    /// Exception classes explicitly thrown in this function's own body.
+    throws: indexmap::IndexSet<&'static str>,
     /// Expressions proven not to complete by their compiled type.
     diverging: HashSet<Span>,
     /// Switch statements whose cases cover the compiled discriminant type.
@@ -1163,6 +1165,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             is_generator: f.is_generator,
             ret: None,
             returns: Vec::new(),
+            throws: indexmap::IndexSet::new(),
             diverging: HashSet::new(),
             exhaustive_switches: HashSet::new(),
             loop_bindings: HashSet::new(),
@@ -1362,8 +1365,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         self.current = caller;
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
-        let (params_php, body) = result?;
+        let (params_php, body, mut parameter_docs) = result?;
+        if !parameter_docs.is_empty() && !fx.throws.is_empty() {
+            parameter_docs.push_str(" *\n");
+        }
+        for exception in &fx.throws {
+            let _ = writeln!(
+                parameter_docs,
+                " * @throws {exception} When the source callback throws."
+            );
+        }
         let ret_ty = predicate.unwrap_or_else(|| fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone())));
+        let source = crate::diag::position(f.span, &self.ev_program().root)
+            .filter(|(file, _, _)| !std::path::Path::new(file).is_absolute())
+            .map(|(file, line, _)| format!(" at `{file}:{line}`"))
+            .unwrap_or_default();
+        let language = if self.javascript_module(f.module) {
+            "JavaScript"
+        } else {
+            "TypeScript"
+        };
+        let summary = format!("Execute the compiled {language} callback{source}.");
+        let docs = php_function_doc(&summary, &parameter_docs, &php_doc_type(&ret_ty, fx.access.is_some()));
         self.helper_types.insert(
             closure_key(closure),
             Ty::Fn(
@@ -1378,12 +1401,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if self.suspends(&f) {
             let body_name = self.unique_name(&format!("{name}__body"));
             let wrapper = self.suspending_wrapper(&f, &format!("\\TypedPressApp\\{body_name}"));
+            let body_docs = php_function_doc(
+                &summary,
+                &parameter_docs,
+                if f.is_generator { "\\Generator" } else { "mixed" },
+            );
+            let wrapper_docs = php_function_doc(
+                "Start the compiled asynchronous or generator callback.",
+                " * @param mixed ...$args Arguments forwarded to the callback.\n",
+                match (f.is_async, f.is_generator) {
+                    (true, true) => "\\TypedPress\\JsAsyncGenerator",
+                    (false, true) => "\\TypedPress\\JsGenerator",
+                    _ => "\\TypedPress\\JsPromise",
+                },
+            );
             let _ = writeln!(
                 self.output,
-                "function {body_name}({params_php}) {{\n{body}}}\n\nfunction {name}(mixed ...$args) {{\n\treturn {wrapper};\n}}\n"
+                "{body_docs}function {body_name}({params_php}) {{\n{body}}}\n\n{wrapper_docs}function {name}(mixed ...$args) {{\n\treturn {wrapper};\n}}\n"
             );
         } else {
-            let _ = writeln!(self.output, "function {name}({params_php}) {{\n{body}}}\n");
+            let _ = writeln!(self.output, "{docs}function {name}({params_php}) {{\n{body}}}\n");
         }
         Ok(())
     }
@@ -1436,9 +1473,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
         _name: &str,
         param_tys: &[Ty],
         slot: Option<&Slot>,
-    ) -> Result<(String, String)> {
+    ) -> Result<(String, String, String)> {
         let arguments = self.javascript_arguments(f, 1)?;
+        let language = if self.javascript_module(f.module) {
+            "JavaScript"
+        } else {
+            "TypeScript"
+        };
         let mut params_php = Vec::new();
+        let mut parameter_docs = Vec::new();
         let mut prologue = String::new();
         for (i, p) in f.params.iter().enumerate() {
             let t = param_tys[i].clone();
@@ -1449,6 +1492,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = self.declare_local(name, t, true, p.pat.span());
                 let rest = self.tmp_var();
                 params_php.push(format!("...{rest}"));
+                parameter_docs.push((
+                    "mixed".to_string(),
+                    format!("...{rest}"),
+                    format!("Remaining {language} arguments."),
+                ));
                 let _ = writeln!(prologue, "\t{php} = new \\TypedPress\\JsArray({rest});");
                 continue;
             }
@@ -1466,6 +1514,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // `json<T>()` value can be any JSON, whatever T says.
                     let unchecked = i == 0 && (receives_this(f) || matches!(slot, Some(Slot::Validate { .. })));
                     let hint = if unchecked { "" } else { php_hint(&t) };
+                    let Pat::Id(source_name, _) = &p.pat else {
+                        unreachable!()
+                    };
+                    parameter_docs.push((
+                        if hint.is_empty() { "mixed" } else { hint.trim() }.to_string(),
+                        php.clone(),
+                        format!("{language} parameter `{}`.", php_doc_text(source_name)),
+                    ));
                     if hint == "\\TypedPress\\JsObject "
                         && matches!(t, Ty::Obj(_) | Ty::Map(_))
                         && p.default.is_none()
@@ -1484,6 +1540,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 pat => {
                     let tmp = self.tmp_var();
+                    let hint = php_hint(&t);
+                    parameter_docs.push((
+                        if hint.is_empty() { "mixed" } else { hint.trim() }.to_string(),
+                        tmp.clone(),
+                        format!("Destructured {language} argument."),
+                    ));
                     params_php.push(format!(
                         "{}{tmp}{}",
                         php_hint(&t),
@@ -1528,7 +1590,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
         }
-        Ok((params_php.join(", "), body))
+        let type_width = parameter_docs.iter().map(|(ty, _, _)| ty.len()).max().unwrap_or(0);
+        let name_width = parameter_docs.iter().map(|(_, name, _)| name.len()).max().unwrap_or(0);
+        let parameter_docs = parameter_docs
+            .iter()
+            .fold(String::new(), |mut docs, (ty, name, description)| {
+                let _ = writeln!(docs, " * @param {ty:<type_width$} {name:<name_width$} {description}");
+                docs
+            });
+        Ok((params_php.join(", "), body, parameter_docs))
     }
 
     fn note_return(&mut self, t: &Ty, span: Span) -> Result<()> {
@@ -2591,6 +2661,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
             match callee_v {
                 Resolved::Global(g) if ERROR_CONSTRUCTORS.contains(&g) => {
+                    self.fx().throws.insert("\\TypedPress\\JsError");
                     return self.error_constructor(g, args).map(|value| value.php);
                 }
                 Resolved::Value(Value::Builtin(Builtin::HttpError), _) => {
@@ -2621,6 +2692,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     if !(3..=4).contains(&parts.len()) {
                         return err(e.span, "HttpError takes (status, code, message)");
                     }
+                    self.fx().throws.insert("\\TypedPress\\HttpError");
                     return Ok(format!("new \\TypedPress\\HttpError({})", parts.join(", ")));
                 }
                 _ => {}
@@ -2628,11 +2700,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let v = self.expr(e)?;
         if v.ty == Ty::Error {
+            self.fx().throws.insert("\\TypedPress\\JsError");
             return Ok(v.php);
         }
         let module = self.fx().module;
         if self.javascript_module(module) || self.error_instance(&v.ty) {
             let v = self.finish_value(v, e.span)?;
+            self.fx().throws.insert("\\Throwable");
             return Ok(format!("\\TypedPress\\Js::throwable({})", v.php));
         }
         err_help(
@@ -4443,7 +4517,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         let _ = writeln!(
                             self.output,
-                            "function {wrapper}(): \\Closure {{\n\tstatic $f;\n\treturn $f ??= {callable};\n}}\n"
+                            "{}function {wrapper}(): \\Closure {{\n\tstatic $f;\n\treturn $f ??= {callable};\n}}\n",
+                            php_function_doc(&format!("Return the shared callable for `{name}`."), "", "\\Closure"),
                         );
                         wrapper
                     }
@@ -5465,6 +5540,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             is_generator: f.is_generator,
             ret: None,
             returns: Vec::new(),
+            throws: indexmap::IndexSet::new(),
             diverging: HashSet::new(),
             exhaustive_switches: HashSet::new(),
             loop_bindings: HashSet::new(),
@@ -11330,6 +11406,51 @@ fn literal_php(v: &Out) -> bool {
         || ((php.starts_with('\'') || php.starts_with('"')) && matches!(v.ty, Ty::StrLit(_) | Ty::FreshStrLit(_)))
 }
 
+/// Comment text may include source paths or JavaScript identifiers.
+fn php_doc_text(text: &str) -> String {
+    text.replace("*/", "* /")
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
+}
+
+fn php_function_doc(summary: &str, parameters: &str, returns: &str) -> String {
+    let summary = php_doc_text(summary);
+    let separator = if parameters.is_empty() { "" } else { " *\n" };
+    format!("/**\n * {summary}\n *\n{parameters}{separator} * @return {returns} The compiled return value.\n */\n")
+}
+
+fn php_doc_type(t: &Ty, access_filter: bool) -> String {
+    match t {
+        // Access filters bypass JsObject construction, including declared object return types.
+        Ty::Map(_) | Ty::Obj(_) if access_filter => "array".to_string(),
+        Ty::Null => "null".to_string(),
+        // A TypeScript void function returns the runtime undefined sentinel.
+        Ty::Undefined | Ty::Void => "\\TypedPress\\JsUndefined".to_string(),
+        Ty::Never => "never".to_string(),
+        Ty::Fn(..) => "\\Closure".to_string(),
+        Ty::Promise(_) => "\\TypedPress\\JsPromise".to_string(),
+        Ty::Union(parts) => {
+            let mut types = Vec::new();
+            for part in parts {
+                for ty in php_doc_type(part, access_filter).split('|') {
+                    if ty == "mixed" {
+                        return "mixed".to_string();
+                    }
+                    if !types.iter().any(|seen| seen == ty) {
+                        types.push(ty.to_string());
+                    }
+                }
+            }
+            types.join("|")
+        }
+        _ => {
+            let hint = php_hint(t);
+            if hint.is_empty() { "mixed" } else { hint.trim() }.to_string()
+        }
+    }
+}
+
 fn php_hint(t: &Ty) -> &'static str {
     match t {
         Ty::Instance(..) => "\\TypedPress\\JsObject ",
@@ -12432,6 +12553,10 @@ mod php_layout_tests {
             let built =
                 crate::pipeline::build(&project, &program, || Ok(crate::pipeline::Previous::none()), |_| None).unwrap();
             assert_eq!(crate::php_layout::format(&built.functions_php), built.functions_php);
+            if name == "blog" {
+                assert!(built.functions_php.contains("@return bool|array"));
+                assert!(!built.functions_php.contains("@return bool|\\TypedPress\\JsObject"));
+            }
             for line in built.functions_php.lines() {
                 assert!(
                     !line.starts_with(' ') || line.starts_with(" *"),
@@ -12447,6 +12572,38 @@ mod php_layout_tests {
 
 #[cfg(test)]
 mod php_binding_tests {
+    #[test]
+    fn source_documentation_does_not_confuse_job_queue_declaration_lookup() {
+        let project = tempfile::tempdir().unwrap();
+        let entry = project.path().join("function action__probe(.ts");
+        std::fs::write(
+            &entry,
+            r#"import { action, defineConfig } from "typedpress";
+import { work } from "./tp/work.js";
+export const probe = action({ input: {}, handler: async () => await work() });
+export default defineConfig({ name: "documentation-queue" });"#,
+        )
+        .unwrap();
+        std::fs::create_dir(project.path().join("tp")).unwrap();
+        std::fs::write(
+            project.path().join("tp/work.js"),
+            "export async function work() { return 42; }",
+        )
+        .unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let built = crate::pipeline::build(
+            project.path(),
+            &program,
+            || Ok(crate::pipeline::Previous::none()),
+            |_| None,
+        )
+        .unwrap();
+        assert!(built.functions_php.contains("callback at `function action__probe(.ts:"));
+        assert!(built.functions_php.contains("\nfunction action__probe__root("));
+        assert_eq!(built.functions_php.matches("\nfunction action__probe(").count(), 1);
+        assert!(built.functions_php.contains("@return \\TypedPress\\JsPromise"));
+    }
+
     #[test]
     fn source_names_and_fallthrough_contracts_survive_php_spelling() {
         let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/differential/language");
@@ -12464,6 +12621,22 @@ mod php_binding_tests {
                 .unwrap()
         };
         let bindings = body("bindings");
+        let docs = |name: &str| {
+            built
+                .functions_php
+                .split(&format!("function {name}("))
+                .next()
+                .unwrap()
+                .rsplit("/**")
+                .next()
+                .unwrap()
+        };
+        assert!(docs("bindings").contains("callback at `php-names.ts:"));
+        assert!(docs("bindings").contains("@param int|float $item_id"));
+        assert!(docs("bindings").contains("TypeScript parameter `itemId`."));
+        assert!(docs("bindings").contains("TypeScript parameter `item_id`."));
+        assert!(docs("exits").contains("@throws \\TypedPress\\JsError"));
+        assert!(docs("fallthrough").contains("@return string|\\TypedPress\\JsUndefined"));
         assert!(!bindings.contains("$itemId"), "{bindings}");
         assert!(!bindings.contains("$httpStatus"), "{bindings}");
         assert!(!bindings.contains("$HTTPStatus"), "{bindings}");

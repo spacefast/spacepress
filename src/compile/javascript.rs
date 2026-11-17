@@ -320,16 +320,23 @@ impl Compiler<'_, '_> {
     /// Every root starts on an empty queue and, when generated code can queue jobs, finishes it.
     pub(super) fn wrap_roots_with_job_queue(&mut self, roots: &[(Slot, String)]) {
         for (_, name) in roots {
-            let header = format!("function {name}(");
+            // Source paths in PHPDoc can contain declaration-like text. Only match
+            // an emitted declaration at the start of a line.
+            let header = format!("\nfunction {name}(");
             let Some(start) = self.output.find(&header) else {
                 continue;
             };
             let inner = self.unique_name(&format!("{name}__root"));
-            let renamed = format!("function {inner}(");
+            let renamed = format!("\nfunction {inner}(");
             self.output.replace_range(start..start + header.len(), &renamed);
             let _ = writeln!(
                 self.output,
-                "function {name}(mixed ...$args) {{\n\treturn \\TypedPress\\JsJobs::run(\\Closure::fromCallable({}), $args);\n}}\n",
+                "{}function {name}(mixed ...$args) {{\n\treturn \\TypedPress\\JsJobs::run(\\Closure::fromCallable({}), $args);\n}}\n",
+                php_function_doc(
+                    "Execute the callback and drain its JavaScript job queue.",
+                    " * @param mixed ...$args Arguments forwarded to the callback.\n",
+                    "mixed",
+                ),
                 php_str(&format!("\\TypedPressApp\\{inner}"))
             );
         }

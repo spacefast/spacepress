@@ -45,7 +45,7 @@ after changing `browser/` or `examples/`.
 | Path | What |
 |---|---|
 | `typedpress.config.ts` | the site's name; re-exports the schema and the server function |
-| `tp/schema.ts` | `docs` and `posts` (WordPress content, synced from `content/`); `shares` and `examples` (tables) |
+| `tp/schema.ts` | `docs` (a collection) and `posts` (WordPress's own posts, `wp.posts.extend`), both synced from `content/`; `shares` and `examples` (tables) |
 | `tp/server.ts` | `share` saves a playground edit; `refreshStars` is the job that asks GitHub for star counts; `refreshStarsNow` lets an admin start it |
 | `tp/app/layout.tsx`, `site.css` | the one layout and stylesheet every page uses |
 | `tp/components/Guide.tsx` | what the guide is written with: `<Section>`, `<Ref>`, `<Code>`, `<Source>`, `<Diff>`, `<Tree>`, `<Example>`, the status badges |
@@ -143,9 +143,6 @@ tailscale serve --https=8960 off                            # to stop
 
 ## What TypedPress lacks for this site (15 November 2026)
 
-- **WordPress's own posts as a kind.** The blog is an app collection for now (post type
-  `tp_posts`, under Collections in TypedPress Admin, not under WordPress's Posts). It moves to
-  `wp.posts` when that lands; `/blog` and `/blog/<slug>` stay the same.
 - **Reading a file from a page.** There is no text import, so `scripts/sources.mjs` copies the
   example files into a TypeScript module.
 - **A code component for TSX.** Markdown code fences are highlighted in PHP; TSX has nothing, so

@@ -150,7 +150,7 @@ final class ConditionalLogic
         if ($spec['auth'] ?? false) {
             return array_keys(array_filter($spec['columns'], static fn (array $def, string|int $col) => \TypedPress\Wp\WpUserStore::onProfile((string) $col, $def), ARRAY_FILTER_USE_BOTH));
         }
-        $core = [$spec['primaryKey'] ?? null, $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null];
+        $core = [$spec['primaryKey'] ?? null, $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null, $spec['excerpt'] ?? null];
 
         return array_keys(array_filter($spec['columns'], static fn (array $def, string|int $col) => !in_array($col, $core, true) && !($def['system'] ?? false), ARRAY_FILTER_USE_BOTH));
     }

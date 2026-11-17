@@ -583,6 +583,46 @@ export declare function userProjection<TCols extends ColumnsConfig, TUid extends
   options?: NoInfer<CollectionOptions<Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">>> & { drafts?: false; revisions?: false; uid?: TUid },
 ): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
 
+/** The fields every `wp.posts` kind has, stored in the post itself. `slug` follows `title` until set. */
+type PostColumns = {
+  title: ColumnBuilder<"text", string, true, false>;
+  slug: ColumnBuilder<"slug", string, true, true>;
+  content: ColumnBuilder<"richText", string, false, false>;
+  excerpt: ColumnBuilder<"text", string, false, false>;
+};
+/** An authored field may not take a name posts already have. */
+type PostFields = ColumnsConfig & { [K in keyof PostColumns | keyof DraftColumns | "id"]?: never };
+type PostKind<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> =
+  Collection<string, StoredColumns<PostColumns & TCols, TUid, TSync> & DraftColumns>;
+/** Options a `wp.posts` kind takes: comments are on unless `comments: false`. */
+type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "url" | "comments" | "access" | "label" | "sync" | "uid" | "agents" | "api" | "staged">;
+
+/**
+ * WordPress's own kinds. `wp.posts` is WordPress's posts: the block editor, comments, drafts, revisions,
+ * categories and tags are WordPress's, and its capabilities decide who writes; `access` only narrows them.
+ */
+export declare const wp: {
+  readonly posts: {
+    /**
+     * WordPress's posts with the app's fields (post meta `tp_<field>`), exported as `posts`:
+     * `export const posts = wp.posts.extend({ cover: media().optional() }, { url: "/blog/:slug" })`.
+     * `url` is required: it is each post's address, through WordPress's `post_link`.
+     */
+    extend<TCols extends PostFields = {}, TSync extends string | undefined = undefined>(
+      fields: TCols,
+      options: NoInfer<PostOptions<PostKind<TCols, TSync extends string ? true : false, TSync>>> & { url: `/${string}`; sync?: TSync },
+    ): PostKind<TCols, TSync extends string ? true : false, TSync>;
+    /**
+     * Another kind shaped like posts, with its own rows (post type `tp_<name>`): title, slug, content,
+     * excerpt, comments, drafts and revisions, plus the given fields.
+     */
+    clone<TCols extends PostFields = {}, TSync extends string | undefined = undefined>(
+      fields: TCols,
+      options?: NoInfer<PostOptions<PostKind<TCols, TSync extends string ? true : false, TSync>>> & { sync?: TSync; storageName?: string },
+    ): PostKind<TCols, TSync extends string ? true : false, TSync>;
+  };
+};
+
 /** A term's own fields (docs/decisions/2026-11-11-authoring-surface.md, ruling 27). */
 type TermColumns<THierarchical extends boolean> = {
   name: ColumnBuilder<"text", string, true, false>;

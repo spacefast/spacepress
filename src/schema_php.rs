@@ -251,6 +251,9 @@ fn collection(out: &mut String, c: &Collection) {
     let _ = writeln!(out, "            'title' => {},", opt(&c.title));
     let _ = writeln!(out, "            'content' => {},", opt(&c.content));
     let _ = writeln!(out, "            'slug' => {},", opt(&c.slug));
+    if c.excerpt.is_some() {
+        let _ = writeln!(out, "            'excerpt' => {},", opt(&c.excerpt));
+    }
     let _ = writeln!(out, "            'primaryKey' => {},", php_str(pk));
     let _ = writeln!(out, "            'columns' => [");
     for col in c.columns.values() {
@@ -332,11 +335,20 @@ fn collection(out: &mut String, c: &Collection) {
         );
         let _ = writeln!(out, "            'table' => null,");
     } else if c.editor {
-        let t = &c.table;
+        // WordPress's own posts keep core's `post` type; their field group is named for the built-in.
+        let t = if c.native {
+            "wp_posts".to_string()
+        } else {
+            c.table.clone()
+        };
         let _ = writeln!(
             out,
-            "            'wp' => ['postType' => 'tp_{t}', 'groupKey' => 'group_tp_{t}', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_{t}_'],"
+            "            'wp' => ['postType' => {}, 'groupKey' => 'group_tp_{t}', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_{t}_'],",
+            php_str(&c.post_type())
         );
+        if c.native {
+            let _ = writeln!(out, "            'native' => true,");
+        }
         let _ = writeln!(out, "            'table' => null,");
     } else {
         let _ = writeln!(out, "            'wp' => null,");

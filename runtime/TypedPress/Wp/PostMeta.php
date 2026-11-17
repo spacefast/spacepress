@@ -103,7 +103,7 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields
             $col = (string) $col;
             // A `terms` field is core's own taxonomy field on the post (`tp_<taxonomy>`), not post meta.
             if ($col !== $spec['primaryKey'] && $col !== ($spec['title'] ?? null) && $col !== ($spec['content'] ?? null)
-                && $col !== ($spec['slug'] ?? null) && !($def['system'] ?? false) && !self::terms($def)) {
+                && $col !== ($spec['slug'] ?? null) && $col !== ($spec['excerpt'] ?? null) && !($def['system'] ?? false) && !self::terms($def)) {
                 $out[$col] = $def;
             }
         }

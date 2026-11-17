@@ -316,6 +316,10 @@ pub enum Builtin {
     Terms,
     /// `r.one.<key>` / `r.many.<key>` inside defineRelations.
     RelFn(RelKind, Rc<str>),
+    /// `wp` from "typedpress": WordPress's own kinds.
+    Wp,
+    /// `wp.posts`: core's posts, whose `.extend()` and `.clone()` make kinds.
+    WpPosts,
     // JavaScript globals
     Global(&'static str),
     /// A static function on a global, e.g. `Math.max`.
@@ -463,6 +467,17 @@ pub struct CollectionVal {
     pub hooks: RefCell<Vec<(Value, Span)>>,
     /// `.index(fields, { unique? })` calls: compound indexes the author declared (spec §2.9).
     pub indexes: std::cell::RefCell<Vec<(Vec<String>, bool, Span)>>,
+    /// Made by `wp.posts.extend()` (WordPress's own posts) or `wp.posts.clone()` (a kind like them).
+    pub post: Option<PostKind>,
+}
+
+/// A kind with WordPress posts' fields: title, slug, content and excerpt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PostKind {
+    /// `wp.posts.extend(fields, options)`: core's `post` type, with the fields as post meta.
+    Native,
+    /// `wp.posts.clone(fields, options)`: its own post type, `tp_<name>`, shaped like posts.
+    Clone,
 }
 
 impl CollectionVal {

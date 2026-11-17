@@ -208,6 +208,7 @@ export function fromNative(c: Collection, value: unknown, objects?: EditingObjec
 	core('title', c.title);
 	core('content', c.content);
 	core('slug', c.slug);
+	core('excerpt', c.excerpt);
 	core('status', 'status');
 	core('date_gmt', 'publishedAt');
 	if (result.status === 'publish') result.status = 'published';
@@ -222,6 +223,7 @@ export function toNative(c: Collection, values: Row, objects?: EditingObjects): 
 		if (key === c.title) result.title = v;
 		else if (key === c.content) result.content = v;
 		else if (key === c.slug) result.slug = v;
+		else if (key === c.excerpt) result.excerpt = v;
 		else if (key === 'status')
 			result.status =
 				v === 'published' ? 'publish' : v === 'scheduled' ? 'future' : v;

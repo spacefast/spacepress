@@ -363,6 +363,65 @@ fn replaced_field_forms_name_their_replacement() {
     }
 }
 
+/// `wp.posts.extend()` and `wp.posts.clone()` refusals, and the WordPress kinds not built yet: each a
+/// build error at its source.
+#[test]
+fn rejects_what_wordpress_posts_do_not_take() {
+    for (fixture, message, at) in [
+        (
+            "reject-wp-pages",
+            "`wp.pages` isn't supported yet: `wp.posts` is the one WordPress kind an app can use",
+            "tp/schema.ts:2:25",
+        ),
+        (
+            "reject-wp-posts-url",
+            "`wp.posts.extend()` needs a `url`",
+            "tp/schema.ts:2:22",
+        ),
+        (
+            "reject-wp-posts-field",
+            "`excerpt` is built into every post; delete this field",
+            "tp/schema.ts:2:49",
+        ),
+        (
+            "reject-wp-posts-name",
+            "WordPress's posts are exported as `posts`, not `articles`",
+            "tp/schema.ts:2:25",
+        ),
+        (
+            "reject-wp-posts-option",
+            "wp.posts.clone() has no option `hierarchical`",
+            "tp/schema.ts:2:57",
+        ),
+    ] {
+        rejects(fixture, message, at);
+    }
+}
+
+/// tests/php/native_posts_test.php: WordPress's own posts and a clone of them, on what `typedpress build`
+/// emits for tests/fixtures/native-posts, on WordPress 7.2 with SQLite.
+#[test]
+fn native_posts_run_on_wordpress() {
+    let tmp = std::env::temp_dir().join(format!("typedpress-native-posts-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/native-posts"), &tmp);
+    let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = std::process::Command::new("php")
+        .args(["-d", "zend.assertions=1", "-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/native_posts_test.php"))
+        .arg(tmp.join("tp/dist/wp-content"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
 /// `taxonomy()` and `terms()` refusals (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34
 /// and the deferred list): each a build error at its source.
 #[test]

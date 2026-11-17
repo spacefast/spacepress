@@ -132,7 +132,7 @@ final class Deploy
             $keys = StorageKeys::of($field, $definition);
             foreach ($spec['columns'] as $name => $column) {
                 $name = (string) $name;
-                if (in_array($name, [$spec['primaryKey'] ?? 'id', $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null], true) || ($column['system'] ?? false)) {
+                if (in_array($name, [$spec['primaryKey'] ?? 'id', $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null, $spec['excerpt'] ?? null], true) || ($column['system'] ?? false)) {
                     continue;
                 }
                 $key = StorageKeys::shared(StorageKeys::of($name, $column), $keys);

@@ -124,7 +124,7 @@ final class TypedPressQuery
         }
         $core = $collection === (Plugin::instance()?->schema->auth()['collection'] ?? null)
             ? ['name' => 'name']
-            : ['post_title' => $spec['title'] ?? null, 'post_content' => $spec['content'] ?? null, 'post_excerpt' => $spec['content'] ?? null];
+            : ['post_title' => $spec['title'] ?? null, 'post_content' => $spec['content'] ?? null, 'post_excerpt' => $spec['excerpt'] ?? $spec['content'] ?? null];
 
         return ['search' => $term, 'searchFields' => array_values(array_unique(array_filter(array_map(static fn ($c) => $core[$c] ?? null, $columns))))];
     }

@@ -321,6 +321,7 @@ final class Schema
                 'content' => $c['content'] ?? null,
                 'slug' => $c['slug'] ?? null,
                 'primaryKey' => $c['primaryKey'],
+            ] + (isset($c['excerpt']) ? ['excerpt' => $c['excerpt']] : []) + [
                 'columns' => array_map(self::publicColumn(...), $c['columns']),
                 'relations' => $c['relations'] ?? [],
                 'access' => array_map(self::accessSummary(...), Access::collectionRules($c)),

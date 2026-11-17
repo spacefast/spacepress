@@ -1008,6 +1008,18 @@ pub fn destructive(prev: &Json, next: &Json) -> Vec<String> {
     out
 }
 
+/// A field's `max` changed in a way a development update refuses. On a SQL table it is the column's
+/// type, so any change counts; on a post kind it is only a rule on writes, and dropping or raising it
+/// refuses no stored value.
+fn max_changes(editor: bool, column: &Json, replacement: &Json) -> bool {
+    let (old, new) = (column["max"].as_f64(), replacement["max"].as_f64());
+    if editor {
+        new.is_some_and(|new| old.is_none_or(|old| new < old))
+    } else {
+        old != new
+    }
+}
+
 /// Conservative development updates: existing values and constraints must keep their meanings.
 /// This is stricter than production's warning list; deliberate migrations use the normal build.
 pub fn preservation_problems(prev: &Json, next: &Json) -> Vec<String> {
@@ -1032,6 +1044,9 @@ pub fn preservation_problems(prev: &Json, next: &Json) -> Vec<String> {
                 if replacement.is_null() {
                     continue;
                 }
+                // On a post kind `unique` is a check on writes, and dropping it refuses no stored value.
+                let unique_dropped =
+                    table["editor"] == true && column["unique"] == true && replacement["unique"] == false;
                 if [
                     "type",
                     "notNull",
@@ -1042,8 +1057,8 @@ pub fn preservation_problems(prev: &Json, next: &Json) -> Vec<String> {
                     "references",
                 ]
                 .iter()
-                .any(|key| column[*key] != replacement[*key])
-                    || column["max"].as_f64() != replacement["max"].as_f64()
+                .any(|key| column[*key] != replacement[*key] && !(*key == "unique" && unique_dropped))
+                    || max_changes(table["editor"] == true, column, replacement)
                 {
                     problems.push(format!("changes field {name}.{field}"));
                 }

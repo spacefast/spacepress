@@ -53,6 +53,7 @@ final class Plugin
             InstallMarker::register();
         }
         add_action('init', [$this, 'registerPostTypes'], 0);
+        NativePosts::register($schema);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
         if (($this->schema->auth()['collection'] ?? null) !== null) {
@@ -215,7 +216,8 @@ final class Plugin
         }
         foreach ($this->postBacked() as $spec) {
             // WordPress matches routes case-insensitively, so this does too.
-            if (preg_match('#^/wp/v2/' . preg_quote($spec['wp']['postType'], '#') . '(/|$)#i', $request->get_route())) {
+            $object = get_post_type_object($spec['wp']['postType']);
+            if (preg_match('#^/wp/v2/' . preg_quote((string) ($object?->rest_base ?: $spec['wp']['postType']), '#') . '(/|$)#i', $request->get_route())) {
                 return new \WP_Error('tp_unavailable', self::UNAVAILABLE, ['status' => 503]);
             }
         }
@@ -466,6 +468,7 @@ final class Plugin
             throw new SchemaRefused(array_map(static fn (array $r): array => $r + ['rows' => 0], $runtime['refusals']));
         }
         $applied = $this->migrator()->migrate();
+        NativePosts::adopt($this);
         if (($compiled = \TypedPress\RuntimeSchema\Loader::compiled()) !== null) {
             // `runtimeSchema`: runtime changes are checked against the fields of every build that ran here.
             \TypedPress\RuntimeSchema\Loader::rememberDeclared($compiled);
@@ -573,6 +576,12 @@ final class Plugin
     public function registerPostTypes(): void
     {
         foreach ($this->postBacked() as $name => $spec) {
+            if ($spec['native'] ?? false) {
+                // WordPress's own posts (`wp.posts.extend()`): core registers the type; the app's fields
+                // are its post meta, and NativePosts gives core's type TypedPress's REST controller.
+                PostMeta::register($spec);
+                continue;
+            }
             $label = (string) ($spec['label'] ?? $name);
             $type = $spec['wp']['postType'];
             register_post_type($type, [

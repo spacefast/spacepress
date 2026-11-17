@@ -105,6 +105,20 @@ final class WpPostStore implements Store
             return $this->visibility[$key];
         }
         $spec = $this->schema->collection($collection);
+        // WordPress's own posts: an unpublished post is read only by whom core lets read it (its author,
+        // editors), whatever the app's rule says; the rule can only narrow that.
+        if ($spec['native'] ?? false) {
+            $native = NativePosts::readGuard($this->db, $viewer);
+            if ($native !== null) {
+                return $this->visibility[$key] = [$native, ...$this->passwordGuards($collection, $viewer, $spec)];
+            }
+        }
+        return $this->visibility[$key] = $this->passwordGuards($collection, $viewer, $spec);
+    }
+
+    /** @return list<array|\TypedPress\SqlPredicate> the password-protection guards of a post kind for $viewer */
+    private function passwordGuards(string $collection, \TypedPress\Viewer $viewer, array $spec): array
+    {
         if ($viewer->user === null) {
             $guard = $this->passwordGuard($collection, $viewer, $spec);
             // Empty guards also certify unrestricted visibility to unique-write checks
@@ -115,7 +129,7 @@ final class WpPostStore implements Store
                 . str_replace('{a}', 'p', $guard->sql) . ') LIMIT 1',
                 [$spec['wp']['postType'], ...$guard->params],
             );
-            return $this->visibility[$key] = $hidden === [] ? [] : [$guard];
+            return $hidden === [] ? [] : [$guard];
         }
         $hidden = [];
         $acceptedPasswords = [];
@@ -136,7 +150,7 @@ final class WpPostStore implements Store
             }
         }
 
-        return $this->visibility[$key] = $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
+        return $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
     }
 
     private function passwordGuard(string $collection, \TypedPress\Viewer $viewer, array $spec): \TypedPress\SqlPredicate
@@ -215,6 +229,7 @@ final class WpPostStore implements Store
                 $col === ($spec['title'] ?? null) => new ColumnRef('{a}.post_title', '', '', 'scalar'),
                 $col === ($spec['content'] ?? null) => new ColumnRef('{a}.post_content', '', '', 'scalar'),
                 $col === ($spec['slug'] ?? null) => new ColumnRef('{a}.post_name', '', '', 'scalar'),
+                $col === ($spec['excerpt'] ?? null) => new ColumnRef("NULLIF({a}.post_excerpt, '')", '', "NULLIF({a}.post_excerpt, '')", 'scalar'),
                 $system && $col === 'parent' && ($spec['hierarchical'] ?? false) => new ColumnRef('NULLIF({a}.post_parent, 0)', '', 'NULLIF({a}.post_parent, 0)', 'scalar'),
                 $system && $col === 'order' && ($spec['hierarchical'] ?? false) => new ColumnRef('{a}.menu_order', '', '{a}.menu_order', 'scalar'),
                 $system && $col === 'status' => new ColumnRef("CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END", '', '', 'scalar'),
@@ -415,7 +430,7 @@ final class WpPostStore implements Store
     {
         $post = [];
         $map = [];
-        foreach (['title' => 'post_title', 'content' => 'post_content', 'slug' => 'post_name'] as $designation => $field) {
+        foreach (['title' => 'post_title', 'content' => 'post_content', 'slug' => 'post_name', 'excerpt' => 'post_excerpt'] as $designation => $field) {
             if (is_string($spec[$designation] ?? null) && $spec[$designation] !== '') {
                 $map[$spec[$designation]] = $field;
             }
@@ -497,6 +512,14 @@ final class WpPostStore implements Store
         if (!isset($post['post_name']) || ($post['post_name'] === '' && !$preserveEmpty)) {
             return $fn();
         }
+        // A `wp.posts` kind's slug is WordPress's: it has no unique check of TypedPress's, so core's
+        // wp_unique_post_slug makes a taken one unique (`hello-2`), as in the block editor. A kept slug
+        // (an update that doesn't change it) is passed through as before.
+        $collection = CoreAccess::collection((string) ($post['post_type'] ?? get_post_type((int) ($post['ID'] ?? 0))));
+        $spec = $collection === null ? null : $this->schema->collection($collection);
+        if ($spec !== null && isset($spec['excerpt']) && !$preserveEmpty) {
+            return $fn();
+        }
         $slug = $post['post_name'];
         $id = (int) ($post['ID'] ?? 0);
         $filter = static fn ($override, $_slug, $postId) => $postId === $id ? $slug : $override;
@@ -533,7 +556,7 @@ final class WpPostStore implements Store
     /** True when the column lives in postmeta (an SCF field), not in a wp_posts column. */
     public function isMeta(array $spec, string $col): bool
     {
-        if ($col === $spec['primaryKey'] || $col === ($spec['title'] ?? null) || $col === ($spec['content'] ?? null) || $col === ($spec['slug'] ?? null)) {
+        if ($col === $spec['primaryKey'] || $col === ($spec['title'] ?? null) || $col === ($spec['content'] ?? null) || $col === ($spec['slug'] ?? null) || $col === ($spec['excerpt'] ?? null)) {
             return false;
         }
 
@@ -843,7 +866,7 @@ final class WpPostStore implements Store
             ? (string) ($row[$spec[$designation]] ?? '') : (string) $parent->$native;
         $post = [
             'post_type' => 'revision', 'post_status' => self::STAGED_STATUS, 'post_parent' => $pk, 'post_name' => self::stagedName($pk),
-            'post_title' => $field('title', 'post_title'), 'post_content' => $field('content', 'post_content'), 'post_excerpt' => $parent->post_excerpt,
+            'post_title' => $field('title', 'post_title'), 'post_content' => $field('content', 'post_content'), 'post_excerpt' => $field('excerpt', 'post_excerpt'),
             'post_author' => $userId ?? 0, 'post_date' => current_time('mysql'), 'post_date_gmt' => current_time('mysql', true),
         ] + ($rid === null ? [] : ['ID' => $rid]);
         $id = $this->db->core(static fn () => $rid === null ? wp_insert_post(wp_slash($post), true) : wp_update_post(wp_slash($post), true));

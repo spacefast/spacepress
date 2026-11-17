@@ -47,6 +47,8 @@ final class KindUrls
             // (`/tr/drives/x/`): the kind's pattern is the item's one URL in every language, and a
             // translation is told apart by its own slug.
             add_filter('post_type_link', [$self, 'link'], 100, 2);
+            // WordPress's own posts (`wp.posts.extend({}, { url })`): core builds their links with `post_link`.
+            add_filter('post_link', [$self, 'link'], 100, 2);
             add_action('template_redirect', [$self, 'oldSlug'], 0);
             add_filter('request', [$self, 'request']);
             add_filter('term_link', [$self, 'termLink'], 10, 3);
@@ -580,6 +582,16 @@ final class KindUrls
         foreach ($this->kinds as $n => $k) {
             if ($k['type'] === $type) {
                 $kind = $n;
+            }
+        }
+        // An item WordPress found by another rule (core's own `/%postname%/` for WordPress's posts):
+        // its kind is its post type's, and the address below sends it to the kind's URL.
+        $queried = is_singular() ? get_queried_object() : null;
+        if ($kind === null && $queried instanceof \WP_Post) {
+            foreach ($this->kinds as $n => $k) {
+                if ($k['type'] === $queried->post_type) {
+                    $kind = $n;
+                }
             }
         }
         if ($kind === null) {

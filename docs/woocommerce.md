@@ -18,6 +18,10 @@ shop styles and scripts even when the app already has a root layout. It selects 
 template so its own header and cart remain visible. Existing files remain untouched.
 Visit `/shop`; `/wp-admin/` remains the merchant interface for inventory and orders.
 
+For deployment, use a standalone plugin installation or a qualified commerce host. The built-in
+TypedPress `push` receiver currently refuses commerce builds, including rollback, because it does
+not yet suspend checkout and shipping writers or enforce shipping-compatible selection/recovery.
+
 ## Declarations
 
 ```ts

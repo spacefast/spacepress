@@ -658,13 +658,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let list = calls.join(", ");
         let body = match kind {
             HookKind::BeforeCreate => format!(
-                "function {name}(\\TypedPress\\JsObject $data, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $ctx);\n        if ($result instanceof \\TypedPress\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+                "function {name}(\\TypedPress\\JsObject $data, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $ctx);\n\t\tif ($result instanceof \\TypedPress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
             ),
             HookKind::BeforeUpdate => format!(
-                "function {name}(\\TypedPress\\JsObject $data, $existing, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $existing, $ctx);\n        if ($result instanceof \\TypedPress\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+                "function {name}(\\TypedPress\\JsObject $data, $existing, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $existing, $ctx);\n\t\tif ($result instanceof \\TypedPress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
             ),
             _ => format!(
-                "function {name}(...$arguments)\n{{\n    foreach ([{list}] as $hook) {{\n        $hook(...$arguments);\n    }}\n}}\n\n"
+                "function {name}(...$arguments) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$hook(...$arguments);\n\t}}\n}}\n\n"
             ),
         };
         self.output.push_str(&body);
@@ -1376,10 +1376,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let wrapper = self.suspending_wrapper(&f, &format!("\\TypedPressApp\\{name}__body"));
             let _ = writeln!(
                 self.output,
-                "function {name}__body({params_php})\n{{\n{body}}}\n\nfunction {name}(mixed ...$args)\n{{\n    return {wrapper};\n}}\n"
+                "function {name}__body({params_php}) {{\n{body}}}\n\nfunction {name}(mixed ...$args) {{\n\treturn {wrapper};\n}}\n"
             );
         } else {
-            let _ = writeln!(self.output, "function {name}({params_php})\n{{\n{body}}}\n");
+            let _ = writeln!(self.output, "function {name}({params_php}) {{\n{body}}}\n");
         }
         Ok(())
     }
@@ -2210,7 +2210,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // A throw closes quietly; break/return/normal completion close and may throw.
                     let _ = writeln!(
                         out,
-                        "{p}}} catch (\\Throwable {value}) {{\n{p}    {source}->abrupt();\n{p}    throw {value};\n{p}}} finally {{\n{p}    {source}->close();\n{p}}}"
+                        "{p}}} catch (\\Throwable {value}) {{\n{p}\t{source}->abrupt();\n{p}\tthrow {value};\n{p}}} finally {{\n{p}\t{source}->close();\n{p}}}"
                     );
                 }
                 self.fx().scopes.pop();
@@ -2391,7 +2391,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span);
                         // Typed catch bindings are Errors: Error subclass instances pass, other values are refused.
                         let unwrap = if javascript { "thrownValue" } else { "caughtError" };
-                        let _ = writeln!(out, "{p}    {var} = \\TypedPress\\Js::{unwrap}({caught});");
+                        let _ = writeln!(out, "{p}\t{var} = \\TypedPress\\Js::{unwrap}({caught});");
                     }
                     out.push_str(&self.conditional_stmts(h, indent + 1)?);
                     self.fx().scopes.pop();
@@ -2425,10 +2425,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let tv = self.expr(t)?;
                             let cmp = self.strict_eq(&Out::atom(tmp.clone(), d.ty.clone()), &tv);
                             case_types.push(tv.ty);
-                            let _ = writeln!(out, "{p}    case {cmp}:");
+                            let _ = writeln!(out, "{p}\tcase {cmp}:");
                         }
                         None => {
-                            let _ = writeln!(out, "{p}    default:");
+                            let _ = writeln!(out, "{p}\tdefault:");
                         }
                     }
                     self.fx().jumps.push(JumpTarget {
@@ -4547,7 +4547,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let body = self.attempt(|this| {
                         this.data_helpers.insert(key, name.clone());
                         let mut body = format!(
-                            "function {name}(): \\TypedPress\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\TypedPress\\{0}();\n",
+                            "function {name}(): \\TypedPress\\{} {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\{0}();\n",
                             if c.set { "JsSet" } else { "JsMap" }
                         );
                         for (k, v) in &c.entries {
@@ -4555,13 +4555,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             validate_captured_data(v, span, &mut HashSet::new())?;
                             let k = this.captured_data(k)?;
                             if c.set {
-                                let _ = writeln!(body, "        $value->add({k});");
+                                let _ = writeln!(body, "\t\t$value->add({k});");
                             } else {
                                 let v = this.captured_data(v)?;
-                                let _ = writeln!(body, "        $value->set({k}, {v});");
+                                let _ = writeln!(body, "\t\t$value->set({k}, {v});");
                             }
                         }
-                        body.push_str("    }\n    return $value;\n}\n\n");
+                        body.push_str("\t}\n\treturn $value;\n}\n\n");
                         Ok(body)
                     })?;
                     self.output.push_str(&body);
@@ -4862,13 +4862,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => "",
         };
         let mut body = format!(
-            "function {name}(): \\TypedPress\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\TypedPress\\{class}({arguments});\n"
+            "function {name}(): \\TypedPress\\{class} {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\{class}({arguments});\n"
         );
         for (key, value) in fields {
             let value = self.captured_data(&value)?;
-            let _ = writeln!(body, "        $value->{storage}[{key}] = {value};");
+            let _ = writeln!(body, "\t\t$value->{storage}[{key}] = {value};");
         }
-        body.push_str("    }\n    return $value;\n}\n\n");
+        body.push_str("\t}\n\treturn $value;\n}\n\n");
         self.output.push_str(&body);
         Ok(format!("\\TypedPressApp\\{name}()"))
     }
@@ -4955,7 +4955,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let body = self.attempt(|this| {
             this.data_helpers.insert(key, name.clone());
             let mut body = format!(
-                "function {name}(): \\TypedPress\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\TypedPress\\JsObject({arguments});\n"
+                "function {name}(): \\TypedPress\\JsObject {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\JsObject({arguments});\n"
             );
             for (key, member) in fields {
                 let member_path = format!("{path}.{key}");
@@ -4987,9 +4987,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         })?
                         .php
                 };
-                let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
+                let _ = writeln!(body, "\t\t$value->p[{}] = {php};", php_str(&key));
             }
-            body.push_str("    }\n    return $value;\n}\n\n");
+            body.push_str("\t}\n\treturn $value;\n}\n\n");
             Ok(body)
         })?;
         self.output.push_str(&body);
@@ -11226,7 +11226,7 @@ fn obj_values_ty(t: Option<&Ty>) -> Ty {
 
 /// `.` binds tighter than `+`/`-`... in PHP 8 they're equal-precedence-ish; parenthesize non-trivial parts.
 fn pad(n: usize) -> String {
-    "    ".repeat(n)
+    "\t".repeat(n)
 }
 
 /// The function expression a declaration's whole initializer evaluates to, through type-only
@@ -12399,5 +12399,16 @@ mod host_secret_tests {
             runtime, HOST_SECRETS,
             "runtime/TypedPress/Env.php and src/compile.rs disagree"
         );
+    }
+}
+
+#[cfg(test)]
+mod php_layout_tests {
+    #[test]
+    fn indentation_uses_one_tab_per_level() {
+        assert_eq!(super::pad(0), "");
+        assert_eq!(super::pad(3), "\t\t\t");
+        // Escaping literal newlines keeps indentation out of string values.
+        assert_eq!(super::php_str("a\nb"), "\"a\\nb\"");
     }
 }

@@ -328,7 +328,7 @@ impl Compiler<'_, '_> {
             self.output.replace_range(start..start + header.len(), &renamed);
             let _ = writeln!(
                 self.output,
-                "function {name}(mixed ...$args)\n{{\n    return \\TypedPress\\JsJobs::run(\\Closure::fromCallable({}), $args);\n}}\n",
+                "function {name}(mixed ...$args) {{\n\treturn \\TypedPress\\JsJobs::run(\\Closure::fromCallable({}), $args);\n}}\n",
                 php_str(&format!("\\TypedPressApp\\{name}__root"))
             );
         }

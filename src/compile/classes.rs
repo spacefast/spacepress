@@ -419,7 +419,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         writeln!(
             self.output,
-            "function {fields_name}(\\TypedPress\\JsObject $__tp_this, \\TypedPress\\JsClass $__tp_class)\n{{\n{field_body}}}\n"
+            "function {fields_name}(\\TypedPress\\JsObject $__tp_this, \\TypedPress\\JsClass $__tp_class) {{\n{field_body}}}\n"
         )
         .unwrap();
         let ctor = if let Some(f) = &c.constructor {
@@ -611,7 +611,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (None, Some(builtin)) => format!("\\TypedPress\\JsClass::builtin({})", php_str(builtin)),
             (None, None) => "null".into(),
         };
-        writeln!(self.output, "function {name}(): \\TypedPress\\JsClass\n{{\n    static $class;\n    return $class ??= new \\TypedPress\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}], symbolMethods: [{symbol_methods}], staticSymbolMethods: [{static_symbol_methods}], prototypeSymbols: [{prototype_symbols}]);\n}}\n", php_str(&format!("\\TypedPressApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
+        writeln!(self.output, "function {name}(): \\TypedPress\\JsClass {{\n\tstatic $class;\n\treturn $class ??= new \\TypedPress\\JsClass({parent_php}, {ctor}, \\Closure::fromCallable({}), [{}], [{}], {data}, [{}], [{}], {private_statics}, [{instance_accessors}], [{static_accessors}], symbolMethods: [{symbol_methods}], staticSymbolMethods: [{static_symbol_methods}], prototypeSymbols: [{prototype_symbols}]);\n}}\n", php_str(&format!("\\TypedPressApp\\{fields_name}")), own_methods.join(", "), static_methods.join(", "), private_methods.join(", "), static_private_methods.join(", ")).unwrap();
         Ok(id)
     }
 

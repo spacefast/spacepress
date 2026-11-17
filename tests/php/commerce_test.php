@@ -211,6 +211,19 @@ $db->delete('products', ['id' => $mug['id']], false, $admin);
 eq('product delete uses native Woo trash', get_post_status($mug['id']), 'trash');
 check('orders are not removed by catalog retirement', wc_get_order($order->get_id()) instanceof WC_Order);
 $retired = $db->insert('products', ['name' => 'Trash probe', 'price' => '1.00', 'categories' => [$child['id']]], true, $admin)[0];
+$batchFirst = $db->insert('products', ['name' => 'Batch trash probe', 'price' => '1.00', 'categories' => [$child['id']]], true, $admin)[0];
+$beforeEdit = get_post_field('post_title', $guide['id']);
+$editRolledBack = false;
+try {
+    $db->transaction(static function () use ($db, $guide, $admin): void {
+        $db->update('products', ['name' => 'Uncommitted product name'], ['id' => $guide['id']], false, $admin);
+        eq('a product edit reaches the native cache inside its transaction', get_post_field('post_title', $guide['id']), 'Uncommitted product name');
+        throw new RuntimeException('rollback product edit probe');
+    });
+} catch (RuntimeException $e) { $editRolledBack = $e->getMessage() === 'rollback product edit probe'; }
+check('the product edit rollback probe reaches its intended failure', $editRolledBack);
+eq('a rolled-back product edit restores its database title', $site->scalar('SELECT post_title FROM {prefix}posts WHERE ID = ?', [$guide['id']]), $beforeEdit);
+eq('a rolled-back product edit clears its native post cache', get_post_field('post_title', $guide['id']), $beforeEdit);
 $wooTrashed = 0;
 $vetoTrash = static fn ($check, $post) => (int) $post->ID === $retired['id'] ? false : $check;
 add_filter('pre_trash_post', $vetoTrash, PHP_INT_MAX, 2);
@@ -219,6 +232,17 @@ try { $db->delete('products', ['id' => $retired['id']], false, $admin); } catch 
 check('a native trash veto refuses ordinary product deletion', $deleteFailed && get_post_status($retired['id']) === 'publish');
 eq('a refused product delete rolls category relationships back', $db->findFirst('products', ['where' => ['id' => $retired['id']]])['categories'], $retired['categories']);
 eq('a refused product delete clears stale native relationship caches', wp_get_object_terms($retired['id'], 'product_cat', ['fields' => 'ids']), $retired['categories']);
+$batchFailed = false;
+try {
+    $db->transaction(static function () use ($db, $batchFirst, $retired, $admin): void {
+        $db->delete('products', ['id' => $batchFirst['id']], false, $admin);
+        eq('the first product is trashed before a later deletion veto', get_post_status($batchFirst['id']), 'trash');
+        $db->delete('products', ['id' => $retired['id']], false, $admin);
+    });
+} catch (RuntimeException $e) { $batchFailed = str_contains($e->getMessage(), 'Could not delete product'); }
+check('a later product veto rolls back the whole batch', $batchFailed);
+eq('batch rollback restores the first product database status', $site->scalar('SELECT post_status FROM {prefix}posts WHERE ID = ?', [$batchFirst['id']]), 'publish');
+eq('batch rollback clears the first product native post cache', get_post_status($batchFirst['id']), 'publish');
 $trashFailed = false;
 try { $db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired)); } catch (RuntimeException $e) { $trashFailed = str_contains($e->getMessage(), 'Could not move post'); }
 check('a vetoed native product trash is reported as a failure', $trashFailed && get_post_status($retired['id']) !== 'trash');

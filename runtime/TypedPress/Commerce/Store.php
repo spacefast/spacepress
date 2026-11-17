@@ -105,6 +105,7 @@ final class Store implements \TypedPress\Store
         $this->writable($collection);
         $p = new \WC_Product_Simple();
         $this->write($p, $values);
+        $this->db->touchPost($p->get_id());
         return $p->get_id();
     }
     public function update(string $collection, int|string $pk, array $values): void
@@ -112,6 +113,7 @@ final class Store implements \TypedPress\Store
         $this->writable($collection);
         $p = wc_get_product((int) $pk);
         if (!$p || !$p->is_type('simple')) { throw HttpError::invalidInput('Only simple products can be edited in v1', '/type'); }
+        $this->db->touchPost((int) $pk);
         $this->write($p, $values);
     }
     private function writable(string $collection): void
@@ -160,6 +162,7 @@ final class Store implements \TypedPress\Store
     public function delete(string $collection, int|string $pk): void
     {
         $this->writable($collection);
+        $this->db->touchPost((int) $pk);
         $p = wc_get_product((int) $pk);
         if ($p) { $this->db->core(static fn () => $p->delete(false)); }
         // Woo does not report a native trash veto; verify persistence before committing link changes.

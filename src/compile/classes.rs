@@ -376,7 +376,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .iter()
                 .any(|(name, is_static, _)| !is_static && name.starts_with('#'))
         {
-            field_body.push_str("    $__tp_class->brand($__tp_this);\n");
+            field_body.push_str("\t$__tp_class->brand($__tp_this);\n");
         }
         let receiver_ty = |instance: &Ty| if javascript { Ty::Dynamic } else { instance.clone() };
         for field in c.fields.iter().filter(|f| !f.is_static) {
@@ -410,11 +410,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
             if field.name.starts_with('#') {
                 field_body.push_str(&format!(
-                    "    $__tp_class->privateDefine($__tp_this, {}, {value});\n",
+                    "\t$__tp_class->privateDefine($__tp_this, {}, {value});\n",
                     php_str(&field.name)
                 ));
             } else {
-                field_body.push_str(&format!("    $__tp_this->p[{}] = {value};\n", php_str(&field.name)));
+                field_body.push_str(&format!("\t$__tp_this->p[{}] = {value};\n", php_str(&field.name)));
             }
         }
         writeln!(

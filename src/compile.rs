@@ -1445,7 +1445,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = self.declare_local(name, t, true, p.pat.span());
                 let rest = self.tmp_var();
                 params_php.push(format!("...{rest}"));
-                let _ = writeln!(prologue, "    {php} = new \\TypedPress\\JsArray({rest});");
+                let _ = writeln!(prologue, "\t{php} = new \\TypedPress\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
@@ -1508,18 +1508,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
             FnBody::Expr(e) => {
                 let v = self.return_value(e)?;
                 self.note_return(&v.ty, e.span)?;
-                let _ = writeln!(body, "    return {};", v.php);
+                let _ = writeln!(body, "\treturn {};", v.php);
             }
             FnBody::Block(stmts) if self.client.is_some() => {
                 let rewritten = Self::client_server_body(stmts, &self.client.as_ref().expect("client").analysis);
                 body.push_str(&self.block(&rewritten, 1)?);
                 self.note_fallthrough(&rewritten, f.span)?;
-                body.push_str("    return \\TypedPress\\Js::undefined();\n");
+                body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
                 self.note_fallthrough(stmts, f.span)?;
-                body.push_str("    return \\TypedPress\\Js::undefined();\n");
+                body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
             }
         }
         Ok((params_php.join(", "), body))
@@ -5270,7 +5270,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = self.declare_local(name, param_tys[i].clone(), true, p.pat.span());
                 let rest = self.tmp_var();
                 params.push(format!("...{rest}"));
-                let _ = writeln!(body, "        {php} = new \\TypedPress\\JsArray({rest});");
+                let _ = writeln!(body, "\t\t{php} = new \\TypedPress\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
@@ -5316,7 +5316,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 2)?);
                 self.note_fallthrough(stmts, f.span)?;
-                body.push_str("        return \\TypedPress\\Js::undefined();\n");
+                body.push_str("\t\treturn \\TypedPress\\Js::undefined();\n");
             }
         }
         Ok((params.join(", "), body))
@@ -12405,10 +12405,19 @@ mod host_secret_tests {
 #[cfg(test)]
 mod php_layout_tests {
     #[test]
-    fn indentation_uses_one_tab_per_level() {
-        assert_eq!(super::pad(0), "");
-        assert_eq!(super::pad(3), "\t\t\t");
-        // Escaping literal newlines keeps indentation out of string values.
-        assert_eq!(super::php_str("a\nb"), "\"a\\nb\"");
+    fn compiled_examples_use_tabs_and_same_line_declaration_braces() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        for name in ["pantry", "kitchen-sink", "blog"] {
+            let project = root.join("examples").join(name);
+            let program = crate::loader::load(&project.join("typedpress.config.ts")).unwrap();
+            let built =
+                crate::pipeline::build(&project, &program, || Ok(crate::pipeline::Previous::none()), |_| None).unwrap();
+            for line in built.functions_php.lines() {
+                assert!(!line.starts_with(' '), "{name}: space indentation: {line}");
+                if line.starts_with("function ") {
+                    assert!(line.contains(" {"), "{name}: declaration brace: {line}");
+                }
+            }
+        }
     }
 }

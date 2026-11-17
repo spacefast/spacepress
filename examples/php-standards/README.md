@@ -20,5 +20,5 @@ php examples/php-standards/compare.php /tmp/tp-before /tmp/tp-php
 ```
 
 The comparison retains string contents and comments and ignores only PHP
-whitespace tokens and token line numbers. After this pass: 1062 errors and 73
-warnings on the same corpus (137 fewer errors).
+whitespace tokens and token line numbers. After this pass: 1037 errors and 73
+warnings on the same corpus (162 fewer errors).

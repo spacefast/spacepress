@@ -324,12 +324,13 @@ impl Compiler<'_, '_> {
             let Some(start) = self.output.find(&header) else {
                 continue;
             };
-            let renamed = format!("function {name}__root(");
+            let inner = self.unique_name(&format!("{name}__root"));
+            let renamed = format!("function {inner}(");
             self.output.replace_range(start..start + header.len(), &renamed);
             let _ = writeln!(
                 self.output,
                 "function {name}(mixed ...$args) {{\n\treturn \\TypedPress\\JsJobs::run(\\Closure::fromCallable({}), $args);\n}}\n",
-                php_str(&format!("\\TypedPressApp\\{name}__root"))
+                php_str(&format!("\\TypedPressApp\\{inner}"))
             );
         }
     }

@@ -1706,7 +1706,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
     let body = |name: &str| {
         functions
-            .split(&format!("function {name}("))
+            .split(&format!("function {}(", typedpress::schema::physical_name(name)))
             .nth(1)
             .expect("differential helper is emitted")
             .split("\nfunction ")
@@ -2029,7 +2029,10 @@ fn compiled_tsx_renders_the_html_react_renders() {
     let functions = std::fs::read_to_string(app.join("tp/app/functions.php")).unwrap();
     let body = |name: &str| {
         functions
-            .split(&format!("function component__components_{name}("))
+            .split(&format!(
+                "function component__components_{}(",
+                typedpress::schema::physical_name(name)
+            ))
             .nth(1)
             .and_then(|rest| rest.split("\n}\n").next())
             .unwrap_or_else(|| panic!("no {name} in functions.php"))

@@ -692,8 +692,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn named(&self, base: &str) -> String {
         match &self.plugin {
-            Some((_, name)) if !base.starts_with(&format!("plugin_{name}__")) => format!("plugin_{name}__{base}"),
-            _ => base.to_string(),
+            Some((_, name)) => {
+                let prefix = php_function_base(&format!("plugin_{name}__"));
+                if php_function_base(base).starts_with(&prefix) {
+                    base.to_string()
+                } else {
+                    format!("{prefix}{base}")
+                }
+            }
+            None => base.to_string(),
         }
     }
 
@@ -702,11 +709,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn unique_name(&mut self, base: &str) -> String {
-        let base = &self.named(base);
-        let mut name: String = base
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
-            .collect();
+        let mut name = php_function_base(&self.named(base));
         if name.is_empty()
             || name.starts_with(|c: char| c.is_ascii_digit())
             || matches!(
@@ -1373,10 +1376,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ),
         );
         if self.suspends(&f) {
-            let wrapper = self.suspending_wrapper(&f, &format!("\\TypedPressApp\\{name}__body"));
+            let body_name = self.unique_name(&format!("{name}__body"));
+            let wrapper = self.suspending_wrapper(&f, &format!("\\TypedPressApp\\{body_name}"));
             let _ = writeln!(
                 self.output,
-                "function {name}__body({params_php}) {{\n{body}}}\n\nfunction {name}(mixed ...$args) {{\n\treturn {wrapper};\n}}\n"
+                "function {body_name}({params_php}) {{\n{body}}}\n\nfunction {name}(mixed ...$args) {{\n\treturn {wrapper};\n}}\n"
             );
         } else {
             let _ = writeln!(self.output, "function {name}({params_php}) {{\n{body}}}\n");
@@ -11273,6 +11277,14 @@ fn require_initialized_local(name: &str, local: &Local, span: Span) -> Result<()
     Ok(())
 }
 
+fn php_function_base(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    crate::schema::physical_name(&safe)
+}
+
 fn php_local_base(name: &str) -> String {
     if name == "this" {
         return "__tp_this".into();
@@ -12469,6 +12481,28 @@ mod php_binding_tests {
         }
         assert!(built.schema.actions.contains_key("namingBindings"));
         assert!(built.schema.actions.contains_key("namingControlFlow"));
+        let mut declarations = std::collections::HashSet::new();
+        for name in built
+            .functions_php
+            .lines()
+            .filter_map(|line| line.strip_prefix("function "))
+            .map(|rest| rest.split('(').next().unwrap())
+        {
+            assert!(declarations.insert(name), "duplicate PHP declaration: {name}");
+            assert_eq!(name, name.to_ascii_lowercase(), "{name}");
+        }
+        assert!(declarations.contains("foo_bar"));
+        let mut handlers = std::collections::HashSet::new();
+        for name in [
+            "namingFunctions",
+            "namingAsync",
+            "naming_async__body",
+            "naming_async__root",
+        ] {
+            let handler = &built.schema.actions[name].handler;
+            assert!(declarations.contains(handler.as_str()), "missing {name}: {handler}");
+            assert!(handlers.insert(handler), "shared handler for {name}: {handler}");
+        }
         assert!(!body("exits").contains("return \\TypedPress\\Js::undefined();"));
         assert!(body("fallthrough").contains("return \\TypedPress\\Js::undefined();"));
     }

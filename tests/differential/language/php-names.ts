@@ -34,3 +34,14 @@ export const namingControlFlow = action({ input: {}, handler: () => {
   return [exits(0), exits(2), fallthrough(1), typeof fallthrough(0), caught];
 } });
 export default defineConfig({ name: "language-php-names" });
+
+function fooBar() { return "camel"; }
+function foo_bar() { return "snake"; }
+async function sameName() { return "async"; }
+function same_name__body() { return "source body"; }
+
+export const namingFunctions = action({ input: {}, handler: () => [fooBar(), foo_bar()] });
+export const namingAsync = action({ input: {}, handler: async () => [await sameName(), same_name__body()] });
+// These source roots deliberately occupy names requested by generated wrappers.
+export const naming_async__body = action({ input: {}, handler: () => "root body" });
+export const naming_async__root = action({ input: {}, handler: () => "root queue" });

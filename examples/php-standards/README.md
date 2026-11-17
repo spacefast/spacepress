@@ -10,7 +10,7 @@ find /tmp/tp-php -name '*.php' -exec php -l {} \;
 
 The locked Composer tools use WordPress Coding Standards 3.4.1 for development
 and CI only. Ordinary TypedPress builds do not require PHP or Composer for layout.
-`check-layout` enforces eighteen WordPress layout, local-name and file-documentation rules
+`check-layout` enforces nineteen WordPress layout, naming and file-documentation rules
 implemented by the compiler, using WordPress's own sniff configuration. The
 full audit intentionally also reports the rules not yet implemented.
 
@@ -23,9 +23,9 @@ associative arrays and enclosing calls reduce it to 94 errors and 45 warnings
 (1105 fewer errors and 28 fewer warnings than baseline). Snake_case PHP local
 bindings, omission of unreachable fallback returns and a file-level PHPDoc header
 bring it to 70 errors and 38 warnings (1129 fewer errors and 35 fewer warnings
-than baseline). No remaining findings
-in this corpus are automatically fixable by PHPCBF. Documentation, naming and
-semantic/security checks and generated function names remain separate work. Schema
+than baseline). Snake_case function allocation reduces it further to 54 errors
+and 38 warnings (1145 fewer errors than baseline). No remaining findings
+in this corpus are automatically fixable by PHPCBF. Function documentation and semantic/security checks remain separate work. Schema
 and shipped runtime PHP are outside this corpus. Do not edit generated files as a substitute for fixing the compiler.
 
 The compiler applies layout to its assembled functions, including
@@ -58,7 +58,13 @@ collision allocator. TypeScript names, object keys and registered action names
 retain their source spelling. Only control-flow paths that can fall through emit
 the undefined fallback, using the compiler's existing completion analysis.
 
-The token comparator is for formatting revisions. Binding renames, the new file
+The token comparator is for formatting revisions. Binding/function renames, the new file
 header and omitted unreachable returns intentionally fail comparison against older
 revisions; validate those through the binding/control-flow regression fixture and
 PHP/Node differential tests rather than weakening token comparison.
+
+Generated PHP function names and corresponding handler metadata use snake_case.
+The existing function allocator resolves spelling collisions. Async body and job
+queue helper names also go through that allocator, including plugin prefixes.
+Public action names and object keys retain their source spelling. Direct references
+to generated PHP function names need to follow the new build's schema metadata.

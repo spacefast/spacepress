@@ -7,7 +7,6 @@ the Buy button places a fake order, takes no payment and ships nothing, and the 
 | What | Where | How |
 | --- | --- | --- |
 | Inventory | [`tp/schema.ts`](tp/schema.ts) `drives` | A `collection()`: WordPress posts with drafts and revisions, a page at `/drives/:slug` (`url`) |
-| Translations | `drives` and [`typedpress.config.ts`](typedpress.config.ts) | `locales: { default: "en", all: ["en", "tr"] }`. `name`, `summary` and `description` are `.localized()`; price, stock and specs are shared by a drive's English and Turkish rows. Polylang keeps the groups |
 | Orders and the stock log | `orders`, `stockMovements` | `table()` kinds with `ref()`s to drives and orders. An order's read rule is coded: staff read every order, a customer reads their own |
 | The shop's rules | `drives` and `orders` hooks | `beforeCreate` prices an order from the drive and refuses more than is in stock; `afterCreate` takes the stock down and logs it; a price has two decimals at most. They hold on every path: the storefront, the API, TypedPress Admin and wp-admin |
 | Shop settings | `shop` | A `global()`: shop name, currency, a notice banner and the low-stock threshold, edited in TypedPress Admin |
@@ -20,7 +19,7 @@ the Buy button places a fake order, takes no payment and ships nothing, and the 
 | RSS | layout | WordPress's own feed of the post type, `/?feed=rss2&post_type=tp_drives`, linked from every page and in `<head>` |
 | Starting stock | [`content/drives/`](content/drives) | Synced Markdown (`sync`): a publish seeds it, and `typedpress sync` loads it into a dev site |
 | Styles | [`tp/app/site.css`](tp/app/site.css) | An imported stylesheet with light and dark color tokens |
-| Admin | TypedPress Admin at `/wp-admin/new/` | Generated from the kinds: drives (with their translations and reviews), orders, stock movements and the shop settings, each field labelled by its `.ui({ label })` |
+| Admin | TypedPress Admin at `/wp-admin/new/` | Generated from the kinds: drives (with their reviews), orders, stock movements and the shop settings, each field labelled by its `.ui({ label })` |
 
 ## Run it
 
@@ -41,14 +40,12 @@ TP_APP_PASSWORD="admin:$PW" ./target/release/typedpress sync examples/drive-stor
 
 Then open `http://localhost:8931/`:
 
-- `/` is the catalog; `/?language=tr` is the same catalog in Turkish. Each translated drive has
-  its own page at its Turkish slug (`/drives/seagate-exos-x16-tr`). The Crucial drive has no
-  Turkish translation, so it shows its English text, at `/drives/crucial-p3-2tb?language=tr`.
+- `/` is the catalog, with search and filters.
 - `/drives/seagate-exos-x16` is a product page. Buy one as a guest; the order code comes back on
   the page and the stock goes down. Ask for more than is left and the order is refused.
 - `/orders` lists a signed-in customer's own orders. Create a subscriber in wp-admin to try it.
 - `/staff` is for editors and admins: ship orders and restock drives that are running low.
-- Add, edit and translate drives, moderate reviews and change the shop settings in TypedPress Admin.
+- Add and edit drives, moderate reviews and change the shop settings in TypedPress Admin.
 
 Stop it with `typedpress dev stop examples/drive-store`; the site's data is kept for the next start.
 
@@ -56,11 +53,7 @@ Stop it with `typedpress dev stop examples/drive-store`; the site's data is kept
 
 `cargo test --test app_router drive_store_example_sells_on_wordpress` builds this example, seeds
 it from `content/drives/` as a publish does, and uses it on WordPress-on-SQLite the way a browser
-with scripts off would ([`tests/php/drive_store.php`](../../tests/php/drive_store.php)): both
-languages and their URLs, search and filters, buying and the stock rule, My orders, the staff page and its
-actions, reviews, the RSS feed and the settings global.
+with scripts off would ([`tests/php/drive_store.php`](../../tests/php/drive_store.php)): search
+and filters, buying and the stock rule, My orders, the staff page and its actions, reviews, the RSS
+feed and the settings global.
 
-## Known limits
-
-- The storefront's own words (buttons, labels) are a small table in
-  [`tp/app/_lib/format.ts`](tp/app/_lib/format.ts), not WordPress translation files.

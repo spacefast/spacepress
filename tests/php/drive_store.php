@@ -11,9 +11,6 @@ declare(strict_types=1);
  *   TP_WP_THEMES=1 php tests/php/drive_store.php <wp-content dir> <seed records dir>
  */
 
-// WordPress loads in this process as an API request would: Polylang sets up a context for one
-// (it sets up none for a page on a site with no languages yet), and TypedPress then adds `locales`.
-$_SERVER['REQUEST_URI'] = '/__tp/api/v1';
 require __DIR__ . '/wp.php';
 
 // Core's flood check (one comment per author per 15 seconds) would refuse the test's quick succession.
@@ -23,7 +20,7 @@ $site = wpSite('drive-store', ['wpContent' => $argv[1], 'users' => ['ann' => 'su
     PHP]]);
 wp_set_current_user(1);
 $out = ['seed' => \TypedPress\Sync\Seed::run(\TypedPress\Wp\Runtime::plugin(), $argv[2])['drives'] ?? null];
-$out['rows'] = array_map(static fn (array $r): array => [$r['locale'], $r['slug'], array_keys((array) $r['translations'])], \TypedPress\db()->findMany('drives', ['locale' => '*', 'orderBy' => ['slug' => 'asc']]));
+$out['rows'] = array_column(\TypedPress\db()->findMany('drives', ['orderBy' => ['slug' => 'asc']]), 'slug');
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -111,7 +108,7 @@ function session(WpSite $site, string $who): string
 
 $cards = "//li[contains(@class,'card')]";
 
-// The catalog, in English and Turkish, searched and filtered.
+// The catalog, searched and filtered.
 $home = fetch("$url/");
 $out['catalog'] = [
     'status' => $home['status'],
@@ -120,30 +117,17 @@ $out['catalog'] = [
     'links' => texts($home['body'], "$cards//h2/a/@href"),
     'feed link' => texts($home['body'], "//link[@type='application/rss+xml' and contains(@href,'tp_drives')]/@href") !== [],
 ];
-$tr = fetch("$url/?language=tr");
-$out['catalog tr'] = ['summaries' => texts($tr['body'], "$cards/p[2]"), 'links' => texts($tr['body'], "$cards//h2/a/@href"), 'stock' => texts($tr['body'], "$cards//span[@class='muted']")];
 $out['search'] = texts(fetch("$url/?q=samsung")['body'], "$cards//h2");
 $out['filter'] = texts(fetch("$url/?media=nvme")['body'], "$cards//h2");
 
-// A product page in both languages; the Turkish one falls back to English where nobody translated.
+// A product page.
 $page = fetch("$url/drives/wd-red-plus-4tb/");
 $out['product'] = [
     'status' => $page['status'],
     'h1' => texts($page['body'], '//h1'),
     'stock' => texts($page['body'], "//aside[@class='buybox']//p[@class='muted']"),
-    'switch' => texts($page['body'], "//p[@class='lang']/a/@href"),
     'reviews' => texts($page['body'], "//section[@class='reviews']//a"),
 ];
-// A translation is served at its own slug (the kind's pattern, without Polylang's `/tr/` prefix),
-// and so is its Markdown twin; WordPress links it there too.
-$pageTr = fetch("$url/drives/wd-red-plus-4tb-tr/");
-$out['product tr'] = ['status' => $pageTr['status'], 'lede' => texts($pageTr['body'], "//p[@class='lede']"), 'facts' => texts($pageTr['body'], "//dl[@class='facts']/dt"), 'switch' => texts($pageTr['body'], "//p[@class='lang']/a/@href")];
-$twinTr = fetch("$url/drives/wd-red-plus-4tb-tr.md");
-$out['twin tr'] = [$twinTr['status'], strtok($twinTr['body'], "\n")];
-$trId = (int) array_values(array_filter(\TypedPress\db()->findMany('drives', ['locale' => '*']), static fn (array $r): bool => $r['slug'] === 'wd-red-plus-4tb-tr'))[0]['id'];
-$out['permalink tr'] = parse_url((string) get_permalink($trId), PHP_URL_PATH);
-$out['polylang prefix'] = fetch("$url/tr/drives/wd-red-plus-4tb-tr/")['status'];
-$out['untranslated tr'] = texts(fetch("$url/drives/crucial-p3-2tb/?language=tr")['body'], "//p[@class='lede']");
 
 // A guest buys with scripts off: the order comes back on the page, and the stock goes down.
 $buy = form($page['body'], '/actions/buy');

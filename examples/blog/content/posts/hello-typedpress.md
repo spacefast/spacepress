@@ -13,8 +13,5 @@ sections: null
 createdAt: 2026-10-31T13:26:58.980Z
 status: published
 publishedAt: 2026-10-01T09:00:00.000Z
-locale: en
-translations:
-  en: zr_37d65a42b8767e790ced
 ---
 This post lives in `content/posts/hello-typedpress.md`. Edit the file, run `typedpress sync`, and the site follows.

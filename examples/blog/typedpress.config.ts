@@ -17,12 +17,10 @@ export const authors = collection({
 export const decks = files({ accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "anyone", create: "author", delete: "editor" } });
 
 export const posts = collection({
-  // Translated per locale (§7.3). The other fields are shared by a post's translations, except
-  // each row's own slug, status and dates.
-  title: text().min(1).max(120).localized(),
+  title: text().min(1).max(120),
   slug: slug({ source: "title" }).optional(),
-  body: richText().localized().optional(),
-  excerpt: text({ multiline: true }).max(300).localized().optional(),
+  body: richText().optional(),
+  excerpt: text({ multiline: true }).max(300).optional(),
   cover: media({ accept: "image" }).optional(),
   tags: select(["news", "guide", "release"]).many().default([]),
   authorId: ref(authors).optional(),
@@ -135,7 +133,6 @@ export const publishedCount = action({
 
 export default defineConfig({
   name: "blog",
-  locales: { default: "en", all: ["en", "de"] },
   // A 600×400 crop of every image for cards, centred on the image's focal point (§7.2).
   media: { sizes: { card: { width: 600, height: 400, fit: "cover" } } },
   // Every post change is POSTed, signed, to BLOG_HOOK_URL and retried on failure (§6.1).

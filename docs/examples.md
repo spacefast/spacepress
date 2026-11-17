@@ -7,9 +7,9 @@ builds its disposable app under `.tp/showcase/`, leaving its sources unchanged.
 | Example | What it shows |
 | --- | --- |
 | [`examples/showcase/`](../examples/showcase/README.md) | One-command seeded demo: native admin, structured fields, SQL relations, media and a compiled class/action |
-| [`examples/drive-store/`](../examples/drive-store/README.md) | Most of TypedPress at once: a used hard-drive shop with an English/Turkish catalog, a fake checkout through a form action, stock rules in hooks, SQL order tables, reviews, an RSS feed, guarded pages, a settings global and TypedPress Admin, with a WordPress test |
+| [`examples/drive-store/`](../examples/drive-store/README.md) | Most of TypedPress at once: a used hard-drive shop with a catalog, a fake checkout through a form action, stock rules in hooks, SQL order tables, reviews, an RSS feed, guarded pages, a settings global and TypedPress Admin, with a WordPress test |
 | [`examples/reading-list/`](../examples/reading-list/README.md) | Each part of an app once: a collection, a table, owner-scoped access, hooks, an action, a job, a route and two npm packages compiled to PHP |
-| `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, translations, hooks and jobs |
+| `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, hooks and jobs |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
 | [`examples/subscriptions/`](../examples/subscriptions/README.md) | Owner-scoped subscription tables, renewal actions, an Action Scheduler reminder, and a mobile React SPA; owner deletes of referenced rows wait on [#533](https://github.com/spacefast/zero/issues/533), not verified live. [Connect an agent](agents.md). |
 | [`examples/pet-food/`](../examples/pet-food/README.md) | Personal pet pantry using stock WordPress, SCF, Gutenberg, and TypedPress Admin; owner-scoped actions and an Action Scheduler shopping list; owner deletes of referenced rows wait on [#533](https://github.com/spacefast/zero/issues/533), not verified live |
@@ -28,7 +28,7 @@ builds its disposable app under `.tp/showcase/`, leaving its sources unchanged.
 
 Open the website's `/playground` page to edit this config and browse its generated PHP, SQL and
 TypeScript. The “Inside WordPress” buttons show the shared runtime that registers post types and
-REST routes, writes posts and users, handles media, and connects custom fields and translations.
+REST routes, writes posts and users, handles media, and connects custom fields.
 Runtime sources and plugin bootstrap templates are labeled separately from generated files.
 
 The example combines pages, events, member profiles, event registrations and an activity log.

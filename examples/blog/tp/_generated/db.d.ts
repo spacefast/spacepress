@@ -14,10 +14,10 @@ type Entities = {
   }, false, 'collection'>;
   'posts': Collection<'posts', {
     'id': ColumnBuilder<'id', number, true, true, false, true>;
-    'title': ColumnBuilder<'text', string, true, false, true, false>;
+    'title': ColumnBuilder<'text', string, true, false, false, false>;
     'slug': ColumnBuilder<'slug', string, false, true, false, false>;
-    'body': ColumnBuilder<'richText', string, false, false, true, false>;
-    'excerpt': ColumnBuilder<'text', string, false, false, true, false>;
+    'body': ColumnBuilder<'richText', string, false, false, false, false>;
+    'excerpt': ColumnBuilder<'text', string, false, false, false, false>;
     'cover': ColumnBuilder<'media', number, false, false, false, false>;
     'tags': ColumnBuilder<'select', ("news" | "guide" | "release")[], true, true, false, false>;
     'authorId': ColumnBuilder<'integer', number, false, false, false, false>;
@@ -30,8 +30,6 @@ type Entities = {
     'status': ColumnBuilder<'text', "draft" | "published" | "scheduled", true, true, false, false>;
     'publishedAt': ColumnBuilder<'timestamp', string, false, false, false, false>;
     'uid': ColumnBuilder<'text', string, true, true, false, false>;
-    'locale': ColumnBuilder<'text', "en" | "de", true, true, false, false>;
-    'translations': ColumnBuilder<'json', Partial<Record<GeneratedLocale, number>>, true, true, false, false>;
   }, false, 'collection'>;
   'comments': Collection<'comments', {
     'id': ColumnBuilder<'id', number, true, true, false, true>;
@@ -77,5 +75,4 @@ type Graph = {
   'members': {
   };
 };
-type GeneratedLocale = "en" | "de";
-declare module "typedpress" { interface Register { relations: Relations<Entities, Graph>; globals: Globals; jobs: Jobs; locales: GeneratedLocale } }
+declare module "typedpress" { interface Register { relations: Relations<Entities, Graph>; globals: Globals; jobs: Jobs } }

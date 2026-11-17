@@ -1243,6 +1243,7 @@ export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
   services?: ServicesConfig;
   uploads?: UploadsConfig;
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };
+  /** Turned off for now: setting it fails the build. */
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;

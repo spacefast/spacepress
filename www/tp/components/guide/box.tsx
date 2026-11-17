@@ -15,7 +15,6 @@ export function Box() {
       <tr><td>Media and files</td><td>the media library with named image sizes and focal-point crops; private buckets with signed links; S3-compatible storage</td></tr>
       <tr><td>Live reads</td><td><code>subscribe()</code> on any read; it polls, and a host can add a push transport</td></tr>
       <tr><td>Staged versions</td><td>save a change to a published item that visitors do not see, then compare, preview, schedule, promote or discard it</td></tr>
-      <tr><td>Languages</td><td><code>{"locales: { default: \"en\", all: [\"en\", \"de\"] }"}</code> and <code>.localized()</code> fields; one row per language, through Polylang</td></tr>
       <tr><td>Search</td><td>an index kept current on every write, respecting access rules</td></tr>
       <tr><td>Comments</td><td>threads, moderation and guest rules, set per kind</td></tr>
       <tr><td>Sitemap and redirects</td><td>WordPress's sitemap with your pages in it; old slugs redirect</td></tr>

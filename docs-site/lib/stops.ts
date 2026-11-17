@@ -125,7 +125,7 @@ export const tours: Tour[] = [
   },
   {
     example: "blog",
-    title: "The blog: access, sync, members, media, jobs and translations",
+    title: "The blog: access, sync, members, media and jobs",
     intro: [
       "examples/blog is the CMS tour: every feature a content site needs, in one config. The stops below pick out the parts that go beyond tables and hooks.",
     ],
@@ -183,18 +183,6 @@ export const tours: Tour[] = [
         ],
         config: { file: "typedpress.config.ts", lines: { from: "webhooks: [", to: "webhooks: [" } },
         outputs: [{ file: { artifact: "schema.php" }, lines: { from: "'webhooks' => [[", to: "'webhooks' => [[" } }],
-      },
-      {
-        slug: "translations",
-        title: "Translated fields",
-        prose: [
-          "`locales` names the languages; `.localized()` marks the columns that differ per language. The other declared columns are shared by a post's translations; each translation keeps its own slug, status and dates. The migration, the REST API and the client all know which is which.",
-        ],
-        config: { file: "typedpress.config.ts", lines: { from: "locales: {", to: "locales: {" } },
-        outputs: [
-          { file: { artifact: "schema.php" }, lines: { from: "'locales' => ['default'", to: "'locales' => ['default'" } },
-          { file: { artifact: "types.ts" }, lines: { from: "export type Locale =", to: "export type Locale =" } },
-        ],
       },
     ],
   },

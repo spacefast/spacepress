@@ -14,10 +14,6 @@ price: 139
 stock: 6
 status: published
 publishedAt: 2026-11-15T20:39:36.000Z
-locale: en
-translations:
-  en: zr_da1f49c7974cbe3be504
-  tr: zr_e53b223fcf224cfb4a81
 ---
 Pulled from a four-bay NAS that was upgraded to larger drives. Every unit passed a full surface scan and a SMART extended test before listing.
 

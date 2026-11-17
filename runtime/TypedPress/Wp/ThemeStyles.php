@@ -60,6 +60,9 @@ final class ThemeStyles
         $css = '';
         foreach ($styles as $name => [$path, $fallback]) {
             $value = wp_get_global_styles($path);
+            if (is_array($value) && is_string($value['ref'] ?? null)) {
+                $value = _wp_array_get(\WP_Theme_JSON_Resolver::get_merged_data()->get_raw_data(), explode('.', $value['ref']));
+            }
             // A two-axis block gap uses its vertical spacing for the app's gap scale.
             if ($name === 'spacing--block' && is_array($value)) {
                 $value = $value['top'] ?? null;
@@ -80,9 +83,25 @@ final class ThemeStyles
         if (is_int($value) || is_float($value)) {
             $value = (string) $value;
         }
-        $css = is_string($value) && $value !== '' && strpbrk($value, ';{}<>') === false
-            ? safecss_filter_attr($name . ':' . $value)
-            : '';
+        $css = '';
+        if (is_string($value) && $value !== '' && strpbrk($value, ';{}<>\\&=') === false && !str_contains($value, '/*')) {
+            // Core's custom-property filter omits color functions. Allow only those functions
+            // for this declaration, retaining its remaining checks and sanitized output.
+            $colors = static function (bool $allowed, string $test) use ($name): bool {
+                if ($allowed || !str_starts_with($name, '--tp--color--') || !str_starts_with($test, $name . ':')) {
+                    return $allowed;
+                }
+                $test = preg_replace('/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\((?:[^()]|(?R))*\)/i', '', $test);
+
+                return $test !== null && strpbrk($test, '\\(&=}') === false && !str_contains($test, '/*');
+            };
+            add_filter('safecss_filter_attr_allow_css', $colors, 0, 2);
+            try {
+                $css = safecss_filter_attr($name . ':' . $value);
+            } finally {
+                remove_filter('safecss_filter_attr_allow_css', $colors, 0);
+            }
+        }
 
         return ($css === '' ? $name . ':' . $fallback : $css) . ';';
     }

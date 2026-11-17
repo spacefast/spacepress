@@ -51,6 +51,29 @@ foreach ([
     check('active theme: ' . $declaration, str_contains($before, $declaration), $before);
 }
 
+$themeData['styles']['elements']['link']['color']['text'] = ['ref' => 'styles.color.text'];
+$referenced = $css();
+check('theme references resolve against the merged styles', str_contains($referenced, '--tp--color--link:#112233;'), $referenced);
+$themeData['styles']['elements']['link']['color']['text'] = '#234567';
+foreach ([
+    'rgba(10,20,30,0.8)',
+    'rgb(10 20 30 / 80%)',
+    'hsl(120 30% 50%)',
+    'oklch(60% 0.1 120)',
+    'color-mix(in srgb, var(--wp--preset--color--paper), rgba(10,20,30,0.8))',
+] as $color) {
+    $themeData['styles']['color']['background'] = $color;
+    $colored = $css();
+    check('CSS color functions remain usable: ' . $color, str_contains($colored, '--tp--color--background:' . $color . ';'), $colored);
+}
+foreach (['rgba(10,20,30,expression(alert(1)))', 'rgba(10,20,30,0.8);color:red', 'rgba(10,20,30,/*comment*/0.8)', 'rgba(10,20,30,0.8\\9)', 'color-mix(in srgb, url(https://example.test/x), red)'] as $color) {
+    $themeData['styles']['color']['background'] = $color;
+    $rejected = $css();
+    check('unsafe color functions use the fallback', str_contains($rejected, '--tp--color--background:Canvas;'), $rejected);
+}
+$themeData['styles']['color']['background'] = 'var:preset|color|paper';
+eq('color function allowance does not leak outside alias serialization', safecss_filter_attr('--tp--color--background:rgba(10,20,30,0.8)'), '');
+
 // A Site Editor save changes the aliases without building the app again.
 wp_set_current_user(1);
 $post = WP_Theme_JSON_Resolver::get_user_data_from_wp_global_styles(wp_get_theme(), true);

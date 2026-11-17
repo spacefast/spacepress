@@ -4979,7 +4979,7 @@ fn static_export_refuses_what_needs_a_server() {
 /// The drive-store example (examples/drive-store), the shop that shows most of TypedPress at once, on
 /// WordPress: built as committed, seeded from the records a hosted compile writes for its
 /// content/drives/, and used as a browser with scripts off would (tests/php/drive_store.php):
-/// translations, search, the buy form and its stock rule, guarded pages, staff actions, reviews,
+/// search, the buy form and its stock rule, guarded pages, staff actions, reviews,
 /// the RSS feed and the settings global.
 #[test]
 fn drive_store_example_sells_on_wordpress() {
@@ -5024,18 +5024,15 @@ fn drive_store_example_sells_on_wordpress() {
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     use serde_json::json;
-    // content/drives/ seeds four drives, three of them with a Turkish translation in the same group.
-    assert_eq!(seen["seed"]["created"], 7, "{seen}");
+    // content/drives/ seeds four drives.
+    assert_eq!(seen["seed"]["created"], 4, "{seen}");
     assert_eq!(
         seen["rows"],
         json!([
-            ["en", "crucial-p3-2tb", ["en"]],
-            ["en", "samsung-870-evo-1tb", ["en", "tr"]],
-            ["tr", "samsung-870-evo-1tb-tr", ["en", "tr"]],
-            ["en", "seagate-exos-x16", ["en", "tr"]],
-            ["tr", "seagate-exos-x16-tr", ["en", "tr"]],
-            ["en", "wd-red-plus-4tb", ["en", "tr"]],
-            ["tr", "wd-red-plus-4tb-tr", ["en", "tr"]]
+            "crucial-p3-2tb",
+            "samsung-870-evo-1tb",
+            "seagate-exos-x16",
+            "wd-red-plus-4tb"
         ])
     );
     // The catalog, cheapest first, links every drive's page and WordPress's feed of the post type.
@@ -5059,62 +5056,22 @@ fn drive_store_example_sells_on_wordpress() {
     }
     assert_eq!(
         seen["catalog direct"].as_array().unwrap().len(),
-        seen["catalog"]["links"].as_array().unwrap().len() + seen["catalog tr"]["links"].as_array().unwrap().len()
+        seen["catalog"]["links"].as_array().unwrap().len()
     );
     assert_eq!(
         seen["catalog navigation"],
         json!(seen["catalog"]["links"].as_array().unwrap().len()),
         "every product link enables region navigation and prefetch"
     );
-    // In Turkish: the translated summaries, the English one where no translation exists.
-    assert_eq!(
-        seen["catalog tr"]["summaries"],
-        json!([
-            "Ev sunucusundan çıkan sessiz ve serin CMR NAS diski.",
-            "Yazma ömrünün %96'sı kalmış 2,5 inç SATA SSD.",
-            "PCIe 3.0 NVMe stick, used as a game library drive.",
-            "Emekli bir NAS'tan çıkan kurumsal helyum disk."
-        ])
-    );
-    // Each translation links its own page; the untranslated drive keeps the language by query.
-    assert_eq!(
-        seen["catalog tr"]["links"],
-        json!([
-            "/drives/wd-red-plus-4tb-tr/",
-            "/drives/samsung-870-evo-1tb-tr/",
-            "/drives/crucial-p3-2tb/?language=tr",
-            "/drives/seagate-exos-x16-tr/"
-        ])
-    );
-    assert_eq!(seen["catalog tr"]["stock"][0], "2 stokta");
     assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
     assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));
     assert_eq!(
         seen["product"],
         json!({
             "status": 200, "h1": ["WD Red Plus 4 TB"], "stock": ["2 in stock"],
-            "switch": ["/drives/wd-red-plus-4tb-tr/"], "reviews": ["Sign in to comment"],
+            "reviews": ["Sign in to comment"],
         }),
         "{seen}"
-    );
-    assert_eq!(
-        seen["product tr"],
-        json!({
-            "status": 200,
-            "lede": ["Ev sunucusundan çıkan sessiz ve serin CMR NAS diski."],
-            "facts": ["Kapasite", "Arayüz", "Durum", "Çalışma saati"],
-            "switch": ["/drives/wd-red-plus-4tb/"],
-        }),
-        "{seen}"
-    );
-    // A translated slug is a URL of the kind (runtime/TypedPress/Wp/AppRouter.php reads the item in every
-    // locale), its twin too, and WordPress's permalink for it is the kind's pattern.
-    assert_eq!(seen["twin tr"], json!([200, "# WD Red Plus 4 TB"]), "{seen}");
-    assert_eq!(seen["permalink tr"], "/drives/wd-red-plus-4tb-tr/");
-    assert_eq!(seen["polylang prefix"], 404);
-    assert_eq!(
-        seen["untranslated tr"],
-        json!(["PCIe 3.0 NVMe stick, used as a game library drive."])
     );
     // Buying: the confirmation comes back on the product page; stock goes down; the hook refuses
     // more than is left, and the buyer can't name a price.
@@ -5158,7 +5115,7 @@ fn drive_store_example_sells_on_wordpress() {
     // Reviews: a first review is held and shown to its author only.
     assert_eq!(seen["review"], json!([303, ["Arrived well packed, SMART clean."]]));
     assert_eq!(seen["review signed out"], json!([[], ["Sign in to comment"]]));
-    // WordPress's RSS feed of the drives (the English rows), linking each drive's page; sorted here,
+    // WordPress's RSS feed of the drives, linking each drive's page; sorted here,
     // since the seed publishes them within the same second.
     assert_eq!(
         seen["feed"],

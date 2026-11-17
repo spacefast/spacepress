@@ -45,7 +45,7 @@ export interface RevisionSummary {
 	} | null;
 }
 export type Status = "draft" | "published" | "scheduled";
-export type Locale = "en" | "tr";
+export type Locale = never;
 export interface Drive {
 	id: number;
 	name: string;
@@ -64,10 +64,8 @@ export interface Drive {
 	status: "draft" | "published" | "scheduled";
 	publishedAt: string | null;
 	uid: string | null;
-	locale: "en" | "tr";
-	translations: Partial<Record<"en" | "tr", number>>;
 }
-export interface DriveFields {
+export interface DriveInsert {
 	name: string;
 	slug?: string | null;
 	summary?: string | null;
@@ -84,12 +82,7 @@ export interface DriveFields {
 	status?: "draft" | "published" | "scheduled";
 	publishedAt?: string | null;
 	uid?: string | null;
-	locale?: "en" | "tr";
-	translationOf?: undefined;
 }
-export type DriveInsert = DriveFields | (Omit<DriveFields, "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "price" | "stock" | "translationOf"> & Partial<Pick<DriveFields, "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "price" | "stock">> & {
-	translationOf: number;
-});
 export interface DrivePatch {
 	name?: string;
 	slug?: string | null;
@@ -373,29 +366,13 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	locale?: "en" | "tr" | null | {
-		eq?: "en" | "tr" | null;
-		ne?: "en" | "tr" | null;
-		gt?: "en" | "tr";
-		gte?: "en" | "tr";
-		lt?: "en" | "tr";
-		lte?: "en" | "tr";
-		in?: ("en" | "tr")[];
-		notIn?: ("en" | "tr")[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
 	orders?: true | OrderFilter;
 	stockMovements?: true | StockMovementFilter;
 	AND?: DriveFilter[];
 	OR?: DriveFilter[];
 	NOT?: DriveFilter;
 }
-export type DriveOrder = Partial<Record<"id" | "name" | "slug" | "summary" | "description" | "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "price" | "stock" | "status" | "publishedAt" | "uid" | "locale", "asc" | "desc">> | string;
+export type DriveOrder = Partial<Record<"id" | "name" | "slug" | "summary" | "description" | "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "price" | "stock" | "status" | "publishedAt" | "uid", "asc" | "desc">> | string;
 export interface Order {
 	id: number;
 	code: string;
@@ -866,7 +843,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: true;
 			readonly revisions: true;
-			readonly localized: true;
+			readonly localized: false;
 			readonly relations: {
 				readonly orders: {
 					readonly kind: "many";

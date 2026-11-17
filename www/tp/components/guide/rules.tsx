@@ -10,7 +10,7 @@ export function Rules() {
       <tr><td>Installing plugins or themes from the admin, and the file editors</td><td>refused</td><td>the same</td></tr>
       <tr><td>Extra plugins in the config</td><td>allowed, pinned by version and checksum</td><td><Decided /> a build error unless <code>dangerouslyEnablePlugins: true</code></td></tr>
       <tr><td>Only listed code runs (<code>sealed</code>)</td><td>opt-in</td><td><Decided /> the default</td></tr>
-      <tr><td>Plugins TypedPress pins itself</td><td>Secure Custom Fields, Action Scheduler, MCP Adapter; Polylang with languages</td><td>the same</td></tr>
+      <tr><td>Plugins TypedPress pins itself</td><td>Secure Custom Fields, Action Scheduler, MCP Adapter</td><td>the same</td></tr>
       <tr><td>Installing on a site that already has content</td><td>no check</td><td><Proposed /> a warning that lists what was found</td></tr>
       </table></div>
       <Code file="typedpress.config.ts">{`export default defineConfig({

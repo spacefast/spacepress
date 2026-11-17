@@ -209,34 +209,8 @@
           "enum": null,
           "default": null,
           "references": null
-        },
-        "locale": {
-          "type": "text",
-          "notNull": true,
-          "primaryKey": false,
-          "autoIncrement": false,
-          "unique": false,
-          "max": null,
-          "enum": [
-            "en",
-            "tr"
-          ],
-          "default": "en",
-          "references": null
-        },
-        "translationGroup": {
-          "type": "text",
-          "notNull": false,
-          "primaryKey": false,
-          "autoIncrement": false,
-          "unique": false,
-          "max": 36,
-          "enum": null,
-          "default": null,
-          "references": null
         }
       },
-      "localized": true,
       "queried": [
         "id",
         "price",

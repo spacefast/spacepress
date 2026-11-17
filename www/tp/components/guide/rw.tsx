@@ -25,11 +25,7 @@ await posts.system.list();                    // trusted: no access rules, every
 await tp.posts.stage(42, { title: "New title" });
 await tp.posts.compare(42);                   // what differs from the live item
 await tp.posts.promote(42);                   // or promote(42, { at: "2026-12-01T09:00:00Z" })
-await tp.posts.discard(42);
-
-// languages
-await posts.create({ locale: "de", translationOf: 42, title: "Hallo" });
-await posts.list({ locale: "de" });           // German rows, falling back to the default language`}</Code>
+await tp.posts.discard(42);`}</Code>
       <ul>
         <li>Filters on a list of links: <code>{"{ tags: { has: 5 } }"}</code>, <code>{"{ tags: { name: \"news\" } }"}</code>, <code>{"{ tags: [] }"}</code> for none.</li>
         <li>A request, a mutation and a job each run in one transaction that covers table rows and WordPress content together.</li>

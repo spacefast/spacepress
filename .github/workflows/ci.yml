@@ -11,6 +11,8 @@ permissions:
 
 env:
   XDEBUG_MODE: 'off'
+  # Locales are turned off for apps; the suite still exercises them.
+  TYPEDPRESS_LOCALES: '1'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}

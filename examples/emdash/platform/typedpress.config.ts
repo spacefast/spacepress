@@ -6,8 +6,8 @@ import {
 const access = { read: "anyone", create: "editor", update: "editor", delete: "editor" };
 export const writers = collection({ name: text() }, { title: "name", uid: true, access });
 export const stories = collection({
-  title: text().localized(),
-  body: richText().localized().optional(),
+  title: text(),
+  body: richText().optional(),
   slug: slug({ source: "title" }).optional(),
   writerId: ref(writers).optional(),
   cover: media({ accept: "image" }).optional(),
@@ -46,7 +46,6 @@ export const receive = action({
 
 export default defineConfig({
   name: "platform",
-  locales: { default: "en", all: ["en", "fr"] },
   media: { sizes: { card: { width: 120, height: 120, fit: "cover" }, wide: { width: 200 } } },
   webhooks: [{ url: env("PLATFORM_HOOK_URL"), secret: env("PLATFORM_HOOK_SECRET"), events: ["tasks.created"] }],
 });

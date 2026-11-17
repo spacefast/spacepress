@@ -10,6 +10,7 @@ production data and may be rotated with the stack.
 
 ```sh
 cargo build
+export TYPEDPRESS_LOCALES=1   # the test app uses locales, which are off for apps
 mkdir -p tests/wp/app/tp/blog && cat tests/fixtures/blog/typedpress.config.ts tests/wp/blog-test-hooks.ts > tests/wp/app/tp/blog/typedpress.config.ts
 target/debug/typedpress build tests/wp/app
 tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/tp/dist/wp-content"

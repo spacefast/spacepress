@@ -1,5 +1,5 @@
 // The back room, on the storefront: orders to ship and drives running low. Everything else (editing
-// drives and their translations, moderating reviews, the shop settings) is in TypedPress Admin.
+// drives, moderating reviews, the shop settings) is in TypedPress Admin.
 import { db } from "typedpress";
 import { useFormState } from "typedpress/app";
 import { drives, orders, stockMovements } from "typedpress:db";
@@ -13,13 +13,13 @@ export default async function Staff() {
   const shipped = useFormState(markShipped);
   const restocked = useFormState(restock);
   const open = await orders.list({ where: { status: "placed" }, orderBy: { id: "asc" }, limit: 100, with: { drive: true } });
-  const stock = await drives.list({ locale: "en", orderBy: { stock: "asc" }, limit: 100 });
+  const stock = await drives.list({ orderBy: { stock: "asc" }, limit: 100 });
   const low = stock.filter((d) => d.stock <= shop.lowStockAt);
   const moves = await stockMovements.list({ orderBy: { id: "desc" }, limit: 10, with: { drive: true } });
   return (
     <>
       <h1>Staff</h1>
-      <p className="muted">Edit drives, translations, reviews and <a href="/wp-admin/new/">shop settings</a> in TypedPress Admin.</p>
+      <p className="muted">Edit drives, reviews and <a href="/wp-admin/new/">shop settings</a> in TypedPress Admin.</p>
 
       <h2>Orders to ship</h2>
       {shipped.result ? <p className="ok">Order {shipped.result.code} is {shipped.result.status}.</p> : null}

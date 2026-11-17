@@ -26,7 +26,6 @@ h2 { font-size: 17px; margin: 28px 0 10px; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
 .hero p { margin: 4px 0; }
-.lang { font-size: 13px; }
 .lede { font-size: 17px; }
 .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 16px; }
 .filters input[type=search] { flex: 1; min-width: 200px; }

@@ -16,7 +16,7 @@ A TypedPress app starts at `typedpress.config.ts`. It imports its building block
 | `services` | Private native forms, queued mail, publication search and server-priced checkout. |
 | `uploads` | Limits for uploaded media. |
 | `media` | Image sizes WordPress makes for uploaded images. |
-| `locales` | The languages content is written in. Setting it installs Polylang. |
+| `locales` | Turned off for now: setting it fails the build. |
 | `plugins` | Build-only WordPress plugin dependencies. |
 | `admin` | Ship TypedPress Admin (`typedpress-admin`), the default admin at `/wp-admin/new/`, with the build. Default `true`; `false` leaves only classic wp-admin. |
 | `publicAuthors` | Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users sitemap, author names in oEmbed and unauthenticated `/wp/v2/users`. Default `false`: closed, unless the users kind's read rule lets anyone read users. |

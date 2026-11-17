@@ -10,6 +10,8 @@
 #
 #   TP_WP_PROJECT=typedpress-wp-store-install TP_WP_PORT=8903 tests/wp/store-install-run.sh
 set -euo pipefail
+# Locales are turned off for apps (docs/decisions/2026-11-17-locales-off.md); this lane exercises them.
+export TYPEDPRESS_LOCALES=1
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"

@@ -265,7 +265,7 @@ live collections with cache tags, and a webhook endpoint that purges or rebuilds
 | To build | Rust 1.97 (today; see [Status](#status)) |
 | Local `typedpress dev` | Node 22+ and npm; Studio supplies WordPress, PHP and SQLite |
 | To run | WordPress 7.2-beta5 or later, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, and MySQL 8.0, MariaDB 10.11 or SQLite through the [SQLite Database Integration](https://wordpress.org/plugins/sqlite-database-integration/) plugin 3.1.2 |
-| Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |
+| Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1 |
 
 `typedpress build` downloads the required plugins at their pinned versions,
 verifies their checksums, and ships them next to yours. The runtime refuses to
@@ -320,8 +320,6 @@ boot on a site that misses any of them and names each one;
   anything out; uploads stay out.
 - **Markdown sync**: `typedpress sync` keeps `content/posts/*.md` and your records in
   step, with a three-way merge and conflict files.
-- **Localization** with Polylang: one row per locale, shared fields kept equal,
-  a generated `wpml-config.xml`.
 - **Migrations in**: `typedpress migrate config` imports EmDash, Payload or Sanity
   schemas, and `typedpress migrate-legacy` moves a site built with the
   [original Zero](docs/migrating-from-zero.md).
@@ -378,9 +376,9 @@ Hosting on [Spacefast](https://spacefast.com) is in progress; the
 
 | Example | Shows |
 |---|---|
-| [`examples/kitchen-sink`](examples/kitchen-sink) | the playground default: WordPress pages, events, users, custom fields, settings, media, translations, jobs and plugins |
+| [`examples/kitchen-sink`](examples/kitchen-sink) | the playground default: WordPress pages, events, users, custom fields, settings, media, jobs and plugins |
 | [`examples/pantry`](examples/pantry) | plain tables, hooks, actions, relations and a background job; the quick start |
-| [`examples/blog`](examples/blog) | the CMS tour: field access, sync, members and sign-in, image sizes and private files, jobs and webhooks, translations, with a browser page |
+| [`examples/blog`](examples/blog) | the CMS tour: field access, sync, members and sign-in, image sizes and private files, jobs and webhooks, with a browser page |
 | [`examples/site`](examples/site) | the publication that the system suite drives end to end |
 | [`examples/wp-plugins`](examples/wp-plugins) | pinning extra WordPress plugins from the config |
 

@@ -10,7 +10,6 @@ export default defineConfig({
   name: "my-site",
   frontend: false,                                   // or "https://…"; leave out to render on WordPress
   output: "static",                                  // for typedpress export
-  locales: { default: "en", all: ["en", "de"] },
   media: { sizes: { card: { width: 600, height: 400, fit: "cover" } } },
   uploads: { backend: "s3", bucket: env("UPLOAD_BUCKET"), region: "us-east-1" },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created"] }],

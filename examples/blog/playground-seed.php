@@ -4,12 +4,8 @@
 // `wp typedpress seed` does, so hello-typedpress is published and typed-content-plain-files is a draft, as
 // their files say. This adds an author, one more published post, three comments and the settings,
 // through the app's own API, so access rules, hooks and jobs run as for a real request.
-// A cron request, as WP-Cron's: Polylang and TypedPress set up the app's languages for it, which a
-// bare wp-load.php request doesn't get.
 define('DOING_CRON', true);
 require_once '/wordpress/wp-load.php';
-// Polylang sends a new site to its setup wizard. The app's languages are already set, so skip it.
-delete_transient('pll_activation_redirect');
 // Every write must succeed: a seed that half-ran would show a site that looks broken.
 $call = static function (string $method, string $route, array $body): void {
 	// The app's API (/__tp/api/v1), in process: each call dispatches to the core route as the
@@ -23,7 +19,7 @@ wp_set_current_user(1);
 $call('PATCH', '/settings', ['siteTitle' => 'Field Guide', 'tagline' => 'Notes on building with TypedPress.']);
 $call('POST', '/authors', ['name' => 'Ada Admin', 'email' => 'ada@example.com', 'bio' => 'Writes the posts here.', 'userId' => 1]);
 // The posts hook fills in the author from the signed-in user.
-$call('POST', '/posts', ['title' => 'Comments are moderated', 'locale' => 'en', 'status' => 'published', 'tags' => ['guide'], 'body' => '<!-- wp:paragraph --><p>A comment from a reader waits for an editor. Staff comments go up at once.</p><!-- /wp:paragraph -->']);
+$call('POST', '/posts', ['title' => 'Comments are moderated', 'status' => 'published', 'tags' => ['guide'], 'body' => '<!-- wp:paragraph --><p>A comment from a reader waits for an editor. Staff comments go up at once.</p><!-- /wp:paragraph -->']);
 $hello = get_page_by_path('hello-typedpress', OBJECT, 'tp_posts');
 if ($hello) {
 	// Staff comments are approved by the afterCreate hook.

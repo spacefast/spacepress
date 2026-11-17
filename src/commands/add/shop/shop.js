@@ -28,13 +28,20 @@ class Cart extends HTMLElement {
   }
   disconnectedCallback() { this.stop?.(); }
   async change(action, button) {
-    if (button) button.disabled = true;
+    if (this.busy) return;
+    this.busy = true;
+    this.focusControl = this.contains(document.activeElement) ? document.activeElement.dataset.cartControl : undefined;
+    for (const control of this.querySelectorAll('button,input,select')) control.disabled = true;
     try { await action(); }
     catch (error) { const message = element('p', error.message, 'shop-error'); message.setAttribute('role', 'alert'); this.appendChild(message); }
-    finally { if (button) button.disabled = false; }
+    finally { this.busy = false; for (const control of this.querySelectorAll('button,input,select')) control.disabled = false; this.focusControl = undefined; }
   }
   render(data) {
-    if (!data.items.length) { this.replaceChildren(element('p', 'Your cart is empty. Explore the collection to find something you like.')); return; }
+    const focus = this.focusControl || (this.contains(document.activeElement) ? document.activeElement.dataset.cartControl : undefined);
+    const previousCountry = this.querySelector('[aria-label="Shipping country"]');
+    const previousPostcode = this.querySelector('[name="postcode"]');
+    if (previousCountry) this.destination = { country: previousCountry.value, postcode: previousPostcode.value };
+    if (!data.items.length) { const empty = element('p', 'Your cart is empty. Explore the collection to find something you like.'); empty.tabIndex = -1; this.replaceChildren(empty); if (focus) empty.focus(); return; }
     const list = element('div');
     for (const item of data.items) {
       const line = element('section', undefined, 'cart-line'); const info = element('div');
@@ -42,10 +49,11 @@ class Cart extends HTMLElement {
       const controls = element('div', undefined, 'cart-controls');
       for (const [label, quantity] of [['−', item.quantity - 1], ['+', item.quantity + 1]]) {
         const button = element('button', label); button.type = 'button'; button.setAttribute('aria-label', `${label === '+' ? 'Increase' : 'Decrease'} ${item.name} quantity`);
+        button.dataset.cartControl = `${item.key}:${label}`;
         button.onclick = () => this.change(() => quantity ? cart.update(item.key, quantity) : cart.remove(item.key), button);
         if (label === '−') controls.append(button, element('span', String(item.quantity))); else controls.append(button);
       }
-      const remove = element('button', 'Remove'); remove.type = 'button'; remove.onclick = () => this.change(() => cart.remove(item.key), remove); controls.append(remove);
+      const remove = element('button', 'Remove'); remove.type = 'button'; remove.dataset.cartControl = `${item.key}:remove`; remove.onclick = () => this.change(() => cart.remove(item.key), remove); controls.append(remove);
       line.append(info, controls); list.append(line);
     }
     const parts = [list];
@@ -53,18 +61,22 @@ class Cart extends HTMLElement {
       const form = element('form', undefined, 'shipping-estimate'); const country = element('select'); country.setAttribute('aria-label', 'Shipping country');
       for (const [code, name] of [['PL', 'Poland'], ['DE', 'Germany']]) { const option = element('option', name); option.value = code; country.append(option); }
       const postcode = element('input'); postcode.name = 'postcode'; postcode.placeholder = 'Postcode'; postcode.setAttribute('aria-label', 'Shipping postcode');
+      country.value = this.destination?.country || 'PL'; postcode.value = this.destination?.postcode || '';
+      country.dataset.cartControl = 'country'; postcode.dataset.cartControl = 'postcode';
       const button = element('button', 'Estimate shipping'); form.append(country, postcode, button);
+      button.dataset.cartControl = 'estimate';
       form.onsubmit = event => { event.preventDefault(); this.change(() => cart.updateCustomer({ shipping: { country: country.value, postcode: postcode.value } }), button); };
       parts.push(form);
       for (const pack of data.shippingRates) {
         const rates = element('fieldset'); rates.append(element('legend', pack.name));
-        for (const rate of pack.rates) { const label = element('label'); const input = element('input'); input.type = 'radio'; input.name = `shipping-${pack.packageId}`; input.checked = rate.selected; input.onchange = () => this.change(() => cart.selectShipping(pack.packageId, rate.id)); label.append(input, document.createTextNode(`${rate.name} · ${amount(rate.price, rate.currencyCode)}`)); rates.append(label); }
+        for (const rate of pack.rates) { const label = element('label'); const input = element('input'); input.type = 'radio'; input.name = `shipping-${pack.packageId}`; input.dataset.cartControl = `shipping-${pack.packageId}:${rate.id}`; input.checked = rate.selected; input.onchange = () => this.change(() => cart.selectShipping(pack.packageId, rate.id)); label.append(input, document.createTextNode(`${rate.name} · ${amount(rate.price, rate.currencyCode)}`)); rates.append(label); }
         parts.push(rates);
       }
     }
     const total = element('p', `Total ${amount(data.totals.totalPrice, data.totals.currencyCode)}`, 'cart-total');
     const checkout = element('a', 'Continue to checkout', 'shop-checkout'); checkout.href = '/checkout';
     parts.push(total, checkout); this.replaceChildren(...parts);
+    if (focus) (Array.from(this.querySelectorAll('[data-cart-control]')).find(control => control.dataset.cartControl === focus) || this.querySelector('[data-cart-control]'))?.focus();
   }
 }
 for (const [name, component] of [['shop-mini-cart', MiniCart], ['shop-add-to-cart', AddToCart], ['shop-cart', Cart]]) { if (!customElements.get(name)) customElements.define(name, component); }

@@ -153,7 +153,14 @@ final class Wire
                 if ($ref !== null && ($spec['columns'][$name]['type'] ?? '') === 'refList') {
                     $list = \TypedPress\Seam::container($value);
                     if (!is_array($list) || !array_is_list($list)) { throw HttpError::invalidInput('Term references must be a list of UIDs', '/fields/' . $name); }
-                    $data[$name] = array_map(static fn ($uid) => self::resolve($ref, $name, $uid, $viewer), $list);
+                    // Null placeholders stand for links this pull could not name. Keep those
+                    // identities from the stored list; their positions may move when named links change.
+                    $unnamed = array_values(array_filter($current[$name] ?? [], static fn ($id) => !isset($named[$name][self::key($id)])));
+                    $data[$name] = [];
+                    foreach ($list as $uid) {
+                        if ($uid === null && $unnamed !== []) { $data[$name][] = array_shift($unnamed); }
+                        else { $data[$name][] = self::resolve($ref, $name, $uid, $viewer); }
+                    }
                 } else { $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value, $viewer); }
             } catch (HttpError $e) {
                 if ($missing === null || !in_array($e->errorCode, ['sync_missing_reference', 'reference_violation'], true)) {

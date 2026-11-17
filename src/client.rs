@@ -332,6 +332,20 @@ pub(crate) fn names(schema: &Schema) -> ClientNames {
         actions: IndexMap::new(),
     };
     let mut used = HashSet::new();
+    if schema.store.is_some() {
+        used.extend(
+            [
+                "WooCartItem",
+                "WooCartTotals",
+                "WooAddress",
+                "WooShippingPackage",
+                "WooCart",
+                "WooStoreError",
+                "WooCartClient",
+            ]
+            .map(String::from),
+        );
+    }
     for c in schema.collections.values() {
         let suffixes: &[&str] = if c.localized {
             &["", "Insert", "Patch", "With", "Filter", "Order", "Fields"]

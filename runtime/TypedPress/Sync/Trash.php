@@ -65,7 +65,7 @@ final class Trash
         $connection = Plugin::instance()->connection();
         $connection->touchPost($pk);
         $trashed = $connection->core(static function () use ($pk, $spec): mixed {
-            if (($spec['commerce'] ?? null) === 'product') { $product = wc_get_product($pk); return $product ? $product->delete(false) : false; }
+            if (($spec['commerce'] ?? null) === 'product') { $product = wc_get_product($pk); if (!$product) { return false; } $product->delete(false); return get_post_status($pk) === 'trash'; }
             return wp_trash_post($pk);
         });
         if (!$trashed) {

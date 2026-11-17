@@ -50,13 +50,14 @@ final class Markdown
                     $fence = $m[1];
                 } elseif ($fence !== null && preg_match('/^ {0,3}(`{3,}|~{3,})\s*$/', $line, $m) === 1 && $m[1][0] === $fence[0] && strlen($m[1]) >= strlen($fence)) {
                     $fence = null;
-                } elseif ($fence !== null) { $line = str_replace('<!--', $marker, $line); }
+                } elseif ($fence !== null || preg_match('/^(?: {4}|\t)/', $line) === 1) { $line = str_replace('<!--', $marker, $line); }
             }
             unset($line);
-            $native = parse_blocks(implode("\n", $lines));
+            $masked = preg_replace_callback('/(`+)(?!`)([\s\S]*?)(?<!`)\1(?!`)/', static fn ($m) => str_replace('<!--', $marker, $m[0]), implode("\n", $lines));
+            $native = parse_blocks($masked);
             if (array_filter($native, static fn (array $block): bool => $block['blockName'] !== null) !== []) {
                 return implode('', array_map(static fn (array $block): string => $block['blockName'] === null
-                    ? self::toBlocks(str_replace($marker, '<!--', $block['innerHTML'])) : serialize_block($block), $native));
+                    ? self::toBlocks(str_replace($marker, '<!--', $block['innerHTML'])) : str_replace($marker, '<!--', serialize_block($block)), $native));
             }
         }
 

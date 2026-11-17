@@ -566,8 +566,10 @@ on for a new shop; the runtime answers false on `woocommerce_enable_hpos_by_defa
 before Woo is first installed, so they never are. Posts storage is the older and more widely
 exercised path, and it is the same on Playground, previews and production. Woo's source
 handles SQLite for Studio and Playground, in its HPOS queries too, so this is a choice for
-one storage everywhere, not a workaround. TypedPress reads orders only through Woo CRUD, so
-turning HPOS on later changes no API.
+one storage everywhere, not a workaround. Existing shops with HPOS authoritative or order
+synchronization enabled are refused before order storage is selected; TypedPress never forces
+their stored settings to change. Complete synchronization and select legacy storage in Woo
+before enabling this runtime. Supporting HPOS later must also update order query selection.
 
 Reuse the Woo Store SDK's cart types and Store API client in TypedPress client components; its
 cross-origin session and checkout handoff are not needed ([cart session](#cart-session)). Full Woo PHP class bindings and a new frontend framework adapter are

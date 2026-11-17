@@ -114,6 +114,12 @@ $nativeStored = Markdown::toBlocks("Before checkout.\n\n" . $nativeCheckout . "\
 check('native blocks stay serialized between Markdown paragraphs', str_contains($nativeStored, $nativeCheckout) && substr_count($nativeStored, '<!-- wp:paragraph -->') === 2);
 $quotedBlock = Markdown::toBlocks("```html\n<!-- wp:woocommerce/checkout /-->\n```\n\n" . $nativeCheckout);
 check('serialized block examples inside fences remain code', str_contains($quotedBlock, '<!-- wp:code') && str_contains($quotedBlock, '&lt;!-- wp:woocommerce/checkout /--&gt;') && substr_count($quotedBlock, '<!-- wp:woocommerce/checkout') === 1);
+foreach (["Use `<!-- wp:woocommerce/checkout /-->` to add checkout.", "    <!-- wp:woocommerce/checkout /-->"] as $example) {
+    $stored = Markdown::toBlocks($example . "\n\n" . $nativeCheckout);
+    check('inline and indented block examples stay literal', substr_count($stored, '<!-- wp:woocommerce/checkout') === 1 && str_contains($stored, '&lt;!-- wp:woocommerce/checkout /--&gt;'));
+}
+$nativeWithCode = '<!-- wp:group --><div>```html' . "\n<!-- wp:example /-->\n```" . '</div><!-- /wp:group -->';
+eq('code markers are restored inside serialized native blocks', Markdown::toBlocks($nativeWithCode), $nativeWithCode);
 eq('a comparison is not a tag', md('<!-- wp:html --><p>1 &lt; 2</p><!-- /wp:html -->'), "1 < 2\n");
 register_block_type('typedpress-test/broken', ['render_callback' => static fn (): never => throw new RuntimeException('broken block')]);
 eq('a post whose rendering throws shows nothing, never a partial or unfiltered body', md('<!-- wp:paragraph --><p>Before.</p><!-- /wp:paragraph --><!-- wp:typedpress-test/broken /--><!-- wp:html --><p>After.</p><!-- /wp:html -->'), '');

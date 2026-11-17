@@ -128,9 +128,27 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   const cartPage = await page.goto(new URL('/cart', base).href);
   assert.match(cartPage!.headers()['cache-control']!, /private.*no-store/);
   assert.equal(cartPage!.headers()['x-robots-tag'], 'noindex');
+  for (const path of ['/%63art', '/%63heckout']) {
+    const response = await page.request.get(new URL(path, base).href);
+    assert.equal(response.status(), 200, path);
+    assert.match(response.headers()['cache-control']!, /private.*no-store/, path);
+    assert.equal(response.headers()['x-robots-tag'], 'noindex', path);
+  }
   for (const path of ['/cart.md', '/checkout.md']) { assert.equal((await page.request.get(new URL(path, base).href)).status(), 404, path); }
   assert.doesNotMatch(await (await page.request.get(new URL('/llms.txt', base).href)).text(), /\/(?:cart|checkout)\.md/);
   await page.getByRole('button', { name: 'Increase Ceramic mug quantity' }).click();
+  await page.getByText('Total 63.00 EUR').waitFor();
+  await expect(page.getByRole('button', { name: 'Increase Ceramic mug quantity' })).toBeFocused();
+  await page.getByLabel('Shipping country', { exact: true }).selectOption('DE');
+  await page.getByLabel('Shipping postcode', { exact: true }).fill('10115');
+  await page.getByRole('button', { name: 'Estimate shipping' }).click();
+  await page.getByText('Total 73.00 EUR').waitFor();
+  await expect(page.getByLabel('Shipping country', { exact: true })).toHaveValue('DE');
+  await expect(page.getByLabel('Shipping postcode', { exact: true })).toHaveValue('10115');
+  await expect(page.getByRole('button', { name: 'Estimate shipping' })).toBeFocused();
+  await page.getByLabel('Shipping country', { exact: true }).selectOption('PL');
+  await page.getByLabel('Shipping postcode', { exact: true }).fill('31-042');
+  await page.getByRole('button', { name: 'Estimate shipping' }).click();
   await page.getByText('Total 63.00 EUR').waitFor();
   // Browser and Checkout Block use one cookie session, including recalculated shipping.
   await checkout(page);

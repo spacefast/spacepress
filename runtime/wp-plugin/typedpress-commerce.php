@@ -8,5 +8,9 @@ if (strlen($wpdb->prefix) > 20) {
 }
 add_filter('woocommerce_create_pages', '__return_empty_array', PHP_INT_MAX);
 add_filter('woocommerce_enable_hpos_by_default_for_new_shops', '__return_false', PHP_INT_MAX);
-add_filter('pre_option_woocommerce_custom_orders_table_enabled', static fn () => 'no', PHP_INT_MAX);
-add_filter('pre_option_woocommerce_custom_orders_table_data_sync_enabled', static fn () => 'no', PHP_INT_MAX);
+// Never switch an existing store's authoritative order storage on its behalf.
+foreach (['woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
+    if ($wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option)) === 'yes') {
+        throw new RuntimeException('TypedPress commerce requires legacy order storage with HPOS synchronization disabled. Change storage in WooCommerce after completing synchronization.');
+    }
+}

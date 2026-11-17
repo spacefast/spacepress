@@ -39,7 +39,7 @@ final class Store implements \TypedPress\Store
             if ($core !== null) { $refs[$name] = new ColumnRef($core, '', '', 'scalar'); continue; }
             if (isset($meta[$name])) {
                 $join = "LEFT JOIN `{$wpdb->postmeta}` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . $meta[$name] . "'";
-                $expr = match ($name) { 'virtual', 'downloadable' => "CASE {j}.meta_value WHEN 'yes' THEN 1 ELSE 0 END", 'availability' => "CASE {j}.meta_value WHEN 'onbackorder' THEN 'outofstock' ELSE {j}.meta_value END", default => "NULLIF({j}.meta_value, '')" };
+                $expr = match ($name) { 'virtual', 'downloadable' => "CASE {j}.meta_value WHEN 'yes' THEN 1 ELSE 0 END", 'availability' => "CASE {j}.meta_value WHEN 'onbackorder' THEN 'outofstock' ELSE {j}.meta_value END", 'customer' => "NULLIF(NULLIF({j}.meta_value, ''), '0')", default => "NULLIF({j}.meta_value, '')" };
                 $compare = in_array($name, ['price', 'total'], true) ? "CAST($expr AS DECIMAL(30,10))" : $expr;
                 $refs[$name] = new ColumnRef($expr, $join, $compare, ColumnRef::kindFor($col['type']));
             } else { $refs[$name] = new ColumnRef('NULL', '', '', ColumnRef::kindFor($col['type'])); }
@@ -73,10 +73,10 @@ final class Store implements \TypedPress\Store
             'id' => $p->get_id(), 'uid' => $p->get_meta('_tp_uid') ?: null, 'name' => $p->get_name(), 'slug' => $p->get_slug(),
             'description' => $p->get_description(), 'shortDescription' => $p->get_short_description(), 'sku' => $p->get_sku() ?: null,
             'status' => ['publish' => 'published', 'future' => 'scheduled'][$p->get_status()] ?? $p->get_status(),
-            'price' => $p->get_price() === '' ? null : $p->get_price(), 'images' => array_values(array_filter([$p->get_image_id(), ...$p->get_gallery_image_ids()])),
+            'price' => $p->get_regular_price() === '' ? null : $p->get_regular_price(), 'images' => array_values(array_filter([$p->get_image_id(), ...$p->get_gallery_image_ids()])),
             'categories' => $p->get_category_ids(), 'tags' => $p->get_tag_ids(), 'virtual' => $p->is_virtual(), 'downloadable' => $p->is_downloadable(),
             'downloads' => array_values(array_map(static fn (\WC_Product_Download $d): array => ['id' => $d->get_id(), 'name' => $d->get_name(), 'file' => $d->get_file()], $p->get_downloads())),
-            'type' => $p->get_type(), 'purchasable' => $p->is_purchasable(), 'availability' => $p->get_stock_status(), 'url' => $p->get_permalink(),
+            'type' => $p->get_type(), 'purchasable' => $p->is_purchasable(), 'availability' => $p->get_stock_status() === 'onbackorder' ? 'outofstock' : $p->get_stock_status(), 'url' => $p->get_permalink(),
         ];
     }
 

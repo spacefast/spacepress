@@ -68,6 +68,64 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
     }
 }
 #[test]
+fn commerce_references_names_and_existing_store_scaffolding() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("typedpress.config.ts"),
+        r#"
+import {defineConfig,store,product,productCategory,order,table,ref,text,action,db} from 'typedpress';
+export const shop=store({currency:'USD',country:'PL'});
+export const catalogItems=product();
+export const categories=productCategory();
+export const orders=order();
+export const wooCarts=table({name:text()});
+export const links=table({product:ref(catalogItems),order:ref(()=>orders)});
+export const catalog=action({access:'anyone',handler:async()=>await db.query.categories.findMany({with:{catalogItems:true}})});
+export default defineConfig({name:'commerce'});
+"#,
+    )
+    .unwrap();
+    success(cli("build", project.path()));
+    let types = std::fs::read_to_string(project.path().join("tp/_generated/client/types.ts")).unwrap();
+    assert!(
+        types.contains("interface WooCartRow"),
+        "commerce runtime names must not merge with collection types"
+    );
+    for file in std::fs::read_dir(project.path().join("tp/_generated/migrations")).unwrap() {
+        let file = file.unwrap().path();
+        if file.extension().is_some_and(|x| x == "sql") {
+            let sql = std::fs::read_to_string(file).unwrap();
+            assert!(!sql.contains("REFERENCES `{prefix}tp_catalog_items`"));
+            assert!(!sql.contains("REFERENCES `{prefix}tp_orders`"));
+        }
+    }
+    // An existing store outside tp/shop.ts must not acquire imports to that absent module.
+    let config = project.path().join("typedpress.config.ts");
+    let source = std::fs::read_to_string(&config)
+        .unwrap()
+        .replace("catalogItems", "products");
+    std::fs::write(&config, source).unwrap();
+    success(
+        Command::new(env!("CARGO_BIN_EXE_typedpress"))
+            .args(["add", "shop"])
+            .arg(project.path())
+            .output()
+            .unwrap(),
+    );
+    assert!(!project.path().join("tp/shop.ts").exists());
+    assert!(!project.path().join("tp/app/(shop)/shop/page.tsx").exists());
+    for sync in ["true", "{dir:'content/topics'}"] {
+        std::fs::write(&config,format!("import {{defineConfig,taxonomy}} from 'typedpress';export const topics=taxonomy({{}},{{sync:{sync}}});export default defineConfig({{name:'commerce'}});")).unwrap();
+        let out = cli("check", project.path());
+        assert!(!out.status.success());
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("sync must be"),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+#[test]
 fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database() {
     let project = tempfile::tempdir().unwrap();
     std::fs::write(

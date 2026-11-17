@@ -3,6 +3,9 @@
 `typedpress add shop` creates a working storefront over native Woo products, terms, carts
 and orders. Woo is a pinned platform dependency only when the app exports a `store()`.
 There is no second commerce database or merchant REST credential.
+Orders use legacy WordPress post storage. Existing stores with HPOS or order synchronization
+enabled are refused without changing their settings; complete synchronization and choose
+legacy storage in WooCommerce before enabling TypedPress commerce.
 
 ```sh
 typedpress add shop

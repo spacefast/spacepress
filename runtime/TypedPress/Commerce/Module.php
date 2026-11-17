@@ -47,8 +47,8 @@ final class Module
         global $wpdb;
         if (strlen($wpdb->prefix) > 20) { throw new \RuntimeException('WooCommerce requires a WordPress table prefix of at most 20 characters'); }
         if (!defined('WC_VERSION') || version_compare(WC_VERSION, '11.3.0', '<')) { throw new \RuntimeException('This store requires WooCommerce 11.3.0 or later'); }
+        self::checkOrderStorage();
         $options = [
-            'woocommerce_custom_orders_table_enabled' => 'no', 'woocommerce_custom_orders_table_data_sync_enabled' => 'no',
             'woocommerce_enable_coupons' => 'no', 'woocommerce_enable_reviews' => 'no', 'woocommerce_enable_review_rating' => 'no',
             'woocommerce_enable_signup_and_login_from_checkout' => 'no', 'woocommerce_enable_myaccount_registration' => 'no', 'woocommerce_enable_delayed_account_creation' => 'no',
             'woocommerce_enable_guest_checkout' => 'yes', 'woocommerce_calc_taxes' => 'no', 'woocommerce_coming_soon' => 'no',
@@ -147,36 +147,63 @@ final class Module
     {
         foreach ($settings as &$setting) { if (array_key_exists($setting['id'] ?? '', $options)) { $setting['custom_attributes']['disabled'] = 'disabled'; $setting['desc'] = ($setting['desc'] ?? '') . ' Managed by TypedPress source.'; } } unset($setting); return $settings;
     }
-    public static function initialize(Plugin $plugin): void
+    public static function checkOrderStorage(): void
     {
-        $store = $plugin->schema->commerce(); if ($store === null || !array_key_exists('shipping', $store)) { return; }
-        $key = 'tp_' . $plugin->schema->name() . '_shipping';
-        $hash = hash('sha256', (string) wp_json_encode($store['shipping']));
-        if (get_option($key) === ['source' => $hash, 'state' => self::shippingState()]) { return; }
-        $existing = \WC_Shipping_Zones::get_zones(); $kept = [];
-        foreach ($store['shipping'] as $index => $zone) {
-            $id = 0;
-            if ($zone['countries'] !== 'rest') {
-                foreach ($existing as $candidate) { if ($candidate['zone_name'] === $zone['name']) { $id = (int) $candidate['zone_id']; break; } }
-                $z = new \WC_Shipping_Zone($id ?: null);
-                $z->set_zone_name($zone['name']); $z->set_zone_order($index);
-                $z->set_zone_locations(array_map(static fn ($code) => (object) ['code' => $code, 'type' => 'country'], $zone['countries']));
-                $z->save(); $id = $z->get_id(); $kept[] = $id;
-            } else { $z = new \WC_Shipping_Zone(0); }
-            foreach ($z->get_shipping_methods() as $method) { $z->delete_shipping_method($method->instance_id); }
-            foreach ($zone['methods'] as $method) {
-                $type = ['flatRate' => 'flat_rate', 'freeShipping' => 'free_shipping', 'localPickup' => 'local_pickup'][$method['type']];
-                $instance = $z->add_shipping_method($type);
-                $settings = ['title' => $method['title'], 'enabled' => 'yes', 'tax_status' => 'none'];
-                if (isset($method['cost'])) { $settings['cost'] = $method['cost']; }
-                if (isset($method['minimum'])) { $settings['requires'] = 'min_amount'; $settings['min_amount'] = $method['minimum']; }
-                update_option('woocommerce_' . $type . '_' . $instance . '_settings', $settings);
+        global $wpdb;
+        foreach (['woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
+            if ($wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option)) === 'yes') {
+                throw new \RuntimeException('TypedPress commerce requires legacy order storage with HPOS synchronization disabled. Change storage in WooCommerce after completing synchronization.');
             }
         }
-        foreach ($existing as $zone) { if (!in_array((int) $zone['zone_id'], $kept, true)) { (new \WC_Shipping_Zone($zone['zone_id']))->delete(); } }
-        if (!array_filter($store['shipping'], static fn ($z) => $z['countries'] === 'rest')) { $rest = new \WC_Shipping_Zone(0); foreach ($rest->get_shipping_methods() as $m) { $rest->delete_shipping_method($m->instance_id); } }
-        \WC_Cache_Helper::get_transient_version('shipping', true);
-        update_option($key, ['source' => $hash, 'state' => self::shippingState()], false);
+    }
+
+    /** The same pending work is used by managed inspection and installation. */
+    public static function plan(Plugin $plugin): array
+    {
+        $store = $plugin->schema->commerce(); if ($store === null || !array_key_exists('shipping', $store)) { return []; }
+        $key = 'tp_' . $plugin->schema->name() . '_shipping';
+        $hash = hash('sha256', (string) wp_json_encode($store['shipping']));
+        wp_cache_delete($key, 'options'); wp_cache_delete('alloptions', 'options');
+        return get_option($key) === ['source' => $hash, 'state' => self::shippingState()] ? [] : [Runtime::step('commerce-shipping', 'commerce-shipping')];
+    }
+    public static function initialize(Plugin $plugin): void
+    {
+        if (self::plan($plugin) === []) { return; }
+        global $wpdb;
+        \TypedPress\Wp\Migrator::locked(new \TypedPress\Wp\Connection($wpdb), 'commerce_shipping', static function () use ($plugin): void {
+            if (self::plan($plugin) === []) { return; }
+            $store = $plugin->schema->commerce();
+            $key = 'tp_' . $plugin->schema->name() . '_shipping';
+            $hash = hash('sha256', (string) wp_json_encode($store['shipping']));
+            $existing = \WC_Shipping_Zones::get_zones(); $kept = [];
+            foreach ($store['shipping'] as $index => $zone) {
+                $id = 0;
+                if ($zone['countries'] !== 'rest') {
+                    foreach ($existing as $candidate) { if ($candidate['zone_name'] === $zone['name']) { $id = (int) $candidate['zone_id']; break; } }
+                    $z = new \WC_Shipping_Zone($id ?: null);
+                    $z->set_zone_name($zone['name']); $z->set_zone_order($index);
+                    $z->set_zone_locations(array_map(static fn ($code) => (object) ['code' => $code, 'type' => 'country'], $zone['countries']));
+                    if (!$z->save()) { throw new \RuntimeException('Could not save source shipping zone ' . $zone['name']); }
+                    $id = $z->get_id(); $kept[] = $id;
+                } else { $z = new \WC_Shipping_Zone(0); }
+                foreach ($z->get_shipping_methods() as $method) { $z->delete_shipping_method($method->instance_id); }
+                foreach ($zone['methods'] as $method) {
+                    $type = ['flatRate' => 'flat_rate', 'freeShipping' => 'free_shipping', 'localPickup' => 'local_pickup'][$method['type']];
+                    $instance = $z->add_shipping_method($type);
+                    if (!$instance) { throw new \RuntimeException('Could not add source shipping method ' . $type); }
+                    $settings = ['title' => $method['title'], 'enabled' => 'yes', 'tax_status' => 'none'];
+                    if (isset($method['cost'])) { $settings['cost'] = $method['cost']; }
+                    if (isset($method['minimum'])) { $settings['requires'] = 'min_amount'; $settings['min_amount'] = $method['minimum']; }
+                    $option = 'woocommerce_' . $type . '_' . $instance . '_settings';
+                    update_option($option, $settings);
+                    if (get_option($option) !== $settings) { throw new \RuntimeException('Could not save source shipping method settings'); }
+                }
+            }
+            foreach ($existing as $zone) { if (!in_array((int) $zone['zone_id'], $kept, true)) { (new \WC_Shipping_Zone($zone['zone_id']))->delete(); } }
+            if (!array_filter($store['shipping'], static fn ($z) => $z['countries'] === 'rest')) { $rest = new \WC_Shipping_Zone(0); foreach ($rest->get_shipping_methods() as $m) { $rest->delete_shipping_method($m->instance_id); } }
+            \WC_Cache_Helper::get_transient_version('shipping', true);
+            update_option($key, ['source' => $hash, 'state' => self::shippingState()], false);
+        });
     }
     private static function shippingState(): string
     {
@@ -204,6 +231,7 @@ final class Module
     public static function privatePath(Plugin $plugin, string $path): bool
     {
         if ($plugin->schema->commerce() === null) { return false; }
+        $path = '/' . implode('/', array_map('rawurldecode', array_values(array_filter(explode('/', $path), static fn ($part) => $part !== ''))));
         $base = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
         if ($base !== '' && str_starts_with($path, $base . '/')) { $path = substr($path, strlen($base)); }
         $checkout = rtrim($plugin->schema->commerce()['checkout'] ?? '/checkout', '/');
@@ -214,9 +242,12 @@ final class Module
     {
         if ($plugin->schema->commerce() === null) { return $path; }
         $checkout = rtrim($plugin->schema->commerce()['checkout'] ?? '/checkout', '/');
-        if (preg_match('#^' . preg_quote($checkout, '#') . '/(order-received|order-pay)/([0-9]+)/?$#', $path, $m)) {
-            $GLOBALS['wp']->query_vars[$m[1]] = $m[2]; set_query_var($m[1], $m[2]);
-            return $checkout;
+        foreach (['order-pay' => 'woocommerce_checkout_pay_endpoint', 'order-received' => 'woocommerce_checkout_order_received_endpoint'] as $var => $option) {
+            $slug = (string) get_option($option, $var);
+            if ($slug !== '' && preg_match('#^' . preg_quote($checkout, '#') . '/' . preg_quote($slug, '#') . '/([0-9]+)/?$#', rawurldecode($path), $m)) {
+                $GLOBALS['wp']->query_vars[$var] = $m[1]; set_query_var($var, $m[1]);
+                return $checkout;
+            }
         }
         return $path;
     }

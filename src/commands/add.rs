@@ -253,18 +253,19 @@ fn table(schema: &Schema, key: Option<&str>) -> bool {
 }
 
 /// Why `file` doesn't belong in a project with this schema, or None when it does.
-fn skip(file: &File, schema: &Schema) -> Option<String> {
+fn skip(file: &File, schema: &Schema, project: &Path) -> Option<String> {
     match file.when {
         When::Always => None,
         When::NoStore => schema
             .store
             .is_some()
             .then(|| "the project already has a store".to_string()),
-        When::Shop => (!schema
-            .collections
-            .values()
-            .any(|c| c.commerce.as_deref() == Some("product") && c.key == "products"))
-        .then(|| "the project doesn't use the example products kind".to_string()),
+        When::Shop => (!(project.join("tp/shop.ts").is_file()
+            && schema
+                .collections
+                .values()
+                .any(|c| c.commerce.as_deref() == Some("product") && c.key == "products")))
+        .then(|| "the project doesn't use the example tp/shop.ts products kind".to_string()),
         When::NoTables => table(schema, None).then(|| "the project already has tables".to_string()),
         When::Tables(names) => names
             .iter()
@@ -381,7 +382,11 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
             };
             compiled = created.files.len();
         }
-        if let Some(why) = if shop_files { None } else { skip(file, &schema) } {
+        if let Some(why) = if shop_files {
+            None
+        } else {
+            skip(file, &schema, &project)
+        } {
             report.push((file, "skipped", why));
             continue;
         }

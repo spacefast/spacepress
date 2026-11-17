@@ -56,39 +56,39 @@ final class Seed
             }
             if (!$progress) { throw HttpError::invalidInput('Cyclic seed dependencies', '/records'); }
         }
-        $receipt = [];
-        foreach ($files as $file) {
-            try {
-                $input = str_ends_with($file, '.php') ? require $file : Seam::container(Js::decodeJson((string) file_get_contents($file)));
-            } catch (\JsonException $e) {
-                throw new HttpError(400, 'invalid_json', 'Invalid seed JSON: ' . $e->getMessage(), '/records/' . basename($file));
-            }
-            $collection = $input['collection'] ?? null;
-            if (!is_string($collection) || pathinfo($file, PATHINFO_FILENAME) !== $collection || isset($receipt[$collection])) {
-                throw HttpError::invalidInput('Seed collection must match its filename.', '/collection');
-            }
-            $spec = $plugin->schema->collection($collection);
-            if (($spec['sync'] ?? null) === null || ($input['format'] ?? null) !== $spec['sync']['format']) {
-                throw HttpError::invalidInput('Seed format must match a synced collection.', '/format');
-            }
-            $records = Seam::container($input['records'] ?? null);
-            if (!is_array($records) || !array_is_list($records)) {
-                throw HttpError::invalidInput('Seed records must be a list.', '/records');
-            }
-            if (isset($spec['columns']['parent']['references'])) {
-                $pending = $records; $records = []; $done = [];
-                while ($pending !== []) {
-                    $progress = false;
-                    foreach ($pending as $i => $record) {
-                        $row = Seam::container($record); $fields = Seam::container($row['fields'] ?? []); $parent = $fields['parent'] ?? null;
-                        if ($parent !== null && !isset($done[$parent]) && array_filter($pending, static fn ($r) => Seam::container($r)['uid'] === $parent)) { continue; }
-                        $records[] = $record; $done[$row['uid']] = true; unset($pending[$i]); $progress = true;
-                    }
-                    if (!$progress) { throw HttpError::invalidInput('Cyclic parent terms', '/records'); }
+        $plan = static function () use ($plugin, $files, $dry): array {
+            $receipt = [];
+            foreach ($files as $file) {
+                try {
+                    $input = str_ends_with($file, '.php') ? require $file : Seam::container(Js::decodeJson((string) file_get_contents($file)));
+                } catch (\JsonException $e) {
+                    throw new HttpError(400, 'invalid_json', 'Invalid seed JSON: ' . $e->getMessage(), '/records/' . basename($file));
                 }
-            }
-            try {
-                $receipt[$collection] = $plugin->connection()->transaction(static function () use ($collection, $spec, $records, $dry): array {
+                $collection = $input['collection'] ?? null;
+                if (!is_string($collection) || pathinfo($file, PATHINFO_FILENAME) !== $collection || isset($receipt[$collection])) {
+                    throw HttpError::invalidInput('Seed collection must match its filename.', '/collection');
+                }
+                $spec = $plugin->schema->collection($collection);
+                if (($spec['sync'] ?? null) === null || ($input['format'] ?? null) !== $spec['sync']['format']) {
+                    throw HttpError::invalidInput('Seed format must match a synced collection.', '/format');
+                }
+                $records = Seam::container($input['records'] ?? null);
+                if (!is_array($records) || !array_is_list($records)) {
+                    throw HttpError::invalidInput('Seed records must be a list.', '/records');
+                }
+                if (isset($spec['columns']['parent']['references'])) {
+                    $pending = $records; $records = []; $done = [];
+                    while ($pending !== []) {
+                        $progress = false;
+                        foreach ($pending as $i => $record) {
+                            $row = Seam::container($record); $fields = Seam::container($row['fields'] ?? []); $parent = $fields['parent'] ?? null;
+                            if ($parent !== null && !isset($done[$parent]) && array_filter($pending, static fn ($r) => Seam::container($r)['uid'] === $parent)) { continue; }
+                            $records[] = $record; $done[$row['uid']] = true; unset($pending[$i]); $progress = true;
+                        }
+                        if (!$progress) { throw HttpError::invalidInput('Cyclic parent terms', '/records'); }
+                    }
+                }
+                $receipt[$collection] = $plugin->connection()->transaction(static function () use ($collection, $spec, $records): array {
                     $counts = array_fill_keys(['created', 'unchanged', 'skipped_existing', 'updated', 'trashed_skipped'], 0);
                     $seen = [];
                     foreach ($records as $index => $record) {
@@ -100,14 +100,15 @@ final class Seed
                         $seen[$uid] = true;
                         $counts[Routes::seedRecord($collection, $spec, $record)]++;
                     }
-                    if ($dry) { throw new SeedDryRun($counts); }
                     return $counts;
                 });
-            } catch (SeedDryRun $rollback) {
-                $receipt[$collection] = $rollback->counts;
             }
-        }
-        return $receipt;
+            if ($dry) { throw new SeedDryRun($receipt); }
+            return $receipt;
+        };
+        if (!$dry) { return $plan(); }
+        try { return $plugin->connection()->transaction($plan); }
+        catch (SeedDryRun $rollback) { return $rollback->counts; }
     }
 }
 

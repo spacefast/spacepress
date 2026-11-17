@@ -537,6 +537,7 @@ pub fn relations(schema: &mut Schema) {
         .find(|c| c.commerce.as_deref() == Some("product"))
         .map(|c| c.table.clone());
     let Some(product) = product else { return };
+    let product_key = schema.collections[&product].key.clone();
     for (kind, name) in [("productCategory", "categories"), ("productTag", "tags")] {
         let term = schema
             .collections
@@ -571,9 +572,9 @@ pub fn relations(schema: &mut Schema) {
         );
         let c = schema.collections.get_mut(&term).unwrap();
         c.relations.insert(
-            product.clone(),
+            product_key.clone(),
             Relation {
-                name: product.clone(),
+                name: product_key.clone(),
                 kind: RelKind::Many,
                 collection: product.clone(),
                 from: "id".into(),

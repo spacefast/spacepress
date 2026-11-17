@@ -1610,8 +1610,18 @@ fn taxonomy_kind(
     coll.revisions = false;
     coll.staged = false;
     coll.agents = flag("agents")?.unwrap_or(false);
-    if let Some(Value::Str(pattern)) = o.get("sync") {
-        coll.sync = Some(sync_config(pattern, span("sync"))?);
+    let sync = match o.get("sync") {
+        None | Some(Value::Undef) => None,
+        Some(Value::Str(pattern)) => Some(sync_config(pattern, span("sync"))?),
+        _ => {
+            return Err(Diag::new(
+                span("sync"),
+                "sync must be a project-relative *.md or *.json pattern",
+            ));
+        }
+    };
+    if let Some(sync) = sync {
+        coll.sync = Some(sync);
         coll.uid = true;
         coll.content = Some("description".into());
         let mut uid = system_column("uid", ColType::Text);

@@ -26,6 +26,22 @@ check('native taxonomy registration is retained', get_taxonomy('product_cat')->c
 check('source enables COD', isset(WC()->payment_gateways()->get_available_payment_gateways()['cod']));
 $zones = WC_Shipping_Zones::get_zones();
 eq('source shipping zones are present', array_column($zones, 'zone_name'), ['Poland', 'Germany']);
+foreach (['woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
+    update_option($option, 'yes');
+    foreach ([static fn () => \TypedPress\Commerce\Module::checkOrderStorage(), static function () use ($plugin): void { require dirname($plugin->dir, 2) . '/mu-plugins/typedpress-commerce.php'; }] as $policy) {
+        $refused = false;
+        try { $policy(); } catch (RuntimeException $e) { $refused = str_contains($e->getMessage(), 'legacy order storage'); }
+        check('existing HPOS or synchronization is refused without overriding ' . $option, $refused && get_option($option) === 'yes');
+    }
+    update_option($option, 'no');
+}
+foreach (['/%63art', '/%63heckout', '/%63heckout/order-received/123', '//checkout/'] as $path) {
+    check('encoded or normalized private route stays private: ' . $path, \TypedPress\Commerce\Module::privatePath($plugin, $path));
+}
+update_option('woocommerce_checkout_pay_endpoint', 'pay');
+eq('custom Woo endpoint resolves to checkout', \TypedPress\Commerce\Module::routePath($plugin, '/checkout/pay/123'), '/checkout');
+eq('custom Woo endpoint populates the canonical query variable', get_query_var('order-pay'), '123');
+delete_option('woocommerce_checkout_pay_endpoint');
 check('Woo checkout is a real Page containing its native block', ($checkout = \TypedPress\Commerce\Module::checkoutPage($plugin)) > 0 && has_block('woocommerce/checkout', get_post($checkout)));
 $originalCheckout = get_post_field('post_content', $checkout);
 wp_update_post(['ID' => $checkout, 'post_content' => 'Removed checkout']);
@@ -36,8 +52,16 @@ $methodIds = array_map(static fn ($z) => array_keys($z['shipping_methods']), $zo
 \TypedPress\Commerce\Module::initialize($plugin);
 eq('unchanged source does not recreate shipping methods', array_map(static fn ($z) => array_keys($z['shipping_methods']), WC_Shipping_Zones::get_zones()), $methodIds);
 $extra = new WC_Shipping_Zone(); $extra->set_zone_name('Admin addition'); $extra->save();
+eq('shipping drift is included in the install plan', array_column(\TypedPress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
+$noMethods = static fn () => [];
+add_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
+$shippingFailed = false;
+try { \TypedPress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) { $shippingFailed = str_contains($e->getMessage(), 'Could not add source shipping method'); }
+check('failed shipping writes do not record a completed installation', $shippingFailed && \TypedPress\Commerce\Module::plan($plugin) !== []);
+remove_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
 \TypedPress\Commerce\Module::initialize($plugin);
 eq('source shipping restores its whole zone list after an admin edit', array_column(WC_Shipping_Zones::get_zones(), 'zone_name'), ['Poland', 'Germany']);
+eq('successful shipping retry clears the install plan', \TypedPress\Commerce\Module::plan($plugin), []);
 check('the API exposes storefront-visible products to guests', count($products) === 2);
 problem('guests cannot write products', fn () => $db->insert('products', ['name' => 'No'], true, $guest), 401, 'unauthenticated');
 problem('guests cannot read orders', fn () => $db->findMany('orders', [], $guest), 401, 'unauthenticated');
@@ -88,13 +112,33 @@ eq('later product edits do not rewrite purchased names', json_decode(\TypedPress
 $spec = $plugin->schema->collection('products');
 $wire = \TypedPress\Sync\Wire::encode('products', [$db->findFirst('products', ['where' => ['id' => $mug['id']]])])[0]['record'];
 eq('sync carries term UIDs', $wire['fields']['categories'], [get_term_meta($mug['categories'][0], '_tp_uid', true)]);
-check('sync omits operational/read-only projections', !isset($wire['fields']['availability'], $wire['fields']['purchasable'], $wire['fields']['type'], $wire['fields']['url']));
+check('sync omits operational/read-only projections', array_intersect(['availability', 'purchasable', 'type', 'url'], array_keys($wire['fields'])) === []);
+$current = $mug; $current['categories'] = [999999, $mug['categories'][0]];
+$unnamed = \TypedPress\Sync\Wire::encode('products', [$current])[0]['record'];
+$missing = null;
+eq('a refList pull with an unnamed target can be pushed without losing the link', \TypedPress\Sync\Wire::decode('products', $unnamed, false, $missing, $current)['categories'], $current['categories']);
+$seedDir = sys_get_temp_dir() . '/tp-commerce-seed-' . bin2hex(random_bytes(4)); mkdir($seedDir);
+$categoryUid = \TypedPress\Sync\Uid::mint(); $productUid = \TypedPress\Sync\Uid::mint();
+$seedProduct = $wire; $seedProduct['uid'] = $productUid;
+$seedProduct['fields'] = array_replace($seedProduct['fields'], ['name' => 'Dry-run product', 'slug' => 'dry-run-product', 'sku' => 'DRY-RUN', 'categories' => [$categoryUid]]);
+file_put_contents($seedDir . '/categories.json', wp_json_encode(['collection' => 'categories', 'format' => 'md', 'records' => [['uid' => $categoryUid, 'fields' => ['name' => 'Dry-run category', 'slug' => 'dry-run-category']]]]));
+file_put_contents($seedDir . '/products.json', wp_json_encode(['collection' => 'products', 'format' => 'md', 'records' => [$seedProduct]]));
+$dry = \TypedPress\Sync\Seed::run($plugin, $seedDir, true);
+eq('a dry run resolves references between new seed collections', [$dry['categories']['created'], $dry['products']['created']], [1, 1]);
+eq('the dry run rolls back terms and products together', [$db->findFirst('categories', ['where' => ['uid' => $categoryUid]]), $db->findFirst('products', ['where' => ['uid' => $productUid]])], [null, null]);
+unlink($seedDir . '/categories.json'); unlink($seedDir . '/products.json'); rmdir($seedDir);
 $uids = array_column($db->findMany('products'), 'uid');
 $db->delete('products', ['id' => $mug['id']], false, $admin);
 eq('product delete uses native Woo trash', get_post_status($mug['id']), 'trash');
 check('orders are not removed by catalog retirement', wc_get_order($order->get_id()) instanceof WC_Order);
 $retired = $db->insert('products', ['name' => 'Trash probe', 'price' => '1.00'], true, $admin)[0];
 $wooTrashed = 0;
+$vetoTrash = static fn ($check, $post) => (int) $post->ID === $retired['id'] ? false : $check;
+add_filter('pre_trash_post', $vetoTrash, PHP_INT_MAX, 2);
+$trashFailed = false;
+try { $db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired)); } catch (RuntimeException $e) { $trashFailed = str_contains($e->getMessage(), 'Could not move post'); }
+check('a vetoed native product trash is reported as a failure', $trashFailed && get_post_status($retired['id']) !== 'trash');
+remove_filter('pre_trash_post', $vetoTrash, PHP_INT_MAX);
 add_action('woocommerce_trash_product', static function ($id) use (&$wooTrashed, $retired): void { if ((int) $id === $retired['id']) { $wooTrashed++; } });
 $db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired));
 eq('explicit sync retirement uses Woo CRUD and its lifecycle hook', [get_post_status($retired['id']), $wooTrashed], ['trash', 1]);

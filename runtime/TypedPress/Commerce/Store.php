@@ -162,6 +162,9 @@ final class Store implements \TypedPress\Store
         $this->writable($collection);
         $p = wc_get_product((int) $pk);
         if ($p) { $this->db->core(static fn () => $p->delete(false)); }
+        // Woo does not report a native trash veto; verify persistence before committing link changes.
+        $status = get_post_status((int) $pk);
+        if ($status !== false && $status !== 'trash') { throw new \RuntimeException("Could not delete product $pk"); }
     }
     public function readGuards(string $collection, Viewer $viewer): array
     {

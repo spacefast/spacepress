@@ -210,10 +210,15 @@ eq('refusing a duplicate product UID creates no product', $db->findFirst('produc
 $db->delete('products', ['id' => $mug['id']], false, $admin);
 eq('product delete uses native Woo trash', get_post_status($mug['id']), 'trash');
 check('orders are not removed by catalog retirement', wc_get_order($order->get_id()) instanceof WC_Order);
-$retired = $db->insert('products', ['name' => 'Trash probe', 'price' => '1.00'], true, $admin)[0];
+$retired = $db->insert('products', ['name' => 'Trash probe', 'price' => '1.00', 'categories' => [$child['id']]], true, $admin)[0];
 $wooTrashed = 0;
 $vetoTrash = static fn ($check, $post) => (int) $post->ID === $retired['id'] ? false : $check;
 add_filter('pre_trash_post', $vetoTrash, PHP_INT_MAX, 2);
+$deleteFailed = false;
+try { $db->delete('products', ['id' => $retired['id']], false, $admin); } catch (RuntimeException $e) { $deleteFailed = str_contains($e->getMessage(), 'Could not delete product'); }
+check('a native trash veto refuses ordinary product deletion', $deleteFailed && get_post_status($retired['id']) === 'publish');
+eq('a refused product delete rolls category relationships back', $db->findFirst('products', ['where' => ['id' => $retired['id']]])['categories'], $retired['categories']);
+eq('a refused product delete clears stale native relationship caches', wp_get_object_terms($retired['id'], 'product_cat', ['fields' => 'ids']), $retired['categories']);
 $trashFailed = false;
 try { $db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired)); } catch (RuntimeException $e) { $trashFailed = str_contains($e->getMessage(), 'Could not move post'); }
 check('a vetoed native product trash is reported as a failure', $trashFailed && get_post_status($retired['id']) !== 'trash');

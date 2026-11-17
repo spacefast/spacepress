@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -63,6 +63,21 @@ test("a thrown error is located in the author's file when the author's and the s
 test("a stack frame naming a longer path that ends with the bundle's path is not the bundle's frame", async () => {
   const result = await compileContent(fixture("decoy-frame.tsx"));
   assert.deepEqual(result.diagnostics.map(brief), [{ code: "module_failed", severity: "error", file: fixture("decoy-frame.tsx"), line: 8, column: 17 }]);
+});
+
+test("a thrown location preserves the author's symlinked project path", async () => {
+  const base = mkdtempSync(path.join(tmpdir(), "typedpress-blocks-alias-"));
+  try {
+    const source = path.join(base, "source");
+    const alias = path.join(base, "alias");
+    mkdirSync(source);
+    cpSync(fixture("throws.tsx"), path.join(source, "throws.tsx"));
+    symlinkSync(source, alias);
+    const result = await compileContent(path.join(alias, "throws.tsx"));
+    assert.deepEqual(result.diagnostics.map(brief), [{ code: "module_failed", severity: "error", file: path.join(alias, "throws.tsx"), line: 2, column: 9 }]);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
 });
 
 test("compiling from inside withBlockApi is refused, since the module would see the DOM, and the globals are still restored", async () => {

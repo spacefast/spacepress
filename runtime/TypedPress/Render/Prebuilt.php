@@ -604,7 +604,10 @@ final class Prebuilt
         }
         header('Content-Length: ' . (string) $stat['size']);
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
-            fpassthru($handle);
+            // PHP 8.5 can allocate the entire file in fpassthru(), exceeding a bounded request's memory.
+            while (($chunk = fread($handle, 65536)) !== false && $chunk !== '') {
+                echo $chunk;
+            }
         }
         fclose($handle);
         exit;

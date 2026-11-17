@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire, SourceMap } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -102,7 +102,8 @@ function thrownLocation(error: unknown, bundlePath: string, map: SourceMap, scra
 export async function renderModule(file: string): Promise<ModuleResult> {
   const entry = path.resolve(file);
   const root = path.dirname(entry);
-  const scratch = await mkdtemp(path.join(tmpdir(), "typedpress-blocks-"));
+  // Node canonicalizes imported file URLs, including macOS's /var -> /private/var alias.
+  const scratch = await realpath(await mkdtemp(path.join(tmpdir(), "typedpress-blocks-")));
   const bundlePath = path.join(scratch, "module.mjs");
   let code: string;
   let map: SourceMap;
@@ -157,7 +158,7 @@ export async function renderModule(file: string): Promise<ModuleResult> {
     try {
       namespace = (await import(pathToFileURL(bundlePath).href)) as { default?: unknown };
     } catch (error) {
-      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch)] };
+      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch, await realpath(root))] };
     }
     if (typeof namespace.default !== "function") {
       return {
@@ -170,7 +171,7 @@ export async function renderModule(file: string): Promise<ModuleResult> {
       // same diagnostic boundary as a throw from inside the JSX.
       return { nodes: toContentNodes((namespace.default as () => unknown)(), { file: entry, line: 1, column: 1 }), diagnostics: [] };
     } catch (error) {
-      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch)] };
+      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch, await realpath(root))] };
     }
   } finally {
     await rm(scratch, { recursive: true, force: true });
@@ -181,12 +182,16 @@ export async function renderModule(file: string): Promise<ModuleResult> {
   });
 }
 
-function failure(error: unknown, entry: string, bundlePath: string, map: SourceMap, scratch: string): Diagnostic {
+function failure(error: unknown, entry: string, bundlePath: string, map: SourceMap, scratch: string, sourceRoot: string): Diagnostic {
   // The runtime is bundled into the module, so its ContentError is a copy; match by shape.
   const code = (error as { code?: unknown })?.code;
   const isContent = error instanceof ContentError || (error instanceof Error && error.name === "ContentError" && typeof code === "string");
   const content = isContent ? (error as ContentError) : undefined;
   let loc = content?.loc ?? thrownLocation(error, bundlePath, map, scratch) ?? { file: entry, line: 1, column: 1 };
+  // Keep the caller's authored spelling when a source lives below an aliased project directory.
+  if (loc.file.startsWith(`${sourceRoot}${path.sep}`)) {
+    loc = { ...loc, file: path.resolve(path.dirname(entry), path.relative(sourceRoot, loc.file)) };
+  }
   // An error with no position of its own kept its component call site aside; now that the stack
   // has given it the authored position, the two are joined as they are for any located error.
   const calledFrom = content?.calledFrom;

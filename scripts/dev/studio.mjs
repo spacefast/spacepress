@@ -10,12 +10,24 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'no
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const STUDIO_VERSION = '2.2.0';
-// The WordPress Studio installs (wordpress.org's ZIP of it) and setup.php's typedpress check; TypedPress's floor,
-// src/platform.rs WORDPRESS, is 7.2-beta5, and setup.php also runs the runtime's own Platform::problems().
+// The supported floor. Studio's version picker only offers current releases, so an archived beta
+// must resolve to the compatible update WordPress offers, rather than become an unusable pin.
 const WORDPRESS_VERSION = '7.2-beta5';
 const here = dirname(fileURLToPath(import.meta.url));
 const exists = async (path) => access(path).then(() => true, () => false);
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'));
+export async function wordpressVersion(fetcher = fetch) {
+  try {
+    const response = await fetcher(`https://api.wordpress.org/core/version-check/1.7/?channel=beta&version=${WORDPRESS_VERSION}`, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) return WORDPRESS_VERSION;
+    const data = await response.json();
+    const update = data.offers?.find((offer) => ['autoupdate', 'upgrade'].includes(offer.response));
+    return typeof update?.version === 'string' ? update.version : WORDPRESS_VERSION;
+  } catch {
+    // Keep the supported floor when the update service is unavailable.
+    return WORDPRESS_VERSION;
+  }
+}
 const inside = (parent, path) => {
   const rel = relative(parent, path);
   return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`));
@@ -506,7 +518,7 @@ async function exportSite(content, seed) {
     await rm(work, { recursive: true, force: true });
   }
   try {
-    await run(['create', '--name', `TypedPress export ${randomUUID().slice(0, 8)}`, '--wp', WORDPRESS_VERSION, '--php', '8.4',
+    await run(['create', '--name', `TypedPress export ${randomUUID().slice(0, 8)}`, '--wp', await wordpressVersion(), '--php', '8.4',
       '--admin-username', 'admin', '--admin-password', randomUUID(), '--skip-browser', '--skip-log-details'],
       { capture: true, timeout: 600000, env: { ...process.env, STUDIO_BASE_PORT: String(port) } });
     created = true;
@@ -535,6 +547,8 @@ async function exportSite(content, seed) {
     printed = true;
     await released;
   } finally {
+    // A failed startup must not leave the parent's lifetime pipe keeping Node alive.
+    process.stdin.pause();
     if (stopping) await stopping;
     else await cleanup();
   }
@@ -677,7 +691,7 @@ async function main() {
       if (await exists(managed.owner.site) && (await readdir(managed.owner.site)).length) {
         throw new Error('A previous Studio creation was interrupted. Inspect .tp/dev/wordpress; TypedPress will not adopt or delete it automatically.');
       }
-      await runStudio(['create', '--name', `TypedPress ${project.split(sep).at(-1)}`, '--wp', WORDPRESS_VERSION, '--php', '8.4',
+      await runStudio(['create', '--name', `TypedPress ${project.split(sep).at(-1)}`, '--wp', await wordpressVersion(), '--php', '8.4',
         '--admin-username', 'admin', '--admin-password', 'typedpress-test-admin', '--skip-browser', '--skip-log-details'],
         { timeout: 600000, env: { ...process.env, STUDIO_BASE_PORT: requestedPort } });
       managed.owner.created = true;
@@ -798,6 +812,7 @@ async function detached(managed) {
   } finally { await out.close(); }
 }
 
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+const invokedPath = process.argv[1] && await realpath(process.argv[1]).catch(() => null);
+if (invokedPath === fileURLToPath(import.meta.url)) {
   main().catch((error) => { console.error(`typedpress dev: ${error.message}`); process.exitCode = 1; });
 }

@@ -1756,6 +1756,13 @@ fn add_api_reference_exports_every_operation_in_a_static_site() {
         text(&added.stdout),
         text(&added.stderr)
     );
+    // The starter uses public/index.html. This static tp/app/ site also needs the home page
+    // its WordPress header links to; export correctly refuses links to pages it doesn't contain.
+    std::fs::write(
+        project.join("tp/app/page.tsx"),
+        "export default function Home() { return <main>API documentation</main>; }\n",
+    )
+    .unwrap();
     let built = first().arg("build").arg(&project).output().unwrap();
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
     // The operations, from the document the pages read.
@@ -1802,6 +1809,11 @@ fn add_api_reference_exports_every_operation_in_a_static_site() {
         "{}{}",
         text(&exported.stdout),
         text(&exported.stderr)
+    );
+    assert!(
+        std::fs::read_to_string(project.join("tp/dist/static/index.html"))
+            .unwrap()
+            .contains("API documentation")
     );
     let api = project.join("tp/dist/static/api");
     let pages = std::fs::read_dir(&api)

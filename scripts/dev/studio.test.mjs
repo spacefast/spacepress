@@ -3,11 +3,51 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownedState, publishPlugins, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward } from './studio.mjs';
+import { ownedState, publishPlugins, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward, wordpressVersion } from './studio.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { EventEmitter, once } from 'node:events';
 import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
+
+test('native WordPress creation selects the compatible update, never a lower latest release', async () => {
+  const offered = async (offers) => ({ ok: true, json: async () => ({ offers }) });
+  assert.equal(await wordpressVersion(async (url) => {
+    assert.match(url, /version=7\.2-beta5$/);
+    return offered([{ response: 'latest', version: '7.1.4' }, { response: 'autoupdate', version: '7.2-RC1' }]);
+  }), '7.2-RC1');
+  assert.equal(await wordpressVersion(() => offered([{ response: 'latest', version: '7.1.4' }])), '7.2-beta5');
+  assert.equal(await wordpressVersion(async () => { throw new Error('offline'); }), '7.2-beta5');
+});
+
+test('the CLI runs through a symlink rather than silently exiting', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'typedpress-studio-entry-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const link = join(root, 'studio.mjs');
+  await symlink(fileURLToPath(new URL('./studio.mjs', import.meta.url)), link);
+  assert.throws(() => execFileSync(process.execPath, [link, 'start', join(root, 'missing')], { encoding: 'utf8' }),
+    (error) => error.status === 1 && /typedpress dev:.*ENOENT/.test(error.stderr));
+});
+
+test('a failed export startup exits even while its parent keeps stdin open', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'typedpress-studio-export-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bin = join(root, 'bin');
+  const studio = join(root, 'wp-studio');
+  await mkdir(bin); await mkdir(join(studio, 'dist/cli'), { recursive: true });
+  await writeFile(join(studio, 'package.json'), JSON.stringify({ name: 'wp-studio', version: '2.2.0' }));
+  await writeFile(join(studio, 'dist/cli/main.mjs'), 'console.error("startup refused"); process.exit(7);');
+  const fetchStub = 'data:text/javascript,' + encodeURIComponent('globalThis.fetch = async () => ({ ok: true, json: async () => ({ offers: [] }) });');
+  const child = spawn(process.execPath, ['--import', fetchStub, fileURLToPath(new URL('./studio.mjs', import.meta.url)), 'export', root], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdio: ['pipe', 'ignore', 'pipe'],
+  });
+  t.after(() => child.kill('SIGKILL'));
+  let stderr = ''; child.stderr.on('data', (data) => { stderr += data; });
+  const timer = setTimeout(() => child.kill('SIGKILL'), 5000);
+  const [code, signal] = await once(child, 'exit'); clearTimeout(timer);
+  assert.equal(signal, null, stderr); assert.equal(code, 1, stderr);
+  assert.match(stderr, /startup refused/);
+});
 
 test('local site ownership refuses foreign directories, copied receipts and redirected state', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'typedpress-dev-ownership-'));

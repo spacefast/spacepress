@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,7 +58,7 @@ async function wp(workspace, ...args) {
 }
 
 test('real offline WordPress backup restores code, native content, schema, media, private files and working identity into a fresh isolated site', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-framework-lifecycle-wordpress-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'typedpress-framework-lifecycle-wordpress-')));
   await chmod(root, 0o700);
   const original = join(root, 'original');
   const restored = join(root, 'restored');

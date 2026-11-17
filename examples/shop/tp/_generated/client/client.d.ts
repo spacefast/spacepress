@@ -62,7 +62,7 @@ export interface Product {
 	downloads: {
 		id: string;
 		name: string;
-		file: string;
+		file?: string;
 	}[];
 	type: string;
 	purchasable: boolean;
@@ -106,7 +106,7 @@ export interface ProductPatch {
 	downloads?: {
 		id: string;
 		name: string;
-		file: string;
+		file?: string;
 	}[];
 	categories?: number[];
 	tags?: number[];
@@ -302,17 +302,17 @@ export interface ProductFilter {
 	downloads?: {
 		id: string;
 		name: string;
-		file: string;
+		file?: string;
 	}[] | null | {
 		eq?: {
 			id: string;
 			name: string;
-			file: string;
+			file?: string;
 		}[] | null;
 		ne?: {
 			id: string;
 			name: string;
-			file: string;
+			file?: string;
 		}[] | null;
 		isNull?: true;
 		isNotNull?: true;

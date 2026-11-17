@@ -183,41 +183,45 @@ final class Module
     public static function initialize(Plugin $plugin): void
     {
         if (self::plan($plugin) === []) { return; }
-        global $wpdb;
-        \TypedPress\Wp\Migrator::locked(new \TypedPress\Wp\Connection($wpdb), 'commerce_shipping', static function () use ($plugin): void {
-            if (self::plan($plugin) === []) { return; }
-            $store = $plugin->schema->commerce();
-            $key = 'tp_' . $plugin->schema->name() . '_shipping';
-            $hash = hash('sha256', (string) wp_json_encode($store['shipping']));
-            $existing = \WC_Shipping_Zones::get_zones(); $kept = [];
-            foreach ($store['shipping'] as $index => $zone) {
-                $id = 0;
-                if ($zone['countries'] !== 'rest') {
-                    foreach ($existing as $candidate) { if ($candidate['zone_name'] === $zone['name']) { $id = (int) $candidate['zone_id']; break; } }
-                    $z = new \WC_Shipping_Zone($id ?: null);
-                    $z->set_zone_name($zone['name']); $z->set_zone_order($index);
-                    $z->set_zone_locations(array_map(static fn ($code) => (object) ['code' => $code, 'type' => 'country'], $zone['countries']));
-                    if (!$z->save()) { throw new \RuntimeException('Could not save source shipping zone ' . $zone['name']); }
-                    $id = $z->get_id(); $kept[] = $id;
-                } else { $z = new \WC_Shipping_Zone(0); }
-                foreach ($z->get_shipping_methods() as $method) { $z->delete_shipping_method($method->instance_id); }
-                foreach ($zone['methods'] as $method) {
-                    $type = ['flatRate' => 'flat_rate', 'freeShipping' => 'free_shipping', 'localPickup' => 'local_pickup'][$method['type']];
-                    $instance = $z->add_shipping_method($type);
-                    if (!$instance) { throw new \RuntimeException('Could not add source shipping method ' . $type); }
-                    $settings = ['title' => $method['title'], 'enabled' => 'yes', 'tax_status' => 'none'];
-                    if (isset($method['cost'])) { $settings['cost'] = $method['cost']; }
-                    if (isset($method['minimum'])) { $settings['requires'] = 'min_amount'; $settings['min_amount'] = $method['minimum']; }
-                    $option = 'woocommerce_' . $type . '_' . $instance . '_settings';
-                    update_option($option, $settings);
-                    if (get_option($option) !== $settings) { throw new \RuntimeException('Could not save source shipping method settings'); }
-                }
-            }
-            foreach ($existing as $zone) { if (!in_array((int) $zone['zone_id'], $kept, true)) { (new \WC_Shipping_Zone($zone['zone_id']))->delete(); } }
-            if (!array_filter($store['shipping'], static fn ($z) => $z['countries'] === 'rest')) { $rest = new \WC_Shipping_Zone(0); foreach ($rest->get_shipping_methods() as $m) { $rest->delete_shipping_method($m->instance_id); } }
-            \WC_Cache_Helper::get_transient_version('shipping', true);
-            update_option($key, ['source' => $hash, 'state' => self::shippingState()], false);
+        $connection = $plugin->connection();
+        \TypedPress\Wp\Migrator::locked($connection, 'commerce_shipping', static function () use ($plugin, $connection): void {
+            $connection->transaction(static fn () => \TypedPress\Wp\Functions::tracked(static fn () => self::reconcileShipping($plugin)));
         });
+    }
+    private static function reconcileShipping(Plugin $plugin): void
+    {
+        if (self::plan($plugin) === []) { return; }
+        $store = $plugin->schema->commerce();
+        $key = 'tp_' . $plugin->schema->name() . '_shipping';
+        $hash = hash('sha256', (string) wp_json_encode($store['shipping']));
+        $existing = \WC_Shipping_Zones::get_zones(); $kept = [];
+        foreach ($store['shipping'] as $index => $zone) {
+            $id = 0;
+            if ($zone['countries'] !== 'rest') {
+                foreach ($existing as $candidate) { if ($candidate['zone_name'] === $zone['name']) { $id = (int) $candidate['zone_id']; break; } }
+                $z = new \WC_Shipping_Zone($id ?: null);
+                $z->set_zone_name($zone['name']); $z->set_zone_order($index);
+                $z->set_zone_locations(array_map(static fn ($code) => (object) ['code' => $code, 'type' => 'country'], $zone['countries']));
+                if (!$z->save()) { throw new \RuntimeException('Could not save source shipping zone ' . $zone['name']); }
+                $id = $z->get_id(); $kept[] = $id;
+            } else { $z = new \WC_Shipping_Zone(0); }
+            foreach ($z->get_shipping_methods() as $method) { $z->delete_shipping_method($method->instance_id); }
+            foreach ($zone['methods'] as $method) {
+                $type = ['flatRate' => 'flat_rate', 'freeShipping' => 'free_shipping', 'localPickup' => 'local_pickup'][$method['type']];
+                $instance = $z->add_shipping_method($type);
+                if (!$instance) { throw new \RuntimeException('Could not add source shipping method ' . $type); }
+                $settings = ['title' => $method['title'], 'enabled' => 'yes', 'tax_status' => 'none'];
+                if (isset($method['cost'])) { $settings['cost'] = $method['cost']; }
+                if (isset($method['minimum'])) { $settings['requires'] = 'min_amount'; $settings['min_amount'] = $method['minimum']; }
+                $option = 'woocommerce_' . $type . '_' . $instance . '_settings';
+                update_option($option, $settings);
+                if (get_option($option) !== $settings) { throw new \RuntimeException('Could not save source shipping method settings'); }
+            }
+        }
+        foreach ($existing as $zone) { if (!in_array((int) $zone['zone_id'], $kept, true)) { (new \WC_Shipping_Zone($zone['zone_id']))->delete(); } }
+        if (!array_filter($store['shipping'], static fn ($z) => $z['countries'] === 'rest')) { $rest = new \WC_Shipping_Zone(0); foreach ($rest->get_shipping_methods() as $m) { $rest->delete_shipping_method($m->instance_id); } }
+        \WC_Cache_Helper::get_transient_version('shipping', true);
+        update_option($key, ['source' => $hash, 'state' => self::shippingState()], false);
     }
     private static function shippingState(): string
     {

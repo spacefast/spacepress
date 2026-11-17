@@ -124,6 +124,10 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   page.setDefaultTimeout(20_000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const catalog = await page.goto(new URL('/shop', base).href);
+  const publicProducts = await (await page.request.get(new URL('/__tp/api/v1/products', base).href)).json();
+  const publicGuide = publicProducts.data.find((product: any) => product.sku === 'GUIDE-PDF');
+  assert.equal(publicGuide.downloads[0].id, 'field-guide');
+  assert.equal('file' in publicGuide.downloads[0], false, 'the public catalog must not disclose backing download locations');
   await expect(page.getByRole('link', { name: 'Everyday objects' })).toBeVisible();
   assert.match(catalog!.headers()['cache-control']!, /public/);
   for (const [old, canonical] of [['/product/ceramic-mug', '/products/ceramic-mug'], ['/product-category/home', '/shop/home'], ['/?post_type=product', '/shop']]) {

@@ -48,6 +48,9 @@ exact decimal `price`, ordered media `images`, category/tag references, `virtual
 `downloadable`, and `downloads: [{id, name, file}]`. Reads add `type`, `purchasable`,
 `availability` and `url`. Native variable/grouped/external products identify their type;
 v1 writes accept simple products only. Stock is operational data managed by Woo.
+Download names and IDs are public; backing `file` locations require administrator access.
+Scoped credentials need `--personal` to read or edit these restricted locations, in addition
+to `--write` for edits. Buyers use Woo's authorized receipt and email links.
 
 Product filtering supports identity, name/slug/descriptions, SKU, status, price,
 availability, virtual/downloadable flags and term membership. Order filtering supports
@@ -72,6 +75,7 @@ Additional file-access protection beyond Woo is outside v1.
 Declared store settings belong to source and are shown read-only in Woo settings. Scalars
 are option filters, so removing a declaration restores the stored setting. Shipping uses
 Woo zone CRUD: a declared list owns the whole zone list, matched by name; `[]` ships nothing.
+Reconciliation is transactional: a failed replacement preserves the previous zones and methods.
 Undeclared settings remain Woo's. Gateways take credentials from their own server settings.
 Taxes, coupons, signup/accounts, reviews/ratings, sale prices and backorders stay disabled.
 Historical order tax, coupon, item and refund snapshots remain readable.

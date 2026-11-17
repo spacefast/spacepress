@@ -14,6 +14,9 @@ $products = $db->findMany('products', ['orderBy' => ['id' => 'asc']], $guest);
 eq('a fresh installation seeds both native products', count($products), 2);
 $mug = array_values(array_filter($products, static fn ($p) => $p['sku'] === 'MUG-BLUE'))[0];
 $guide = array_values(array_filter($products, static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
+eq('public catalog retains download names and ids', [$guide['downloads'][0]['id'], $guide['downloads'][0]['name']], ['field-guide', 'Field guide']);
+check('public catalog does not disclose backing download locations', !array_key_exists('file', $guide['downloads'][0]));
+check('administrators can read backing locations', is_string($db->findFirst('products', ['where' => ['id' => $guide['id']]], $admin)['downloads'][0]['file'] ?? null));
 eq('price is an exact decimal string', $mug['price'], '24.00');
 eq('source currency is live without admin setup', get_woocommerce_currency(), 'EUR');
 eq('source country is live', WC()->countries->get_base_country(), 'PL');
@@ -63,6 +66,17 @@ $methodIds = array_map(static fn ($z) => array_keys($z['shipping_methods']), $zo
 \TypedPress\Commerce\Module::initialize($plugin);
 eq('unchanged source does not recreate shipping methods', array_map(static fn ($z) => array_keys($z['shipping_methods']), WC_Shipping_Zones::get_zones()), $methodIds);
 $extra = new WC_Shipping_Zone(); $extra->set_zone_name('Admin addition'); $extra->save();
+$shippingSnapshot = static function (): array {
+    $state = [];
+    foreach ([...array_keys(WC_Shipping_Zones::get_zones()), 0] as $id) {
+        $zone = new WC_Shipping_Zone($id);
+        $state[] = [$id, $zone->get_zone_name(), $zone->get_zone_order(),
+            array_map(static fn ($location) => [$location->code, $location->type], $zone->get_zone_locations()),
+            array_map(static fn ($method) => [$method->instance_id, $method->id, $method->enabled, get_option($method->get_instance_option_key())], $zone->get_shipping_methods())];
+    }
+    return $state;
+};
+$beforeFailedShipping = $shippingSnapshot();
 eq('shipping drift is included in the install plan', array_column(\TypedPress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
 check('the runtime inspection includes pending commerce installation', in_array('commerce-shipping', array_column(\TypedPress\Wp\Runtime::installPlan(), 'id'), true));
 $noMethods = static fn () => [];
@@ -71,6 +85,18 @@ $shippingFailed = false;
 try { \TypedPress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) { $shippingFailed = str_contains($e->getMessage(), 'Could not add source shipping method'); }
 check('failed shipping writes do not record a completed installation', $shippingFailed && \TypedPress\Commerce\Module::plan($plugin) !== []);
 remove_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
+eq('failed shipping replacement preserves every previous zone and method', $shippingSnapshot(), $beforeFailedShipping);
+$newOption = null;
+$failAfterSetting = static function ($instance, $type) use (&$newOption): void {
+    if ($type === 'flat_rate') { $newOption = 'woocommerce_flat_rate_' . $instance . '_settings'; }
+    if ($type === 'free_shipping') { throw new RuntimeException('Test failure after a shipping setting write'); }
+};
+add_action('woocommerce_shipping_zone_method_added', $failAfterSetting, 10, 2);
+$lateShippingFailed = false;
+try { \TypedPress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) { $lateShippingFailed = str_contains($e->getMessage(), 'Test failure after'); }
+remove_action('woocommerce_shipping_zone_method_added', $failAfterSetting, 10);
+check('a late shipping failure rolls back method settings and their option cache', $lateShippingFailed && $newOption !== null && get_option($newOption) === false);
+eq('a late shipping failure preserves previous configuration', $shippingSnapshot(), $beforeFailedShipping);
 \TypedPress\Commerce\Module::initialize($plugin);
 eq('source shipping restores its whole zone list after an admin edit', array_column(WC_Shipping_Zones::get_zones(), 'zone_name'), ['Poland', 'Germany']);
 eq('successful shipping retry clears the install plan', \TypedPress\Commerce\Module::plan($plugin), []);
@@ -186,6 +212,8 @@ $request = static function (string $path, string $method = 'GET', ?array $body =
     return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), json_decode((string) $text, true), $responseHeaders];
 };
 eq('scoped read credential reads public catalog', $request('/__tp/api/v1/products')[0], 200);
+$scopedGuide = array_values(array_filter($request('/__tp/api/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
+check('a credential without personal scope cannot export download locations', !array_key_exists('file', $scopedGuide['downloads'][0]));
 eq('orders need the personal grant on the facade', $request('/__tp/api/v1/orders')[0], 403);
 eq('orders need the personal grant on native TypedPress REST', $request('/wp-json/wp/v2/tp_orders')[0], 403);
 eq('orders need the personal grant on abilities', $request('/wp-json/wp-abilities/v1/abilities/shop/orders-list/run?input=%7B%7D')[0], 403);
@@ -195,11 +223,15 @@ $tools = $request('/wp-json/mcp/typedpress-shop', 'POST', ['jsonrpc' => '2.0', '
 $names = array_column($tools[1]['result']['tools'] ?? [], 'name');
 check('an agent without personal scope sees product and store tools, no order or Woo tools', $tools[0] === 200 && in_array('shop-products-list', $names, true) && in_array('shop-store-get', $names, true) && !array_filter($names, static fn ($n) => str_starts_with($n, 'shop-orders-') || str_starts_with($n, 'woocommerce-')), $tools);
 eq('a read-only agent cannot edit a product', $request('/__tp/api/v1/products/' . $guide['id'], 'PATCH', ['name' => 'Refused'])[0], 403);
+\TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], ['write' => true, 'personal' => false, 'abilities' => null]);
+eq('a write grant alone cannot change protected download locations', $request('/__tp/api/v1/products/' . $guide['id'], 'PATCH', ['downloads' => [['id' => 'field-guide', 'name' => 'Field guide', 'file' => 'https://private.example.test/new.pdf']]])[0], 403);
 eq('Woo REST cannot bypass the app scope', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('Woo core product REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product')[0], 403);
 eq('Woo core term REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product_cat')[0], 403);
 \TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
 eq('personal grant permits authorized order reads', $request('/__tp/api/v1/orders')[0], 200);
+$privateGuide = array_values(array_filter($request('/__tp/api/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
+check('an administrator credential with personal scope retains download management', is_string($privateGuide['downloads'][0]['file'] ?? null));
 eq('even a personal write agent cannot use Woo REST', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('even a personal write agent cannot use Woo core aliases', $request('/wp-json/wp/v2/product')[0], 403);
 eq('orders remain read-only with every grant', $request('/__tp/api/v1/orders', 'POST', [])[0], 405);

@@ -511,6 +511,9 @@ pub fn kind(value: &CollectionVal, schema: &mut Schema) -> Result<()> {
                     .map(|name| {
                         let mut col = Column::new(name, ColType::Text);
                         col.not_null = true;
+                        if name == "file" {
+                            col.access.insert("read".into(), Access::Role("admin".into()));
+                        }
                         (name.into(), col)
                     })
                     .collect(),

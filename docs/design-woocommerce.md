@@ -440,6 +440,9 @@ Additional protection of backing files outside Woo, private storage provisioning
 access checks and retention/versioning policy are deferred. Native Woo authorization of its
 download endpoint does not establish that a backing URL is inaccessible directly; v1 makes no
 such protection claim. Do not add anonymous backing-URL denial as a v1 acceptance gate.
+The public catalog exposes download names and IDs, while the existing field-access rules
+restrict backing `file` locations to administrators (and `--personal` scoped credentials).
+This prevents catalog disclosure without claiming to protect a directly accessible origin.
 The selected checkout must provide a receipt and preserve Woo order emails.
 Coupon application and tax calculation are disabled in v1. Coupon CRUD and custom promotion
 engines are deferred. Shipping settings remain in Woo administration; carts expose Woo's

@@ -14,7 +14,7 @@ type Entities = {
     'images': ColumnBuilder<'mediaList', number[], true, true, false, false>;
     'virtual': ColumnBuilder<'boolean', boolean, true, true, false, false>;
     'downloadable': ColumnBuilder<'boolean', boolean, true, true, false, false>;
-    'downloads': ColumnBuilder<'repeater', { id: string; name: string; file: string }[], true, true, false, false>;
+    'downloads': ColumnBuilder<'repeater', { id: string; name: string; file?: string }[], true, true, false, false>;
     'type': ColumnBuilder<'text', string, true, true, false, false>;
     'purchasable': ColumnBuilder<'boolean', boolean, true, true, false, false>;
     'availability': ColumnBuilder<'text', string, true, true, false, false>;

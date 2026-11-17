@@ -83,6 +83,54 @@ only admin and login lands there, as in WordPress.
 Editor asset URLs use WordPress's registered installation URL, including the
 subdirectory prefix.
 
+## Experimental collaborative editing
+
+TypedPress Admin integrates Gutenberg 24.4.1's experimental collaborative
+editing on WordPress 7.2-beta5. Two eligible users can edit an existing content
+document together, including its title, blocks, and typed fields in the
+**Fields** panel. Gutenberg supplies Yjs, cursors, presence, and the HTTP sync
+transport. TypedPress keeps its transactional saves, access checks, hooks,
+staged versions, and revisions.
+
+To enable it:
+
+1. Add `gutenberg: "24.4.1"` to `plugins` in `typedpress.config.ts`.
+2. Build and install the artifact, then activate Gutenberg alongside the
+   manifest's other plugins.
+3. In Gutenberg's **Experiments** settings, enable **Real-time collaboration**.
+4. Save a content document, then open its TypedPress Admin editor in two
+   separate WordPress user sessions.
+
+This integration is restricted to trusted editors. Every participant needs
+`unfiltered_html`, permission to read and update the document, and an ordinary
+WordPress session. Scoped agent credentials cannot join or read opaque sync
+documents. Collections must use static read and update rules, have a content
+column, and use the default `wp/v2` REST namespace. WordPress's own posts
+extended with `wp.posts.extend()` retain ordinary editing because their
+publishing permissions can differ between participants. Password-protected posts,
+field access rules at any depth, and reference, media, file, or reference-list
+fields disable collaboration for the collection. Ordinary editing remains
+available.
+
+These restrictions apply on the server to both sync endpoints and persisted
+documents. The relay contains opaque Yjs updates, so TypedPress cannot redact
+individual fields or authorize each participant's changes inside them. Hooks
+run as the user who saves. Participants see each other's WordPress profile
+name, avatar, and presence. Use ordinary editing when per-participant save
+attribution is required.
+
+A schema change starts a separate sync history and hides old persisted
+documents. Reload open editors after changing the schema. Previous sync
+history remains stored. The classic editor's SCF meta boxes retain ordinary
+edit locking; a classic editing session can block a collaborative save.
+External API and MCP writes do not appear automatically in open collaborative
+editors. This integration does not establish parity for that workflow.
+
+Other Gutenberg releases require verification before collaborative editing is
+enabled. To run the real two-user proof against a disposable local WordPress
+site, use `tests/wp/coediting/run.sh`. The access-boundary suite is
+`tests/php/run.sh coediting`.
+
 ## Screens in both admins
 
 A screen declared once with `tp_admin_register_screen()` appears in TypedPress
@@ -107,7 +155,9 @@ as TypedPress collections; mapped types appear through the access-aware TypedPre
 Native content uses WordPress's editor routes. The complete upstream attachment
 editor is at `/types/attachment/edit/:id`; `Edit image` opens it from TypedPress
 media details, with crop/rotate/flip tools and WordPress-native image saving. TypedPress content uses the same block
-editor with Secure Custom Fields and TypedPress's existing REST authorization.
+editor with typed native REST fields and TypedPress's existing authorization.
+Taxonomy assignments use their native taxonomy properties; classic wp-admin
+continues to use Secure Custom Fields.
 Database tables use TypedPress's table forms and relation pickers. Hiding navigation
 never grants or revokes access: the server remains the authority.
 

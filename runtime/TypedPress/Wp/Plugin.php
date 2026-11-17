@@ -66,6 +66,7 @@ final class Plugin
             }
         });
         CoreAccess::register();
+        Coediting::register();
         AgentScope::register();
         EditorSave::register();
         ProfileForm::register();

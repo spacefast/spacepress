@@ -1,7 +1,6 @@
 import apiFetch from '@wordpress/api-fetch';
 import { useEffect, useState } from 'react';
 import {
-	EditingObjects,
 	object,
 	map,
 	parseSchema,
@@ -10,7 +9,6 @@ import {
 	allowed,
 	type Row,
 	type Collection,
-	type Column,
 } from './model';
 declare global {
 	interface Window {
@@ -28,7 +26,11 @@ export function bootstrap() {
 				throw new Error('Missing native collection transport.');
 			return [
 				name,
-				{ path, postType, metaPrefix: text(n.metaPrefix) ?? 'tp_' },
+				{ path, postType, terms: Object.fromEntries(Object.entries(map(n.terms ?? {})).map(([column, value]) => {
+					const key = text(value);
+					if (!key) throw new Error('Missing native taxonomy field.');
+					return [column, key];
+				})) },
 			];
 		})
 	);
@@ -110,63 +112,6 @@ export function useLoad<T>(
 	}, deps);
 	return state;
 }
-/** SCF uses its own block discriminator and JSON scalar representation. */
-function scfValue(
-	column: Column | undefined,
-	value: unknown,
-	outgoing: boolean,
-	objects?: EditingObjects
-): unknown {
-	if (!column || value == null) return value;
-	if (column.type === 'json' && outgoing) return JSON.stringify(value);
-	if (value === false) return value;
-	if (column.type === 'json') {
-		if (typeof value === 'string') {
-			// SCF's empty textarea represents no JSON value. An actual empty
-			// JSON string arrives encoded as '""' and still parses to a string.
-			if (value === '') return null;
-			try {
-				const parsed: unknown = JSON.parse(value);
-				return parsed;
-			} catch {
-				return value;
-			}
-		}
-	}
-	if (column.type === 'group')
-		return scfFields(column.fields, object(value), outgoing, objects);
-	if (column.type === 'repeater' && Array.isArray(value))
-		return value.map((v: unknown) =>
-			scfFields(column.fields, object(v), outgoing, objects)
-		);
-	if (column.type === 'blocks' && Array.isArray(value))
-		return value.map((v: unknown) => {
-			const row = object(v),
-				layout = text(row.layout) ?? text(row.acf_fc_layout) ?? '';
-			const converted = scfFields(column.layouts[layout] ?? {}, row, outgoing, objects);
-			delete converted.layout;
-			delete converted.acf_fc_layout;
-			const result = { [outgoing ? 'acf_fc_layout' : 'layout']: layout, ...converted };
-			objects?.replace(row, result);
-			return result;
-		});
-	return value;
-}
-function scfFields(
-	fields: Record<string, Column>,
-	values: Row,
-	outgoing: boolean,
-	objects?: EditingObjects
-): Row {
-	const result = Object.fromEntries(
-		Object.entries(values).map(([k, v]) => [
-			k,
-			scfValue(fields[k], v, outgoing, objects),
-		])
-	);
-	objects?.replace(values, result);
-	return result;
-}
 export function collectionForPostType(postType: string): string {
 	return (
 		Object.entries(bootstrap().native).find(
@@ -174,30 +119,19 @@ export function collectionForPostType(postType: string): string {
 		)?.[0] ?? postType
 	);
 }
-export function fromNative(c: Collection, value: unknown, objects?: EditingObjects): Row {
+/** Native meta already has TypedPress's decoded field names and value shapes. */
+export function fromNative(c: Collection, value: unknown): Row {
+	const terms = native(c.name)?.terms ?? {};
 	const r = object(value),
-		result: Row =
-			r.acf && !Array.isArray(r.acf)
-				? Object.fromEntries(
-						Object.entries(object(r.acf))
-							.filter(
-								([k]) =>
-									k.startsWith(native(c.name).metaPrefix) &&
-									k.slice(native(c.name).metaPrefix.length) in c.columns
-							)
-							.map(([k, v]) => [
-								k.startsWith(native(c.name).metaPrefix)
-									? k.slice(native(c.name).metaPrefix.length)
-									: k,
-								scfValue(
-									c.columns[k.slice(native(c.name).metaPrefix.length)],
-									v,
-									false,
-									objects
-								),
-							])
-					)
-				: {};
+		result: Row = Object.fromEntries(
+			Object.entries(map(r.meta ?? {})).filter(([key]) =>
+				key in c.columns && !(key in terms) && key !== c.primaryKey &&
+				![c.title, c.content, c.slug, c.excerpt, 'status', 'publishedAt'].includes(key)
+			)
+		);
+	for (const [column, key] of Object.entries(terms)) {
+		if (column in c.columns && key in r) result[column] = r[key];
+	}
 	const core = (key: string, col: string | undefined) => {
 		if (!col || !(key in r)) return;
 		const v = r[key];
@@ -215,12 +149,14 @@ export function fromNative(c: Collection, value: unknown, objects?: EditingObjec
 	if (result.status === 'future') result.status = 'scheduled';
 	return result;
 }
-export function toNative(c: Collection, values: Row, objects?: EditingObjects): Row {
+export function toNative(c: Collection, values: Row): Row {
+	const terms = native(c.name)?.terms ?? {};
 	const result: Row = {},
-		acf: Row = {};
+		meta: Row = {};
 	for (const [key, v] of Object.entries(values)) {
 		if (key === c.primaryKey) continue;
-		if (key === c.title) result.title = v;
+		if (key in terms) result[terms[key]] = v;
+		else if (key === c.title) result.title = v;
 		else if (key === c.content) result.content = v;
 		else if (key === c.slug) result.slug = v;
 		else if (key === c.excerpt) result.excerpt = v;
@@ -229,9 +165,9 @@ export function toNative(c: Collection, values: Row, objects?: EditingObjects): 
 				v === 'published' ? 'publish' : v === 'scheduled' ? 'future' : v;
 		else if (key === 'publishedAt') result.date_gmt = v;
 		else
-			acf[native(c.name).metaPrefix + key] = scfValue(c.columns[key], v, true, objects);
+			meta[key] = v;
 	}
-	if (Object.keys(acf).length) result.acf = acf;
+	if (Object.keys(meta).length) result.meta = meta;
 	return result;
 }
 export async function read(c: Collection, id: string): Promise<{ row: Row; editable: boolean }> {

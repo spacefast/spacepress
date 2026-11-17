@@ -387,6 +387,8 @@ jobs:
       - run: tests/wp/run.sh
         env:
           TP_WP_SKIP_MIGRATE: '1'
+      - name: Verify upstream two-user collaborative editing
+        run: tests/wp/coediting/run.sh
       - name: Preserve failed native admin browser evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

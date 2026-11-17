@@ -57,74 +57,68 @@ test('a field labels and explains itself from `.ui()` when the schema gives no l
 	expect(c.unitPrice.label).toBe('Unit Price');
 	expect(c.items.fields.sku.label).toBe('SKU');
 });
-test('native mapping retains only returned fields and round-trips SCF values without core-field duplication', () => {
+test('native mapping retains returned typed meta fields without duplicating core fields', () => {
 	window.tpAdmin = {
-		native: {
-			posts: {
-				path: '/wp/v2/tp_posts',
-				postType: 'tp_posts',
-				metaPrefix: 'tp_',
-			},
-		},
+		native: { posts: { path: '/wp/v2/tp_posts', postType: 'tp_posts' } },
 		readable: ['posts'],
 		role: 'editor',
 	};
 	const c = {
-		name: 'posts',
-		label: 'Posts',
-		primaryKey: 'id',
-		title: 'headline',
-		content: 'body',
-		slug: 'path',
-		access: {},
+		name: 'posts', label: 'Posts', primaryKey: 'id', title: 'headline',
+		content: 'body', slug: 'path', access: {},
 		columns: columns({
-			headline: { type: 'text' },
-			body: { type: 'richText' },
-			secret: { type: 'text' },
-			excerpt: { type: 'text' },
-			sections: {
-				type: 'blocks',
-				layouts: { hero: { heading: { type: 'text' }, configuration: { type: 'json' } } },
-			},
+			headline: { type: 'text' }, body: { type: 'richText' },
+			secret: { type: 'text' }, excerpt: { type: 'text' },
+			sections: { type: 'blocks', layouts: {
+				hero: { heading: { type: 'text' }, configuration: { type: 'json' } },
+			} },
 		}),
 	};
+	const sections = [{ layout: 'hero', heading: 'Welcome', configuration: { enabled: false } }];
 	const row = fromNative(c, {
-		id: 7,
-		title: { raw: 'Title' },
-		content: { raw: '<p>Body</p>' },
-		acf: {
-			_source: { tp_excerpt: 'field_tp_excerpt' },
-			unrelated: 'Not a schema field',
-			tp_excerpt: 'Visible',
-			tp_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }],
+		id: 7, title: { raw: 'Title' }, content: { raw: '<p>Body</p>' },
+		meta: {
+			unrelated: 'Not a schema field', _crdt_document: 'opaque',
+			headline: 'Never duplicate core title', excerpt: 'Visible', sections,
 		},
+		acf: { tp_secret: 'Ignore the separate SCF representation' },
 	});
 	expect(nativeEditor(c, row, true)).toBe(true);
 	expect(nativeEditor(c, row, false)).toBe(false);
 	expect(nativeEditor({ ...c, columns: { ...c.columns, body: { ...c.columns.body, write: 'admin' } } }, row, true)).toBe(false);
-	expect(row).toEqual({
-		id: 7,
-		headline: 'Title',
-		body: '<p>Body</p>',
-		excerpt: 'Visible',
-		sections: [{ layout: 'hero', heading: 'Welcome' }],
-	});
-	expect(toNative(c, { headline: 'Changed', sections: row.sections })).toEqual({
-		title: 'Changed',
-		acf: { tp_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }] },
-	});
-	// Captured SCF textarea representation of an absent/saved-null JSON scalar.
-	const nullRow = fromNative(c, { acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: '' }] } });
-	expect(nullRow.sections).toEqual([{ layout: 'hero', configuration: null }]);
-	expect(toNative(c, { sections: nullRow.sections })).toEqual({ acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: null }] } });
-	const emptyString = fromNative(c, { acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
-	expect(emptyString.sections).toEqual([{ layout: 'hero', configuration: '' }]);
-	expect(toNative(c, { sections: emptyString.sections })).toEqual({ acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
-	const falseRow = fromNative(c, { acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
-	expect(falseRow.sections).toEqual([{ layout: 'hero', configuration: false }]);
-	expect(toNative(c, { sections: falseRow.sections })).toEqual({ acf: { tp_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
-	// Incoming SCF false still denotes an empty structured/platform field.
-	expect(fromNative(c, { acf: { tp_sections: false } }).sections).toBe(false);
+	expect(row).toEqual({ id: 7, headline: 'Title', body: '<p>Body</p>', excerpt: 'Visible', sections });
+	expect(row.sections).toBe(sections);
+	const edit = toNative(c, { headline: 'Changed', sections: row.sections });
+	expect(edit).toEqual({ title: 'Changed', meta: { sections } });
+	expect(edit.meta).toMatchObject({ sections });
+	expect(fromNative(c, { meta: { headline: 'Masked title', body: 'Masked body' } })).toEqual({});
+});
+test.each([null, '', false, 0, 'false', 'null', {}, [], { nested: [false, ''] }])(
+	'native JSON fields preserve the typed value %p', (configuration) => {
+		const c = { name: 'posts', label: 'Posts', primaryKey: 'id', access: {}, columns: columns({
+			payload: { type: 'json' },
+			sections: { type: 'blocks', layouts: { hero: { configuration: { type: 'json' } } } },
+		}) };
+		const row = { payload: configuration, sections: [{ layout: 'hero', configuration }] };
+		expect(fromNative(c, toNative(c, row))).toEqual(row);
+		expect(toNative(c, row)).toEqual({ meta: row });
+	}
+);
+test('native taxonomy assignments retain their root property and returned-field masking', () => {
+	window.tpAdmin = {
+		native: { posts: { path: '/wp/v2/tp_posts', postType: 'tp_posts', terms: { labels: 'tp_tags' } } },
+		readable: ['posts'], role: 'editor',
+	};
+	const c = { name: 'posts', label: 'Posts', primaryKey: 'id', access: {}, columns: columns({
+		labels: { type: 'refList', references: { collection: 'tags', column: 'id' } },
+		summary: { type: 'text' },
+	}) };
+	expect(fromNative(c, { tp_tags: [2, 7], meta: { labels: [99], summary: 'Visible' } }))
+		.toEqual({ labels: [2, 7], summary: 'Visible' });
+	expect(fromNative(c, { meta: { labels: [99] } })).toEqual({});
+	expect(toNative(c, { labels: [7], summary: 'Changed' }))
+		.toEqual({ tp_tags: [7], meta: { summary: 'Changed' } });
+	expect(toNative(c, { labels: [] })).toEqual({ tp_tags: [] });
 });
 test('conditional fields evaluate sibling values and grouped conditions', () => {
 	const condition = {

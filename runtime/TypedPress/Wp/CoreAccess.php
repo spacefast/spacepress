@@ -341,6 +341,9 @@ final class CoreAccess
             return $response;
         }
         $spec = self::schema()->collection($collection);
+        if (is_array($data['meta'] ?? null) && !Coediting::readable($collection, (int) ($data['id'] ?? 0))) {
+            unset($data['meta'][Coediting::DOCUMENT]);
+        }
         if (is_array($data['meta'] ?? null) && $stored !== null) {
             // TypedPress values, judged on the same row: a revision's `meta` is its own snapshot, not the
             // raw postmeta core's revisions controller would read.

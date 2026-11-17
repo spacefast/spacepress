@@ -208,6 +208,15 @@ subdirectory lane) below the system temporary directory, printed at the start
 of the run, or to `TP_ADMIN_BROWSER_OUTPUT`.
 The committed admin bundle is rebuilt on Linux; CI checks it byte-for-byte.
 
+`tests/wp/coediting/run.sh` runs the separate Gutenberg 24.4.1 collaboration
+fixture after building the compiler and admin bundle. It creates a new local
+WordPress/MariaDB stack and retains its database, audit history, and ownership
+receipt. `TP_COEDITING_COMPILER` selects a compiler outside `target/debug`.
+The journey pauses both users' sync requests, edits the same paragraph in both
+sessions, then checks merging before save, typed fields, presence, persisted
+content, hooks, revisions, and rejoining. `tests/php/run.sh coediting` checks
+the server's access boundaries against the real pinned Gutenberg plugin.
+
 ## Releases
 
 The repository publishes four npm packages:

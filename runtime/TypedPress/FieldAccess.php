@@ -241,7 +241,7 @@ final class FieldAccess
         }
         db()->requireUniqueVisibility($collection, array_intersect_key($data, $provided), $viewer, $op === 'create' && !$stored, $existing);
         $columns = self::columns($collection);
-        if (!self::hasRule($columns, $op) && ($existing === null || !self::hasRule($columns, 'read'))) {
+        if (!self::hasRule($columns, $op) && !self::hasRule($columns, 'read')) {
             return;
         }
         $page = [];
@@ -262,6 +262,10 @@ final class FieldAccess
     private static function guard(string $op, array $def, string $name, mixed $value, array $ctx, ?array $storedIn, Viewer $viewer, array &$page, string $ptr, bool $merge = true, mixed $resolved = null, array $shape = []): mixed
     {
         $before = $storedIn !== null && array_key_exists($name, $storedIn) ? $storedIn[$name] : null;
+        // Credential-withheld fields cannot be supplied on create, including nested fields.
+        if ($op === 'create' && self::withheld($def)) {
+            throw self::denied($viewer, $name, $ptr);
+        }
         // An allowing update rule explicitly opts into write-only input, at every nesting depth.
         if ($op === 'update' && !isset($def['access']['update'])
             && ($storedIn === null ? self::mayHideSelf($def, $viewer) : !self::readable($def, $storedIn, $viewer, $page, $shape))) {

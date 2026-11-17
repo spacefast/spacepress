@@ -10,7 +10,7 @@ find /tmp/tp-php -name '*.php' -exec php -l {} \;
 
 The locked Composer tools use WordPress Coding Standards 3.4.1 for development
 and CI only. Ordinary TypedPress builds do not require PHP or Composer for layout.
-`check-layout` enforces fifteen WordPress layout rules
+`check-layout` enforces eighteen WordPress layout, local-name and file-documentation rules
 implemented by the compiler, using WordPress's own sniff configuration. The
 full audit intentionally also reports the rules not yet implemented.
 
@@ -20,9 +20,12 @@ reduced it to 1037 errors; parentheses layout reached 303 errors. Long array
 literals reached 127 errors. Operator/index spacing, assignment alignment, helper
 bodies and final newlines reached 102 errors and 45 warnings. Multiline
 associative arrays and enclosing calls reduce it to 94 errors and 45 warnings
-(1105 fewer errors and 28 fewer warnings than baseline). No remaining findings
+(1105 fewer errors and 28 fewer warnings than baseline). Snake_case PHP local
+bindings, omission of unreachable fallback returns and a file-level PHPDoc header
+bring it to 70 errors and 38 warnings (1129 fewer errors and 35 fewer warnings
+than baseline). No remaining findings
 in this corpus are automatically fixable by PHPCBF. Documentation, naming and
-semantic/security checks remain separate work. Schema
+semantic/security checks and generated function names remain separate work. Schema
 and shipped runtime PHP are outside this corpus. Do not edit generated files as a substitute for fixing the compiler.
 
 The compiler applies layout to its assembled functions, including
@@ -49,3 +52,13 @@ literals to equivalent square-bracket tokens, ignoring optional trailing array
 commas. Trailing commas in function calls are not normalized. Run its positive and negative
 checks with `node --test examples/php-standards/compare.test.ts`. Missing, empty,
 mismatched or unreadable corpora fail the comparison.
+
+PHP binding spelling uses the existing acronym-aware name conversion and lexical
+collision allocator. TypeScript names, object keys and registered action names
+retain their source spelling. Only control-flow paths that can fall through emit
+the undefined fallback, using the compiler's existing completion analysis.
+
+The token comparator is for formatting revisions. Binding renames, the new file
+header and omitted unreachable returns intentionally fail comparison against older
+revisions; validate those through the binding/control-flow regression fixture and
+PHP/Node differential tests rather than weakening token comparison.

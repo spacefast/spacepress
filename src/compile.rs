@@ -1513,13 +1513,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             FnBody::Block(stmts) if self.client.is_some() => {
                 let rewritten = Self::client_server_body(stmts, &self.client.as_ref().expect("client").analysis);
                 body.push_str(&self.block(&rewritten, 1)?);
-                self.note_fallthrough(&rewritten, f.span)?;
-                body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
+                if self.note_fallthrough(&rewritten, f.span)? {
+                    body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
+                }
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
-                self.note_fallthrough(stmts, f.span)?;
-                body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
+                if self.note_fallthrough(stmts, f.span)? {
+                    body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
+                }
             }
         }
         Ok((params_php.join(", "), body))
@@ -1552,12 +1554,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(())
     }
 
-    fn note_fallthrough(&mut self, stmts: &[Stmt], span: Span) -> Result<()> {
+    fn note_fallthrough(&mut self, stmts: &[Stmt], span: Span) -> Result<bool> {
         let fx = self.fx();
-        if block_completions(stmts, &fx.diverging, &fx.exhaustive_switches).contains(&Completion::Normal) {
+        let normal = block_completions(stmts, &fx.diverging, &fx.exhaustive_switches).contains(&Completion::Normal);
+        if normal {
             self.note_return(&Ty::Undefined, span)?;
         }
-        Ok(())
+        Ok(normal)
     }
 
     // ---- scopes -------------------------------------------------------------
@@ -5315,8 +5318,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 2)?);
-                self.note_fallthrough(stmts, f.span)?;
-                body.push_str("\t\treturn \\TypedPress\\Js::undefined();\n");
+                if self.note_fallthrough(stmts, f.span)? {
+                    body.push_str("\t\treturn \\TypedPress\\Js::undefined();\n");
+                }
             }
         }
         Ok((params.join(", "), body))
@@ -11282,7 +11286,10 @@ fn php_local_base(name: &str) -> String {
         .next()
         .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_');
     if !reserved && valid_start && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
-        return name.to_string();
+        let php = crate::schema::physical_name(name);
+        if php != "this" {
+            return php;
+        }
     }
     let encoded = crate::hex(name);
     format!("__tp_local_{encoded}")
@@ -12414,11 +12421,55 @@ mod php_layout_tests {
                 crate::pipeline::build(&project, &program, || Ok(crate::pipeline::Previous::none()), |_| None).unwrap();
             assert_eq!(crate::php_layout::format(&built.functions_php), built.functions_php);
             for line in built.functions_php.lines() {
-                assert!(!line.starts_with(' '), "{name}: space indentation: {line}");
+                assert!(
+                    !line.starts_with(' ') || line.starts_with(" *"),
+                    "{name}: space indentation outside PHPDoc: {line}"
+                );
                 if line.starts_with("function ") {
                     assert!(line.contains(" {"), "{name}: declaration brace: {line}");
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod php_binding_tests {
+    #[test]
+    fn source_names_and_fallthrough_contracts_survive_php_spelling() {
+        let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/differential/language");
+        let program = crate::loader::load(&project.join("php-names.ts")).unwrap();
+        let built =
+            crate::pipeline::build(&project, &program, || Ok(crate::pipeline::Previous::none()), |_| None).unwrap();
+        let body = |name: &str| {
+            built
+                .functions_php
+                .split(&format!("function {name}("))
+                .nth(1)
+                .unwrap()
+                .split("\n}\n")
+                .next()
+                .unwrap()
+        };
+        let bindings = body("bindings");
+        assert!(!bindings.contains("$itemId"), "{bindings}");
+        assert!(!bindings.contains("$httpStatus"), "{bindings}");
+        assert!(!bindings.contains("$HTTPStatus"), "{bindings}");
+        assert!(!bindings.contains("$this"), "{bindings}");
+        for key in [
+            "'itemId'",
+            "'item_id'",
+            "'httpStatus'",
+            "'HTTPStatus'",
+            "'THIS'",
+            "'GLOBALS'",
+            "'_GET'",
+        ] {
+            assert!(bindings.contains(key), "{key}: {bindings}");
+        }
+        assert!(built.schema.actions.contains_key("namingBindings"));
+        assert!(built.schema.actions.contains_key("namingControlFlow"));
+        assert!(!body("exits").contains("return \\TypedPress\\Js::undefined();"));
+        assert!(body("fallthrough").contains("return \\TypedPress\\Js::undefined();"));
     }
 }

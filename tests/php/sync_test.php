@@ -94,6 +94,18 @@ $functions = <<<'PHP'
     function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \TypedPress\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \TypedPress\JsObject(), default => $patch }; }
     PHP;
 
+foreach (['seedAuthors' => 'seedArticles', 'seedArticles' => 'seedAuthors'] as $name => $target) {
+    $schema['collections'][$name] = [
+        'primaryKey' => 'id', 'editor' => false, 'uid' => true, 'sync' => ['dir' => 'content/' . $name, 'format' => 'json'],
+        'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
+        'columns' => [
+            'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+            'name' => ['type' => 'text', 'notNull' => true],
+            'peer' => ['type' => 'integer', 'references' => ['collection' => $target, 'column' => 'id', 'onDelete' => 'set null']],
+            'uid' => ['type' => 'text', 'unique' => true, 'system' => true, 'rules' => ['pattern' => ['source' => '^zr_[0-9a-f]{20}$', 'flags' => '']]],
+        ],
+    ];
+}
 $wp = wpSite('sync', ['schema' => $schema, 'functions' => $functions, 'users' => ['ed' => 'editor', 'au' => 'author']]);
 $app = $wp->app();
 $db = \TypedPress\db();
@@ -357,4 +369,27 @@ $merge = static fn (string $base, string $ours, string $theirs) => req('POST', '
 eq('independent line edits merge', $merge("a\n\nb\n\nc\n", "A\n\nb\n\nc\n", "a\n\nb\n\nC\n"), ['merged' => "A\n\nb\n\nC\n", 'conflicts' => []]);
 eq('the same line edited twice conflicts', $merge("a\n\nb\n", "a\n\nX\n", "a\n\nY\n"), ['merged' => null, 'conflicts' => [['ours' => "X\n", 'theirs' => "Y\n", 'line' => 3]]]);
 
+$seedDir = sys_get_temp_dir() . '/tp-cycle-seed-' . bin2hex(random_bytes(4)); mkdir($seedDir);
+$writeSeed = static function (string $name, array $records) use ($seedDir): void {
+    file_put_contents($seedDir . '/' . $name . '.json', wp_json_encode(['collection' => $name, 'format' => 'json', 'records' => $records]));
+};
+foreach (['seedAuthors', 'seedArticles'] as $name) { $writeSeed($name, []); }
+$empty = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('empty seeds do not depend on schema reference cycles', array_sum(array_column($empty, 'created')), 0);
+$authorUid = \TypedPress\Sync\Uid::mint(); $articleUid = \TypedPress\Sync\Uid::mint();
+$writeSeed('seedAuthors', [['uid' => $authorUid, 'fields' => ['name' => 'Author', 'peer' => null]]]);
+$writeSeed('seedArticles', [['uid' => $articleUid, 'fields' => ['name' => 'Article']]]);
+$created = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('nullable or omitted references can seed cyclic schemas', array_sum(array_column($created, 'created')), 2);
+$writeSeed('seedAuthors', [['uid' => $authorUid, 'fields' => ['name' => 'Author', 'peer' => $articleUid]]]);
+$writeSeed('seedArticles', [['uid' => $articleUid, 'fields' => ['name' => 'Article', 'peer' => $authorUid]]]);
+$existing = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('already-existing targets resolve when seed schemas form a cycle', [array_sum(array_column($existing, 'created')), array_sum(array_column($existing, 'updated'))], [0, 2]);
+$seedAuthor = $db->findFirst('seedAuthors', ['where' => ['uid' => $authorUid]]);
+$seedArticle = $db->findFirst('seedArticles', ['where' => ['uid' => $articleUid]]);
+eq('cyclic references are stored as their actual target identities', [$seedAuthor['peer'], $seedArticle['peer']], [$seedArticle['id'], $seedAuthor['id']]);
+$writeSeed('seedAuthors', [['uid' => \TypedPress\Sync\Uid::mint(), 'fields' => ['name' => 'Missing target', 'peer' => \TypedPress\Sync\Uid::mint()]]]);
+$writeSeed('seedArticles', []);
+problem('an actual missing seed reference is still refused', fn () => \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir), 422, 'sync_missing_reference', '/fields/peer');
+foreach (['seedAuthors', 'seedArticles'] as $name) { unlink($seedDir . '/' . $name . '.json'); } rmdir($seedDir);
 finish('sync');

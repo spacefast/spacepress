@@ -54,7 +54,12 @@ final class Seed
                 if (array_diff($deps, array_keys($done)) !== []) { continue; }
                 $files[] = $file; $done[$name] = true; unset($remaining[$i]); $progress = true;
             }
-            if (!$progress) { throw HttpError::invalidInput('Cyclic seed dependencies', '/records'); }
+            if (!$progress) {
+                // Like migration ordering, keep schema cycles in source order. Their actual values
+                // can be null/omitted or already stored; Wire still validates every supplied UID.
+                $files = [...$files, ...array_values($remaining)];
+                break;
+            }
         }
         $plan = static function () use ($plugin, $files, $dry): array {
             $receipt = [];

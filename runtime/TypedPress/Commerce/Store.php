@@ -104,8 +104,8 @@ final class Store implements \TypedPress\Store
     {
         $this->writable($collection);
         $p = new \WC_Product_Simple();
-        $this->write($p, $values);
-        $this->db->touchPost($p->get_id());
+        try { $this->write($p, $values); }
+        finally { if ($p->get_id() > 0) { $this->db->touchPost($p->get_id()); } }
         return $p->get_id();
     }
     public function update(string $collection, int|string $pk, array $values): void

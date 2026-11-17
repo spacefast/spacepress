@@ -212,6 +212,23 @@ eq('product delete uses native Woo trash', get_post_status($mug['id']), 'trash')
 check('orders are not removed by catalog retirement', wc_get_order($order->get_id()) instanceof WC_Order);
 $retired = $db->insert('products', ['name' => 'Trash probe', 'price' => '1.00', 'categories' => [$child['id']]], true, $admin)[0];
 $batchFirst = $db->insert('products', ['name' => 'Batch trash probe', 'price' => '1.00', 'categories' => [$child['id']]], true, $admin)[0];
+$failedCreationId = 0;
+$failAfterCreate = static function ($product) use (&$failedCreationId): void {
+    if ($product->get_name() === 'Failed creation cache probe') {
+        $failedCreationId = $product->get_id();
+        get_post($failedCreationId);
+        throw new RuntimeException('after product save probe');
+    }
+};
+add_action('woocommerce_after_product_object_save', $failAfterCreate);
+$creationFailed = false;
+try { $db->insert('products', ['name' => 'Failed creation cache probe', 'price' => '1.00'], true, $admin); }
+catch (RuntimeException $e) { $creationFailed = $e->getMessage() === 'after product save probe'; }
+finally { remove_action('woocommerce_after_product_object_save', $failAfterCreate); }
+check('a post-save creation failure preserves the original exception', $creationFailed && $failedCreationId > 0);
+eq('a post-save creation failure rolls its database row back', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}posts WHERE ID = ?', [$failedCreationId]), 0);
+eq('a post-save creation failure clears the native post cache', get_post($failedCreationId), null);
+eq('a post-save creation failure cannot load a ghost Woo product', wc_get_product($failedCreationId), false);
 $beforeEdit = get_post_field('post_title', $guide['id']);
 $editRolledBack = false;
 try {

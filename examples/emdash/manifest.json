@@ -822,14 +822,9 @@
       "requiredProof": "Save English/French via actual native REST/Polylang, request each locale publicly and verify field values and linked records.",
       "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
-      "status": "partial",
-      "evidence": [
-        "platform"
-      ],
-      "existingBehavioralOwners": [
-        "tests/wp/locales.test.ts"
-      ],
-      "qualifiedScope": "Only the behavior-specific checks listed in these executedRuns records are proven. The full contract and requiredProof above remain the acceptance target."
+      "status": "gap",
+      "evidence": [],
+      "limitation": "TypedPress locales are disabled; the platform journal is single-language and languages are not covered."
     },
     "app-data": {
       "owner": "platform",

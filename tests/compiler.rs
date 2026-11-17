@@ -2219,6 +2219,20 @@ fn php_case(runtime: &Path, app: &Path, case: &str, args: serde_json::Value) -> 
         .unwrap()
 }
 
+/// Locales are turned off for apps: only the test suite's TYPEDPRESS_LOCALES=1 (.cargo/config.toml) keeps them.
+#[test]
+fn locales_are_turned_off() {
+    let out = first()
+        .env_remove("TYPEDPRESS_LOCALES")
+        .arg("check")
+        .arg(root().join("tests/fixtures/locales-client"))
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("locales are turned off for now"), "{stderr}");
+}
+
 /// §7.3: the generated client types localized collections; translation ids follow the primary key.
 #[test]
 fn localized_generated_client_types() {

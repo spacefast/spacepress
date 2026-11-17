@@ -10,6 +10,8 @@
 #
 #   scripts/check-generated.sh [path/to/typedpress]
 set -euo pipefail
+# Examples must build as users build them: with locales turned off (docs/decisions/2026-11-17-locales-off.md).
+unset TYPEDPRESS_LOCALES
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 first=$(realpath -- "${1:-target/debug/typedpress}")

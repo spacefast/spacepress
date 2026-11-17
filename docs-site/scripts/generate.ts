@@ -166,7 +166,7 @@ const pluginRows = Object.entries(supported)
 	.sort(([a], [b]) => a.localeCompare(b))
 	.map(([slug, range]) => {
 		const pin = platform.plugins[slug];
-		const when = pin ? (localizedOnly.has(slug) ? "Installed when the config sets `locales`" : "Always installed") : "Allowed. Add it under `plugins` in your config";
+		const when = pin ? (localizedOnly.has(slug) ? "Not installed while `locales` are turned off" : "Always installed") : "Allowed. Add it under `plugins` in your config";
 		const versions = range.below ? `${range.min} up to, not including, ${range.below}` : `${range.min} or later`;
 		return `| [\`${slug}\`](https://wordpress.org/plugins/${slug}/) | ${when} | ${pin ? `\`${pin.version}\`` : "None"} | ${versions} |`;
 	});
@@ -491,7 +491,6 @@ const defaultDocs: Record<string, string> = {
 	webhooks: "Signed HTTP calls the app sends when rows change.",
 	uploads: "Limits for uploaded media.",
 	media: "Image sizes WordPress makes for uploaded images.",
-	locales: "The languages content is written in. Setting it installs Polylang.",
 };
 for (const k of configKeys) if (!k.doc && !defaultDocs[k.key]) throw new Error(`ConfigInput has an undocumented key ${k.key}: describe it in scripts/generate.ts`);
 

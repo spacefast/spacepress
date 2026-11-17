@@ -94,7 +94,6 @@ export const docs = collection({ title: text(), content: richText().optional() }
       <tr><td><code>.validate((value) =&gt; true | "message")</code></td><td>your own check, compiled to PHP</td></tr>
       <tr><td><code>{".access({ read, create, update })"}</code></td><td>who may see or write this one field; a hidden field is absent, not empty</td></tr>
       <tr><td><code>{".ui({ label, help, placeholder, width })"}</code>, <code>{".showIf({ … })"}</code></td><td>how the field looks in the editor, and when it shows</td></tr>
-      <tr><td><code>.localized()</code></td><td>one value per language</td></tr>
       <tr><td><code>.onDelete("cascade" | "restrict" | "setNull")</code>, <code>.reverse("name")</code></td><td>on a <code>ref()</code>: what a delete does, and the name of the list on the other side</td></tr>
       <tr><td><code>.was("oldName")</code></td><td>a rename that keeps the stored values</td></tr>
       </table></div>

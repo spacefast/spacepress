@@ -1,8 +1,7 @@
 // What the shop sells and what it has sold.
 //
 // - `drives` is a collection: WordPress posts an editor writes and publishes, with a name and a
-//   description per language (`.localized()`), reviews (`comments`) and a page at /drives/<slug>.
-//   Every other field (price, stock, specs) is shared by a drive's English and Turkish rows.
+//   description, its specs, price and stock, reviews (`comments`) and a page at /drives/<slug>.
 // - `orders` and `stockMovements` are SQL tables: rows the app writes, filters and counts.
 // - `shop` is a global: one record of settings, stored as WordPress options.
 //
@@ -17,10 +16,10 @@ export const MEDIA = ["hdd", "ssd", "nvme"] as const;
 export const CONDITIONS = ["like-new", "good", "fair", "for-parts"] as const;
 
 export const drives = collection({
-  name: text().min(1).max(120).localized().ui({ label: "Name", help: "Shown on the storefront, in each language." }),
+  name: text().min(1).max(120).ui({ label: "Name", help: "Shown on the storefront." }),
   slug: slug({ source: "name" }).optional(),
-  summary: text().max(200).localized().optional().ui({ label: "Summary", help: "One line for the catalog card." }),
-  description: richText().localized().optional(),
+  summary: text().max(200).optional().ui({ label: "Summary", help: "One line for the catalog card." }),
+  description: richText().optional(),
   brand: text().min(1).max(60).ui({ label: "Brand", width: 50 }),
   model: text().min(1).max(80).ui({ label: "Model", width: 50 }),
   capacityGb: integer().min(1).max(100_000).ui({ label: "Capacity (GB)", width: 33 }),
@@ -42,7 +41,6 @@ export const drives = collection({
   sync: "content/drives/*.md",
   access: { read: "anyone", create: "editor", update: "editor", delete: "admin" },
 }).on({
-  // A translation (`translationOf`) may leave the shared fields out: they come from its group.
   beforeCreate(data) {
     if (data.price !== undefined) checkPrice(data.price);
     if (data.brand !== undefined) data.brand = data.brand.trim();

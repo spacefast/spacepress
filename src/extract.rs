@@ -3614,6 +3614,10 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
         out.schema.uploads = Some(config.into());
     }
     if let Some(v) = cfg.get("locales").filter(|v| !matches!(v, Value::Undef)) {
+        // Locales are turned off until they come back; TYPEDPRESS_LOCALES=1 keeps them for the test suite.
+        if std::env::var("TYPEDPRESS_LOCALES").as_deref() != Ok("1") {
+            return Err(Diag::new(span, "locales are turned off for now").help("remove locales from defineConfig"));
+        }
         let o = object(v, span, "locales")?;
         keys(&o, &["default", "all", "fallback"], span, "locales")?;
         let default = string(o.get("default"), span, "locales.default")?;

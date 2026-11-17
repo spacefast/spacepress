@@ -5,9 +5,9 @@ import {
 
 // Native WordPress posts: title, content, drafts, revisions and custom fields.
 export const pages = collection({
-  title: text().max(120).localized(),
+  title: text().max(120),
   slug: slug({ source: "title" }).optional(),
-  body: richText().localized().optional(),
+  body: richText().optional(),
   cover: media({ accept: "image" }).optional(),
   featured: boolean().default(false),
   seo: group({
@@ -105,7 +105,6 @@ export const renameMember = action({
 
 export default defineConfig({
   name: "kitchen-sink",
-  locales: { default: "en", all: ["en", "de"] },
   media: { sizes: { card: { width: 600, height: 400, fit: "cover" }, avatar: { width: 96, height: 96, fit: "cover" } } },
   plugins: { "classic-editor": "1.6.7" },
   webhooks: [{ url: env("KITCHEN_WEBHOOK_URL"), secret: env("KITCHEN_WEBHOOK_SECRET"), events: ["pages.created", "pages.updated"] }],

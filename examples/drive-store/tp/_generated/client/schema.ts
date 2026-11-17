@@ -9,7 +9,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
-      "localized": true,
+      "localized": false,
       "relations": {
         "orders": {
           "kind": "many",

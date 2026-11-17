@@ -1713,7 +1713,7 @@ fn compiled_php_matches_node_on_every_differential_case() {
             .next()
             .unwrap()
     };
-    assert!(body("nativeParameter").contains("$input->p['n'] ?? \\TypedPress\\Js::dataGet($input, 'n')"));
+    assert!(body("nativeParameter").contains("$input->p['n'] ?? \\TypedPress\\Js::dataGet( $input, 'n' )"));
     assert!(
         body("nativeParameter")
             .lines()
@@ -1721,13 +1721,13 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
     assert!(body("nativeMissing").contains("$input->p["));
     assert!(
-        body("reboundParameter").contains("\\TypedPress\\Js::dataGet($input, 'n')")
+        body("reboundParameter").contains("\\TypedPress\\Js::dataGet( $input, 'n' )")
             && !body("reboundParameter").contains("->p[")
     );
     // A nullable receiver that no assignment replaces tries the property first: `??` gives the
     // checked read for null and undefined, so a missing value still reads as dataGet does.
     assert!(
-        body("nullableParameter").contains("($input->p['n'] ?? \\TypedPress\\Js::dataGet($input, 'n'))"),
+        body("nullableParameter").contains("( $input->p['n'] ?? \\TypedPress\\Js::dataGet( $input, 'n' ) )"),
         "{}",
         body("nullableParameter")
     );
@@ -1735,8 +1735,8 @@ fn compiled_php_matches_node_on_every_differential_case() {
     // Typed number comparisons and equality are native after a run-time int/float check; a literal
     // string side compares with `===`; a plain-variable object read tries the property first.
     assert!(
-        !body("numberCompare").contains("dynamicBinary('<', $a, $b)")
-            || body("numberCompare").contains("\\is_float($a)")
+        !body("numberCompare").contains("dynamicBinary( '<', $a, $b )")
+            || body("numberCompare").contains("\\is_float( $a )")
     );
     assert!(
         body("numberCompare").contains("(float) $a < (float) $b"),
@@ -1750,24 +1750,24 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("stringEquality")
     );
     assert!(
-        !body("stringEquality").contains("strictEq($s, 'a')"),
+        !body("stringEquality").contains("strictEq( $s, 'a' )"),
         "{}",
         body("stringEquality")
     );
     assert!(body("localRead").contains("->p['title'] ??"), "{}", body("localRead"));
     // A literal-typed value that may hold anything is still checked; a call stays on the helper.
     assert!(
-        body("literalTypedNull").contains("(\\is_int($n) || \\is_float($n)) ? $n == 0"),
+        body("literalTypedNull").contains("( \\is_int( $n ) || \\is_float( $n ) ) ? $n == 0"),
         "{}",
         body("literalTypedNull")
     );
     assert!(
-        body("literalTypedMissing").contains("\\is_float($__t"),
+        body("literalTypedMissing").contains("\\is_float( $__t"),
         "{}",
         body("literalTypedMissing")
     );
     assert!(
-        body("literalTypedCall").contains("\\TypedPress\\Js::strictEq($a, "),
+        body("literalTypedCall").contains("\\TypedPress\\Js::strictEq( $a, "),
         "{}",
         body("literalTypedCall")
     );
@@ -2049,19 +2049,19 @@ fn compiled_tsx_renders_the_html_react_renders() {
         "'img'",
     ] {
         assert!(
-            !folded.contains(&format!("\\TypedPress\\Html::element({element}")),
+            !folded.contains(&format!("\\TypedPress\\Html::element( {element}")),
             "{element} not folded:\n{folded}"
         );
     }
     assert!(folded.contains("<main class=\"page\" id=\"top\""), "{folded}");
     // Left to the runtime: a custom element, a list item with a dynamic key, a void element with children.
-    assert!(folded.contains("\\TypedPress\\Html::element('link-like'"), "{folded}");
+    assert!(folded.contains("\\TypedPress\\Html::element( 'link-like'"), "{folded}");
     assert!(
-        folded.contains("\\TypedPress\\Html::element('li', ['className' => 'item', 'key' => $item]"),
+        folded.contains("\\TypedPress\\Html::element( 'li', ['className' => 'item', 'key' => $item]"),
         "{folded}"
     );
     assert!(
-        body("static__VoidChildren").contains("\\TypedPress\\Html::element('br', [], "),
+        body("static__VoidChildren").contains("\\TypedPress\\Html::element( 'br', [], "),
         "{}",
         body("static__VoidChildren")
     );
@@ -2076,7 +2076,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
         "'my-widget'",
     ] {
         assert!(
-            attributes.contains(&format!("\\TypedPress\\Html::element({element}")),
+            attributes.contains(&format!("\\TypedPress\\Html::element( {element}")),
             "{element} folded:\n{attributes}"
         );
     }

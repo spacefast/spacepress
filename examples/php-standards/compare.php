@@ -11,9 +11,14 @@ if ( ! $before_files || array_map( 'basename', $before_files ) !== array_map( 'b
 	exit( 1 );
 }
 function tokens( $file ) {
+	$source = file_get_contents( $file );
+	if ( false === $source ) {
+		fwrite( STDERR, "Cannot read $file\n" );
+		exit( 1 );
+	}
 	return array_values(
 		array_filter(
-			token_get_all( file_get_contents( $file ) ),
+			token_get_all( $source ),
 			static function ( $token ) {
 				return ! is_array( $token ) || $token[0] !== T_WHITESPACE;
 			}

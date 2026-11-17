@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -75,6 +75,22 @@ test("a thrown location preserves the author's symlinked project path", async ()
     symlinkSync(source, alias);
     const result = await compileContent(path.join(alias, "throws.tsx"));
     assert.deepEqual(result.diagnostics.map(brief), [{ code: "module_failed", severity: "error", file: path.join(alias, "throws.tsx"), line: 2, column: 9 }]);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("a module that renames its source directory keeps its original thrown diagnostic", async () => {
+  const base = mkdtempSync(path.join(tmpdir(), "typedpress-blocks-renamed-"));
+  try {
+    const source = path.join(base, "source");
+    const moved = path.join(base, "moved");
+    mkdirSync(source);
+    const entry = path.join(source, "throws.tsx");
+    writeFileSync(entry, `export default function Page() {\n  process.getBuiltinModule('node:fs').renameSync(${JSON.stringify(source)}, ${JSON.stringify(moved)});\n  throw new Error('source renamed');\n}\n`);
+    const result = await compileContent(entry);
+    assert.deepEqual(result.diagnostics.map(brief), [{ code: "module_failed", severity: "error", file: entry, line: 3, column: 9 }]);
+    assert.match(result.diagnostics[0]!.message, /source renamed/);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

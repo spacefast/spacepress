@@ -107,7 +107,9 @@ export async function renderModule(file: string): Promise<ModuleResult> {
   const bundlePath = path.join(scratch, "module.mjs");
   let code: string;
   let map: SourceMap;
+  let sourceRoot: string;
   try {
+    sourceRoot = await realpath(root);
     const result = await build({
       entryPoints: [entry],
       absWorkingDir: root,
@@ -158,7 +160,7 @@ export async function renderModule(file: string): Promise<ModuleResult> {
     try {
       namespace = (await import(pathToFileURL(bundlePath).href)) as { default?: unknown };
     } catch (error) {
-      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch, await realpath(root))] };
+      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch, sourceRoot)] };
     }
     if (typeof namespace.default !== "function") {
       return {
@@ -171,7 +173,7 @@ export async function renderModule(file: string): Promise<ModuleResult> {
       // same diagnostic boundary as a throw from inside the JSX.
       return { nodes: toContentNodes((namespace.default as () => unknown)(), { file: entry, line: 1, column: 1 }), diagnostics: [] };
     } catch (error) {
-      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch, await realpath(root))] };
+      return { nodes: [], diagnostics: [failure(error, entry, bundlePath, map, scratch, sourceRoot)] };
     }
   } finally {
     await rm(scratch, { recursive: true, force: true });

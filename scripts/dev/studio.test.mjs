@@ -51,6 +51,36 @@ test('a failed export startup exits even while its parent keeps stdin open', asy
   assert.match(stderr, /startup refused/);
 });
 
+test('a preserved file symlink gives Studio the physical setup file', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'typedpress-studio-setup-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bin = join(root, 'bin');
+  const studio = join(root, 'wp-studio');
+  const content = join(root, 'content');
+  await mkdir(bin); await mkdir(content); await mkdir(join(studio, 'dist/cli'), { recursive: true });
+  await writeFile(join(studio, 'package.json'), JSON.stringify({ name: 'wp-studio', version: '2.2.0' }));
+  await writeFile(join(studio, 'dist/cli/main.mjs'), `
+    import { readFileSync } from 'node:fs';
+    if (process.argv[2] === 'wp' && process.argv[3] === 'eval-file') {
+      readFileSync(process.argv[4]);
+      console.error('physical setup file read'); process.exit(7);
+    }
+  `);
+  await writeFile(join(content, 'typedpress-manifest.json'), JSON.stringify({ app: 'test', plugins: {}, dependencies: [], locales: null }));
+  const link = join(root, 'studio.mjs');
+  await symlink(fileURLToPath(new URL('./studio.mjs', import.meta.url)), link);
+  const fetchStub = 'data:text/javascript,' + encodeURIComponent('globalThis.fetch = async () => ({ ok: true, json: async () => ({ offers: [] }) });');
+  const child = spawn(process.execPath, ['--preserve-symlinks-main', '--import', fetchStub, link, 'export', content], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdio: ['pipe', 'ignore', 'pipe'],
+  });
+  t.after(() => child.kill('SIGKILL'));
+  let stderr = ''; child.stderr.on('data', (data) => { stderr += data; });
+  const timer = setTimeout(() => child.kill('SIGKILL'), 5000);
+  const [code, signal] = await once(child, 'exit'); clearTimeout(timer);
+  assert.equal(signal, null, stderr); assert.equal(code, 1, stderr);
+  assert.match(stderr, /physical setup file read/);
+});
+
 test('local site ownership refuses foreign directories, copied receipts and redirected state', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'typedpress-dev-ownership-'));
   t.after(() => rm(root, { recursive: true, force: true }));

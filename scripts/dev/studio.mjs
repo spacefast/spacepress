@@ -13,7 +13,8 @@ const STUDIO_VERSION = '2.2.0';
 // The supported floor. Studio's version picker only offers current releases, so an archived beta
 // must resolve to the compatible update WordPress offers, rather than become an unusable pin.
 const WORDPRESS_VERSION = '7.2-beta5';
-const here = dirname(fileURLToPath(import.meta.url));
+const modulePath = await realpath(fileURLToPath(import.meta.url));
+const here = dirname(modulePath);
 const exists = async (path) => access(path).then(() => true, () => false);
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'));
 export async function wordpressVersion(fetcher = fetch) {
@@ -813,6 +814,6 @@ async function detached(managed) {
 }
 
 const invokedPath = process.argv[1] && await realpath(process.argv[1]).catch(() => null);
-if (invokedPath === await realpath(fileURLToPath(import.meta.url))) {
+if (invokedPath === modulePath) {
   main().catch((error) => { console.error(`typedpress dev: ${error.message}`); process.exitCode = 1; });
 }

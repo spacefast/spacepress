@@ -4436,7 +4436,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         let _ = writeln!(
                             self.output,
-                            "function {wrapper}(): \\Closure {{ static $f; return $f ??= {callable}; }}\n"
+                            "function {wrapper}(): \\Closure {{\n\tstatic $f;\n\treturn $f ??= {callable};\n}}\n"
                         );
                         wrapper
                     }
@@ -4612,7 +4612,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.data_helpers.insert(key, name.clone());
                         let _ = writeln!(
                             self.output,
-                            "function {name}(): \\TypedPress\\Js{kind} {{ static $value; return $value ??= new \\TypedPress\\Js{kind}(); }}\n"
+                            "function {name}(): \\TypedPress\\Js{kind} {{\n\tstatic $value;\n\treturn $value ??= new \\TypedPress\\Js{kind}();\n}}\n"
                         );
                         name
                     }
@@ -4651,7 +4651,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.data_helpers.insert(key, name.clone());
                         let _ = writeln!(
                             self.output,
-                            "function {name}(): object {{ static $value; return $value ??= {build}; }}\n"
+                            "function {name}(): object {{\n\tstatic $value;\n\treturn $value ??= {build};\n}}\n"
                         );
                         name
                     }
@@ -4667,7 +4667,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.data_helpers.insert(key, name.clone());
                     let _ = writeln!(
                         self.output,
-                        "function {name}(): \\TypedPress\\RegExp {{ static $value; return $value ??= new \\TypedPress\\RegExp({}, {}); }}\n",
+                        "function {name}(): \\TypedPress\\RegExp {{\n\tstatic $value;\n\treturn $value ??= new \\TypedPress\\RegExp({}, {});\n}}\n",
                         php_str(p),
                         php_str(f)
                     );
@@ -4814,7 +4814,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let description = description.as_deref().map(php_str).unwrap_or_default();
                         let _ = writeln!(
                             self.output,
-                            "function {name}(): \\TypedPress\\JsSymbol {{ static $value; return $value ??= \\TypedPress\\JsSymbol::create(new \\TypedPress\\JsArray([{description}])); }}\n"
+                            "function {name}(): \\TypedPress\\JsSymbol {{\n\tstatic $value;\n\treturn $value ??= \\TypedPress\\JsSymbol::create(new \\TypedPress\\JsArray([{description}]));\n}}\n"
                         );
                         name
                     }

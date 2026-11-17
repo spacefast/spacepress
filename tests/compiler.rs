@@ -2035,6 +2035,12 @@ fn compiled_tsx_renders_the_html_react_renders() {
             .unwrap_or_else(|| panic!("no {name} in functions.php"))
             .to_string()
     };
+    // Layout may wrap calls, but the first argument must still name the tag.
+    let has_element = |php: &str, element: &str| {
+        php.split("\\TypedPress\\Html::element(")
+            .skip(1)
+            .any(|call| call.trim_start().starts_with(element))
+    };
     let folded = body("static__Static");
     for element in [
         "'main'",
@@ -2048,10 +2054,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
         "'br'",
         "'img'",
     ] {
-        assert!(
-            !folded.contains(&format!("\\TypedPress\\Html::element( {element}")),
-            "{element} not folded:\n{folded}"
-        );
+        assert!(!has_element(&folded, element), "{element} not folded:\n{folded}");
     }
     assert!(folded.contains("<main class=\"page\" id=\"top\""), "{folded}");
     // Left to the runtime: a custom element, a list item with a dynamic key, a void element with children.
@@ -2075,10 +2078,7 @@ fn compiled_tsx_renders_the_html_react_renders() {
         "'form'",
         "'my-widget'",
     ] {
-        assert!(
-            attributes.contains(&format!("\\TypedPress\\Html::element( {element}")),
-            "{element} folded:\n{attributes}"
-        );
+        assert!(has_element(&attributes, element), "{element} folded:\n{attributes}");
     }
     // Extra keys in decoded JSON never reach `style` or a spread's attributes.
     let evil = "url(//evil.example/t)";

@@ -1,6 +1,6 @@
 import {
-  action, date, db, defineConfig, email, HttpError,
-  integer, job, jobs, json, table, text, timestamp, userProjection, type AccessConfig, number, select, ref,
+  date, db, defineConfig, email, HttpError,
+  integer, job, json, table, text, timestamp, userProjection, type AccessConfig, number, select, ref, query, mutation,
 } from "typedpress";
 import { HEALTH } from "./tp/lib/health";
 
@@ -148,110 +148,96 @@ async function checkUsage(driveId: number, owner: number, usedGb: number, except
   if (used > drive.capacityGb) throw new HttpError(422, "capacity_exceeded", "Contents exceed the drive's capacity.");
 }
 
-export const stampReplacement = job({
-  input: { driveId: integer(), ownerId: integer(), flaggedAt: timestamp() },
-  retries: 2,
-  async handler({ driveId, ownerId, flaggedAt }) {
-    await db.update(drives).set({ replacementNeededAt: flaggedAt })
-      .where({ id: driveId, ownerId, replacementNeededAt: { isNull: true } });
-  },
+export const stampReplacement = job({ retries: 2 }, async ({ driveId, ownerId, flaggedAt }: { driveId: number; ownerId: number; flaggedAt: string }) => {
+  await db.update(drives).set({ replacementNeededAt: flaggedAt })
+    .where({ id: driveId, ownerId, replacementNeededAt: { isNull: true } });
 });
 
-export const logHealth = action({
-  access: "authenticated",
-  input: {
-    driveId: integer(), readOn: date(),
-    powerOnHours: integer().min(0), wearPercent: number().min(0).max(100),
-    reallocatedSectors: integer().min(0), tempC: number().min(-40).max(150),
-  },
-  async handler(input, ctx) {
-    const ownerId = actor(ctx.user?.id);
-    await requireDrive(input.driveId, ownerId);
-    const previous = await db.query.healthReadings.findFirst({
-      where: { driveId: input.driveId, ownerId }, orderBy: { readOn: "desc", id: "desc" },
-    });
-    if (previous && input.readOn <= previous.readOn) throw new HttpError(422, "reading_order", "Use a date after the latest reading.");
-    if (previous && (input.powerOnHours < previous.powerOnHours || input.wearPercent < previous.wearPercent || input.reallocatedSectors < previous.reallocatedSectors)) throw new HttpError(422, "counter_decreased", "Lifetime counters cannot decrease. Check the drive and units.");
-    const wearRise = previous ? input.wearPercent - previous.wearPercent : 0;
-    const sectorRise = previous ? input.reallocatedSectors - previous.reallocatedSectors : 0;
-    let verdict = "ok";
-    if (input.wearPercent >= HEALTH.watchWear || input.reallocatedSectors > 0 ||
-        input.tempC >= HEALTH.watchTemp || wearRise >= HEALTH.watchWearRise || sectorRise > 0) verdict = "watch";
-    if (input.wearPercent >= HEALTH.replaceWear || input.reallocatedSectors >= HEALTH.replaceSectors ||
-        input.tempC >= HEALTH.replaceTemp || wearRise >= HEALTH.replaceWearRise || sectorRise >= HEALTH.replaceSectorRise) verdict = "replace";
-    const [reading] = await db.insert(healthReadings).values({ ...input, ownerId }).returning();
-    if (!reading) throw new HttpError(500, "reading_failed", "The reading could not be saved.");
-    if (verdict === "replace") await jobs.stampReplacement.enqueue({
-      driveId: input.driveId, ownerId, flaggedAt: new Date().toISOString(),
-    }, { key: `replace-${ownerId}-${input.driveId}` });
-    return { reading, verdict };
-  },
+export const logHealth = mutation({ access: "authenticated" }, async (input: { driveId: number; readOn: string; powerOnHours: number; wearPercent: number; reallocatedSectors: number; tempC: number }, ctx) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.readOn)) throw new HttpError(422, "invalid_input", "readOn must be a date (YYYY-MM-DD)", "/readOn");
+  if (input.powerOnHours < 0) throw new HttpError(422, "invalid_input", "powerOnHours must be at least 0", "/powerOnHours");
+  if (input.wearPercent < 0) throw new HttpError(422, "invalid_input", "wearPercent must be at least 0", "/wearPercent");
+  if (input.wearPercent > 100) throw new HttpError(422, "invalid_input", "wearPercent must be at most 100", "/wearPercent");
+  if (input.reallocatedSectors < 0) throw new HttpError(422, "invalid_input", "reallocatedSectors must be at least 0", "/reallocatedSectors");
+  if (input.tempC < -40) throw new HttpError(422, "invalid_input", "tempC must be at least -40", "/tempC");
+  if (input.tempC > 150) throw new HttpError(422, "invalid_input", "tempC must be at most 150", "/tempC");
+  const ownerId = actor(ctx.user?.id);
+  await requireDrive(input.driveId, ownerId);
+  const previous = await db.query.healthReadings.findFirst({
+    where: { driveId: input.driveId, ownerId }, orderBy: { readOn: "desc", id: "desc" },
+  });
+  if (previous && input.readOn <= previous.readOn) throw new HttpError(422, "reading_order", "Use a date after the latest reading.");
+  if (previous && (input.powerOnHours < previous.powerOnHours || input.wearPercent < previous.wearPercent || input.reallocatedSectors < previous.reallocatedSectors)) throw new HttpError(422, "counter_decreased", "Lifetime counters cannot decrease. Check the drive and units.");
+  const wearRise = previous ? input.wearPercent - previous.wearPercent : 0;
+  const sectorRise = previous ? input.reallocatedSectors - previous.reallocatedSectors : 0;
+  let verdict = "ok";
+  if (input.wearPercent >= HEALTH.watchWear || input.reallocatedSectors > 0 ||
+      input.tempC >= HEALTH.watchTemp || wearRise >= HEALTH.watchWearRise || sectorRise > 0) verdict = "watch";
+  if (input.wearPercent >= HEALTH.replaceWear || input.reallocatedSectors >= HEALTH.replaceSectors ||
+      input.tempC >= HEALTH.replaceTemp || wearRise >= HEALTH.replaceWearRise || sectorRise >= HEALTH.replaceSectorRise) verdict = "replace";
+  const [reading] = await db.insert(healthReadings).values({ ...input, ownerId }).returning();
+  if (!reading) throw new HttpError(500, "reading_failed", "The reading could not be saved.");
+  if (verdict === "replace") await stampReplacement.enqueue({
+    driveId: input.driveId, ownerId, flaggedAt: new Date().toISOString(),
+  }, { key: `replace-${ownerId}-${input.driveId}` });
+  return { reading, verdict };
 });
 
-export const whereIs = action({
-  access: "authenticated",
-  input: { query: text().min(1).max(160) },
-  async handler({ query }, ctx) {
-    const ownerId = actor(ctx.user?.id);
-    const needle = query.trim().toLowerCase();
-    if (!needle) throw new HttpError(422, "invalid_input", "Enter a serial, label, model or content description.");
-    const inventory = await db.query.drives.findMany({ where: { ownerId }, with: { placeId: true, contents: true }, orderBy: { label: "asc" } });
-    return inventory.filter((drive) => drive.serial.toLowerCase().includes(needle) ||
-      drive.label.toLowerCase().includes(needle) || drive.model.toLowerCase().includes(needle) ||
-      drive.contents.some((entry) => entry.ownerId === ownerId && entry.description.toLowerCase().includes(needle)))
-      .map((drive) => ({ drive, place: drive.placeId, contents: drive.contents }));
-  },
+export const whereIs = query({ access: "authenticated" }, async ({ query }: { query: string }, ctx) => {
+  if (query.length < 1) throw new HttpError(422, "invalid_input", "query must be at least 1 character", "/query");
+  if (query.length > 160) throw new HttpError(422, "invalid_input", "query must be at most 160 characters", "/query");
+  const ownerId = actor(ctx.user?.id);
+  const needle = query.trim().toLowerCase();
+  if (!needle) throw new HttpError(422, "invalid_input", "Enter a serial, label, model or content description.");
+  const inventory = await db.query.drives.findMany({ where: { ownerId }, with: { placeId: true, contents: true }, orderBy: { label: "asc" } });
+  return inventory.filter((drive) => drive.serial.toLowerCase().includes(needle) ||
+    drive.label.toLowerCase().includes(needle) || drive.model.toLowerCase().includes(needle) ||
+    drive.contents.some((entry) => entry.ownerId === ownerId && entry.description.toLowerCase().includes(needle)))
+    .map((drive) => ({ drive, place: drive.placeId, contents: drive.contents }));
 });
 
-export const capacityReport = action({
-  access: "authenticated", input: {},
-  async handler(_input, ctx) {
-    const ownerId = actor(ctx.user?.id);
-    const inventory = await db.query.drives.findMany({ where: { ownerId }, with: { contents: true } });
-    const locations = await db.query.places.findMany({ where: { ownerId }, orderBy: { name: "asc" } });
-    const rows = inventory.map((drive) => ({
-      placeId: drive.placeId, kind: drive.kind, totalGb: drive.capacityGb,
-      usedGb: drive.contents.filter((entry) => entry.ownerId === ownerId).reduce((sum, entry) => sum + entry.usedGb, 0),
-    }));
-    const totalGb = rows.reduce((sum, row) => sum + row.totalGb, 0);
-    const usedGb = rows.reduce((sum, row) => sum + row.usedGb, 0);
-    const byPlace = [...locations.map((place) => ({ placeId: place.id, name: place.name })), { placeId: null, name: "Unassigned" }].map((place) => {
-      const selected = rows.filter((row) => row.placeId === place.placeId);
-      const totalGb = selected.reduce((sum, row) => sum + row.totalGb, 0);
-      const usedGb = selected.reduce((sum, row) => sum + row.usedGb, 0);
-      return { placeId: place.placeId, name: place.name, totalGb, usedGb, freeGb: totalGb - usedGb };
-    });
-    const byKind = ["ssd", "hdd", "nvme", "sd", "usb"].map((kind) => {
-      const selected = rows.filter((row) => row.kind === kind);
-      const totalGb = selected.reduce((sum, row) => sum + row.totalGb, 0);
-      const usedGb = selected.reduce((sum, row) => sum + row.usedGb, 0);
-      return { kind, totalGb, usedGb, freeGb: totalGb - usedGb };
-    });
-    return { totalGb, usedGb, freeGb: totalGb - usedGb, byPlace, byKind };
-  },
+export const capacityReport = query({ access: "authenticated" }, async (_input: {}, ctx) => {
+  const ownerId = actor(ctx.user?.id);
+  const inventory = await db.query.drives.findMany({ where: { ownerId }, with: { contents: true } });
+  const locations = await db.query.places.findMany({ where: { ownerId }, orderBy: { name: "asc" } });
+  const rows = inventory.map((drive) => ({
+    placeId: drive.placeId, kind: drive.kind, totalGb: drive.capacityGb,
+    usedGb: drive.contents.filter((entry) => entry.ownerId === ownerId).reduce((sum, entry) => sum + entry.usedGb, 0),
+  }));
+  const totalGb = rows.reduce((sum, row) => sum + row.totalGb, 0);
+  const usedGb = rows.reduce((sum, row) => sum + row.usedGb, 0);
+  const byPlace = [...locations.map((place) => ({ placeId: place.id, name: place.name })), { placeId: null, name: "Unassigned" }].map((place) => {
+    const selected = rows.filter((row) => row.placeId === place.placeId);
+    const totalGb = selected.reduce((sum, row) => sum + row.totalGb, 0);
+    const usedGb = selected.reduce((sum, row) => sum + row.usedGb, 0);
+    return { placeId: place.placeId, name: place.name, totalGb, usedGb, freeGb: totalGb - usedGb };
+  });
+  const byKind = ["ssd", "hdd", "nvme", "sd", "usb"].map((kind) => {
+    const selected = rows.filter((row) => row.kind === kind);
+    const totalGb = selected.reduce((sum, row) => sum + row.totalGb, 0);
+    const usedGb = selected.reduce((sum, row) => sum + row.usedGb, 0);
+    return { kind, totalGb, usedGb, freeGb: totalGb - usedGb };
+  });
+  return { totalGb, usedGb, freeGb: totalGb - usedGb, byPlace, byKind };
 });
 
-export const warrantyExpiring = action({
-  access: "authenticated", input: { days: integer().min(0).max(3650).default(30) },
-  async handler({ days }, ctx) {
-    const today = new Date().toISOString().slice(0, 10);
-    const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
-    return await db.query.drives.findMany({
-      where: { ownerId: actor(ctx.user?.id), warrantyUntil: { gte: today, lte: cutoff }, status: { ne: "retired" } },
-      orderBy: { warrantyUntil: "asc" }, with: { placeId: true },
-    });
-  },
+export const warrantyExpiring = query({ access: "authenticated" }, async ({ days = 30 }: { days?: number }, ctx) => {
+  if (days < 0) throw new HttpError(422, "invalid_input", "days must be at least 0", "/days");
+  if (days > 3650) throw new HttpError(422, "invalid_input", "days must be at most 3650", "/days");
+  const today = new Date().toISOString().slice(0, 10);
+  const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  return await db.query.drives.findMany({
+    where: { ownerId: actor(ctx.user?.id), warrantyUntil: { gte: today, lte: cutoff }, status: { ne: "retired" } },
+    orderBy: { warrantyUntil: "asc" }, with: { placeId: true },
+  });
 });
 
-export const retire = action({
-  access: "authenticated", input: { driveId: integer() },
-  async handler({ driveId }, ctx) {
-    const ownerId = actor(ctx.user?.id);
-    await requireDrive(driveId, ownerId);
-    const [drive] = await db.update(drives).set({ status: "retired" }).where({ id: driveId, ownerId }).returning();
-    if (!drive) throw new HttpError(404, "not_found", "Drive not found.");
-    return drive;
-  },
+export const retire = mutation({ access: "authenticated" }, async ({ driveId }: { driveId: number }, ctx) => {
+  const ownerId = actor(ctx.user?.id);
+  await requireDrive(driveId, ownerId);
+  const [drive] = await db.update(drives).set({ status: "retired" }).where({ id: driveId, ownerId }).returning();
+  if (!drive) throw new HttpError(404, "not_found", "Drive not found.");
+  return drive;
 });
 
 export default defineConfig({

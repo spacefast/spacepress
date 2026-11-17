@@ -117,7 +117,7 @@
         "sendWelcome": {
             "input": {
                 "email": {
-                    "type": "email",
+                    "type": "text",
                     "notNull": true
                 },
                 "payload": {
@@ -125,18 +125,9 @@
                     "notNull": true
                 },
                 "data": {
-                    "type": "group",
-                    "fields": {
-                        "label": {
-                            "type": "text",
-                            "default": {
-                                "value": "welcome"
-                            }
-                        },
-                        "payload": {
-                            "type": "json"
-                        }
-                    }
+                    "type": "json",
+                    "notNull": true,
+                    "omit": true
                 }
             },
             "handler": "job__sendWelcome",
@@ -708,9 +699,7 @@
                 "allow": {
                     "type": "boolean",
                     "notNull": true,
-                    "default": {
-                        "value": true
-                    }
+                    "omit": true
                 }
             },
             "handler": "action__inbound",

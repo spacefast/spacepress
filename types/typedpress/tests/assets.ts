@@ -11,8 +11,8 @@ styles.title = "x";
 export { title, src };
 
 // A server action, called from a "use client" component, takes the action's own input.
-import { action, integer } from "typedpress";
-const cheer = action({ input: { noteId: integer() }, access: "anyone", async handler({ noteId }) { return { count: noteId }; } });
+import { mutation } from "typedpress";
+const cheer = mutation({ access: "anyone" }, async ({ noteId }: { noteId: number }) => { return { count: noteId }; });
 export async function clientCall(): Promise<number> {
   // @ts-expect-error the input is the action's own
   await cheer({ note: 1 });

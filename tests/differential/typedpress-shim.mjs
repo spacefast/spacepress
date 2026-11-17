@@ -20,13 +20,29 @@ export const repeater = ({ fields }) => chain({ kind: "repeater", fields });
 export const blocks = ({ layouts }) => chain({ kind: "blocks", layouts });
 export const defineRelations = () => ({});
 export const defineConfig = (c) => c;
-export const action = (a) => ({ ...a, $first: "action" });
-export const job = (j) => ({ ...j, $first: "job" });
+// A query or mutation keeps its handler; a job is queued through its own export.
+const fn = (options, handler) => Object.assign((input) => handler(input, { user: null }), { ...options, handler, $first: "action" });
+export const query = fn, mutation = fn;
+const pending = new Map();
+export const job = (options, handler) => {
+  const value = { ...options, handler, $first: "job" };
+  value.enqueue = async (input, opts = {}) => {
+    const id = crypto.randomUUID();
+    if (opts.key === undefined) return { id };
+    if (!pending.has(value)) pending.set(value, new Map());
+    const keys = pending.get(value);
+    if (!keys.has(opts.key)) keys.set(opts.key, id);
+    return { id: keys.get(opts.key) };
+  };
+  return value;
+};
+export const cron = (schedule, handler) => ({ schedule, handler, $first: "job" });
 // Lane D: once() receipts and pending enqueue keys, in memory for one Node run.
 const receipts = new Map();
 let rollbackOnly = false;
 export const transaction = async (fn) => {
-  const previousReceipts = new Map(receipts), previousPending = new Map(pending);
+  const previousReceipts = new Map(receipts);
+  const previousPending = new Map([...pending].map(([job, keys]) => [job, new Map(keys)]));
   rollbackOnly = false;
   try {
     const result = await fn();
@@ -36,7 +52,7 @@ export const transaction = async (fn) => {
     receipts.clear();
     pending.clear();
     for (const [key, value] of previousReceipts) receipts.set(key, value);
-    for (const [key, value] of previousPending) pending.set(key, value);
+    for (const [job, keys] of previousPending) pending.set(job, keys);
     throw error;
   } finally {
     rollbackOnly = false;
@@ -53,17 +69,6 @@ export const once = async (key, fn) => {
     throw error;
   }
 };
-const pending = new Map();
-export const jobs = new Proxy({}, {
-  get: (_, name) => ({
-    enqueue: async (input, opts = {}) => {
-      const id = crypto.randomUUID();
-      if (opts.key === undefined) return { id };
-      if (!pending.has(`${name}:${opts.key}`)) pending.set(`${name}:${opts.key}`, id);
-      return { id: pending.get(`${name}:${opts.key}`) };
-    },
-  }),
-});
 export const db = new Proxy({}, { get() { throw new Error("db isn't available in differential tests"); } });
 export class HttpError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }

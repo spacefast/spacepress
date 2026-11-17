@@ -529,9 +529,10 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
     out
 }
 
-/// `JsonSchema::isRequired`: a NOT NULL column without a default or auto-increment.
+/// `Schema::isRequired`: a NOT NULL column without a default or auto-increment, that a typed input
+/// doesn't mark optional.
 fn required(col: &crate::schema::Column) -> bool {
-    col.not_null && col.default.is_none() && !col.auto_increment
+    col.not_null && col.default.is_none() && !col.auto_increment && !col.omit
 }
 
 /// An action's or job's input as `JsonSchema::input` publishes it: every field, required ones as

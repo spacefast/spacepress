@@ -42,7 +42,7 @@ fn wordpress_secrets_are_refused_on_every_env_path() {
     rejects(
         "reject-process-env-host",
         "`DB_PASSWORD` is a host setting",
-        "typedpress.config.ts:3:",
+        "typedpress.config.ts:2:",
     );
     rejects(
         "reject-env-host-secret",
@@ -52,7 +52,7 @@ fn wordpress_secrets_are_refused_on_every_env_path() {
     rejects(
         "reject-hmac-host-secret",
         "`AUTH_KEY` is a host setting",
-        "typedpress.config.ts:4:",
+        "typedpress.config.ts:3:",
     );
 }
 
@@ -124,7 +124,7 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     // A default export has no name to register under.
     rejects(
         "reject-default-export-kind",
-        "a kind, action or job can't be a default export",
+        "a kind, query, mutation or job can't be a default export",
         "tp/notes.ts:3:16",
     );
     // wp-hooks/ beside typedpress.config.ts is from before tp/wp-hooks/: refused, never dropped.
@@ -168,7 +168,7 @@ fn removed_registry_keys_name_the_export_that_replaces_them() {
         (
             "actions",
             "`actions` is gone: an action registers by its export",
-            "the client call is `first.like()`",
+            "the client calls it as `like()`",
         ),
         (
             "jobs",
@@ -207,10 +207,10 @@ fn config_file_exports_register_under_their_export_name() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        r#"import { action, defineConfig, table, text } from "typedpress";
+        r#"import { defineConfig, table, text, mutation } from "typedpress";
 const variants = table({ name: text() }, { access: { read: "anyone" } });
 export { variants as productVariants };
-export const ping = action({ input: {}, access: "anyone", handler: () => 1 });
+export const ping = mutation({ access: "anyone" }, () => 1);
 export default defineConfig({ name: "exported" });
 "#,
     )
@@ -358,11 +358,6 @@ fn replaced_field_forms_name_their_replacement() {
             "`tags` is a `ref().many()` list, which sync can't carry yet",
             "tp/schema.ts:3:56",
         ),
-        (
-            "reject-ref-many-input",
-            "`ref()` isn't allowed on an action input (`ids`)",
-            "typedpress.config.ts:3:43",
-        ),
     ] {
         rejects(fixture, message, at);
     }
@@ -437,11 +432,6 @@ fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
             "reject-terms-global",
             "`terms()` isn't allowed on a global field (`featured`)",
             "typedpress.config.ts:4:44",
-        ),
-        (
-            "reject-terms-input",
-            "`terms()` isn't allowed on an action input (`ids`)",
-            "typedpress.config.ts:3:43",
         ),
         (
             "reject-terms-many",
@@ -663,7 +653,7 @@ fn mail_send_needs_recipients_a_subject_and_a_body() {
     rejects(
         "reject-mail-message",
         "mail.send() needs { to, subject, text or html }",
-        "typedpress.config.ts:3:",
+        "typedpress.config.ts:2:",
     );
     let out = first()
         .args(["check"])
@@ -2433,8 +2423,6 @@ fn rejects_phase2_static_contracts() {
             "`.primaryKey()` is gone: every kind has an integer `id`",
         ),
         ("reject-sync-reference", "sync references need uid: true on a"),
-        ("reject-job-reference", "`ref()` isn't allowed on an action input"),
-        ("reject-job-unique", "`.unique()` isn't allowed on an action input"),
         ("reject-job-retries", "job retries must be a whole number from 0 to 20"),
         ("reject-once-key", "once key must be a string"),
         ("reject-env-placement", "env() is only allowed in webhooks/signature"),
@@ -2449,7 +2437,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-env-hasown", "env() is only allowed in webhooks/signature"),
         ("reject-signature-access", "signature cannot be combined with access"),
         ("reject-webhook-collection", "webhook event names an unknown collection"),
-        ("reject-enqueue-unknown-job", "unknown job `send`"),
+        ("reject-enqueue-unknown-job", "`send` isn't defined"),
         (
             "reject-env-captured",
             "env() values can't be stored inside captured data",
@@ -3636,9 +3624,9 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
     std::fs::write(tmp.path().join("tp/run.mjs"), body).unwrap();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
-        r#"import { action, defineConfig, text } from "typedpress";
+        r#"import { defineConfig, text, mutation } from "typedpress";
 import { run } from "./tp/run.mjs";
-const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "p" });
+const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { return { v: run(input.s) }; }); export { __a as a }; export default defineConfig({ name: "p" });
 "#,
     )
     .unwrap();
@@ -5228,5 +5216,191 @@ fn the_openapi_document_describes_what_the_api_answers() {
     assert!(
         uncalled.is_empty(),
         "no request to these operations of the document succeeded, so their success schemas never ran: {uncalled:?}"
+    );
+}
+
+/// `query()`, `mutation()`, `job(options, handler)`, `cron()` and `x.enqueue()` on WordPress with Action
+/// Scheduler (tests/php/server_functions.php): typed input and its defaults, one transaction with the job
+/// a mutation queues, rate limits that count failed calls, and schedules installed once per build and
+/// removed with the job.
+#[test]
+fn queries_mutations_jobs_and_schedules_run_on_wordpress() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("fns");
+    copy(&root().join("tests/fixtures/server-functions"), &project);
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/server_functions.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains(", 0 failed"),
+        "{stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// A query may not write: a write in it, or in a function it calls, fails the build where it writes.
+#[test]
+fn a_query_that_writes_fails_the_build_at_the_write() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("typedpress.config.ts"),
+        r#"import { defineConfig, query, table, text } from "typedpress";
+export const notes = table({ title: text() });
+async function touch(id: number) { await notes.update(id, { title: "x" }); }
+export const read = query({}, async ({ id }: { id: number }) => { await touch(id); return 1; });
+export default defineConfig({ name: "q" });
+"#,
+    )
+    .unwrap();
+    let out = first().arg("check").arg(tmp.path()).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("`read` is a query, so it can't write: this updates a row (in a function the query calls)"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("--> typedpress.config.ts:3:"), "{stderr}");
+    assert!(stderr.contains("make it a mutation"), "{stderr}");
+}
+
+/// The forms `query()`, `mutation()`, `job(options, handler)` and `x.enqueue()` replaced are refused with the
+/// new spelling, and a typed input the site can't validate or the queue can't carry fails at the source.
+#[test]
+fn server_function_mistakes_are_refused_with_the_new_spelling() {
+    for (source, message, help) in [
+        (
+            "import { action } from \"typedpress\";\nexport const a = action({ input: {}, handler() { return 1; } });",
+            "`action()` is gone",
+            "mutation({ access: \"subscriber\" }",
+        ),
+        (
+            "import { job } from \"typedpress\";\nexport const a = job({ input: {}, handler() {} });",
+            "`job({ input, handler })` is gone",
+            "job({ retries: 3 }, async ({ postId }: { postId: number })",
+        ),
+        (
+            "import { jobs } from \"typedpress\";\nexport const a = 1;",
+            "`jobs` is gone",
+            ".enqueue(",
+        ),
+        (
+            "import { mutation } from \"typedpress\";\nexport const a = mutation({ input: {} }, async () => 1);",
+            "mutation() has no option `input`",
+            "the input is the handler's parameter type",
+        ),
+        (
+            "import { mutation } from \"typedpress\";\nexport const a = mutation({ readonly: true }, async () => 1);",
+            "mutation() has no option `readonly`",
+            "a function that only reads is a query()",
+        ),
+        (
+            "import { query } from \"typedpress\";\nexport const a = query({}, async (input) => 1);",
+            "this parameter has none",
+            "type it",
+        ),
+        (
+            "import { query } from \"typedpress\";\nexport const a = query({}, async (at: { when: Date }) => 1);",
+            "input field `when` is Date, which JSON can't carry",
+            "a date is an ISO string",
+        ),
+        (
+            "import { mutation } from \"typedpress\";\nexport const a = mutation({ rateLimit: \"5/fortnight\" }, async () => 1);",
+            "rateLimit \"5/fortnight\" isn't a count per period",
+            "10/min",
+        ),
+        (
+            "import { job } from \"typedpress\";\nexport const a = job({ every: \"30s\" }, async () => {});",
+            "every \"30s\" is under a minute",
+            "1m",
+        ),
+        (
+            "import { cron } from \"typedpress\";\nexport const a = cron(\"every day\", async () => {});",
+            "\"every day\" isn't a cron schedule",
+            "0 3 * * *",
+        ),
+        (
+            "import { job } from \"typedpress\";\nexport const a = job({ every: \"1h\" }, async ({ id }: { id: number }) => {});",
+            "a job on a schedule runs with no input",
+            "make every field optional",
+        ),
+        (
+            "import { job, mutation } from \"typedpress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j.enqueue({ id: \"one\" }); });",
+            "doesn't fit job `j`",
+            "",
+        ),
+        (
+            "import { job, mutation } from \"typedpress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j({ id: 1 }); });",
+            "`j` is a job: it runs on the queue, not as a function",
+            "j.enqueue(",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("typedpress.config.ts"),
+            format!("import {{ defineConfig }} from \"typedpress\";\n{source}\nexport default defineConfig({{ name: \"m\" }});\n"),
+        )
+        .unwrap();
+        let out = first().arg("check").arg(tmp.path()).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{source}\n{stderr}");
+        assert!(stderr.contains(message), "{source}\nexpected {message:?} in:\n{stderr}");
+        assert!(stderr.contains("--> typedpress.config.ts:"), "{source}\n{stderr}");
+        assert!(stderr.contains(help), "{source}\nexpected help {help:?} in:\n{stderr}");
+    }
+}
+
+/// After `if (a.b != null && a.b < 1) throw ...`, the member path `a.b` keeps its type on the false
+/// side of the `&&` (it isn't narrowed to `never`), so the next check on it compiles.
+#[test]
+fn a_member_path_keeps_its_type_after_a_conjunction_that_throws() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("typedpress.config.ts"),
+        r#"import { defineConfig, query, HttpError } from "typedpress";
+export const range = query({}, async (input: { q?: number | null }) => {
+  if (input.q != null && input.q < 1) throw new HttpError(422, "low", "low");
+  if (input.q != null && input.q > 5) throw new HttpError(422, "high", "high");
+  return input.q ?? 0;
+});
+export default defineConfig({ name: "n" });
+"#,
+    )
+    .unwrap();
+    let out = first().arg("check").arg(tmp.path()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+/// examples/pantry works end to end on WordPress (tests/php/pantry_example.php): the `consume` mutation,
+/// the `expiringSoon` query, the job its hook queues with `notifyLowStock.enqueue()` run by Action
+/// Scheduler, and the weekly `cron()` schedule.
+#[test]
+fn the_pantry_example_runs_its_query_mutation_job_and_schedule_on_wordpress() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("pantry");
+    copy(&root().join("examples/pantry"), &project);
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    assert!(
+        !String::from_utf8_lossy(&built.stdout).contains("new migrations"),
+        "the example's committed migrations are current: {}",
+        String::from_utf8_lossy(&built.stdout)
+    );
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/pantry_example.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains(", 0 failed"),
+        "{stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
     );
 }

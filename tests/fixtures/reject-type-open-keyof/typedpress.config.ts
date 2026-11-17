@@ -1,5 +1,5 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 type Keys = keyof Record<string, number>;
-export const example = action({ input: {}, handler: () => { const key: Keys = "anything"; return key; } });
+export const example = mutation({}, () => { const key: Keys = "anything"; return key; });
 
 export default defineConfig({});

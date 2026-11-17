@@ -314,9 +314,9 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
     std::fs::create_dir_all(project.join("tp/server")).unwrap();
     std::fs::write(
         project.join("tp/server/headlines.ts"),
-        "import { action } from \"typedpress\";\nimport { articles } from \"typedpress:db\";\n\n\
-         export const headlines = action({\n  access: \"anyone\",\n  input: {},\n  handler: async () => {\n    \
-         const rows = await articles.list({ limit: 5 });\n    return rows.map((row) => row.subtitle ?? row.title);\n  },\n});\n",
+        "import { query } from \"typedpress\";\nimport { articles } from \"typedpress:db\";\n\n\
+         export const headlines = query({ access: \"anyone\" }, async () => {\n  \
+         const rows = await articles.list({ limit: 5 });\n  return rows.map((row) => row.subtitle ?? row.title);\n});\n",
     )
     .unwrap();
     let out = build(&project);

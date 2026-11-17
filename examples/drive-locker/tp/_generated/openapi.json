@@ -1576,12 +1576,12 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "driveId": { "type": "integer" },
+                  "driveId": { "type": "number" },
                   "readOn": { "type": "string" },
-                  "powerOnHours": { "type": "integer", "minimum": 0 },
-                  "wearPercent": { "type": "number", "minimum": 0, "maximum": 100 },
-                  "reallocatedSectors": { "type": "integer", "minimum": 0 },
-                  "tempC": { "type": "number", "minimum": -40, "maximum": 150 }
+                  "powerOnHours": { "type": "number" },
+                  "wearPercent": { "type": "number" },
+                  "reallocatedSectors": { "type": "number" },
+                  "tempC": { "type": "number" }
                 },
                 "required": ["driveId", "readOn", "powerOnHours", "wearPercent", "reallocatedSectors", "tempC"]
               }
@@ -1646,13 +1646,59 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "query": { "type": "string", "minLength": 1, "maxLength": 160 }
+                  "query": { "type": "string" }
                 },
                 "required": ["query"]
               }
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {}
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "get": {
+        "tags": ["Actions"],
+        "operationId": "actions.whereIs.read",
+        "summary": "Call whereIs with GET",
+        "x-typedpress-access": "authenticated",
+        "description": "Runs the read-only `whereIs` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Any signed-in user may do this.",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "description": "The action's input, as JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": { "type": "string" }
+                  },
+                  "required": ["query"]
+                }
+              }
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The action's result.",
@@ -1748,6 +1794,81 @@
           "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
+      },
+      "get": {
+        "tags": ["Actions"],
+        "operationId": "actions.capacityReport.read",
+        "summary": "Call capacityReport with GET",
+        "x-typedpress-access": "authenticated",
+        "description": "Runs the read-only `capacityReport` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Any signed-in user may do this.",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "description": "The action's input, as JSON.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "totalGb": { "type": ["number", "null"] },
+                        "usedGb": { "type": ["number", "null"] },
+                        "freeGb": { "type": ["number", "null"] },
+                        "byPlace": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "placeId": { "type": ["number", "null"] },
+                              "name": { "type": "string" },
+                              "totalGb": { "type": ["number", "null"] },
+                              "usedGb": { "type": ["number", "null"] },
+                              "freeGb": { "type": ["number", "null"] }
+                            },
+                            "required": ["placeId", "name", "totalGb", "usedGb", "freeGb"]
+                          }
+                        },
+                        "byKind": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string" },
+                              "totalGb": { "type": ["number", "null"] },
+                              "usedGb": { "type": ["number", "null"] },
+                              "freeGb": { "type": ["number", "null"] }
+                            },
+                            "required": ["kind", "totalGb", "usedGb", "freeGb"]
+                          }
+                        }
+                      },
+                      "required": ["totalGb", "usedGb", "freeGb", "byPlace", "byKind"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
       }
     },
     "/actions/warrantyExpiring": {
@@ -1765,12 +1886,57 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "days": { "type": "integer", "minimum": 0, "maximum": 3650 }
+                  "days": { "type": "number" }
                 }
               }
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {}
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "get": {
+        "tags": ["Actions"],
+        "operationId": "actions.warrantyExpiring.read",
+        "summary": "Call warrantyExpiring with GET",
+        "x-typedpress-access": "authenticated",
+        "description": "Runs the read-only `warrantyExpiring` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Any signed-in user may do this.",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "description": "The action's input, as JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "days": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The action's result.",
@@ -1809,7 +1975,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "driveId": { "type": "integer" }
+                  "driveId": { "type": "number" }
                 },
                 "required": ["driveId"]
               }

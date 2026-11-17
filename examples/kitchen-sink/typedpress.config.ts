@@ -1,6 +1,6 @@
 import {
-  action, blocks, boolean, collection, date, db, defineConfig, email, env, file, files, global, group, HttpError, integer, job, jobs, media,
-  repeater, richText, select, slug, table, text, timestamp, url, userProjection, ref,
+  blocks, boolean, collection, date, db, defineConfig, email, env, file, files, global, group, HttpError, job, media,
+  repeater, richText, select, slug, table, text, timestamp, url, userProjection, ref, mutation,
 } from "typedpress";
 
 // Native WordPress posts: title, content, drafts, revisions and custom fields.
@@ -30,7 +30,7 @@ export const pages = collection({
     if (data.title === "") throw new HttpError(422, "invalid_input", "Give this page a title");
   },
   async afterCreate(page) {
-    await jobs.recordPage.enqueue({ pageId: page.id }, { key: `page-${page.id}` });
+    await recordPage.enqueue({ pageId: page.id }, { key: `page-${page.id}` });
   },
 });
 
@@ -79,28 +79,19 @@ export const settings = global({
   links: repeater({ label: text(), href: url() }).optional(),
 }, { label: "Site settings", access: { read: "anyone", update: "admin" } });
 
-export const recordPage = job({
-  input: { pageId: integer() }, retries: 3,
-  async handler({ pageId }) {
-    await db.insert(activity).values({ pageId, message: "Page created" });
-  },
+export const recordPage = job({ retries: 3 }, async ({ pageId }: { pageId: number }) => {
+  await db.insert(activity).values({ pageId, message: "Page created" });
 });
 
-export const publishPage = action({
-  input: { title: text(), body: text() }, access: "editor",
-  async handler({ title, body }) {
-    const [page] = await db.insert(pages).values({ title, body, status: "published" }).returning();
-    return page;
-  },
+export const publishPage = mutation({ access: "editor" }, async ({ title, body }: { title: string; body: string }) => {
+  const [page] = await db.insert(pages).values({ title, body, status: "published" }).returning();
+  return page;
 });
 
-export const renameMember = action({
-  input: { id: integer(), name: text() }, access: "admin",
-  async handler({ id, name }) {
-    const [member] = await db.update(members).set({ name }).where({ id }).returning();
-    if (!member) throw new HttpError(404, "not_found", "Member not found");
-    return member;
-  },
+export const renameMember = mutation({ access: "admin" }, async ({ id, name }: { id: number; name: string }) => {
+  const [member] = await db.update(members).set({ name }).where({ id }).returning();
+  if (!member) throw new HttpError(404, "not_found", "Member not found");
+  return member;
 });
 
 export default defineConfig({

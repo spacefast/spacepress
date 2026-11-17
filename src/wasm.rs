@@ -586,9 +586,9 @@ mod tests {
     /// The browser types `abilities.call` from the lock it is sent, exactly as the command line does.
     #[test]
     fn a_locked_ability_in_the_request_types_its_call() {
-        let config = r#"import { action, defineConfig } from "typedpress";
+        let config = r#"import { query, defineConfig } from "typedpress";
 import { abilities } from "php/wordpress";
-const __a = action({ input: {}, access: "anyone", handler: () => abilities.call("acme/info", { field: "title" }) }); export { __a as a }; export default defineConfig({});"#;
+const __a = query({ access: "anyone" }, () => abilities.call("acme/info", { field: "title" })); export { __a as a }; export default defineConfig({});"#;
         let lock = serde_json::json!({"version": 1, "abilities": [{"name": "acme/info",
             "input_schema": {"type": "object", "properties": {"field": {"enum": ["name"]}}, "required": ["field"]}, "output_schema": {}}]});
         let message = |files: serde_json::Value| {

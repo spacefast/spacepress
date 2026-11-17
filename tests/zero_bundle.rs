@@ -89,9 +89,35 @@ fn a_zero_source_bundle_compiles_like_the_same_app_captured_as_first() {
     }
     let (mut a, mut b) = (tree(&compiled_legacy), tree(&compiled_first));
     // The manifests name their own source hashes; the archive keeps each capture's ledger as sent.
+    // The port checks `add`'s title length in its handler, where the 0.3.0 capture declared it on
+    // the input: the handlers, the API description and the version hash they feed differ, and the
+    // actions are compared below by what callers see.
     for t in [&mut a, &mut b] {
         t.remove("manifest.json");
+        for generated in [
+            "plugins/typedpress-app-notes/tp/app/functions.php",
+            "plugins/typedpress-app-notes/tp/app/openapi.json",
+            "plugins/typedpress-app-notes/typedpress-app-notes.php",
+            "plugins/typedpress-app-notes/tp/app/schema.php",
+        ] {
+            t.remove(generated);
+        }
     }
+    let schema = |root: &Path| -> serde_json::Value {
+        let out = std::process::Command::new("php")
+            .args(["-r", "echo json_encode(require $argv[1]);"])
+            .arg(root.join("plugins/typedpress-app-notes/tp/app/schema.php"))
+            .output()
+            .unwrap();
+        let mut schema: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        for action in schema["actions"].as_object_mut().unwrap().values_mut() {
+            for field in action["input"].as_object_mut().into_iter().flat_map(|i| i.values_mut()) {
+                field.as_object_mut().unwrap().remove("rules");
+            }
+        }
+        schema
+    };
+    assert_eq!(schema(&compiled_legacy), schema(&compiled_first));
     let differing: Vec<_> = a
         .keys()
         .chain(b.keys())
@@ -134,9 +160,14 @@ fn the_0_3_field_forms_are_read_only_from_a_zero_bundle() {
     let app = work.path().join("live");
     copy_dir(&Path::new(FIXTURE).join("app"), &app);
     let config = fs::read_to_string(app.join("zero.config.ts")).unwrap();
+    // The field forms only: the config's `defineConfig` (with its 0.3.0 registries and actions) is
+    // refused for reasons of its own.
+    let config = config[..config.find("export default defineConfig").unwrap()].to_string()
+        + "export default defineConfig({ name: \"notes\" });\n";
     fs::write(
         app.join("typedpress.config.ts"),
         config
+            .replace(", action, ", ", ")
             .replace("from \"zero\"", "from \"typedpress\"")
             .replace("\"./lib/fields\"", "\"./tp/lib/fields\""),
     )
@@ -491,8 +522,8 @@ export default defineConfig({ routes: {} });"#,
             "tp/app/<path>/route.ts",
         ),
         (
-            r#"import { defineConfig, action, env } from "typedpress";
-export const hook = action({ input: {}, signature: { secret: env("S"), header: "x-sig", scheme: "zero" }, handler() { return 1; } });
+            r#"import { defineConfig, mutation, env } from "typedpress";
+export const hook = mutation({ signature: { secret: env("S"), header: "x-sig", scheme: "zero" } }, () => 1);
 export default defineConfig({});"#,
             "signature.scheme must be first or hmac-sha256",
             "",
@@ -607,15 +638,15 @@ export default defineConfig({ files: { decks } });"#,
             "`file(decks)` takes the export",
         ),
         (
-            r#"import { defineConfig, action } from "typedpress";
-const like = action({ input: {}, handler() { return 1; } });
+            r#"import { defineConfig, mutation } from "typedpress";
+const like = mutation({}, () => 1);
 export default defineConfig({ actions: { like } });"#,
             "`actions` is gone: an action registers by its export",
-            "the client call is `first.like()`",
+            "the client calls it as `like()`",
         ),
         (
             r#"import { defineConfig, job } from "typedpress";
-const digest = job({ input: {}, handler() {} });
+const digest = job({}, async () => {});
 export default defineConfig({ jobs: { digest } });"#,
             "`jobs` is gone: a job registers by its export",
             "export const digest = job(...)",

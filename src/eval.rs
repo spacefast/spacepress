@@ -274,15 +274,16 @@ pub const TP_EXPORTS: &[&str] = &[
     "global",
     "ref",
     "defineConfig",
-    "action",
+    "query",
+    "mutation",
     "db",
     "HttpError",
     "file",
     "files",
     "job",
+    "cron",
     "env",
     "once",
-    "jobs",
     "mail",
     "definePlugin",
     "adminScreen",
@@ -2783,13 +2784,29 @@ impl<'p> Evaluator<'p> {
             Builtin::Env => Some("env"),
             Builtin::Files => Some("files"),
             Builtin::Action => Some("action"),
+            // A 0.3.0 capture's `job({ input, handler })` is one object, read like `action()`.
+            Builtin::Job if self.legacy => Some("action"),
             Builtin::Job => Some("job"),
+            Builtin::Query => Some("query"),
+            Builtin::Mutation => Some("mutation"),
+            Builtin::Cron => Some("cron"),
             Builtin::Route => Some("route"),
             Builtin::AdminScreen => Some("adminScreen"),
             Builtin::Item => Some("item"),
             Builtin::RelFn(..) => Some("relation"),
             _ => None,
         };
+        if *b == Builtin::Job
+            && !self.legacy
+            && args.len() == 1
+            && matches!(args.first(), Some(Value::Object(o)) if o.borrow().contains_key("handler"))
+        {
+            return err_help(
+                span,
+                "`job({ input, handler })` is gone: the options come first and the handler second",
+                "write `job({ retries: 3 }, async ({ postId }: { postId: number }) => { ... })`; the input comes from the handler's parameter type",
+            );
+        }
         if let Some(name) = name {
             crate::builtins::check("typedpress", name, args.len(), crate::builtins::Phase::Evaluator, span)
                 .map_err(Ctl::Err)?;
@@ -2996,7 +3013,7 @@ impl<'p> Evaluator<'p> {
             Builtin::DefineConfig => Ok(arg(0)),
             Builtin::AdminScreen => match arg(0) {
                 config @ Value::Object(_) => {
-                    let value = Value::Screen(Rc::new(ActionVal { config, span }));
+                    let value = Value::Screen(Rc::new(ActionVal::object(config, span)));
                     self.built.push(value.clone());
                     Ok(value)
                 }
@@ -3023,7 +3040,7 @@ impl<'p> Evaluator<'p> {
                 ),
             },
             Builtin::DefinePlugin => match arg(0) {
-                config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal { config, span }))),
+                config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal::object(config, span)))),
                 _ => err_help(
                     span,
                     "definePlugin() needs `{ name, hooks?, actions?, jobs? }`",
@@ -3088,6 +3105,72 @@ impl<'p> Evaluator<'p> {
                 "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
+            Builtin::Query | Builtin::Mutation | Builtin::Cron => {
+                let (what, example) = match b {
+                    Builtin::Query => (
+                        "query()",
+                        "query({ access: \"anyone\" }, async ({ limit = 10 }: { limit?: number }) => ...)",
+                    ),
+                    Builtin::Mutation => (
+                        "mutation()",
+                        "mutation({ access: \"subscriber\" }, async ({ id }: { id: number }) => { ... })",
+                    ),
+                    _ => ("cron()", "cron(\"0 3 * * *\", async () => { ... })"),
+                };
+                let (config, handler) = (arg(0), arg(1));
+                let config_ok = if *b == Builtin::Cron {
+                    matches!(config, Value::Str(_))
+                } else {
+                    matches!(config, Value::Object(_))
+                };
+                if !config_ok || !matches!(handler, Value::Closure(_)) {
+                    let first = if *b == Builtin::Cron {
+                        "a schedule like \"0 3 * * *\""
+                    } else {
+                        "an options object"
+                    };
+                    return err_help(
+                        span,
+                        format!("{what} takes {first}, then the handler function"),
+                        format!("write `{example}`"),
+                    );
+                }
+                let value = Rc::new(ActionVal {
+                    config,
+                    span,
+                    form: match b {
+                        Builtin::Query => FnForm::Query,
+                        Builtin::Mutation => FnForm::Mutation,
+                        _ => FnForm::Cron,
+                    },
+                    handler,
+                });
+                let value = if *b == Builtin::Cron {
+                    Value::Job(value)
+                } else {
+                    Value::Action(value)
+                };
+                self.built.push(value.clone());
+                Ok(value)
+            }
+            Builtin::Job if !self.legacy => {
+                let (config, handler) = (arg(0), arg(1));
+                if !matches!(config, Value::Object(_)) || !matches!(handler, Value::Closure(_)) {
+                    return err_help(
+                        span,
+                        "job() takes an options object, then the handler function",
+                        "write `job({ retries: 3 }, async ({ postId }: { postId: number }) => { ... })`",
+                    );
+                }
+                let value = Value::Job(Rc::new(ActionVal {
+                    config,
+                    span,
+                    form: FnForm::Job,
+                    handler,
+                }));
+                self.built.push(value.clone());
+                Ok(value)
+            }
             Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
@@ -3100,7 +3183,7 @@ impl<'p> Evaluator<'p> {
                         },
                     );
                 }
-                let value = Rc::new(ActionVal { config: cfg, span });
+                let value = Rc::new(ActionVal::object(cfg, span));
                 let value = match b {
                     Builtin::Job => Value::Job(value),
                     Builtin::Route => Value::Route(value),
@@ -4283,7 +4366,17 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "file" => Builtin::Field("file"),
         "files" => Builtin::Files,
         "job" => Builtin::Job,
-        "jobs" => Builtin::Jobs,
+        "cron" => Builtin::Cron,
+        "query" => Builtin::Query,
+        "mutation" => Builtin::Mutation,
+        "jobs" if legacy => Builtin::Jobs,
+        "jobs" => {
+            return err_help(
+                span,
+                "`jobs` is gone: a job is queued through its own export",
+                "import the job and call `notifyLowStock.enqueue({ itemId }, { delay: 60, key: \"low-1\" })`",
+            );
+        }
         "once" => Builtin::Once,
         "mail" => Builtin::Mail,
         "env" => Builtin::Env,
@@ -4298,7 +4391,14 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "definePlugin" => Builtin::DefinePlugin,
         "adminScreen" => Builtin::AdminScreen,
         "item" => Builtin::Item,
-        "action" => Builtin::Action,
+        "action" if legacy => Builtin::Action,
+        "action" => {
+            return err_help(
+                span,
+                "`action()` is gone: a server function is `query()` when it only reads and `mutation()` when it writes",
+                "write `export const like = mutation({ access: \"subscriber\" }, async ({ id }: { id: number }) => { ... })`; the input comes from the handler's parameter type",
+            );
+        }
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
         n if TP_TYPES.contains(&n) => return Ok(Value::Undef),
@@ -6046,7 +6146,7 @@ mod legacy {
     pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type", "references"];
 
     /// `"zero"` exports this reading accepts besides the current ones (for `import * as z`).
-    pub const EXPORTS: &[&str] = &["id", "real", "route", "defineRelations"];
+    pub const EXPORTS: &[&str] = &["id", "real", "route", "defineRelations", "action", "jobs"];
 
     /// The integer primary key: the implicit `id`, or `id()`.
     pub fn id(span: Span) -> ColBuilder {

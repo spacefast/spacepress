@@ -30,11 +30,6 @@ type Entities = {
     'updatedAt': ColumnBuilder<'timestamp', string, true, true, false, false>;
   }, false, 'table'>;
 };
-type Jobs = {
-  'notifyLowStock': Job<{
-    'itemId': ColumnBuilder<'integer', number, true, false, false, false>;
-  }>;
-};
 type Graph = {
   'locations': {
     'items': Many<'items'>;
@@ -47,4 +42,4 @@ type Graph = {
     'itemId': One<'items', true>;
   };
 };
-declare module "typedpress" { interface Register { relations: Relations<Entities, Graph>; jobs: Jobs } }
+declare module "typedpress" { interface Register { relations: Relations<Entities, Graph> } }

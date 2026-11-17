@@ -250,7 +250,7 @@ fn every_build_keeps_a_baseline_and_describes_its_storage() {
     let second = typedpress::host::compile_to_store(&two, &root, &two, Some(&first.build_id)).unwrap();
     assert_eq!(first.manifest.baseline, None);
     assert_eq!(second.manifest.baseline.as_deref(), Some(first.build_id.as_str()));
-    assert_eq!(first.manifest.jobs, ["notifyLowStock"]);
+    assert_eq!(first.manifest.jobs, ["notifyLowStock", "weeklyList"]);
     assert_eq!(
         first.manifest.wordpress.as_deref(),
         Some(typedpress::platform::WORDPRESS)
@@ -344,7 +344,7 @@ fn manifests_with_and_without_the_deployment_fields_load() {
         .unwrap();
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
-        "[\"notifyLowStock\"]",
+        "[\"notifyLowStock\",\"weeklyList\"]",
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );

@@ -674,6 +674,7 @@ impl Lowerer {
                         },
                     ),
                     ann: this_ann.clone(),
+                    declared: None,
                     default: None,
                     optional: false,
                     rest: false,
@@ -823,6 +824,7 @@ impl Lowerer {
                                     },
                                 ),
                                 ann: None,
+                                declared: None,
                                 default: None,
                                 optional: false,
                                 rest: false,
@@ -927,6 +929,7 @@ impl Lowerer {
                                     },
                                 ),
                                 ann: None,
+                                declared: None,
                                 default: None,
                                 optional: false,
                                 rest: false,
@@ -1149,6 +1152,10 @@ impl Lowerer {
             out.push(Param {
                 pat: self.pattern(&item.pattern)?,
                 ann: self.annotation(item.type_annotation.as_ref())?,
+                declared: match &item.type_annotation {
+                    Some(t) if self.erase_types => self.ty(&t.type_annotation).ok(),
+                    _ => None,
+                },
                 default: item.initializer.as_ref().map(|e| self.expr(e)).transpose()?,
                 optional: item.optional,
                 rest: false,
@@ -1159,6 +1166,7 @@ impl Lowerer {
             out.push(Param {
                 pat: self.pattern(&r.rest.argument)?,
                 ann: self.annotation(r.type_annotation.as_ref())?,
+                declared: None,
                 default: None,
                 optional: false,
                 rest: true,

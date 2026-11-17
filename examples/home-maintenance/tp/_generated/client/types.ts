@@ -33,7 +33,7 @@ export type DoneLogOrder = Partial<Record<"id" | "title" | "ownerId" | "taskId" 
 export interface DueNextInput { days?: number }
 export type DueNextOutput = { through: string; tasks: Task[] };
 
-export interface MarkDoneInput { taskId: number; notes?: string | null; costCents?: number | null }
+export interface MarkDoneInput { taskId: number; notes?: string; costCents?: number }
 export type MarkDoneOutput = { log?: DoneLog; task?: Task };
 
 export interface YearCostInput { year: number }

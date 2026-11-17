@@ -175,6 +175,15 @@ pub fn build(
     app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::content_page::register(program, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::runtime_schema::apply(runtime_lock.as_ref(), &mut ev, &mut ext)?;
+    // A query's, mutation's or job's input is its handler's parameter type: read before anything
+    // reads inputs (admin screens, the compiled handlers, the client).
+    let inputs = {
+        let schema = ext.schema.clone();
+        let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
+        c.infer_inputs(&ext.roots).map_err(|d| d.phase(diag::Code::Compile))?
+    };
+    compile::apply_inputs(&mut ext.schema, inputs);
+    extract::screens(&config, &mut ev, config_span, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;

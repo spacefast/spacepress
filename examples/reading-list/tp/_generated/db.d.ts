@@ -18,11 +18,6 @@ type Entities = {
     'ownerId': ColumnBuilder<'integer', number, true, false, false, false>;
   }, false, 'table'>;
 };
-type Jobs = {
-  'tally': Job<{
-    'bookId': ColumnBuilder<'integer', number, true, false, false, false>;
-  }>;
-};
 type Graph = {
   'books': {
     'reads': Many<'reads'>;
@@ -31,4 +26,4 @@ type Graph = {
     'bookId': One<'books', false>;
   };
 };
-declare module "typedpress" { interface Register { relations: Relations<Entities, Graph>; jobs: Jobs } }
+declare module "typedpress" { interface Register { relations: Relations<Entities, Graph> } }

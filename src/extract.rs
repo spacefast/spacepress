@@ -99,6 +99,8 @@ pub struct Extracted {
     /// Each registered action's value (its allocation) → its registered name, so a page's
     /// `<form action={subscribe}>` and `useFormState(subscribe)` name the action they were given.
     pub action_values: HashMap<usize, String>,
+    /// Each registered job's value → its registered name, so `notifyLowStock.enqueue(...)` names it.
+    pub job_values: HashMap<usize, String>,
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
     pub uses: Vec<crate::plugins::Plugin>,
@@ -275,6 +277,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         collections: Vec::new(),
         hints: Vec::new(),
         action_values: HashMap::new(),
+        job_values: HashMap::new(),
         refs: Vec::new(),
         plugins: None,
         uses: Vec::new(),
@@ -794,12 +797,19 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     if let Some(v) = cfg_map.get("use").filter(|v| !matches!(v, Value::Undef)) {
         uses(v, span_of(ev, config, "use", config_span), ev, &mut out)?;
     }
-    // Screens name actions, the app's and its plugins', so they come after both.
-    if let Some(v) = cfg_map.get("screens").filter(|v| !matches!(v, Value::Undef)) {
-        crate::admin_screen::screens(v, span_of(ev, config, "screens", config_span), ev, &mut out)?;
-    }
     validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)
+}
+
+/// Admin screens. They name actions, the app's and its plugins', and read their inputs, so they are
+/// read once those inputs are known (`Compiler::infer_inputs`).
+pub fn screens(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, out: &mut Extracted) -> Result<()> {
+    let Value::Object(cfg) = config else { return Ok(()) };
+    let v = cfg.borrow().get("screens").cloned();
+    match v.filter(|v| !matches!(v, Value::Undef)) {
+        Some(v) => crate::admin_screen::screens(&v, ev.key_span(config, "screens").unwrap_or(config_span), ev, out),
+        None => Ok(()),
+    }
 }
 
 /// `hooks.<collectionKey>.<hook>`, from the app or from a plugin (`plugin`: index and name).
@@ -916,7 +926,10 @@ fn actions(
     plugin: Option<(usize, &str)>,
 ) -> Result<()> {
     let Value::Object(actions) = actions_val else {
-        return Err(Diag::new(aspan, "`actions` must be an object of action(...) values"));
+        return Err(Diag::new(
+            aspan,
+            "`actions` must be an object of query(...) and mutation(...) values",
+        ));
     };
     for (name, a) in actions.borrow().iter() {
         let nspan = ev.key_span(actions_val, name).unwrap_or(aspan);
@@ -931,9 +944,13 @@ fn actions(
         let Value::Action(a) = a else {
             return Err(Diag::new(
                 nspan,
-                format!("action `{name}` must be wrapped in action({{ input, handler }})"),
+                format!("`{name}` must be a query(...) or a mutation(...)"),
             ));
         };
+        if a.form != FnForm::Object {
+            typed_action(name, a, ev, out, plugin)?;
+            continue;
+        }
         let Value::Object(cfg) = &a.config else { unreachable!() };
         let cfg = cfg.borrow().clone();
         for k in cfg.keys() {
@@ -1017,11 +1034,206 @@ fn actions(
                 destructive,
                 signature,
                 output: None,
+                input_ty: None,
+                query: false,
+                rate_limit: None,
+                typed_input: false,
             },
         );
     }
     Ok(())
 }
+
+/// `query(options, handler)` / `mutation(options, handler)`. The input is the handler's first
+/// parameter type, which the compiler reads before anything uses it (`Compiler::infer_inputs`).
+fn typed_action(
+    name: &str,
+    a: &Rc<ActionVal>,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
+    let query = a.form == FnForm::Query;
+    let what = if query { "query()" } else { "mutation()" };
+    let Value::Object(cfg) = &a.config else {
+        unreachable!("checked by the evaluator")
+    };
+    let cfg = cfg.borrow().clone();
+    let at = |k: &str| ev.key_span(&a.config, k).unwrap_or(a.span);
+    let allowed: &[&str] = if query {
+        &["access", "agents", "rateLimit"]
+    } else {
+        &[
+            "access",
+            "agents",
+            "idempotent",
+            "destructive",
+            "signature",
+            "rateLimit",
+        ]
+    };
+    for k in cfg.keys() {
+        if allowed.contains(&k.as_str()) {
+            continue;
+        }
+        let d = Diag::new(at(k), format!("{what} has no option `{k}`"));
+        return Err(match k.as_str() {
+            "input" => d.help(
+                "the input is the handler's parameter type: `async ({ id }: { id: number }) => ...`; defaults go in the destructuring, `({ limit = 10 }: { limit?: number })`",
+            ),
+            "handler" => d.help(format!("pass the handler after the options: `{}({{ ... }}, async (input) => ...)`", &what[..what.len() - 2])),
+            "readonly" if !query => d.help("a function that only reads is a query(): it is marked read-only for agents and may not write"),
+            "readonly" => d.help("a query is always read-only; remove the option"),
+            "idempotent" | "destructive" | "signature" if query => {
+                d.help("a query only reads, so it is idempotent and not destructive; a signed request is a mutation()")
+            }
+            _ => d.help(format!("use {}", allowed.join(", "))),
+        });
+    }
+    let Value::Closure(handler) = &a.handler else {
+        unreachable!("checked by the evaluator")
+    };
+    let owner = Owner::Action(name.to_string());
+    let agents = bool_option(&cfg, "agents", true, at("agents"))?;
+    let idempotent = bool_option(&cfg, "idempotent", false, at("idempotent"))?;
+    let destructive = bool_option(&cfg, "destructive", false, at("destructive"))?;
+    let signature = match cfg.get("signature") {
+        None | Some(Value::Undef) => None,
+        Some(v) => {
+            if cfg.contains_key("access") {
+                return Err(Diag::new(at("signature"), "signature cannot be combined with access")
+                    .help("remove access; signature authenticates the caller"));
+            }
+            Some(signature_config(v, at("signature"), ev.legacy())?)
+        }
+    };
+    let anyone = matches!(cfg.get("access"), Some(Value::Str(s)) if s.as_ref() == "anyone");
+    let access = match cfg.get("access") {
+        None | Some(Value::Undef) => Access::editor(),
+        Some(v) => access_rule(
+            v,
+            at("access"),
+            &owner,
+            "access",
+            format!("action__{name}__access"),
+            out,
+        )?,
+    };
+    let rate_limit = match cfg.get("rateLimit") {
+        // A mutation anyone may call is limited unless it says otherwise (a signed one is not
+        // called by visitors).
+        None | Some(Value::Undef) if !query && anyone && signature.is_none() => Some(DEFAULT_RATE_LIMIT),
+        None | Some(Value::Undef) | Some(Value::Bool(false)) => None,
+        Some(Value::Str(spec)) => Some(rate_limit(spec, at("rateLimit"))?),
+        Some(other) => {
+            return Err(Diag::new(
+                at("rateLimit"),
+                format!("rateLimit is a string like \"10/min\", not {}", other.describe()),
+            )
+            .help("write `rateLimit: \"10/min\"` (per second, min, hour or day), or `rateLimit: false` for none"));
+        }
+    };
+    out.action_values.insert(Rc::as_ptr(a) as usize, name.to_string());
+    out.roots.push(Root {
+        closure: handler.clone(),
+        slot: Slot::ActionHandler {
+            action: name.to_string(),
+        },
+        name: format!("action__{name}"),
+        plugin: plugin.map(|(i, _)| i),
+    });
+    out.schema.actions.insert(
+        name.to_string(),
+        Action {
+            name: name.to_string(),
+            input: IndexMap::new(),
+            handler: String::new(),
+            access,
+            agents,
+            idempotent,
+            readonly: query,
+            destructive,
+            signature,
+            output: None,
+            input_ty: None,
+            query,
+            rate_limit,
+            typed_input: true,
+        },
+    );
+    Ok(())
+}
+
+/// What a mutation open to `"anyone"` is limited to when it names no `rateLimit`.
+pub const DEFAULT_RATE_LIMIT: RateLimit = RateLimit { count: 30, window: 60 };
+
+/// `"10/min"`: a count per second, minute, hour or day.
+fn rate_limit(spec: &str, span: Span) -> Result<RateLimit> {
+    let bad = || {
+        Diag::new(span, format!("rateLimit \"{spec}\" isn't a count per period"))
+            .help("write `rateLimit: \"10/min\"`: a whole number, a slash, then sec, min, hour or day")
+    };
+    let (count, unit) = spec.split_once('/').ok_or_else(bad)?;
+    let count: u32 = count.trim().parse().map_err(|_| bad())?;
+    let window = match unit.trim() {
+        "s" | "sec" | "second" => 1,
+        "m" | "min" | "minute" => 60,
+        "h" | "hour" => 3600,
+        "d" | "day" => 86_400,
+        _ => return Err(bad()),
+    };
+    if count == 0 {
+        return Err(Diag::new(span, "rateLimit allows at least one call per period")
+            .help("to refuse every call, use access; to remove the limit, `rateLimit: false`"));
+    }
+    Ok(RateLimit { count, window })
+}
+
+/// `every: "1h"`: seconds, at least a minute (Action Scheduler runs once a minute at most).
+fn every(spec: &str, span: Span) -> Result<u64> {
+    let bad = || {
+        Diag::new(span, format!("every \"{spec}\" isn't a duration"))
+            .help("write a whole number and a unit: \"30m\", \"1h\", \"1d\" (s, m, h, d or w)")
+    };
+    let digits = spec.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let n: u64 = digits.parse().map_err(|_| bad())?;
+    let seconds = match &spec[digits.len()..] {
+        "s" => n,
+        "m" => n * 60,
+        "h" => n * 3600,
+        "d" => n * 86_400,
+        "w" => n * 604_800,
+        _ => return Err(bad()),
+    };
+    if seconds < 60 {
+        return Err(Diag::new(span, format!("every \"{spec}\" is under a minute"))
+            .help("Action Scheduler runs due work about once a minute; use \"1m\" or longer"));
+    }
+    Ok(seconds)
+}
+
+/// A five-field cron expression (minute hour day-of-month month day-of-week), or `@daily` and its
+/// siblings, as Action Scheduler's `as_schedule_cron_action` reads it. Times are UTC.
+fn cron_schedule(spec: &str, span: Span) -> Result<String> {
+    let spec = spec.trim();
+    if matches!(
+        spec,
+        "@yearly" | "@annually" | "@monthly" | "@weekly" | "@daily" | "@hourly"
+    ) {
+        return Ok(spec.to_string());
+    }
+    let fields: Vec<&str> = spec.split_whitespace().collect();
+    let names = |f: &str| {
+        f.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '*' | ',' | '/' | '-' | '?' | 'L' | 'W' | '#'))
+    };
+    if fields.len() != 5 || !fields.iter().all(|f| names(f)) {
+        return Err(Diag::new(span, format!("\"{spec}\" isn't a cron schedule"))
+            .help("write five fields, minute hour day month weekday, in UTC: \"0 3 * * *\" runs at 03:00 every day"));
+    }
+    Ok(fields.join(" "))
+}
+
 /// The registered name of a plugin's action, job or route.
 fn registered(plugin: Option<(usize, &str)>, name: &str) -> String {
     plugin.map_or_else(|| name.to_string(), |(_, p)| format!("{p}_{name}"))
@@ -2631,6 +2843,8 @@ fn column(
         hidden: false,
         ts_type: b.ts_type.clone(),
         was: b.was.clone(),
+        omit: false,
+        inferred: None,
     })
 }
 
@@ -4002,7 +4216,7 @@ fn phase2_jobs(cfg: &IndexMap<String, Value>, ev: &mut Evaluator<'_>, span: Span
     }
 }
 
-/// `jobs.<name>`; a plugin's are registered as `<plugin>_<name>`.
+/// Each registered job; a plugin's are registered as `<plugin>_<name>`.
 fn jobs(
     v: &Value,
     ev: &mut Evaluator<'_>,
@@ -4012,7 +4226,8 @@ fn jobs(
 ) -> Result<()> {
     for (name, value) in object(v, span, "jobs")? {
         let Value::Job(j) = value else {
-            return Err(Diag::new(span, "jobs entries must use job()").help("write job({ input, handler })"));
+            return Err(Diag::new(span, "jobs entries must use job()")
+                .help("write job({ retries: 3 }, async ({ id }: { id: number }) => { ... })"));
         };
         if !valid_ident(&name) {
             return Err(Diag::new(j.span, "invalid job name").help("use an identifier"));
@@ -4021,6 +4236,11 @@ fn jobs(
         if out.schema.jobs.contains_key(&name) {
             return Err(Diag::new(j.span, format!("two jobs are both registered as `{name}`"))
                 .help("rename one; plugin jobs are registered as <plugin>_<name>"));
+        }
+        out.job_values.insert(Rc::as_ptr(&j) as usize, name.clone());
+        if j.form != FnForm::Object {
+            typed_job(name, &j, ev, out, plugin)?;
+            continue;
         }
         let o = object(&j.config, j.span, "job")?;
         keys(&o, &["input", "handler", "retries", "agents"], j.span, "job")?;
@@ -4063,9 +4283,87 @@ fn jobs(
                 handler: String::new(),
                 retries,
                 agents,
+                schedule: None,
+                typed_input: false,
+                input_ty: None,
             },
         );
     }
+    Ok(())
+}
+
+/// `job(options, handler)` and `cron(schedule, handler)`: the input is the handler's first
+/// parameter type, as for a query or mutation.
+fn typed_job(
+    name: String,
+    j: &Rc<ActionVal>,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
+    let Value::Closure(handler) = &j.handler else {
+        unreachable!("checked by the evaluator")
+    };
+    let (retries, agents, schedule) = if j.form == FnForm::Cron {
+        let Value::Str(spec) = &j.config else {
+            unreachable!("checked by the evaluator")
+        };
+        (3, false, Some(Schedule::Cron(cron_schedule(spec, j.span)?)))
+    } else {
+        let o = object(&j.config, j.span, "job")?;
+        let at = |k: &str| ev.key_span(&j.config, k).unwrap_or(j.span);
+        for k in o.keys() {
+            if !matches!(k.as_str(), "retries" | "agents" | "every") {
+                let d = Diag::new(at(k), format!("job() has no option `{k}`"));
+                return Err(match k.as_str() {
+                    "input" => d.help("the input is the handler's parameter type: `job({ retries: 3 }, async ({ postId }: { postId: number }) => ...)`"),
+                    "handler" => d.help("pass the handler after the options: `job({ retries: 3 }, async (input) => ...)`"),
+                    "cron" => d.help("a job on a cron schedule is `cron(\"0 3 * * *\", async () => ...)`"),
+                    _ => d.help("use retries, agents, every"),
+                });
+            }
+        }
+        let retries = match o.get("retries") {
+            None | Some(Value::Undef) => 3,
+            Some(Value::Num(n)) if *n >= 0.0 && *n <= 20.0 && n.fract() == 0.0 => *n as u32,
+            _ => {
+                return Err(
+                    Diag::new(at("retries"), "job retries must be a whole number from 0 to 20").help("use retries: 3"),
+                );
+            }
+        };
+        let agents = bool_option(&o, "agents", false, at("agents"))?;
+        let schedule = match o.get("every") {
+            None | Some(Value::Undef) => None,
+            Some(Value::Str(spec)) => Some(Schedule::Every(every(spec, at("every"))?)),
+            Some(other) => {
+                return Err(Diag::new(
+                    at("every"),
+                    format!("every is a duration like \"1h\", not {}", other.describe()),
+                )
+                .help("write `every: \"1h\"` (s, m, h, d or w)"));
+            }
+        };
+        (retries, agents, schedule)
+    };
+    out.roots.push(Root {
+        closure: handler.clone(),
+        slot: Slot::JobHandler { job: name.clone() },
+        name: format!("job__{name}"),
+        plugin: plugin.map(|(i, _)| i),
+    });
+    out.schema.jobs.insert(
+        name,
+        Job {
+            input: IndexMap::new(),
+            handler: String::new(),
+            retries,
+            agents,
+            schedule,
+            typed_input: true,
+            input_ty: None,
+        },
+    );
     Ok(())
 }
 

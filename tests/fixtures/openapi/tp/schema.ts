@@ -1,6 +1,6 @@
 import {
-  action, blocks, boolean, collection, date, email, global, group, integer, json, media, number,
-  ref, repeater, richText, select, slug, table, text, timestamp, url, userProjection,
+  blocks, boolean, collection, date, email, global, group, integer, json, media, number,
+  ref, repeater, richText, select, slug, table, text, timestamp, url, userProjection, query, mutation, HttpError,
 } from "typedpress";
 
 export const authors = collection({
@@ -49,21 +49,8 @@ export const site = global({
   perPage: integer().default(10).min(1).max(50),
 }, { label: "Site options" });
 
-export const greet = action({
-  input: { who: text().max(40), times: integer().min(1).max(3).optional() },
-  access: "anyone",
-  handler: ({ who, times }) => ({ greeting: `Hello, ${who}`, times: times ?? 1, loud: false }),
-});
+export const greet = mutation({ access: "anyone" }, ({ who, times }: { who: string; times?: number }) => { if (who.length > 40) throw new HttpError(422, "invalid_input", "who must be at most 40 characters", "/who"); if (times !== undefined && times < 1) throw new HttpError(422, "invalid_input", "times must be at least 1", "/times"); if (times !== undefined && times > 3) throw new HttpError(422, "invalid_input", "times must be at most 3", "/times"); return ({ greeting: `Hello, ${who}`, times: times ?? 1, loud: false }); });
 
-export const tallyCount = action({
-  input: {},
-  access: "anyone",
-  readonly: true,
-  handler: () => [1, 2, 3].length,
-});
+export const tallyCount = query({ access: "anyone" }, () => [1, 2, 3].length);
 
-export const stamp = action({
-  input: { label: text() },
-  idempotent: true,
-  handler: ({ label }) => [label, 1] as [string, number],
-});
+export const stamp = mutation({ idempotent: true }, ({ label }: { label: string }) => [label, 1] as [string, number]);

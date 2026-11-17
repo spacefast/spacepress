@@ -2,7 +2,7 @@
 // the `examples` table; the star counts are filled in by the `refreshStars` job. When they are
 // more than a day old this page asks for a refresh on the job queue and shows what it has.
 import { examples } from "typedpress:db";
-import { jobs } from "typedpress";
+import { refreshStars } from "../../server";
 
 export const metadata = { title: "Examples", description: "Whole apps to read, edit in the playground and copy." };
 
@@ -11,7 +11,7 @@ const DAY = 24 * 60 * 60 * 1000;
 export default async function Examples() {
   const rows = await examples.list({ orderBy: { position: "asc" }, limit: 50 });
   const stale = rows.some((row) => !row.starsAt || Date.now() - new Date(row.starsAt).getTime() > DAY);
-  if (stale) await jobs.refreshStars.enqueue({}, { key: "refresh-stars" });
+  if (stale) await refreshStars.enqueue({}, { key: "refresh-stars" });
   return (
     <main className="prose">
       <h1>Examples</h1>

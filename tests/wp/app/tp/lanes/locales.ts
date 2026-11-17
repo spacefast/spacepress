@@ -4,7 +4,7 @@
 // Localization (§7.3): `tours` is a post-backed localized collection (Polylang owns language +
 // group) that also syncs with Markdown files (lane C), `phrases` a `table()` one (TypedPress's own
 // translationGroup column).
-import { action, collection, db, integer, richText, select, slug, text, table } from "typedpress";
+import { collection, db, integer, richText, select, slug, text, table, mutation } from "typedpress";
 
 export const tours = collection({
   title: text().localized(),
@@ -33,9 +33,9 @@ export const phrases = table({
   weight: integer().optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
-export const refsTranslations = action({ input: { id: integer() }, access: "editor", handler: async (input) => {
+export const refsTranslations = mutation({ access: "editor" }, async (input: { id: number }) => {
   const row = await db.query.tours.findFirst({ where: { id: input.id }, locale: "*" });
   return row ? Object.keys(row.translations).sort() : [];
-} });
+});
 /** Top-level options this lane owns (e.g. webhooks, media, locales). */
 export const config = { locales: { default: "en", all: ["en", "de", "fr"] } };

@@ -105,7 +105,7 @@ export interface FieldUi {
 }
 
 /**
- * A column definition inside `collection(...)`, `global(...)`, a structured field, or `action({ input })`.
+ * A column definition inside `collection(...)`, `global(...)`, or a structured field.
  * Builders are immutable: each modifier returns a new builder.
  *
  * - `TData`       — the TS value type (select union, `json<T>()`, sub-field shapes, ...)
@@ -883,7 +883,7 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
  * }
  * ```
  *
- * `typedpress build` emits the kinds, globals and jobs structurally, with the relation graph, so
+ * `typedpress build` emits the kinds and globals structurally, with the relation graph, so
  * nothing imports the sources that export them; localized projects also register their locale
  * union.
  */
@@ -1122,48 +1122,58 @@ export type Hooks<TSchema extends Schema> = {
   [K in keyof TSchema]?: CollectionHooks<TSchema[K]>;
 };
 
-/** Action input after defaults: required when NOT NULL or defaulted. */
-type ActionInputKeys<TInput> = {
-  [K in keyof TInput]: TInput[K] extends {
-    readonly [columnBrand]: { notNull: true } | { hasDefault: true };
-  }
-    ? K
-    : never;
-}[keyof TInput];
+/** A query's or mutation's input: its handler's first parameter type, `{}` when it takes none. */
+type HandlerInput<F> = F extends (input: infer I, ...rest: any[]) => any ? (unknown extends I ? {} : I) : {};
 
-export type InferActionInput<TInput extends ColumnsConfig> = Simplify<
-  { [K in ActionInputKeys<TInput>]: SelectValue<TInput[K]> } & {
-    [K in Exclude<keyof TInput, ActionInputKeys<TInput>>]?: SelectValue<TInput[K]>;
-  }
->;
-
-export interface Action<TInput extends ColumnsConfig = ColumnsConfig, TResult = unknown> {
+/** A `query()` or `mutation()`: called from the browser by its export name, and from server code. */
+export interface Action<TInput = any, TResult = unknown> {
   readonly [actionBrand]: { input: TInput; result: TResult };
   /**
-   * From a `"use client"` component: a `fetch` to the action's endpoint, with the REST nonce. The
-   * parameter is checked through `ClientInput`, so an action of any input stays an `AnyAction`.
+   * From a `"use client"` component: a `fetch` to the function's endpoint, with the REST nonce. From
+   * server code: a call as the current caller, with its access check.
    */
-  <I extends ClientInput<TInput>>(input: I): Promise<Awaited<TResult>>;
+  (input: TInput): Promise<Awaited<TResult>>;
 }
 
-/** The input a client call passes: the action's input, or anything for `AnyAction`. */
-type ClientInput<TInput extends ColumnsConfig> = ColumnsConfig extends TInput ? Record<string, unknown> : InferActionInput<TInput>;
+export type AnyAction = Action<any, unknown>;
 
-export type AnyAction = Action<ColumnsConfig, unknown>;
-
-/** `POST <prefix>/actions/<name>`; the handler's return value is the response `data`. Default access `"editor"`. */
-export declare function action<TInput extends ColumnsConfig, TResult>(definition: {
-  input: TInput;
-  access?: GateRule<InferActionInput<TInput>>;
+/** What `query()` and `mutation()` share. */
+interface FunctionOptions<TInput> {
+  /** Who may call it. Default `"editor"`. */
+  access?: GateRule<TInput>;
+  /** Published as an Ability, so agents can call it. Default true. */
   agents?: boolean;
-  idempotent?: boolean;
-  /** Only reads: the Ability is annotated `readonly` (run over GET) and implies `idempotent`. */
-  readonly?: boolean;
-  /** Deletes or overwrites data: the Ability is annotated `destructive`, so agents confirm first. */
-  destructive?: boolean;
-  signature?: { secret: EnvValue; header: string; scheme: "typedpress" | "hmac-sha256" };
-  handler: (input: InferActionInput<TInput>, ctx: HookCtx) => Awaitable<TResult>;
-}): Action<TInput, TResult>;
+  /**
+   * At most this many calls per period, per user (per address when signed out): `"10/min"`, with
+   * sec, min, hour or day. A mutation open to `"anyone"` defaults to `"30/min"`; `false` turns it off.
+   */
+  rateLimit?: `${number}/${"s" | "sec" | "second" | "m" | "min" | "minute" | "h" | "hour" | "d" | "day"}` | false;
+}
+
+/**
+ * A server function that reads. The input is the handler's parameter type; it may not write (the
+ * build refuses a write, in it or in anything it calls), and its Ability is marked read-only.
+ * `POST` or `GET <prefix>/actions/<name>`.
+ */
+export declare function query<F extends (input: any, ctx: HookCtx) => unknown>(
+  options: FunctionOptions<HandlerInput<F>>,
+  handler: F,
+): Action<HandlerInput<F>, Awaited<ReturnType<F>>>;
+
+/**
+ * A server function that writes, in one transaction. The input is the handler's parameter type.
+ * `POST <prefix>/actions/<name>`.
+ */
+export declare function mutation<F extends (input: any, ctx: HookCtx) => unknown>(
+  options: FunctionOptions<HandlerInput<F>> & {
+    idempotent?: boolean;
+    /** Deletes or overwrites data: the Ability is annotated `destructive`, so agents confirm first. */
+    destructive?: boolean;
+    /** Signed webhooks: the caller proves the request with an HMAC instead of an access rule. */
+    signature?: { secret: EnvValue; header: string; scheme: "typedpress" | "hmac-sha256" };
+  },
+  handler: F,
+): Action<HandlerInput<F>, Awaited<ReturnType<F>>>;
 
 /** A singleton record (site settings, footer links): `GET/PATCH <prefix>/globals/<name>`, `db.globals.<key>`. */
 export interface Global<TName extends string = string, TFields extends FieldsConfig = FieldsConfig> {
@@ -1287,7 +1297,7 @@ export interface ScreenField {
 }
 
 type ScreenFields<F extends string> = { [K in F]: ScreenField };
-type ActionInputOf<A> = A extends Action<infer I, any> ? InferActionInput<I> : never;
+type ActionInputOf<A> = A extends Action<infer I, any> ? I : never;
 /** An action's input where any value may also be `item("field")`. */
 type WithItems<T> =
   | ItemRef
@@ -1326,9 +1336,9 @@ export interface ScreenFormLayout<F extends string> {
   labelPosition?: "top" | "side" | "none";
 }
 
-/** A list: a readonly action whose output holds the rows. */
+/** A list: a query whose output holds the rows. */
 export interface ScreenView<A extends AnyAction, F extends string> {
-  /** A `readonly: true` action; the build refuses any other. */
+  /** A `query()`; the build refuses a mutation here. */
   action: A;
   input?: ActionInputOf<A>;
   /** Dot path to the rows in the action's output; leave it out when the output is the list. */
@@ -1339,7 +1349,7 @@ export interface ScreenView<A extends AnyAction, F extends string> {
   layout?: ScreenViewLayout<NoInfer<F>>;
 }
 
-/** A form: a readonly action returns the values; `submit` runs with the edited ones as `item("field")`. */
+/** A form: a query returns the values; `submit` runs with the edited ones as `item("field")`. */
 export interface ScreenForm<A extends AnyAction, F extends string, S extends AnyAction> {
   action: A;
   input?: ActionInputOf<A>;
@@ -1394,8 +1404,8 @@ declare const pluginBrand: unique symbol;
 /** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */
 export interface Plugin { readonly [pluginBrand]: true }
 /**
- * Defines a plugin in an installed package. Its hooks keep app-hook semantics; its actions, jobs
- * and routes are registered as `<name>_<key>`, and `jobs.<key>` inside the plugin names its own.
+ * Defines a plugin in an installed package. Its hooks keep app-hook semantics; its queries,
+ * mutations and jobs are registered as `<name>_<key>`, and `x.enqueue()` on one of its jobs queues it.
  * There is no capability list: the compiler infers it, and the app's lock grants it.
  */
 export declare function definePlugin<TSchema extends Schema = Schema>(definition: {
@@ -1413,24 +1423,31 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
 
 /** Throw from a hook or action to pick the HTTP response. */
 export declare class HttpError extends Error {
-  constructor(status: number, code: string, message: string);
+  /** `pointer` names the input field the error is about (`"/email"`), so a form shows it beside that field. */
+  constructor(status: number, code: string, message: string, pointer?: string);
   readonly status: number;
   readonly code: string;
 }
 
 
-// Phase-2 runtime values are declarations only; lane D supplies their compilation.
-export interface Job<TInput extends ColumnsConfig = ColumnsConfig> {
+/** A `job()` or `cron()`: queued with `enqueue`, run off the request by Action Scheduler. */
+export interface Job<TInput = any> {
   readonly [jobBrand]: { input: TInput };
+  /** Queue a run inside the current transaction; it runs after commit. `key` collapses duplicates still waiting. */
+  enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
 }
-export type AnyJob = Job<ColumnsConfig>;
+export type AnyJob = Job<any>;
 export interface JobCtx extends HookCtx { attempt: number; jobId: string }
-export declare function job<TInput extends ColumnsConfig>(definition: {
-  input: TInput;
-  retries?: number;
-  agents?: boolean;
-  handler: (input: InferActionInput<TInput>, ctx: JobCtx) => Awaitable<void>;
-}): Job<TInput>;
+/**
+ * A background job. The input is the handler's parameter type. `every: "1h"` also runs it on that
+ * repeat (s, m, h, d or w; at least a minute), with no input.
+ */
+export declare function job<F extends (input: any, ctx: JobCtx) => Awaitable<void>>(
+  options: { retries?: number; agents?: boolean; every?: `${number}${"s" | "m" | "h" | "d" | "w"}` },
+  handler: F,
+): Job<HandlerInput<F>>;
+/** A job Action Scheduler runs on a five-field cron schedule in UTC: `cron("0 3 * * *", async () => { ... })`. */
+export declare function cron(schedule: string, handler: (input: {}, ctx: JobCtx) => Awaitable<void>): Job<{}>;
 export interface EnqueueOptions { delay?: number; key?: string }
 
 /** The request a `route.ts` (or page) HTTP handler under `tp/app/` receives. Header names are lowercase; the body is the raw text. */
@@ -1460,14 +1477,6 @@ export interface RouteQuery {
 }
 /** What a route handler returns. Status defaults to 200, body to "", Content-Type to text/plain; charset=utf-8. */
 export interface RouteResponse { status?: number; headers?: Record<string, string>; body?: string }
-export interface JobHandle<TInput> {
-  enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
-}
-type RegisteredJobs = Register extends { jobs: infer J extends Record<string, AnyJob> } ? J : never;
-export type JobsApi = [RegisteredJobs] extends [never]
-  ? Record<string, JobHandle<Record<string, unknown>>>
-  : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InsertShape<I>> : never };
-export declare const jobs: JobsApi;
 export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
 
 export type MailAddress = string | { email: string; name?: string };

@@ -91,7 +91,10 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("typedpress", &["ref"], overload("kind: Collection | () => Collection", arity(1, 1), None, None)),
     ("typedpress", &["taxonomy"], overload("fields?: object, options?: object", arity(0, 2), None, None)),
     ("typedpress", &["terms"], overload("taxonomy: Taxonomy | () => Taxonomy", arity(1, 1), None, None)),
-    ("typedpress", &["defineConfig", "action", "job", "route", "env", "adminScreen", "item"], overload("one configuration or environment name", arity(1, 1), None, None)),
+    ("typedpress", &["defineConfig", "action", "route", "env", "adminScreen", "item"], overload("one configuration or environment name", arity(1, 1), None, None)),
+    // `job` takes one object in a 0.3.0 capture (`eval::legacy`), which checks its own arguments.
+    ("typedpress", &["query", "mutation", "job"], overload("options: object, handler: function", arity(2, 2), None, None)),
+    ("typedpress", &["cron"], overload("schedule: string, handler: function", arity(2, 2), None, None)),
     ("typedpress", &["files"], overload("options: object", arity(1, 2), None, None)),
     ("typedpress", &["relation"], overload("options?: object", arity(0, 1), None, None)),
     ("field", &["text", "slug", "media"], overload("options?: object", arity(0, 1), None, None)),

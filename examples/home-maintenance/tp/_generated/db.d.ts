@@ -41,13 +41,6 @@ type Entities = {
     'publishedAt': ColumnBuilder<'timestamp', string, false, false, false, false>;
   }, false, 'collection'>;
 };
-type Jobs = {
-  'flagOverdue': Job<{
-    'taskId': ColumnBuilder<'integer', number, true, false, false, false>;
-    'ownerId': ColumnBuilder<'integer', number, true, false, false, false>;
-    'dueOn': ColumnBuilder<'date', string, true, false, false, false>;
-  }>;
-};
 type Graph = {
   'systems': {
     'tasks': Many<'tasks'>;
@@ -62,4 +55,4 @@ type Graph = {
     'systemId': One<'systems', false>;
   };
 };
-declare module "typedpress" { interface Register { relations: Relations<Entities, Graph>; jobs: Jobs } }
+declare module "typedpress" { interface Register { relations: Relations<Entities, Graph> } }

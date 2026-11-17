@@ -49,13 +49,6 @@ type Entities = {
     'role': ColumnBuilder<'text', "guest" | "subscriber" | "author" | "editor" | "admin", true, true, false, false>;
   }, true, 'userProjection'>;
 };
-type Jobs = {
-  'stampReplacement': Job<{
-    'driveId': ColumnBuilder<'integer', number, true, false, false, false>;
-    'ownerId': ColumnBuilder<'integer', number, true, false, false, false>;
-    'flaggedAt': ColumnBuilder<'timestamp', string, true, false, false, false>;
-  }>;
-};
 type Graph = {
   'places': {
     'drives': Many<'drives'>;
@@ -74,4 +67,4 @@ type Graph = {
   'members': {
   };
 };
-declare module "typedpress" { interface Register { relations: Relations<Entities, Graph>; jobs: Jobs } }
+declare module "typedpress" { interface Register { relations: Relations<Entities, Graph> } }

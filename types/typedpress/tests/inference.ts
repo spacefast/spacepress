@@ -1,7 +1,7 @@
 // Positive checks: inferred types are exactly what the spec says.
 import {
-  action, db, defineConfig, integer, text, job, email,
-  type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
+  db, defineConfig, text, job, email,
+  type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx, mutation,
 } from "typedpress";
 import { authors, comments, items, locations, notes, posts, entities, settings, shoppingList } from "./schema";
 import type { AppRelations } from "./register";
@@ -150,7 +150,8 @@ void (0 as unknown as PostAccess);
 declare const vctx: ValidateCtx;
 expectType<Equal<typeof vctx.user, User | null>>();
 
-export const sendWelcome = job({ input: { email: email(), name: text().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } });
+export const sendWelcome = job({}, async (input: { email: string; name?: string }, ctx) => { expectType<Equal<typeof input.name, string | undefined>>(); void [input.email, ctx.attempt, ctx.jobId]; });
+expectType<Equal<Parameters<typeof sendWelcome.enqueue>[0], { email: string; name?: string }>>();
 
 // Hooks are declared on the kind (spec §2.8); each handler is typed by its own kind.
 posts.on({
@@ -182,22 +183,18 @@ items.on({
   },
 });
 
-export const consume = action({
-  input: { itemId: integer(), amount: integer().default(1).optional(), note: text().optional() },
-  handler(input) {
-    expectType<Equal<typeof input, { itemId: number; amount: number | null; note?: string | null }>>();
-    return input.itemId;
-  },
+export const consume = mutation({}, ({ itemId, amount = 1 }: { itemId: number; amount?: number; note?: string }) => {
+  expectType<Equal<typeof amount, number>>();
+  return itemId * amount;
 });
-export const whoami = action({
-  input: {},
-  access: (ctx) => ctx.user !== null,
-  handler(_input, ctx) {
-    expectType<Equal<typeof ctx, HookCtx>>();
-    return ctx.user?.name ?? "anonymous";
-  },
+// The client calls a function with its handler's input type and gets its result.
+expectType<Equal<Parameters<typeof consume>[0], { itemId: number; amount?: number; note?: string }>>();
+expectType<Equal<Awaited<ReturnType<typeof consume>>, number>>();
+export const whoami = mutation({ access: (ctx) => ctx.user !== null }, (_input: {}, ctx) => {
+  expectType<Equal<typeof ctx, HookCtx>>();
+  return ctx.user?.name ?? "anonymous";
 });
-export const publish = action({ input: { id: integer() }, access: "editor", handler: ({ id }) => id });
+export const publish = mutation({ access: "editor" }, ({ id }: { id: number }) => id);
 
 export default defineConfig({
   locales: { default: "en", all: ["en", "de"] },

@@ -4,13 +4,13 @@ export function Server() {
   return (
     <>
       <Section id="server" />
-      <h3>Queries and mutations <Decided /></h3>
-      <p>A query reads, a mutation writes. Input types come from the handler's own parameter. <Built /> as one form, <code>{"action({ input, handler })"}</code>.</p>
+      <h3>Queries and mutations</h3>
+      <p><Built /> A query reads, a mutation writes. The input is the handler's own parameter type: the site validates every call against it before the handler runs.</p>
       <Code lang="ts">{`import { query, mutation, job, cron, HttpError } from "typedpress";
 
 export const popular = query({ access: "anyone" },
   async ({ limit = 10 }: { limit?: number }) =>
-    posts.list({ orderBy: { views: "desc" }, limit }));
+    await posts.list({ orderBy: { views: "desc" }, limit }));
 
 export const like = mutation({ access: "subscriber", rateLimit: "10/min" },
   async ({ id }: { id: number }) => {
@@ -19,31 +19,32 @@ export const like = mutation({ access: "subscriber", rateLimit: "10/min" },
     await posts.system.update(id, { views: post.views + 1 });
   });`}</Code>
       <div className="scroll"><table>
-      <tr><th></th><th><code>query</code></th><th><code>mutation</code></th></tr>
-      <tr><td>May write</td><td>no</td><td>yes, in one transaction</td></tr>
-      <tr><td>Cached and subscribable</td><td>yes</td><td>no</td></tr>
-      <tr><td>After it runs</td><td>nothing</td><td>purges the pages its writes changed</td></tr>
-      <tr><td>As an agent tool</td><td>marked read-only</td><td>marked as a write</td></tr>
-      <tr><td>As a form action</td><td>no</td><td>yes, and it works without JavaScript</td></tr>
+      <tr><th></th><th><code>query</code></th><th><code>mutation</code></th><th></th></tr>
+      <tr><td>May write</td><td>no: a write fails the build at its line</td><td>yes, in one transaction</td><td><Built /></td></tr>
+      <tr><td>As an agent tool</td><td>marked read-only</td><td>marked as a write</td><td><Built /></td></tr>
+      <tr><td>As a form action</td><td>no</td><td>yes, and it works without JavaScript</td><td><Built /></td></tr>
+      <tr><td>Cached and subscribable</td><td>yes</td><td>no</td><td><Decided /></td></tr>
+      <tr><td>After it runs</td><td>nothing</td><td>purges the pages its writes changed</td><td><Decided /></td></tr>
       </table></div>
       <ul>
-        <li><b>From the browser</b> you call a function by its export name: <code>{"tp.popular({ limit: 5 })"}</code>, <code>{"tp.like({ id })"}</code>.</li>
-        <li><b>From server code</b> you import it and call it. It runs as the current caller with its access check, and as the system inside a job.</li>
-        <li><b>Default access is <code>"editor"</code>.</b> A mutation open to <code>"anyone"</code> gets a default rate limit. Limits count per user, or per address when signed out.</li>
-        <li><b>A mutation accepts an idempotency key</b>, so a retried call does not write twice.</li>
-        <li><b>Every function, handler and route gets one <code>ctx</code>:</b> <code>ctx.user</code>, <code>ctx.can(op, kind, row?)</code>, <code>ctx.env</code>, and <code>ctx.request</code> in routes.</li>
-        <li><b>Errors carry field messages.</b> A refused write answers a standard problem document with <code>fields</code>, a map from field name to message, so a form can show each message beside its field.</li>
-        <li><b>Old pages after a deploy.</b> A call to a function the new build removed answers <code>409 stale_client</code> and the client reloads the page. <code>.was("oldName")</code> keeps an old name answering for one release.</li>
+        <li><Decided /> <b>From the browser</b> you call a function by its export name: <code>{"tp.popular({ limit: 5 })"}</code>, <code>{"tp.like({ id })"}</code>.</li>
+        <li><Decided /> <b>From server code</b> you import it and call it. It runs as the current caller with its access check, and as the system inside a job.</li>
+        <li><Built /> <b>Default access is <code>"editor"</code>.</b> <code>{"rateLimit: \"10/min\""}</code> caps calls per second, minute, hour or day; a mutation open to <code>"anyone"</code> gets <code>"30/min"</code> unless it says otherwise. Limits count per user, or per address when signed out.</li>
+        <li><Built /> <b>An optional input</b> (<code>{"limit?: number"}</code>) may be left out, and the handler's destructuring default applies. A check beyond the type throws <code>{"new HttpError(422, \"invalid_input\", message, \"/field\")"}</code>, which a form shows beside the field.</li>
+        <li><Built /> <b>A mutation accepts an idempotency key</b>, so a retried call does not write twice.</li>
+        <li><Decided /> <b>Every function, handler and route gets one <code>ctx</code>:</b> <code>ctx.user</code>, <code>ctx.can(op, kind, row?)</code>, <code>ctx.env</code>, and <code>ctx.request</code> in routes.</li>
+        <li><Decided /> <b>Errors carry field messages.</b> A refused write answers a standard problem document with <code>fields</code>, a map from field name to message, so a form can show each message beside its field.</li>
+        <li><Decided /> <b>Old pages after a deploy.</b> A call to a function the new build removed answers <code>409 stale_client</code> and the client reloads the page. <code>.was("oldName")</code> keeps an old name answering for one release.</li>
       </ul>
-      <h3>Background jobs and schedules</h3>
+      <h3>Background jobs and schedules <Built /></h3>
       <Code lang="ts">{`export const notifySubscribers = job({ retries: 3 }, async ({ postId }: { postId: number }) => { /* … */ });
 export const nightly = cron("0 3 * * *", async () => { /* … */ });
 
 await notifySubscribers.enqueue({ postId: 42 }, { delay: 60, key: "post-42" });`}</Code>
       <ul>
-        <li><Built /> Jobs: queued inside the request's transaction, run after it commits, retried with backoff. They run on Action Scheduler, the queue WordPress sites already use. <code>key</code> collapses duplicates that are still waiting.</li>
+        <li>Jobs: queued inside the request's transaction, run after it commits, retried with backoff (<code>retries</code>, 3 by default). They run on Action Scheduler, the queue WordPress sites already use. <code>key</code> collapses duplicates that are still waiting.</li>
+        <li><code>cron()</code> and <code>{"job({ every: \"1h\" }, handler)"}</code> run on Action Scheduler's own cron and recurring actions, in UTC, with no input. A deploy schedules them once and unschedules the ones the build no longer has.</li>
         <li>Inside a job, <code>ctx.attempt</code> and <code>ctx.jobId</code> say which run this is.</li>
-        <li><Decided /> <code>cron()</code>, the two-argument <code>job(options, handler)</code> form, <code>{"job({ every: \"1h\" }, handler)"}</code> for a repeat, and <code>x.enqueue()</code>. Today a job is <code>{"job({ input, handler })"}</code> and is queued with <code>jobs.x.enqueue()</code>.</li>
       </ul>
       <h3>HTTP routes <Built /></h3>
       <p>A <code>route.ts</code> file serves your own methods on a path of the site: a feed, a webhook, anything that is not a JSON call.</p>

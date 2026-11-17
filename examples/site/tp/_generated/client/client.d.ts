@@ -1033,7 +1033,7 @@ export interface SettingsPatch {
 }
 export interface SubscribeNewsletterInput {
 	email: string;
-	postId?: number | null;
+	postId?: number;
 }
 export type SubscribeNewsletterOutput = {
 	accepted: boolean;

@@ -1,7 +1,7 @@
-import { defineConfig, action } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 import { untypedPrivate, untypedClasses, untypedAccessors, untypedErrors } from "./class-private-lib.mjs";
 
-const run = (handler: () => unknown) => action({ input: {}, handler });
+const run = (handler: () => unknown) => mutation({}, handler);
 
 class PrivateCounter {
   #count: number = 0;

@@ -571,7 +571,7 @@
         "approveComment": {
             "input": {
                 "id": {
-                    "type": "integer",
+                    "type": "real",
                     "notNull": true
                 }
             },
@@ -631,7 +631,7 @@
             "agents": true,
             "idempotent": false,
             "signature": null,
-            "readonly": false,
+            "readonly": true,
             "destructive": false,
             "output": {
                 "type": "object",

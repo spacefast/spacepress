@@ -71,7 +71,7 @@ allowed, and an installed package's own relative imports are its business.
 TypedPress loads `typedpress.config.ts` and every `.ts` file under `tp/`, except
 `app/`, `components/`, `wp-hooks/`, `content/`, `public/`, `_generated/` and
 `dist/`. Each exported `collection()`, `table()`, `userProjection()`,
-`global()`, `files()`, `action()`, `job()` and `adminScreen()` registers under its export name,
+`global()`, `files()`, `query()`, `mutation()`, `job()`, `cron()` and `adminScreen()` registers under its export name,
 so no file name is required. `defineConfig` doesn't list them: its
 `collections`, `tables`, `users`, `globals`, `files`, `actions`, `jobs` and
 `hooks` keys are refused at the key, with the export that replaces it.
@@ -82,7 +82,7 @@ export const notes = table({ title: text() });
 
 // tp/server/likes.ts (any file name)
 import { notes } from "typedpress:db";
-export const like = action({ input: { id: integer() }, async handler({ id }) { /* … */ } });
+export const like = mutation({}, async ({ id }: { id: number }) => { /* … */ });
 ```
 
 - Other exports are ignored, so helper modules need no special place.
@@ -632,7 +632,7 @@ answers exactly what core answers under TypedPress's rules.
 | `GET /__tp/api/v1/<kind>/<id>` (`/posts/slug:hello`) | `GET /wp/v2/<route>/<id>` | `{ data: row }`; `?format=md` answers `text/markdown` |
 | `POST /__tp/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
 | `GET /__tp/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
-| `POST /__tp/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `POST /__tp/api/v1/actions/<name>` (`GET` with `?input=<json>` for a query) | the query's or mutation's Ability | `{ data }` |
 | `GET /__tp/api/v1/search?q=…[&kinds=a,b][&limit=n]` | `GET /wp/v2/search?search=…` (kinds with a `url`, as subtypes of `post`) | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
 | `GET /__tp/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
 | `GET /__tp/api/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
@@ -656,7 +656,7 @@ one way:
   the JSON Schemas the kind's Abilities publish.
 - Every operation the API serves is there: each kind's list, get, create,
   update and delete (less any its `api` flags switch off), revisions, `/me`,
-  each global, each action (with `GET` when it is `readonly`), file buckets,
+  each global, each query and mutation (with `GET` for a query), file buckets,
   sync, services, and WordPress's own `posts`, `pages`, `comments`, `media`,
   `categories`, `tags`, `menus` and `settings` where the app declares none of
   that name. An action with a `signature` is left out: it is a webhook for the
@@ -1591,14 +1591,57 @@ A key read whose value no type bounds, such as `ctx[name]` with
 Throwing anything aborts the request and rolls back every write in it.
 `throw new HttpError(status, code, message)` picks the HTTP response.
 
-## Actions
+## Queries and mutations
 
-`action({ input: { ...columns }, access?, handler(input, ctx) { ... } })` → `POST /__tp/api/v1/actions/<name>`.
-`input` uses column builders for validation; the return value is the response `data`.
+`query(options, handler)` reads; `mutation(options, handler)` writes, in one transaction. Both
+are `POST /__tp/api/v1/actions/<name>` (a query also answers `GET`), and the handler's return
+value is the response `data`.
+
+```ts
+import { query, mutation, HttpError } from "typedpress";
+import { posts } from "typedpress:db";
+
+export const popular = query({ access: "anyone" },
+  async ({ limit = 10 }: { limit?: number }) =>
+    await posts.list({ orderBy: { views: "desc" }, limit }));
+
+export const like = mutation({ access: "subscriber", rateLimit: "10/min" },
+  async ({ id }: { id: number }) => {
+    const post = await posts.get(id);
+    if (!post) throw new HttpError(404, "not_found", "No such post", "/id");
+    await posts.system.update(id, { views: post.views + 1 });
+  });
+```
+
+The input is the handler's first parameter type. The site validates each call against it before
+the handler runs: `number`, `string`, `boolean` and string literal unions are checked as such, and
+arrays and objects of those as JSON. An optional property (`limit?: number`) may be left out, and
+the destructuring default applies; `T | null` accepts null. A function, `Date`, `bigint`, `Map`
+or class instance can't be an input (JSON can't carry it) and fails the build at the parameter.
+A check beyond the type is the handler's: `throw new HttpError(422, "invalid_input", message,
+"/field")` names the field, so a form shows the message beside it.
+
+A query may not write. A write in its handler, or in any function it calls (a kind's
+`create`/`update`/`delete`, `db.insert`/`update`/`delete`, a global update, `x.enqueue()`,
+`mail.send()`, `once()`), fails the build at that line, with the fix. Its Ability is annotated
+`readonly`, so core runs it over `GET`.
+
+Options:
+
+- `access` (default `"editor"`): a role, `"anyone"`, `"authenticated"`, or a function of `ctx`.
+- `rateLimit: "10/min"`: at most that many calls per second (`s`, `sec`), minute (`m`, `min`),
+  hour (`h`) or day (`d`), per user, or per address when signed out; over the limit is
+  `429 rate_limited`. A mutation open to `"anyone"` gets `"30/min"` unless it sets one;
+  `rateLimit: false` turns that off.
+- `agents: false` keeps it out of MCP and the abilities' public REST
+  discovery; it stays callable over the app's own API.
+
+A mutation also takes:
 
 - `idempotent: true`: a request with an `Idempotency-Key` header runs once per
   key and caller; a repeat returns the stored result, and the same key with
   different input is a 409. `once(key, fn)` does the same inside any handler.
+- `destructive: true`: it deletes or overwrites data, so agents confirm before running it.
 - `signature: { secret: env("NAME"), header, scheme: "typedpress" | "hmac-sha256" }`:
   an inbound webhook. The HMAC over the raw body replaces the access rule;
   `typedpress` also checks a timestamp so old deliveries are refused.
@@ -1608,18 +1651,17 @@ Throwing anything aborts the request and rolls back every write in it.
   `X-Shopify-Hmac-Sha256` send it). Both are compared in constant time against
   the full 32-byte digest; a failure is 401 `invalid_signature`. It has no
   timestamp, so make the handler idempotent on the provider's delivery id.
-- `agents: false` keeps it out of MCP and the abilities' public REST
-  discovery; it stays callable over the app's own API.
-- `readonly: true` marks an action that only reads; `destructive: true` one
-  that deletes or overwrites data, so agents confirm before running it.
 
-Each action is also the Ability `<app>/<kebab-name>`. Its annotations come from
-these options, its input schema from `input`, and its output schema from the
+`action({ input, handler })` and `readonly: true` are gone: the build refuses them and names
+`query()` or `mutation()`.
+
+Each query and mutation is also the Ability `<app>/<kebab-name>`. Its annotations come from
+these options, its input schema from the parameter type, and its output schema from the
 handler's TypeScript return type (left out when the type has no single JSON
 shape). Core's run route, `/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`,
-serves it with the action's own access rule, so an `access: "anyone"` action
+serves it with its own access rule, so an `access: "anyone"` function
 runs anonymously. Core picks the method from the annotations: `GET` for
-`readonly`, `DELETE` for `destructive` with `idempotent`, `POST` otherwise.
+a query, `DELETE` for a `destructive` and `idempotent` mutation, `POST` otherwise.
 Errors are core's `WP_Error` JSON, with TypedPress's code (`tp_<code>`), status
 and `data.pointer`.
 
@@ -1628,8 +1670,8 @@ and `data.pointer`.
 `adminScreen({ title, view | form, actions?, access? | capability?, menu?, classic?, description?, data? })`
 declares a page in TypedPress Admin (`/wp-admin/new/screens/<id>`) and in classic
 wp-admin. Its id is the export name in kebab case (`pendingOrders` →
-`pending-orders`). `view` is a DataViews list over a `readonly` action, and
-`form` is a DataForm. `actions` run TypedPress actions as their Abilities, and
+`pending-orders`). `view` is a DataViews list over a `query()`, and
+`form` is a DataForm. `actions` run queries and mutations as their Abilities, and
 `item("field")` in an action's `input` passes the row's value. `access` takes a
 TypedPress role (`"editor"` reads as WordPress's `edit_others_posts`), and
 `capability` takes a WordPress capability. The default is administrators. The
@@ -1728,19 +1770,15 @@ Handlers call other services with the standard global `fetch`. Nothing is
 imported; the types come from `@types/node`, which new projects install:
 
 ```ts
-import { action, defineConfig, HttpError, text } from "typedpress";
+import { defineConfig, HttpError, query } from "typedpress";
 
-export const weather = action({
-  input: { city: text() },
-  access: "anyone",
-  async handler({ city }) {
-    const query = new URLSearchParams({ q: city });
-    const response = await fetch("https://api.example.com/v1/weather?" + query.toString(), {
-      headers: { authorization: "Bearer " + (process.env.WEATHER_KEY ?? "") },
-    });
-    if (!response.ok) throw new HttpError(502, "weather_unavailable", "Weather is unavailable.");
-    return (await response.json()) as { temperature: number };
-  },
+export const weather = query({ access: "anyone" }, async ({ city }: { city: string }) => {
+  const query = new URLSearchParams({ q: city });
+  const response = await fetch("https://api.example.com/v1/weather?" + query.toString(), {
+    headers: { authorization: "Bearer " + (process.env.WEATHER_KEY ?? "") },
+  });
+  if (!response.ok) throw new HttpError(502, "weather_unavailable", "Weather is unavailable.");
+  return (await response.json()) as { temperature: number };
 });
 
 export default defineConfig({});
@@ -1834,17 +1872,13 @@ TypeScript or required from static CommonJS. Random UUIDs also come from the
 global `crypto`. Every call is synchronous:
 
 ```ts
-import { action, defineConfig, text } from "typedpress";
+import { defineConfig, query } from "typedpress";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const verify = action({
-  input: { body: text(), signature: text() },
-  access: "anyone",
-  handler({ body, signature }) {
-    const expected = createHmac("sha256", process.env.WEBHOOK_SECRET!).update(body).digest("hex");
-    return Buffer.byteLength(expected) === Buffer.byteLength(signature)
-      && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-  },
+export const verify = query({ access: "anyone" }, ({ body, signature }: { body: string; signature: string }) => {
+  const expected = createHmac("sha256", process.env.WEBHOOK_SECRET!).update(body).digest("hex");
+  return Buffer.byteLength(expected) === Buffer.byteLength(signature)
+    && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 });
 
 export default defineConfig({});
@@ -1878,20 +1912,17 @@ action's or route's `signature` option, which also checks timestamps.
 job:
 
 ```ts
-import { action, defineConfig, email, mail, text } from "typedpress";
+import { defineConfig, mail, mutation, HttpError } from "typedpress";
 
-export const invite = action({
-  input: { to: email(), name: text().optional() },
-  access: "editor",
-  async handler({ to, name }) {
-    const queued = await mail.send({
-      to: { email: to, name: name ?? undefined },
-      subject: "You're invited",
-      text: "Open the link to join.",
-      html: "<p>Open the link to join.</p>",
-    });
-    return queued.id;
-  },
+export const invite = mutation({ access: "editor" }, async ({ to, name }: { to: string; name?: string }) => {
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new HttpError(422, "invalid_input", "to must be an email address", "/to");
+  const queued = await mail.send({
+    to: { email: to, name: name ?? undefined },
+    subject: "You're invited",
+    text: "Open the link to join.",
+    html: "<p>Open the link to join.</p>",
+  });
+  return queued.id;
 });
 
 export default defineConfig({});
@@ -1923,16 +1954,12 @@ Abilities API: the app's own, core's, or another plugin's (WooCommerce,
 Jetpack, ...). Import `abilities` from `"php/wordpress"`:
 
 ```ts
-import { action, defineConfig, text } from "typedpress";
+import { defineConfig, query } from "typedpress";
 import { abilities } from "php/wordpress";
 
-export const count = action({
-  input: { text: text() },
-  access: "authenticated",
-  async handler(input) {
-    const result = await abilities.call("acme/word-count", { text: input.text });
-    return result.count;
-  },
+export const count = query({ access: "authenticated" }, async (input: { text: string }) => {
+  const result = await abilities.call("acme/word-count", { text: input.text });
+  return result.count;
 });
 
 export default defineConfig({});
@@ -2096,21 +2123,35 @@ export default function (postId: number, post: WP_Post, update: boolean) {
 ## Jobs and webhooks
 
 ```ts
-export const notifyEditors = job({ input: { commentId: integer() }, retries: 3, handler: async (input, ctx) => { ... } });
+export const notifyEditors = job({ retries: 3 }, async ({ commentId }: { commentId: number }, ctx) => { ... });
+export const digest = cron("0 7 * * 1", async () => { ... });       // Mondays 07:00 UTC
+export const sweep = job({ every: "1h" }, async () => { ... });
 
 export default defineConfig({
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated"] }],
 });
 ```
 
-A job registers by its export name, like an action.
+`job(options, handler)` registers by its export name, like a query or mutation. Its input is the
+handler's first parameter type, checked as a query's is. Options: `retries` (0 to 20, default 3),
+`agents: true` to publish it as the Ability `<app>/job-<name>`, and `every` for a repeat.
 
-`jobs.<name>.enqueue(input, { delay?, key? })` from a hook or action queues a
-job; it runs after the request commits, never inside it. `key` collapses
+`notifyEditors.enqueue(input, { delay?, key? })` on the job's own export, from a mutation, hook
+or another job, queues it; it runs after the request commits, never inside it. `key` collapses
 duplicates still waiting. A handler that throws is retried with backoff up to
 `retries`, then marked dead; `ctx.attempt` and `ctx.jobId` say which run this
 is. Each job is handed to Action Scheduler (cron, or `wp action-scheduler run`);
 `wp typedpress jobs list|retry|cancel` manage the queue.
+
+`cron("0 7 * * 1", handler)` (five fields, UTC, or `@daily` and its siblings) and
+`job({ every: "1h" }, handler)` (`s`, `m`, `h`, `d` or `w`, at least a minute) also run on a
+schedule, as Action Scheduler cron and recurring actions (`tp_job_schedule` in Tools > Scheduled
+Actions). Each run queues the job with the key `schedule`, so a run still waiting takes the next
+one's place. A scheduled job takes no input: a handler that requires one fails the build. Each
+deploy schedules the build's schedules once and unschedules the ones the build no longer has.
+
+`job({ input, handler })` and `jobs.<name>.enqueue()` are gone: the build refuses them and names
+the new form.
 
 A webhook POSTs `{ id, event, collection, at, data: { row, previous? } }` for
 each matching write (`<collection>.created|updated|deleted`, or `"*"`), signed
@@ -2264,14 +2305,11 @@ class Counter {
 class DoubleCounter extends Counter {
   add(n: number): number { return super.add(n * 2); }
 }
-const countVisits = action({
-  input: {},
-  handler: () => {
-    const counter = new DoubleCounter("visits");
-    const read = counter.reader();
-    counter.add(2);
-    return { value: read(), isCounter: counter instanceof Counter }; // 4, true
-  },
+const countVisits = mutation({}, () => {
+  const counter = new DoubleCounter("visits");
+  const read = counter.reader();
+  counter.add(2);
+  return { value: read(), isCounter: counter instanceof Counter }; // 4, true
 });
 ```
 

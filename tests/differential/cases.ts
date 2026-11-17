@@ -1,7 +1,7 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
-import { collection, text, integer, defineConfig, action, json as jsonField, group, repeater, blocks , table} from "typedpress";
-import { job, jobs, once } from "typedpress"; // lane D
+import { collection, text, integer, defineConfig, json as jsonField, group, repeater, blocks, table } from "typedpress";
+import { job, once, mutation } from "typedpress"; // lane D
 import * as ns from "./namespace.mjs";
 import picoish from "./namespace.mjs";
 import { jsAbort as jsAbortImpl, jsCollections as jsCollectionsImpl, jsTimers as jsTimersImpl } from "./stdlib.js";
@@ -297,7 +297,7 @@ class LanguageDraftView extends LanguageView {
   }
 }
 
-const run = (handler: () => unknown) => action({ input: {}, handler });
+const run = (handler: () => unknown) => mutation({}, handler);
 // Feature detection on globalThis is resolved at compile time in both phases.
 const GLOBAL_DETECTION = [typeof globalThis, typeof globalThis.Symbol, typeof globalThis.Math, typeof globalThis.window, typeof globalThis.location, globalThis.Deno === undefined];
 
@@ -329,7 +329,7 @@ export const nativeObjectParameters = run(() => [
   nullableParameter(null), nullableParameter({ n: 3 }),
 ]);
 
-export const refsRegisteredRoot = action({ input: {}, handler: refsRegistered });
+export const refsRegisteredRoot = mutation({}, refsRegistered);
 
 export const refsNamedWrappers = run(() => [refsRegistered === refsRegistered, [refsRegistered].includes(refsRegistered), refsCollision(), refsCollision_value(), REFSCOLLISION_VALUE()]);
 
@@ -774,7 +774,7 @@ export const uriEncoding = run(() => {
   return values.map(value => [encodeURI(value), encodeURIComponent(value)]);
 });
 
-export const hookCtx = action({ input: {}, handler: (_input, ctx) => [ctx.user?.name ?? "anonymous", ctx.user?.role ?? null] });
+export const hookCtx = mutation({}, (_input: {}, ctx) => [ctx.user?.name ?? "anonymous", ctx.user?.role ?? null]);
 
 export const numbers = run(() => {
   const finite = Number.isFinite;
@@ -1022,30 +1022,30 @@ export const thrown = run(() => {
   throw new Error("expected failure");
 });
 
-export const onceReplays = action({ input: {}, handler: async () => {
+export const onceReplays = mutation({}, async () => {
   let runs = 0;
   const first = await once("lane-d-replay", async () => { runs++; return { n: runs, tags: ["a"], extra: {} }; });
   const second = await once("lane-d-replay", () => { runs++; return { n: runs, tags: ["b"], extra: {} }; });
   const other = await once("lane-d-other", () => { runs++; return runs; });
   return { first, second, other, runs };
-} });
+});
 
-export const onceRegex = action({ input: {}, handler: async () => {
+export const onceRegex = mutation({}, async () => {
   const first = await once("lane-d-regex", () => /^a+$/i);
   const replay = await once("lane-d-regex", () => /never/);
   return [first.test("AAA"), replay.test("AAA"), replay.test("b")];
-} });
+});
 
-export const onceNull = action({ input: {}, handler: async () => [await once("lane-d-null", () => null), await once("lane-d-null", () => "second")] });
+export const onceNull = mutation({}, async () => [await once("lane-d-null", () => null), await once("lane-d-null", () => "second")]);
 
-export const enqueueIds = action({ input: {}, handler: async () => {
-  const plain = await jobs.ping.enqueue({ note: "hi" });
-  const keyed = await jobs.ping.enqueue({ note: "x" }, { key: "lane-d", delay: 5 });
-  const same = await jobs.ping.enqueue({ note: "y" }, { key: "lane-d" });
+export const enqueueIds = mutation({}, async () => {
+  const plain = await ping.enqueue({ note: "hi" });
+  const keyed = await ping.enqueue({ note: "x" }, { key: "lane-d", delay: 5 });
+  const same = await ping.enqueue({ note: "y" }, { key: "lane-d" });
   return [plain.id.length, keyed.id === same.id, plain.id === keyed.id];
-} });
+});
 
-export const envRead = action({ input: {}, handler: () => [process.env.TP_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.TP_LANE_D_UNSET === undefined] });
+export const envRead = mutation({}, () => [process.env.TP_LANE_D_UNSET ?? "unset", typeof process.env["PATH"], process.env.TP_LANE_D_UNSET === undefined]);
 
 export const loopClosures = run(() => {
   const fs: (() => number)[] = [];
@@ -1178,7 +1178,7 @@ export const setOps = run(() => {
   return [deleted, visited, [...s], [...s.entries()], Array.from(s.keys(), (v, i) => v * 10 + i), s.has(7), s.size, copy.size, new Set("abca").size];
 });
 
-export const ping = job({ input: { note: text().optional() }, handler: async () => {} });
+export const ping = job({}, async (_input: { note?: string }) => {});
 
 export default defineConfig({});
 

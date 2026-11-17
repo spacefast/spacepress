@@ -2790,12 +2790,95 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "days": { "type": "integer", "minimum": 0, "maximum": 366 }
+                  "days": { "type": "number" }
                 }
               }
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "through": { "type": "string" },
+                        "tasks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": ["number", "null"] },
+                              "title": { "type": "string" },
+                              "ownerId": { "type": ["number", "null"] },
+                              "systemId": { "type": ["number", "null"] },
+                              "everyDays": { "type": ["number", "null"] },
+                              "lastDoneOn": { "type": ["string", "null"] },
+                              "nextDueOn": { "type": "string" },
+                              "instructions": { "type": ["string", "null"] },
+                              "overdueAt": { "type": ["string", "null"] },
+                              "status": { "type": ["string"], "enum": ["draft", "published", "scheduled"] },
+                              "publishedAt": { "type": ["string", "null"] }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "ownerId",
+                              "systemId",
+                              "everyDays",
+                              "lastDoneOn",
+                              "nextDueOn",
+                              "instructions",
+                              "overdueAt",
+                              "status",
+                              "publishedAt"
+                            ]
+                          }
+                        }
+                      },
+                      "required": ["through", "tasks"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "get": {
+        "tags": ["Actions"],
+        "operationId": "actions.dueNext.read",
+        "summary": "Call dueNext with GET",
+        "x-typedpress-access": "authenticated",
+        "description": "Runs the read-only `dueNext` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Any signed-in user may do this.",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "description": "The action's input, as JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "days": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The action's result.",
@@ -2881,9 +2964,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "taskId": { "type": "integer" },
-                  "notes": { "type": ["string", "null"], "maxLength": 10000 },
-                  "costCents": { "type": ["integer", "null"], "minimum": 0, "maximum": 100000000 }
+                  "taskId": { "type": "number" },
+                  "notes": { "type": "string" },
+                  "costCents": { "type": "number" }
                 },
                 "required": ["taskId"]
               }
@@ -2990,13 +3073,78 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "year": { "type": "integer", "minimum": 1900, "maximum": 9998 }
+                  "year": { "type": "number" }
                 },
                 "required": ["year"]
               }
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "year": { "type": ["number", "null"] },
+                        "systems": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "systemId": { "type": ["number", "null"] },
+                              "name": { "type": "string" },
+                              "costCents": { "type": ["number", "null"] }
+                            },
+                            "required": ["systemId", "name", "costCents"]
+                          }
+                        },
+                        "totalCents": { "type": ["number", "null"] }
+                      },
+                      "required": ["year", "systems", "totalCents"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "get": {
+        "tags": ["Actions"],
+        "operationId": "actions.yearCost.read",
+        "summary": "Call yearCost with GET",
+        "x-typedpress-access": "authenticated",
+        "description": "Runs the read-only `yearCost` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Any signed-in user may do this.",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "description": "The action's input, as JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "year": { "type": "number" }
+                  },
+                  "required": ["year"]
+                }
+              }
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The action's result.",

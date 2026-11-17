@@ -1,7 +1,7 @@
 // Negative checks: each @ts-expect-error must be consumed by a real mistake.
 import {
-  action, blocks, boolean, collection, db, defineConfig, global, HttpError, integer, media, repeater, richText, select, text, url,
-  table, ref, taxonomy, terms,
+  blocks, boolean, collection, db, defineConfig, global, HttpError, integer, media, repeater, richText, select, text, url,
+  table, ref, taxonomy, terms, mutation, query,
 } from "typedpress";
 import { authors, comments, items, locations, posts, entities, settings, shoppingList, UNITS } from "./schema";
 import type { AppRelations } from "./register";
@@ -101,15 +101,12 @@ items.on({
   },
 });
 
-action({
-  input: { itemId: integer() },
-  handler({ itemId }) {
-    // @ts-expect-error itemId is a number
-    const s: string = itemId;
-    // @ts-expect-error HttpError takes (status, code, message)
-    if (!s) throw new HttpError(404, "not found");
-    return s;
-  },
+mutation({}, ({ itemId }: { itemId: number }) => {
+  // @ts-expect-error itemId is a number
+  const s: string = itemId;
+  // @ts-expect-error HttpError takes (status, code, message)
+  if (!s) throw new HttpError(404, "not found");
+  return s;
 });
 
 // The registry keys are gone: kinds, globals, actions and jobs register by export (spec §1.1).
@@ -191,12 +188,17 @@ posts.on({
   },
 });
 
-action({
-  input: { id: integer() },
-  // @ts-expect-error action access is a gate: no filters
+mutation({
+  // @ts-expect-error access is a gate: no filters
   access: () => ({ id: 1 }),
-  handler: ({ id }, ctx) => ctx.user?.role === "admin" && id,
-});
+}, ({ id }: { id: number }, ctx) => ctx.user?.role === "admin" && id);
+
+// @ts-expect-error the handler comes after the options
+mutation({ handler: async () => 1 });
+// @ts-expect-error a query only reads: no destructive option
+query({ destructive: true }, async () => 1);
+// @ts-expect-error a rate limit is a count per period
+mutation({ rateLimit: "10 per minute" }, async () => 1);
 
 defineConfig({
   // @ts-expect-error there is no build target option

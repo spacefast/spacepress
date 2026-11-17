@@ -27,22 +27,14 @@ you would an action. The export name in kebab case is the screen's id, so
 `admin.php?page=typedpress-screen-pending-orders`.
 
 ```ts
-import { action, adminScreen, item, integer } from "typedpress";
+import { adminScreen, item, query, mutation } from "typedpress";
 
-export const listPending = action({
-  input: {},
-  access: "editor",
-  readonly: true,                        // a screen reads through readonly actions only
-  async handler() {
-    return { rows: await db.query.orders.findMany({ where: { shipped: false }, limit: 100 }) };
-  },
+// A screen reads through a query (read-only).
+export const listPending = query({ access: "editor" }, async () => {
+  return { rows: await db.query.orders.findMany({ where: { shipped: false }, limit: 100 }) };
 });
 
-export const markShipped = action({
-  input: { id: integer() },
-  access: "editor",
-  async handler({ id }) { /* … */ },
-});
+export const markShipped = mutation({ access: "editor" }, async ({ id }: { id: number }) => { /* … */ });
 
 export const pendingOrders = adminScreen({
   title: "Pending orders",
@@ -83,7 +75,7 @@ The build refuses, at the line and column, with a suggested fix:
 
 - an action reference that isn't an exported action, or an action with
   `agents: false` (it has no Ability) or a `signature`;
-- a `view.action` or `form.action` that isn't `readonly: true`;
+- a `view.action` or `form.action` that isn't a `query()`;
 - a field id in `layout` (`fields`, `titleField`, `mediaField`,
   `descriptionField`, `sort.field`) that `fields` doesn't declare, and a field
   `type` DataViews doesn't have;

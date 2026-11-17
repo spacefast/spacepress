@@ -160,7 +160,7 @@ A component file under `tp/components/` that starts with `"use client"` runs in 
 
 - `useState(initial)` becomes a field of the element's `data-wp-context`. A setter takes a value or an updater.
 - `onClick` and other event props become `data-wp-on--*` actions. An `await` in a handler is fine.
-- Calling an `action()` the file imports posts to that action's endpoint with the REST nonce, so the caller is the visitor.
+- Calling a `query()` or `mutation()` the file imports posts to its endpoint with the REST nonce, so the caller is the visitor.
 - `useEffect`, `useMount`, `useEvent` and `useRef` come from `"typedpress/client"`, and `sharedState()` gives state every instance shares.
 - `useLive("guestbook", { orderBy: { id: "asc" }, limit })` is a list read the page keeps current: `{ data, error, loading }`. The server answers it in the first render, as the visitor; the page then subscribes through the app's typed client, so another visitor's write shows without a reload (within the client's poll, 2 to 30 seconds without a push transport). The query reads props and literals; `{ enabled: false }` reads nothing.
 

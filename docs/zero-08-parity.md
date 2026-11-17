@@ -487,7 +487,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `withIndex(...).order().collect/take/tp/count` | `db.query.<t>.findMany` with the same order; `eq: null` matches `IS NULL` | Auto, **WP** | — |
 | `withIndex(...).paginate({ numItems, cursor })` | A keyset helper per call site: same order, `numItems` clamp 1–1000, `{ page, isDone, continueCursor }`; the cursor carries its call site and filter values | Auto, **WP** | Clients restart from page one after cutover (old cursors are refused); optional index fields |
 | Range on an optional field, `.where()`, `.orderBy()`, `.limit()`, `.offset()` | `db.query` filters exist; not mapped | Refused | Port the query |
-| `query()`, `mutation()`, `action()` | `action()` at `POST /__tp/api/v1/actions/<name>` with named inputs | Auto, **WP** | Update callers to the v2 client |
+| `query()`, `mutation()`, `action()` | `query()` (a 0.8 query) or `mutation()` at `POST /__tp/api/v1/actions/<name>`, with one typed input object of named properties | Auto, **WP** | Update callers to the v2 client |
 | `type PaginationOptions`, `Id<T>` | Structural types in the candidate | Auto | — |
 | `collections`, native `posts`, `content/posts/` | Collections and a post-backed `posts` collection; data copied with IDs | Auto for declared collections, **WP**; undeclared `content/posts/` is refused (`Z08_OMITTED_POSTS`) | Native `pages` and `media` collections; rich blocks; multiple references; declaring `posts` for undeclared content |
 | `sync` declarations | `typedpress sync` (local) | Refused (`Z08_OMITTED_SYNC`) | Declare the collection with `sync` in `typedpress.config.ts`; hosted edits do not rebuild a frontend |

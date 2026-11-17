@@ -42,7 +42,7 @@ export function Examples() {
       <h3>A reading list in 94 lines</h3>
       <p>Books are WordPress posts, reads are a SQL table, and each reader sees only their own. It also serves one HTML route and uses two npm packages on the server.</p>
       <tp-play example="reading-list" hint="Edit the reading list and build it here." />
-      <p className="cap">The first two projects use spellings that are decided and not built yet: <code>query()</code>, <code>mutation()</code>, <code>.on("event", fn)</code>, <code>kind.system</code>, <code>cron()</code>, <code>@typedpress/client</code>. The same apps run today under the spellings in section <Ref to="rename" />.</p>
+      <p className="cap">The first two projects also use spellings that are decided and not built yet: <code>.on("event", fn)</code> and <code>@typedpress/client</code>. The same apps run today under the spellings in section <Ref to="rename" />.</p>
     </>
   );
 }

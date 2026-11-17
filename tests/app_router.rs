@@ -2063,7 +2063,7 @@ export const nope = state.result?.nope;
         "{seen}"
     );
     assert_eq!(seen["handler error"], serde_json::json!("Five seats at most"));
-    assert_eq!(seen["not a number"], serde_json::json!("seats must be an integer"));
+    assert_eq!(seen["not a number"], serde_json::json!("seats must be a finite number"));
     assert_eq!(seen["open redirect"], serde_json::json!(true));
     // A form on a page's other spelling (`/join`) comes back to the page's one address, and the
     // result shows there: the router never moves a request that carries a result.
@@ -2685,7 +2685,7 @@ fn refuses_forms_it_cannot_post() {
     let dir = std::env::temp_dir().join(format!("typedpress-forms-reject-{}", std::process::id()));
     let server = (
         "tp/server.ts",
-        "import { action, text } from \"typedpress\";\nexport const send = action({ input: { name: text() }, access: \"anyone\", async handler({ name }) { return name; } });\n",
+        "import { text, mutation } from \"typedpress\";\nexport const send = mutation({ access: \"anyone\" }, async ({ name }: { name: string }) => { return name; });\n",
     );
     let page = |body: &str| {
         format!("import {{ useFormState }} from \"typedpress/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
@@ -4828,7 +4828,7 @@ fn static_export_refuses_what_needs_a_server() {
     );
     write(
         "tp/actions.ts",
-        "import { action } from \"typedpress\";\nexport const ping = action({ input: {}, access: \"anyone\", async handler() { return 1; } });\n",
+        "import { mutation } from \"typedpress\";\nexport const ping = mutation({ access: \"anyone\" }, async () => { return 1; });\n",
     );
     write(
         "tp/components/Ping.tsx",

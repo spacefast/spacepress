@@ -45,7 +45,7 @@ Each is a short procedure that links to the documentation for depth:
 | Skill                       | Task                                                                        |
 |-----------------------------|-----------------------------------------------------------------------------|
 | `typedpress-add-kind`       | Add a kind or a field, a `ref()`, an access rule; rename or remove a field. |
-| `typedpress-write-action`   | Write an `action()` or a `job()`.                                           |
+| `typedpress-write-action`   | Write a `query()`, a `mutation()`, a `job()` or a `cron()`.                 |
 | `typedpress-add-page`       | Add a page, a layout or an HTTP route under `tp/app/`.                      |
 | `typedpress-fix-diagnostic` | Read a compiler diagnostic and fix its cause.                               |
 | `typedpress-dev-site`       | Run the local dev site and inspect it.                                      |

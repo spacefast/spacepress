@@ -1,3 +1,3 @@
-import { action } from "typedpress";
+import { mutation } from "typedpress";
 // An action named like a kind: export names are unique across the app.
-export const notes = action({ input: {}, access: "anyone", handler: () => 1 });
+export const notes = mutation({ access: "anyone" }, () => 1);

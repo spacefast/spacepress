@@ -3,8 +3,8 @@
 // settings. tests/system drives a whole user journey through this app on WordPress.
 import {
   collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
-  repeater, group, blocks, email, url, defineConfig, action, job, jobs, env, file, files, db, HttpError,
-  table, userProjection, ref,
+  repeater, group, blocks, email, url, defineConfig, job, env, file, files, db, HttpError,
+  table, userProjection, ref, query, mutation,
 } from "typedpress";
 
 // Who works on the site. Everyone else (anonymous readers, guests, signed-in members) is a reader.
@@ -63,11 +63,11 @@ export const posts = collection({
   // the job key collapses repeats still waiting on the queue. Scheduled posts that the clock
   // publishes run no hooks (both targets), so they announce nothing.
   async afterCreate(row) {
-    if (row.status === "published") await jobs.notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
+    if (row.status === "published") await notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
   },
   async afterUpdate(row, previous) {
     if (row.status === "published" && previous.status !== "published") {
-      await jobs.notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
+      await notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
     }
   },
   async beforeCreate(data, ctx) {
@@ -137,69 +137,49 @@ export const settings = global({
   social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings" });
 
-export const subscribeReader = job({
-  input: { email: email().max(191), postId: integer().optional() },
-  agents: false,
-  async handler({ email, postId }) {
-    if (await db.query.subscribers.findFirst({ where: { email } })) return;
-    const post = postId == null ? null : await db.query.posts.findFirst({ where: { id: postId, status: "published" }, locale: "*" });
-    await db.insert(subscribers).values({ email, postId: post?.id ?? null });
-  },
+export const subscribeReader = job({ agents: false }, async ({ email, postId }: { email: string; postId?: number }) => {
+  if (email.length > 191) throw new HttpError(422, "invalid_input", "email must be at most 191 characters", "/email");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email");
+  if (await db.query.subscribers.findFirst({ where: { email } })) return;
+  const post = postId == null ? null : await db.query.posts.findFirst({ where: { id: postId, status: "published" }, locale: "*" });
+  await db.insert(subscribers).values({ email, postId: post?.id ?? null });
 });
 
 // Runs after the publishing request commits, on the queue (Action Scheduler on WordPress).
-export const notifyReaders = job({
-  input: { postId: integer() },
-  retries: 3,
-  handler: async ({ postId }, ctx) => {
-    const readers = await db.query.subscribers.findMany({ columns: { id: true } });
-    await db.insert(announcements).values({ postId, recipients: readers.length, attempt: ctx.attempt });
-  },
+export const notifyReaders = job({ retries: 3 }, async ({ postId }: { postId: number }, ctx) => {
+  const readers = await db.query.subscribers.findMany({ columns: { id: true } });
+  await db.insert(announcements).values({ postId, recipients: readers.length, attempt: ctx.attempt });
 });
 
-export const subscribeNewsletter = action({
-  input: { email: email().max(191), postId: integer().optional() },
-  access: "anyone",
-  async handler({ email, postId }) {
-    const normalized = email.toLowerCase();
-    await jobs.subscribeReader.enqueue({ email: normalized, postId }, { key: normalized });
-    return { accepted: true };
-  },
+export const subscribeNewsletter = mutation({ access: "anyone" }, async ({ email, postId }: { email: string; postId?: number }) => {
+  if (email.length > 191) throw new HttpError(422, "invalid_input", "email must be at most 191 characters", "/email");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email");
+  const normalized = email.toLowerCase();
+  await subscribeReader.enqueue({ email: normalized, postId }, { key: normalized });
+  return { accepted: true };
 });
 
 // Editors may remove posts and detach private subscriptions; no subscription data is returned.
-export const removePost = action({
-  input: { id: integer() },
-  access: "editor",
-  async handler({ id }) {
-    const [gone] = await db.delete(posts).where({ id }).returning();
-    if (!gone) throw new HttpError(404, "not_found", `No post ${id}`);
-    return { id: gone.id };
-  },
+export const removePost = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
+  const [gone] = await db.delete(posts).where({ id }).returning();
+  if (!gone) throw new HttpError(404, "not_found", `No post ${id}`);
+  return { id: gone.id };
 });
 
-export const moderateComment = action({
-  input: { id: integer(), decision: select(["approve", "reject"]) },
-  access: "editor",
-  async handler({ id, decision }) {
-    if (decision === "reject") {
-      const [gone] = await db.delete(comments).where({ id }).returning();
-      if (!gone) throw new HttpError(404, "not_found", `No comment ${id}`);
-      return { id, approved: false, removed: true };
-    }
-    const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
-    if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
-    return { id, approved: true, removed: false };
-  },
+export const moderateComment = mutation({ access: "editor" }, async ({ id, decision }: { id: number; decision: "approve" | "reject" }) => {
+  if (decision === "reject") {
+    const [gone] = await db.delete(comments).where({ id }).returning();
+    if (!gone) throw new HttpError(404, "not_found", `No comment ${id}`);
+    return { id, approved: false, removed: true };
+  }
+  const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
+  if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
+  return { id, approved: true, removed: false };
 });
 
-export const frontPage = action({
-  input: {},
-  access: "anyone",
-  async handler() {
-    const featured = await db.query.posts.findMany({ where: { status: "published", featured: true }, columns: { id: true } });
-    return { featured: featured.map((p) => p.id) };
-  },
+export const frontPage = query({ access: "anyone" }, async () => {
+  const featured = await db.query.posts.findMany({ where: { status: "published", featured: true }, columns: { id: true } });
+  return { featured: featured.map((p) => p.id) };
 });
 
 export default defineConfig({

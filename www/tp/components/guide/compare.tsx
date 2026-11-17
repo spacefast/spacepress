@@ -60,7 +60,7 @@ export function Compare() {
       <tr><td>Where it runs</td><td><a href="https://payloadcms.com/docs/production/deployment">anywhere Next.js runs, with a database you provide</a></td><td><a href="https://www.sanity.io/docs/studio/deployment">content on Sanity; Studio and front end anywhere</a></td><td><a href="https://docs.strapi.io/cms/deployment">Strapi Cloud, or a Node server you run</a></td><td><a href="https://docs.emdashcms.com/deployment/cloudflare/">Cloudflare Workers, or a Node server</a></td><td><a href="https://docs.astro.build/en/guides/deploy/">any static host, or an adapter&#39;s host</a></td><td><Built /> any WordPress host that meets the requirements</td></tr>
       </table></div>
       <h3>WordPress, done by hand</h3>
-      <p>TypedPress produces a WordPress plugin, so the closest comparison is writing that plugin yourself. In the TypedPress column, <code>query()</code> and <code>mutation()</code> are the decided spelling of what is <code>action()</code> today.</p>
+      <p>TypedPress produces a WordPress plugin, so the closest comparison is writing that plugin yourself.</p>
       <div className="scroll"><table className="cmp">
       <tr><th></th><th>A plugin written in PHP</th><th>Headless WordPress with a JavaScript front end</th><th>TypedPress</th></tr>
       <tr><td>Content types and fields</td><td><a href="https://developer.wordpress.org/reference/functions/register_post_type/"><code>register_post_type()</code> in PHP</a></td><td><a href="https://www.wpgraphql.com/docs/custom-post-types">PHP plus field groups made in the admin, each marked for the API</a></td><td><code>{"collection({ … })"}</code></td></tr>

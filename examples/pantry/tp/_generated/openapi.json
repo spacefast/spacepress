@@ -797,8 +797,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "itemId": { "type": "integer" },
-                  "amount": { "type": "integer" }
+                  "itemId": { "type": "number" },
+                  "amount": { "type": "number" }
                 },
                 "required": ["itemId"]
               }
@@ -883,12 +883,68 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "days": { "type": "integer" }
+                  "days": { "type": "number" }
                 }
               }
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "expiresOn": { "type": ["string", "null"] },
+                          "where": { "type": ["string"] }
+                        },
+                        "required": ["name", "expiresOn", "where"]
+                      }
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "get": {
+        "tags": ["Actions"],
+        "operationId": "actions.expiringSoon.read",
+        "summary": "Call expiringSoon with GET",
+        "x-typedpress-access": "editor",
+        "description": "Runs the read-only `expiringSoon` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "description": "The action's input, as JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "days": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The action's result.",

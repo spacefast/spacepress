@@ -99,7 +99,7 @@ test("the previous snapshot and migration files drive the next migration like th
   const changed = compiler.compile({ name: "pantry", files, previous, migrationFiles });
   assert.deepEqual(
     changed.output?.migrations.map(([name, sql]) => [name, /ALTER TABLE/.test(sql)]),
-    [["0004_update.sql", true]],
+    [["0005_update.sql", true]],
   );
 });
 
@@ -107,7 +107,7 @@ test("without a snapshot the migration files still number the next one, like on 
   const dir = path.join(repo, "examples/pantry");
   const migrationFiles = readdirSync(path.join(dir, "tp/_generated/migrations"));
   const { output } = compiler.compile({ name: "pantry", files: sources(dir), previous: null, migrationFiles });
-  assert.deepEqual(output?.migrations.map(([name]) => name), ["0004_update.sql"]);
+  assert.deepEqual(output?.migrations.map(([name]) => name), ["0005_update.sql"]);
 });
 
 test("a snapshot from another version is refused like on the command line", () => {
@@ -199,7 +199,7 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     assert.equal(client.status, 0, client.stdout + client.stderr);
 
     // Backend queries and wire types retain the authored null/undefined domains.
-    const storedSource = `import { table, group, json, text, select, slug, email, userProjection, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "typedpress";
+    const storedSource = `import { table, group, json, text, select, slug, email, userProjection, defineConfig, db, type InferSelectModel, type InferInsertModel, mutation } from "typedpress";
 type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
 type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
 class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
@@ -214,7 +214,7 @@ type WithoutLocale = Omit<Inserted, "locale">;
 class InsertedView { constructor(public payload: Inserted) {} read(): string { return this.payload.body.title; } }
 class TranslationView { constructor(public payload: WithoutLocale) {} read(): string { return this.payload.body.title; } }
 export const documents = table({ payload: json<Payload>(), metadata: group({ payload: json<Payload>() }), selected: json<Selected>(), inserted: json<Inserted>(), translation: json<WithoutLocale>() });
-export const read = action({ input: {}, handler: async () => {
+export const read = mutation({}, async () => {
   const inserted: Inserted = { body: { title: "fresh" }, label: "first" };
   const translated: Inserted = { body: { title: "translated" }, translationOf: 1 };
   const member = await db.query.members.findFirst();
@@ -223,7 +223,7 @@ export const read = action({ input: {}, handler: async () => {
   const sourceTitle = !selected ? "" : new SelectedView(selected).read();
   const row = await db.query.documents.findFirst();
   return !row ? null : memberName + sourceTitle + new InsertedView(inserted).read() + new InsertedView(translated).read() + new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read() + new TranslationView(row.translation).read();
-} });
+});
 export default defineConfig({ locales: { default: "en", all: ["en", "de"] } });`;
     writeFileSync(path.join(dir, "typedpress.config.ts"), storedSource);
     const stored = browserCheck({ name, files: { "typedpress.config.ts": storedSource } });
@@ -246,7 +246,7 @@ void selected; void inserted; void invalidWire;`);
     const storedTypes = spawnSync(process.execPath, [tsc, "-p", path.join(dir, "tsconfig.json")], { encoding: "utf8" });
     assert.equal(storedTypes.status, 0, storedTypes.stdout + storedTypes.stderr);
 
-    const recursiveModel = `import { table, json, defineConfig, type InferSelectModel } from "typedpress";
+    const recursiveModel = `import { table, json, defineConfig, type InferSelectModel, mutation } from "typedpress";
 type Payload = InferSelectModel<typeof source>;
 export const source = table({ body: json<Payload>().optional() });
 export default defineConfig({});`;
@@ -258,7 +258,7 @@ export default defineConfig({});`;
     assert.equal(recursive.check.diagnostics[0]?.location?.file, "typedpress.config.ts");
 
     const modelTables = Array.from({ length: 15 }, (_, i) => `export const model${i} = table({ left: json<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>(), right: json<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>() });`).join("\n");
-    const modelExpansion = `import { table, json, defineConfig, type InferSelectModel } from "typedpress";
+    const modelExpansion = `import { table, json, defineConfig, type InferSelectModel, mutation } from "typedpress";
 ${modelTables}
 export default defineConfig({});`;
     writeFileSync(path.join(dir, "typedpress.config.ts"), modelExpansion);
@@ -275,14 +275,14 @@ export default defineConfig({});`;
     const aliases = Array.from({ length: 30 }, (_, i) => `type A${i} = ${i === 29 ? "string" : `A${i + 1}`};`).join("\n");
     const nestedType = "Box<".repeat(75) + "C" + ">".repeat(75);
     const nestedValue = "{ value: ".repeat(75) + "new C()" + " }".repeat(75);
-    const budgetSource = (prime: boolean) => `import { action, defineConfig } from "typedpress";
+    const budgetSource = (prime: boolean) => `import { defineConfig, mutation } from "typedpress";
 type Box<T> = { value: T };
 ${aliases}
 class C { label: string = "ok"; read(): string { const text: A0 = "ok"; return text; } }
-export const run = action({ input: {}, handler: () => {
+export const run = mutation({}, () => {
   ${prime ? "new C();" : ""}
   const x: ${nestedType} = ${nestedValue}; return x;
-} });
+});
 export default defineConfig({});`;
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { typedpress: [path.join(repo, "types/typedpress/index.d.ts")] }, skipLibCheck: true },
@@ -322,11 +322,11 @@ export default defineConfig({});`;
         error: /type expansion.*16384-step limit/,
       },
     ]) {
-      const source = `import { action, defineConfig } from "typedpress";
+      const source = `import { defineConfig, mutation } from "typedpress";
 type Expanded = ${probe.parts.join(" & ")};
-export const run = action({ input: {}, handler: () => {
+export const run = mutation({}, () => {
   const x: Expanded = { ${probe.value} }; return x;
-} });
+});
 export default defineConfig({});`;
       writeFileSync(path.join(dir, "typedpress.config.ts"), source);
       const result = browserCheck({ name, files: { "typedpress.config.ts": source } });
@@ -378,15 +378,15 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
       declarations.push(`import {js_${value.name}} from './helper.js';`);
       expression = `js_${value.name}()`;
     }
-    actions.push(`export const ${value.name} = action({ input: {}, handler: () => (${expression}) });`);
+    actions.push(`export const ${value.name} = mutation({}, () => (${expression}));`);
     if (value.fold) {
       declarations.push(`const folded_${value.name}_value = ${value.expression};`);
-      actions.push(`export const folded_${value.name} = action({ input: {}, handler: () => folded_${value.name}_value });`);
+      actions.push(`export const folded_${value.name} = mutation({}, () => folded_${value.name}_value);`);
     }
   }
   vectors.forEach(addVector);
   files["tp/helper.js"] = javascript.join("\n");
-  files["tp/app.ts"] = `import { action, defineConfig } from 'typedpress';\n${declarations.join("\n")}\n${actions.join("\n")}\nexport default defineConfig({name:'builtinparity'});`;
+  files["tp/app.ts"] = `import { defineConfig, mutation } from 'typedpress';\n${declarations.join("\n")}\n${actions.join("\n")}\nexport default defineConfig({name:'builtinparity'});`;
   files["typedpress.config.ts"] = "export { default } from './tp/app.ts';\n";
   const dir = path.join(repo, "target", `builtin-wasm-${process.pid}`);
   mkdirSync(dir, { recursive: true });

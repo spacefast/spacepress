@@ -50,7 +50,7 @@ and a table row can belong to a post. See
 // typedpress.config.ts
 import {
   collection, table, text, richText, slug, integer, timestamp, media,
-  ref, defineConfig, action, db, HttpError,
+  ref, defineConfig, db, HttpError, query,
 } from "typedpress";
 
 export const authors = collection({
@@ -79,13 +79,9 @@ export const stock = table({
   quantity: integer().default(0),
 });
 
-export const publishedCount = action({
-  input: {},
-  access: "anyone",
-  async handler() {
-    const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
-    return { count: rows.length };
-  },
+export const publishedCount = query({ access: "anyone" }, async () => {
+  const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
+  return { count: rows.length };
 });
 
 export default defineConfig({

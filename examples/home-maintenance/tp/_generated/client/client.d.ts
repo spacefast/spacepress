@@ -681,8 +681,8 @@ export type DueNextOutput = {
 };
 export interface MarkDoneInput {
 	taskId: number;
-	notes?: string | null;
-	costCents?: number | null;
+	notes?: string;
+	costCents?: number;
 }
 export type MarkDoneOutput = {
 	log?: DoneLog;

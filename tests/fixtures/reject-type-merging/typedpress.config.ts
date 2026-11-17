@@ -1,6 +1,6 @@
-import { action, defineConfig } from "typedpress";
+import { defineConfig, mutation } from "typedpress";
 interface Entry { id: number }
 interface Entry { title: string }
-export const example = action({ input: {}, handler: () => { const value: Entry = { id: 1, title: "Hello" }; return value; } });
+export const example = mutation({}, () => { const value: Entry = { id: 1, title: "Hello" }; return value; });
 
 export default defineConfig({});

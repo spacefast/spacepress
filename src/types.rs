@@ -446,6 +446,9 @@ thread_local! {
 }
 
 pub fn json_ty(c: &Column) -> Ty {
+    if let Some(t) = &c.inferred {
+        return t.clone();
+    }
     JSON_TYPES.with(|m| {
         m.borrow()
             .get(&(c as *const Column as usize))
@@ -455,6 +458,9 @@ pub fn json_ty(c: &Column) -> Ty {
 }
 
 pub fn json_authored_ty(c: &Column) -> Ty {
+    if let Some(t) = &c.inferred {
+        return t.clone();
+    }
     JSON_TYPES.with(|m| {
         m.borrow()
             .get(&(c as *const Column as usize))

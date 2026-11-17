@@ -71,6 +71,9 @@ final class App
             }
             Extensions::action($action, $name, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer);
         }
+        if (isset($action['rateLimit'])) {
+            RateLimit::check($name, $action['rateLimit'], $viewer?->user);
+        }
         $ctx = $this->db->hookCtx();
         $input = Schema::validateInput($action['input'] ?? [], $input, '', $ctx['user']);
         $slot = $action['handler'];

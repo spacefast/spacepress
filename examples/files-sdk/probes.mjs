@@ -34,11 +34,11 @@ export const PROBES = [
   ["class inside a function", "function make() { class A { v() { return 1; } } return new A(); } return make().v();", "function make() { class A { v() { return 1; } } return new A(); } return make().v();"],
 ];
 
-const config = (body) => `import { action, defineConfig, text } from "typedpress";
+const config = (body) => `import { defineConfig, text, query } from "typedpress";
 ${body.imports ?? ""}
-export const a = action({ access: "anyone", input: { s: text() }, async handler(input) {
+export const a = query({ access: "anyone" }, async (input: { s: string }) => {
 ${body.handler}
-} });
+});
 export default defineConfig({ name: "probe" });
 `;
 

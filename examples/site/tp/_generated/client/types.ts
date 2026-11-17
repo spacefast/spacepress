@@ -55,7 +55,7 @@ export type MemberOrder = Partial<Record<"id" | "email" | "name" | "plan" | "rol
 export interface Settings { siteTitle: string; tagline: string | null; commentsOpen: boolean; social: { label: string; href: string }[] | null }
 export interface SettingsPatch { siteTitle?: string; tagline?: string | null; commentsOpen?: boolean; social?: { label: string; href: string }[] | null }
 
-export interface SubscribeNewsletterInput { email: string; postId?: number | null }
+export interface SubscribeNewsletterInput { email: string; postId?: number }
 export type SubscribeNewsletterOutput = { accepted: boolean };
 
 export interface RemovePostInput { id: number }

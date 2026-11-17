@@ -20,7 +20,7 @@ Labels:
 
 | label | captured at | how |
 |---|---|---|
-| `head` | the commit that removed the `defineConfig` registries (main, 2026-11-14) | `tests/fixtures/typedpress-sources/capture.sh head`, with the compiler built from that commit |
+| `head` | the commit that replaced `action()` with `query()` and `mutation()` (2026-11-17) | `tests/fixtures/typedpress-sources/capture.sh head`, with the compiler built from that commit |
 
 The examples are `pantry` (SQL tables, references, a job, actions), `blog` (post-backed kinds, a user
 projection, a global, files, synced content, `public/`) and `full-site` (`tp/app/` pages and
@@ -53,6 +53,7 @@ Captures of the same three examples at earlier commits of main, compiled with ma
 | `83b7c4f24` | blog | `file({ bucket: "decks" })` | `file(decks)`, the exported bucket (#408) | `` `file({ bucket: "decks" })` is now `file(decks)` `` |
 | `83b7c4f24` | full-site | compiles | compiles | no new migration |
 | `277ad98f9` (the first `head` capture) | pantry, blog, full-site | `defineConfig({ collections, tables, users, globals, files, actions, jobs, hooks })` | each registers by its export; hooks are `.on({ ... })` on the kind (authoring-surface ruling 36) | `` `collections` is gone: a kind registers by its export `` |
+| `head` before the server API change (main, 2026-11-14 to 2026-11-17) | pantry, blog, full-site | `action({ input, handler })`, `job({ input, handler })`, `jobs.x.enqueue()` | `query(options, handler)` or `mutation(options, handler)` and `job(options, handler)`, the input from the handler's parameter type; `x.enqueue()` on the job's export | `` `action()` is gone: a server function is `query()` when it only reads and `mutation()` when it writes `` |
 
 Each capture was made with the compiler of its own commit (`cargo build --bin typedpress` there, then
 `typedpress sources examples/<example> --out <dir>`), and compiled against the baseline that compiler wrote

@@ -41,10 +41,6 @@ type Entities = {
     'starsAt': ColumnBuilder<'timestamp', string, false, false, false, false>;
   }, false, 'table'>;
 };
-type Jobs = {
-  'refreshStars': Job<{
-  }>;
-};
 type Graph = {
   'docs': {
     'parent': One<'docs', true>;
@@ -57,4 +53,4 @@ type Graph = {
   'examples': {
   };
 };
-declare module "typedpress" { interface Register { relations: Relations<Entities, Graph>; jobs: Jobs } }
+declare module "typedpress" { interface Register { relations: Relations<Entities, Graph> } }

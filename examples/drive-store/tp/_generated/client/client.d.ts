@@ -785,7 +785,7 @@ export type BuyOutput = {
 export interface RestockInput {
 	drive: number;
 	quantity: number;
-	note?: string | null;
+	note?: string;
 }
 export type RestockOutput = {
 	drive: number;

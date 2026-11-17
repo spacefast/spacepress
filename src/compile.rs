@@ -15,6 +15,8 @@ mod client;
 mod effects;
 mod host;
 mod html;
+mod inputs;
+pub use inputs::apply_inputs;
 mod javascript;
 
 use crate::builtins::ERROR_CONSTRUCTORS;
@@ -411,6 +413,8 @@ pub struct Compiler<'a, 'p> {
     collections: &'a [Rc<CollectionVal>],
     /// Each registered action's allocation → its registered name (`Extracted::action_values`).
     action_values: &'a HashMap<usize, String>,
+    /// Each registered job's allocation → its registered name (`Extracted::job_values`).
+    job_values: &'a HashMap<usize, String>,
     type_aliases: HashMap<(usize, String), (Vec<TypeParam>, TyAnn)>,
     duplicate_type_aliases: HashSet<(usize, String)>,
     annotation_depth: usize,
@@ -473,6 +477,9 @@ pub struct Compiler<'a, 'p> {
     pub uses: Vec<crate::plugins::Use>,
     /// Which compiled functions each function calls, for the read→send report.
     pub calls: HashMap<String, HashSet<String>>,
+    /// Where each compiled function writes (a kind write, a queued job, an email), for the check
+    /// that a query never writes.
+    writes: HashMap<String, Vec<(Span, &'static str)>>,
     plugin_names: Vec<String>,
     /// Each plugin's PHP function answering its locked fetch hosts, written once the lock settles.
     pub host_functions: Vec<String>,
@@ -524,6 +531,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ev,
             collections: &ext.collections,
             action_values: &ext.action_values,
+            job_values: &ext.job_values,
             type_aliases,
             duplicate_type_aliases,
             annotation_depth: 0,
@@ -552,6 +560,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             current: String::new(),
             uses: Vec::new(),
             calls: HashMap::new(),
+            writes: HashMap::new(),
             host_functions: Vec::new(),
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
@@ -669,6 +678,45 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         self.output.push_str(&body);
         name
+    }
+
+    /// Records that the function compiling now writes at `span` (`what`: "writes posts").
+    fn writes(&mut self, span: Span, what: &'static str) {
+        self.writes.entry(self.current.clone()).or_default().push((span, what));
+    }
+
+    /// A query may not write: refuses the first write its handler, or anything it calls, makes.
+    fn check_queries(&self, out: &[(Slot, String)]) -> Result<()> {
+        for (slot, name) in out {
+            let Slot::ActionHandler { action } = slot else { continue };
+            if !self.schema.actions[action].query {
+                continue;
+            }
+            let mut seen = HashSet::from([name.clone()]);
+            let mut stack = vec![name.clone()];
+            while let Some(f) = stack.pop() {
+                if let Some((span, what)) = self.writes.get(&f).and_then(|w| w.first()) {
+                    let via = if &f == name {
+                        ""
+                    } else {
+                        " (in a function the query calls)"
+                    };
+                    return err_help(
+                        *span,
+                        format!("`{action}` is a query, so it can't write: this {what}{via}"),
+                        format!(
+                            "make it a mutation (`export const {action} = mutation({{ ... }}, ...)`), which runs in one transaction; or move the write into a mutation or a job"
+                        ),
+                    );
+                }
+                for callee in self.calls.get(&f).into_iter().flatten() {
+                    if seen.insert(callee.clone()) {
+                        stack.push(callee.clone());
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Records a capability the plugin compiling now uses; app code is unrestricted.
@@ -1052,6 +1100,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         while let Some((closure, name, params)) = self.pending.pop() {
             self.compile_function(&closure, &name, params, None, false)?;
         }
+        self.check_queries(&out)?;
         if self.uses_jobs {
             self.wrap_roots_with_job_queue(&out);
         }
@@ -1077,7 +1126,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             Slot::JobHandler { job } => vec![
-                types::action_input(&self.schema.jobs[job].input, &types::json_ty),
+                match &self.schema.jobs[job].input_ty {
+                    Some(t) => t.clone(),
+                    None => types::action_input(&self.schema.jobs[job].input, &types::json_ty),
+                },
                 types::job_ctx(),
             ],
             Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
@@ -1096,7 +1148,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Slot::AppHandler { .. } => vec![types::route_request(), ctx],
             Slot::AppStaticParams { .. } => vec![],
             Slot::ActionHandler { action } => vec![
-                types::action_input(&self.schema.actions[action].input, &types::json_ty),
+                match &self.schema.actions[action].input_ty {
+                    Some(t) => t.clone(),
+                    None => types::action_input(&self.schema.actions[action].input, &types::json_ty),
+                },
                 ctx,
             ],
             Slot::Access { owner, op } => {
@@ -3088,11 +3143,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 );
                 out.extend(right);
                 // Both operands hold only on the conjunction's true side or
-                // the disjunction's false side. Keep the other side conservative.
+                // the disjunction's false side. Keep the other side conservative:
+                // the declared type, or for a member path (`input.q`, which has no
+                // declaration of its own) both sides together, the type it had.
                 for entry in &mut out[start..] {
-                    if let Some(declared) = self.declared_path_ty(&entry.0) {
-                        entry.2 = declared;
-                    }
+                    entry.2 = self
+                        .declared_path_ty(&entry.0)
+                        .unwrap_or_else(|| Ty::union([entry.1.clone(), entry.2.clone()]));
                 }
             }
             ExprKind::Logical(LogOp::And | LogOp::Or, _, _) => {
@@ -4519,6 +4576,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "`jobs` can't be used as a value",
                 "call `jobs.<name>.enqueue(input)` directly",
             ),
+            Value::Job(_) => err_help(
+                span,
+                format!("`{n}` is a job: it runs on the queue, not as a function"),
+                format!("queue it with `{n}.enqueue({{ ... }})`"),
+            ),
             Value::Builtin(Builtin::HttpError) => err(span, "use `throw new HttpError(status, code, message)`"),
             Value::Builtin(Builtin::Static("Number", method)) if method.as_ref() == "isFinite" => {
                 Ok(number_is_finite_function())
@@ -4529,7 +4591,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Value::ColRef(_)
             | Value::Relation(_)
             | Value::Action(_)
-            | Value::Job(_)
             | Value::Route(_)
             | Value::Plugin(_)
             | Value::Screen(_)
@@ -8341,11 +8402,38 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.abilities_call(prop, args, span).map(Some)
             }
             ExprKind::Member { obj, prop, .. } if prop == "enqueue" => match &obj.kind {
+                // A 0.3.0 capture's `jobs.<name>.enqueue(...)`; inside a plugin, the plugin's own job.
                 ExprKind::Member {
                     obj: root, prop: job, ..
                 } if builtin(self, root)? == Some(Builtin::Jobs) => {
-                    self.enqueue_call(job, obj.span, args, span).map(Some)
+                    let registered = match &self.plugin {
+                        Some((_, plugin)) => format!("{plugin}_{job}"),
+                        None => job.to_string(),
+                    };
+                    self.enqueue_call(&registered, obj.span, args, span).map(Some)
                 }
+                // `notifyLowStock.enqueue(...)` on the job's own export.
+                ExprKind::Ident(n) => match self.resolve(n, obj.span).map_err(|d| {
+                    if d.help.is_none() {
+                        d.help(format!(
+                            "a job is queued through its export: `export const {n} = job({{ ... }}, async (input) => ...)`, imported where it's queued"
+                        ))
+                    } else {
+                        d
+                    }
+                })? {
+                    Resolved::Value(Value::Job(j), _) => {
+                        let Some(job) = self.job_values.get(&(Rc::as_ptr(&j) as usize)).cloned() else {
+                            return err_help(
+                                obj.span,
+                                format!("`{n}` is a job that isn't registered"),
+                                format!("export it: `export const {n} = job(...)`"),
+                            );
+                        };
+                        self.enqueue_call(&job, obj.span, args, span).map(Some)
+                    }
+                    _ => Ok(None),
+                },
                 _ => Ok(None),
             },
             _ => Ok(None),
@@ -8421,6 +8509,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         self.uses("mail", "send", span);
+        self.writes(span, "sends an email");
         Ok(Out::atom(
             format!("\\TypedPress\\Mail::send({})", v.php),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
@@ -8594,6 +8683,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if self.fx().no_db {
             return err_help(span, "access rules can't use once()", "move it into a hook or action");
         }
+        self.writes(span, "records a once() result");
         if args.len() != 2 {
             return err_help(
                 span,
@@ -8637,14 +8727,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         ))
     }
 
+    /// `x.enqueue(input, { delay, key })` for the job registered as `job`.
     fn enqueue_call(&mut self, job: &str, job_span: Span, args: &[ArrEl], span: Span) -> Result<Out> {
-        // Inside a plugin, `jobs.<name>` names the plugin's own job.
-        let registered = match &self.plugin {
-            Some((_, plugin)) => format!("{plugin}_{job}"),
-            None => job.to_string(),
-        };
-        let job = registered.as_str();
         self.uses("jobs", job, job_span);
+        self.writes(job_span, "queues a job");
         let Some(spec) = self.schema.jobs.get(job) else {
             let mut d = Diag::new(job_span, format!("unknown job `{job}`"));
             if let Some(s) = suggest(job, self.schema.jobs.keys().map(String::as_str)) {
@@ -8661,10 +8747,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err_help(
                 span,
                 "enqueue() takes the job input and optional options",
-                "write jobs.x.enqueue({ ... })",
+                "write notifySubscribers.enqueue({ postId }, { delay: 60, key: \"post-42\" })",
             );
         }
-        let want = types::columns_insert(&spec.input, &types::json_ty);
+        let want = match &spec.input_ty {
+            Some(t) => t.clone(),
+            None => types::columns_insert(&spec.input, &types::json_ty),
+        };
         let input_expr = self.arg(args, 0, span, "the job input")?;
         let input = self.expr(input_expr)?;
         let input = self.finish_value(input, input_expr.span)?;
@@ -10242,6 +10331,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             key.clone(),
             m_span,
         );
+        match m {
+            "create" => self.writes(m_span, "creates a row"),
+            "update" => self.writes(m_span, "updates a row"),
+            "delete" => self.writes(m_span, "deletes a row"),
+            _ => {}
+        }
         let mut plain = Vec::new();
         for a in args {
             match a {
@@ -10903,6 +10998,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             format!("globals.{name}"),
             m_span,
         );
+        if m == "update" {
+            self.writes(m_span, "updates a global");
+        }
         // Typed like collection rows: `json<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
@@ -10979,6 +11077,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let key = self.schema.collections[&table].key.clone();
             self.uses("delete", key, t.span);
         }
+        self.writes(
+            m_span,
+            match kind {
+                BuilderKind::Insert => "inserts a row",
+                BuilderKind::Update => "updates rows",
+                BuilderKind::Delete => "deletes rows",
+            },
+        );
         if v.php != php_str(&table) {
             return err_help(
                 t.span,

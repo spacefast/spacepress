@@ -1,6 +1,6 @@
 import {
-  action, boolean, collection, db, defineConfig, group, integer,
-  json, repeater, richText, table, text, select,
+  boolean, collection, db, defineConfig, group, integer,
+  json, repeater, richText, table, text, select, query, mutation, HttpError,
 } from "typedpress";
 
 // The four field-kit data shapes become native Secure Custom Fields controls.
@@ -25,17 +25,11 @@ export const records = table({
   payload: json().optional(),
 }, { access: { read: "editor", create: "editor", update: "editor", delete: "editor" } });
 
-export const echo = action({
-  access: "editor", input: { message: text().min(1).max(200) },
-  handler: ({ message }) => ({ message, length: message.length }),
-});
+export const echo = query({ access: "editor" }, ({ message }: { message: string }) => { if (message.length < 1) throw new HttpError(422, "invalid_input", "message must be at least 1 character", "/message"); if (message.length > 200) throw new HttpError(422, "invalid_input", "message must be at most 200 characters", "/message"); return ({ message, length: message.length }); });
 
-export const advance = action({
-  access: "editor", input: { id: integer() },
-  handler: async ({ id }) => {
-    await db.update(records).set({ state: "processing" }).where({ id });
-    return await db.query.records.findFirst({ where: { id } });
-  },
+export const advance = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
+  await db.update(records).set({ state: "processing" }).where({ id });
+  return await db.query.records.findFirst({ where: { id } });
 });
 
 export default defineConfig({

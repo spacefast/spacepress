@@ -283,8 +283,16 @@ pub enum Builtin {
     AdminScreen,
     /// `item(path)` from "typedpress": the `{item.<path>}` placeholder of a screen action's input.
     Item,
+    /// `action({ input, handler })`, exported only to a 0.3.0 capture (`eval::legacy`).
     Action,
+    /// `job(options, handler)`; a 0.3.0 capture's `job({ input, handler })`.
     Job,
+    /// `query(options, handler)`.
+    Query,
+    /// `mutation(options, handler)`.
+    Mutation,
+    /// `cron(schedule, handler)`.
+    Cron,
     /// `route()`, exported only to a 0.3.0 capture (`eval::legacy`).
     Route,
     Files,
@@ -503,8 +511,41 @@ pub struct FileBucketVal {
 
 #[derive(Debug)]
 pub struct ActionVal {
+    /// The options object (`query(options, handler)`), or the whole definition of a form that has
+    /// no separate handler (`adminScreen`, `definePlugin`, a 0.3.0 capture's `action({ ... })`).
     pub config: Value,
     pub span: Span,
+    /// What built it, which decides how extraction reads it.
+    pub form: FnForm,
+    /// The handler passed after the options; `Value::Undef` for the one-object forms.
+    pub handler: Value,
+}
+
+/// The builder behind an [`ActionVal`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FnForm {
+    /// `query(options, handler)`: reads only.
+    Query,
+    /// `mutation(options, handler)`: may write, in one transaction.
+    Mutation,
+    /// `job(options, handler)`.
+    Job,
+    /// `cron("0 3 * * *", handler)`: a job Action Scheduler runs on the schedule.
+    Cron,
+    /// One configuration object: `adminScreen`, `definePlugin`, and a 0.3.0 capture's
+    /// `action({ input, handler })`, `job({ input, handler })` and `route()`.
+    Object,
+}
+
+impl ActionVal {
+    pub fn object(config: Value, span: Span) -> Self {
+        ActionVal {
+            config,
+            span,
+            form: FnForm::Object,
+            handler: Value::Undef,
+        }
+    }
 }
 
 /// Lexical scope. Function values keep their defining scope alive, so the

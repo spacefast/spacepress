@@ -1030,7 +1030,8 @@
 				"taxonomy",
 				"terms",
 				"hooks-actions-globals-config",
-				"action",
+				"query",
+				"mutation",
 				"global",
 				"defineconfig",
 				"item",
@@ -1038,6 +1039,7 @@
 				"defineplugin",
 				"errors",
 				"job",
+				"cron",
 				"once",
 				"env",
 				"files",
@@ -1567,8 +1569,55 @@
 			"edit": null,
 			"toc": [],
 			"prev": "/rest/actions/actions-approve-comment",
-			"next": "/rest/files/files-decks-upload",
+			"next": "/rest/actions/actions-published-count-read",
 			"operation": "POST /actions/publishedCount",
+			"sidebar": true
+		},
+		"/rest/actions/actions-published-count-read": {
+			"title": "Call publishedCount with GET - TypedPress",
+			"h1": "Call publishedCount with GET",
+			"description": null,
+			"canonical": "/rest/actions/actions-published-count-read",
+			"markdown": "/rest/actions/actions-published-count-read.md",
+			"ogImage": "/og/rest/actions/actions-published-count-read.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/actions/actions-published-count-read.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Call publishedCount with GET - TypedPress",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/actions/actions-published-count",
+			"next": "/rest/files/files-decks-upload",
+			"operation": "GET /actions/publishedCount",
 			"sidebar": true
 		},
 		"/rest/authors/authors-compare": {
@@ -2647,7 +2696,7 @@
 			"stops": [],
 			"edit": null,
 			"toc": [],
-			"prev": "/rest/actions/actions-published-count",
+			"prev": "/rest/actions/actions-published-count-read",
 			"next": "/rest/files/files-decks-get",
 			"operation": "POST /files/decks",
 			"sidebar": true
@@ -5864,6 +5913,11 @@
 				"group": "Actions"
 			},
 			{
+				"label": "Call publishedCount with GETGET",
+				"href": "/rest/actions/actions-published-count-read",
+				"group": "Actions"
+			},
+			{
 				"label": "Upload to decksPOST",
 				"href": "/rest/files/files-decks-upload",
 				"group": "Files"
@@ -6359,6 +6413,7 @@
 		"/rest/live/live-refresh.md",
 		"/rest/actions/actions-approve-comment.md",
 		"/rest/actions/actions-published-count.md",
+		"/rest/actions/actions-published-count-read.md",
 		"/rest/authors/authors-compare.md",
 		"/rest/authors/authors-create.md",
 		"/rest/authors/authors-delete.md",
@@ -6472,6 +6527,7 @@
 		"/rest/live/live-refresh.mdx",
 		"/rest/actions/actions-approve-comment.mdx",
 		"/rest/actions/actions-published-count.mdx",
+		"/rest/actions/actions-published-count-read.mdx",
 		"/rest/authors/authors-compare.mdx",
 		"/rest/authors/authors-create.mdx",
 		"/rest/authors/authors-delete.mdx",

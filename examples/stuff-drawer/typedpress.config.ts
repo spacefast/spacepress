@@ -1,7 +1,7 @@
 import {
-  action, collection, date, db, defineConfig, HttpError,
-  integer, job, jobs, json, media, table, text, timestamp,
-  type InferSelectModel, select, ref,
+  collection, date, db, defineConfig, HttpError,
+  integer, job, json, media, table, text, timestamp,
+  type InferSelectModel, select, ref, query, mutation,
 } from "typedpress";
 import { actorId, ownerId, personalAccess } from "./tp/lib/ownership";
 
@@ -108,7 +108,7 @@ async function checkLoan(loan: {
 async function scheduleOverdue(loan: Loan) {
   if (loan.returnedOn != null || loan.overdueAt != null) return;
   const deadline = new Date(`${loan.dueOn}T00:00:00.000Z`).getTime() + 86_400_000;
-  await jobs.markOverdue.enqueue({ loanId: loan.id, ownerId: loan.ownerId }, {
+  await markOverdue.enqueue({ loanId: loan.id, ownerId: loan.ownerId }, {
     delay: Math.max(0, Math.ceil((deadline - Date.now()) / 1000)),
     key: `loan-${loan.id}-${loan.dueOn}`,
   });
@@ -124,77 +124,61 @@ async function describeLoans(owner: number, entries: Loan[]) {
   return result;
 }
 
-export const markOverdue = job({
-  input: { loanId: integer(), ownerId: integer() },
-  retries: 3,
-  async handler({ loanId, ownerId }) {
-    const today = new Date().toISOString().slice(0, 10);
-    await db.update(loans).set({ overdueAt: new Date().toISOString() }).where({
-      id: loanId, ownerId, dueOn: { lt: today },
-      returnedOn: { isNull: true }, overdueAt: { isNull: true },
-    });
-  },
+export const markOverdue = job({ retries: 3 }, async ({ loanId, ownerId }: { loanId: number; ownerId: number }) => {
+  const today = new Date().toISOString().slice(0, 10);
+  await db.update(loans).set({ overdueAt: new Date().toISOString() }).where({
+    id: loanId, ownerId, dueOn: { lt: today },
+    returnedOn: { isNull: true }, overdueAt: { isNull: true },
+  });
 });
 
-export const find = action({
-  input: { query: text().min(1) }, access: "authenticated",
-  async handler({ query }, ctx) {
-    const owner = actorId(ctx);
-    const words = query.toLowerCase().trim().split(/\s+/);
-    const inventory = await db.query.things.findMany({ where: { ownerId: owner }, orderBy: { name: "asc" } });
-    const result = [];
-    for (const thing of inventory) {
-      const searchable = `${thing.name} ${thing.connectorA ?? ""} ${thing.connectorB ?? ""} ${thing.tags.join(" ")}`.toLowerCase();
-      if (!words.every((word) => word === undefined || searchable.includes(word))) continue;
-      const bin = thing.binId == null ? null : await db.query.bins.findFirst({ where: { id: thing.binId, ownerId: owner } });
-      const active = await db.query.loans.findMany({ where: { thingId: thing.id, ownerId: owner, returnedOn: { isNull: true } } });
-      result.push({ thing, bin, outOnLoan: active.length > 0, availableQuantity: thing.quantity - active.length });
-    }
-    return result;
-  },
+export const find = query({ access: "authenticated" }, async ({ query }: { query: string }, ctx) => {
+  if (query.length < 1) throw new HttpError(422, "invalid_input", "query must be at least 1 character", "/query");
+  const owner = actorId(ctx);
+  const words = query.toLowerCase().trim().split(/\s+/);
+  const inventory = await db.query.things.findMany({ where: { ownerId: owner }, orderBy: { name: "asc" } });
+  const result = [];
+  for (const thing of inventory) {
+    const searchable = `${thing.name} ${thing.connectorA ?? ""} ${thing.connectorB ?? ""} ${thing.tags.join(" ")}`.toLowerCase();
+    if (!words.every((word) => word === undefined || searchable.includes(word))) continue;
+    const bin = thing.binId == null ? null : await db.query.bins.findFirst({ where: { id: thing.binId, ownerId: owner } });
+    const active = await db.query.loans.findMany({ where: { thingId: thing.id, ownerId: owner, returnedOn: { isNull: true } } });
+    result.push({ thing, bin, outOnLoan: active.length > 0, availableQuantity: thing.quantity - active.length });
+  }
+  return result;
 });
 
-export const lend = action({
-  input: { thingId: integer(), personId: integer(), dueOn: date(), lentOn: date().defaultNow() },
-  access: "authenticated", idempotent: true,
-  async handler(input, ctx) {
-    const [loan] = await db.insert(loans).values({ ...input, ownerId: actorId(ctx) }).returning();
-    return loan;
-  },
+export const lend = mutation({ access: "authenticated", idempotent: true }, async (input: { thingId: number; personId: number; dueOn: string; lentOn?: string }, ctx) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dueOn)) throw new HttpError(422, "invalid_input", "dueOn must be a date (YYYY-MM-DD)", "/dueOn");
+  if (input.lentOn !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.lentOn)) throw new HttpError(422, "invalid_input", "lentOn must be a date (YYYY-MM-DD)", "/lentOn");
+  const [loan] = await db.insert(loans).values({ ...input, ownerId: actorId(ctx) }).returning();
+  return loan;
 });
 
-export const giveBack = action({
-  input: { loanId: integer(), returnedOn: date().defaultNow() }, access: "authenticated",
-  async handler({ loanId, returnedOn }, ctx) {
-    const owner = actorId(ctx);
-    const loan = await db.query.loans.findFirst({ where: { id: loanId, ownerId: owner } });
-    if (!loan) throw new HttpError(404, "not_found", "Loan not found in your drawer.");
-    if (loan.returnedOn != null) return loan;
-    const [updated] = await db.update(loans).set({ returnedOn }).where({ id: loanId, ownerId: owner }).returning();
-    return updated;
-  },
+export const giveBack = mutation({ access: "authenticated" }, async ({ loanId, returnedOn = new Date().toISOString().slice(0, 10) }: { loanId: number; returnedOn?: string }, ctx) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(returnedOn)) throw new HttpError(422, "invalid_input", "returnedOn must be a date (YYYY-MM-DD)", "/returnedOn");
+  const owner = actorId(ctx);
+  const loan = await db.query.loans.findFirst({ where: { id: loanId, ownerId: owner } });
+  if (!loan) throw new HttpError(404, "not_found", "Loan not found in your drawer.");
+  if (loan.returnedOn != null) return loan;
+  const [updated] = await db.update(loans).set({ returnedOn }).where({ id: loanId, ownerId: owner }).returning();
+  return updated;
 });
 
-export const overdue = action({
-  input: {}, access: "authenticated",
-  async handler(input, ctx) {
-    const owner = actorId(ctx);
-    const entries = await db.query.loans.findMany({ where: {
-      ownerId: owner, returnedOn: { isNull: true }, dueOn: { lt: new Date().toISOString().slice(0, 10) },
-    }, orderBy: { dueOn: "asc" } });
-    return await describeLoans(owner, entries);
-  },
+export const overdue = query({ access: "authenticated" }, async (input: {}, ctx) => {
+  const owner = actorId(ctx);
+  const entries = await db.query.loans.findMany({ where: {
+    ownerId: owner, returnedOn: { isNull: true }, dueOn: { lt: new Date().toISOString().slice(0, 10) },
+  }, orderBy: { dueOn: "asc" } });
+  return await describeLoans(owner, entries);
 });
 
-export const whoHas = action({
-  input: { personId: integer() }, access: "authenticated",
-  async handler({ personId }, ctx) {
-    const owner = actorId(ctx);
-    const person = await db.query.people.findFirst({ where: { id: personId, ownerId: owner } });
-    if (!person) throw new HttpError(404, "not_found", "Person not found in your drawer.");
-    const entries = await db.query.loans.findMany({ where: { ownerId: owner, personId, returnedOn: { isNull: true } }, orderBy: { lentOn: "asc" } });
-    return await describeLoans(owner, entries);
-  },
+export const whoHas = query({ access: "authenticated" }, async ({ personId }: { personId: number }, ctx) => {
+  const owner = actorId(ctx);
+  const person = await db.query.people.findFirst({ where: { id: personId, ownerId: owner } });
+  if (!person) throw new HttpError(404, "not_found", "Person not found in your drawer.");
+  const entries = await db.query.loans.findMany({ where: { ownerId: owner, personId, returnedOn: { isNull: true } }, orderBy: { lentOn: "asc" } });
+  return await describeLoans(owner, entries);
 });
 
 export default defineConfig({

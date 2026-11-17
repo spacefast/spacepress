@@ -408,9 +408,9 @@ impl Drop for Served {
     }
 }
 
-const CONFIG: &str = r#"import { defineConfig, table, text, job, jobs, integer } from "typedpress";
+const CONFIG: &str = r#"import { defineConfig, table, text, job } from "typedpress";
 const notes = table({ title: text() }, { access: { read: "anyone" } });
-export { notes }; export const stamp = job({ input: { n: integer().optional() }, handler: async () => {} }); export default defineConfig({ name: "clilane" });
+export { notes }; export const stamp = job({}, async (_input: { n?: number }) => {}); export default defineConfig({ name: "clilane" });
 "#;
 
 /// `typedpress <site cmd> --site @lane` and `wp @lane typedpress <site cmd>` on one real WordPress: the same
@@ -1078,12 +1078,12 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
     assert_eq!(rename["ability"], "agentkit/rename");
     assert_eq!(
         rename["input"]["id"],
-        serde_json::json!({ "type": "integer", "required": true })
+        serde_json::json!({ "type": "number", "required": true })
     );
     assert_eq!(rename["output"]["type"], "object");
     assert_eq!(
         schema["jobs"]["clearDone"],
-        serde_json::json!({ "input": { "keep": { "type": "integer", "default": 0 } }, "retries": 2, "agents": false })
+        serde_json::json!({ "input": { "keep": { "type": "number" } }, "retries": 2, "agents": false })
     );
     // A page that serves a kind's `url` names the kind as `kinds` lists it.
     assert_eq!(
@@ -2085,7 +2085,7 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     std::fs::create_dir_all(project.join("tp/server")).unwrap();
     std::fs::write(
         project.join("tp/server/tasks.ts"),
-        "import { action } from \"typedpress\";\nexport const tasks = action({ input: {}, async handler() { return 1; } });\n",
+        "import { mutation } from \"typedpress\";\nexport const tasks = mutation({}, async () => { return 1; });\n",
     )
     .unwrap();
     let state = tree(&project);
@@ -2118,7 +2118,7 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     std::fs::create_dir_all(&bare).unwrap();
     std::fs::write(
         bare.join("typedpress.config.ts"),
-        "import { action, defineConfig } from \"typedpress\";\nconst __projects = action({ input: {}, async handler() { return 1; } }); export { __projects as projects }; export default defineConfig({ name: \"bare\" });\n",
+        "import { defineConfig, mutation } from \"typedpress\";\nconst __projects = mutation({}, async () => { return 1; }); export { __projects as projects }; export default defineConfig({ name: \"bare\" });\n",
     )
     .unwrap();
     let state = tree(&bare);
@@ -2421,8 +2421,8 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
         "| `shoppingList` | table | anyone | editor | editor | admin | `/__tp/api/v1/shopping_list` |",
         "| `articles` | collection | anyone | author | editor | editor | `/__tp/api/v1/articles` |",
         "- `substitutes`: `item`: ref → shoppingList, `name`: text",
-        "| `rename` | `id`: integer, `name`: text | editor | `POST /__tp/api/v1/actions/rename` |",
-        "- `clearDone`: input `keep?`: integer; retried up to 2 times",
+        "| `rename` | `id`: number, `name`: text | editor | `POST /__tp/api/v1/actions/rename` |",
+        "- `clearDone`: input `keep?`: number; retried up to 2 times",
         "| `/api/list` | route (GET) | `tp/app/api/list/route.ts` |",
         "| `/` | page | `tp/app/page.tsx` |",
         "guest < subscriber < author < editor < admin.",

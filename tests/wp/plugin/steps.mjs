@@ -5,14 +5,13 @@ const notes = (fields = "") => `export const notes = collection({
 }, { title: "title", url: "/notes/:id", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });`;
 // What a host supplies and the plugin supplies here: the app's variables, and mail delivery. The
 // lane's site answers on 127.0.0.1, which makes no default sender address, so the app names one.
-const actions = `export const greeting = action({ input: {}, access: "anyone", handler() { return { greeting: process.env.GREETING ?? null }; } });
-export const welcome = action({ input: { to: text() }, access: "editor",
-  async handler(i) { return { id: (await mail.send({ to: i.to, from: "app@example.test", subject: "Welcome", text: "Sent by the deployed app." })).id }; } });`;
+const actions = `export const greeting = mutation({ access: "anyone" }, () => { return { greeting: process.env.GREETING ?? null }; });
+export const welcome = mutation({ access: "editor" }, async (i: { to: string }) => { return { id: (await mail.send({ to: i.to, from: "app@example.test", subject: "Welcome", text: "Sent by the deployed app." })).id }; });`;
 // A SQL table: its changes are migrations, and the deploy-time schema check counts its rows.
 const entries = (fields = "") => `export const entries = table({
   body: text().optional(),${fields}
 });`;
-const app = (parts, options = "") => `import { action, collection, defineConfig, mail, table, text } from "typedpress";
+const app = (parts, options = "") => `import { collection, defineConfig, mail, table, text, mutation } from "typedpress";
 ${parts.join("\n")}
 ${actions}
 export default defineConfig({ name: "pluginlane"${options} });

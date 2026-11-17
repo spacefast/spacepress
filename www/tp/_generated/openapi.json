@@ -2962,7 +2962,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "example": { "type": "string", "maxLength": 40 },
+                  "example": { "type": "string" },
                   "files": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] }
                 },
                 "required": ["example", "files"]

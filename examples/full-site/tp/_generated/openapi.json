@@ -1204,7 +1204,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "noteId": { "type": "integer" }
+                  "noteId": { "type": "number" }
                 },
                 "required": ["noteId"]
               }

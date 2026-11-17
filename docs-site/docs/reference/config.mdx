@@ -241,23 +241,32 @@ export declare function terms(taxonomy: CollectionMeta<string, ColumnsConfig, fa
 
 ## Hooks, actions, globals, config
 
-### `action`
+### `query`
 
-`POST <prefix>/actions/<name>`; the handler's return value is the response `data`. Default access `"editor"`.
+A server function that reads. The input is the handler's parameter type; it may not write (the build refuses a write, in it or in anything it calls), and its Ability is marked read-only. `POST` or `GET <prefix>/actions/<name>`.
 
 ```ts
-export declare function action<TInput extends ColumnsConfig, TResult>(definition: {
-  input: TInput;
-  access?: GateRule<InferActionInput<TInput>>;
-  agents?: boolean;
-  idempotent?: boolean;
-  /** Only reads: the Ability is annotated `readonly` (run over GET) and implies `idempotent`. */
-  readonly?: boolean;
-  /** Deletes or overwrites data: the Ability is annotated `destructive`, so agents confirm first. */
-  destructive?: boolean;
-  signature?: { secret: EnvValue; header: string; scheme: "typedpress" | "hmac-sha256" };
-  handler: (input: InferActionInput<TInput>, ctx: HookCtx) => Awaitable<TResult>;
-}): Action<TInput, TResult>;
+export declare function query<F extends (input: any, ctx: HookCtx) => unknown>(
+  options: FunctionOptions<HandlerInput<F>>,
+  handler: F,
+): Action<HandlerInput<F>, Awaited<ReturnType<F>>>;
+```
+
+### `mutation`
+
+A server function that writes, in one transaction. The input is the handler's parameter type. `POST <prefix>/actions/<name>`.
+
+```ts
+export declare function mutation<F extends (input: any, ctx: HookCtx) => unknown>(
+  options: FunctionOptions<HandlerInput<F>> & {
+    idempotent?: boolean;
+    /** Deletes or overwrites data: the Ability is annotated `destructive`, so agents confirm first. */
+    destructive?: boolean;
+    /** Signed webhooks: the caller proves the request with an HMAC instead of an access rule. */
+    signature?: { secret: EnvValue; header: string; scheme: "typedpress" | "hmac-sha256" };
+  },
+  handler: F,
+): Action<HandlerInput<F>, Awaited<ReturnType<F>>>;
 ```
 
 ### `global`
@@ -304,7 +313,7 @@ export declare function adminScreen<
 
 ### `definePlugin`
 
-Defines a plugin in an installed package. Its hooks keep app-hook semantics; its actions, jobs and routes are registered as `<name>_<key>`, and `jobs.<key>` inside the plugin names its own. There is no capability list: the compiler infers it, and the app's lock grants it.
+Defines a plugin in an installed package. Its hooks keep app-hook semantics; its queries, mutations and jobs are registered as `<name>_<key>`, and `x.enqueue()` on one of its jobs queues it. There is no capability list: the compiler infers it, and the app's lock grants it.
 
 ```ts
 export declare function definePlugin<TSchema extends Schema = Schema>(definition: {
@@ -321,13 +330,21 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
 
 ### `job`
 
+A background job. The input is the handler's parameter type. `every: "1h"` also runs it on that repeat (s, m, h, d or w; at least a minute), with no input.
+
 ```ts
-export declare function job<TInput extends ColumnsConfig>(definition: {
-  input: TInput;
-  retries?: number;
-  agents?: boolean;
-  handler: (input: InferActionInput<TInput>, ctx: JobCtx) => Awaitable<void>;
-}): Job<TInput>;
+export declare function job<F extends (input: any, ctx: JobCtx) => Awaitable<void>>(
+  options: { retries?: number; agents?: boolean; every?: `${number}${"s" | "m" | "h" | "d" | "w"}` },
+  handler: F,
+): Job<HandlerInput<F>>;
+```
+
+### `cron`
+
+A job Action Scheduler runs on a five-field cron schedule in UTC: `cron("0 3 * * *", async () => { ... })`.
+
+```ts
+export declare function cron(schedule: string, handler: (input: {}, ctx: JobCtx) => Awaitable<void>): Job<{}>;
 ```
 
 ### `once`

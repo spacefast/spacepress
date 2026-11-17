@@ -69,15 +69,6 @@ type Globals = {
     'social': ColumnBuilder<'repeater', { label: string; href: string }[], false, false, false, false>;
   }>;
 };
-type Jobs = {
-  'subscribeReader': Job<{
-    'email': ColumnBuilder<'email', string, true, false, false, false>;
-    'postId': ColumnBuilder<'integer', number, false, false, false, false>;
-  }>;
-  'notifyReaders': Job<{
-    'postId': ColumnBuilder<'integer', number, true, false, false, false>;
-  }>;
-};
 type Graph = {
   'authors': {
     'posts': Many<'posts'>;
@@ -101,4 +92,4 @@ type Graph = {
   };
 };
 type GeneratedLocale = "en" | "de";
-declare module "typedpress" { interface Register { relations: Relations<Entities, Graph>; globals: Globals; jobs: Jobs; locales: GeneratedLocale } }
+declare module "typedpress" { interface Register { relations: Relations<Entities, Graph>; globals: Globals; locales: GeneratedLocale } }

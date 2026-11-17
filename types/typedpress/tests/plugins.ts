@@ -1,4 +1,4 @@
-import { action, collection, defineConfig, definePlugin, text, type Plugin } from "typedpress";
+import { collection, defineConfig, definePlugin, text, type Plugin, mutation } from "typedpress";
 
 const posts = collection({ title: text(), summary: text().optional() }, { title: "title" });
 
@@ -8,7 +8,7 @@ function seo(options: { suffix: string }): Plugin {
     name: "seo",
     hooks: { posts: { beforeCreate(data) { data.summary = data.title + options.suffix; } } },
     actions: {
-      ping: action({ input: {}, access: "anyone", handler() { return "pong"; } }),
+      ping: mutation({ access: "anyone" }, () => { return "pong"; }),
     },
   });
 }

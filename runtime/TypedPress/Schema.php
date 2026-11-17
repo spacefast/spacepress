@@ -425,7 +425,7 @@ final class Schema
     /** True when a create must receive this column (no default, not generated). */
     public static function isRequired(array $col): bool
     {
-        return ($col['notNull'] ?? false) && !isset($col['default']) && !($col['autoIncrement'] ?? false) && !($col['readOnly'] ?? false)
+        return ($col['notNull'] ?? false) && !isset($col['default']) && !($col['omit'] ?? false) && !($col['autoIncrement'] ?? false) && !($col['readOnly'] ?? false)
             && !($col['type'] === 'slug' && isset($col['source'])); // derived when left out
     }
 
@@ -493,7 +493,8 @@ final class Schema
                 is_float($v) && Js::isInteger($v) && abs($v) <= 9007199254740991 => (int) $v,
                 default => throw $bad(),
             },
-            'real' => (is_int($v) || is_float($v)) && Js::isFinite($v) ? (float) $v : throw $bad(),
+            // A whole number stays an int, so an id from a `number` input reads back exactly.
+            'real' => is_int($v) ? $v : (is_float($v) && Js::isFinite($v) ? $v : throw $bad()),
             'text', 'richText' => is_string($v) ? $v : throw $bad(),
             'email' => is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false ? $v : throw $bad(),
             'url' => is_string($v) && preg_match('#^https?://#i', $v) && filter_var($v, FILTER_VALIDATE_URL) !== false ? $v : throw $bad(),
@@ -552,6 +553,9 @@ final class Schema
             if (!array_key_exists($name, $obj)) {
                 if (isset($f['default'])) {
                     $obj[$name] = self::generate($f['default'], $f);
+                } elseif ($f['omit'] ?? false) {
+                    // An optional field of a typed input (`limit?: number`): left out, it stays out.
+                    continue;
                 } elseif ($f['notNull'] ?? false) {
                     throw HttpError::invalidInput("$name is required", $ptr);
                 } else {

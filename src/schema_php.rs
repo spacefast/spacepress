@@ -68,6 +68,9 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     if c.not_null {
         parts.push("'notNull' => true".into());
     }
+    if c.omit {
+        parts.push("'omit' => true".into());
+    }
     if c.unique && top {
         parts.push("'unique' => true".into());
     }
@@ -569,9 +572,14 @@ pub fn render(schema: &Schema) -> String {
     }
     out.push_str("    ],\n    'jobs' => [\n");
     for (name, job) in &schema.jobs {
+        let schedule = match &job.schedule {
+            None => String::new(),
+            Some(crate::schema::Schedule::Every(seconds)) => format!(", 'schedule' => ['every' => {seconds}]"),
+            Some(crate::schema::Schedule::Cron(expr)) => format!(", 'schedule' => ['cron' => {}]", php_str(expr)),
+        };
         let _ = writeln!(
             out,
-            "        {} => ['input' => {}, 'handler' => {}, 'retries' => {}, 'agents' => {}],",
+            "        {} => ['input' => {}, 'handler' => {}, 'retries' => {}, 'agents' => {}{schedule}],",
             php_str(name),
             fields_block(&job.input, 2),
             php_str(&job.handler),
@@ -635,6 +643,13 @@ pub fn render(schema: &Schema) -> String {
             "            'signature' => {},",
             a.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into())
         );
+        if let Some(r) = &a.rate_limit {
+            let _ = writeln!(
+                out,
+                "            'rateLimit' => ['count' => {}, 'window' => {}],",
+                r.count, r.window
+            );
+        }
         let _ = writeln!(out, "        ],");
     }
     out.push_str("    ],\n");
@@ -702,27 +717,15 @@ pub fn gen_ts(schema: &Schema) -> String {
         let _ = writeln!(out, "  }}, {}, {}>;", c.auth, php_str(storage));
     }
     out.push_str("};\n");
-    // Globals and jobs register by export like kinds (docs/spec/spec.md §1.1), so they are typed the
-    // same way: structurally, with no import of the sources that export them.
+    // Globals register by export like kinds (docs/spec/spec.md §1.1), so they are typed the same
+    // way: structurally, with no import of the sources that export them. A job is typed by its own
+    // export (`notifyLowStock.enqueue(...)`).
     let has_globals = !schema.globals.is_empty();
-    let has_jobs = !schema.jobs.is_empty();
     if has_globals {
         out.push_str("type Globals = {\n");
         for (name, g) in &schema.globals {
             let _ = writeln!(out, "  {}: Global<{}, {{", php_str(name), php_str(name));
             for col in g.fields.values().filter(|col| !col.hidden) {
-                let value = crate::client::registry_value(col);
-                let _ = writeln!(out, "    {}: {};", php_str(&col.name), builder(col, value));
-            }
-            out.push_str("  }>;\n");
-        }
-        out.push_str("};\n");
-    }
-    if has_jobs {
-        out.push_str("type Jobs = {\n");
-        for (name, j) in &schema.jobs {
-            let _ = writeln!(out, "  {}: Job<{{", php_str(name));
-            for col in j.input.values() {
                 let value = crate::client::registry_value(col);
                 let _ = writeln!(out, "    {}: {};", php_str(&col.name), builder(col, value));
             }
@@ -759,9 +762,6 @@ pub fn gen_ts(schema: &Schema) -> String {
     out.push_str("declare module \"typedpress\" { interface Register { relations: Relations<Entities, Graph>");
     if has_globals {
         out.push_str("; globals: Globals");
-    }
-    if has_jobs {
-        out.push_str("; jobs: Jobs");
     }
     if locales.is_some() {
         out.push_str("; locales: GeneratedLocale");

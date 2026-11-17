@@ -1,4 +1,4 @@
-import { collection, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db , table, userProjection, ref } from "typedpress";
+import { collection, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, cron, env, global, defineConfig, db , table, userProjection, ref, mutation } from "typedpress";
 export const audit = table({ note: text() }, { agents: false });
 export const authors = collection({ name: text(), email: email().optional().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
 export const decks = files({ accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } });
@@ -13,15 +13,19 @@ export const posts = collection({
 }, { sync: "content/./posts/*.md", agents: true, access: { create: ctx => ctx.data?.locale === "en" && ctx.data.uid !== "reserved" } });
 export const members = userProjection({ email: email().unique().max(191), name: text().optional() }, { uid: true, access: { read: "self", create: ctx => ctx.data?.uid !== "reserved", update: "self", delete: "admin" } });
 export const settings = global({ title: text().default("Hello") }, { agents: false });
-export const sendWelcome = job({ input: { email: email(), data: group({ label: text().default("welcome") }).optional() }, retries: 5, agents: true, handler: async (input, ctx) => { await db.insert(audit).values({ note: input.email + ":" + ctx.jobId + ":" + ctx.attempt }); } });
-export const inbound = action({ input: {}, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: () => true });
+export const sendWelcome = job({ retries: 5, agents: true }, async (input: { email: string; data?: { label?: string } }, ctx) => { await db.insert(audit).values({ note: input.email + ":" + ctx.jobId + ":" + ctx.attempt }); });
+export const hourly = job({ every: "1h" }, async () => {});
+export const nightly = cron("0 3 * * *", async (_input, ctx) => { void ctx.attempt; });
+// @ts-expect-error a repeat is a number and a unit
+job({ every: "hourly" }, async () => {});
+export const inbound = mutation({ idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" } }, () => true);
 export default defineConfig({
   name: "phase2",
   locales: { default: "en", all: ["en", "de"] }, media: { sizes: { thumb: { width: 300, height: 300, fit: "cover" }, wide: { width: 1600 } } },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
 });
 
-import { jobs, once, type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns} from "typedpress";
+import { once, type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns } from "typedpress";
 import { expectType, type Equal } from "./inference";
 
 const localizedBlocks = table({
@@ -42,11 +46,12 @@ const unsupportedPassword: typeof roleNames.$inferInsert = { role: "item", passw
 void [roleInsert, unsupportedPassword];
 
 async function surface() {
-  await jobs.sendWelcome.enqueue({ email: "a@example.com" }, { delay: 30, key: "welcome" });
-  // @ts-expect-error registered job input is checked
-  await jobs.sendWelcome.enqueue({ email: 42 });
-  // @ts-expect-error no such registered job
-  await jobs.missing.enqueue({});
+  await sendWelcome.enqueue({ email: "a@example.com" }, { delay: 30, key: "welcome" });
+  // @ts-expect-error a job's input is its handler's parameter type
+  await sendWelcome.enqueue({ email: 42 });
+  // @ts-expect-error enqueue options are delay and key
+  await sendWelcome.enqueue({ email: "a@example.com" }, { at: 30 });
+  await nightly.enqueue({});
   const id = await once("key", async () => 42);
   expectType<Equal<typeof id, number>>();
   // @ts-expect-error once keys are strings

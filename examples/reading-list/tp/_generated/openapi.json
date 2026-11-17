@@ -1210,8 +1210,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "bookId": { "type": "integer" },
-                  "minutes": { "type": "integer" }
+                  "bookId": { "type": "number" },
+                  "minutes": { "type": "number" }
                 },
                 "required": ["bookId", "minutes"]
               }

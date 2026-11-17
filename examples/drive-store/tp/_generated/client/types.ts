@@ -37,7 +37,7 @@ export interface ShopPatch { shopName?: string; currency?: "USD" | "EUR" | "TRY"
 export interface BuyInput { drive: number; quantity?: number; buyerName: string; buyerEmail: string }
 export type BuyOutput = { code: string; quantity: number; total: number; buyerEmail: string };
 
-export interface RestockInput { drive: number; quantity: number; note?: string | null }
+export interface RestockInput { drive: number; quantity: number; note?: string }
 export type RestockOutput = { drive: number; stock: number };
 
 export interface MarkShippedInput { order: number }

@@ -20,7 +20,7 @@ export default async function Playground({ search }: PageProps<"play">) {
     <main className="playpage">
       <h1>Playground</h1>
       <p className="lede">Pick an app, change its code and it is built in your browser by the same compiler the command line uses. Then run your version in WordPress, also in your browser. Share saves your edit on this site and gives you a link to it.</p>
-      <div className="note">These are the example apps as they are in the code today, so they use the current names: <code>typedpress.config.ts</code>, <code>tp/</code>, <code>action()</code>. The guide describes the names they are moving to.</div>
+      <div className="note">These are the example apps as they are in the code today, so they use the current names: <code>typedpress.config.ts</code>, <code>tp/</code>, <code>query()</code> and <code>mutation()</code>. The guide describes the names they are moving to.</div>
       {search.s && !shared && <p className="note">No saved edit has the key <code>{search.s}</code>. This is the app as it ships.</p>}
       <tp-play example={shared ? shared.example : "full-site"} shared={shared ? JSON.stringify(shared.files) : undefined} picker="" share="" open="" />
     </main>

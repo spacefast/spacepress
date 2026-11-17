@@ -211,6 +211,11 @@ pub struct Column {
     pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
     /// `.was("old")`: the stored name before a rename (spec §2.5).
     pub was: Option<String>,
+    /// An input field from an optional property (`limit?: number`): left out, it stays out, so the
+    /// handler reads `undefined` and its destructuring default applies.
+    pub omit: bool,
+    /// An input field typed by the handler's parameter type: the TypeScript type of a `json` field.
+    pub inferred: Option<crate::types::Ty>,
 }
 
 impl Column {
@@ -243,6 +248,8 @@ impl Column {
             read_only: false,
             ts_type: None,
             was: None,
+            omit: false,
+            inferred: None,
         }
     }
 
@@ -275,6 +282,7 @@ impl Column {
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
         !self.not_null
+            || self.omit
             || self.default.is_some()
             || self.auto_increment
             || self.ty == ColType::Slug && self.source.is_some()
@@ -500,6 +508,30 @@ pub struct Action {
     pub signature: Option<Json>,
     /// The handler's result as a JSON Schema, from its TypeScript return type (filled after compile).
     pub output: Option<Json>,
+    /// With `typed_input`: the handler's first parameter type, which types the handler and its callers.
+    pub input_ty: Option<crate::types::Ty>,
+    /// `query()`: may not write; compiled code that writes fails the build where it writes.
+    pub query: bool,
+    /// `rateLimit`: at most this many calls per window, counted per user (per address when signed
+    /// out). None: unlimited.
+    pub rate_limit: Option<RateLimit>,
+    /// The input is the handler's first parameter type (`query`/`mutation`): resolved by the
+    /// compiler before anything reads `input` (see `compile::Compiler::infer_inputs`).
+    pub typed_input: bool,
+}
+
+/// `rateLimit: "10/min"`: `count` calls per `window` seconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RateLimit {
+    pub count: u32,
+    pub window: u32,
+}
+
+/// When Action Scheduler runs a job by itself: `job({ every: "1h" }, fn)` or `cron("0 3 * * *", fn)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Schedule {
+    Every(u64),
+    Cron(String),
 }
 
 /// One `wp-hooks/` handler, registered with `add_filter`/`add_action`.
@@ -518,6 +550,12 @@ pub struct Job {
     pub handler: String,
     pub retries: u32,
     pub agents: bool,
+    /// Run by Action Scheduler on this schedule, scheduled once per build and unscheduled when it goes.
+    pub schedule: Option<Schedule>,
+    /// The input is the handler's first parameter type (see [`Action::typed_input`]).
+    pub typed_input: bool,
+    /// With `typed_input`: the handler's first parameter type.
+    pub input_ty: Option<crate::types::Ty>,
 }
 
 #[derive(Debug, Clone)]

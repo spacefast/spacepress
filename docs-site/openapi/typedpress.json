@@ -4748,7 +4748,7 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "number"
 									}
 								},
 								"required": [
@@ -4869,6 +4869,82 @@
 						}
 					}
 				},
+				"responses": {
+					"200": {
+						"description": "The action's result.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"type": "object",
+											"properties": {
+												"count": {
+													"type": [
+														"number",
+														"null"
+													]
+												}
+											},
+											"required": [
+												"count"
+											]
+										}
+									},
+									"required": [
+										"data"
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/Problem"
+					},
+					"422": {
+						"$ref": "#/components/responses/Problem"
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				}
+			},
+			"get": {
+				"tags": [
+					"Actions"
+				],
+				"operationId": "actions.publishedCount.read",
+				"summary": "Call publishedCount with GET",
+				"x-typedpress-access": "anyone",
+				"security": [
+					{},
+					{
+						"cookie": [],
+						"nonce": []
+					},
+					{
+						"applicationPassword": []
+					},
+					{
+						"bearer": []
+					}
+				],
+				"description": "Runs the read-only `publishedCount` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Anyone may do this, signed in or not.",
+				"parameters": [
+					{
+						"name": "input",
+						"in": "query",
+						"description": "The action's input, as JSON.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object"
+								}
+							}
+						}
+					}
+				],
 				"responses": {
 					"200": {
 						"description": "The action's result.",

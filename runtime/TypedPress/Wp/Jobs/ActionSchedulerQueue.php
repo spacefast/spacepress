@@ -27,6 +27,13 @@ final class ActionSchedulerQueue
     public const MAINTAIN = 'tp_jobs_maintain';
     /** The groups this site's jobs and maintenance use, recorded once they exist (prepare()). */
     public const PREPARED = 'tp_jobs_prepared';
+    /**
+     * A job with a schedule (`job({ every: "1h" }, fn)`, `cron("0 3 * * *", fn)`): one recurring or cron
+     * action per job, args `[job, schedule]`, which queues the job each time it fires.
+     */
+    public const SCHEDULE = 'tp_job_schedule';
+    /** The schedules of the build that last scheduled them ({@see schedules()}). */
+    public const SCHEDULED = 'tp_jobs_scheduled';
 
     /** The group of the action Action Scheduler is executing right now. */
     private static string $group = '';
@@ -74,6 +81,20 @@ final class ActionSchedulerQueue
                 }
             }
         });
+        add_action(self::SCHEDULE, static function (string $job, string $schedule): void {
+            $plugin = Runtime::plugin();
+            if ($plugin === null || $plugin->unavailable() !== null || $plugin->app() === null) {
+                return; // no app, or storage behind the build: the schedule fires again
+            }
+            if ((self::wanted($plugin)[$job] ?? null) !== $schedule) {
+                // The build no longer has this schedule; the next install would remove it too.
+                as_unschedule_all_actions(self::SCHEDULE, [$job, $schedule], self::group($plugin));
+
+                return;
+            }
+            // One run at a time: a run still waiting from the last firing takes this one's place.
+            \TypedPress\Jobs\Jobs::enqueue($job, [], ['key' => 'schedule']);
+        }, 10, 2);
         add_action(self::MAINTAIN, static function (): void {
             // Maintenance mutates jobs and receipts: skip it while storage is behind; it recurs.
             $plugin = Runtime::plugin();
@@ -95,14 +116,107 @@ final class ActionSchedulerQueue
         if (!as_has_scheduled_action(self::MAINTAIN, [], 'typedpress')) {
             as_schedule_recurring_action(time() + 3600, DAY_IN_SECONDS, self::MAINTAIN, [], 'typedpress');
         }
+        self::schedule_jobs();
     }
 
-    /** What {@see install()} leaves: the groups prepared for this app and the maintenance scheduled. */
+    /** What {@see install()} leaves: the groups prepared for this app, the maintenance and the job schedules scheduled. */
     public static function installed(): bool
     {
         $plugin = Runtime::plugin();
 
-        return $plugin === null || (get_option(self::PREPARED) === self::prepared($plugin) && as_has_scheduled_action(self::MAINTAIN, [], 'typedpress'));
+        return $plugin === null || (get_option(self::PREPARED) === self::prepared($plugin) && as_has_scheduled_action(self::MAINTAIN, [], 'typedpress')
+            && get_option(self::SCHEDULED) === self::fingerprint($plugin));
+    }
+
+    /** The Action Scheduler group of this app's jobs. */
+    private static function group(\TypedPress\Wp\Plugin $plugin): string
+    {
+        return 'typedpress-' . $plugin->schema->name();
+    }
+
+    /**
+     * Each scheduled job of the build and its schedule as the action's second argument:
+     * `every:3600` or `cron:0 3 * * *`.
+     *
+     * @return array<string, string>
+     */
+    private static function wanted(\TypedPress\Wp\Plugin $plugin): array
+    {
+        $out = [];
+        foreach ($plugin->schema->jobs() as $name => $job) {
+            $schedule = $job['schedule'] ?? null;
+            if (isset($schedule['every'])) {
+                $out[(string) $name] = 'every:' . (int) $schedule['every'];
+            } elseif (isset($schedule['cron'])) {
+                $out[(string) $name] = 'cron:' . $schedule['cron'];
+            }
+        }
+        ksort($out);
+
+        return $out;
+    }
+
+    private static function fingerprint(\TypedPress\Wp\Plugin $plugin): string
+    {
+        return 'v1:' . self::group($plugin) . ':' . hash('sha256', (string) json_encode(self::wanted($plugin)));
+    }
+
+    /**
+     * Once per build: the build's job schedules in Action Scheduler, each as one recurring or cron action,
+     * and the app's schedule actions no job of this build has (a removed job, a changed schedule) taken
+     * out. Outside any transaction, like prepare(), and one request at a time.
+     */
+    private static function schedule_jobs(): void
+    {
+        $plugin = Runtime::plugin();
+        if ($plugin === null || $plugin->unavailable() !== null || \TypedPress\Wp\ZeroNames::pending()) {
+            return;
+        }
+        $done = self::fingerprint($plugin);
+        if (get_option(self::SCHEDULED) === $done) {
+            return;
+        }
+        $connection = $plugin->connection();
+        if ($connection->inTransaction()) {
+            return;
+        }
+        try {
+            \TypedPress\Wp\Migrator::locked($connection, self::SCHEDULED, static function () use ($plugin, $done): void {
+                wp_cache_delete(self::SCHEDULED, 'options');
+                if (get_option(self::SCHEDULED) === $done) {
+                    return;
+                }
+                $group = self::group($plugin);
+                $wanted = self::wanted($plugin);
+                $have = [];
+                $pending = as_get_scheduled_actions(['hook' => self::SCHEDULE, 'group' => $group, 'status' => \ActionScheduler_Store::STATUS_PENDING, 'per_page' => -1], 'ids');
+                foreach ($pending as $id) {
+                    $args = array_values(\ActionScheduler::store()->fetch_action((int) $id)->get_args());
+                    [$job, $schedule] = [(string) ($args[0] ?? ''), (string) ($args[1] ?? '')];
+                    if (($wanted[$job] ?? null) === $schedule && !isset($have[$job])) {
+                        $have[$job] = true;
+                    } else {
+                        \ActionScheduler::store()->cancel_action((int) $id);
+                    }
+                }
+                foreach ($wanted as $job => $schedule) {
+                    if (isset($have[$job])) {
+                        continue;
+                    }
+                    [$kind, $value] = explode(':', $schedule, 2);
+                    $id = $kind === 'every'
+                        ? as_schedule_recurring_action(time() + (int) $value, (int) $value, self::SCHEDULE, [$job, $schedule], $group)
+                        : as_schedule_cron_action(time(), $value, self::SCHEDULE, [$job, $schedule], $group);
+                    if ($id === 0) {
+                        throw new \RuntimeException("Action Scheduler refused the schedule of job $job ($schedule)");
+                    }
+                }
+                update_option(self::SCHEDULED, $done, true);
+            });
+        } catch (\Throwable $e) {
+            // The next request (or deploy) tries again; the jobs themselves still run when queued.
+            error_log('[typedpress] scheduling jobs failed (next request retries): ' . $e->getMessage());
+        }
     }
 
     /** A runtime that changes what preparing checks or creates bumps the version, so sites prepare again. */

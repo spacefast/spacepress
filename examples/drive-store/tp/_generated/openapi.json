@@ -1859,10 +1859,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "drive": { "type": "integer" },
-                  "quantity": { "type": "integer", "minimum": 1, "maximum": 5 },
-                  "buyerName": { "type": "string", "minLength": 1, "maxLength": 80 },
-                  "buyerEmail": { "type": "string", "maxLength": 191 }
+                  "drive": { "type": "number" },
+                  "quantity": { "type": "number" },
+                  "buyerName": { "type": "string" },
+                  "buyerEmail": { "type": "string" }
                 },
                 "required": ["drive", "buyerName", "buyerEmail"]
               }
@@ -1914,9 +1914,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "drive": { "type": "integer" },
-                  "quantity": { "type": "integer", "minimum": 1, "maximum": 500 },
-                  "note": { "type": ["string", "null"], "maxLength": 200 }
+                  "drive": { "type": "number" },
+                  "quantity": { "type": "number" },
+                  "note": { "type": "string" }
                 },
                 "required": ["drive", "quantity"]
               }
@@ -1968,7 +1968,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "order": { "type": "integer" }
+                  "order": { "type": "number" }
                 },
                 "required": ["order"]
               }

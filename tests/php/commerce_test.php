@@ -205,6 +205,8 @@ eq('a dry run resolves references between new seed collections', [$dry['categori
 eq('the dry run rolls back terms and products together', [$db->findFirst('categories', ['where' => ['uid' => $categoryUid]]), $db->findFirst('products', ['where' => ['uid' => $productUid]])], [null, null]);
 unlink($seedDir . '/categories.json'); unlink($seedDir . '/products.json'); rmdir($seedDir);
 $uids = array_column($db->findMany('products'), 'uid');
+problem('distinct products cannot claim the same live UID', fn () => $db->insert('products', ['name' => 'Duplicate live product UID', 'uid' => $mug['uid']], true, $admin), 409, 'unique_violation', '/uid');
+eq('refusing a duplicate product UID creates no product', $db->findFirst('products', ['where' => ['name' => 'Duplicate live product UID']]), null);
 $db->delete('products', ['id' => $mug['id']], false, $admin);
 eq('product delete uses native Woo trash', get_post_status($mug['id']), 'trash');
 check('orders are not removed by catalog retirement', wc_get_order($order->get_id()) instanceof WC_Order);
@@ -219,6 +221,8 @@ remove_filter('pre_trash_post', $vetoTrash, PHP_INT_MAX);
 add_action('woocommerce_trash_product', static function ($id) use (&$wooTrashed, $retired): void { if ((int) $id === $retired['id']) { $wooTrashed++; } });
 $db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired));
 eq('explicit sync retirement uses Woo CRUD and its lifecycle hook', [get_post_status($retired['id']), $wooTrashed], ['trash', 1]);
+problem('trashed products retain ownership of their UID', fn () => $db->insert('products', ['name' => 'Duplicate trashed product UID', 'uid' => $retired['uid']], true, $admin), 409, 'unique_violation', '/uid');
+eq('duplicate refusal preserves the trashed product identity', [get_post_status($retired['id']), get_post_meta($retired['id'], '_tp_uid', true)], ['trash', $retired['uid']]);
 
 // A stock update bypasses post save; both the product and any page that listed it must purge.
 $purged = [];

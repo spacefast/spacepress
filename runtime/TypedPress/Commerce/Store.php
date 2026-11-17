@@ -120,6 +120,15 @@ final class Store implements \TypedPress\Store
     }
     private function write(\WC_Product $p, array $values): void
     {
+        if (isset($values['uid'])) {
+            // A trashed product still owns its identity, as in WpPostStore::checkUnique().
+            $wpdb = $this->db->wpdb();
+            $hit = $this->db->run(
+                "SELECT m.post_id FROM `{$wpdb->postmeta}` m JOIN `{$wpdb->posts}` p ON p.ID = m.post_id WHERE m.meta_key = '_tp_uid' AND m.meta_value = ? AND p.post_type = 'product' AND p.post_status NOT IN ('auto-draft', 'inherit') AND p.ID <> ? LIMIT 1 FOR UPDATE",
+                [(string) $values['uid'], $p->get_id()],
+            );
+            if ($hit !== []) { throw new HttpError(409, 'unique_violation', 'A row with this uid already exists', '/uid'); }
+        }
         $setters = ['name' => 'name', 'slug' => 'slug', 'description' => 'description', 'shortDescription' => 'short_description', 'sku' => 'sku', 'price' => 'regular_price', 'virtual' => 'virtual', 'downloadable' => 'downloadable', 'categories' => 'category_ids', 'tags' => 'tag_ids'];
         try {
             $downloads = null;

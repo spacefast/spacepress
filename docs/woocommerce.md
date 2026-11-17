@@ -74,6 +74,8 @@ A first install seeds missing products and terms. Redeploying preserves existing
 edits, stock and orders. `typedpress sync --site <url>` merges subsequent file and merchant
 edits through the ordinary UID-based sync workflow and writes conflicts for review.
 References and category parents travel as UIDs; numeric Woo IDs are local to the site.
+Catalog sync v1 requires simple products. Native variable, grouped and external products
+remain readable through the API; syncing a mixed catalog is not yet supported.
 Removing a catalog source file leaves the native product/term unchanged. Retire it explicitly
 through Woo administration or an authorized API operation.
 

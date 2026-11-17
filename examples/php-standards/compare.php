@@ -1,5 +1,5 @@
 <?php
-// Compare a before/after corpus without discarding strings or comments.
+// Compare PHP tokens, allowing whitespace and equivalent array literal syntax.
 if ( $argc !== 3 || ! is_dir( $argv[1] ) || ! is_dir( $argv[2] ) ) {
 	fwrite( STDERR, "Usage: php compare.php BEFORE_DIRECTORY AFTER_DIRECTORY\n" );
 	exit( 1 );
@@ -16,7 +16,7 @@ function tokens( $file ) {
 		fwrite( STDERR, "Cannot read $file\n" );
 		exit( 1 );
 	}
-	return array_values(
+	$tokens = array_values(
 		array_filter(
 			token_get_all( $source ),
 			static function ( $token ) {
@@ -24,6 +24,25 @@ function tokens( $file ) {
 			}
 		)
 	);
+	// Canonicalize only explicit array(...) tokens. Indexing and destructuring
+	// brackets, quoted strings, comments, and all other tokens retain their values.
+	$normalized  = array();
+	$parentheses = array();
+	foreach ( $tokens as $i => $token ) {
+		if ( is_array( $token ) && T_ARRAY === $token[0] && '(' === ( $tokens[ $i + 1 ] ?? null ) ) {
+			continue;
+		}
+		if ( '(' === $token ) {
+			$is_array      = $i > 0 && is_array( $tokens[ $i - 1 ] ) && T_ARRAY === $tokens[ $i - 1 ][0];
+			$parentheses[] = $is_array;
+			$normalized[]  = $is_array ? '[' : '(';
+		} elseif ( ')' === $token ) {
+			$normalized[] = array_pop( $parentheses ) ? ']' : ')';
+		} else {
+			$normalized[] = $token;
+		}
+	}
+	return $normalized;
 }
 foreach ( $before_files as $before ) {
 	$after     = $argv[2] . '/' . basename( $before );
@@ -36,8 +55,8 @@ foreach ( $before_files as $before ) {
 		);
 	};
 	if ( $normalize( tokens( $before ) ) !== $normalize( tokens( $after ) ) ) {
-		fwrite( STDERR, basename( $before ) . " changed non-whitespace tokens\n" );
+		fwrite( STDERR, basename( $before ) . " changed tokens beyond whitespace/array syntax\n" );
 		exit( 1 );
 	}
 }
-echo "Non-whitespace tokens match.\n";
+echo "Tokens match after whitespace/array syntax normalization.\n";

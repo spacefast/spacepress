@@ -12412,10 +12412,7 @@ mod php_layout_tests {
             let program = crate::loader::load(&project.join("typedpress.config.ts")).unwrap();
             let built =
                 crate::pipeline::build(&project, &program, || Ok(crate::pipeline::Previous::none()), |_| None).unwrap();
-            assert_eq!(
-                crate::php_layout::parentheses(&built.functions_php),
-                built.functions_php
-            );
+            assert_eq!(crate::php_layout::format(&built.functions_php), built.functions_php);
             for line in built.functions_php.lines() {
                 assert!(!line.starts_with(' '), "{name}: space indentation: {line}");
                 if line.starts_with("function ") {

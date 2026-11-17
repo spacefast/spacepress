@@ -10,21 +10,23 @@ find /tmp/tp-php -name '*.php' -exec php -l {} \;
 
 The locked Composer tools use WordPress Coding Standards 3.4.1 for development
 and CI only. Ordinary TypedPress builds do not require PHP or Composer for layout.
-`check-layout` enforces the five WordPress indentation and parentheses rules
+`check-layout` enforces seven WordPress indentation, parentheses and array rules
 implemented by the compiler, using WordPress's own sniff configuration. The
 full audit intentionally also reports the rules not yet implemented.
 
 The corpus covers pantry, kitchen-sink and blog compiled functions. The original
 baseline had 1199 errors and 73 warnings. Tab indentation and declaration braces
-reduced it to 1037 errors; parentheses layout reduces it to 303 errors (896 fewer
-than baseline, 734 fewer than the indentation pass). Warnings remain at 73.
-Short arrays, array spacing/alignment, documentation, naming and WordPress
-security checks remain separate work. Schema and shipped runtime PHP are outside
+reduced it to 1037 errors; parentheses layout reached 303 errors. Long array
+literals reduce it to 127 errors (1072 fewer than baseline, 176 fewer than the
+parentheses pass). Warnings remain at 73. Array alignment, documentation, naming
+and WordPress security checks remain separate work. Schema and shipped runtime PHP are outside
 this corpus. Do not edit generated files as a substitute for fixing the compiler.
 
-The compiler applies parentheses spacing to its assembled functions, including
+The compiler applies layout to its assembled functions, including
 service and content-page helpers. It copies quoted strings and comments verbatim,
 keeps empty argument lists and casts compact, and preserves multiline indentation.
+Array literals use long syntax; indexing retains square brackets. Destructuring
+is lowered to explicit assignments before layout, rather than PHP destructuring.
 The emitter uses quoted PHP strings, not heredocs or inline HTML; keep that
 contract when adding new emitters.
 
@@ -34,6 +36,8 @@ For a formatting-only comparison against an earlier generated corpus:
 php examples/php-standards/compare.php /tmp/tp-before /tmp/tp-php
 ```
 
-The comparison retains string contents and comments and ignores only PHP
-whitespace tokens and token line numbers. Missing, empty, mismatched or unreadable
+The comparison retains string contents, comments, indexing and casts. It ignores
+PHP whitespace tokens and line numbers, and normalizes explicit `array(...)`
+literals to equivalent square-bracket tokens. Run its positive and negative
+checks with `node --test examples/php-standards/compare.test.ts`. Missing, empty, mismatched or unreadable
 corpora fail the comparison.

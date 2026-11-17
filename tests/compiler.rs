@@ -2057,11 +2057,11 @@ fn compiled_tsx_renders_the_html_react_renders() {
     // Left to the runtime: a custom element, a list item with a dynamic key, a void element with children.
     assert!(folded.contains("\\TypedPress\\Html::element( 'link-like'"), "{folded}");
     assert!(
-        folded.contains("\\TypedPress\\Html::element( 'li', ['className' => 'item', 'key' => $item]"),
+        folded.contains("\\TypedPress\\Html::element( 'li', array( 'className' => 'item', 'key' => $item )"),
         "{folded}"
     );
     assert!(
-        body("static__VoidChildren").contains("\\TypedPress\\Html::element( 'br', [], "),
+        body("static__VoidChildren").contains("\\TypedPress\\Html::element( 'br', array(), "),
         "{}",
         body("static__VoidChildren")
     );

@@ -202,6 +202,7 @@ final class WpTermStore implements Store, Links
         if (array_key_exists($spec['primaryKey'], $values)) {
             throw HttpError::invalidInput('A term\'s id is given by WordPress', HttpError::seg($spec['primaryKey']));
         }
+        $this->checkUid($spec, $values, 0);
         $taxonomy = $spec['wp']['taxonomy'];
         $name = (string) ($values['name'] ?? '');
         $done = $this->db->core(static fn () => wp_insert_term(wp_slash($name), $taxonomy, wp_slash(self::core($values))));
@@ -219,6 +220,7 @@ final class WpTermStore implements Store, Links
     {
         $spec = $this->schema->collection($collection);
         $taxonomy = $spec['wp']['taxonomy'];
+        $this->checkUid($spec, $values, (int) $pk);
         self::checkParent($taxonomy, $values);
         if ((int) ($values['parent'] ?? 0) === (int) $pk) {
             throw new HttpError(409, 'reference_violation', 'A term can\'t be its own parent', '/parent');
@@ -241,6 +243,22 @@ final class WpTermStore implements Store, Links
         $done = $this->db->core(static fn () => wp_delete_term((int) $pk, $taxonomy));
         if ($done instanceof \WP_Error) {
             throw self::error($done);
+        }
+    }
+
+    /** Managed term UIDs have the same transaction-scoped ownership check as post-backed UIDs. */
+    private function checkUid(array $spec, array $values, int $self): void
+    {
+        if (!isset($values['uid']) || !($spec['columns']['uid']['system'] ?? false)) {
+            return;
+        }
+        $wpdb = $this->db->wpdb();
+        $hit = $this->db->run(
+            "SELECT m.term_id FROM `{$wpdb->termmeta}` m JOIN `{$wpdb->term_taxonomy}` t ON t.term_id = m.term_id WHERE m.meta_key = '_tp_uid' AND m.meta_value = ? AND t.taxonomy = ? AND m.term_id <> ? LIMIT 1 FOR UPDATE",
+            [(string) $values['uid'], $spec['wp']['taxonomy'], $self],
+        );
+        if ($hit !== []) {
+            throw new HttpError(409, 'unique_violation', 'A row with this uid already exists', '/uid');
         }
     }
 

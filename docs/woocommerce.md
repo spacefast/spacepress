@@ -52,6 +52,11 @@ exact decimal `price`, ordered media `images`, category/tag references, `virtual
 `downloadable`, and `downloads: [{id, name, file}]`. Reads add `type`, `purchasable`,
 `availability` and `url`. Native variable/grouped/external products identify their type;
 v1 writes accept simple products only. Stock is operational data managed by Woo.
+
+Category and tag lists replace the current assignments. WooCommerce assigns its configured
+default product category when `categories: []` is written; the returned product contains that
+persisted category ID. `tags: []` removes all tags. This follows native Woo normalization.
+
 Download names and IDs are public; backing `file` locations require administrator access.
 Scoped credentials need `--personal` to read or edit these restricted locations, in addition
 to `--write` for edits. Buyers use Woo's authorized receipt and email links.

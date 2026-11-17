@@ -813,6 +813,6 @@ async function detached(managed) {
 }
 
 const invokedPath = process.argv[1] && await realpath(process.argv[1]).catch(() => null);
-if (invokedPath === fileURLToPath(import.meta.url)) {
+if (invokedPath === await realpath(fileURLToPath(import.meta.url))) {
   main().catch((error) => { console.error(`typedpress dev: ${error.message}`); process.exitCode = 1; });
 }

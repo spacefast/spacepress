@@ -30,6 +30,7 @@ pub mod migrate;
 mod minify;
 pub mod num;
 pub mod openapi;
+mod php_layout;
 pub mod pipeline;
 pub mod platform;
 pub mod plugins;

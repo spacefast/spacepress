@@ -27,7 +27,7 @@ test("any file opens, the npm package compiled to PHP and the runtime alike", as
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("./");
 	await pick(page, `${plugins}/typedpress-app-reading-list/tp/app/functions.php`);
-	await expect(viewer(page)).toContainText("function escapeHtml(");
+	await expect(viewer(page)).toContainText("function escape_html(");
 	await expect(page).toHaveURL(/#file=tp%2Fdist%2Fwp-content%2Fplugins%2Ftypedpress-app-reading-list%2Ftp%2Fapp%2Ffunctions.php$/);
 	// A runtime file, three closed folders down. The tree only renders the rows in view, so it is
 	// reached by search, as a visitor would.
@@ -64,7 +64,7 @@ test("the explorer follows the site's dark theme", async ({ page }) => {
 	await expect.poll(() => scheme(".explorer-config diffs-container")).toBe("dark");
 	// The explorer opens the app's functions.php itself. Wait for it, so its selection doesn't
 	// replace the one made below.
-	await expect(viewer(page)).toContainText("function escapeHtml(");
+	await expect(viewer(page)).toContainText("function escape_html(");
 	await pick(page, `${plugins}/typedpress-app-reading-list/tp/app/schema.php`);
 	await expect(viewer(page)).toContainText("<?php");
 	await expect.poll(() => scheme(".explorer-loaded diffs-container")).toBe("dark");

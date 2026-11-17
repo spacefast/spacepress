@@ -37,6 +37,17 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
+      - name: Install generated PHP layout tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-cli php-xml php-mbstring composer
+          composer install --working-dir=examples/php-standards --no-interaction --prefer-dist
+      - name: Test PHP comparison tooling
+        run: node --test examples/php-standards/compare.test.ts
+      - name: Check generated PHP WordPress standards
+        run: |
+          cargo run --locked --example php-standards -- "$RUNNER_TEMP/php-standards"
+          composer --working-dir=examples/php-standards run check -- "$RUNNER_TEMP/php-standards"
   # Three shards in parallel: the compiler suites and the npm comparison (about 26 minutes); the
   # slowest test targets, `slow` (app_migrate, app_router, config_migrate, sync and wp_plugins);
   # and fmt, clippy, every other test target and the acceptance scripts, `rest`. Test targets

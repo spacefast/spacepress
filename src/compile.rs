@@ -375,6 +375,8 @@ struct FnCtx {
     ret: Option<Ty>,
     /// Inferred return types (when no annotation).
     returns: Vec<Ty>,
+    /// Exception classes explicitly thrown in this function's own body.
+    throws: indexmap::IndexSet<&'static str>,
     /// Expressions proven not to complete by their compiled type.
     diverging: HashSet<Span>,
     /// Switch statements whose cases cover the compiled discriminant type.
@@ -658,13 +660,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let list = calls.join(", ");
         let body = match kind {
             HookKind::BeforeCreate => format!(
-                "function {name}(\\TypedPress\\JsObject $data, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $ctx);\n        if ($result instanceof \\TypedPress\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+                "function {name}(\\TypedPress\\JsObject $data, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $ctx);\n\t\tif ($result instanceof \\TypedPress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
             ),
             HookKind::BeforeUpdate => format!(
-                "function {name}(\\TypedPress\\JsObject $data, $existing, $ctx)\n{{\n    foreach ([{list}] as $hook) {{\n        $result = $hook($data, $existing, $ctx);\n        if ($result instanceof \\TypedPress\\JsObject) {{\n            $data = $result;\n            $ctx->p['data'] = $result;\n        }}\n    }}\n    return $data;\n}}\n\n"
+                "function {name}(\\TypedPress\\JsObject $data, $existing, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $existing, $ctx);\n\t\tif ($result instanceof \\TypedPress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
             ),
             _ => format!(
-                "function {name}(...$arguments)\n{{\n    foreach ([{list}] as $hook) {{\n        $hook(...$arguments);\n    }}\n}}\n\n"
+                "function {name}(...$arguments) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$hook(...$arguments);\n\t}}\n}}\n\n"
             ),
         };
         self.output.push_str(&body);
@@ -692,8 +694,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     fn named(&self, base: &str) -> String {
         match &self.plugin {
-            Some((_, name)) if !base.starts_with(&format!("plugin_{name}__")) => format!("plugin_{name}__{base}"),
-            _ => base.to_string(),
+            Some((_, name)) => {
+                let prefix = php_function_base(&format!("plugin_{name}__"));
+                if php_function_base(base).starts_with(&prefix) {
+                    base.to_string()
+                } else {
+                    format!("{prefix}{base}")
+                }
+            }
+            None => base.to_string(),
         }
     }
 
@@ -702,11 +711,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn unique_name(&mut self, base: &str) -> String {
-        let base = &self.named(base);
-        let mut name: String = base
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
-            .collect();
+        let mut name = php_function_base(&self.named(base));
         if name.is_empty()
             || name.starts_with(|c: char| c.is_ascii_digit())
             || matches!(
@@ -1160,6 +1165,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             is_generator: f.is_generator,
             ret: None,
             returns: Vec::new(),
+            throws: indexmap::IndexSet::new(),
             diverging: HashSet::new(),
             exhaustive_switches: HashSet::new(),
             loop_bindings: HashSet::new(),
@@ -1359,8 +1365,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let result = self.compile_function_body(&f, name, &param_tys, slot);
         self.current = caller;
         let fx = std::mem::replace(&mut self.fx, saved).expect("function context");
-        let (params_php, body) = result?;
+        let (params_php, body, mut parameter_docs) = result?;
+        if !parameter_docs.is_empty() && !fx.throws.is_empty() {
+            parameter_docs.push_str(" *\n");
+        }
+        for exception in &fx.throws {
+            let _ = writeln!(
+                parameter_docs,
+                " * @throws {exception} When the source callback throws."
+            );
+        }
         let ret_ty = predicate.unwrap_or_else(|| fx.ret.clone().unwrap_or_else(|| Ty::union(fx.returns.clone())));
+        let source = crate::diag::position(f.span, &self.ev_program().root)
+            .filter(|(file, _, _)| !std::path::Path::new(file).is_absolute())
+            .map(|(file, line, _)| format!(" at `{file}:{line}`"))
+            .unwrap_or_default();
+        let language = if self.javascript_module(f.module) {
+            "JavaScript"
+        } else {
+            "TypeScript"
+        };
+        let summary = format!("Execute the compiled {language} callback{source}.");
+        let docs = php_function_doc(&summary, &parameter_docs, &php_doc_type(&ret_ty, fx.access.is_some()));
         self.helper_types.insert(
             closure_key(closure),
             Ty::Fn(
@@ -1373,13 +1399,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ),
         );
         if self.suspends(&f) {
-            let wrapper = self.suspending_wrapper(&f, &format!("\\TypedPressApp\\{name}__body"));
+            let body_name = self.unique_name(&format!("{name}__body"));
+            let wrapper = self.suspending_wrapper(&f, &format!("\\TypedPressApp\\{body_name}"));
+            let body_docs = php_function_doc(
+                &summary,
+                &parameter_docs,
+                if f.is_generator { "\\Generator" } else { "mixed" },
+            );
+            let wrapper_docs = php_function_doc(
+                "Start the compiled asynchronous or generator callback.",
+                " * @param mixed ...$args Arguments forwarded to the callback.\n",
+                match (f.is_async, f.is_generator) {
+                    (true, true) => "\\TypedPress\\JsAsyncGenerator",
+                    (false, true) => "\\TypedPress\\JsGenerator",
+                    _ => "\\TypedPress\\JsPromise",
+                },
+            );
             let _ = writeln!(
                 self.output,
-                "function {name}__body({params_php})\n{{\n{body}}}\n\nfunction {name}(mixed ...$args)\n{{\n    return {wrapper};\n}}\n"
+                "{body_docs}function {body_name}({params_php}) {{\n{body}}}\n\n{wrapper_docs}function {name}(mixed ...$args) {{\n\treturn {wrapper};\n}}\n"
             );
         } else {
-            let _ = writeln!(self.output, "function {name}({params_php})\n{{\n{body}}}\n");
+            let _ = writeln!(self.output, "{docs}function {name}({params_php}) {{\n{body}}}\n");
         }
         Ok(())
     }
@@ -1432,9 +1473,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
         _name: &str,
         param_tys: &[Ty],
         slot: Option<&Slot>,
-    ) -> Result<(String, String)> {
+    ) -> Result<(String, String, String)> {
         let arguments = self.javascript_arguments(f, 1)?;
+        let language = if self.javascript_module(f.module) {
+            "JavaScript"
+        } else {
+            "TypeScript"
+        };
         let mut params_php = Vec::new();
+        let mut parameter_docs = Vec::new();
         let mut prologue = String::new();
         for (i, p) in f.params.iter().enumerate() {
             let t = param_tys[i].clone();
@@ -1445,7 +1492,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = self.declare_local(name, t, true, p.pat.span());
                 let rest = self.tmp_var();
                 params_php.push(format!("...{rest}"));
-                let _ = writeln!(prologue, "    {php} = new \\TypedPress\\JsArray({rest});");
+                parameter_docs.push((
+                    "mixed".to_string(),
+                    format!("...{rest}"),
+                    format!("Remaining {language} arguments."),
+                ));
+                let _ = writeln!(prologue, "\t{php} = new \\TypedPress\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
@@ -1462,6 +1514,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // `json<T>()` value can be any JSON, whatever T says.
                     let unchecked = i == 0 && (receives_this(f) || matches!(slot, Some(Slot::Validate { .. })));
                     let hint = if unchecked { "" } else { php_hint(&t) };
+                    let Pat::Id(source_name, _) = &p.pat else {
+                        unreachable!()
+                    };
+                    parameter_docs.push((
+                        if hint.is_empty() { "mixed" } else { hint.trim() }.to_string(),
+                        php.clone(),
+                        format!("{language} parameter `{}`.", php_doc_text(source_name)),
+                    ));
                     if hint == "\\TypedPress\\JsObject "
                         && matches!(t, Ty::Obj(_) | Ty::Map(_))
                         && p.default.is_none()
@@ -1480,6 +1540,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 pat => {
                     let tmp = self.tmp_var();
+                    let hint = php_hint(&t);
+                    parameter_docs.push((
+                        if hint.is_empty() { "mixed" } else { hint.trim() }.to_string(),
+                        tmp.clone(),
+                        format!("Destructured {language} argument."),
+                    ));
                     params_php.push(format!(
                         "{}{tmp}{}",
                         php_hint(&t),
@@ -1508,21 +1574,31 @@ impl<'a, 'p> Compiler<'a, 'p> {
             FnBody::Expr(e) => {
                 let v = self.return_value(e)?;
                 self.note_return(&v.ty, e.span)?;
-                let _ = writeln!(body, "    return {};", v.php);
+                let _ = writeln!(body, "\treturn {};", v.php);
             }
             FnBody::Block(stmts) if self.client.is_some() => {
                 let rewritten = Self::client_server_body(stmts, &self.client.as_ref().expect("client").analysis);
                 body.push_str(&self.block(&rewritten, 1)?);
-                self.note_fallthrough(&rewritten, f.span)?;
-                body.push_str("    return \\TypedPress\\Js::undefined();\n");
+                if self.note_fallthrough(&rewritten, f.span)? {
+                    body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
+                }
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
-                self.note_fallthrough(stmts, f.span)?;
-                body.push_str("    return \\TypedPress\\Js::undefined();\n");
+                if self.note_fallthrough(stmts, f.span)? {
+                    body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
+                }
             }
         }
-        Ok((params_php.join(", "), body))
+        let type_width = parameter_docs.iter().map(|(ty, _, _)| ty.len()).max().unwrap_or(0);
+        let name_width = parameter_docs.iter().map(|(_, name, _)| name.len()).max().unwrap_or(0);
+        let parameter_docs = parameter_docs
+            .iter()
+            .fold(String::new(), |mut docs, (ty, name, description)| {
+                let _ = writeln!(docs, " * @param {ty:<type_width$} {name:<name_width$} {description}");
+                docs
+            });
+        Ok((params_php.join(", "), body, parameter_docs))
     }
 
     fn note_return(&mut self, t: &Ty, span: Span) -> Result<()> {
@@ -1552,12 +1628,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(())
     }
 
-    fn note_fallthrough(&mut self, stmts: &[Stmt], span: Span) -> Result<()> {
+    fn note_fallthrough(&mut self, stmts: &[Stmt], span: Span) -> Result<bool> {
         let fx = self.fx();
-        if block_completions(stmts, &fx.diverging, &fx.exhaustive_switches).contains(&Completion::Normal) {
+        let normal = block_completions(stmts, &fx.diverging, &fx.exhaustive_switches).contains(&Completion::Normal);
+        if normal {
             self.note_return(&Ty::Undefined, span)?;
         }
-        Ok(())
+        Ok(normal)
     }
 
     // ---- scopes -------------------------------------------------------------
@@ -2210,7 +2287,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // A throw closes quietly; break/return/normal completion close and may throw.
                     let _ = writeln!(
                         out,
-                        "{p}}} catch (\\Throwable {value}) {{\n{p}    {source}->abrupt();\n{p}    throw {value};\n{p}}} finally {{\n{p}    {source}->close();\n{p}}}"
+                        "{p}}} catch (\\Throwable {value}) {{\n{p}\t{source}->abrupt();\n{p}\tthrow {value};\n{p}}} finally {{\n{p}\t{source}->close();\n{p}}}"
                     );
                 }
                 self.fx().scopes.pop();
@@ -2364,8 +2441,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
             Stmt::Throw(e) => {
-                let v = self.throw_value(e)?;
+                let (v, json_arguments) = self.throw_value(e)?;
+                if json_arguments {
+                    let _ = writeln!(
+                        out,
+                        "{p}// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- HttpError arguments become JSON problem data; escape at the output sink."
+                    );
+                }
                 let _ = writeln!(out, "{p}throw {v};");
+                if json_arguments {
+                    let _ = writeln!(
+                        out,
+                        "{p}// phpcs:enable WordPress.Security.EscapeOutput.ExceptionNotEscaped"
+                    );
+                }
             }
             Stmt::Try {
                 block,
@@ -2391,7 +2480,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span);
                         // Typed catch bindings are Errors: Error subclass instances pass, other values are refused.
                         let unwrap = if javascript { "thrownValue" } else { "caughtError" };
-                        let _ = writeln!(out, "{p}    {var} = \\TypedPress\\Js::{unwrap}({caught});");
+                        let _ = writeln!(out, "{p}\t{var} = \\TypedPress\\Js::{unwrap}({caught});");
                     }
                     out.push_str(&self.conditional_stmts(h, indent + 1)?);
                     self.fx().scopes.pop();
@@ -2425,10 +2514,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let tv = self.expr(t)?;
                             let cmp = self.strict_eq(&Out::atom(tmp.clone(), d.ty.clone()), &tv);
                             case_types.push(tv.ty);
-                            let _ = writeln!(out, "{p}    case {cmp}:");
+                            let _ = writeln!(out, "{p}\tcase {cmp}:");
                         }
                         None => {
-                            let _ = writeln!(out, "{p}    default:");
+                            let _ = writeln!(out, "{p}\tdefault:");
                         }
                     }
                     self.fx().jumps.push(JumpTarget {
@@ -2576,7 +2665,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    fn throw_value(&mut self, e: &Expr) -> Result<String> {
+    fn throw_value(&mut self, e: &Expr) -> Result<(String, bool)> {
         if let ExprKind::New { callee, args, .. } = &e.kind {
             let callee_v = match &callee.kind {
                 ExprKind::Ident(n) => self.resolve(n, callee.span)?,
@@ -2584,10 +2673,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
             match callee_v {
                 Resolved::Global(g) if ERROR_CONSTRUCTORS.contains(&g) => {
-                    return self.error_constructor(g, args).map(|value| value.php);
+                    self.fx().throws.insert("\\TypedPress\\JsError");
+                    return self.error_constructor(g, args).map(|value| (value.php, false));
                 }
                 Resolved::Value(Value::Builtin(Builtin::HttpError), _) => {
                     let mut parts = Vec::new();
+                    let mut json_arguments = false;
                     for (i, a) in args.iter().enumerate() {
                         let ArrEl::Item(a) = a else {
                             return err(e.span, "spread arguments aren't supported here");
@@ -2605,6 +2696,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                 ),
                             );
                         }
+                        json_arguments |= !(literal_php(&v) || literal_position(a));
                         parts.push(if i == 0 {
                             format!("(int) {}", v.wrapped())
                         } else {
@@ -2614,19 +2706,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     if !(3..=4).contains(&parts.len()) {
                         return err(e.span, "HttpError takes (status, code, message)");
                     }
-                    return Ok(format!("new \\TypedPress\\HttpError({})", parts.join(", ")));
+                    self.fx().throws.insert("\\TypedPress\\HttpError");
+                    return Ok((
+                        format!("new \\TypedPress\\HttpError({})", parts.join(", ")),
+                        json_arguments,
+                    ));
                 }
                 _ => {}
             }
         }
         let v = self.expr(e)?;
         if v.ty == Ty::Error {
-            return Ok(v.php);
+            self.fx().throws.insert("\\TypedPress\\JsError");
+            return Ok((v.php, false));
         }
         let module = self.fx().module;
         if self.javascript_module(module) || self.error_instance(&v.ty) {
             let v = self.finish_value(v, e.span)?;
-            return Ok(format!("\\TypedPress\\Js::throwable({})", v.php));
+            self.fx().throws.insert("\\Throwable");
+            return Ok((format!("\\TypedPress\\Js::throwable({})", v.php), false));
         }
         err_help(
             e.span,
@@ -3839,11 +3937,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let ty = logical_result_type(*op, &a.ty, &b.ty);
                 match op {
                     LogOp::Nullish => {
-                        let tmp = self.tmp_var();
-                        Out::new(
-                            format!("(\\TypedPress\\Js::isNullish({tmp} = {}) ? {} : {tmp})", a.php, b.php),
-                            ty,
-                        )
+                        // A literal fallback can be passed eagerly without observing a read,
+                        // allocation or side effect on a branch JavaScript would skip.
+                        if literal_php(&b) || literal_position(r) {
+                            Out::atom(format!("\\TypedPress\\Js::coalesce({}, {})", a.php, b.php), ty)
+                        } else {
+                            let tmp = self.tmp_var();
+                            Out::new(
+                                format!(
+                                    "(\\TypedPress\\Js::isNullish({}) ? {} : {tmp})",
+                                    php_lazy_assignment(&tmp, &a.php),
+                                    b.php
+                                ),
+                                ty,
+                            )
+                        }
                     }
                     LogOp::Or | LogOp::And => {
                         if a.ty.is_bool() && b.ty.is_bool() {
@@ -3859,7 +3967,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         // `x || y` / `x && y` return an operand, not a boolean.
                         let tmp = self.tmp_var();
-                        let test = self.truthy(&Out::new(format!("{tmp} = {}", a.php), a.ty.clone()));
+                        let test = self.truthy(&Out::new(php_lazy_assignment(&tmp, &a.php), a.ty.clone()));
                         let (yes, no) = if *op == LogOp::Or {
                             (tmp.clone(), b.wrapped())
                         } else {
@@ -4436,7 +4544,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         let _ = writeln!(
                             self.output,
-                            "function {wrapper}(): \\Closure {{ static $f; return $f ??= {callable}; }}\n"
+                            "{}function {wrapper}(): \\Closure {{\n\tstatic $f;\n\treturn $f ??= {callable};\n}}\n",
+                            php_function_doc(&format!("Return the shared callable for `{name}`."), "", "\\Closure"),
                         );
                         wrapper
                     }
@@ -4547,7 +4656,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let body = self.attempt(|this| {
                         this.data_helpers.insert(key, name.clone());
                         let mut body = format!(
-                            "function {name}(): \\TypedPress\\{} {{\n    static $value;\n    if ($value === null) {{\n        $value = new \\TypedPress\\{0}();\n",
+                            "function {name}(): \\TypedPress\\{} {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\{0}();\n",
                             if c.set { "JsSet" } else { "JsMap" }
                         );
                         for (k, v) in &c.entries {
@@ -4555,13 +4664,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             validate_captured_data(v, span, &mut HashSet::new())?;
                             let k = this.captured_data(k)?;
                             if c.set {
-                                let _ = writeln!(body, "        $value->add({k});");
+                                let _ = writeln!(body, "\t\t$value->add({k});");
                             } else {
                                 let v = this.captured_data(v)?;
-                                let _ = writeln!(body, "        $value->set({k}, {v});");
+                                let _ = writeln!(body, "\t\t$value->set({k}, {v});");
                             }
                         }
-                        body.push_str("    }\n    return $value;\n}\n\n");
+                        body.push_str("\t}\n\treturn $value;\n}\n\n");
                         Ok(body)
                     })?;
                     self.output.push_str(&body);
@@ -4612,7 +4721,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.data_helpers.insert(key, name.clone());
                         let _ = writeln!(
                             self.output,
-                            "function {name}(): \\TypedPress\\Js{kind} {{ static $value; return $value ??= new \\TypedPress\\Js{kind}(); }}\n"
+                            "function {name}(): \\TypedPress\\Js{kind} {{\n\tstatic $value;\n\treturn $value ??= new \\TypedPress\\Js{kind}();\n}}\n"
                         );
                         name
                     }
@@ -4651,7 +4760,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.data_helpers.insert(key, name.clone());
                         let _ = writeln!(
                             self.output,
-                            "function {name}(): object {{ static $value; return $value ??= {build}; }}\n"
+                            "function {name}(): object {{\n\tstatic $value;\n\treturn $value ??= {build};\n}}\n"
                         );
                         name
                     }
@@ -4667,7 +4776,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.data_helpers.insert(key, name.clone());
                     let _ = writeln!(
                         self.output,
-                        "function {name}(): \\TypedPress\\RegExp {{ static $value; return $value ??= new \\TypedPress\\RegExp({}, {}); }}\n",
+                        "function {name}(): \\TypedPress\\RegExp {{\n\tstatic $value;\n\treturn $value ??= new \\TypedPress\\RegExp({}, {});\n}}\n",
                         php_str(p),
                         php_str(f)
                     );
@@ -4814,7 +4923,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let description = description.as_deref().map(php_str).unwrap_or_default();
                         let _ = writeln!(
                             self.output,
-                            "function {name}(): \\TypedPress\\JsSymbol {{ static $value; return $value ??= \\TypedPress\\JsSymbol::create(new \\TypedPress\\JsArray([{description}])); }}\n"
+                            "function {name}(): \\TypedPress\\JsSymbol {{\n\tstatic $value;\n\treturn $value ??= \\TypedPress\\JsSymbol::create(new \\TypedPress\\JsArray([{description}]));\n}}\n"
                         );
                         name
                     }
@@ -4862,13 +4971,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => "",
         };
         let mut body = format!(
-            "function {name}(): \\TypedPress\\{class}\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\TypedPress\\{class}({arguments});\n"
+            "function {name}(): \\TypedPress\\{class} {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\{class}({arguments});\n"
         );
         for (key, value) in fields {
             let value = self.captured_data(&value)?;
-            let _ = writeln!(body, "        $value->{storage}[{key}] = {value};");
+            let _ = writeln!(body, "\t\t$value->{storage}[{key}] = {value};");
         }
-        body.push_str("    }\n    return $value;\n}\n\n");
+        body.push_str("\t}\n\treturn $value;\n}\n\n");
         self.output.push_str(&body);
         Ok(format!("\\TypedPressApp\\{name}()"))
     }
@@ -4955,7 +5064,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let body = self.attempt(|this| {
             this.data_helpers.insert(key, name.clone());
             let mut body = format!(
-                "function {name}(): \\TypedPress\\JsObject\n{{\n    static $value;\n    if ($value === null) {{\n        $value = new \\TypedPress\\JsObject({arguments});\n"
+                "function {name}(): \\TypedPress\\JsObject {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\JsObject({arguments});\n"
             );
             for (key, member) in fields {
                 let member_path = format!("{path}.{key}");
@@ -4987,9 +5096,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         })?
                         .php
                 };
-                let _ = writeln!(body, "        $value->p[{}] = {php};", php_str(&key));
+                let _ = writeln!(body, "\t\t$value->p[{}] = {php};", php_str(&key));
             }
-            body.push_str("    }\n    return $value;\n}\n\n");
+            body.push_str("\t}\n\treturn $value;\n}\n\n");
             Ok(body)
         })?;
         self.output.push_str(&body);
@@ -5270,7 +5379,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = self.declare_local(name, param_tys[i].clone(), true, p.pat.span());
                 let rest = self.tmp_var();
                 params.push(format!("...{rest}"));
-                let _ = writeln!(body, "        {php} = new \\TypedPress\\JsArray({rest});");
+                let _ = writeln!(body, "\t\t{php} = new \\TypedPress\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
@@ -5315,8 +5424,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 2)?);
-                self.note_fallthrough(stmts, f.span)?;
-                body.push_str("        return \\TypedPress\\Js::undefined();\n");
+                if self.note_fallthrough(stmts, f.span)? {
+                    body.push_str("\t\treturn \\TypedPress\\Js::undefined();\n");
+                }
             }
         }
         Ok((params.join(", "), body))
@@ -5457,6 +5567,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             is_generator: f.is_generator,
             ret: None,
             returns: Vec::new(),
+            throws: indexmap::IndexSet::new(),
             diverging: HashSet::new(),
             exhaustive_switches: HashSet::new(),
             loop_bindings: HashSet::new(),
@@ -5668,7 +5779,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             ),
                         );
                     }
-                    (Self::write_place(&write, &result.php), result.ty)
+                    (Self::write_place(&write, &result.php, statement), result.ty)
                 }
                 AssignOp::Log(l) => {
                     if !assignable(&v.ty, &place.constraint) {
@@ -5687,7 +5798,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         LogOp::Or => self.truthy(&Out::atom(old.clone(), place.read.ty)),
                         LogOp::And => format!("!({})", self.truthy(&Out::atom(old.clone(), place.read.ty))),
                     };
-                    (format!("({keep} ? {old} : {})", Self::write_place(&write, &v.php)), ty)
+                    (
+                        format!("({keep} ? {old} : {})", Self::write_place(&write, &v.php, false)),
+                        ty,
+                    )
                 }
             };
             return Ok(Out::new(Self::assignment_sequence(steps, result, statement), ty));
@@ -5705,7 +5819,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             );
         }
         Ok(Out::new(
-            Self::assignment_sequence(steps, Self::write_place(&write, &v.php), statement),
+            Self::assignment_sequence(steps, Self::write_place(&write, &v.php, statement), statement),
             v.ty,
         ))
     }
@@ -5927,7 +6041,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ),
             );
         }
-        steps.push(Self::write_place(&write, &value));
+        steps.push(Self::write_place(&write, &value, false));
         if let ExprKind::Ident(name) = &target.kind {
             self.set_local_ty(name, ty);
         }
@@ -5982,11 +6096,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    fn write_place(write: &CapturedPlace, value: &str) -> String {
+    fn write_place(write: &CapturedPlace, value: &str, statement: bool) -> String {
         match write {
-            CapturedPlace::Binding(binding) => format!("({binding} = {value})"),
+            CapturedPlace::Binding(binding) => {
+                if statement {
+                    format!("{binding} = {value}")
+                } else {
+                    format!("({binding} = {value})")
+                }
+            }
             CapturedPlace::Object { receiver, key } => format!("\\TypedPress\\Js::set({receiver}, {key}, {value})"),
-            CapturedPlace::NativeObject { receiver, key } => format!("({receiver}->p[{key}] = {value})"),
+            CapturedPlace::NativeObject { receiver, key } => {
+                if statement {
+                    format!("{receiver}->p[{key}] = {value}")
+                } else {
+                    format!("({receiver}->p[{key}] = {value})")
+                }
+            }
             CapturedPlace::Array { receiver, key } => format!("\\TypedPress\\Js::setAt({receiver}, {key}, {value})"),
             CapturedPlace::Dynamic { receiver, key } => {
                 format!("\\TypedPress\\Js::dynamicSet({receiver}, {key}, {value})")
@@ -6026,7 +6152,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ));
         }
         let value = format!("\\TypedPress\\Js::add({old}, {})", if inc { "1" } else { "-1" });
-        let written = Self::write_place(&write, &value);
+        let written = Self::write_place(&write, &value, false);
         let result = if prefix {
             written
         } else {
@@ -6642,17 +6768,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let map = matches!(base, Ty::Map(_));
                 // Every shape the receiver can have is a plain object (`JsObject`), never an array.
                 let plain_objects = base.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_)));
-                let php = guarded(self, &|x| {
-                    // Present non-null values skip the checked read; absent keys, null values and any
-                    // receiver that is not a JsObject (null, undefined, a primitive: `??` reads them
-                    // without a diagnostic) keep dataGet's semantics. Beyond a proven parameter, the
-                    // receiver must be a local no assignment replaces, read as a plain variable.
-                    if (native_object && !map && !opt_field) || (plain_objects && stable_local && is_php_variable(x)) {
-                        format!("({x}->p[{0}] ?? \\TypedPress\\Js::dataGet({x}, {0}))", php_str(prop))
-                    } else {
-                        format!("\\TypedPress\\Js::dataGet({x}, {})", php_str(prop))
-                    }
-                });
+                let php = if optional && o.ty.is_nullable() {
+                    format!("\\TypedPress\\Js::optionalDataGet({}, {})", o.php, php_str(prop))
+                } else {
+                    guarded(self, &|x| {
+                        // Present non-null values skip the checked read; absent keys, null values and any
+                        // receiver that is not a JsObject (null, undefined, a primitive: `??` reads them
+                        // without a diagnostic) keep dataGet's semantics. Beyond a proven parameter, the
+                        // receiver must be a local no assignment replaces, read as a plain variable.
+                        if (native_object && !map && !opt_field)
+                            || (plain_objects && stable_local && is_php_variable(x))
+                        {
+                            format!("({x}->p[{0}] ?? \\TypedPress\\Js::dataGet({x}, {0}))", php_str(prop))
+                        } else {
+                            format!("\\TypedPress\\Js::dataGet({x}, {})", php_str(prop))
+                        }
+                    })
+                };
                 let ft = if map || opt_field {
                     Ty::union([ft, Ty::Undefined])
                 } else {
@@ -11226,7 +11358,7 @@ fn obj_values_ty(t: Option<&Ty>) -> Ty {
 
 /// `.` binds tighter than `+`/`-`... in PHP 8 they're equal-precedence-ish; parenthesize non-trivial parts.
 fn pad(n: usize) -> String {
-    "    ".repeat(n)
+    "\t".repeat(n)
 }
 
 /// The function expression a declaration's whole initializer evaluates to, through type-only
@@ -11269,6 +11401,14 @@ fn require_initialized_local(name: &str, local: &Local, span: Span) -> Result<()
     Ok(())
 }
 
+fn php_function_base(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    crate::schema::physical_name(&safe)
+}
+
 fn php_local_base(name: &str) -> String {
     if name == "this" {
         return "__tp_this".into();
@@ -11282,7 +11422,10 @@ fn php_local_base(name: &str) -> String {
         .next()
         .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_');
     if !reserved && valid_start && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
-        return name.to_string();
+        let php = crate::schema::physical_name(name);
+        if php != "this" {
+            return php;
+        }
     }
     let encoded = crate::hex(name);
     format!("__tp_local_{encoded}")
@@ -11309,6 +11452,57 @@ fn literal_php(v: &Out) -> bool {
     let php = v.php.as_str();
     matches!(php, "true" | "false" | "null" | "\\TypedPress\\Js::undefined()")
         || ((php.starts_with('\'') || php.starts_with('"')) && matches!(v.ty, Ty::StrLit(_) | Ty::FreshStrLit(_)))
+}
+
+/// Comment text may include source paths or JavaScript identifiers.
+fn php_doc_text(text: &str) -> String {
+    text.replace("*/", "* /")
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
+}
+
+fn php_lazy_assignment(target: &str, value: &str) -> String {
+    format!(
+        "/* phpcs:ignore Squiz.PHP.DisallowMultipleAssignments,WordPress.CodeAnalysis.AssignmentInTernaryCondition,Generic.CodeAnalysis.AssignmentInCondition -- Preserve lazy evaluation and a single operand read. */ {target} = {value}"
+    )
+}
+
+fn php_function_doc(summary: &str, parameters: &str, returns: &str) -> String {
+    let summary = php_doc_text(summary);
+    let separator = if parameters.is_empty() { "" } else { " *\n" };
+    format!("/**\n * {summary}\n *\n{parameters}{separator} * @return {returns} The compiled return value.\n */\n")
+}
+
+fn php_doc_type(t: &Ty, access_filter: bool) -> String {
+    match t {
+        // Access filters bypass JsObject construction, including declared object return types.
+        Ty::Map(_) | Ty::Obj(_) if access_filter => "array".to_string(),
+        Ty::Null => "null".to_string(),
+        // A TypeScript void function returns the runtime undefined sentinel.
+        Ty::Undefined | Ty::Void => "\\TypedPress\\JsUndefined".to_string(),
+        Ty::Never => "never".to_string(),
+        Ty::Fn(..) => "\\Closure".to_string(),
+        Ty::Promise(_) => "\\TypedPress\\JsPromise".to_string(),
+        Ty::Union(parts) => {
+            let mut types = Vec::new();
+            for part in parts {
+                for ty in php_doc_type(part, access_filter).split('|') {
+                    if ty == "mixed" {
+                        return "mixed".to_string();
+                    }
+                    if !types.iter().any(|seen| seen == ty) {
+                        types.push(ty.to_string());
+                    }
+                }
+            }
+            types.join("|")
+        }
+        _ => {
+            let hint = php_hint(t);
+            if hint.is_empty() { "mixed" } else { hint.trim() }.to_string()
+        }
+    }
 }
 
 fn php_hint(t: &Ty) -> &'static str {
@@ -12399,5 +12593,144 @@ mod host_secret_tests {
             runtime, HOST_SECRETS,
             "runtime/TypedPress/Env.php and src/compile.rs disagree"
         );
+    }
+}
+
+#[cfg(test)]
+mod php_layout_tests {
+    #[test]
+    fn compiled_examples_use_tabs_and_same_line_declaration_braces() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        for name in ["pantry", "kitchen-sink", "blog"] {
+            let project = root.join("examples").join(name);
+            let program = crate::loader::load(&project.join("typedpress.config.ts")).unwrap();
+            let built =
+                crate::pipeline::build(&project, &program, || Ok(crate::pipeline::Previous::none()), |_| None).unwrap();
+            assert_eq!(crate::php_layout::format(&built.functions_php), built.functions_php);
+            if name == "blog" {
+                assert!(built.functions_php.contains("@return bool|array"));
+                assert!(!built.functions_php.contains("@return bool|\\TypedPress\\JsObject"));
+            }
+            for line in built.functions_php.lines() {
+                assert!(
+                    !line.starts_with(' ') || line.starts_with(" *"),
+                    "{name}: space indentation outside PHPDoc: {line}"
+                );
+                if line.starts_with("function ") {
+                    assert!(line.contains(" {"), "{name}: declaration brace: {line}");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod php_binding_tests {
+    #[test]
+    fn source_documentation_does_not_confuse_job_queue_declaration_lookup() {
+        let project = tempfile::tempdir().unwrap();
+        let entry = project.path().join("function action__probe(.ts");
+        std::fs::write(
+            &entry,
+            r#"import { action, defineConfig } from "typedpress";
+import { work } from "./tp/work.js";
+export const probe = action({ input: {}, handler: async () => await work() });
+export default defineConfig({ name: "documentation-queue" });"#,
+        )
+        .unwrap();
+        std::fs::create_dir(project.path().join("tp")).unwrap();
+        std::fs::write(
+            project.path().join("tp/work.js"),
+            "export async function work() { return 42; }",
+        )
+        .unwrap();
+        let program = crate::loader::load(&entry).unwrap();
+        let built = crate::pipeline::build(
+            project.path(),
+            &program,
+            || Ok(crate::pipeline::Previous::none()),
+            |_| None,
+        )
+        .unwrap();
+        assert!(built.functions_php.contains("callback at `function action__probe(.ts:"));
+        assert!(built.functions_php.contains("\nfunction action__probe__root("));
+        assert_eq!(built.functions_php.matches("\nfunction action__probe(").count(), 1);
+        assert!(built.functions_php.contains("@return \\TypedPress\\JsPromise"));
+    }
+
+    #[test]
+    fn source_names_and_fallthrough_contracts_survive_php_spelling() {
+        let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/differential/language");
+        let program = crate::loader::load(&project.join("php-names.ts")).unwrap();
+        let built =
+            crate::pipeline::build(&project, &program, || Ok(crate::pipeline::Previous::none()), |_| None).unwrap();
+        let body = |name: &str| {
+            built
+                .functions_php
+                .split(&format!("function {name}("))
+                .nth(1)
+                .unwrap()
+                .split("\n}\n")
+                .next()
+                .unwrap()
+        };
+        let bindings = body("bindings");
+        let docs = |name: &str| {
+            built
+                .functions_php
+                .split(&format!("function {name}("))
+                .next()
+                .unwrap()
+                .rsplit("/**")
+                .next()
+                .unwrap()
+        };
+        assert!(docs("bindings").contains("callback at `php-names.ts:"));
+        assert!(docs("bindings").contains("@param int|float $item_id"));
+        assert!(docs("bindings").contains("TypeScript parameter `itemId`."));
+        assert!(docs("bindings").contains("TypeScript parameter `item_id`."));
+        assert!(docs("exits").contains("@throws \\TypedPress\\JsError"));
+        assert!(docs("fallthrough").contains("@return string|\\TypedPress\\JsUndefined"));
+        assert!(!bindings.contains("$itemId"), "{bindings}");
+        assert!(!bindings.contains("$httpStatus"), "{bindings}");
+        assert!(!bindings.contains("$HTTPStatus"), "{bindings}");
+        assert!(!bindings.contains("$this"), "{bindings}");
+        for key in [
+            "'itemId'",
+            "'item_id'",
+            "'httpStatus'",
+            "'HTTPStatus'",
+            "'THIS'",
+            "'GLOBALS'",
+            "'_GET'",
+        ] {
+            assert!(bindings.contains(key), "{key}: {bindings}");
+        }
+        assert!(built.schema.actions.contains_key("namingBindings"));
+        assert!(built.schema.actions.contains_key("namingControlFlow"));
+        let mut declarations = std::collections::HashSet::new();
+        for name in built
+            .functions_php
+            .lines()
+            .filter_map(|line| line.strip_prefix("function "))
+            .map(|rest| rest.split('(').next().unwrap())
+        {
+            assert!(declarations.insert(name), "duplicate PHP declaration: {name}");
+            assert_eq!(name, name.to_ascii_lowercase(), "{name}");
+        }
+        assert!(declarations.contains("foo_bar"));
+        let mut handlers = std::collections::HashSet::new();
+        for name in [
+            "namingFunctions",
+            "namingAsync",
+            "naming_async__body",
+            "naming_async__root",
+        ] {
+            let handler = &built.schema.actions[name].handler;
+            assert!(declarations.contains(handler.as_str()), "missing {name}: {handler}");
+            assert!(handlers.insert(handler), "shared handler for {name}: {handler}");
+        }
+        assert!(!body("exits").contains("return \\TypedPress\\Js::undefined();"));
+        assert!(body("fallthrough").contains("return \\TypedPress\\Js::undefined();"));
     }
 }

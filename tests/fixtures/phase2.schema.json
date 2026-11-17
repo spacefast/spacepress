@@ -139,7 +139,7 @@
                     }
                 }
             },
-            "handler": "job__sendWelcome",
+            "handler": "job__send_welcome",
             "retries": 5,
             "agents": true
         }

@@ -25,7 +25,7 @@ $open['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role
 $open['wp'] = ['postType' => 'tp_open_notes', 'groupKey' => 'group_tp_open_notes', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_open_notes_'];
 $schema['collections']['openNotes'] = $open;
 // Signed-in-only action: on a site without typedpress-identity, only WordPress itself can sign anyone in.
-$schema['actions']['signedInCount'] = ['access' => ['role' => 'authenticated'], 'handler' => 'action__publishedCount'] + $schema['actions']['publishedCount'];
+$schema['actions']['signedInCount'] = ['access' => ['role' => 'authenticated']] + $schema['actions']['publishedCount'];
 $wp = wpSite('blog', [
     'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'),

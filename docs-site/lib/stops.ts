@@ -76,9 +76,9 @@ export const tours: Tour[] = [
         ],
         config: { file: "typedpress.config.ts", lines: { from: "})).on({", to: "async afterUpdate(row)" } },
         outputs: [
-          { file: { artifact: "functions.php" }, lines: { from: "function items__beforeCreate", toLine: "}" } },
+          { file: { artifact: "functions.php" }, lines: { from: "function items__before_create", toLine: "}" } },
           { file: { artifact: "functions.php" }, lines: { from: "function slugify(", toLine: "}" } },
-          { file: { artifact: "schema.php" }, lines: { from: "'hooks' => ['beforeCreate' => 'items__beforeCreate'", to: "items__afterUpdate']," } },
+          { file: { artifact: "schema.php" }, lines: { from: "'hooks' => ['beforeCreate' => 'items__before_create'", to: "items__after_update']," } },
         ],
       },
       {
@@ -104,7 +104,7 @@ export const tours: Tour[] = [
         ],
         config: { file: "typedpress.config.ts", lines: { from: "export const notifyLowStock = job({", toLine: "});" } },
         outputs: [
-          { file: { artifact: "functions.php" }, lines: { from: "function job__notifyLowStock", toLine: "}" } },
+          { file: { artifact: "functions.php" }, lines: { from: "function job__notify_low_stock", toLine: "}" } },
           { file: { artifact: "schema.php" }, lines: { from: "'notifyLowStock' => ['input' => [", to: "'itemId' => ['type' => 'integer', 'notNull' => true]," } },
         ],
       },

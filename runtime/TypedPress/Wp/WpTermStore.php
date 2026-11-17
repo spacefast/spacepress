@@ -337,14 +337,24 @@ final class WpTermStore implements Store, Links
     public function setLinks(string $join, int|string $owner, array $targets): void
     {
         $taxonomy = $this->linkTaxonomy($join);
+        $targets = array_values(array_map('intval', $targets));
         $this->db->touchPost((int) $owner);
         if (in_array($taxonomy, ['product_cat', 'product_tag'], true) && get_post_type((int) $owner) === 'product') {
             $product = wc_get_product((int) $owner);
-            $product->{$taxonomy === 'product_cat' ? 'set_category_ids' : 'set_tag_ids'}(array_values(array_map('intval', $targets)));
+            $product->{$taxonomy === 'product_cat' ? 'set_category_ids' : 'set_tag_ids'}($targets);
             $this->db->core(static fn () => $product->save());
+            // Woo owns membership; keep list positions on this product without changing taxonomy-wide sorting.
+            $wpdb = $this->db->wpdb();
+            foreach ($targets as $position => $target) {
+                $this->db->run(
+                    "UPDATE `{$wpdb->term_relationships}` SET term_order = ? WHERE object_id = ? AND term_taxonomy_id IN (SELECT term_taxonomy_id FROM `{$wpdb->term_taxonomy}` WHERE taxonomy = ? AND term_id = ?)",
+                    [$position, (int) $owner, $taxonomy, $target],
+                );
+            }
+            clean_object_term_cache((int) $owner, 'product');
             return;
         }
-        $done = $this->db->core(static fn () => wp_set_object_terms((int) $owner, array_values(array_map('intval', $targets)), $taxonomy, false));
+        $done = $this->db->core(static fn () => wp_set_object_terms((int) $owner, $targets, $taxonomy, false));
         if ($done instanceof \WP_Error) {
             throw new HttpError(400, (string) $done->get_error_code(), $done->get_error_message());
         }

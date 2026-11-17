@@ -28,6 +28,13 @@ eq('a refused duplicate identity creates no term', $db->findFirst('categories', 
 $sameUidTag = $db->insert('tags', ['name' => 'Independent taxonomy identity', 'uid' => $child['uid']], true, $admin)[0];
 eq('UID ownership is scoped to its taxonomy', $sameUidTag['uid'], $child['uid']);
 $db->delete('tags', ['id' => $sameUidTag['id']], false, $admin);
+$categoryOrder = [$child['id'], $mug['categories'][0]];
+$categorySort = get_taxonomy('product_cat')->sort;
+$orderedProduct = $db->update('products', ['categories' => $categoryOrder], ['id' => $mug['id']], true, $admin)[0];
+eq('category replacement returns submitted order', $orderedProduct['categories'], $categoryOrder);
+eq('category order survives a fresh read', $db->findFirst('products', ['where' => ['id' => $mug['id']]])['categories'], $categoryOrder);
+eq('sync exports categories in the submitted order', \TypedPress\Sync\Wire::encode('products', [$orderedProduct])[0]['record']['fields']['categories'], [$child['uid'], get_term_meta($mug['categories'][0], '_tp_uid', true)]);
+eq('product writes preserve Woo taxonomy sorting configuration', get_taxonomy('product_cat')->sort, $categorySort);
 $cleared = $db->update('products', ['categories' => [], 'tags' => []], ['id' => $mug['id']], true, $admin)[0];
 eq('clearing product categories returns Woo default category normalization', $cleared['categories'], [(int) get_option('default_product_cat')]);
 eq('normalized categories are the persisted native product categories', wc_get_product($mug['id'])->get_category_ids(), $cleared['categories']);

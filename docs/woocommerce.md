@@ -53,7 +53,8 @@ exact decimal `price`, ordered media `images`, category/tag references, `virtual
 `availability` and `url`. Native variable/grouped/external products identify their type;
 v1 writes accept simple products only. Stock is operational data managed by Woo.
 
-Category and tag lists replace the current assignments. WooCommerce assigns its configured
+Category and tag lists replace the current assignments and retain their submitted order in
+TypedPress reads and sync. WooCommerce assigns its configured
 default product category when `categories: []` is written; the returned product contains that
 persisted category ID. `tags: []` removes all tags. This follows native Woo normalization.
 

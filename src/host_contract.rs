@@ -10,7 +10,7 @@
 use serde_json::{Value, json};
 
 /// The host contract version, in every hosted manifest as `hostContract`.
-pub const HOST_CONTRACT: u32 = 1;
+pub const HOST_CONTRACT: u32 = 2;
 
 /// Paths below the site root that TypedPress answers itself; a host routes them to WordPress and keeps
 /// its own paths out of them.
@@ -119,6 +119,10 @@ pub const MOUNT: &[(&str, &str)] = &[
     (
         "TypedPress\\Loader\\Loader::initialize($root, $build)",
         "once per build per site, before the host exposes it: storage upgrades, migrations, identity maintenance, the content seed",
+    ),
+    (
+        "TypedPress\\Loader\\Loader::inspect($root, $build)",
+        "after mounting with load(..., ['inspect' => true]) and WordPress init, without initialization: returns steps and refusals; a steps entry with id commerce-shipping means the build's declared shipping policy does not match the site's recorded source and current shipping rows",
     ),
     (
         "TypedPress\\Loader\\Loader::sealed($root, $build)",

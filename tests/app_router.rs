@@ -3325,6 +3325,18 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     // The layout's site.css first, then the page's module, then the client component's module.
     assert_eq!(files("about"), ["site", "page", "counter"], "{seen}");
     assert_eq!(files("plain"), ["site"], "{seen}");
+    // Theme defaults load before the app's own styles, for TSX and Markdown pages alike.
+    for page in ["about", "plain", "colophon"] {
+        assert_eq!(
+            seen[page]["styleOrder"][0], "global-styles-inline-css",
+            "{page}: {seen}"
+        );
+        assert_eq!(
+            seen[page]["styleOrder"].as_array().unwrap().len(),
+            seen[page]["links"].as_array().unwrap().len() + 1,
+            "{page}: {seen}"
+        );
+    }
     // A page.md has no imports of its own: it links what the layouts above it import.
     assert_eq!(seen["colophon"]["status"], 200, "{seen}");
     assert_eq!(files("colophon"), ["site"], "{seen}");

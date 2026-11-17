@@ -14,8 +14,8 @@
   }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 -apple-system, "Inter", system-ui, sans-serif; }
-a { color: var(--accent); text-decoration: none; }
+body.typedpress-app { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 -apple-system, "Inter", system-ui, sans-serif; }
+.typedpress-app :where(a) { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .shell { max-width: 1120px; margin: 0 auto; padding: 0 16px 48px; }
 .top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; padding: 18px 0; border-bottom: 1px solid var(--line); }

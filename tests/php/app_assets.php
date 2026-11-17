@@ -31,6 +31,10 @@ foreach (['about', 'plain', 'colophon'] as $path) {
     $html = new DOMDocument();
     @$html->loadHTML($page['body']);
     $xpath = new DOMXPath($html);
+    $styleOrder = [];
+    foreach ($xpath->query('//style[@id="global-styles-inline-css"] | //link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")]') as $style) {
+        $styleOrder[] = $style->getAttribute('id');
+    }
     $links = [];
     foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")]') as $link) {
         $href = (string) $link->getAttribute('href');
@@ -46,7 +50,7 @@ foreach (['about', 'plain', 'colophon'] as $path) {
         $file = get((string) $img->getAttribute('src'));
         $images[] = ['src' => basename((string) parse_url($img->getAttribute('src'), PHP_URL_PATH)), 'status' => $file['status'], 'type' => $file['type'], 'body' => $file['body']];
     }
-    $out[$path] = ['status' => $page['status'], 'links' => $links, 'classes' => $classes, 'images' => $images];
+    $out[$path] = ['status' => $page['status'], 'links' => $links, 'styleOrder' => $styleOrder, 'classes' => $classes, 'images' => $images];
 }
 $out['url'] = $url;
 echo json_encode($out, JSON_UNESCAPED_SLASHES);

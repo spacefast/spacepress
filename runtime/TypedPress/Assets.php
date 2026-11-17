@@ -27,6 +27,11 @@ final class Assets
      */
     public static function enqueue(array $files): void
     {
+        if (!did_action('wp_enqueue_scripts')) {
+            // Theme and block styles set the base; the page's imports override it in import order.
+            add_action('wp_enqueue_scripts', static fn () => self::enqueue($files), PHP_INT_MAX);
+            return;
+        }
         foreach ($files as $file) {
             $handle = 'typedpress-app-' . sanitize_key(str_replace('.', '-', $file));
             wp_enqueue_style($handle, self::url($file), [], null);

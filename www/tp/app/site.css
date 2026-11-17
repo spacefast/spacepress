@@ -12,8 +12,7 @@
   --warn: light-dark(#9a6700, #e3b341);
 }
 * { box-sizing: border-box; }
-/* WordPress's theme styles also set body colours and fonts, and load after this file.
-   body.typedpress-app is the class TypedPress puts on its pages; it outranks the theme's plain body rule. */
+/* TypedPress adds this body class to app pages. Scope the site's base styles to those pages. */
 body.typedpress-app { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); line-height: 1.55; font-size: 15px; margin: 0; padding: 0; }
 body.typedpress-app .wp-site-blocks { display: block; min-height: 0; padding: 0; }
 .site :where(h1, h2, h3, h4) { font-family: inherit; font-weight: 700; line-height: 1.25; color: inherit; }

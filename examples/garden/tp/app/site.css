@@ -1,6 +1,6 @@
 :root { --ink: #1f2a1f; --muted: #5b6b5b; --line: #d5ddd2; --accent: #2f7d32; --bg: #fbfcf8; }
-body { margin: 0; color: var(--ink); background: var(--bg); font: 16px/1.6 system-ui, sans-serif; }
-a { color: var(--accent); }
+body.typedpress-app { margin: 0; color: var(--ink); background: var(--bg); font: 16px/1.6 system-ui, sans-serif; }
+.typedpress-app :where(a) { color: var(--accent); }
 .masthead { padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--line); font-weight: 600; }
 main { max-width: 42rem; margin: 0 auto; padding: 1.5rem; }
 .plants { list-style: none; padding: 0; }

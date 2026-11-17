@@ -153,8 +153,6 @@ tailscale serve --https=8960 off                            # to stop
 - **Playground plugin source.** Set `PLUGINS_URL` to the destination site when building.
   Public files allow cross-origin reads; verify that the host preserves those headers.
   The current default is the earlier published guide, until a destination is selected.
-- **Theme styles.** The active theme's styles load after the app's and set `body` colours and
-  fonts, so the site's base rules are under `body.typedpress-app`.
 - **Public files still boot WordPress.** Serving them before WordPress initializes is unfinished.
   Stylesheet and image changes do rebuild under `typedpress dev`.
 - **JSX only compiles in `tp/components/`, pages and client components**, which is why the

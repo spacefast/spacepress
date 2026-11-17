@@ -83,7 +83,11 @@ Rules:
 - **Shipping zones are rows, so they are written**, through Woo's own zone CRUD when a build is
   initialized. A declared `shipping` is the whole zone list: zones are matched by `name`,
   updated to the source, and a zone the source no longer names is removed. `shipping: []` is a
-  store that ships nothing.
+  store that ships nothing. This transaction covers shipping reconciliation, not the whole
+  deployment. Managed hosts must enforce the [shipping compatibility and recovery prerequisite](host-contract.md#lifecycle):
+  selecting an older ready build does not restore its shipping rows, and a later installation
+  failure does not undo an already completed shipping step. Keep checkout suspended until the
+  selected build and installed policy agree; recover through a new initialized build when needed.
 - **`payments` filters the gateways checkout offers**, on `woocommerce_available_payment_gateways`. A gateway that needs credentials takes
   them from its own settings in v1; `env()`-backed gateway settings come with the pilot gateway.
 - Money is an exact decimal string. An unknown key, currency, country or method is a build error.

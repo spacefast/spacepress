@@ -108,6 +108,13 @@ not move Spacefast's compiler pin or provision Woo there. Before accepting a com
   Scheduler/WP-Cron, gateway callbacks, merchant administration and `wp_mail` operational.
 - Give each preview its own fresh SQLite database and test payment/email configuration.
   Promotion publishes source; it never copies preview orders, customers or inventory.
+- Qualify shipping changes as installation changes, not just a version-pointer switch.
+  Suspend checkout during shipping-changing initialization, and permit concurrent build selection
+  or rollback only when the selected build's declared shipping policy matches the last committed
+  shipping state. Check this after initialization failures too: a later failed step does not undo
+  a completed shipping transaction. Prove rejection of an incompatible older ready build and
+  recovery through a newly initialized build that reapplies the intended policy, without restoring
+  historical orders. Do not accept commerce builds until the host enforces this prerequisite.
 - Route `/wp-json/wc/store/*` uncached. Cart, checkout and receipt paths are private/no-store.
   A guest's `wp_woocommerce_session_*` cookie does not invalidate shared catalog HTML.
 - Repeat `docs-site/tests/playground/commerce.test.ts` on the host, prove preview isolation,

@@ -57,7 +57,15 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
    schema's data. Interim limit: a request never installs anything, and `Loader::initialize` on a ready
    build changes nothing, so the stored rewrite rules and the app's Pages stay those of the build
    initialized last until a new build initializes; builds selected per request must share URL patterns
-   and page records with the build initialized last.
+   and page records with the build initialized last. Commerce builds must also share its installed
+   shipping policy. Selecting an older ready build does not restore shipping zones or methods;
+   its scalar store settings apply immediately while shipping rows remain at their last committed
+   state. Refuse a selection whose declared shipping policy differs from that installed state.
+   This applies after failed initialization too: a completed shipping transaction is not rolled
+   back if a later installation step fails. A host must suspend checkout while changing shipping,
+   verify policy compatibility before resuming it, and recover an incompatible state by initializing
+   a new build with the intended policy. Calling initialize on an already-ready build does not do
+   that restoration. Historical orders must not be restored or rewritten as part of this recovery.
 4. Run `wp typedpress jobs tick` on a schedule. It does one bounded pass of the site's background work and
    prints `{processed, failures, outboxDispatched, requeued, receiptsExpired, remaining}`
    (`outboxDispatched` is always 0: jobs reach Action Scheduler in the transaction that queues them;

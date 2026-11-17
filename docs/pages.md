@@ -518,6 +518,10 @@ export const metadata = { scripts: ["/app.js", "https://cdn.example.com/widget.j
 
 ## Styles from WordPress
 
+A page inherits the active WordPress theme's colors, fonts, typography and root
+spacing by default. Do not reset `body` to an app palette or font to get started.
+Changes made in the Site Editor apply to app pages too.
+
 A page prints WordPress's global styles in its head, as a block theme's own
 templates do: every `theme.json` preset as a CSS variable
 (`--wp--preset--color--<slug>`, `--wp--preset--font-size--<slug>`,
@@ -529,13 +533,37 @@ without a deploy:
 
 ```css
 /* tp/app/site.css */
-.card { background: var(--wp--preset--color--primary); font-family: var(--wp--preset--font-family--body); }
+.card {
+	background: var(--tp--color--background);
+	color: var(--tp--color--foreground);
+	padding: var(--tp--spacing--block);
+}
 ```
+
+The app's head also exposes semantic variables for the current theme. Their
+values come from WordPress's merged theme and owner settings on each request,
+so they work with an installed theme whose preset names differ from the project.
+
+| Variable | Value from WordPress |
+| --- | --- |
+| `--tp--color--background`, `--tp--color--foreground` | Body background and text color |
+| `--tp--color--link` | Link color, or the body's text color when none is set |
+| `--tp--font-family--body`, `--tp--font-size--body`, `--tp--line-height--body` | Body typography |
+| `--tp--spacing--block` | Block gap, the vertical gap when it has separate axes |
+| `--tp--spacing--page` | Root left padding |
+| `--tp--width--content`, `--tp--width--wide` | Theme content and wide widths |
+
+These variables do not restyle the body. Leave body typography inherited unless
+a component needs an explicit value. The site's browser colors and inherited
+typography remain the fallback when a theme specifies none.
 
 The values start from code. The active theme's `theme.json` (TypedPress's
 `typedpress-default` when no installed theme is active) is the base, and
 `tp/theme.json` in the project is merged over it: a theme.json document
-with `version`, `settings` and `styles` only.
+with `version`, `settings` and `styles` only. This file is an explicit choice to
+give the site app-specific theme defaults. Without it, the installed theme is
+used as-is. A component can also choose custom scoped CSS without changing the
+site's default design.
 
 ```json
 {
@@ -563,12 +591,19 @@ never pulls on its own.
 
 ### Tailwind
 
-`typedpress build` writes `tp/_generated/theme.css` from the presets of
-`typedpress-default` and `tp/theme.json`: Tailwind v4 tokens whose values are the
-WordPress variables.
+`typedpress build` always writes `tp/_generated/theme.css`, including when the
+project has no `tp/theme.json`. It contains Tailwind v4 tokens for the runtime
+roles above, plus the presets of `typedpress-default` and `tp/theme.json`.
 
 ```css
 @theme inline {
+  --color-wp-background: var(--tp--color--background);
+  --color-wp-foreground: var(--tp--color--foreground);
+  --color-wp-link: var(--tp--color--link);
+  --font-wp-body: var(--tp--font-family--body);
+  --text-wp-body: var(--tp--font-size--body);
+  --spacing-wp-block: var(--tp--spacing--block);
+  --container-wp-content: var(--tp--width--content);
   --color-primary: var(--wp--preset--color--primary);
   --font-system: var(--wp--preset--font-family--system);
   --spacing-wp-40: var(--wp--preset--spacing--40);
@@ -579,9 +614,10 @@ TypedPress doesn't run Tailwind. A project that uses it runs Tailwind's CLI and
 imports its output, a plain stylesheet, from a layout:
 
 ```css
-/* tailwind.css, the CLI's input */
-@import "tailwindcss";
+/* tailwind.css, the CLI's input: theme and utilities, without Preflight. */
+@import "tailwindcss/theme.css" layer(theme);
 @import "./tp/_generated/theme.css";
+@import "tailwindcss/utilities.css";
 @source "./tp";
 ```
 
@@ -594,9 +630,18 @@ npx @tailwindcss/cli -i tailwind.css -o tp/app/tailwind.css --watch
 import "./tailwind.css";
 ```
 
-`bg-primary` then reads `--wp--preset--color--primary`, so it follows the
-owner's color. A preset added on the site has its variable at once and a token
-after `typedpress styles pull`. Spacing tokens are `spacing-wp-<slug>` so
+Use `bg-wp-background text-wp-foreground`, `text-wp-link`, `font-wp-body`,
+`text-wp-body leading-wp-body`, `gap-wp-block`, `p-wp-page` and
+`max-w-wp-content` or `max-w-wp-wide`. They follow the active theme and owner
+edits without rebuilding Tailwind. Omit typography classes to inherit the
+surrounding text styles. Skipping Tailwind's Preflight preserves WordPress's
+heading, body and block defaults. Utilities are imported without a CSS layer so
+an explicitly applied utility can override WordPress's unlayered style rules.
+
+`bg-primary` reads `--wp--preset--color--primary`, so it follows that named
+preset's current value. A preset added on the site has its variable at once and
+a token after `typedpress styles pull`. The `wp-` semantic names above are
+reserved; use another preset slug to name a custom utility. Spacing tokens are `spacing-wp-<slug>` so
 WordPress's numbered sizes don't replace Tailwind's own scale. The decision is
 in [styles from WordPress](decisions/2026-11-15-styles-from-wordpress.md).
 

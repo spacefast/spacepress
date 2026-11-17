@@ -122,7 +122,24 @@ into `public/play-data.json` by `scripts/run-data.ts`.
 SITE_URL=http://localhost:8960 node --test tests/site.test.mjs
 ```
 
-Ten tests against the running site: the guide's sections and drawn code, the guide without
+The WordPress integration check uses a running, seeded Drive Store. It checks
+direct canonical links, navigation without a document reload, and real Tailwind
+utilities against the active theme:
+
+```sh
+DRIVE_STORE_URL=http://localhost:8932 bun run test:wordpress
+```
+
+To also check a Site Editor change without rebuilding Tailwind, pass the local
+compiler and project. This test changes the local site's Global Styles and
+restores their original content afterwards. It refuses non-local sites.
+
+```sh
+TP_BIN=../target/release/typedpress TP_PROJECT=../examples/drive-store \
+  DRIVE_STORE_URL=http://localhost:8932 bun run test:wordpress
+```
+
+`tests/site.test.mjs` checks the guide's sections and drawn code, the guide without
 JavaScript, phone width, the docs' navigation and highlighted code, an edit that builds a
 migration and is shared and reopened, an announced syntax error, the examples page with its JSON
 and its playground link, the blog from the menu to a post and its comments, the newest posts on the home page, and that a visitor can neither start the star job nor list `/shares`. `CHROMIUM=<path>` names the browser when Playwright's own is not installed. They are
@@ -153,8 +170,6 @@ tailscale serve --https=8960 off                            # to stop
 - **Playground plugin source.** Set `PLUGINS_URL` to the destination site when building.
   Public files allow cross-origin reads; verify that the host preserves those headers.
   The current default is the earlier published guide, until a destination is selected.
-- **Theme styles.** The active theme's styles load after the app's and set `body` colours and
-  fonts, so the site's base rules are under `body.typedpress-app`.
 - **Public files still boot WordPress.** Serving them before WordPress initializes is unfinished.
   Stylesheet and image changes do rebuild under `typedpress dev`.
 - **JSX only compiles in `tp/components/`, pages and client components**, which is why the

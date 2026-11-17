@@ -146,14 +146,7 @@ pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()>
         )?;
     }
     write(&project.join(layout::OPENAPI), crate::openapi::render(&built.openapi))?;
-    match &built.theme_css {
-        Some(css) => {
-            write(&project.join(crate::theme::TOKENS), css)?;
-        }
-        None => {
-            let _ = std::fs::remove_file(project.join(crate::theme::TOKENS));
-        }
-    }
+    write(&project.join(crate::theme::TOKENS), &built.theme_css)?;
     let client_dir = project.join(layout::CLIENT);
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;

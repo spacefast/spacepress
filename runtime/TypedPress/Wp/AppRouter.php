@@ -550,7 +550,7 @@ final class AppRouter
         }
         $query = new \WP_Query();
         $query->query = ['page_id' => $post->ID];
-        $query->query_vars = $query->fill_query_vars($query->query);
+        $query->query_vars = $query->fill_query_vars($query->query + ['fields' => 'all']);
         $query->queried_object = $post;
         $query->queried_object_id = $post->ID;
         $query->posts = [$post];

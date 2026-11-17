@@ -27,6 +27,12 @@ final class Assets
      */
     public static function enqueue(array $files): void
     {
+        if (!did_action('wp_print_styles')) {
+            // Include theme styles queued during wp_head before WordPress prints the queue.
+            add_action('wp_print_styles', static fn () => self::enqueue($files), PHP_INT_MAX);
+            return;
+        }
+        Wp\ThemeStyles::enqueue();
         foreach ($files as $file) {
             $handle = 'typedpress-app-' . sanitize_key(str_replace('.', '-', $file));
             wp_enqueue_style($handle, self::url($file), [], null);

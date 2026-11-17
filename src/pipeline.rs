@@ -43,9 +43,9 @@ pub struct Built {
     pub references: Option<serde_json::Value>,
     /// `tp/theme.json`, when the project has one: shipped as the app plugin's `tp/app/theme.json`.
     pub theme: Option<serde_json::Value>,
-    /// `tp/_generated/theme.css`, with `tp/theme.json`: Tailwind v4 tokens on WordPress's preset
+    /// `tp/_generated/theme.css`: Tailwind v4 tokens on WordPress's preset
     /// variables ([`crate::theme`]).
-    pub theme_css: Option<String>,
+    pub theme_css: String,
 }
 
 /// The schema ledger, committed with the project: `snapshot.json` and the numbered SQL that
@@ -464,7 +464,7 @@ pub fn build(
         .runtime_schema
         .is_some()
         .then(|| crate::runtime_schema::references(&schema, &program.root));
-    let theme_css = theme.as_ref().map(crate::theme::tokens);
+    let theme_css = crate::theme::tokens(theme.as_ref().unwrap_or(&serde_json::Value::Null));
     Ok(Built {
         theme,
         theme_css,

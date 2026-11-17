@@ -15,7 +15,7 @@ export default async function Drive({ item }: PageProps<"drives/[slug]">) {
   const state = useFormState(buy);
   return (
     <>
-      <p className="crumbs"><Link href="/">← Back to the catalog</Link></p>
+      <p className="crumbs"><Link href="/" prefetch>← Back to the catalog</Link></p>
       <article className="product">
         <div>
           <h1>{item.name}</h1>

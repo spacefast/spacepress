@@ -314,6 +314,36 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
     assert_eq!(seen["draft"], serde_json::json!([404, "Not found"]));
     assert_eq!(seen["missing"], serde_json::json!([404, "Not found"]));
     assert_eq!(seen["about"], serde_json::json!([200, "About"]));
+    for name in ["path", "absolute"] {
+        assert_eq!(
+            seen["links"][name],
+            serde_json::json!({
+                "href": format!("{url}/notes/dawn-on-the-ridge/?q=tea%20time#body"),
+                "template": "tp-blank", "prefetch": "actions.prefetch"
+            }),
+            "{name}: {seen}"
+        );
+    }
+    assert_eq!(seen["links"]["home"]["href"], format!("{url}/"));
+    assert_eq!(
+        seen["links"]["without slash"],
+        format!("{url}/notes/dawn-on-the-ridge?q=tea#body")
+    );
+    for (name, expected) in [
+        ("file", format!("{url}/logo.svg?size=2#image")),
+        ("reserved", format!("{url}/wp-login.php?redirect_to=%2Fnotes#login")),
+        ("external", "https://example.test/notes?q=tea#body".to_string()),
+        ("protocol relative", "".to_string()),
+        (
+            "outside home",
+            format!("{}/blogger/notes", url.trim_end_matches("/blog")),
+        ),
+        ("fragment", "#body".to_string()),
+        ("query", "?q=tea#body".to_string()),
+    ] {
+        assert_eq!(seen["links"][name]["href"], expected, "{name}: {seen}");
+        assert_eq!(seen["links"][name]["template"], "", "{name}: {seen}");
+    }
     let _ = std::fs::remove_dir_all(project);
 }
 
@@ -3325,6 +3355,25 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     // The layout's site.css first, then the page's module, then the client component's module.
     assert_eq!(files("about"), ["site", "page", "counter"], "{seen}");
     assert_eq!(files("plain"), ["site"], "{seen}");
+    // Theme defaults load before the app's own styles, for TSX and Markdown pages alike.
+    for page in ["about", "plain", "colophon"] {
+        assert_eq!(
+            seen[page]["styleOrder"][0], "global-styles-inline-css",
+            "{page}: {seen}"
+        );
+        assert_eq!(seen[page]["styleOrder"][1], "late-theme-inline-css", "{page}: {seen}");
+        assert_eq!(
+            seen[page]["styleOrder"].as_array().unwrap().last().unwrap(),
+            "owner-override-inline-css",
+            "{page}: {seen}"
+        );
+        assert_eq!(seen[page]["ownerCss"], true, "{page}: {seen}");
+        assert_eq!(
+            seen[page]["styleOrder"].as_array().unwrap().len(),
+            seen[page]["links"].as_array().unwrap().len() + 3,
+            "{page}: {seen}"
+        );
+    }
     // A page.md has no imports of its own: it links what the layouts above it import.
     assert_eq!(seen["colophon"]["status"], 200, "{seen}");
     assert_eq!(files("colophon"), ["site"], "{seen}");
@@ -4993,10 +5042,26 @@ fn drive_store_example_sells_on_wordpress() {
             "status": 200,
             "title": ["Catalog · Drive Store"],
             "names": ["WD Red Plus 4 TB", "Samsung 870 EVO 1 TB", "Crucial P3 2 TB", "Seagate Exos X16 16 TB"],
-            "links": ["/drives/wd-red-plus-4tb", "/drives/samsung-870-evo-1tb", "/drives/crucial-p3-2tb", "/drives/seagate-exos-x16"],
+            "links": ["/drives/wd-red-plus-4tb/", "/drives/samsung-870-evo-1tb/", "/drives/crucial-p3-2tb/", "/drives/seagate-exos-x16/"],
             "feed link": true,
         }),
         "{seen}"
+    );
+    for response in seen["catalog direct"].as_array().unwrap() {
+        assert_eq!(
+            response,
+            &json!([200, null]),
+            "a generated product link must not redirect: {seen}"
+        );
+    }
+    assert_eq!(
+        seen["catalog direct"].as_array().unwrap().len(),
+        seen["catalog"]["links"].as_array().unwrap().len()
+    );
+    assert_eq!(
+        seen["catalog navigation"],
+        json!(seen["catalog"]["links"].as_array().unwrap().len()),
+        "every product link enables region navigation and prefetch"
     );
     assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
     assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));

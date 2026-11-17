@@ -1,6 +1,6 @@
 // The catalog: every published drive, searchable and filtered by media and condition.
 import { db, text } from "typedpress";
-import type { PageProps } from "typedpress/app";
+import { Link, type PageProps } from "typedpress/app";
 import { CONDITIONS, MEDIA } from "../schema";
 import { catalog } from "../lib/catalog";
 import { mediaName, money, size } from "./_lib/format";
@@ -36,7 +36,7 @@ export default async function Catalog({ search }: PageProps<"/", Search>) {
       <ul className="cards">
         {rows.map((d) => (
           <li className="card">
-            <h2><a href={d.href}>{d.name}</a></h2>
+            <h2><Link href={d.href} prefetch>{d.name}</Link></h2>
             <p className="muted">{d.brand} {d.model} · {size(d.capacityGb)} {mediaName(d.media)}</p>
             {d.summary ? <p>{d.summary}</p> : null}
             <p className="row">

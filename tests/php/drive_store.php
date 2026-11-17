@@ -56,6 +56,13 @@ function texts(string $html, string $query): array
     return $out;
 }
 
+/** Link paths and their query, excluding the harness's temporary origin. */
+function paths(string $html, string $query): array
+{
+    return array_map(static fn (string $href): string => (string) parse_url($href, PHP_URL_PATH)
+        . (($search = parse_url($href, PHP_URL_QUERY)) !== null ? '?' . $search : ''), texts($html, $query));
+}
+
 /** The form on $html that posts to a URL ending in $suffix: its action and its inputs. */
 function form(string $html, string $suffix): array
 {
@@ -114,9 +121,15 @@ $out['catalog'] = [
     'status' => $home['status'],
     'title' => texts($home['body'], '//title'),
     'names' => texts($home['body'], "$cards//h2"),
-    'links' => texts($home['body'], "$cards//h2/a/@href"),
+    'links' => paths($home['body'], "$cards//h2/a/@href"),
     'feed link' => texts($home['body'], "//link[@type='application/rss+xml' and contains(@href,'tp_drives')]/@href") !== [],
 ];
+$out['catalog direct'] = [];
+foreach (texts($home['body'], "$cards//h2/a/@href") as $href) {
+    $response = fetch(str_starts_with($href, '/') ? $url . $href : $href);
+    $out['catalog direct'][] = [$response['status'], $response['headers']['location'] ?? null];
+}
+$out['catalog navigation'] = count(texts($home['body'], "$cards//h2/a[@data-tp-template='tp-blank' and @data-wp-on--click='actions.navigate' and @data-wp-on--mouseenter='actions.prefetch']"));
 $out['search'] = texts(fetch("$url/?q=samsung")['body'], "$cards//h2");
 $out['filter'] = texts(fetch("$url/?media=nvme")['body'], "$cards//h2");
 

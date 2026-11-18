@@ -7,6 +7,11 @@ require __DIR__ . '/wp.php';
 $site = wpSite('guard-boundaries', ['wpContent' => $argv[1], 'muPlugins' => ['cache' => <<<'PHP'
     <?php
     function batcache_cancel(): void { header('X-Test-Batcache-Cancel: yes'); }
+    add_filter('login_url', static function (string $login, string $back): string {
+        return isset($_SERVER['HTTP_X_TEST_SPLIT_SIGN_IN'])
+            ? add_query_arg('redirect_to', urlencode($back), 'https://auth.example.test/login')
+            : $login;
+    }, 10, 2);
     PHP]]);
 wp_set_current_user(1);
 $db = \TypedPress\db();
@@ -63,6 +68,12 @@ if ($response === false || curl_getinfo($ch, CURLINFO_RESPONSE_CODE) !== 301
 }
 // A whole batch of newer posts may have no eligible twin. The older public post and its
 // archive must still be discoverable. Use the site's guarded kind route for those permalinks.
+curl_setopt_array($ch, [CURLOPT_URL => "$url/?view=compact", CURLOPT_HTTPHEADER => ['X-Test-Split-Sign-In: yes']]);
+$expectedSignIn = add_query_arg('redirect_to', urlencode("$url/?view=compact"), 'https://auth.example.test/login');
+if (curl_exec($ch) === false || curl_getinfo($ch, CURLINFO_RESPONSE_CODE) !== 302 || ($headers['location'] ?? []) !== [$expectedSignIn]) {
+    throw new RuntimeException('Guard lost the configured sign-in host or return URL: ' . json_encode($headers));
+}
+
 $public = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Public directory record', 'post_date' => '2020-01-01 12:00:00']);
 $archive = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Directory archive']);
 update_option('show_on_front', 'page');

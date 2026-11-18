@@ -310,8 +310,9 @@ struct Report {
     redirects: usize,
 }
 
-/// The exported file paths and, for versioned public modules, the query used to fetch the file.
+/// The exported file paths and optional queries used to fetch their contents.
 type Assets = BTreeMap<String, String>;
+type AssetRequests = BTreeSet<(String, String)>;
 
 struct Export<'a> {
     agent: ureq::Agent,
@@ -500,15 +501,17 @@ impl<'a> Export<'a> {
         }
         // Assets, and what they reference in turn (a stylesheet's fonts and images, a module's imports).
         let mut files = 0;
-        let mut seen: BTreeSet<String> = assets.keys().cloned().collect();
         let mut queue: Vec<_> = assets.into_iter().collect();
+        let mut seen: AssetRequests = queue.iter().cloned().collect();
+        let mut written = BTreeSet::new();
         while let Some((path, query)) = queue.pop() {
             let (status, _, body) = self.get(&format!("{}{path}{query}", self.home), None)?;
             if status != 200 {
                 return Err(format!(
-                    "{path} answered {status}; the pages reference it, so the export needs it"
+                    "{path}{query} answered {status}; the pages reference it, so the export needs it"
                 ));
             }
+            let output = stage.path().join(asset_file(&path)?);
             let mut body = body;
             if path.ends_with(".css") || crate::assets::is_javascript(&path) {
                 let text = String::from_utf8_lossy(&body);
@@ -522,15 +525,21 @@ impl<'a> Export<'a> {
                 } else {
                     self.rewrite_module(&text, &path)?
                 };
-                for (found, query) in references {
-                    if seen.insert(found.clone()) {
-                        queue.push((found, query));
+                for dependency in references {
+                    if seen.insert(dependency.clone()) {
+                        queue.push(dependency);
                     }
                 }
                 body = rewritten.into_bytes();
             }
-            write(&stage.path().join(asset_file(&path)?), &body)?;
-            files += 1;
+            if written.insert(output.clone()) {
+                write(&output, &body)?;
+                files += 1;
+            } else if std::fs::read(&output).map_err(|e| format!("{}: {e}", output.display()))? != body {
+                return Err(format!(
+                    "{path}: different asset queries return different content; use distinct paths for static export"
+                ));
+            }
         }
         // Redirects: a `_redirects` file, and a refresh page at each old URL for hosts without rules.
         let mut rules = String::new();
@@ -920,7 +929,7 @@ impl<'a> Export<'a> {
     }
 
     /// Discover actual module specifiers and rewrite the ones anchored to the rendering site.
-    fn rewrite_module(&self, text: &str, from: &str) -> Result<(String, Vec<(String, String)>), String> {
+    fn rewrite_module(&self, text: &str, from: &str) -> Result<(String, AssetRequests), String> {
         use oxc_ast::{AstKind, ast::Expression};
         use oxc_span::{GetSpan, SourceType};
 
@@ -934,7 +943,7 @@ impl<'a> Export<'a> {
             .build(&parsed.program);
         let location = url::Url::parse(&format!("{}{}{from}", self.origin, self.home))
             .map_err(|error| format!("invalid module URL {from}: {error}"))?;
-        let mut references = Vec::new();
+        let mut references = AssetRequests::new();
         let mut edits = Vec::new();
         for node in semantic.semantic.nodes().iter() {
             let literal = match node.kind() {
@@ -980,7 +989,7 @@ impl<'a> Export<'a> {
         location: &url::Url,
         specifier: &str,
         span: oxc_span::Span,
-        references: &mut Vec<(String, String)>,
+        references: &mut AssetRequests,
         edits: &mut Vec<(oxc_span::Span, String)>,
     ) {
         let relative = specifier.starts_with("./") || specifier.starts_with("../");
@@ -996,7 +1005,7 @@ impl<'a> Export<'a> {
         };
         let (path, suffix) = split_suffix(&local);
         let query = suffix.split('#').next().unwrap_or_default();
-        references.push((path.to_string(), query.to_string()));
+        references.insert((path.to_string(), query.to_string()));
         if !relative {
             let output = format!("{}{local}", self.flags.base);
             if output != specifier {
@@ -1350,15 +1359,22 @@ mod tests {
                 .rewrite_module(r#"import { name } from "./other.mjs";"#, "/scripts/module.mjs")
                 .unwrap()
                 .1,
-            [("/scripts/other.mjs".to_string(), String::new())]
+            AssetRequests::from([("/scripts/other.mjs".to_string(), String::new())])
         );
     }
 
     #[test]
     fn static_export_copies_and_rewrites_only_real_module_dependencies() {
+        for conflicting in [false, true] {
+            check_module_dependency_export(conflicting);
+        }
+    }
+
+    fn check_module_dependency_export(conflicting: bool) {
         use std::net::TcpListener;
 
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let source = format!(
             r#"
@@ -1366,15 +1382,29 @@ mod tests {
             const example = 'from "/site/string-only.mjs"';
             import "/site/scripts/root.mjs";
             export {{ default as config }} from "./config.mjs?build=blue#ready";
+            export {{ default as alternate }} from "./config.mjs?build=green";
             const chunk = () => import(`./chunk.mjs`);
             const logo = () => fetch("{origin}/site/logo.svg");
             "#
         );
         let serve = source.clone();
+        let (stop, stopped) = std::sync::mpsc::channel();
         let worker = std::thread::spawn(move || {
             let mut received = BTreeSet::new();
-            for _ in 0..6 {
-                let (mut stream, _) = listener.accept().unwrap();
+            loop {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(client) => client,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        if stopped.recv_timeout(Duration::from_millis(5)).is_ok() {
+                            break;
+                        }
+                        continue;
+                    }
+                    Err(error) => panic!("local asset fixture: {error}"),
+                };
+                stream.set_nonblocking(false).unwrap();
+
+                stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
                 let mut reader = std::io::BufReader::new(&stream);
                 let mut first = String::new();
                 reader.read_line(&mut first).unwrap();
@@ -1395,6 +1425,8 @@ mod tests {
                     ),
                     "/site/scripts/main.mjs" => ("200 OK", serve.as_str()),
                     "/site/scripts/config.mjs?build=blue" => ("200 OK", "export default 1;"),
+                    "/site/scripts/config.mjs?build=green" if conflicting => ("200 OK", "export default 2;"),
+                    "/site/scripts/config.mjs?build=green" => ("200 OK", "export default 1;"),
                     "/site/scripts/root.mjs" | "/site/scripts/chunk.mjs" => ("200 OK", "export {};"),
                     "/__tp-not-found" => ("404 Not Found", "<p>Missing</p>"),
                     _ => ("404 Not Found", ""),
@@ -1414,10 +1446,23 @@ mod tests {
         let export = Export::new(&origin, &flags, &crate::schema::Schema::default(), &listing).unwrap();
         let temp = tempfile::tempdir().unwrap();
         let out = temp.path().join("out");
-        export.write(&out).unwrap();
-
+        let result = export.write(&out);
+        stop.send(()).unwrap();
         let received = worker.join().unwrap();
         assert!(received.contains("/site/scripts/config.mjs?build=blue"));
+        assert!(received.contains("/site/scripts/config.mjs?build=green"));
+        if conflicting {
+            assert!(
+                result
+                    .err()
+                    .unwrap()
+                    .contains("different asset queries return different content")
+            );
+            assert!(!out.exists());
+            return;
+        }
+        result.unwrap();
+
         let main = std::fs::read_to_string(out.join("scripts/main.mjs")).unwrap();
         assert!(main.contains(r#"import "/docs/scripts/root.mjs";"#), "{main}");
         assert!(main.contains(r#"from "./config.mjs?build=blue#ready";"#), "{main}");

@@ -1,0 +1,30 @@
+{
+  "name": "@typedpress/frontend",
+  "version": "0.1.0",
+  "description": "Build route-level browser assets and Tailwind styles for TypedPress pages",
+  "license": "MIT",
+  "homepage": "https://github.com/spacefast/zero/tree/main/packages/frontend#readme",
+  "type": "module",
+  "engines": { "node": ">=22.23.4" },
+  "bin": { "typedpress-frontend": "./bin/typedpress-frontend.mjs" },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["bin", "src", "README.md", "LICENSE"],
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "dependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "vite": "8.2.1"
+  },
+  "peerDependencies": { "tailwindcss": "^4.3.3" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spacefast/zero.git",
+    "directory": "packages/frontend"
+  },
+  "publishConfig": { "access": "public" }
+}

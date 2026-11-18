@@ -1230,8 +1230,8 @@ final class AppRouter
                     continue;
                 }
                 if ($key === 'links' && is_array($value)) {
-                    // Each layout's links and the page's are all in the head, in that order.
-                    $out['links'] = [...($out['links'] ?? []), ...array_values($value)];
+                    // Keep the first occurrence so a shared stylesheet cannot reapply later.
+                    $out['links'] = array_values(array_unique([...($out['links'] ?? []), ...array_values($value)], SORT_REGULAR));
                     continue;
                 }
                 if (($key === 'openGraph' || $key === 'twitter') && is_array($value)) {

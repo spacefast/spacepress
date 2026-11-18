@@ -402,7 +402,7 @@ fn every_0_3_authoring_form_recompiles_to_the_schema_0_3_served() {
             (
                 method.clone(),
                 r["pattern"].as_str().unwrap().to_owned(),
-                file["access"].clone(),
+                file["handlerGuard"].clone(),
                 file["signature"].clone(),
             )
         })

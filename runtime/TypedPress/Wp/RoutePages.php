@@ -63,7 +63,7 @@ final class RoutePages
             $routes[(string) $route['id']] = [
                 'pattern' => $pattern,
                 'title' => self::title($app['files'][$page] ?? [], $pattern),
-                'status' => AppRouter::guardFiles($route, $app['files']) !== [] ? 'private' : 'publish',
+                'status' => $route['guards'] !== [] ? 'private' : 'publish',
             ];
         }
         if ($routes === []) {

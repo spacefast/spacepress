@@ -50,7 +50,7 @@ final class WpMedia implements Media
 
     public function __construct(private readonly Connection $db, Dialect $dialect)
     {
-        $this->schema = new Schema(['version' => 3, 'runtime' => Schema::SERIES, 'collections' => [self::TABLE => ['primaryKey' => 'id', 'columns' => self::COLUMNS, 'relations' => []]]]);
+        $this->schema = new Schema(['version' => 5, 'runtime' => Schema::SERIES, 'collections' => [self::TABLE => ['primaryKey' => 'id', 'columns' => self::COLUMNS, 'relations' => []]]]);
         $wpdb = $db->wpdb();
         $alt = "LEFT JOIN `{$wpdb->postmeta}` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '_wp_attachment_image_alt'";
         $file = "LEFT JOIN `{$wpdb->postmeta}` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '_wp_attached_file'";

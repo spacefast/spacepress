@@ -234,7 +234,7 @@ final class AppRouter
     {
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts'] ?? []);
         if ($layouts !== [] && self::rootLayout($layouts[0]['path']) && ($layouts[0]['template'] ?? null) === null
-            && BlockTemplates::choice($route, $this->app['files'] ?? []) === 'theme' && self::themed()) {
+            && $route['template'] === 'theme' && self::themed()) {
             $layouts[0]['chrome'] = false;
         }
         return $layouts;
@@ -285,7 +285,7 @@ final class AppRouter
         $template = match (true) {
             $route === null || $this->rootKind($route) => null,
             !self::themed() => 'document',
-            default => BlockTemplates::slug(BlockTemplates::choice($route, $this->app['files'] ?? [])),
+            default => BlockTemplates::slug($route['template']),
         };
         return $this->templates[$path] = $template;
     }
@@ -375,7 +375,7 @@ final class AppRouter
         $params = array_map(static fn ($v) => is_array($v) ? implode('/', $v) : $v, $match['params']);
         // The file's own `access` rule, or its `signature` (verified over the raw body; the
         // handler then runs as the system, spec §3).
-        $spec = ['handler' => $methods[$lookup], 'access' => $file['access'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null];
+        $spec = ['handler' => $methods[$lookup], 'access' => $file['handlerGuard'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null];
         $query = RouteRequest::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
         $url = RouteRequest::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
         // An unsigned handler reads as its caller, like a page; a signed webhook runs as the
@@ -494,7 +494,7 @@ final class AppRouter
      */
     private function renders(array $route, array $params, string $path, Viewer $viewer): bool
     {
-        if (!$this->pageAllowed(self::guardFiles($route, $this->app['files']), $viewer)) {
+        if (!$this->pageAllowed($route['guards'], $viewer)) {
             return false;
         }
         $this->plugin->app();
@@ -725,8 +725,8 @@ final class AppRouter
         if ($status !== 404) {
             self::found();
         }
-        $this->template = $status === 404 ? BlockTemplates::NOT_FOUND : BlockTemplates::slug(BlockTemplates::choice($route, $this->app['files'] ?? []));
-        $guards = self::guardFiles($route, $this->app['files']);
+        $this->template = $status === 404 ? BlockTemplates::NOT_FOUND : BlockTemplates::slug($route['template']);
+        $guards = $route['guards'];
         try {
             $allowed = $this->pageAllowed($guards, $viewer);
             if (!$allowed && $viewer->user === null) {
@@ -879,7 +879,7 @@ final class AppRouter
             if (($route['page'] ?? null) === null || str_contains((string) $route['pattern'], ':') || str_contains((string) $route['pattern'], '*')) {
                 continue;
             }
-            if (self::guardFiles($route, $this->app['files']) !== []) {
+            if ($route['guards'] !== []) {
                 continue;
             }
             // Only pages that render: the twin's heading is the page's title.
@@ -914,7 +914,7 @@ final class AppRouter
             return false;
         }
         $route = $match['route'];
-        if (self::guardFiles($route, $this->app['files']) === []) {
+        if ($route['guards'] === []) {
             return false;
         }
         // A kind mounted at /:path leaves other post types and WordPress archives to the theme.
@@ -936,7 +936,7 @@ final class AppRouter
         if ($match === null || ($match['route']['page'] ?? null) === null) {
             return null;
         }
-        if (self::guardFiles($match['route'], $this->app['files']) !== []) {
+        if ($match['route']['guards'] !== []) {
             return null;
         }
         return $match;
@@ -1028,7 +1028,7 @@ final class AppRouter
             throw new \TypedPress\HttpError(404, 'not_found', 'No page at ' . $path);
         }
         $route = $match['route'];
-        if (!$this->pageAllowed(self::guardFiles($route, $this->app['files']), $viewer)) {
+        if (!$this->pageAllowed($route['guards'], $viewer)) {
             throw $viewer->user === null
                 ? new \TypedPress\HttpError(401, 'unauthenticated', 'Sign in to see this page')
                 : new \TypedPress\HttpError(403, 'forbidden', 'You do not have access to this page');
@@ -1099,23 +1099,6 @@ final class AppRouter
             }
         }
         $this->document(500, ['title' => __('Something went wrong')], '<h1>' . esc_html__('Something went wrong.') . '</h1>');
-    }
-
-    /** The compiler emits these paths in evaluation order. Older builds carry the rules only on their files.
-     * @return list<string>
-     */
-    public static function guardFiles(array $route, array $files): array
-    {
-        if (isset($route['guards'])) {
-            return $route['guards'];
-        }
-        $guards = [];
-        foreach ([...($route['layouts'] ?? []), $route['page'] ?? null] as $path) {
-            if (($files[$path]['guard'] ?? null) !== null) {
-                $guards[] = $path;
-            }
-        }
-        return $guards;
     }
 
     /** @param list<string> $guards */

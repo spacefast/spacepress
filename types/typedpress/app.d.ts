@@ -80,8 +80,10 @@ export interface Metadata {
   scripts?: string[];
 }
 
-/** `export const guard` in a layout: who may see everything below it. */
-export type Guard = "anyone" | "authenticated" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: { user: User | null }) => boolean);
+type GuardRule = "anyone" | "authenticated" | "guest" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: { user: User | null }) => boolean);
+
+/** A page, layout, or HTTP handler can export one rule. A page with handlers can give each its own rule. */
+export type Guard = GuardRule | { page?: GuardRule; handlers: GuardRule };
 
 /**
  * `export const template` in a page or layout: the WordPress block template the page renders in.
@@ -165,7 +167,7 @@ export declare function Link(props: {
   href: Href;
   children?: JSX.Element | string | number | (JSX.Element | string | number)[];
   prefetch?: boolean;
-  /** Override automatic sign-in routing for a local destination. By default its page and layout access rules decide. */
+  /** Override automatic sign-in routing for a local destination. By default its page and layout guards decide. */
   requireAuth?: boolean;
   className?: string;
   id?: string;

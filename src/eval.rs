@@ -4416,7 +4416,7 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
             return err_help(
                 span,
                 "\"typedpress\" has no export named `route`",
-                "an HTTP route is a file: tp/app/<path>/route.ts exporting `access` (or `signature`) and GET, POST, … handlers",
+                "an HTTP route is a file: tp/app/<path>/route.ts exporting `guard` (or `signature`) and GET, POST, … handlers",
             );
         }
         "fetch" | "crypto" => {

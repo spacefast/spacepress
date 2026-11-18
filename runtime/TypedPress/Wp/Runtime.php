@@ -408,7 +408,7 @@ final class Runtime
     public static function applySystemTables(): void
     {
         global $wpdb;
-        $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => self::SERIES]);
+        $schema = new \TypedPress\Schema(['version' => 5, 'runtime' => self::SERIES]);
         \TypedPress\SystemTables::apply(CompositeStore::create($schema, new Connection($wpdb)));
         // Features finish their own install here (private files write their deny rules and probe).
         do_action('tp_runtime_tables_installed');

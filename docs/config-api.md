@@ -1706,7 +1706,7 @@ needs no pages for it.
 // tp/app/api/feed.json/route.ts: GET /api/feed.json
 import { db, type RouteRequest } from "typedpress";
 
-export const access = "anyone";
+export const guard = "anyone";
 
 export async function GET(req: RouteRequest) {
   const limit = Number(req.query.get("limit") ?? "20");
@@ -1741,7 +1741,7 @@ export function POST(req: RouteRequest) {
   first folder that WordPress or TypedPress owns (`wp-admin`, `wp-json`,
   `wp-content`, `feed`, `typedpress-admin`, `auth`, `__spacefast`, `.well-known`,
   ...).
-- Export exactly one of `access` or `signature`; there is no default. `access`
+- A handler-only file must export a `guard` or a `signature`. A `guard`
   takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
   boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
   body, as on [actions](#actions). The verified caller is then anonymous.

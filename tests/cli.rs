@@ -1089,7 +1089,7 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
     assert_eq!(
         schema["routes"],
         serde_json::json!([
-            { "pattern": "/api/list", "type": "route", "file": "tp/app/api/list/route.ts", "methods": ["GET"], "access": "anyone" },
+            { "pattern": "/api/list", "type": "route", "file": "tp/app/api/list/route.ts", "methods": ["GET"], "guard": "anyone" },
             { "pattern": "/events/:slug", "type": "page", "file": "tp/app/events/[slug]/page.tsx", "kind": "cookingEvents" },
             { "pattern": "/", "type": "page", "file": "tp/app/page.tsx" },
         ])
@@ -1168,6 +1168,83 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
         mcp.refused("schema", serde_json::json!({ "kind": "recipes" })),
         "no kind recipes; this project's kinds are: cookingEvents, articles, shoppingList, substitutes"
     );
+    mcp.finish();
+}
+
+#[test]
+fn mcp_schema_reports_page_and_handler_guards() {
+    let project = tempfile::tempdir().unwrap();
+    copy_tree(&agent_kit(), project.path());
+    let page = "export default function Page() { return <p>Page</p>; }";
+    let post = "export async function POST() { return { body: \"ok\" }; }";
+    let hybrid = format!("{page}\n{post}");
+    let signature =
+        "export const signature = { secret: env('HOOK_SECRET'), header: 'x-signature', scheme: 'hmac-sha256' };";
+    for (name, file, exports) in [
+        (
+            "page-only",
+            "page.tsx",
+            format!("export const guard = 'subscriber';\n{page}"),
+        ),
+        (
+            "handler-only",
+            "route.ts",
+            format!("export const guard = 'editor';\n{post}"),
+        ),
+        (
+            "shared",
+            "page.tsx",
+            format!("export const guard = 'author';\n{hybrid}"),
+        ),
+        (
+            "split",
+            "page.tsx",
+            format!("export const guard = {{ page: 'subscriber', handlers: 'admin' }};\n{hybrid}"),
+        ),
+        (
+            "callbacks",
+            "page.tsx",
+            format!(
+                "export const guard = {{ page: (ctx) => ctx.user !== null, handlers: (ctx) => ctx.user === null }};\n{hybrid}"
+            ),
+        ),
+        (
+            "public-page",
+            "page.tsx",
+            format!("export const guard = {{ handlers: 'subscriber' }};\n{hybrid}"),
+        ),
+        (
+            "signed",
+            "page.tsx",
+            format!("import {{ env }} from 'typedpress';\nexport const guard = 'editor';\n{signature}\n{hybrid}"),
+        ),
+    ] {
+        let dir = project.path().join("tp/app").join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(file), exports).unwrap();
+    }
+
+    let mut mcp = Mcp::initialized(project.path(), &[]);
+    let schema = mcp.ok("schema", serde_json::json!({}));
+    let routes = schema["routes"].as_array().unwrap();
+    let route = |path: &str| routes.iter().find(|entry| entry["pattern"] == path).unwrap();
+    for (path, guard) in [
+        ("/page-only", serde_json::json!("subscriber")),
+        ("/handler-only", serde_json::json!("editor")),
+        ("/shared", serde_json::json!("author")),
+        ("/split", serde_json::json!({"page": "subscriber", "handlers": "admin"})),
+        (
+            "/callbacks",
+            serde_json::json!({"page": "function", "handlers": "function"}),
+        ),
+        ("/public-page", serde_json::json!({"handlers": "subscriber"})),
+        ("/signed", serde_json::json!("editor")),
+    ] {
+        let entry = route(path);
+        assert_eq!(entry["guard"], guard, "{path}");
+        assert!(entry.get("access").is_none(), "{path}");
+    }
+    assert_eq!(route("/signed")["signed"], true);
     mcp.finish();
 }
 

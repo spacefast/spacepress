@@ -20,7 +20,7 @@ tp/app/
 ├── notes/page.tsx             # /notes?page=2, with export const search
 ├── notes/[slug]/page.tsx      # /notes/<slug>: params.slug
 ├── docs/[[...path]]/page.tsx  # /docs, /docs/a/b: params.path is a string[]
-├── account/layout.tsx         # export const access = "subscriber"
+├── account/layout.tsx         # export const guard = "subscriber"
 ├── api/notes/route.ts         # export async function GET(req) { … }
 └── _lib/                      # never routed: colocated helpers
 ```
@@ -30,7 +30,7 @@ tp/app/
 | `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL. |
 | `page.md` | A route whose content is a WordPress Page (see [Markdown pages](#markdown-pages)). |
 | `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page. |
-| `layout.tsx` | Wraps every page below it, outermost first. May export `access` and `template` ([Block templates](#block-templates)). |
+| `layout.tsx` | Wraps every page below it, outermost first. May export `guard` and `template` ([Block templates](#block-templates)). |
 | `not-found.tsx` | At the root only. |
 | `login.tsx` | At the root only: renders wp-login.php's sign-in page (see [The sign-in page](#the-sign-in-page)). |
 | `error.tsx` | The nearest one above a page renders when the page throws. |
@@ -80,16 +80,17 @@ export async function POST(req: RouteRequest) {
   `title: { default, template: "%s · Site" }` wraps its pages' titles.
 - `export const search = { page: integer().default(1), q: text().optional() }`
   types the query string. A value a field refuses (`?page=abc`) reads as absent.
-- Declare page access once. For example, `export const access = "admin"` on
+- Declare page access once. For example, `export const guard = "admin"` on
   `page.tsx` protects that page. On `layout.tsx` it protects the whole section.
   A page inherits every enclosing layout's rule. A signed-out visitor who opens
   a protected URL goes to sign-in. A signed-in visitor without the role gets 403.
-  A page with HTTP handlers keeps its `access` export for those handlers and
-  can declare a separate `guard` for rendering. Existing layout guards also work.
+  On a page with HTTP methods, a single `guard` applies to the page and its methods.
+  Use `guard = { page: "subscriber", handlers: "admin" }` for different permissions,
+  or `guard = { handlers: "admin" }` for a public page with a protected method.
+  A separate `route.ts` declares its own `guard` or a webhook `signature`.
   To restrict the underlying records in the WordPress API, set their read permissions too.
   Independently published posts can still appear in the WordPress posts sitemap.
-  For standalone plugins, update the runtime before activating an app with a
-  page-level guard. Older runtimes reject that schema.
+  Standalone plugins built with schema format 5 need the matching runtime.
 - Write `<Link href="/staff" prefetch>Staff</Link>`. The compiler records when a
   destination requires a session. Guests go straight to sign-in and return to
   the destination afterward. Signed-in visitors get normal navigation and
@@ -688,7 +689,7 @@ WordPress Page**, so the rest of WordPress sees the page as one of its own.
   in a `page.tsx`, or `id: notes.featured` in a `page.md`'s front matter. The old
   URL then redirects to the new one. Two pages with one ID are a build error
   at the second.
-- A route under a layout `guard` stores its Page private, so search, feeds,
+- A route with a page or layout `guard` stores its Page private, so search, feeds,
   the REST API and the sitemap never list it.
 - Code Pages are absent from the wp-admin Pages list, its counts and REST
   `context=edit` lists. `edit_post` and `delete_post` are denied on them, and a
@@ -766,7 +767,7 @@ A prebuilt page is what a signed-out visitor sees, rendered by the page's own
 compiled code. So it can't depend on the request. These are build errors at
 the page, each with its fix:
 
-- a layout `guard` above the page;
+- a `guard` on the page or any enclosing layout;
 - `export const search`;
 - a dynamic segment the build can't list;
 - calling `is_user_logged_in`, `current_user_can` or `get_current_user_id`.

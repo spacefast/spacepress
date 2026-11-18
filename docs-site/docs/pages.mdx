@@ -23,17 +23,17 @@ tp/app/
 ├── notes/page.tsx                /notes?page=2, with export const search
 ├── notes/[slug]/page.tsx         /notes/<slug>: params.slug
 ├── docs/[[...path]]/page.tsx     /docs, /docs/a/b: params.path is a string[]
-├── account/layout.tsx            export const access = "subscriber"
-├── api/notes/route.ts            export const access = "anyone"; export async function GET(req) { … }
+├── account/layout.tsx            export const guard = "subscriber"
+├── api/notes/route.ts            export const guard = "anyone"; export async function GET(req) { … }
 └── _lib/                         never routed: colocated helpers
 ```
 
 | Name | Meaning |
 | --- | --- |
-| `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL, with `access` |
+| `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL, with `guard` |
 | `page.md` | A route whose content is a WordPress Page; see [Markdown pages](#markdown-pages) |
-| `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page, with `access` or `signature` |
-| `layout.tsx` | Wraps every page below it, outermost first. May export `access` |
+| `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page, with `guard` or `signature` |
+| `layout.tsx` | Wraps every page below it, outermost first. May export `guard` |
 | `not-found.tsx` | At the root only |
 | `login.tsx` | At the root only: renders wp-login.php's sign-in page with `<LoginForm />`, which still posts to wp-login.php, so the second factor and attempt limits apply. See [the decision](https://github.com/spacefast/zero/blob/main/docs/decisions/2026-11-15-one-sign-in-page.md) |
 | `error.tsx` | The nearest one above a page renders when the page throws |
@@ -140,9 +140,9 @@ Code fences are highlighted on the server when the page renders, in light and da
 
 A value a `search` field refuses (`?page=abc`) reads as absent.
 
-Declare `export const access = "admin"` on a page or layout to limit who can open it. Layout rules apply to descendants. TypedPress compiles static role requirements into links to those pages. A denied visitor goes to sign-in when signed out and gets a 403 when signed in. If the file also exports an HTTP method, `access` controls that handler and `guard` controls the page.
+Declare `export const guard = "admin"` on a page or layout to limit who can open it. Layout rules apply to descendants. TypedPress compiles static role requirements into links to those pages. A denied visitor goes to sign-in when signed out and gets a 403 when signed in. The same rule protects HTTP methods exported by the page. Use `guard = { page: "subscriber", handlers: "admin" }` if their permissions differ. Omitting `page` in that object keeps the HTML public subject to its enclosing layouts.
 
-Every HTTP handler says who may call it. `export const access` is `"anyone"`, `"authenticated"`, a role, a boolean or `({ user }) => boolean`, and the handler's reads run as the caller, like a page. `export const signature = { secret, header, scheme }` makes it a raw signed webhook: the body's HMAC is checked before the handler runs, and the handler runs as the system, so it can read what an anonymous visitor can't. A handler with neither, or with both, is a build error.
+A standalone HTTP handler declares its own policy. `export const guard` is `"anyone"`, `"authenticated"`, a role, a boolean or `({ user }) => boolean`, and the handler's reads run as the caller, like a page. `export const signature = { secret, header, scheme }` makes it a raw signed webhook: the body's HMAC is checked before the handler runs, and the handler runs as the system, so it can read what an anonymous visitor can't. A handler with neither, or with both, is a build error.
 
 `typedpress build` writes `tp/_generated/routes.d.ts`. With it, `<Link href>` is checked against the app's routes and `PageProps<"notes/[slug]">` types `params`. Point TypeScript at TypedPress's JSX types:
 

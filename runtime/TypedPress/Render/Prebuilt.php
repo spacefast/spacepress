@@ -73,7 +73,7 @@ final class Prebuilt
     {
         $app = $plugin->schema->app();
         // A build mounted to inspect serves no page and schedules no build of them.
-        if (!is_array($app) || !($app['hasPrebuilt'] ?? self::any($app)) || \TypedPress\Wp\Runtime::inspecting()) {
+        if (!is_array($app) || !$app['hasPrebuilt'] || \TypedPress\Wp\Runtime::inspecting()) {
             return;
         }
         self::$plugin = $plugin;
@@ -164,17 +164,6 @@ final class Prebuilt
         }, 0);
         add_filter('wp_resource_hints', static fn (array $urls, string $type): array => $type === 'dns-prefetch' ? [] : $urls, 10, 2);
         add_filter('wp_speculation_rules_configuration', '__return_null');
-    }
-
-    /** Whether any route of the table is prebuilt. */
-    private static function any(array $app): bool
-    {
-        foreach ($app['routes'] as $route) {
-            if ($route['prerender'] ?? false) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /** The option that says this build's files have been scheduled. */
@@ -301,7 +290,7 @@ final class Prebuilt
         $redirects = [];
         $anonymous = new Viewer(null);
         foreach ($app['routes'] as $route) {
-            if (!($route['prerender'] ?? false) || ($route['page'] ?? null) === null || AppRouter::guardFiles($route, $app['files']) !== []) {
+            if (!($route['prerender'] ?? false) || ($route['page'] ?? null) === null || $route['guards'] !== []) {
                 continue;
             }
             $pattern = (string) $route['pattern'];

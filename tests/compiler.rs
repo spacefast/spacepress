@@ -1084,7 +1084,7 @@ fn context_values_pass_through_typed_helpers() {
         .arg(
             r#"// tp/app/echo/route.ts, matched the way the app router matches it.
                $file = $wp->plugin()->schema->app()["files"]["app/echo/route.ts"];
-               $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["access"], "signature" => null]];
+               $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["handlerGuard"], "signature" => null]];
                // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
                // share-link secret redacted and the share parameter kept out of the query.
                $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
@@ -1850,35 +1850,6 @@ fn compiled_php_matches_node_on_every_differential_case() {
         "compiled PHP disagrees with Node:\n{}",
         mismatches.join("\n")
     );
-}
-
-#[test]
-fn mixed_jsx_requires_a_runtime_with_html_templates() {
-    let project = tempfile::tempdir().unwrap();
-    let path = project.path();
-    std::fs::write(
-        path.join("typedpress.config.ts"),
-        "import { defineConfig } from 'typedpress'; export default defineConfig({ name: 'markup' });",
-    )
-    .unwrap();
-    std::fs::create_dir_all(path.join("tp/components")).unwrap();
-    let schema = path.join("tp/dist/wp-content/plugins/typedpress-app-markup/tp/app/schema.php");
-    for (children, version) in [("Hello", "3"), ("Hello {name}", "4")] {
-        std::fs::write(
-            path.join("tp/components/Greeting.tsx"),
-            format!("export function Greeting({{name}}: {{name: string}}) {{ return <p>{children}</p>; }}"),
-        )
-        .unwrap();
-        let built = first().arg("build").arg(path).output().unwrap();
-        assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-        let read = Command::new("php")
-            .args(["-r", "echo (require $argv[1])['version'];"])
-            .arg(&schema)
-            .output()
-            .unwrap();
-        assert!(read.status.success(), "{}", String::from_utf8_lossy(&read.stderr));
-        assert_eq!(String::from_utf8(read.stdout).unwrap(), version);
-    }
 }
 
 /// Every case in tests/differential/html/cases.json renders a compiled TSX component under PHP

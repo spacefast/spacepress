@@ -1,5 +1,5 @@
 {
-    "version": 3,
+    "version": 5,
     "runtime": "0.3",
     "name": "blog",
     "admin": true,

@@ -104,6 +104,8 @@ fn app_router_serves_pages_on_wordpress() {
         ("Admin tools", [302, 403, 200]),
         ("Admin onboarding", [302, 403, 200]),
         ("Guest preview", [200, 403, 403]),
+        ("Checkout", [302, 403, 200]),
+        ("Signed desk", [302, 403, 200]),
     ] {
         for (viewer, status) in ["guest", "reader", "admin"].into_iter().zip(statuses) {
             assert_eq!(
@@ -119,10 +121,33 @@ fn app_router_serves_pages_on_wordpress() {
         format!("{}/guest/", seen["base"].as_str().unwrap())
     );
     assert_eq!(access["private pages"], serde_json::json!(["private", "private"]));
+    for (viewer, status) in [("guest", 401), ("reader", 403), ("admin", 200)] {
+        assert_eq!(
+            access["queue"][viewer],
+            serde_json::json!([status, status == 200]),
+            "{viewer}"
+        );
+        let post_status = if status == 200 { 201 } else { status };
+        assert_eq!(
+            access["checkout POST"][viewer],
+            serde_json::json!([post_status, post_status == 201]),
+            "{viewer}"
+        );
+    }
+    assert_eq!(
+        access["signed POST"],
+        serde_json::json!({
+            "unsigned": [401, false], "unsigned admin": [401, false], "wrong": [401, false], "signed": [202, true]
+        })
+    );
+    assert_eq!(access["checkout without nonce"], 401);
     assert_eq!(access["private twin"], 404);
     assert_eq!(access["live"]["guest"], serde_json::json!([401, false]));
     assert_eq!(access["live"]["reader"], serde_json::json!([403, false]));
     assert_eq!(access["live"]["admin"], serde_json::json!([200, true]));
+    assert_eq!(access["tools POST"]["guest"], serde_json::json!([401, false]));
+    assert_eq!(access["tools POST"]["reader"], serde_json::json!([200, true]));
+    assert_eq!(access["tools POST"]["admin"], serde_json::json!([200, true]));
     assert_eq!(access["guest cache"], "private, no-store, max-age=0");
     // The page renders inside its layout, with the layout's title template and its reads.
     let (status, title, body) = page("home");
@@ -255,10 +280,7 @@ fn app_router_serves_pages_on_wordpress() {
     assert_eq!(seen["api"], serde_json::json!([200, "[\"Hello\"]"]));
     assert_eq!(seen["api method"], 405);
     assert_eq!(seen["page POST"], serde_json::json!([303, "/notes/hello?sent=1"]));
-    assert_eq!(
-        seen["page POST anonymous"], 401,
-        "a page's handlers follow its `access`"
-    );
+    assert_eq!(seen["page POST anonymous"], 401, "a page's handlers follow their guard");
     // A signed webhook route: refused without a valid HMAC, run as the system with one (it reads
     // the draft too).
     assert_eq!(
@@ -1040,7 +1062,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "tp/app/api/route.ts",
-            "export const access = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
+            "export const guard = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
         )],
         "GET in app/api/route.ts returns",
         "tp/app/api/route.ts",
@@ -1048,16 +1070,16 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
     rejects(
         &dir,
         &[("tp/app/api/route.ts", "export async function GET() { return {}; }\n")],
-        "app/api/route.ts has HTTP handlers but no `access`",
+        "app/api/route.ts has HTTP handlers but no `guard`",
         "tp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
             "tp/app/api/route.ts",
-            "import { env } from \"typedpress\";\nexport const access = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
+            "import { env } from \"typedpress\";\nexport const guard = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
         )],
-        "exports both `access` and `signature`",
+        "exports both `guard` and `signature`",
         "tp/app/api/route.ts",
     );
     rejects(
@@ -1073,10 +1095,49 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "tp/app/page.tsx",
-            "export const access = \"admin\";\nexport const guard = \"editor\";\nexport default function P() { return <p/>; }\n",
+            "export const access = \"admin\";\nexport default function P() { return <p/>; }\n",
         )],
-        "exports both `access` and `guard` for page reads",
+        "can't export `access`",
         "tp/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/app/api/route.ts",
+            "export const access = \"admin\";\nexport async function POST() { return {}; }\n",
+        )],
+        "can't export `access`",
+        "tp/app/api/route.ts",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/app/page.tsx",
+            "export const guard = { page: \"admin\" };\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
+        )],
+        "needs a `handlers` rule",
+        "tp/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/app/page.tsx",
+            "export const guard = { handlers: \"admin\" };\nexport default function P() { return <p/>; }\n",
+        )],
+        "requires a page with unsigned HTTP handlers",
+        "tp/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[
+            (
+                "tp/app/layout.tsx",
+                "export const access = \"admin\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
+            ),
+            ("tp/app/page.tsx", page),
+        ],
+        "can't export `access`",
+        "tp/app/layout.tsx",
     );
     rejects(
         &dir,
@@ -1273,7 +1334,7 @@ fn refuses_prebuilt_pages_that_depend_on_the_request() {
             static_config,
             (
                 "tp/app/form/page.tsx",
-                "export const access = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
+                "export const guard = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
             ),
         ],
         "app/form/page.tsx has HTTP handlers, and a static site has no server to answer them",

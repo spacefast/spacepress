@@ -1,7 +1,7 @@
 // GET /api/examples.json: the examples and their star counts, for anything that wants them as data.
 import { examples } from "typedpress:db";
 
-export const access = "anyone";
+export const guard = "anyone";
 
 export async function GET() {
   const rows = await examples.list({ orderBy: { position: "asc" }, limit: 50 });

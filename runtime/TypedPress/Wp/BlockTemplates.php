@@ -163,31 +163,7 @@ final class BlockTemplates
      */
     private static function chrome(?array $route): bool
     {
-        return self::choice($route, self::$plugin?->schema->app()['files'] ?? []) !== 'blank';
-    }
-
-    /**
-     * The template a route asks for: the page's `template`, else the nearest layout's, else
-     * `"theme"`.
-     *
-     * @param ?array<string, mixed> $route
-     * @param array<string, array<string, mixed>> $files
-     */
-    public static function choice(?array $route, array $files): string
-    {
-        if ($route === null) {
-            return 'theme';
-        }
-        if (isset($route['template'])) {
-            return $route['template'];
-        }
-        foreach ([$route['page'] ?? null, ...array_reverse($route['layouts'] ?? [])] as $file) {
-            $template = is_string($file) ? ($files[$file]['template'] ?? null) : null;
-            if (is_string($template) && $template !== '') {
-                return $template;
-            }
-        }
-        return 'theme';
+        return ($route['template'] ?? 'theme') !== 'blank';
     }
 
     /** A choice as a template slug: `"theme"` and `"blank"` are TypedPress's own. */

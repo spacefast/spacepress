@@ -432,7 +432,6 @@ pub struct Compiler<'a, 'p> {
     /// A folded element with dynamic children (`fold_element`), by the PHP it compiled to: its
     /// parts, so an enclosing folded element can place them inline.
     folded_parts: HashMap<String, Vec<String>>,
-    pub uses_html_template: bool,
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
     pub output: String,
@@ -545,7 +544,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             data_helpers: HashMap::new(),
             effects: effects::Effects::default(),
             folded_parts: HashMap::new(),
-            uses_html_template: false,
             used_names: HashSet::new(),
             pending: Vec::new(),
             output: String::new(),
@@ -7465,7 +7463,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let php = if literals.iter().all(String::is_empty) {
             format!("\\TypedPress\\Html::children({})", slots.join(", "))
         } else {
-            self.uses_html_template = true;
             let literals = literals.iter().map(|s| php_str(s)).collect::<Vec<_>>().join(", ");
             format!("\\TypedPress\\Html::template([{literals}], {})", slots.join(", "))
         };

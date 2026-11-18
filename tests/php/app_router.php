@@ -102,8 +102,17 @@ foreach (['guest' => null, 'reader' => 'reader', 'admin' => 'admin'] as $viewer 
     ], json_encode(['queries' => [['op' => 'page', 'args' => ['url' => '/office/', 'region' => 'records']]]]));
     $region = json_decode($live['body'], true)['data']['results'][0] ?? [];
     $access['live'][$viewer] = [$region['error']['status'] ?? $live['status'], str_contains($region['data']['html'] ?? '', 'Office records')];
+    $toolsPost = fetch("$url/members/tools/", 'POST', [...$headers, ...($user === null ? [] : [$session($user)['nonce']])]);
+    $access['tools POST'][$viewer] = [$toolsPost['status'], $toolsPost['body'] === 'Accepted'];
+    $queue = fetch("$url/api/editor-queue", headers: $headers);
+    $access['queue'][$viewer] = [$queue['status'], $queue['body'] === 'Queue'];
+    $post = fetch("$url/checkout/", 'POST', [
+        ...$headers, ...($user === null ? [] : [$session($user)['nonce']]),
+    ], '');
+    $access['checkout POST'][$viewer] = [$post['status'], $post['body'] === 'Order received'];
     foreach ([
         '/office/?view=todo' => 'Office records', '/members/archive/2026/' => 'Member archive',
+        '/checkout/' => 'Checkout', '/signed-desk/' => 'Signed desk',
         '/members/tools/' => 'Admin tools', '/guest/' => 'Guest preview', '/onboarding/' => 'Admin onboarding',
     ] as $path => $heading) {
         $response = fetch($url . $path, headers: $headers);
@@ -126,6 +135,16 @@ $pages = \TypedPress\Wp\RoutePages::instance()->pages();
 foreach (['office', 'members/tools'] as $name) {
     $access['private pages'][] = isset($pages[$name]) ? get_post_status($pages[$name]) : null;
 }
+foreach ([
+    'unsigned' => [],
+    'unsigned admin' => [$cookie('admin'), $session('admin')['nonce']],
+    'wrong' => ['X-Hook-Signature: invalid'],
+    'signed' => ['X-Hook-Signature: ' . hash_hmac('sha256', 'delivery', 'hook-secret')],
+] as $kind => $headers) {
+    $response = fetch("$url/signed-desk/", 'POST', $headers, 'delivery');
+    $access['signed POST'][$kind] = [$response['status'], $response['body'] === 'delivery'];
+}
+$access['checkout without nonce'] = fetch("$url/checkout/", 'POST', [$cookie('admin')], '')['status'];
 $access['private twin'] = fetch("$url/office.md", headers: [$cookie('admin')])['status'];
 
 $home = fetch("$url/");
@@ -180,7 +199,7 @@ $out = [
     'broken' => page(fetch("$url/broken/")),
     'api' => [fetch("$url/api/notes")['status'], fetch("$url/api/notes")['body']],
     'api method' => fetch("$url/api/notes", 'DELETE')['status'],
-    // A page's own POST is for subscribers (its `access`), with the REST nonce as every cookie write needs.
+    // The page's handler guard restricts POST to subscribers, with the REST nonce as every cookie write needs.
     'page POST anonymous' => fetch("$url/notes/hello/", 'POST', ['Content-Type: application/x-www-form-urlencoded'], 'x=1')['status'],
     'page POST' => (function () use ($url, $session): array {
         $r = fetch("$url/notes/hello/", 'POST', [$session('reader')['cookie'], $session('reader')['nonce']], 'x=1');

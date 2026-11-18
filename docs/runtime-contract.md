@@ -742,11 +742,11 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
   rule returns and draft visibility decide, exactly as for a visitor's
   `posts.list()`. Then an item is listed only when it is published without a
   password, every placeholder of its `url` comes from a field a visitor may read
-  (a `:slug` only editors read lists nothing), and no `tp/app/` page under a
-  layout `guard` serves its address. A file's count, its paging and its entries
+  (a `:slug` only editors read lists nothing), and no guarded `tp/app/` page
+  serves its address. A file's count, its paging and its entries
   come from that one list, so a hidden row adds no file and no page. A kind with
   nothing to list has no file.
-- **App pages** are the ones `/llms.txt` lists (no parameters, no layout
+- **App pages** are the ones `/llms.txt` lists (no parameters, no page or layout
   `guard`, a 200 for a signed-out visitor), less the home page (core lists it)
   and any page whose metadata says `robots: { index: false }`.
 - **Core's home entry** is dated from the newest post the posts file lists
@@ -861,7 +861,7 @@ listens and purges those URLs from Batcache and the edge. With no listener
 - `Purges::paths(array $urls): list<string>` turns URLs into the announced
   paths, `.md` twins included.
 - **`tp/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
-  a page outside any guarded layout sends `Cache-Control: public,
+  a page without page or layout guards sends `Cache-Control: public,
   max-age=0, s-maxage=300, must-revalidate` (the `tp_app_cache_window`
   filter sets the window; `s-maxage` comes after `max-age` because Batcache
   takes the last `max-age=` in the header as its own window); anything else sends `private, no-store` and calls

@@ -1,7 +1,5 @@
 import { Link } from "typedpress/app";
 
-export const access = "anyone";
-
 export default function Directory() {
   return <nav>
     <Link href="/office?view=todo#queue" prefetch>Office</Link>

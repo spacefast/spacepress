@@ -61,15 +61,26 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
    schema's data. Interim limit: a request never installs anything, and `Loader::initialize` on a ready
    build changes nothing, so the stored rewrite rules and the app's Pages stay those of the build
    initialized last until a new build initializes; builds selected per request must share URL patterns
-   and page records with the build initialized last. Commerce builds must also share its installed
-   shipping policy. Selecting an older ready build does not restore shipping zones or methods;
+   and page records with the build initialized last. A commerce build that declares shipping must also match the installed
+   shipping policy. Omitting `shipping` leaves the installed zones and rates under merchant control.
+   Inspection then reports no commerce-shipping step, including after a build that managed them.
+   An explicit `shipping: []` manages an empty policy and is checked like any other declaration. Selecting an older ready build does not restore shipping zones or methods;
    its scalar store settings apply immediately while shipping rows remain at their last committed
    state. Refuse a selection whose declared shipping policy differs from that installed state.
    This applies after failed initialization too: a completed shipping transaction is not rolled
    back if a later installation step fails. Block new checkout requests and drain active ones before changing shipping.
-   For recovery, compile the source tree declaring the intended shipping policy with the previous
-   build whose schema matches the database. Verify that the resulting build ID has no ready
-   receipt before initialization. After initialization, inspect the candidate as described below,
+   If initialization stopped partway through migrations, first repair the cause and retry initialization
+   of that same build. The migrator skips recorded statements. If DDL committed just before its
+   ledger entry could be written, verify the actual schema against that statement before using
+   `wp typedpress migrate --mark-applied <id>:<n>`. Keep checkout suspended if the schema cannot
+   be verified or the build cannot finish. A partially migrated schema has no supported recovery
+   baseline until it matches a stored snapshot.
+   Once the schema matches a stored build, use its ID as `previous-build` and compile the sources
+   declaring the intended shipping policy. If these inputs reproduce a ready ID, give the recovery
+   source tree a fresh public deployment revision (for example, a unique non-secret identifier in
+   `public/deployment-revision.txt`), recapture with `typedpress sources`, and compile again with
+   the same baseline. The changed asset produces a distinct build ID. Verify that the resulting
+   build has no ready receipt before initialization. After initialization, inspect the candidate as described below,
    select it only when compatible, and then resume checkout. Historical orders must not be restored or rewritten as part of this recovery.
    Check compatibility in a separate WordPress request/process: call `Loader::load($root, $build,
    ['inspect' => true])` before WordPress initializes, then `Loader::inspect($root, $build)` after

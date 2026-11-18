@@ -85,16 +85,26 @@ final class ActionSchedulerQueue
         add_action('action_scheduler_init', static fn () => Runtime::installs() ? self::install() : null, 0);
     }
 
-    /** TypedPress's Action Scheduler groups, the jobs left without an action, and the daily maintenance. */
+    /**
+     * How often maintenance runs. Recovery of jobs that lost their action or their runner waits for it,
+     * so it is hourly; each run is a few indexed queries.
+     */
+    public const MAINTAIN_EVERY = HOUR_IN_SECONDS;
+
+    /** TypedPress's Action Scheduler groups, the jobs left without an action, and the hourly maintenance. */
     public static function install(): void
     {
         if (Runtime::plugin() === null) {
             return;
         }
         self::prepare();
-        if (!as_has_scheduled_action(self::MAINTAIN, [], 'typedpress')) {
-            as_schedule_recurring_action(time() + 3600, DAY_IN_SECONDS, self::MAINTAIN, [], 'typedpress');
+        if (self::maintenanceScheduled()) {
+            return;
         }
+        // A site scheduled by an older runtime keeps its old interval: Action Scheduler repeats a
+        // recurring action as it was scheduled. Replace that one pending run with the current schedule.
+        as_unschedule_all_actions(self::MAINTAIN, [], 'typedpress');
+        as_schedule_recurring_action(time() + self::MAINTAIN_EVERY, self::MAINTAIN_EVERY, self::MAINTAIN, [], 'typedpress');
     }
 
     /** What {@see install()} leaves: the groups prepared for this app and the maintenance scheduled. */
@@ -102,7 +112,24 @@ final class ActionSchedulerQueue
     {
         $plugin = Runtime::plugin();
 
-        return $plugin === null || (get_option(self::PREPARED) === self::prepared($plugin) && as_has_scheduled_action(self::MAINTAIN, [], 'typedpress'));
+        return $plugin === null || (get_option(self::PREPARED) === self::prepared($plugin) && self::maintenanceScheduled());
+    }
+
+    /**
+     * Whether maintenance recurs every {@see MAINTAIN_EVERY}. A run in progress counts as scheduled, as
+     * in as_has_scheduled_action(): it schedules its next instance when it finishes, and replacing it
+     * now would leave two.
+     */
+    private static function maintenanceScheduled(): bool
+    {
+        $store = \ActionScheduler::store();
+        $pending = $store->query_action(['hook' => self::MAINTAIN, 'group' => 'typedpress', 'status' => \ActionScheduler_Store::STATUS_PENDING]);
+        if ($pending === null || $pending === '' || $pending === 0) {
+            return as_has_scheduled_action(self::MAINTAIN, [], 'typedpress');
+        }
+        $schedule = $store->fetch_action((string) $pending)->get_schedule();
+
+        return $schedule instanceof \ActionScheduler_IntervalSchedule && (int) $schedule->get_recurrence() === self::MAINTAIN_EVERY;
     }
 
     /** A runtime that changes what preparing checks or creates bumps the version, so sites prepare again. */
@@ -146,7 +173,7 @@ final class ActionSchedulerQueue
                 }
                 self::createGroups($connection, $groups);
                 // Jobs a runtime before this one left in `tp__outbox` (committed, never handed to
-                // Action Scheduler) get their action now; the daily maintenance repeats the sweep.
+                // Action Scheduler) get their action now; the hourly maintenance repeats the sweep.
                 $plugin->app();
                 Runner::recover();
                 update_option(self::PREPARED, $done, true); // read on every request

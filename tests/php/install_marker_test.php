@@ -121,6 +121,19 @@ $recheck('the app deactivated', static function (): void {
 $recheck('the search shape cleared', static fn () => delete_option('tp_search_shape'));
 $recheck('a recurring action cancelled', static fn () => as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress'));
 check('which the checking request scheduled again', as_has_scheduled_action('tp_jobs_maintain', [], 'typedpress'));
+// A site an older runtime scheduled daily keeps that interval until a check replaces it with the hourly one.
+$maintenance = static function (): array {
+    $store = ActionScheduler::store();
+    $ids = $store->query_actions(['hook' => 'tp_jobs_maintain', 'group' => 'typedpress', 'status' => ActionScheduler_Store::STATUS_PENDING]);
+
+    return array_map(static fn ($id): int => (int) $store->fetch_action((string) $id)->get_schedule()->get_recurrence(), $ids);
+};
+eq('maintenance recurs hourly', $maintenance(), [HOUR_IN_SECONDS]);
+$recheck('maintenance on an older runtime\'s daily interval', static function (): void {
+    as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress');
+    as_schedule_recurring_action(time() + DAY_IN_SECONDS, DAY_IN_SECONDS, 'tp_jobs_maintain', [], 'typedpress');
+});
+eq('which the checking request replaced with one hourly schedule', $maintenance(), [HOUR_IN_SECONDS]);
 
 // ---- a failed install is never hidden ------------------------------------------------------------------
 // A migration the database refuses: the request that runs it fails, records nothing, and every request

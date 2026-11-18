@@ -1,6 +1,7 @@
 # The files-sdk probe (examples/files-sdk/README.md): compiles files-sdk and compares each scenario
 # with Node. It reports what doesn't compile yet; --expect-red keeps it from failing until every
-# scenario matches. It took most of ci.yml's examples job without ever failing it, so it runs here,
+# scenario matches, but still fails on a provenance mismatch, a Node exception or a compiler crash.
+# It took most of ci.yml's examples job and rarely failed it, so it runs here,
 # nightly and on demand, instead of on every push to main.
 name: files-sdk probe
 

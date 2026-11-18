@@ -214,7 +214,8 @@ jobs:
       - run: cargo build --locked --bin typedpress
       # The website's example trees compile, or are labelled proposals that nothing runs.
       - run: node scripts/check-www-examples.mjs "$TP_BIN"
-      # The files-sdk probe runs nightly in files-sdk.yml: it cannot fail, and took most of this job.
+      # The files-sdk probe runs nightly in files-sdk.yml: with --expect-red it reports rather than
+      # gates, and it took most of this job.
       - name: Example HTTP verifiers on WordPress
         run: node scripts/check-example-runs.mjs
       - name: EmDash counterparts on WordPress

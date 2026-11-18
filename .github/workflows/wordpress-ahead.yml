@@ -185,7 +185,7 @@ jobs:
         with:
           url: ${{ matrix.build.url }}
           name: ${{ matrix.build.name }}
-      # The same lanes as ci.yml's wp-schema job, each on this build of core. Every lane runs even
+      # The same lanes as ci.yml's wp-schema jobs, each on this build of core. Every lane runs even
       # when one fails, so the summary lists them all.
       - name: Schema, seed, fetch, abilities, hardening and sealed lanes
         env:

@@ -2044,6 +2044,8 @@ fn compiled_tsx_renders_the_html_react_renders() {
             .skip(1)
             .any(|call| call.trim_start().starts_with(element))
     };
+    let strings = body("static__TemplateStrings");
+    assert_eq!(strings.matches("\\implode(").count(), 1, "{strings}");
     let slots = body("static__TemplateSlots");
     assert_eq!(slots.matches("\\TypedPress\\Html::template(").count(), 2, "{slots}");
     assert!(!slots.contains("\\TypedPress\\Html::raw("), "{slots}");

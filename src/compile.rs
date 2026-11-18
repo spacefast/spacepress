@@ -3538,8 +3538,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         parts.push(php_str(&quasis[i + 1]));
                     }
                 }
-                if parts.is_empty() {
-                    Out::atom("''", Ty::Str)
+                if exprs.len() == 1 {
+                    if parts.len() == 1 {
+                        Out::atom(format!("((string) {})", parts[0]), Ty::Str)
+                    } else {
+                        Out::atom(format!("({})", parts.join(" . ")), Ty::Str)
+                    }
                 } else {
                     Out::atom(format!("\\implode('', [{}])", parts.join(", ")), Ty::Str)
                 }

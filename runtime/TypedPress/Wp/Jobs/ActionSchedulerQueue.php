@@ -102,9 +102,15 @@ final class ActionSchedulerQueue
             return;
         }
         // A site scheduled by an older runtime keeps its old interval: Action Scheduler repeats a
-        // recurring action as it was scheduled. Replace that one pending run with the current schedule.
-        as_unschedule_all_actions(self::MAINTAIN, [], 'typedpress');
-        as_schedule_recurring_action(time() + self::MAINTAIN_EVERY, self::MAINTAIN_EVERY, self::MAINTAIN, [], 'typedpress');
+        // recurring action as it was scheduled. Schedule the current one first and cancel the old run
+        // only once that worked, so a refused schedule never leaves the site without maintenance.
+        $old = self::pendingMaintenance();
+        if (as_schedule_recurring_action(time() + self::MAINTAIN_EVERY, self::MAINTAIN_EVERY, self::MAINTAIN, [], 'typedpress') === 0) {
+            throw new \RuntimeException('Action Scheduler refused to schedule TypedPress job maintenance');
+        }
+        if ($old !== null) {
+            \ActionScheduler::store()->cancel_action($old);
+        }
     }
 
     /** What {@see install()} leaves: the groups prepared for this app and the maintenance scheduled. */
@@ -122,14 +128,21 @@ final class ActionSchedulerQueue
      */
     private static function maintenanceScheduled(): bool
     {
-        $store = \ActionScheduler::store();
-        $pending = $store->query_action(['hook' => self::MAINTAIN, 'group' => 'typedpress', 'status' => \ActionScheduler_Store::STATUS_PENDING]);
-        if ($pending === null || $pending === '' || $pending === 0) {
+        $pending = self::pendingMaintenance();
+        if ($pending === null) {
             return as_has_scheduled_action(self::MAINTAIN, [], 'typedpress');
         }
-        $schedule = $store->fetch_action((string) $pending)->get_schedule();
+        $schedule = \ActionScheduler::store()->fetch_action($pending)->get_schedule();
 
         return $schedule instanceof \ActionScheduler_IntervalSchedule && (int) $schedule->get_recurrence() === self::MAINTAIN_EVERY;
+    }
+
+    /** The id of the pending maintenance run, or null. */
+    private static function pendingMaintenance(): ?string
+    {
+        $id = \ActionScheduler::store()->query_action(['hook' => self::MAINTAIN, 'group' => 'typedpress', 'status' => \ActionScheduler_Store::STATUS_PENDING]);
+
+        return $id === null || $id === '' || $id === 0 ? null : (string) $id;
     }
 
     /** A runtime that changes what preparing checks or creates bumps the version, so sites prepare again. */

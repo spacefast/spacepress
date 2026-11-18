@@ -20,6 +20,7 @@ $open['key'] = 'openNotes';
 $open['drafts'] = $open['revisions'] = false;
 $open['content'] = null;
 $open['columns'] = array_intersect_key($open['columns'], array_flip(['id', 'title', 'slug']));
+$open['columns']['rating'] = ['type' => 'integer'];
 $open['hooks'] = $open['relations'] = [];
 $open['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'anyone']);
 $open['wp'] = ['postType' => 'tp_open_notes', 'groupKey' => 'group_tp_open_notes', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_open_notes_'];
@@ -78,6 +79,15 @@ add_filter('rest_prepare_tp_open_notes', $injectMeta);
 [$status, $items, $queries] = $projected('id,title');
 eq('a response filter can add meta to a projected native response', [$items[0]['meta']['from_filter'] ?? null, $queries], [true, 1]);
 remove_filter('rest_prepare_tp_open_notes', $injectMeta);
+
+// WordPress permits duplicate meta keys. Bound the bulk result, then let each original LIMIT 1
+// query choose its value. Compare the projected data with the ordinary response.
+add_post_meta($openNote['id'], 'tp_rating', '7');
+add_post_meta($openNote['id'], 'tp_rating', '11');
+$normal = $projected(null);
+$duplicate = $projected('id,meta.rating');
+eq('duplicate metadata preserves the individual selection and bounds execution', [$duplicate[1][0]['meta']['rating'], $duplicate[2]],
+    [$normal[1][0]['meta']['rating'], 4]);
 
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {

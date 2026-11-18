@@ -1,7 +1,7 @@
 ---
 name: typedpress-add-page
 description: "Use when adding a page or an HTTP route to a TypedPress project under `tp/app/`: a `page.tsx` rendered by WordPress on each request, a `layout.tsx`, a dynamic segment such as `[slug]`, a guarded section, or a `route.ts` that answers its own HTTP methods."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Add a page under tp/app/

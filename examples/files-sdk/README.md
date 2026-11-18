@@ -41,10 +41,13 @@ scenarios, in both runtimes, so the comparison itself stays exact.
 
 ## CI
 
-The `rust` job runs `verify.mjs --expect-red`. While the dist probe has
-diagnostics, or an action differs from Node, the step prints the state and a
-warning annotation and exits 0. The PR that makes every action match removes
-`--expect-red`, after which a regression fails CI.
+`.github/workflows/files-sdk.yml` runs `verify.mjs --expect-red` nightly and on
+manual dispatch, not on pushes. While the dist probe has diagnostics, or an
+action differs from Node, the step prints the state and a warning annotation and
+exits 0. It still fails when the installed files differ from `provenance.json`,
+Node throws, or `typedpress check` crashes. The PR that makes every action match
+removes `--expect-red` and moves the probe back onto pushes, after which a
+regression fails CI.
 
 ## Merged state
 

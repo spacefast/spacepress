@@ -18,7 +18,7 @@ services:
   cli:
     environment: *uploads
   replica:
-    image: ${TP_WP_IMAGE:-wordpress:beta-7.2-beta5-php8.5-apache}
+    image: ${TP_WP_IMAGE:-wordpress:7.1.0-php8.5-apache}
     environment:
       <<: *uploads
       APACHE_RUN_USER: "#${TP_WP_UID:-1000}"

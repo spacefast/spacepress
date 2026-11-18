@@ -404,7 +404,7 @@ fn rejects_what_wordpress_posts_do_not_take() {
 }
 
 /// tests/php/native_posts_test.php: WordPress's own posts and a clone of them, on what `typedpress build`
-/// emits for tests/fixtures/native-posts, on WordPress 7.2 with SQLite.
+/// emits for tests/fixtures/native-posts, on WordPress's floor (tests/fixtures/platform.json) with SQLite.
 #[test]
 fn native_posts_run_on_wordpress() {
     let tmp = std::env::temp_dir().join(format!("typedpress-native-posts-{}", std::process::id()));

@@ -58,6 +58,14 @@ final class Sitemap
             if (get_query_var('sitemap') || get_query_var('sitemap-stylesheet')) {
                 self::anonymous();
                 wp_sitemaps_get_server()->render_sitemaps();
+                // Core renders and exits for every sitemap it has, so a sitemap still standing here
+                // names a removed provider (the users sitemap while authors are private). WordPress
+                // 7.2 answers it with a 404; 7.1 returns without one, so send 7.2's.
+                if (get_query_var('sitemap') && !is_404()) {
+                    $GLOBALS['wp_query']->set_404();
+                    status_header(404);
+                    nocache_headers();
+                }
                 // Core answered a 404 (sitemaps off, an unknown file, an empty page) and returned: end
                 // here, before an external frontend's gate would redirect the request.
                 if (is_404()) {

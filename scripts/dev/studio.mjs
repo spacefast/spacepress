@@ -10,16 +10,16 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'no
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const STUDIO_VERSION = '2.2.0';
-// The supported floor. Studio's version picker only offers current releases, so an archived beta
-// must resolve to the compatible update WordPress offers, rather than become an unusable pin.
-const WORDPRESS_VERSION = '7.2-beta5';
+// The supported floor (src/platform.rs WORDPRESS). Studio's version picker only offers current releases,
+// so the floor resolves to the stable update WordPress offers from it; setup.php also runs Platform::problems().
+const WORDPRESS_VERSION = '7.1';
 const modulePath = await realpath(fileURLToPath(import.meta.url));
 const here = dirname(modulePath);
 const exists = async (path) => access(path).then(() => true, () => false);
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'));
 export async function wordpressVersion(fetcher = fetch) {
   try {
-    const response = await fetcher(`https://api.wordpress.org/core/version-check/1.7/?channel=beta&version=${WORDPRESS_VERSION}`, { signal: AbortSignal.timeout(15000) });
+    const response = await fetcher(`https://api.wordpress.org/core/version-check/1.7/?version=${WORDPRESS_VERSION}`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) return WORDPRESS_VERSION;
     const data = await response.json();
     const update = data.offers?.find((offer) => ['autoupdate', 'upgrade'].includes(offer.response));

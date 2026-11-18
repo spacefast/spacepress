@@ -39,6 +39,8 @@ final class CoreAccess
     private static array $keys = [];
     /** @var array<string, array{int, \Closure(): array}> first candidate checked and its full-list query */
     private static array $single = [];
+    /** @var array<string, \Closure> evaluated filters awaiting their first item or list read */
+    private static array $pending = [];
     /** @var array<string, array<int, true>> membership when individual checks use a full list */
     private static array $members = [];
     private static int $generation = 0;
@@ -76,6 +78,7 @@ final class CoreAccess
     {
         self::$keys = [];
         self::$single = [];
+        self::$pending = [];
         self::$members = [];
         self::$generation++;
     }
@@ -301,23 +304,29 @@ final class CoreAccess
     }
 
     /** One item asks only for its own key. A collection request or a second distinct item materializes the full set once. */
-    private static function cacheKeys(string $collection, string $op, Viewer $viewer, ?int $candidate): string
+    private static function cacheKeys(string $collection, string $op, Viewer $viewer, ?int $candidate, bool $scopeOnly = false): string
     {
         $key = serialize([$collection, $op, $viewer->user, $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null]);
         try {
-            if (isset(self::$single[$key]) && self::$single[$key][0] !== $candidate) {
+            if (!$scopeOnly && isset(self::$single[$key]) && self::$single[$key][0] !== $candidate) {
                 [, $all] = self::$single[$key];
                 self::$keys[$key] = $all();
                 unset(self::$single[$key]);
             } elseif (!array_key_exists($key, self::$keys)) {
-                $remaining = null;
-                self::$keys[$key] = Plugin::instance()?->db()->permittedKeys($collection, $op, $viewer, $candidate, $remaining);
-                if ($remaining !== null) {
-                    self::$single[$key] = [$candidate, $remaining];
+                $read = self::$pending[$key] ?? Plugin::instance()?->db()->preparePermittedKeys($collection, $op, $viewer, validate: $scopeOnly);
+                if ($scopeOnly && $read !== null) {
+                    self::$pending[$key] = $read;
+                } else {
+                    $remaining = null;
+                    self::$keys[$key] = $read === null ? null : $read($candidate, $remaining);
+                    unset(self::$pending[$key]);
+                    if ($remaining !== null) {
+                        self::$single[$key] = [$candidate, $remaining];
+                    }
                 }
             }
         } catch (HttpError) {
-            unset(self::$single[$key]);
+            unset(self::$single[$key], self::$pending[$key]);
             self::$keys[$key] = false;
         }
 
@@ -356,7 +365,8 @@ final class CoreAccess
         if ($viewer === null) {
             return self::error(new HttpError(403, 'suspended', 'This account is suspended'));
         }
-        if (self::keys($collection, 'read', $viewer) === false) {
+        $key = self::cacheKeys($collection, 'read', $viewer, null, scopeOnly: true);
+        if ((self::$keys[$key] ?? null) === false) {
             return self::error(Access::deny($viewer->user, "read $collection"));
         }
 

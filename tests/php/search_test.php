@@ -203,6 +203,26 @@ eq('a word only in the hidden content finds nothing', $core(['search' => 'leaves
 eq('the editor finds it by the content', $core(['search' => 'leaves'], 'ed'), [$public['id']]);
 eq('search_columns=post_title matches the title only', $core(['search' => 'leaves', 'search_columns' => ['post_title']], 'ed'), []);
 eq('and finds it by its title', $core(['search' => 'green', 'search_columns' => ['post_title']], null), [$public['id']]);
+// A REST filter between the permission check and handler can switch the current viewer.
+$wp->actAs('sub');
+$restrictedList = new \WP_REST_Request('GET', '/wp/v2/tp_authors');
+$switchViewer = static function (mixed $result, \WP_REST_Request $request) use ($restrictedList): mixed {
+    if ($request === $restrictedList) {
+        wp_set_current_user(0);
+    }
+    return $result;
+};
+add_filter('rest_dispatch_request', $switchViewer, 10, 2);
+try {
+    $deniedList = rest_do_request($restrictedList);
+    eq('core list refuses a viewer denied after the initial permission check',
+        [$deniedList->get_status(), $deniedList->get_data()['code'] ?? null, $deniedList->get_headers()['X-WP-Total'] ?? null],
+        [401, 'unauthenticated', null]);
+} finally {
+    remove_filter('rest_dispatch_request', $switchViewer, 10);
+    wp_set_current_user(0);
+}
+
 // A table's core route searches too.
 $wp->actAs('sub');
 $tableRequest = new \WP_REST_Request('GET', '/wp/v2/tp_comments');

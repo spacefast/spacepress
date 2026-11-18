@@ -86,7 +86,10 @@ final class PostsController extends \WP_REST_Posts_Controller
             return CoreAccess::error($e);
         }
         $keys = CoreAccess::keys($this->collection, 'read', $viewer);
-        $keys = is_array($keys) ? array_map('intval', $keys) : null;
+        if ($keys === false) {
+            return CoreAccess::error(\TypedPress\Access::deny($viewer->user, "read {$this->collection}"));
+        }
+        $keys = $keys === null ? null : array_map('intval', $keys);
         if ($query !== null) {
             // The TypedPress query already ran as this viewer (read rule, draft visibility, field masks).
             $keys = $keys === null ? $query : array_values(array_intersect($query, $keys));

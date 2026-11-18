@@ -229,12 +229,13 @@ final class Module
                 foreach ($existing as $candidate) { if ($candidate['zone_name'] === $zone['name']) { $id = (int) $candidate['zone_id']; break; } }
                 $z = new \WC_Shipping_Zone($id ?: null);
                 $z->set_zone_name($zone['name']); $z->set_zone_order($index);
-                $z->set_zone_locations(array_map(static fn ($code) => (object) ['code' => $code, 'type' => 'country'], $zone['countries']));
+                $countries = array_values(array_unique($zone['countries']));
+                $z->set_zone_locations(array_map(static fn ($code) => (object) ['code' => $code, 'type' => 'country'], $countries));
                 if (!$z->save()) { throw new \RuntimeException('Could not save source shipping zone ' . $zone['name']); }
                 $id = $z->get_id();
                 $saved = new \WC_Shipping_Zone($id);
                 $locations = array_map(static fn ($loc) => $loc->type . ':' . $loc->code, $saved->get_zone_locations('edit'));
-                $expected = array_unique(array_map(static fn ($code) => 'country:' . $code, $zone['countries']));
+                $expected = array_map(static fn ($code) => 'country:' . $code, $countries);
                 sort($locations); sort($expected);
                 if ($locations !== $expected) { throw new \RuntimeException('Could not persist source shipping locations'); }
                 if ($saved->get_zone_order('edit') !== $index || $saved->get_zone_name('edit') !== $zone['name']) {

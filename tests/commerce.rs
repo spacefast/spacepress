@@ -98,7 +98,7 @@ fn commerce_references_names_and_existing_store_scaffolding() {
         project.path().join("typedpress.config.ts"),
         r#"
 import {defineConfig,store,product,productCategory,order,table,ref,text,action,db} from 'typedpress';
-export const shop=store({currency:'USD',country:'PL'});
+export const shop=store({currency:'USD',country:'PL',shipping:[{name:'Rest  of world',countries:'rest',methods:[]}]});
 export const catalogItems=product();
 export const categories=productCategory();
 export const orders=order();
@@ -194,6 +194,11 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     let original = std::fs::read(&product).unwrap();
     success(add());
     assert_eq!(std::fs::read(&product).unwrap(), original);
+    let shop = project.path().join("tp/shop.ts");
+    let source = std::fs::read_to_string(&shop).unwrap();
+    let duplicate = source.replace(r#"countries: ["PL"]"#, r#"countries: ["PL", "PL"]"#);
+    assert_ne!(source, duplicate);
+    std::fs::write(shop, duplicate).unwrap();
     success(cli("build", project.path()));
     let snapshot: serde_json::Value =
         serde_json::from_slice(&std::fs::read(project.path().join("tp/_generated/migrations/snapshot.json")).unwrap())

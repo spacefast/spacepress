@@ -123,14 +123,16 @@ fn validate_store(v: &Json) -> std::result::Result<(), String> {
             if name.trim() != name {
                 return Err("shipping zone names cannot start or end with whitespace".into());
             }
-            if name.contains("  ") || name.contains(['\t', '\n', '\r', '<']) || has_percent_escape(name) {
-                return Err("shipping zone name contains formatting WooCommerce would remove".into());
-            }
             if !names.insert(name) {
                 return Err("shipping zone names must be unique".into());
             }
             let c = z.get("countries").ok_or("shipping zone needs countries")?;
             countries(c, true)?;
+            if c != "rest"
+                && (name.contains("  ") || name.contains(['\t', '\n', '\r', '<']) || has_percent_escape(name))
+            {
+                return Err("shipping zone name contains formatting WooCommerce would remove".into());
+            }
             if c != "rest" && name == "0" {
                 return Err("a named shipping zone cannot be called 0".into());
             }

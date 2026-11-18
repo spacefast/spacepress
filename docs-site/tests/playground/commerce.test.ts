@@ -119,6 +119,43 @@ add_action('plugins_loaded',static function(){if(!class_exists('WC_Gateway_COD')
 }, { timeout: 300_000 });
 after(async () => { await browser?.close(); await wordpress?.[Symbol.asyncDispose](); rmSync(project, { recursive: true, force: true }); });
 
+test('storefront offers direct purchase only for simple products', { timeout: 90_000 }, async () => {
+  // Woo extensions can make a variable parent purchasable while checkout still needs a variation ID.
+  const extension = '/wordpress/wp-content/mu-plugins/variable-purchase-proof.php';
+  await wordpress.playground.writeFile(extension, "<?php add_filter('woocommerce_is_purchasable', static fn($ok, $p) => $p->get_slug() === 'workshop-dates' || $ok, 10, 2);");
+  const [id, serviceId] = await php(`
+    $p = new WC_Product_Variable();
+    $p->set_name('Workshop with a choice of dates'); $p->set_slug('workshop-dates'); $p->set_status('publish'); $p->save();
+    $v = new WC_Product_Variation(); $v->set_parent_id($p->get_id()); $v->set_regular_price('12'); $v->set_status('publish'); $v->save();
+    WC_Product_Variable::sync($p->get_id());
+    $service = new WC_Product_Simple(); $service->set_name('Workshop session'); $service->set_slug('workshop-session');
+    $service->set_virtual(true); $service->set_regular_price('15'); $service->set_status('publish'); $service->save();
+    echo wp_json_encode([$p->get_id(), $service->get_id()]);
+  `);
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    const products = await api('products');
+    assert.equal(products.data.find((product: any) => product.id === id)?.purchasable, true);
+    await page.goto(new URL('/products/workshop-dates', base).href);
+    await expect(page.getByText('Currently unavailable')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add to cart' })).toHaveCount(0);
+    await expect(page.getByText('Price unavailable', { exact: true })).toBeVisible();
+    await page.goto(new URL('/shop', base).href);
+    const card = page.locator('article').filter({ has: page.getByRole('link', { name: 'Workshop session' }) });
+    await expect(card.getByText('Available', { exact: true })).toBeVisible();
+    await card.getByRole('link').click();
+    await expect(page.getByRole('button', { name: 'Add to cart' })).toBeVisible();
+    await expect(page.getByText('Digital download, delivered after payment.')).toHaveCount(0);
+    await page.goto(new URL('/products/field-guide', base).href);
+    await expect(page.getByText('Digital download, delivered after payment.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add to cart' })).toBeVisible();
+  } finally {
+    await page.close();
+    await wordpress.playground.unlink(extension);
+    await php(`wc_get_product(${id})->delete(true); wc_get_product(${serviceId})->delete(true); echo 'true';`);
+  }
+});
+
 // These long journeys issue many PHP-WASM requests; shared CI runners can take over two minutes.
 // Keep individual browser/assertion deadlines short so missing UI still fails promptly.
 test('fresh storefront, cart, shipping, stock rejection and native stock gateway checkout', { timeout: 240_000 }, async () => {

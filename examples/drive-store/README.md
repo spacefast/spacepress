@@ -23,6 +23,16 @@ the Buy button places a fake order, takes no payment and ships nothing, and the 
 
 ## Run it
 
+To include the highlighted source browser, build its assets from this directory:
+
+```sh
+bun install --frozen-lockfile
+bun run build:source
+```
+
+Run `bun run build:source` again before publishing or after editing files shown on `/source`.
+The build snapshots the files listed in `browser/build.mjs` into `public/drive-source/`.
+
 From the repository root:
 
 ```sh
@@ -43,6 +53,7 @@ Then open `http://localhost:8931/`:
 - `/` is the catalog, with search and filters.
 - `/drives/seagate-exos-x16` is a product page. Buy one as a guest; the order code comes back on
   the page and the stock goes down. Ask for more than is left and the order is refused.
+- `/source` is a read-only browser for the project's hand-written files.
 - `/orders` lists a signed-in customer's own orders. Create a subscriber in wp-admin to try it.
 - `/staff` is for editors and admins: ship orders and restock drives that are running low.
 - Add and edit drives, moderate reviews and change the shop settings in TypedPress Admin.

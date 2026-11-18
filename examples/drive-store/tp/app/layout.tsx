@@ -27,6 +27,7 @@ export default async function RootLayout({ children }: LayoutProps) {
           <Link href="/" prefetch>Catalog</Link>
           {signedIn ? <Link href="/orders" prefetch>My orders</Link> : <a href={wp_login_url(home_url("/orders/"))}>My orders</a>}
           {signedIn ? <Link href="/staff" prefetch>Staff</Link> : <a href={wp_login_url(home_url("/staff/"))}>Staff</a>}
+          <a href={home_url("/source/")}>Source</a>
           <a href="/?feed=rss2&post_type=tp_drives">RSS</a>
         </nav>
         <p className="who">{signedIn ? <a href="/wp-login.php?action=logout">Sign out</a> : <a href={wp_login_url("")}>Sign in</a>}</p>

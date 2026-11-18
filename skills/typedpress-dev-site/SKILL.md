@@ -1,7 +1,7 @@
 ---
 name: typedpress-dev-site
 description: "Use when running a TypedPress project locally or inspecting its local WordPress site: starting and stopping `typedpress dev`, finding the site's URL and login, reading records with `typedpress find`, running an action or a job by hand, or running WP-CLI on the site."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Run and inspect the dev site

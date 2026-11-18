@@ -44,12 +44,14 @@ final class Plugin
 
     public function __construct(public readonly string $dir, string $mainFile, public readonly Schema $schema)
     {
+        if (!Runtime::managed()) {
+            $this->buildHash();
+        }
         self::$instance = $this;
         $this->mainFile = $mainFile;
         Hardening::apply($schema);
         Sealed::apply($schema);
         if (!Runtime::managed()) {
-            $this->buildHash();
             InstallMarker::register();
         }
         add_action('init', [$this, 'registerPostTypes'], 0);

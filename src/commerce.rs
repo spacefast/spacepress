@@ -21,7 +21,7 @@ pub fn store(config: &IndexMap<String, Value>, schema: &mut Schema, span: Span) 
         return Ok(());
     }
     let Value::Store(value) = &stores[0] else {
-        unreachable!()
+        return Err(Diag::new(span, "stores entries must be declared with store()"));
     };
     let data = to_json(&value.config).ok_or_else(|| Diag::new(value.span, "store settings must be static data"))?;
     validate_store(&data).map_err(|e| Diag::new(value.span, e))?;
@@ -69,7 +69,7 @@ fn country(c: &str) -> bool {
 const COUNTRIES: &str = "AF AX AL DZ AS AD AO AI AQ AG AR AM AW AU AT AZ BS BH BD BB BY BE BZ BJ BM BT BO BQ BA BW BV BR IO BN BG BF BI CV KH CM CA KY CF TD CL CN CX CC CO KM CG CD CK CR CI HR CU CW CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FK FO FJ FI FR GF PF TF GA GM GE DE GH GI GR GL GD GP GU GT GG GN GW GY HT HM VA HN HK HU IS IN ID IR IQ IE IM IL IT JM JP JE JO KZ KE KI KP KR KW KG LA LV LB LS LR LY LI LT LU MO MG MW MY MV ML MT MH MQ MR MU YT MX FM MD MC MN ME MS MA MZ MM NA NR NP NL NC NZ NI NE NG NU NF MK MP NO OM PK PW PS PA PG PY PE PH PN PL PT PR QA RE RO RU RW BL SH KN LC MF PM VC WS SM ST SA SN RS SC SL SG SX SK SI SB SO ZA GS SS ES LK SD SR SJ SE CH SY TW TJ TZ TH TL TG TK TO TT TN TR TM TC TV UG UA AE GB US UM UY UZ VU VE VN VG VI WF EH YE ZM ZW";
 fn money(v: &Json) -> bool {
     v.as_str()
-        .is_some_and(|s| regex::Regex::new(r"^\d+(?:\.\d+)?$").unwrap().is_match(s))
+        .is_some_and(|s| regex::Regex::new(r"^[0-9]+(?:\.[0-9]+)?$").unwrap().is_match(s))
 }
 fn validate_store(v: &Json) -> std::result::Result<(), String> {
     let o = object(
@@ -626,4 +626,15 @@ pub fn pages(schema: &Schema, span: Span) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shipping_amount_uses_ascii_digits() {
+        assert!(money(&Json::from("15.00")));
+        assert!(!money(&Json::from("١٥.٠٠")));
+    }
 }

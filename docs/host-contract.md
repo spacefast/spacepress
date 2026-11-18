@@ -66,10 +66,11 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
    its scalar store settings apply immediately while shipping rows remain at their last committed
    state. Refuse a selection whose declared shipping policy differs from that installed state.
    This applies after failed initialization too: a completed shipping transaction is not rolled
-   back if a later installation step fails. A host must suspend checkout while changing shipping,
-   verify policy compatibility before resuming it, and recover an incompatible state by initializing
-   a new build with the intended policy. Calling initialize on an already-ready build does not do
-   that restoration. Historical orders must not be restored or rewritten as part of this recovery.
+   back if a later installation step fails. Block new checkout requests and drain active ones before changing shipping.
+   For recovery, compile the source tree declaring the intended shipping policy with the previous
+   build whose schema matches the database. Verify that the resulting build ID has no ready
+   receipt before initialization. After initialization, inspect the candidate as described below,
+   select it only when compatible, and then resume checkout. Historical orders must not be restored or rewritten as part of this recovery.
    Check compatibility in a separate WordPress request/process: call `Loader::load($root, $build,
    ['inspect' => true])` before WordPress initializes, then `Loader::inspect($root, $build)` after
    `init`. Its `steps` list contains `{id: "commerce-shipping", kind: "commerce-shipping",

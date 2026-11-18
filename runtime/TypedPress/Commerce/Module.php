@@ -136,7 +136,10 @@ final class Module
                         // A request waiting for the first seed must see its committed marker.
                         wp_cache_delete($key, 'options'); wp_cache_delete('alloptions', 'options'); wp_cache_delete('notoptions', 'options');
                         if (get_option($key) === $version) { return; }
-                        \TypedPress\Sync\Seed::run($plugin, $plugin->dir . '/tp/app/seed');
+                        $seed = $plugin->dir . '/tp/app/seed';
+                        if (is_dir($seed)) {
+                            \TypedPress\Sync\Seed::run($plugin, $seed);
+                        }
                         update_option($key, $version, false);
                     });
                 }
@@ -170,7 +173,11 @@ final class Module
     {
         global $wpdb;
         foreach (['woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
-            if ($wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option)) === 'yes') {
+            $value = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option));
+            if ($wpdb->last_error !== '') {
+                throw new \RuntimeException('Unable to verify WooCommerce order storage');
+            }
+            if ($value === 'yes') {
                 throw new \RuntimeException('TypedPress commerce requires legacy order storage with HPOS synchronization disabled. Change storage in WooCommerce after completing synchronization.');
             }
         }

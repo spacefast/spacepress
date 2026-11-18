@@ -268,7 +268,13 @@ final class WpTermStore implements Store, Links
         try {
             foreach ($values as $col => $stored) {
                 $col = (string) $col;
-                if ($col === 'uid' && ($spec['columns'][$col]['system'] ?? false)) { $this->db->core(static fn () => update_term_meta($id, '_tp_uid', $stored)); continue; }
+                if ($col === 'uid' && ($spec['columns'][$col]['system'] ?? false)) {
+                    $this->db->core(static fn () => update_term_meta($id, '_tp_uid', $stored));
+                    if (get_term_meta($id, '_tp_uid', true) !== $stored) {
+                        throw new \RuntimeException('Could not persist the term UID');
+                    }
+                    continue;
+                }
                 if (!self::isMeta($spec, $col)) {
                     continue;
                 }

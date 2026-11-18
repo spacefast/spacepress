@@ -106,6 +106,9 @@ final class Store implements \TypedPress\Store
         $p = new \WC_Product_Simple();
         try { $this->write($p, $values); }
         finally { if ($p->get_id() > 0) { $this->db->touchPost($p->get_id()); } }
+        if ($p->get_id() <= 0) {
+            throw new \RuntimeException('WooCommerce did not create the product');
+        }
         return $p->get_id();
     }
     public function update(string $collection, int|string $pk, array $values): void
@@ -162,6 +165,9 @@ final class Store implements \TypedPress\Store
     public function delete(string $collection, int|string $pk): void
     {
         $this->writable($collection);
+        if (defined('EMPTY_TRASH_DAYS') && !EMPTY_TRASH_DAYS) {
+            throw new HttpError(409, 'trash_disabled', 'Product deletion requires WordPress trash to be enabled.');
+        }
         $this->db->touchPost((int) $pk);
         $p = wc_get_product((int) $pk);
         if ($p) { $this->db->core(static fn () => $p->delete(false)); }

@@ -109,7 +109,8 @@ not move Spacefast's compiler pin or provision Woo there. Before accepting a com
 - Give each preview its own fresh SQLite database and test payment/email configuration.
   Promotion publishes source; it never copies preview orders, customers or inventory.
 - Qualify shipping changes as installation changes, not just a version-pointer switch.
-  Suspend checkout during shipping-changing initialization, and permit concurrent build selection
+  Block new checkout requests and drain active ones before changing shipping. Resume checkout
+  after selecting a compatible build. Permit concurrent build selection
   or rollback only when the selected build's declared shipping policy matches the last committed
   shipping state. Use the public `Loader::inspect()` check described in the host contract and
   require `hostContract: 2`. Check this after initialization failures too: a later failed step does not undo

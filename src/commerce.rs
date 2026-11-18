@@ -129,7 +129,11 @@ fn validate_store(v: &Json) -> std::result::Result<(), String> {
             let c = z.get("countries").ok_or("shipping zone needs countries")?;
             countries(c, true)?;
             if c != "rest"
-                && (name.contains("  ") || name.contains(['\t', '\n', '\r', '<']) || has_percent_escape(name))
+                && (name.starts_with('\0')
+                    || name.ends_with('\0')
+                    || name.contains("  ")
+                    || name.contains(['\t', '\n', '\r', '<'])
+                    || has_percent_escape(name))
             {
                 return Err("shipping zone name contains formatting WooCommerce would remove".into());
             }

@@ -35,6 +35,14 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
             "export const shop = store({currency:'EUR',country:'PL',shipping:[{name:'North  America',countries:['US'],methods:[]}]});",
             "shipping zone name contains formatting",
         ),
+        (
+            r"export const shop = store({currency:'EUR',country:'PL',shipping:[{name:'\u0000Europe',countries:['PL'],methods:[]}]});",
+            "shipping zone name contains formatting",
+        ),
+        (
+            r"export const shop = store({currency:'EUR',country:'PL',shipping:[{name:'Europe\u0000',countries:['PL'],methods:[]}]});",
+            "shipping zone name contains formatting",
+        ),
         ("export const products = product();", "require an exported store()"),
         (
             "export const a = store({currency:'EUR',country:'PL'}); export const b = store({currency:'EUR',country:'PL'});",

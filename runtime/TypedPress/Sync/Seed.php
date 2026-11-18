@@ -54,8 +54,16 @@ final class Seed
         if ($expectedHashes !== null) {
             $actual = [];
             foreach ($files as $file) { $actual[basename($file)] = hash_file('sha256', $file); }
-            ksort($expectedHashes, SORT_STRING);
-            if ($actual !== $expectedHashes) { throw new \RuntimeException('Commerce seed files do not match the compiled seed version'); }
+            $mismatched = [];
+            foreach (array_keys($expectedHashes + $actual) as $name) {
+                if (!isset($expectedHashes[$name], $actual[$name]) || $actual[$name] !== $expectedHashes[$name]) {
+                    $mismatched[] = $name;
+                }
+            }
+            if ($mismatched !== []) {
+                sort($mismatched, SORT_STRING);
+                throw new \RuntimeException('Commerce seed files do not match the compiled seed version: ' . implode(', ', $mismatched));
+            }
         }
         $files = self::ordered($plugin, $files);
         $plan = static function () use ($plugin, $files, $dry): array {

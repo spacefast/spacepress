@@ -252,12 +252,14 @@ try {
     delete_option($seedKey);
     $partial = clone $plugin;
     \TypedPress\Commerce\Module::onInit($partial);
-    check('a missing product seed among present terms prevents a receipt', $partial->unavailable() !== null && get_option($seedKey) === false);
+    check('a missing product seed among present terms prevents a receipt', str_contains($partial->unavailable() ?? '', 'products.php') && get_option($seedKey) === false);
     file_put_contents($seedFile, $originalSeed . "\n");
+    file_put_contents($seedDir . '/extra.json', '{}');
     $modified = clone $plugin;
     \TypedPress\Commerce\Module::onInit($modified);
-    check('a changed seed file prevents a receipt', $modified->unavailable() !== null && get_option($seedKey) === false);
+    check('a changed seed file prevents a receipt', str_contains($modified->unavailable() ?? '', 'extra.json, products.php') && get_option($seedKey) === false);
 } finally {
+    if (is_file($seedDir . '/extra.json')) { unlink($seedDir . '/extra.json'); }
     rename($seedFile . '.held', $seedFile);
 }
 \TypedPress\Commerce\Module::onInit($plugin);

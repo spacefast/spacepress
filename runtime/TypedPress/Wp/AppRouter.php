@@ -838,7 +838,7 @@ final class AppRouter
         foreach ($kind['params'] as $field => $param) {
             if ($field === 'id' && ctype_digit($value($param))) {
                 $where = [$spec['primaryKey'] => (int) $value($param)];
-            } elseif ($field === 'path' && ($spec['hierarchical'] ?? false)) {
+            } elseif ($field === 'path' && ($spec['hierarchical'] ?? false) && empty($spec['taxonomy'])) {
                 // The whole path, parent by parent: a slug is unique among its siblings only.
                 $post = get_page_by_path($value($param), OBJECT, (string) $spec['wp']['postType']);
                 if (!$post instanceof \WP_Post) {
@@ -872,12 +872,19 @@ final class AppRouter
             return null;
         }
         // The URL must be the item's own: other placeholders (`:year`, a field) have to agree.
-        $post = get_post((int) ($row->p[$spec['primaryKey']] ?? 0));
+        $id = (int) ($row->p[$spec['primaryKey']] ?? 0);
         $urls = KindUrls::instance();
-        if ($post instanceof \WP_Post && $urls !== null) {
+        if ($urls !== null) {
             // Both sides without the home path: under a subdirectory install the request path
             // starts with it (`/blog/notes/a`), and the item's path never does (`/notes/a`).
-            $want = $urls->path($name, $post);
+            if (!empty($spec['taxonomy'])) {
+                $term = get_term($id, $spec['wp']['taxonomy']);
+                if (!$term instanceof \WP_Term) { return null; }
+                $want = $urls->termPath($name, $term);
+            } else {
+                $post = get_post($id);
+                $want = $post instanceof \WP_Post ? $urls->path($name, $post) : null;
+            }
             $have = '/' . trim((string) ($path ?? $this->path()), '/');
             if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
                 return null;

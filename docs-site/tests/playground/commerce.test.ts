@@ -119,6 +119,40 @@ add_action('plugins_loaded',static function(){if(!class_exists('WC_Gateway_COD')
 }, { timeout: 300_000 });
 after(async () => { await browser?.close(); await wordpress?.[Symbol.asyncDispose](); rmSync(project, { recursive: true, force: true }); });
 
+test('catalog and category links reach products past the first 24', { timeout: 150_000 }, async () => {
+  const ids = await php(`
+    $term = wp_insert_term('Spring collection', 'product_cat', ['slug' => 'spring-collection', 'parent' => get_term_by('slug', 'home', 'product_cat')->term_id]);
+    $ids = [];
+    for ($i = 1; $i <= 25; $i++) {
+        $p = new WC_Product_Simple(); $p->set_name('Spring item '.$i); $p->set_status('publish');
+        $p->set_category_ids([$term['term_id']]); $p->set_regular_price('10'); $p->save(); $ids[] = $p->get_id();
+    }
+    echo wp_json_encode($ids);
+  `);
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    for (const listing of ['/shop', '/shop/home/spring-collection']) {
+      await page.goto(new URL(listing, base).href);
+      const cards = page.locator('.product-card h2');
+      await expect(cards).toHaveCount(24);
+      const first = await cards.allTextContents();
+      await page.getByRole('link', { name: 'Next', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Spring item 25', exact: true })).toBeVisible();
+      const second = await cards.allTextContents();
+      assert.ok(second.every(name => !first.includes(name)));
+      if (listing !== '/shop') assert.deepEqual(second, ['Spring item 25']);
+      await expect(page.getByRole('link', { name: 'Next', exact: true })).toHaveCount(0);
+      await page.getByRole('link', { name: 'Previous', exact: true }).click();
+      await expect(cards).toHaveText(first);
+    }
+    assert.equal((await page.request.get(new URL('/shop/wrong-parent/spring-collection', base).href)).status(), 404);
+  } finally {
+    await page.close();
+    await php(`foreach ([${ids.join(',')}] as $id) { wc_get_product($id)->delete(true); }
+      wp_delete_term(get_term_by('slug', 'spring-collection', 'product_cat')->term_id, 'product_cat'); echo 'true';`);
+  }
+});
+
 test('storefront offers direct purchase only for simple products', { timeout: 90_000 }, async () => {
   // Woo extensions can make a variable parent purchasable while checkout still needs a variation ID.
   const extension = '/wordpress/wp-content/mu-plugins/variable-purchase-proof.php';

@@ -22,10 +22,11 @@ define('TP_PLUGIN_FILE', __FILE__);
 // on an ordinary page. The receiver also defines its Refusal exception in the same file.
 spl_autoload_register(static function (string $class): void {
     static $files = [
-        Site::class => 'Site', Mount::class => 'Mount', Setup::class => 'Setup',
-        Receiver::class => 'Receiver', Refusal::class => 'Receiver', Trees::class => 'Trees',
-        Requirements::class => 'Requirements', Deployments::class => 'Deployments',
+        'typedpressplugin\\site' => 'Site', 'typedpressplugin\\mount' => 'Mount', 'typedpressplugin\\setup' => 'Setup',
+        'typedpressplugin\\receiver' => 'Receiver', 'typedpressplugin\\refusal' => 'Receiver', 'typedpressplugin\\trees' => 'Trees',
+        'typedpressplugin\\requirements' => 'Requirements', 'typedpressplugin\\deployments' => 'Deployments',
     ];
+    $class = strtolower($class);
     if (isset($files[$class])) {
         require_once __DIR__ . '/src/' . $files[$class] . '.php';
     }

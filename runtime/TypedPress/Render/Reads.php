@@ -11,7 +11,7 @@ namespace TypedPress\Render;
  */
 final class Reads
 {
-    /** @var ?array<string, array{ids: list<int|string>, listed: bool}> */
+    /** @var ?array<string, array{ids: array<int|string, int|string>, listed: bool}> */
     private static ?array $current = null;
     private static bool $hooked = false;
 
@@ -22,9 +22,8 @@ final class Reads
     public static function listed(string $collection): void
     {
         if (self::$current !== null) {
-            $entry = self::$current[$collection] ?? ['ids' => [], 'listed' => false];
-            $entry['listed'] = true;
-            self::$current[$collection] = $entry;
+            self::$current[$collection] ??= ['ids' => [], 'listed' => false];
+            self::$current[$collection]['listed'] = true;
         }
     }
 
@@ -39,15 +38,17 @@ final class Reads
             self::$hooked = true;
             \TypedPress\Extensions::onRead(static function (array $rows, string $collection): array {
                 if (self::$current !== null) {
-                    $entry = self::$current[$collection] ?? ['ids' => [], 'listed' => false];
+                    self::$current[$collection] ??= ['ids' => [], 'listed' => false];
+                    $entry = &self::$current[$collection];
                     $entry['listed'] = $entry['listed'] || count($rows) !== 1;
                     $pk = \TypedPress\Db::instance()->schema()->collection($collection)['primaryKey'] ?? 'id';
                     foreach ($rows as $row) {
-                        if (isset($row[$pk]) && !in_array($row[$pk], $entry['ids'], true)) {
-                            $entry['ids'][] = $row[$pk];
+                        if (isset($row[$pk])) {
+                            $id = $row[$pk];
+                            // PHP converts numeric string keys to integers. Preserve strict ID identity.
+                            $entry['ids'][is_int($id) ? $id : ':' . $id] = $id;
                         }
                     }
-                    self::$current[$collection] = $entry;
                 }
                 return $rows;
             }, true, static fn (): array => []); // the primary key only, which every read selects
@@ -59,6 +60,10 @@ final class Reads
         } finally {
             $reads = self::$current;
             self::$current = $previous;
+            foreach ($reads as &$entry) {
+                $entry['ids'] = array_values($entry['ids']);
+            }
+            unset($entry);
         }
     }
 }

@@ -32,22 +32,70 @@ $expected = [
     'Search' => ["$url/?s=drives", false, false],
     'Post' => ["$url/?p=1#article", false, false],
     'Feed' => ["$url/?feed=rss2", false, false],
-    'App' => [wp_login_url("$url/?view=compact#section"), false, false],
+    'App' => [add_query_arg('redirect_to', urlencode("$url/?view=compact#section"), "$url/wp-login.php"), false, false],
 ];
 if ($links !== $expected) {
     throw new RuntimeException('Unexpected home links: ' . json_encode($links, JSON_THROW_ON_ERROR));
 }
 
 $ch = curl_init("$url/notes/old-note/");
-curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_TIMEOUT => 30]);
-$response = (string) curl_exec($ch);
-preg_match('/^cache-control:\h*([^\r\n]+)/im', $response, $cache);
-$directives = array_map('trim', explode(',', strtolower($cache[1] ?? '')));
-if (curl_getinfo($ch, CURLINFO_RESPONSE_CODE) !== 301
-    || !str_contains(strtolower($response), 'location: ' . strtolower("$url/notes/new-note/"))
+$headers = [];
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30,
+    CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$headers): int {
+        if (str_starts_with($line, 'HTTP/')) {
+            $headers = [];
+        } elseif (str_contains($line, ':')) {
+            [$name, $value] = explode(':', $line, 2);
+            $headers[strtolower($name)][] = trim($value);
+        }
+        return strlen($line);
+    },
+]);
+$response = curl_exec($ch);
+$directives = array_map('trim', explode(',', strtolower(implode(',', $headers['cache-control'] ?? []))));
+if ($response === false || curl_getinfo($ch, CURLINFO_RESPONSE_CODE) !== 301
+    || ($headers['location'] ?? []) !== ["$url/notes/new-note/"]
     || !in_array('private', $directives, true)
     || !in_array('no-store', $directives, true)
-    || !str_contains(strtolower($response), 'x-test-batcache-cancel: yes')) {
-    throw new RuntimeException('Guarded item redirect was not private: ' . $response);
+    || ($headers['x-test-batcache-cancel'] ?? []) !== ['yes']) {
+    throw new RuntimeException('Unexpected guarded redirect: ' . json_encode($headers));
+}
+// A whole batch of newer posts may have no eligible twin. The older public post and its
+// archive must still be discoverable. Use the site's guarded kind route for those permalinks.
+$public = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Public directory record', 'post_date' => '2020-01-01 12:00:00']);
+$archive = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Directory archive']);
+update_option('show_on_front', 'page');
+update_option('page_for_posts', $archive);
+for ($i = 0; $i < \TypedPress\Wp\MarkdownTwins::LLMS_LIMIT; ++$i) {
+    wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => "Hidden record $i"]);
+}
+$guardedPosts = static fn (string $url, WP_Post $post): string =>
+    str_starts_with($post->post_title, 'Hidden record') ? home_url('/notes/' . $post->post_name . '/') : $url;
+add_filter('post_link', $guardedPosts, 10, 2);
+$llms = \TypedPress\Wp\MarkdownTwins::llms();
+if (!str_contains($llms, '[Public directory record]') || !str_contains($llms, '[All Posts]') || str_contains($llms, 'Hidden record')) {
+    throw new RuntimeException('llms.txt lost an eligible post or exposed a guarded entry.');
+}
+
+add_filter('pre_option_permalink_structure', static fn () => '', PHP_INT_MAX);
+$plain = \TypedPress\Wp\MarkdownTwins::twin(get_permalink($public));
+$llms = \TypedPress\Wp\MarkdownTwins::llms();
+if (!str_contains($plain, '?p=' . $public) || !str_contains($llms, "[Public directory record]($plain)") || str_contains($llms, 'the home page is')) {
+    throw new RuntimeException('Plain-permalink posts must remain discoverable while the actual home stays guarded.');
+}
+// Even when guards reject every candidate, discovery bounds the work per post type.
+for ($i = 100; $i < 301; ++$i) {
+    wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => "Hidden record $i"]);
+}
+$batches = [];
+add_action('pre_get_posts', static function (WP_Query $query) use (&$batches): void {
+    if ($query->get('post_type') === 'post' && $query->get('posts_per_page') === 100) {
+        $batches[] = $query->get('paged');
+    }
+});
+$llms = \TypedPress\Wp\MarkdownTwins::llms();
+if ($batches !== [1, 2, 3] || str_contains($llms, 'Hidden record') || str_contains($llms, '[Public directory record]')) {
+    throw new RuntimeException('Guarded listings must stop after three batches: ' . json_encode($batches));
 }
 $site->destroy();

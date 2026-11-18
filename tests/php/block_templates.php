@@ -226,7 +226,7 @@ $contents = [
 ];
 $fixture = static function ($found, $id, $type) use ($contents, &$lookups) {
     $slug = explode('//', $id, 2)[1] ?? '';
-    if (!isset($contents[$slug])) {
+    if (!isset($contents[$slug]) || $type !== ($slug === 'slot-test' ? 'wp_template' : 'wp_template_part')) {
         return $found;
     }
     $lookups[] = $slug;

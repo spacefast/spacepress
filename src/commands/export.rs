@@ -53,8 +53,6 @@ static MODULE_DATA: LazyLock<regex::Regex> = LazyLock::new(|| {
 });
 static CSS_REFERENCE: LazyLock<regex::Regex> =
     LazyLock::new(|| pattern(r#"url\(\s*['"]?([^'")]+)['"]?\s*\)|@import\s+['"]([^'"]+)['"]"#));
-static JS_IMPORT: LazyLock<regex::Regex> =
-    LazyLock::new(|| pattern(r#"(?:\bimport\s*\(\s*|\bfrom\s*|\bimport\s+)['"]((?:\./|\.\./|/)[^'"]+)['"]"#));
 static NOINDEX: LazyLock<regex::Regex> =
     LazyLock::new(|| pattern(r#"(?i)<meta name=['"]robots['"] content=['"][^'"]*noindex"#));
 
@@ -513,13 +511,23 @@ impl<'a> Export<'a> {
             }
             let mut body = body;
             if path.ends_with(".css") || crate::assets::is_javascript(&path) {
-                let text = String::from_utf8_lossy(&body).into_owned();
-                for found in self.referenced(&text, &path) {
+                let text = String::from_utf8_lossy(&body);
+                let (rewritten, references) = if path.ends_with(".css") {
+                    let references = self
+                        .referenced_styles(&text, &path)
+                        .into_iter()
+                        .map(|path| (path, String::new()))
+                        .collect();
+                    (self.relink(&text), references)
+                } else {
+                    self.rewrite_module(&text, &path)?
+                };
+                for (found, query) in references {
                     if seen.insert(found.clone()) {
-                        queue.push((found, String::new()));
+                        queue.push((found, query));
                     }
                 }
-                body = self.relink(&text).into_bytes();
+                body = rewritten.into_bytes();
             }
             write(&stage.path().join(asset_file(&path)?), &body)?;
             files += 1;
@@ -797,7 +805,7 @@ impl<'a> Export<'a> {
     fn inline_styles(&self, html: &str, assets: &mut Assets) -> String {
         STYLE
             .replace_all(html, |c: &regex::Captures| {
-                for found in self.referenced(&c[2], "/inline.css") {
+                for found in self.referenced_styles(&c[2], "/inline.css") {
                     assets.entry(found).or_default();
                 }
                 format!("{}{}{}", &c[1], self.relink(&c[2]), &c[3])
@@ -885,18 +893,11 @@ impl<'a> Export<'a> {
         )
     }
 
-    /// URLs a stylesheet or script module references: `url(...)`, `@import`, and module imports.
-    fn referenced(&self, text: &str, from: &str) -> Vec<String> {
-        // A stylesheet's `url(...)` and `@import`; a module's static and dynamic imports of a path
-        // (`./x.js`, `/wp-includes/…`). Bare specifiers resolve through the import map.
-        let re = if from.ends_with(".css") {
-            &*CSS_REFERENCE
-        } else {
-            &*JS_IMPORT
-        };
+    /// URLs a stylesheet references with `url(...)` or `@import`.
+    fn referenced_styles(&self, text: &str, from: &str) -> Vec<String> {
         let dir = from.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
         let mut out = Vec::new();
-        for c in re.captures_iter(text) {
+        for c in CSS_REFERENCE.captures_iter(text) {
             let raw = c.get(1).or(c.get(2)).expect("reference").as_str();
             if raw.starts_with("data:") || raw.starts_with('#') || raw.starts_with("@wordpress/") || raw.contains("${")
             {
@@ -916,6 +917,92 @@ impl<'a> Export<'a> {
             out.push(path.to_string());
         }
         out
+    }
+
+    /// Discover actual module specifiers and rewrite the ones anchored to the rendering site.
+    fn rewrite_module(&self, text: &str, from: &str) -> Result<(String, Vec<(String, String)>), String> {
+        use oxc_ast::{AstKind, ast::Expression};
+        use oxc_span::{GetSpan, SourceType};
+
+        let allocator = oxc_allocator::Allocator::default();
+        let parsed = oxc_parser::Parser::new(&allocator, text, SourceType::unambiguous()).parse();
+        if let Some(error) = parsed.diagnostics.first() {
+            return Err(format!("could not read module dependencies in {from}: {error}"));
+        }
+        let semantic = oxc_semantic::SemanticBuilder::new()
+            .with_build_nodes(true)
+            .build(&parsed.program);
+        let location = url::Url::parse(&format!("{}{}{from}", self.origin, self.home))
+            .map_err(|error| format!("invalid module URL {from}: {error}"))?;
+        let mut references = Vec::new();
+        let mut edits = Vec::new();
+        for node in semantic.semantic.nodes().iter() {
+            let literal = match node.kind() {
+                AstKind::ImportDeclaration(decl) => Some(&decl.source),
+                AstKind::ExportFromDeclaration(decl) => Some(&decl.source),
+                AstKind::ExportAllDeclaration(decl) => Some(&decl.source),
+                AstKind::ImportExpression(expr) => match &expr.source {
+                    Expression::StringLiteral(literal) => Some(&**literal),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let reference = if let Some(literal) = literal {
+                literal.value.as_str().map(|value| (value, literal.span()))
+            } else if let AstKind::ImportExpression(expr) = node.kind()
+                && let Expression::TemplateLiteral(template) = &expr.source
+                && template.expressions.is_empty()
+            {
+                template.quasis[0]
+                    .value
+                    .cooked
+                    .and_then(|value| value.as_str())
+                    .map(|value| (value, template.span()))
+            } else {
+                None
+            };
+            if let Some((value, span)) = reference {
+                self.module_reference(&location, value, span, &mut references, &mut edits);
+            }
+        }
+
+        // Splice only the parsed literals; keep comments and the rest of the published module intact.
+        edits.sort_unstable_by_key(|(span, _)| std::cmp::Reverse(span.start));
+        let mut rewritten = text.to_owned();
+        for (span, value) in edits {
+            rewritten.replace_range(span.start as usize..span.end as usize, &value);
+        }
+        Ok((self.relink(&rewritten), references))
+    }
+
+    fn module_reference(
+        &self,
+        location: &url::Url,
+        specifier: &str,
+        span: oxc_span::Span,
+        references: &mut Vec<(String, String)>,
+        edits: &mut Vec<(oxc_span::Span, String)>,
+    ) {
+        let relative = specifier.starts_with("./") || specifier.starts_with("../");
+        if !relative && !specifier.starts_with('/') && url::Url::parse(specifier).is_err() {
+            return; // Bare specifiers are handled by the import map.
+        }
+        let Some(local) = location
+            .join(specifier)
+            .ok()
+            .and_then(|url| self.local_path(url.as_str()))
+        else {
+            return;
+        };
+        let (path, suffix) = split_suffix(&local);
+        let query = suffix.split('#').next().unwrap_or_default();
+        references.push((path.to_string(), query.to_string()));
+        if !relative {
+            let output = format!("{}{local}", self.flags.base);
+            if output != specifier {
+                edits.push((span, Value::String(output).to_string()));
+            }
+        }
     }
 
     /// Absolute same-site URLs inside a file become root-relative under `--base`.
@@ -1259,8 +1346,88 @@ mod tests {
         assert!(refusals.is_empty());
         assert_eq!(assets["/module.mjs"], "?mode=one&tpv=6a43");
         assert_eq!(
-            export.referenced(r#"import { name } from "./other.mjs";"#, "/scripts/module.mjs"),
-            ["/scripts/other.mjs"]
+            export
+                .rewrite_module(r#"import { name } from "./other.mjs";"#, "/scripts/module.mjs")
+                .unwrap()
+                .1,
+            [("/scripts/other.mjs".to_string(), String::new())]
         );
+    }
+
+    #[test]
+    fn static_export_copies_and_rewrites_only_real_module_dependencies() {
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let source = format!(
+            r#"
+            // import "/site/comment-only.mjs";
+            const example = 'from "/site/string-only.mjs"';
+            import "/site/scripts/root.mjs";
+            export {{ default as config }} from "./config.mjs?build=blue#ready";
+            const chunk = () => import(`./chunk.mjs`);
+            const logo = () => fetch("{origin}/site/logo.svg");
+            "#
+        );
+        let serve = source.clone();
+        let worker = std::thread::spawn(move || {
+            let mut received = BTreeSet::new();
+            for _ in 0..6 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = std::io::BufReader::new(&stream);
+                let mut first = String::new();
+                reader.read_line(&mut first).unwrap();
+                let target = first.split_whitespace().nth(1).unwrap().to_string();
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" || line.is_empty() {
+                        break;
+                    }
+                }
+                drop(reader);
+                let (status, body) = match target.as_str() {
+                    "/site/" => (
+                        "200 OK",
+                        r#"<script src="/site/scripts/main.mjs" type="module"></script>"#,
+                    ),
+                    "/site/scripts/main.mjs" => ("200 OK", serve.as_str()),
+                    "/site/scripts/config.mjs?build=blue" => ("200 OK", "export default 1;"),
+                    "/site/scripts/root.mjs" | "/site/scripts/chunk.mjs" => ("200 OK", "export {};"),
+                    "/__tp-not-found" => ("404 Not Found", "<p>Missing</p>"),
+                    _ => ("404 Not Found", ""),
+                };
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nX-TypedPress-Prerendered: 1\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+                assert!(received.insert(target));
+            }
+            received
+        });
+        let flags = parse(&["--base".into(), "/docs".into()]).unwrap();
+        let listing = serde_json::json!({"home": format!("{origin}/site"), "urls": [{"path": "/"}]});
+        let export = Export::new(&origin, &flags, &crate::schema::Schema::default(), &listing).unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let out = temp.path().join("out");
+        export.write(&out).unwrap();
+
+        let received = worker.join().unwrap();
+        assert!(received.contains("/site/scripts/config.mjs?build=blue"));
+        let main = std::fs::read_to_string(out.join("scripts/main.mjs")).unwrap();
+        assert!(main.contains(r#"import "/docs/scripts/root.mjs";"#), "{main}");
+        assert!(main.contains(r#"from "./config.mjs?build=blue#ready";"#), "{main}");
+        assert!(main.contains(r#"fetch("/docs/logo.svg")"#), "{main}");
+        assert!(main.contains(r#"// import "/site/comment-only.mjs";"#), "{main}");
+        assert_eq!(
+            std::fs::read_to_string(out.join("scripts/config.mjs")).unwrap(),
+            "export default 1;"
+        );
+        assert!(out.join("scripts/root.mjs").is_file());
+        assert!(out.join("scripts/chunk.mjs").is_file());
     }
 }

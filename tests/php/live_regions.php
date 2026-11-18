@@ -64,9 +64,13 @@ $renders = static function (): int {
 function pageSeed(string $url, string $id, array $headers = []): array
 {
     $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => $headers]);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => $headers, CURLOPT_TIMEOUT => 30]);
+    $body = curl_exec($ch);
+    if ($body === false) {
+        throw new RuntimeException(curl_error($ch));
+    }
     $doc = new DOMDocument();
-    @$doc->loadHTML((string) curl_exec($ch));
+    @$doc->loadHTML($body);
     $element = (new DOMXPath($doc))->query("//*[@data-tp-live='$id']")->item(0);
     return json_decode($element->getAttribute('data-tp-live-seed'), true, 512, JSON_THROW_ON_ERROR);
 }

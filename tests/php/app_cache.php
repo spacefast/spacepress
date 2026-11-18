@@ -99,6 +99,15 @@ $out['batcache served'] = array_map(static fn (string $key) => batcacheWindow($o
 // that counts records the kind as listed, as a list would.
 \TypedPress\Render\Reads::during(static fn () => \TypedPress\db()->count('notes'), $counted);
 $out['count reads'] = $counted;
+// Dependency IDs keep the order and type of their first appearance across overlapping reads.
+\TypedPress\Render\Reads::during(static function (): void {
+    foreach ([[7, '7', '07'], ['7', 8, 7]] as $ids) {
+        \TypedPress\Extensions::read(array_map(static fn ($id) => ['id' => $id], $ids), 'notes', null);
+    }
+}, $overlap);
+if ($overlap !== ['notes' => ['ids' => [7, '7', '07', 8], 'listed' => true]]) {
+    throw new RuntimeException('Overlapping reads lost their primary key order or type.');
+}
 global $wpdb;
 $out['index'] = array_map(static fn ($r) => "{$r['kind']} {$r['item']} {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}tp__app_reads ORDER BY url, kind, item", ARRAY_A));
 // An edit to one note purges the URLs that read it and the ones that listed notes, nothing else.

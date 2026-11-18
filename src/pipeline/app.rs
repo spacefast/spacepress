@@ -251,7 +251,7 @@ fn register_guard(
             Diag::new(span, "`guard = { page, handlers }` needs a `handlers` rule")
                 .help("set `handlers` for the HTTP methods; omit `page` if the page is public")
         })?;
-        if let Some(page) = rules.get("page") {
+        if let Some(page) = rules.get("page").filter(|page| !matches!(page, Value::Undef)) {
             file.guard = Some(guard_rule(page, span, path, "guard.page", false, roots)?);
         }
         file.handler_guard = Some(guard_rule(methods, span, path, "guard.handlers", true, roots)?);

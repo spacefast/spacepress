@@ -31,7 +31,7 @@ bun run build:source
 ```
 
 Run `bun run build:source` again before publishing or after editing files shown on `/source`.
-The build embeds the files listed in `browser/build.mjs` in `public/drive-source/source.js`. Only `/source` loads that module.
+The build highlights the files listed in `browser/build.mjs` and writes the previews to `public/drive-source`. Only `/source` loads them.
 
 From the repository root:
 

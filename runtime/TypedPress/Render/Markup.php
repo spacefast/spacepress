@@ -73,6 +73,7 @@ final class Markup
                 $props['data-wp-on--click'] = 'actions.navigate';
                 $props['data-tp-template'] = $template;
                 if ($prefetch === true) {
+                    $props['data-wp-init---tp-prefetch'] = 'callbacks.preparePrefetch';
                     $props['data-wp-on--mouseenter'] = 'actions.prefetch';
                 }
             }

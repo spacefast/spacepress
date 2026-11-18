@@ -48,7 +48,11 @@ final class Live
         }
         // Later parts of the route can record dependencies (e.g. the comments notice).
         // Fill this attribute once the entire page has rendered.
-        $marker = bin2hex(random_bytes(16));
+        try {
+            $marker = bin2hex(random_bytes(16));
+        } catch (\Random\RandomException) {
+            return Html::element('div', ['data-tp-live' => $id], Html::raw($html));
+        }
         self::$page['regions'][' data-tp-live-seed="' . $marker . '"'] = [$id, $html];
 
         return Html::element('div', ['data-tp-live' => $id, 'data-tp-live-seed' => $marker], Html::raw($html));

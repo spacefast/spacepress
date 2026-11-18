@@ -767,7 +767,7 @@ A prebuilt page is what a signed-out visitor sees, rendered by the page's own
 compiled code. So it can't depend on the request. These are build errors at
 the page, each with its fix:
 
-- a `guard` on the page or any enclosing layout;
+- a `guard` protecting the page read, including one inherited from a layout (a handler-only rule is allowed);
 - `export const search`;
 - a dynamic segment the build can't list;
 - calling `is_user_logged_in`, `current_user_can` or `get_current_user_id`.

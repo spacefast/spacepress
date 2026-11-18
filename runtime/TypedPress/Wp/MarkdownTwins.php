@@ -32,6 +32,8 @@ final class MarkdownTwins
     public const CONTENT_SIGNAL = 'search=yes, ai-input=yes, ai-train=no';
     /** Entries per kind in /llms.txt; each kind's archive link reaches the rest. */
     public const LLMS_LIMIT = 100;
+    /** Inspect at most 300 published candidates per post type. Guards can leave a shorter listing. */
+    private const LLMS_BATCHES = 3;
 
     /** The `.md` URI this request asked for, while WordPress parses it as its HTML URL. */
     private static ?string $twin = null;
@@ -191,13 +193,22 @@ final class MarkdownTwins
                 continue;
             }
             $entries = [];
-            foreach (get_posts([
-                'post_type' => $type->name, 'post_status' => 'publish', 'numberposts' => self::LLMS_LIMIT,
-                'orderby' => $type->hierarchical ? ['menu_order' => 'ASC', 'title' => 'ASC'] : ['date' => 'DESC', 'ID' => 'DESC'],
-            ]) as $post) {
-                $entry = self::entry($post);
-                if ($entry !== null) {
-                    $entries[] = $entry;
+            for ($page = 1; $page <= self::LLMS_BATCHES; ++$page) {
+                $posts = get_posts([
+                    'post_type' => $type->name, 'post_status' => 'publish', 'numberposts' => self::LLMS_LIMIT, 'paged' => $page,
+                    'orderby' => $type->hierarchical ? ['menu_order' => 'ASC', 'title' => 'ASC', 'ID' => 'ASC'] : ['date' => 'DESC', 'ID' => 'DESC'],
+                ]);
+                foreach ($posts as $post) {
+                    $entry = self::entry($post);
+                    if ($entry !== null) {
+                        $entries[] = $entry;
+                        if (count($entries) === self::LLMS_LIMIT) {
+                            break 2;
+                        }
+                    }
+                }
+                if (count($posts) < self::LLMS_LIMIT) {
+                    break;
                 }
             }
             $archive = $type->name === 'post' ? self::postsPage() : get_post_type_archive_link($type->name);
@@ -606,7 +617,8 @@ final class MarkdownTwins
     private static function guarded(string $url, string $postType = ''): bool
     {
         $router = AppRouter::instance();
-        return $router !== null && $router->guarded(self::relative((string) wp_parse_url($url, PHP_URL_PATH)), $postType);
+        $path = self::relative((string) wp_parse_url($url, PHP_URL_PATH));
+        return $router !== null && ($path !== '/' || !AppRouter::wordPressHomeQuery($url)) && $router->guarded($path, $postType);
     }
 
     /**

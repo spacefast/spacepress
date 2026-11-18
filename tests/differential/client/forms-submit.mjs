@@ -165,6 +165,10 @@ try {
   await release();
   await flashed;
   await page.waitForTimeout(1000);
+  // Both links request prefetch. The region router owns only the same-template destination.
+  out.prefetch = await page.locator('a[data-wp-on--mouseenter]').evaluateAll((links) =>
+    links.map((link) => [link.textContent, link.classList.contains("no-prefetch")])
+  );
   out.link = {
     url: path(page.url()),
     other: await page.$(".other-page").then((el) => el !== null),

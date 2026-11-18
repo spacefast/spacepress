@@ -240,7 +240,7 @@ final class Loader
             }
             // A runtime schema reads site options, including filters registered while WordPress boots.
             $schema = self::schema();
-            \TypedPress\Wp\Runtime::mount($runtime . '/typedpress-runtime/typedpress-runtime.php', $app, $variables, $schema->runtimeSchema() === null ? $schema : null);
+            \TypedPress\Wp\Runtime::mount($runtime . '/typedpress-runtime/typedpress-runtime.php', $app, $variables, method_exists($schema, 'runtimeSchema') && $schema->runtimeSchema() === null ? $schema : null);
             if ($manifest['admin']) {
                 require_once $runtime . '/typedpress-admin/typedpress-admin.php';
             }

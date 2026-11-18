@@ -60,7 +60,7 @@ export default function Home() { return <p>Signed-in home</p>; }"#,
             r#"import { Link } from "typedpress/app";
 export default function Links() {
   return <main>
-    <Link href="/?s=drives" prefetch>Search</Link>
+    <Link href="/?s=drives" prefetch={undefined} requireAuth={undefined}>Search</Link>
     <Link href="/?p=1#article" prefetch>Post</Link>
     <Link href="/?feed=rss2" prefetch>Feed</Link>
     <Link href="/?view=compact#section" prefetch>App</Link>
@@ -220,7 +220,7 @@ fn app_router_serves_pages_on_wordpress() {
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page, names
     // the template its target renders in (this layout's `template = "blank"`), and is written at the
     // page's one address (`/notes/` under `/%postname%/`), never a redirect.
-    assert!(body.contains(r#"/notes/" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-tp-template="tp-blank" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
+    assert!(body.contains(r#"/notes/" data-wp-interactive="tp/router" data-wp-on--click="actions.navigate" data-tp-template="tp-blank" data-wp-init---tp-prefetch="callbacks.preparePrefetch" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
     assert_eq!(seen["router module"], true);
     // Reads run as the visitor: the draft is missing for anonymous visitors, masked fields absent.
     assert_eq!(page("note").0, 200);
@@ -2394,6 +2394,11 @@ fn forms_submit_in_place_in_the_browser() {
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    assert_eq!(
+        seen["prefetch"],
+        serde_json::json!([["Form", true], ["Bare template", false]]),
+        "{seen}"
+    );
     assert_eq!(
         seen["directive"],
         serde_json::json!(["tp/router", "actions.submit"]),

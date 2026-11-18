@@ -16,6 +16,9 @@ $site = wpSite('app', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscri
     'muPlugins' => ['secret' => "<?php define('APPROUTER_HOOK_SECRET', 'hook-secret');"]]);
 // An older app has no route index. Both representations must select the same route and parameters.
 $app = \TypedPress\Wp\Runtime::plugin()->schema->app();
+if (!isset($app['routeIndex'])) {
+    throw new RuntimeException('Missing compiled route index');
+}
 foreach (['/', '/notes/', '/notes/hello', '/notes/%68ello/', '/docs', '/docs/a/b', '/missing', '/notes/%2F', '/notes/%zz'] as $path) {
     $indexed = \TypedPress\Wp\AppRouter::match($app['routes'], $path, $app['routeIndex']);
     if ($indexed !== \TypedPress\Wp\AppRouter::match($app['routes'], $path)) {

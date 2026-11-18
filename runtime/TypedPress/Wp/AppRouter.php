@@ -749,7 +749,7 @@ final class AppRouter
                 $query = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '');
                 $back = home_url($this->canonical((string) ($this->path() ?? '/'))) . ($query !== '' ? '?' . $query : '');
                 self::privateResponse();
-                wp_safe_redirect(wp_login_url($back));
+                wp_redirect(wp_login_url($back));
                 exit;
             }
             if (!$allowed) {

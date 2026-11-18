@@ -661,6 +661,14 @@ fn has_checkout_block(body: &str) -> bool {
     let comments = regex::Regex::new(r"(?s)<!--(.*?)-->").unwrap();
     let delimiter =
         regex::Regex::new(r"(?s)^\s+(/?)wp:([a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)?)\s+(?:\{.*\}\s+)?(/?)$").unwrap();
+    // Woo 11.3 expands the legacy empty wrapper. Newer templates serialize checkout controls.
+    let legacy = regex::Regex::new(
+        r#"(?i)^<div class="(?:[a-z0-9_-]+ +)*wp-block-woocommerce-checkout(?: +[a-z0-9_-]+)*"></div>$"#,
+    )
+    .unwrap();
+    let action_tag =
+        regex::Regex::new(r#"(?i)<div\s+[^<>]*?\bdata-block-name="woocommerce/checkout-actions-block"(?:\s|>)"#)
+            .unwrap();
     let mut open = Vec::new();
     let mut found = false;
     for comment in comments.captures_iter(&html) {
@@ -676,11 +684,20 @@ fn has_checkout_block(body: &str) -> bool {
             if opened != name {
                 return false;
             }
-            if name == "woocommerce/checkout" && !html[start..span.start()].trim().is_empty() {
+            if name == "woocommerce/checkout" {
+                let content = &html[start..span.start()];
+                let markup = comments.replace_all(content, "");
+                found |= legacy.is_match(content.trim()) || action_tag.is_match(&markup);
+            }
+        } else {
+            if name == "woocommerce/checkout-actions-block"
+                && open.iter().any(|(parent, _)| *parent == "woocommerce/checkout")
+            {
                 found = true;
             }
-        } else if token[3].is_empty() {
-            open.push((name, span.end()));
+            if token[3].is_empty() {
+                open.push((name, span.end()));
+            }
         }
     }
     found && open.is_empty()
@@ -697,6 +714,8 @@ mod tests {
             "<!-- wp:woocommerce/checkout /-->",
             "<!-- wp:woocommerce/checkout -->   <!-- /wp:woocommerce/checkout -->",
             "<!-- wp:woocommerce/checkout --><div></div>",
+            "<!-- wp:woocommerce/checkout --><div></div><!-- /wp:woocommerce/checkout -->",
+            "<!-- wp:woocommerce/checkout --><!-- wp:paragraph /--><!-- /wp:woocommerce/checkout -->",
             &format!("<!-- /wp:group -->{block}"),
             &format!("<!-- wp:group -->{block}<!-- /wp:paragraph -->"),
         ] {

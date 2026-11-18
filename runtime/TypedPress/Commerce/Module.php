@@ -311,8 +311,17 @@ final class Module
     private static function containsCheckout(array $blocks): bool
     {
         foreach ($blocks as $block) {
-            if ($block['blockName'] === 'woocommerce/checkout' && (trim($block['innerHTML']) !== '' || $block['innerBlocks'] !== [])) {
-                return true;
+            if ($block['blockName'] === 'woocommerce/checkout') {
+                // Woo expands this legacy wrapper. Current templates carry the Place Order controls.
+                if ($block['innerBlocks'] === [] && preg_match('~^<div class="(?:[a-z0-9_-]+ +)*wp-block-woocommerce-checkout(?: +[a-z0-9_-]+)*"></div>$~iD', trim($block['innerHTML']))) {
+                    return true;
+                }
+                $content = serialize_block($block);
+                if (has_block('woocommerce/checkout-actions-block', $content)) { return true; }
+                $tags = new \WP_HTML_Tag_Processor($content);
+                while ($tags->next_tag('div')) {
+                    if ($tags->get_attribute('data-block-name') === 'woocommerce/checkout-actions-block') { return true; }
+                }
             }
             if (self::containsCheckout($block['innerBlocks'])) {
                 return true;

@@ -71,6 +71,9 @@ eq('an editor cannot remove the Checkout Block', get_post_field('post_content', 
 eq('checkout cannot be trashed', wp_trash_post($checkout), false);
 wp_update_post(['ID' => $checkout, 'post_content' => '<!-- wp:woocommerce/checkout-fields /-->']);
 eq('a similarly named block cannot replace checkout', get_post_field('post_content', $checkout), $originalCheckout);
+$legacy = '<!-- wp:woocommerce/checkout --><div class="wp-block-woocommerce-checkout"></div><!-- /wp:woocommerce/checkout -->';
+wp_update_post(['ID' => $checkout, 'post_content' => $legacy]);
+eq('an editor can save the legacy Woo checkout wrapper', get_post_field('post_content', $checkout), $legacy);
 $nested = '<!-- wp:group -->' . $originalCheckout . '<!-- /wp:group -->';
 wp_update_post(['ID' => $checkout, 'post_content' => wp_slash($nested)]);
 eq('an editor can save nested checkout', get_post_field('post_content', $checkout), $nested);
@@ -79,6 +82,8 @@ foreach ([
     '<!-- wp:woocommerce/checkout /-->',
     '<!-- wp:woocommerce/checkout -->   <!-- /wp:woocommerce/checkout -->',
     '<!-- wp:woocommerce/checkout --><div></div>',
+    '<!-- wp:woocommerce/checkout --><div></div><!-- /wp:woocommerce/checkout -->',
+    '<!-- wp:woocommerce/checkout --><!-- wp:paragraph /--><!-- /wp:woocommerce/checkout -->',
     '<!-- /wp:group -->' . $nested,
 ] as $invalid) {
     wp_update_post(['ID' => $checkout, 'post_content' => wp_slash($invalid)]);

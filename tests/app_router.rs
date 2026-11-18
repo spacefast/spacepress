@@ -37,6 +37,62 @@ fn build(project: &Path) {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
+#[test]
+fn guarded_home_links_and_item_moves_respect_wordpress_boundaries() {
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    for (file, source) in [
+        (
+            "typedpress.config.ts",
+            r#"import { collection, defineConfig, slug, text } from "typedpress";
+export const notes = collection({ title: text(), slug: slug({ source: "title" }).optional() }, {
+  title: "title", url: "/notes/:slug",
+});
+export default defineConfig({ name: "guardboundaries", admin: false });"#,
+        ),
+        (
+            "tp/app/page.tsx",
+            r#"export const guard = "subscriber";
+export default function Home() { return <p>Signed-in home</p>; }"#,
+        ),
+        (
+            "tp/app/links/page.tsx",
+            r#"import { Link } from "typedpress/app";
+export default function Links() {
+  return <main>
+    <Link href="/?s=drives" prefetch>Search</Link>
+    <Link href="/?p=1#article" prefetch>Post</Link>
+    <Link href="/?feed=rss2" prefetch>Feed</Link>
+    <Link href="/?view=compact#section" prefetch>App</Link>
+  </main>;
+}"#,
+        ),
+        (
+            "tp/app/notes/[slug]/page.tsx",
+            r#"export const guard = ({ user }) => user === null;
+export default function Note() { return <p>Guarded public preview</p>; }"#,
+        ),
+    ] {
+        let path = project.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    build(project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/guarded_links_and_moves.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 /// The router over HTTP: what each URL answers, as tests/php/app_router.php observes it.
 #[test]
 fn app_router_serves_pages_on_wordpress() {

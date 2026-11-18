@@ -50,6 +50,9 @@ final class Markup
             $props['href'] = home_url(\TypedPress\Wp\AppRouter::href($local));
             $path = (string) (wp_parse_url($local, PHP_URL_PATH) ?? '/');
             $router = \TypedPress\Wp\AppRouter::instance();
+            if ($path === '/' && \TypedPress\Wp\AppRouter::wordPressHomeQuery($local)) {
+                $router = null;
+            }
             if (is_bool($requireAuth) ? $requireAuth : $router?->linkRequiresLogin($path)) {
                 // Static HTML can be opened by anyone. An inferred guard will run at the destination.
                 if (Prebuilt::prerendering()) {

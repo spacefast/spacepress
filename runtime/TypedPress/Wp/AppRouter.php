@@ -262,6 +262,18 @@ final class AppRouter
         return $this->linkPages[$path] = $route;
     }
 
+    /** A query at the home path can ask WordPress for a post, an archive or an endpoint. */
+    public static function wordPressHomeQuery(string $url): bool
+    {
+        global $wp;
+        $query = wp_parse_url($url, PHP_URL_QUERY);
+        if (!is_string($query) || $query === '') {
+            return false;
+        }
+        parse_str($query, $vars);
+        return array_intersect(array_keys($vars), $wp->public_query_vars ?? []) !== [];
+    }
+
     /** Only a destination the app owns and whose policy always requires a session can skip the guest redirect. */
     public function linkRequiresLogin(string $path): bool
     {
@@ -479,6 +491,9 @@ final class AppRouter
         // A form's result is read once, by the page it came back to: never by a probe.
         $viewer = \TypedPress\Render\Forms::marked() ? null : CoreAccess::viewer();
         if ($viewer !== null && $this->renders($match['route'], $match['params'], $path, $viewer)) {
+            if ($match['route']['guards'] !== []) {
+                self::privateResponse();
+            }
             wp_safe_redirect($url, 301);
             exit;
         }
@@ -733,7 +748,7 @@ final class AppRouter
                 // Back to this page after signing in, at its one address including the query.
                 $query = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '');
                 $back = home_url($this->canonical((string) ($this->path() ?? '/'))) . ($query !== '' ? '?' . $query : '');
-                nocache_headers();
+                self::privateResponse();
                 wp_safe_redirect(wp_login_url($back));
                 exit;
             }
@@ -763,7 +778,7 @@ final class AppRouter
             }, $reads);
         } catch (Halt $halt) {
             if ($halt->location !== null) {
-                nocache_headers();
+                self::privateResponse();
                 wp_redirect(str_starts_with($halt->location, '/') && !str_starts_with($halt->location, '//') ? home_url(self::href($halt->location)) : $halt->location, $halt->status);
                 exit;
             }
@@ -783,7 +798,7 @@ final class AppRouter
         if ($moved !== null) {
             // Only public pages share their canonical redirect. A guard may have admitted this visitor alone.
             if ($guards !== []) {
-                nocache_headers();
+                self::privateResponse();
             }
             wp_safe_redirect($moved, 301);
             exit;
@@ -1401,10 +1416,7 @@ final class AppRouter
     {
         status_header($status);
         if (str_starts_with($this->cacheControl, 'private')) {
-            nocache_headers();
-            if (function_exists('batcache_cancel')) {
-                batcache_cancel();
-            }
+            self::privateResponse();
         }
         header('Cache-Control: ' . $this->cacheControl);
         if (\TypedPress\Render\Prebuilt::prerendering()) {
@@ -1448,6 +1460,14 @@ final class AppRouter
             $this->templated($template, $head, $body);
         }
         $this->plain($head, $body);
+    }
+
+    private static function privateResponse(): void
+    {
+        nocache_headers();
+        if (function_exists('batcache_cancel')) {
+            batcache_cancel();
+        }
     }
 
     /**

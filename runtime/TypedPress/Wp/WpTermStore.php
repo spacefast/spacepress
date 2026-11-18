@@ -122,6 +122,9 @@ final class WpTermStore implements Store, Links
         // A read that selected some columns (`columns`) finishes only those.
         $lists = array_keys(array_filter($spec['columns'], static fn (array $d, string|int $c) => $d['type'] === 'select' && array_key_exists($c, $rows[0]), ARRAY_FILTER_USE_BOTH));
         $linked = is_string($spec['url'] ?? null);
+        if ($linked && array_key_exists('url', $rows[0]) && count($rows) > 1) {
+            $this->primeLinkTerms(array_column($rows, $pk));
+        }
         foreach ($rows as &$row) {
             foreach ($lists as $col) {
                 $row[$col] = WpPostStore::serializedToJson($row[$col] ?? null, false);
@@ -134,6 +137,24 @@ final class WpTermStore implements Store, Links
         unset($row);
 
         return $rows;
+    }
+
+    /** get_term_link() reads each term by ID. Shared IDs must stay uncached, as in WP_Term::get_instance(). */
+    private function primeLinkTerms(array $ids): void
+    {
+        $missing = _get_non_cached_ids($ids, 'terms');
+        if ($missing === []) {
+            return;
+        }
+        $wpdb = $this->db->wpdb();
+        $idsSql = implode(',', array_map('intval', $missing));
+        $terms = $wpdb->get_results("SELECT t.*, tt.* FROM $wpdb->terms t
+            INNER JOIN $wpdb->term_taxonomy tt ON t.term_id = tt.term_id
+            WHERE t.term_id IN ($idsSql) AND NOT EXISTS (
+                SELECT 1 FROM $wpdb->term_taxonomy other
+                WHERE other.term_id = t.term_id AND other.taxonomy <> tt.taxonomy
+            )");
+        update_term_cache($terms);
     }
 
     public function showsUnique(string $collection, string $column, \TypedPress\Viewer $viewer): bool

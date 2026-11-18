@@ -21,6 +21,7 @@ final class DriveStoreProfile
             register_shutdown_function(static function () use (&$statements, &$postmetaJoins) {
                 global $wpdb;
                 file_put_contents(WP_CONTENT_DIR . '/drive-profile.json', json_encode([
+                    'sample' => $_SERVER['HTTP_X_TP_DRIVE_PROFILE'],
                     'sql' => $wpdb->num_queries + $statements,
                     'typedpress_sql' => $statements,
                     'typedpress_postmeta_joins' => $postmetaJoins,
@@ -37,14 +38,15 @@ final class DriveStoreProfile
     /** A warm-up followed by five GETs. Mutations still run only once in the surrounding functional test. */
     public function measure(WpSite $site, string $state, string $path, int $status = 200, string $session = ''): void
     {
-        $headers = ['X-TP-Drive-Profile: 1'];
+        $headers = [];
         if ($session !== '') {
             $headers[] = "Cookie: $session";
         }
         $samples = [];
         for ($run = 0; $run <= 5; ++$run) {
+            $sample = "$state/$run";
             $start = hrtime(true);
-            $page = fetch($site->url() . $path, headers: $headers);
+            $page = fetch($site->url() . $path, headers: [...$headers, "X-TP-Drive-Profile: $sample"]);
             $elapsed = (hrtime(true) - $start) / 1e6;
             if ($page['status'] !== $status) {
                 throw new RuntimeException("$state returned {$page['status']}, expected $status");
@@ -53,6 +55,10 @@ final class DriveStoreProfile
                 continue;
             }
             $metrics = json_decode(file_get_contents($site->content . '/drive-profile.json'), true, 512, JSON_THROW_ON_ERROR);
+            if (($metrics['sample'] ?? null) !== $sample) {
+                throw new RuntimeException("Missing metrics for $sample");
+            }
+            unset($metrics['sample']);
             $metrics['get_ms'] = round($elapsed, 2);
             $metrics['body_bytes'] = strlen($page['body']);
             foreach ($metrics as $metric => $value) {

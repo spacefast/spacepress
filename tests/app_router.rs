@@ -1597,6 +1597,10 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["bare about"], json!([301, false]));
     // A render that began before forget() leaves no file behind.
     assert_eq!(seen["forget race"], json!([false, false]));
+    assert_eq!(
+        seen["public script updated"],
+        json!([true, true, true, 200, false, true])
+    );
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.

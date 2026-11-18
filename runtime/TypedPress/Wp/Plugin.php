@@ -595,6 +595,21 @@ final class Plugin
         return $this->loadedHash ??= (string) @hash_file('sha256', $this->dir . '/tp/app/schema.php');
     }
 
+    /** The manifest for this exact immutable app tree, when the build loader mounted it. */
+    public function mountedManifest(): ?array
+    {
+        if (!Runtime::managed() || !class_exists(\TypedPress\Loader\Loader::class, false)) {
+            return null;
+        }
+        $build = \TypedPress\Loader\Loader::loaded();
+        if ($build === null) {
+            return null;
+        }
+        $manifest = $build['manifest'];
+        $app = $build['root'] . '/app/' . $manifest['app'] . '/plugins/typedpress-app-' . $manifest['name'];
+        return $this->dir === $app ? $manifest : null;
+    }
+
     // ================================================================ registration
 
     public function registerPostTypes(): void

@@ -600,13 +600,15 @@ mod tests {
         let plugin = &output["appPlugin"];
         assert_eq!(plugin["typedpress-app-packaged/tp/app/functions.php"], functions);
         assert_eq!(plugin["typedpress-app-packaged/public/modules/example.mjs"], source);
-        let map = plugin["typedpress-app-packaged/tp/app/public-script-versions.php"]
+        let map = plugin["typedpress-app-packaged/tp/app/public-script-versions.json"]
             .as_str()
             .unwrap();
         use sha2::Digest;
         let version = crate::hex(sha2::Sha256::digest(source));
-        assert!(map.contains(&format!("'modules/example.mjs' => '{version}'")));
-        assert!(!map.contains("image.svg"));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(map).unwrap(),
+            serde_json::json!({ "modules/example.mjs": version })
+        );
         assert!(!functions.contains(&version));
     }
 

@@ -101,23 +101,37 @@ final class PublicFiles
     /** The digest from packaging, keyed by a decoded path below the app's public directory. */
     public static function scriptVersion(Plugin $plugin, string $relative): ?string
     {
+        static $versions = [];
+        if (!isset($versions[$plugin->dir])) {
+            $map = json_decode(self::scriptMap($plugin), true);
+            $versions[$plugin->dir] = is_array($map) ? $map : [];
+        }
+        $version = $versions[$plugin->dir][$relative] ?? null;
+        return is_string($version) ? $version : null;
+    }
+
+    public static function scriptMapHash(Plugin $plugin): ?string
+    {
+        $map = self::scriptMap($plugin);
+        return $map === '' ? null : hash('sha256', $map);
+    }
+
+    private static function scriptMap(Plugin $plugin): string
+    {
         static $maps = [];
         if (!isset($maps[$plugin->dir])) {
-            $map = $plugin->dir . '/tp/app/public-script-versions.php';
-            $maps[$plugin->dir] = is_file($map) ? require $map : [];
+            // This is data: a loose deploy that preserves mtime must not leave old opcodes in use.
+            $file = $plugin->dir . '/tp/app/public-script-versions.json';
+            $maps[$plugin->dir] = is_file($file) ? (string) @file_get_contents($file) : '';
         }
-        return $maps[$plugin->dir][$relative] ?? null;
+        return $maps[$plugin->dir];
     }
 
     private static function immutableScriptVersion(Plugin $plugin, string $root, string $file): ?string
     {
         // A loose plugin can change its files in place. The Loader mounts a tree that was hashed and
         // published as a unit, so its version map still describes the files it serves.
-        if (!Runtime::managed() || !class_exists(\TypedPress\Loader\Loader::class, false)) {
-            return null;
-        }
-        $build = \TypedPress\Loader\Loader::loaded();
-        if ($build === null || $plugin->dir !== $build['root'] . '/app/' . $build['manifest']['app'] . '/plugins/typedpress-app-' . $build['manifest']['name']) {
+        if ($plugin->mountedManifest() === null) {
             return null;
         }
         $query = (string) wp_parse_url(wp_unslash((string) ($_SERVER['REQUEST_URI'] ?? '')), PHP_URL_QUERY);

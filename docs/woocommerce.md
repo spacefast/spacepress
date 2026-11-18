@@ -51,7 +51,9 @@ Product fields are `uid`, `name`, `slug`, `sku`, `status`, description, `shortDe
 exact decimal `price`, ordered media `images`, category/tag references, `virtual`,
 `downloadable`, and `downloads: [{id, name, file}]`. Reads add `type`, `purchasable`,
 `availability` and `url`. Native variable/grouped/external products identify their type;
-v1 writes accept simple products only. Stock is operational data managed by Woo.
+v1 writes accept simple products only. Schedule publication in WooCommerce, where you can set
+the future date. TypedPress reads that status as `scheduled` and preserves an existing schedule when editing the product.
+Stock is operational data managed by Woo.
 
 Category and tag lists replace the current assignments and retain their submitted order in
 TypedPress reads and sync. WooCommerce assigns its configured
@@ -74,6 +76,7 @@ A first install seeds missing products and terms. Redeploying preserves existing
 edits, stock and orders. `typedpress sync --site <url>` merges subsequent file and merchant
 edits through the ordinary UID-based sync workflow and writes conflicts for review.
 References and category parents travel as UIDs; numeric Woo IDs are local to the site.
+Catalog sync covers products and terms. Orders stay in WooCommerce.
 Catalog sync v1 requires simple products. Native variable, grouped and external products
 remain readable through the API; syncing a mixed catalog is not yet supported.
 Removing a catalog source file leaves the native product/term unchanged. Retire it explicitly

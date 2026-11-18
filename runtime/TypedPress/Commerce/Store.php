@@ -69,9 +69,10 @@ final class Store implements \TypedPress\Store
 
     private static function product(\WC_Product $p): array
     {
+        $sku = $p->get_sku();
         return [
             'id' => $p->get_id(), 'uid' => $p->get_meta('_tp_uid') ?: null, 'name' => $p->get_name(), 'slug' => $p->get_slug(),
-            'description' => $p->get_description(), 'shortDescription' => $p->get_short_description(), 'sku' => $p->get_sku() ?: null,
+            'description' => $p->get_description(), 'shortDescription' => $p->get_short_description(), 'sku' => $sku === '' ? null : $sku,
             'status' => ['publish' => 'published', 'future' => 'scheduled'][$p->get_status()] ?? $p->get_status(),
             'price' => $p->get_regular_price() === '' ? null : $p->get_regular_price(), 'images' => array_values(array_filter([$p->get_image_id(), ...$p->get_gallery_image_ids()])),
             'categories' => $p->get_category_ids(), 'tags' => $p->get_tag_ids(), 'virtual' => $p->is_virtual(), 'downloadable' => $p->is_downloadable(),
@@ -125,6 +126,9 @@ final class Store implements \TypedPress\Store
     }
     private function write(\WC_Product $p, array $values): void
     {
+        if (($values['status'] ?? null) === 'scheduled' && $p->get_status('edit') !== 'future') {
+            throw HttpError::invalidInput('Set a future publication date in WooCommerce to schedule this product', '/status');
+        }
         if (isset($values['uid'])) {
             // A trashed product still owns its identity, as in WpPostStore::checkUnique().
             $wpdb = $this->db->wpdb();

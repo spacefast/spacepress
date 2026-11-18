@@ -139,6 +139,8 @@ final class Module
                         $seed = $plugin->dir . '/tp/app/seed';
                         if (is_dir($seed)) {
                             \TypedPress\Sync\Seed::run($plugin, $seed);
+                        } elseif ($version !== hash('sha256', '')) {
+                            throw new \RuntimeException('Missing commerce seed directory for a nonempty seed version');
                         }
                         update_option($key, $version, false);
                     });

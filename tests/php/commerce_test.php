@@ -128,6 +128,14 @@ check('the API exposes storefront-visible products to guests', count($products) 
 problem('guests cannot write products', fn () => $db->insert('products', ['name' => 'No'], true, $guest), 401, 'unauthenticated');
 problem('guests cannot read orders', fn () => $db->findMany('orders', [], $guest), 401, 'unauthenticated');
 problem('editors cannot read orders', fn () => $db->findMany('orders', [], new \TypedPress\Viewer(['id' => $site->userId('ed'), 'name' => 'Editor', 'role' => 'editor'])), 403, 'forbidden');
+problem('scheduling a new product without a date is refused', fn () => $db->insert('products', ['name' => 'Premature product', 'status' => 'scheduled'], true, $admin), 422, 'invalid_input', '/status');
+eq('a refused scheduled product is absent from the public catalog', $db->findFirst('products', ['where' => ['name' => 'Premature product']], $guest), null);
+$future = new WC_Product_Simple();
+$future->set_name('Scheduled product'); $future->set_sku('0'); $future->set_date_created(time() + WEEK_IN_SECONDS); $future->set_status('future'); $future->save();
+$db->update('products', ['status' => 'scheduled', 'name' => 'Still scheduled'], ['id' => $future->get_id()], false, $admin);
+$scheduled = $db->findFirst('products', ['where' => ['id' => $future->get_id()]], $admin);
+eq('a native scheduled product keeps its status and zero SKU', [$scheduled['status'], $scheduled['sku']], ['scheduled', '0']);
+$future->delete(true);
 problem('numeric prices are refused before text coercion', fn () => $db->update('products', ['price' => 12.5], ['id' => $mug['id']], false, $admin), 422, 'invalid_input', '/price');
 $db->update('products', ['status' => 'draft'], ['id' => $mug['id']], false, $admin);
 eq('a draft is not public', count($db->findMany('products', [], $guest)), 1);
@@ -162,6 +170,25 @@ foreach (['old value', 'missing option'] as $cached) {
     eq('a waiting standalone seed rechecks its committed version after cached ' . $cached, $db->findFirst('products', ['where' => ['uid' => $waitingUid]]), null);
 }
 file_put_contents($seedFile, $originalSeed);
+$seedDir = dirname($seedFile);
+$versionFile = dirname($seedDir) . '/seed-version.php';
+$originalVersion = file_get_contents($versionFile);
+$originalMarker = get_option($seedKey);
+rename($seedDir, $seedDir . '.held');
+try {
+    delete_option($seedKey);
+    $missingSeedPlugin = clone $plugin;
+    \TypedPress\Commerce\Module::onInit($missingSeedPlugin);
+    check('a missing nonempty seed bundle is refused without a receipt', str_contains($missingSeedPlugin->unavailable() ?? '', 'Missing commerce seed directory') && get_option($seedKey) === false);
+    $emptyVersion = hash('sha256', '');
+    file_put_contents($versionFile, '<?php return ' . var_export($emptyVersion, true) . ';');
+    \TypedPress\Commerce\Module::onInit($plugin);
+    eq('an intentionally empty seed bundle receives its receipt', get_option($seedKey), $emptyVersion);
+} finally {
+    rename($seedDir . '.held', $seedDir);
+    file_put_contents($versionFile, $originalVersion);
+    update_option($seedKey, $originalMarker, false);
+}
 $directories = wc_get_container()->get(\Automattic\WooCommerce\Internal\ProductDownloads\ApprovedDirectories\Register::class);
 $approvalCount = $directories->count(true);
 problem('oversized download directories are input errors', fn () => $db->insert('products', ['name' => 'Bad download', 'downloadable' => true, 'downloads' => [['id' => 'bad', 'name' => 'Bad', 'file' => 'https://example.test/' . str_repeat('a', 260) . '/file.pdf']]], true, $admin), 422, 'invalid_input', '/downloads');

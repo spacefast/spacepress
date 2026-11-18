@@ -37,22 +37,22 @@ $write = static function (array $col, mixed $v, string $name) use ($ctx): mixed 
 
 $tmp = tempnam(sys_get_temp_dir(), 'zs');
 foreach ([
-    ['version' => 2, 'runtime' => Schema::SERIES],
-    ['version' => 3, 'runtime' => '0.2'],
-    ['version' => 3],
+    ['version' => 4, 'runtime' => Schema::SERIES],
+    ['version' => 5, 'runtime' => '0.2'],
+    ['version' => 5],
 ] as $raw) {
     file_put_contents($tmp, '<?php return ' . var_export($raw, true) . ';');
     try {
         Schema::load($tmp);
         check('incompatible schema is refused', false);
     } catch (RuntimeException $e) {
-        $expected = $raw['version'] !== 3 ? 'schema.php version 3 required; rebuild with this TypedPress version'
+        $expected = $raw['version'] !== 5 ? 'schema.php version 5 required; rebuild with this TypedPress version'
             : 'schema.php built for runtime ' . ($raw['runtime'] ?? '(missing)') . '; this runtime is 0.3; rebuild with this TypedPress version';
         eq('incompatible schema is refused', $e->getMessage(), $expected);
     }
 }
 unlink($tmp);
-eq('v3 reader reports its contract', [$schema->version(), $schema->runtime()], [3, '0.3']);
+eq('v5 reader reports its contract', [$schema->version(), $schema->runtime()], [5, '0.3']);
 
 $phase2Raw = json_decode(file_get_contents(__DIR__ . '/../fixtures/phase2.schema.json'), true, 512, JSON_THROW_ON_ERROR);
 $phase2 = new Schema($phase2Raw);

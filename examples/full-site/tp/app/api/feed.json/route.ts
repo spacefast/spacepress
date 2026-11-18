@@ -1,7 +1,7 @@
 // GET /api/feed.json: a public JSON Feed on the site's own path, outside /wp-json.
 import { db, type RouteRequest } from "typedpress";
 
-export const access = "anyone";
+export const guard = "anyone";
 
 export async function GET(req: RouteRequest) {
   const limit = Number(req.query.get("limit") ?? "10");

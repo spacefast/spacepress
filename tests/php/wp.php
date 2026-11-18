@@ -208,7 +208,7 @@ final class WpSite
     public function writeSchema(array $schema): void
     {
         $name = (string) ($schema['name'] ?? 'app');
-        $schema += ['version' => 3, 'runtime' => wpConstant(dirname(__DIR__, 2) . '/runtime/TypedPress/Schema.php', 'SERIES'), 'name' => $name, 'site' => ['uidPrefix' => 'zr_'],
+        $schema += ['version' => 5, 'runtime' => wpConstant(dirname(__DIR__, 2) . '/runtime/TypedPress/Schema.php', 'SERIES'), 'name' => $name, 'site' => ['uidPrefix' => 'zr_'],
             'locales' => null, 'media' => ['sizes' => []], 'files' => [], 'jobs' => [], 'webhooks' => [], 'globals' => [], 'actions' => []];
         $schema['auth'] ??= ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];
         foreach ($schema['collections'] as $c => &$spec) {
@@ -458,7 +458,7 @@ final class WpSite
         return [
             'name' => (string) $match['route']['id'],
             'params' => array_map(static fn ($v) => is_array($v) ? implode('/', $v) : $v, $match['params']),
-            'route' => ['handler' => $file['methods'][$method] ?? throw new \RuntimeException("$path has no $method"), 'access' => $file['access'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null],
+            'route' => ['handler' => $file['methods'][$method] ?? throw new \RuntimeException("$path has no $method"), 'access' => $file['handlerGuard'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null],
         ];
     }
 

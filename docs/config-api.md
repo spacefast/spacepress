@@ -1706,7 +1706,7 @@ needs no pages for it.
 // tp/app/api/feed.json/route.ts: GET /api/feed.json
 import { db, type RouteRequest } from "typedpress";
 
-export const access = "anyone";
+export const guard = "anyone";
 
 export async function GET(req: RouteRequest) {
   const limit = Number(req.query.get("limit") ?? "20");
@@ -1741,7 +1741,7 @@ export function POST(req: RouteRequest) {
   first folder that WordPress or TypedPress owns (`wp-admin`, `wp-json`,
   `wp-content`, `feed`, `typedpress-admin`, `auth`, `__spacefast`, `.well-known`,
   ...).
-- Export exactly one of `access` or `signature`; there is no default. `access`
+- A handler-only file must export exactly one of `guard` or `signature`. A `guard`
   takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
   boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
   body, as on [actions](#actions). The verified caller is then anonymous.
@@ -2047,6 +2047,7 @@ return post === null ? "" : esc_html(post.post_title);
 | `get_userdata(user_id)` | `WP_User \| false` |
 | `get_permalink(post_id)` | `string \| false` |
 | `home_url(path)` | `string` |
+| `wp_login_url(redirect)` | `string` |
 | `sanitize_text_field`, `sanitize_title`, `esc_html`, `esc_attr`, `esc_url`, `wp_strip_all_tags` | `string` → `string` |
 
 - Types come from `php-stubs/wordpress-stubs` 7.1.2 (WordPress's own

@@ -1,30 +1,53 @@
-import { File } from "@pierre/diffs";
 import { FileTree } from "@pierre/trees";
+import { files } from "drive-source-previews";
 
-const theme = { light: "pierre-light", dark: "pierre-dark" };
 const output = document.querySelector("#drive-source-code");
 const tree = document.querySelector("#drive-source-files");
 const viewer = document.querySelector("#drive-source-viewer");
 const status = document.querySelector("#drive-source-status");
 
-async function showSource() {
-  status.hidden = false;
-  status.textContent = "Loading source files…";
-  const response = await fetch(new URL("./files.json", import.meta.url), { cache: "no-cache" });
-  if (!response.ok) throw new Error("Could not load the Drive Store source files");
-  const files = new Map(Object.entries(await response.json()));
-  const paths = [...files.keys()];
+function showSource() {
+  const defaultPath = __DRIVE_SOURCE_DEFAULT__;
   const requested = new URLSearchParams(location.search).get("file");
-  const first = files.has(requested) ? requested : "tp/schema.ts";
-  const code = new File({ theme, themeType: "system", overflow: "scroll" });
+  const first = files.has(requested) ? requested : defaultPath;
 
-  function show(path) {
-    output.scrollTop = 0;
-    code.render({ file: { name: path, contents: files.get(path) }, containerWrapper: output });
+  const code = document.createElement("diffs-container");
+  const shadow = code.attachShadow({ mode: "open" });
+  shadow.innerHTML = __DRIVE_SOURCE_SHARED_HTML__;
+  output.append(code);
+  let currentRequest = 0;
+
+  function replacePreview(content) {
+    shadow.querySelector("[data-diffs-header]")?.remove();
+    shadow.querySelector("pre")?.remove();
+    if (content) shadow.append(content);
+  }
+
+  async function show(path) {
+    const request = ++currentRequest;
+    status.hidden = true;
+    output.setAttribute("aria-busy", "true");
+    try {
+      const load = files.get(path);
+      const html = load ? (await load()).default : __DRIVE_SOURCE_DEFAULT_HTML__;
+      if (request !== currentRequest) return;
+
+      const preview = document.createElement("template");
+      preview.innerHTML = html;
+      replacePreview(preview.content);
+      output.scrollTop = 0;
+    } catch {
+      if (request !== currentRequest) return;
+      replacePreview();
+      status.hidden = false;
+      status.textContent = "This file could not load. Select another file or use the repository link.";
+    } finally {
+      if (request === currentRequest) output.removeAttribute("aria-busy");
+    }
   }
 
   const fileTree = new FileTree({
-    paths,
+    paths: [...files.keys()],
     density: "compact",
     stickyFolders: false,
     icons: { set: "complete", colored: true },
@@ -33,7 +56,7 @@ async function showSource() {
     onSelectionChange(picked) {
       const [path] = picked;
       if (picked.length !== 1 || !files.has(path)) return;
-      show(path);
+      void show(path);
       const url = new URL(location.href);
       url.searchParams.set("file", path);
       history.replaceState(history.state, "", url);
@@ -45,13 +68,15 @@ async function showSource() {
   tree.querySelector("file-tree-container")?.shadowRoot
     ?.querySelector('[role="tree"]')?.setAttribute("aria-label", "Project files");
   if (requested === first) fileTree.scrollToPath(first);
-  show(first);
-  status.hidden = true;
+  void show(first);
 }
 
 if (viewer) {
-  showSource().catch(() => {
+  try {
+    showSource();
+  } catch {
     viewer.hidden = true;
+    status.hidden = false;
     status.textContent = "The source viewer could not load. Use the repository link to browse the files.";
-  });
+  }
 }

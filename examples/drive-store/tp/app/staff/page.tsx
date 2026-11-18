@@ -12,10 +12,40 @@ export default async function Staff() {
   const shop = await db.globals.shop.get();
   const shipped = useFormState(markShipped);
   const restocked = useFormState(restock);
-  const open = await orders.list({ where: { status: "placed" }, orderBy: { id: "asc" }, limit: 100, with: { drive: true } });
-  const stock = await drives.list({ orderBy: { stock: "asc" }, limit: 100 });
-  const low = stock.filter((d) => d.stock <= shop.lowStockAt);
-  const moves = await stockMovements.list({ orderBy: { id: "desc" }, limit: 10, with: { drive: true } });
+  const open = await orders.list({
+    where: { status: "placed" },
+    orderBy: { id: "asc" },
+    limit: 100,
+    columns: { id: true, code: true, drive: true, quantity: true, total: true, buyerName: true, buyerEmail: true },
+  });
+  const low = await drives.list({
+    where: { stock: { lte: shop.lowStockAt } },
+    orderBy: { stock: "asc" },
+    limit: 100,
+    columns: { id: true, name: true, stock: true },
+  });
+  const moves = await stockMovements.list({
+    orderBy: { id: "desc" },
+    limit: 10,
+    columns: { drive: true, at: true, change: true, reason: true },
+  });
+  const names = new Map<number, string>();
+  for (const drive of low) names.set(drive.id, drive.name);
+  const missing = new Set<number>();
+  for (const order of open) {
+    if (!names.has(order.drive)) missing.add(order.drive);
+  }
+  for (const movement of moves) {
+    if (!names.has(movement.drive)) missing.add(movement.drive);
+  }
+  if (missing.size > 0) {
+    const titles = await drives.list({
+      where: { id: { in: Array.from(missing) } },
+      limit: missing.size,
+      columns: { id: true, name: true },
+    });
+    for (const drive of titles) names.set(drive.id, drive.name);
+  }
   return (
     <>
       <h1>Staff</h1>
@@ -32,7 +62,7 @@ export default async function Staff() {
             {open.map((o) => (
               <tr>
                 <td><code>{o.code}</code></td>
-                <td>{o.drive.name}</td>
+                <td>{names.get(o.drive)}</td>
                 <td>{o.quantity}</td>
                 <td>{money(o.total, shop.currency)}</td>
                 <td>{o.buyerName} <span className="muted">{o.buyerEmail}</span></td>
@@ -70,7 +100,7 @@ export default async function Staff() {
         <thead><tr><th>When</th><th>Drive</th><th>Change</th><th>Reason</th></tr></thead>
         <tbody>
           {moves.map((m) => (
-            <tr><td>{m.at.slice(0, 16).replace("T", " ")}</td><td>{m.drive.name}</td><td>{m.change > 0 ? `+${m.change}` : String(m.change)}</td><td>{m.reason}</td></tr>
+            <tr><td>{m.at.slice(0, 16).replace("T", " ")}</td><td>{names.get(m.drive)}</td><td>{m.change > 0 ? `+${m.change}` : String(m.change)}</td><td>{m.reason}</td></tr>
           ))}
         </tbody>
       </table>

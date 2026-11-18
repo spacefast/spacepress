@@ -60,7 +60,7 @@ pub enum Slot {
     AppMetadata {
         file: String,
     },
-    /// `export const access = (ctx) => boolean` for a `tp/app/` file's HTTP handlers.
+    /// `export const guard = (ctx) => boolean` for a `tp/app/` file's HTTP handlers.
     AppAccess {
         file: String,
     },
@@ -285,7 +285,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             );
             if key == "routes" {
                 d = d.help(
-                    "an HTTP route is a file now: tp/app/<path>/route.ts exporting `access` (or `signature`) and GET, POST, … handlers",
+                    "an HTTP route is a file now: tp/app/<path>/route.ts exporting `guard` (or `signature`) and GET, POST, … handlers",
                 );
             } else if let Some(s) = suggest(key, CONFIG_KEYS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
@@ -4366,11 +4366,11 @@ mod legacy {
                         name: format!("route__{name}__access"),
                         plugin: plugin.map(|(i, _)| i),
                     });
-                    entry.access = Some(Access::Fn(String::new()));
+                    entry.handler_guard = Some(Access::Fn(String::new()));
                 }
-                (Some(Value::Bool(b)), None) => entry.access = Some(Access::Allow(*b)),
+                (Some(Value::Bool(b)), None) => entry.handler_guard = Some(Access::Allow(*b)),
                 (Some(Value::Str(s)), None) if &**s == "anyone" || &**s == "authenticated" || ROLES.contains(&&**s) => {
-                    entry.access = Some(Access::Role(s.to_string()));
+                    entry.handler_guard = Some(Access::Role(s.to_string()));
                 }
                 (Some(other), None) => {
                     return Err(Diag::new(

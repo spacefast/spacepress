@@ -32,6 +32,11 @@ $get = static function (string $path) use ($url): array {
     $location = curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: null;
     return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), $location ?? html_entity_decode(trim(strip_tags($h[1] ?? '')), ENT_QUOTES)];
 };
+$renderLink = static function (array $props): DOMElement {
+    $html = new DOMDocument();
+    @$html->loadHTML(\TypedPress\Render\Markup::link($props, 'Link')->html());
+    return $html->getElementsByTagName('a')->item(0);
+};
 $links = [];
 foreach ([
     'path' => '/notes/dawn-on-the-ridge?q=tea%20time#body',
@@ -45,11 +50,27 @@ foreach ([
     'fragment' => '#body',
     'query' => '?q=tea#body',
 ] as $name => $href) {
-    $html = new DOMDocument();
-    @$html->loadHTML(\TypedPress\Render\Markup::link(['href' => $href, 'prefetch' => true], 'Link')->html());
-    $a = $html->getElementsByTagName('a')->item(0);
+    $a = $renderLink(['href' => $href, 'prefetch' => true]);
     $links[$name] = ['href' => $a->getAttribute('href'), 'template' => $a->getAttribute('data-tp-template'), 'prefetch' => $a->getAttribute('data-wp-on--mouseenter')];
 }
+$authLinks = [];
+$target = '/notes/dawn-on-the-ridge?q=tea%20time&sort=new#body';
+foreach (['guest' => null, 'member' => 'subscriber'] as $role => $user) {
+    $site->actAs($user);
+    foreach ([
+        'protected path' => [$target, true],
+        'protected absolute' => [$url . $target, true],
+        'public path' => [$target, false],
+        'external' => ['https://example.test/notes?q=tea#body', true],
+    ] as $name => [$href, $requireAuth]) {
+        $a = $renderLink(['href' => $href, 'requireAuth' => $requireAuth, 'prefetch' => true]);
+        $authLinks[$role][$name] = [
+            $a->getAttribute('href'), $a->getAttribute('data-wp-on--click'),
+            $a->getAttribute('data-wp-on--mouseenter'), $a->hasAttribute('requireauth'),
+        ];
+    }
+}
+$site->actAs(null);
 $trailing = $GLOBALS['wp_rewrite']->use_trailing_slashes;
 $GLOBALS['wp_rewrite']->use_trailing_slashes = false;
 $html = new DOMDocument();
@@ -69,5 +90,7 @@ echo json_encode([
     'dotted' => $get('/release.v1/'),
     'dotted bare' => $get('/release.v1'),
     'links' => $links,
+    'auth links' => $authLinks,
+    'login for target' => wp_login_url("$url/notes/dawn-on-the-ridge/?q=tea%20time&sort=new#body"),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

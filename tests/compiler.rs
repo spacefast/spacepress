@@ -1084,7 +1084,7 @@ fn context_values_pass_through_typed_helpers() {
         .arg(
             r#"// tp/app/echo/route.ts, matched the way the app router matches it.
                $file = $wp->plugin()->schema->app()["files"]["app/echo/route.ts"];
-               $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["access"], "signature" => null]];
+               $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["handlerGuard"], "signature" => null]];
                // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
                // share-link secret redacted and the share parameter kept out of the query.
                $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
@@ -2044,6 +2044,9 @@ fn compiled_tsx_renders_the_html_react_renders() {
             .skip(1)
             .any(|call| call.trim_start().starts_with(element))
     };
+    let slots = body("static__TemplateSlots");
+    assert_eq!(slots.matches("\\TypedPress\\Html::template(").count(), 2, "{slots}");
+    assert!(!slots.contains("\\TypedPress\\Html::raw("), "{slots}");
     let folded = body("static__Static");
     for element in [
         "'main'",
@@ -2391,12 +2394,8 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     assert_eq!(posts["data"][0]["title"], "Hello, TypedPress", "{posts}");
     drop(server);
 
-    // §7.3: localized posts ship a wpml-config.xml, so WPML and Polylang know which fields translate.
-    assert_eq!(
-        std::fs::read_to_string(plugin.join("wpml-config.xml")).unwrap(),
-        std::fs::read_to_string(root().join("tests/fixtures/blog.wpml-config.xml")).unwrap(),
-        "wpml-config.xml drifted from tests/fixtures/blog.wpml-config.xml"
-    );
+    // The blog has no localized post types. The localized fixture below checks the XML contents.
+    assert!(!plugin.join("wpml-config.xml").exists());
     // Post-backed collections have no MySQL table; editor:false ones do (no FK to a post type).
     let mysql = std::fs::read_to_string(plugin.join("tp/app/migrations/0001_init.sql")).unwrap();
     assert!(mysql.contains("CREATE TABLE `{prefix}tp_comments`"), "{mysql}");

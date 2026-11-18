@@ -80,11 +80,24 @@ export async function POST(req: RouteRequest) {
   `title: { default, template: "%s · Site" }` wraps its pages' titles.
 - `export const search = { page: integer().default(1), q: text().optional() }`
   types the query string. A value a field refuses (`?page=abc`) reads as absent.
-- `guard` on a layout: a role (`"subscriber"`, `"editor"`, …),
-  `"authenticated"`, or `({ user }) => boolean`. A signed-out visitor goes to
-  the sign-in page (wp-login.php, or your `login.tsx`); a signed-in one gets a 403.
-- `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router
-  region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
+- Declare page access once. For example, `export const guard = "admin"` on
+  `page.tsx` protects that page. On `layout.tsx` it protects the whole section.
+  A page inherits every enclosing layout's rule. A signed-out visitor who opens
+  a protected URL goes to sign-in. A signed-in visitor without the role gets 403.
+  On a page with HTTP methods, a single `guard` applies to the page and its methods.
+  Use `guard = { page: "subscriber", handlers: "admin" }` for different permissions,
+  or `guard = { handlers: "admin" }` for a public page with a protected method.
+  A separate `route.ts` declares its own `guard` or a webhook `signature`.
+  To restrict the underlying records in the WordPress API, set their read permissions too.
+  Independently published posts can still appear in the WordPress posts sitemap.
+  Standalone plugins built with schema format 5 need the matching runtime.
+- Write `<Link href="/staff" prefetch>Staff</Link>`. The compiler records when a
+  destination requires a session. Guests go straight to sign-in and return to
+  the destination afterward. Signed-in visitors get normal navigation and
+  hover prefetch. A callback that might allow guests runs at the destination.
+  On a prebuilt page the ordinary destination link works for every visitor.
+  For a local destination whose sign-in requirement is known only to the caller,
+  `requireAuth` opts into the shortcut on a server-rendered page.
 - `<Pagination page={search.page} pages={n} />` renders numbered links to the
   other pages of a listing as a `<nav>`: each is this URL with only `page` (or
   `param`) changed, page 1 drops it, the current page is `aria-current` and not
@@ -676,7 +689,7 @@ WordPress Page**, so the rest of WordPress sees the page as one of its own.
   in a `page.tsx`, or `id: notes.featured` in a `page.md`'s front matter. The old
   URL then redirects to the new one. Two pages with one ID are a build error
   at the second.
-- A route under a layout `guard` stores its Page private, so search, feeds,
+- A route with a page or layout `guard` stores its Page private, so search, feeds,
   the REST API and the sitemap never list it.
 - Code Pages are absent from the wp-admin Pages list, its counts and REST
   `context=edit` lists. `edit_post` and `delete_post` are denied on them, and a
@@ -754,7 +767,7 @@ A prebuilt page is what a signed-out visitor sees, rendered by the page's own
 compiled code. So it can't depend on the request. These are build errors at
 the page, each with its fix:
 
-- a layout `guard` above the page;
+- a `guard` protecting the page read, including one inherited from a layout (a handler-only rule is allowed);
 - `export const search`;
 - a dynamic segment the build can't list;
 - calling `is_user_logged_in`, `current_user_can` or `get_current_user_id`.

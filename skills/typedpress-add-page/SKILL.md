@@ -59,7 +59,7 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    // tp/app/api/recipes/route.ts
    import { recipes } from "typedpress:db";
 
-   export const access = "anyone";
+   export const guard = "anyone";
 
    export async function GET() {
      const rows = await recipes.list({ limit: 20 });

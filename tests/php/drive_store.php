@@ -13,8 +13,16 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
+$profile = null;
+$profilePlugins = [];
+if ($destination = getenv('TP_DRIVE_PROFILE')) {
+    require __DIR__ . '/drive_store_profile.php';
+    $profile = new DriveStoreProfile($destination);
+    $profilePlugins['drive-profile'] = DriveStoreProfile::PLUGIN;
+}
+
 // Core's flood check (one comment per author per 15 seconds) would refuse the test's quick succession.
-$site = wpSite('drive-store', ['wpContent' => $argv[1], 'users' => ['ann' => 'subscriber', 'bo' => 'subscriber'], 'muPlugins' => ['no-flood' => <<<'PHP'
+$site = wpSite('drive-store', ['wpContent' => $argv[1], 'users' => ['ann' => 'subscriber', 'bo' => 'subscriber'], 'muPlugins' => $profilePlugins + ['no-flood' => <<<'PHP'
     <?php
     add_filter('wp_is_comment_flood', '__return_false', PHP_INT_MAX);
     PHP]]);
@@ -130,8 +138,19 @@ foreach (texts($home['body'], "$cards//h2/a/@href") as $href) {
     $out['catalog direct'][] = [$response['status'], $response['headers']['location'] ?? null];
 }
 $out['catalog navigation'] = count(texts($home['body'], "$cards//h2/a[@data-tp-template='tp-blank' and @data-wp-on--click='actions.navigate' and @data-wp-on--mouseenter='actions.prefetch']"));
+$staffEntry = texts($home['body'], "//nav//a[normalize-space(.)='Staff']/@href")[0];
+$out['guest staff entry'] = $staffEntry === wp_login_url(home_url('/staff/'));
 $out['search'] = texts(fetch("$url/?q=samsung")['body'], "$cards//h2");
 $out['filter'] = texts(fetch("$url/?media=nvme")['body'], "$cards//h2");
+
+// The sign-in template's links leave the template, so they work without the app router.
+$signin = fetch("$url/wp-login.php");
+$out['sign-in navigation'] = [
+    'form' => texts($signin['body'], "//form[@id='loginform']/@method"),
+    'catalog' => paths($signin['body'], "//nav//a[normalize-space(.)='Catalog']/@href"),
+    'router' => str_contains($signin['body'], 'typedpress-router-js-module'),
+    'enhanced' => texts($signin['body'], "//nav//a/@data-wp-on--click"),
+];
 
 // A product page.
 $page = fetch("$url/drives/wd-red-plus-4tb/");
@@ -141,6 +160,26 @@ $out['product'] = [
     'stock' => texts($page['body'], "//aside[@class='buybox']//p[@class='muted']"),
     'reviews' => texts($page['body'], "//section[@class='reviews']//a"),
 ];
+
+if ($profile !== null) {
+    foreach ([
+        'catalog' => '/', 'catalog/search' => '/?q=samsung', 'catalog/filter' => '/?media=nvme',
+        'catalog/no-matches' => '/?q=unlisted-model', 'product/in-stock' => '/drives/wd-red-plus-4tb/',
+        'source' => '/source/', 'login' => '/wp-login.php',
+        'login/return' => '/wp-login.php?redirect_to=' . rawurlencode($url . '/staff/'),
+        'feed' => '/?feed=rss2&post_type=tp_drives',
+    ] as $state => $path) {
+        $profile->measure($site, $state, $path);
+    }
+    $profile->measure($site, 'product/missing', '/drives/unlisted-model/', 404);
+    $profile->measure($site, 'not-found', '/unlisted-section/', 404);
+    $profile->measure($site, 'orders/guest', '/orders/', 302);
+    $profile->measure($site, 'staff/guest', '/staff/', 302);
+    $reader = session($site, 'bo');
+    $profile->measure($site, 'orders/empty', '/orders/', 200, $reader);
+    $profile->measure($site, 'staff/forbidden', '/staff/', 403, $reader);
+    $profile->measure($site, 'staff/no-orders', '/staff/', 200, session($site, 'editor'));
+}
 
 // A guest buys with scripts off: the order comes back on the page, and the stock goes down.
 $buy = form($page['body'], '/actions/buy');
@@ -167,13 +206,25 @@ $out['my orders signed out'] = [$anon['status'], str_contains($anon['headers']['
 // Staff: the guard, shipping an order and restocking, each through its action.
 $out['staff as customer'] = fetch("$url/staff/", headers: ["Cookie: $ann"])['status'];
 $editor = session($site, 'editor');
+$profile?->measure($site, 'orders/purchased', '/orders/', 200, $ann);
+$profile?->measure($site, 'staff/pending', '/staff/', 200, $editor);
 $staff = fetch("$url/staff/", headers: ["Cookie: $editor"]);
+$out['member staff entry'] = texts($staff['body'], "//nav//a[normalize-space(.)='Staff' and @data-wp-on--click='actions.navigate']/@href") === [home_url('/staff/')];
 $out['staff'] = ['status' => $staff['status'], 'to ship' => count(texts($staff['body'], '//table[1]//tbody/tr')), 'low' => texts($staff['body'], "//ul[@class='list']/li/span")];
 $out['ship'] = preg_replace('/[0-9A-F]{8}/', 'CODE', texts(submit(form($staff['body'], '/actions/markShipped'), [], $editor)['body'], "//p[@class='ok']")[0] ?? '');
 $out['restock'] = texts(submit(form($staff['body'], '/actions/restock'), ['quantity' => '4'], $editor)['body'], "//p[@class='ok']");
-$out['movements'] = texts(fetch("$url/staff/", headers: ["Cookie: $editor"])['body'], '//table[last()]//tbody/tr/td[4]');
+$afterRestock = fetch("$url/staff/", headers: ["Cookie: $editor"]);
+$out['movements'] = texts($afterRestock['body'], '//table[last()]//tbody/tr/td[4]');
+$out['staff drive names'] = [
+    'orders' => texts($staff['body'], '//table[1]//tbody/tr/td[2]'),
+    'movements' => texts($afterRestock['body'], '//table[last()]//tbody/tr/td[2]'),
+];
 $restock = fetch("$url/__tp/api/v1/actions/restock", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('ann'))], '{"drive":1,"quantity":1}');
 $out['restock as customer'] = $restock['status'];
+foreach (['editor', 'ann'] as $name) {
+    $pending = fetch("$url/__tp/api/v1/actions/pendingOrders", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword($name))], '{}');
+    $out['pending orders'][$name] = [$pending['status'], array_column(json_decode($pending['body'], true)['data']['rows'] ?? [], 'buyer')];
+}
 $orders = fetch("$url/__tp/api/v1/orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('ann'))]);
 $out['orders api as ann'] = array_column(json_decode($orders['body'], true)['data'] ?? [], 'buyerName');
 
@@ -213,6 +264,33 @@ $out['bad price'] = [$bad['status'], json_decode($bad['body'], true)['detail'] ?
 $screen = fetch("$url/wp-json/typedpress-admin/v1/screens/table-orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('editor'))]);
 $fields = json_decode($screen['body'], true)['view']['fields'] ?? [];
 $out['orders screen'] = [$screen['status'], json_decode($screen['body'], true)['title'] ?? null, array_column($fields, 'label', 'id')];
+
+if ($profile !== null) {
+    $profile->measure($site, 'staff/after-shipping', '/staff/', 200, $editor);
+    $profile->measure($site, 'catalog/shop-notice', '/');
+    $profile->measure($site, 'product/review', '/drives/seagate-exos-x16/', 200, $ann);
+}
+\TypedPress\db()->update('drives', ['stock' => 0], ['slug' => 'wd-red-plus-4tb']);
+$soldOut = fetch("$url/drives/wd-red-plus-4tb/");
+$out['sold out'] = [$soldOut['status'], texts($soldOut['body'], "//aside[@class='buybox']//p[@class='muted']"), texts($soldOut['body'], "//button[@disabled]")];
+$profile?->measure($site, 'product/sold-out', '/drives/wd-red-plus-4tb/');
+$profile?->save();
+
+// A filter must select matches before the 100-card limit. The four seeded drives cost more
+// than these HDDs. The published NVMe must still appear, and a matching draft must stay hidden.
+$site->actAs('admin');
+$cheap = ['brand' => 'Test', 'model' => 'Disk', 'capacityGb' => 100, 'price' => 1, 'status' => 'published'];
+for ($i = 0; $i < 100; $i++) {
+    \TypedPress\db()->insert('drives', ['name' => "Filter fixture $i", ...$cheap]);
+}
+\TypedPress\db()->insert('drives', ['name' => 'Unpublished NVMe', ...$cheap, 'media' => 'nvme', 'status' => 'draft']);
+$site->actAs(null);
+$out['filter beyond limit'] = texts(fetch("$url/?media=nvme")['body'], "$cards//h2");
+$out['invalid filter'] = texts(fetch("$url/?condition=invalid")['body'], "//p[@class='empty']");
+foreach (['unpublished-nvme', 'unlisted-model'] as $slug) {
+    $missing = fetch("$url/drives/$slug/");
+    $out['missing products'][$slug] = [$missing['status'], texts($missing['body'], '//h1')];
+}
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), "\n";
 $site->destroy();

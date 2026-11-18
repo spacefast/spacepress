@@ -493,6 +493,17 @@
       "fixed": {},
       "wpError": false
     },
+    "wp_login_url": {
+      "params": [
+        {
+          "name": "redirect",
+          "type": "string"
+        }
+      ],
+      "returns": "string",
+      "fixed": {},
+      "wpError": false
+    },
     "sanitize_text_field": {
       "params": [
         {

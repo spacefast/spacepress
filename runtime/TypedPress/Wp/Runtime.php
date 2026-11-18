@@ -145,7 +145,7 @@ final class Runtime
     }
 
     /** Mount exactly one version after platform plugins load. Visitors never migrate managed apps. */
-    public static function mount(string $runtimeFile, string $appDir, array $variables = []): Plugin
+    public static function mount(string $runtimeFile, string $appDir, array $variables = [], ?\TypedPress\Schema $schema = null): Plugin
     {
         if (self::$booted && !self::$managed) {
             throw new \RuntimeException('A site-wide TypedPress runtime is already loaded');
@@ -153,7 +153,7 @@ final class Runtime
         self::$managed = true;
         \TypedPress\Env::isolate($variables);
         self::boot($runtimeFile);
-        $plugin = self::app($appDir, $appDir . '/' . basename($appDir) . '.php');
+        $plugin = self::app($appDir, $appDir . '/' . basename($appDir) . '.php', $schema);
         if ($plugin === null) {
             throw new \RuntimeException('Cannot mount the managed TypedPress app; check platform requirements');
         }
@@ -408,7 +408,7 @@ final class Runtime
     public static function applySystemTables(): void
     {
         global $wpdb;
-        $schema = new \TypedPress\Schema(['version' => 3, 'runtime' => self::SERIES]);
+        $schema = new \TypedPress\Schema(['version' => 5, 'runtime' => self::SERIES]);
         \TypedPress\SystemTables::apply(CompositeStore::create($schema, new Connection($wpdb)));
         // Features finish their own install here (private files write their deny rules and probe).
         do_action('tp_runtime_tables_installed');
@@ -422,7 +422,7 @@ final class Runtime
         return self::SERIES . '+' . \TypedPress\SystemTables::fingerprint();
     }
 
-    public static function app(string $dir, string $mainFile): ?Plugin
+    public static function app(string $dir, string $mainFile, ?\TypedPress\Schema $schema = null): ?Plugin
     {
         if (self::$appFile === $mainFile) {
             return self::$plugin;
@@ -431,7 +431,7 @@ final class Runtime
             if (self::$plugin !== null) {
                 throw new \RuntimeException('only one TypedPress app can be active; deactivate the other app first');
             }
-            $schema = \TypedPress\Schema::load($dir . '/tp/app/schema.php');
+            $schema ??= \TypedPress\Schema::load($dir . '/tp/app/schema.php');
             $problems = Platform::problems($schema->locales() !== null);
             if ($problems !== []) {
                 throw new \RuntimeException(implode('; ', $problems));

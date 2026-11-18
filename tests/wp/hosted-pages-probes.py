@@ -6,7 +6,7 @@ import os
 import sys
 
 project = sys.argv[1]
-WHO = """export const access = "anyone";
+WHO = """export const guard = "anyone";
 const who = (ctx: HookCtx) => ({ body: ctx.user === null ? "anonymous" : "user " + String(ctx.user.id) });
 export function GET(_req: RouteRequest, ctx: HookCtx) {
   return who(ctx);
@@ -17,13 +17,13 @@ export function POST(_req: RouteRequest, ctx: HookCtx) {
 """
 probes = {
     # Undefined optional fields take the documented defaults.
-    "api/probe/defaults": """export const access = "anyone";
+    "api/probe/defaults": """export const guard = "anyone";
 export function GET() {
   return { status: undefined, headers: { "x-probe": "yes" }, body: undefined };
 }
 """,
     # once() keyed to the request body.
-    "api/probe/once": """export const access = "anyone";
+    "api/probe/once": """export const guard = "anyone";
 export async function POST(req: RouteRequest) {
   const result = await once("probe", async () => ({ seen: req.body }));
   return { body: result.seen };
@@ -31,38 +31,38 @@ export async function POST(req: RouteRequest) {
 """,
     # Specificity: parameter folders lose to the literal ones (`api/probe/feed.json` and the
     # example's `api/feed.json`), segment by segment from the left.
-    "api/[kind]": """export const access = "anyone";
+    "api/[kind]": """export const guard = "anyone";
 export function GET(req: RouteRequest) {
   return { body: "param " + req.params["kind"] };
 }
 """,
-    "api/[kind]/[id]": """export const access = "anyone";
+    "api/[kind]/[id]": """export const guard = "anyone";
 export function GET(req: RouteRequest) {
   return { body: "params " + req.params["kind"] + " " + req.params["id"] };
 }
 """,
-    "api/probe/[id]": """export const access = "anyone";
+    "api/probe/[id]": """export const guard = "anyone";
 export function GET(req: RouteRequest) {
   return { body: "probe param " + req.params["id"] };
 }
 """,
-    "api/probe/feed.json": """export const access = "anyone";
+    "api/probe/feed.json": """export const guard = "anyone";
 export function GET() {
   return { body: "probe literal" };
 }
 """,
     # Catch-all: `[...path]` takes one or more decoded segments, below literals and params.
-    "files/[...path]": """export const access = "anyone";
+    "files/[...path]": """export const guard = "anyone";
 export function GET(req: RouteRequest) {
   return { body: "rest " + req.params["path"] };
 }
 """,
-    "files/[bucket]/latest": """export const access = "anyone";
+    "files/[bucket]/latest": """export const guard = "anyone";
 export function GET(req: RouteRequest) {
   return { body: "latest " + req.params["bucket"] };
 }
 """,
-    "files/readme.txt": """export const access = "anyone";
+    "files/readme.txt": """export const guard = "anyone";
 export function GET() {
   return { body: "readme" };
 }
@@ -70,7 +70,7 @@ export function GET() {
     # Who the route sees: per channel, as WordPress REST decides it.
     "api/probe-who": WHO,
     # The query as URLSearchParams reads it.
-    "api/probe-query": """export const access = "anyone";
+    "api/probe-query": """export const guard = "anyone";
 export function GET(req: RouteRequest) {
   return { headers: { "content-type": "application/json" }, body: JSON.stringify({
     dotted: req.query.get("a.b"), underscored: req.query.get("a_b"),

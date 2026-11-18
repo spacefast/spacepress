@@ -371,6 +371,7 @@ impl Compiler<'_, '_> {
                 "children",
                 "className",
                 "prefetch",
+                "requireAuth",
                 "id",
                 "title",
                 "rel",
@@ -597,8 +598,8 @@ impl Compiler<'_, '_> {
                     }
                     let out = self.expr(v)?;
                     let out = self.finish_value(out, v.span)?;
-                    let want = if *k == "prefetch" {
-                        Ty::Bool
+                    let want = if matches!(*k, "prefetch" | "requireAuth") {
+                        Ty::union([Ty::Bool, Ty::Undefined])
                     } else {
                         Ty::union([Ty::Str, Ty::Null, Ty::Undefined])
                     };

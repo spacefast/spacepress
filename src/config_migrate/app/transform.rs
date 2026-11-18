@@ -2146,7 +2146,7 @@ fn route_files(served: &[(String, String, String)]) -> BTreeMap<PathBuf, String>
             let up = "../".repeat(segments.len() + 1);
             let functions: BTreeSet<&str> = methods.iter().map(|(_, f)| *f).collect();
             let mut text = format!(
-                "// The 0.8 endpoints at {path}, served from the converted server module.\nimport {{ {} }} from \"{up}server/index\";\n\nexport const access = \"anyone\";\n",
+                "// The 0.8 endpoints at {path}, served from the converted server module.\nimport {{ {} }} from \"{up}server/index\";\n\nexport const guard = \"anyone\";\n",
                 functions.into_iter().collect::<Vec<_>>().join(", ")
             );
             for (method, function) in methods {

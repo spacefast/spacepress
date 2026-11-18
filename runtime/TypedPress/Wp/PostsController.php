@@ -19,6 +19,8 @@ namespace TypedPress\Wp;
 final class PostsController extends \WP_REST_Posts_Controller
 {
     private string $collection;
+    /** @var ?array{request: \WP_REST_Request, ids: list<int>, rows: array, generation: int} */
+    private ?array $projectedPage = null;
 
     public function __construct($post_type)
     {
@@ -48,15 +50,22 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function get_items($request)
     {
-        if (!Facade::dispatching() || ($viewer = CoreAccess::viewer()) === null) {
+        $facade = Facade::dispatching();
+        $batch = !$facade && $request->get_method() === 'GET' && $request->has_param('_fields')
+            && \TypedPress\Extensions::constraintReadsSafe() && !\TypedPress\Locale\Module::localized($this->collection);
+        if ((!$facade && !$batch) || ($viewer = CoreAccess::viewer()) === null) {
             return $this->readRequest($request, fn () => $this->readItems($request));
         }
-        // The API reshapes each item into TypedPress's row: read the whole page's rows in one query.
-        $prefetch = function (mixed $posts, mixed $query) use ($viewer): mixed {
+        $previous = $this->projectedPage;
+        $this->projectedPage = $batch ? ['request' => $request, 'ids' => [], 'rows' => [], 'generation' => -1] : null;
+        $prefetch = function (mixed $posts, mixed $query) use ($viewer, $facade): mixed {
             if (is_array($posts) && $query instanceof \WP_Query && $query->get('post_type') === $this->post_type) {
-                Facade::prefetch($this->collection, array_map(static fn ($p) => (int) ($p instanceof \WP_Post ? $p->ID : $p), $posts), $viewer);
+                if ($facade) {
+                    Facade::prefetch($this->collection, array_map(static fn ($p) => (int) ($p instanceof \WP_Post ? $p->ID : $p), $posts), $viewer);
+                } elseif ($this->projectedPage !== null && $this->projectedPage['generation'] === -1 && count($posts) > 1 && count($posts) <= 100) {
+                    $this->projectedPage['ids'] = array_map(static fn ($p) => (int) ($p instanceof \WP_Post ? $p->ID : $p), $posts);
+                }
             }
-
             return $posts;
         };
         add_filter('the_posts', $prefetch, 10, 2);
@@ -64,6 +73,7 @@ final class PostsController extends \WP_REST_Posts_Controller
             return $this->readRequest($request, fn () => $this->readItems($request));
         } finally {
             remove_filter('the_posts', $prefetch, 10);
+            $this->projectedPage = $previous;
         }
     }
 
@@ -176,9 +186,30 @@ final class PostsController extends \WP_REST_Posts_Controller
         return Facade::dispatching() ? array_values(array_diff($fields, ['_links'])) : $fields;
     }
 
+    private function storedRow(int $id, \WP_REST_Request $request): ?array
+    {
+        $db = Plugin::instance()?->db();
+        if ($this->projectedPage !== null && $this->projectedPage['request'] === $request) {
+            $page = &$this->projectedPage;
+            if ($page['generation'] !== CoreAccess::generation()) {
+                $page['rows'] = [];
+            }
+            if ($page['ids'] !== [] && in_array($id, $page['ids'], true)) {
+                $ids = $page['ids'];
+                $page['ids'] = [];
+                $page['generation'] = CoreAccess::generation();
+                $page['rows'] = $db?->editorRows($this->collection, $ids) ?? [];
+            }
+            if ($page['generation'] === CoreAccess::generation() && isset($page['rows'][$id])) {
+                return $page['rows'][$id];
+            }
+        }
+        return $db?->editorRow($this->collection, $id);
+    }
+
     public function prepare_item_for_response($item, $request)
     {
-        $stored = Plugin::instance()?->db()->editorRow($this->collection, (int) $item->ID);
+        $stored = $this->storedRow((int) $item->ID, $request);
         $response = $this->meta instanceof PostMeta ? $this->meta->with((int) $item->ID, $stored, fn () => parent::prepare_item_for_response($item, $request))
             : parent::prepare_item_for_response($item, $request);
         // For the facade's own dispatches, TypedPress's row as this viewer reads it (field masks, system

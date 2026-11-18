@@ -28,7 +28,7 @@ final class IdentityBridge implements Issuer
     }
 
     /** typedpress-identity hooks: shared transactions on $wpdb, the guest role, `wp typedpress identity` suspension. */
-    public static function hook(Connection $db): void
+    public static function hook(Plugin $plugin): void
     {
         if (self::$hooked) {
             return;
@@ -36,8 +36,8 @@ final class IdentityBridge implements Issuer
         self::$hooked = true;
         // Identity joins a TypedPress transaction on the shared $wpdb by itself; users it changes there
         // must leave the object cache if the TypedPress transaction later rolls back.
-        add_action('tp_identity_touched_user', static function (int $uid) use ($db): void {
-            $db->onRollback(static function () use ($uid): void {
+        add_action('tp_identity_touched_user', static function (int $uid) use ($plugin): void {
+            $plugin->connection()->onRollback(static function () use ($uid): void {
                 clean_user_cache($uid);
                 wp_cache_delete($uid, 'user_meta');
             });

@@ -1503,8 +1503,8 @@
       "source": "lib/load-libs.php",
       "sha256": "8a781c03a3f83c87ffb87ac714e77df6a44ab75b57eca45558b3b838ada2b8dd",
       "path": "lib/load-libs.php",
-      "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "1998306eb8b6e0b832a4e84de87fadd619da19882a77f6aa33c4ce940ac589a2",
+      "adaptation": "TypedPress registration APIs, screens, build integration and on-demand REST controllers",
+      "adaptedSha256": "017b4a380e2f93fc91ce36faa09e535f57172f098a3c747a0233876dc86fbdd9",
       "normalizedSha256": "3ad86290c58390db19e9af3b4adf7c2f9c9bfb9c3767d044c9adf6c817a37029",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/load-libs.php"
     },
@@ -1548,8 +1548,8 @@
       "source": "lib/rest-api/class-next-admin-rest-editor-controller.php",
       "sha256": "cf84e32ea8b0638c5bcf20939e8a9b8424b4928135163006a6a9969369f9c109",
       "path": "lib/rest-api/class-typedpress-admin-rest-editor-controller.php",
-      "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "f5eba048a0fd6796415b5c52fcd42cef3f63fa8e968a6c104800d4b8dcbc597b",
+      "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch; register routes from the bootstrap",
+      "adaptedSha256": "06a9be8f3637103bbd41912dad9e203231a78406d7268db34f21e6c5dc966929",
       "normalizedSha256": "0356076671cf07dbf4a5c23a3c86bf9bf336fc1d1f66fefc4f946885a5e8d4d4",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/rest-api/class-next-admin-rest-editor-controller.php"
     },
@@ -1557,35 +1557,35 @@
       "source": "lib/rest-api/class-next-admin-rest-field-collections-controller.php",
       "sha256": "d009738c75c525738455018c89b67726b38a285137397a89550c69d20473b366",
       "path": "lib/rest-api/class-typedpress-admin-rest-field-collections-controller.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "9a7cc3a9362562b0649a51c6fc5cb3daf1f83ec687f20a274ed58b95c0a8367c",
+      "adaptation": "Register routes from the bootstrap and load the controller on demand",
+      "adaptedSha256": "7cdd4fba134f0627c54d06cf84804d9f59fd785b856454382cae1e74b173eab5",
       "normalizedSha256": "9a7cc3a9362562b0649a51c6fc5cb3daf1f83ec687f20a274ed58b95c0a8367c",
-      "retainedSourcePath": "lib/rest-api/class-typedpress-admin-rest-field-collections-controller.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/rest-api/class-next-admin-rest-field-collections-controller.php"
     },
     {
       "source": "lib/rest-api/class-next-admin-rest-plugins-controller.php",
       "sha256": "fe42b9b31a88dd420a71811bfd53d1057890cf6a2ade188fe6383087fb4ec3a4",
       "path": "lib/rest-api/class-typedpress-admin-rest-plugins-controller.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "9577e5f0d6c65f3a85ad0daa44606883ea6013c1c4ef4de23317aebfad54bbc1",
+      "adaptation": "Register routes from the bootstrap and load the controller on demand",
+      "adaptedSha256": "8599099315785490d8c12991c23098d2c500906bb7b0b7e4b033b7b1fefc2483",
       "normalizedSha256": "9577e5f0d6c65f3a85ad0daa44606883ea6013c1c4ef4de23317aebfad54bbc1",
-      "retainedSourcePath": "lib/rest-api/class-typedpress-admin-rest-plugins-controller.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/rest-api/class-next-admin-rest-plugins-controller.php"
     },
     {
       "source": "lib/rest-api/class-next-admin-rest-resolved-template-controller.php",
       "sha256": "4ad573f38da8f82ab7f39dc54d9c12636fc6b88b536968adea8bb8a48a26d787",
       "path": "lib/rest-api/class-typedpress-admin-rest-resolved-template-controller.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "ce7e459140733ad67ae8cedfa012b4f5b1612d76029e17131d2aad094bc8c4d5",
+      "adaptation": "Register routes from the bootstrap and load the controller on demand",
+      "adaptedSha256": "ab298b332dc3a184d21fb84f5c9f9b1a8899a6e62653e4b97f52d4533d3fcd89",
       "normalizedSha256": "ce7e459140733ad67ae8cedfa012b4f5b1612d76029e17131d2aad094bc8c4d5",
-      "retainedSourcePath": "lib/rest-api/class-typedpress-admin-rest-resolved-template-controller.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/rest-api/class-next-admin-rest-resolved-template-controller.php"
     },
     {
       "source": "lib/rest-api/class-next-admin-rest-view-config-controller.php",
       "sha256": "f945d03321eae5eb70b2331c07c816f00fd6d7607531d2193fc09f663ae07f2a",
       "path": "lib/rest-api/class-typedpress-admin-rest-view-config-controller.php",
-      "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "83fcb5299c3fa15a4a4f00912b6a08f66acb96f7a6449f6c78a5544fc52ec0e8",
+      "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch; register routes from the bootstrap",
+      "adaptedSha256": "b75380f5cae05d14d0b25db7277f8c3d69eec50150d8b8a815489ac910720bef",
       "normalizedSha256": "0984a4cb3c995d2b405fe9c8fb517ab23f69a110d626ffad565babf174924b26",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/rest-api/class-first-admin-rest-view-config-controller.php"
     },
@@ -1593,10 +1593,10 @@
       "source": "lib/rest-api/class-wp-rest-themes-controller.php",
       "sha256": "ef557143b49bd5bcc9c6676fa89b4ac6bc05af46e157b590a3b2d294b8ec9410",
       "path": "lib/rest-api/class-wp-rest-themes-controller.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "8cfe2fea148f45ad2172ee0135ac431654e25b30c414f408edc7c92e57027a56",
+      "adaptation": "Register routes from the bootstrap and load the controller on demand",
+      "adaptedSha256": "a4617bd0bb6d15f72e3ba089dc6b42c15c98a656a6acd025e445246fbee1109b",
       "normalizedSha256": "8cfe2fea148f45ad2172ee0135ac431654e25b30c414f408edc7c92e57027a56",
-      "retainedSourcePath": "lib/rest-api/class-wp-rest-themes-controller.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/rest-api/class-wp-rest-themes-controller.php"
     },
     {
       "source": "lib/rest-api/core-rest-api-overrides.php",
@@ -6841,7 +6841,7 @@
       "sha256": "c4b68013ea1f4d527da575a43338a03050680e5b759a9ee31ef5557d54d5cabf",
       "path": "apps/packages/wp-build/lib/php-generator.js",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "e203f4176442bbd660124f8f1f66c17a0a7e4d5f13be9a51b1f439e751b8d62f",
+      "adaptedSha256": "ae3fc662cbd385876c02664b4e171563cc54d1747a30905fea726720b4bfbfbe",
       "normalizedSha256": "c4b68013ea1f4d527da575a43338a03050680e5b759a9ee31ef5557d54d5cabf",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/wp-build/lib/php-generator.js"
     },
@@ -6850,7 +6850,7 @@
       "sha256": "c0e408dd007b067991fe946af96b4c0872ec8ea279de951ed4ca9a96b3fc2060",
       "path": "apps/packages/wp-build/lib/templates/index.php",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "ec4f14773f66ffdb7ad493e1bb12d5a7dd07813220448c0d2c3b3902f2937e28",
+      "adaptedSha256": "2a20d3609b458ef57676c8d63b6cdaa5e9c56c8f248a0f73a6c23d25811076c2",
       "normalizedSha256": "847b7d08208a187955329f6a49cc1de1cc9e0444faeb926ce785ded80b70a210",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/wp-build/lib/templates/index.php"
     },

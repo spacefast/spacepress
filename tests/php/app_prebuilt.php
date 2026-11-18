@@ -213,5 +213,29 @@ $started = microtime(true) - 5;
 $m = new ReflectionMethod(\TypedPress\Render\Prebuilt::class, 'write');
 $out['forget race'] = [$m->invoke(null, \TypedPress\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started), is_file(\TypedPress\Render\Prebuilt::dir() . '/about.html')];
 
+// A loose deployment can replace only a public module and its map, with the same size and mtime.
+// Its prebuilt HTML must still stop sending the old digest in a script URL.
+wp_mkdir_p($dir);
+file_put_contents($dir . '/about.html', $about['body']);
+$cached = fetch("$url/about/");
+$appRoot = \TypedPress\Wp\Runtime::plugin()->dir;
+$asset = $appRoot . '/public/about-module.mjs';
+$map = $appRoot . '/tp/app/public-script-versions.json';
+$prior = hash_file('sha256', $asset);
+$script = str_replace('version = 1', 'version = 2', (string) file_get_contents($asset));
+$next = hash('sha256', $script);
+$mtime = filemtime($map);
+$mapSize = filesize($map);
+file_put_contents($asset, $script);
+file_put_contents($map, str_replace($prior, $next, (string) file_get_contents($map)));
+touch($map, $mtime);
+clearstatcache();
+$updated = fetch("$url/about/");
+$out['public script updated'] = [
+    $cached['prebuilt'], str_contains($cached['body'], 'tpv=' . $prior),
+    filesize($map) === $mapSize && filemtime($map) === $mtime,
+    $updated['status'], $updated['prebuilt'], str_contains($updated['body'], 'tpv=' . $next),
+];
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

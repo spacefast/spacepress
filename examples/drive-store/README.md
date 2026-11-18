@@ -31,7 +31,7 @@ bun run build:source
 ```
 
 Run `bun run build:source` again before publishing or after editing files shown on `/source`.
-The build snapshots the files listed in `browser/build.mjs` into `public/drive-source/`.
+The build highlights the files listed in `browser/build.mjs` and writes the previews to `public/drive-source`. Only `/source` loads them.
 
 From the repository root:
 
@@ -68,3 +68,12 @@ with scripts off would ([`tests/php/drive_store.php`](../../tests/php/drive_stor
 and filters, buying and the stock rule, My orders, the staff page and its actions, reviews, the RSS
 feed and the settings global.
 
+
+To compare changes on the same machine, run the integration test once per build with
+`TP_DRIVE_PROFILE=/absolute/path/to/report.json`. Each named state gets one warm-up
+and five timed GETs against the disposable WordPress site. The report records the
+median response time, response bytes, included PHP files, SQL statements
+(WordPress plus the separate TypedPress connection), and joins to the WordPress
+postmeta table in TypedPress statements. Purchases, reviews, shipping,
+and restocking run once in the surrounding functional test. Compare corresponding
+states to find where a change adds or removes work.

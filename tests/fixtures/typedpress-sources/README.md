@@ -20,7 +20,7 @@ Labels:
 
 | label | captured at | how |
 |---|---|---|
-| `head` | the commit that removed the `defineConfig` registries (main, 2026-11-14) | `tests/fixtures/typedpress-sources/capture.sh head`, with the compiler built from that commit |
+| `head` | the current pre-release authoring API | `tests/fixtures/typedpress-sources/capture.sh head`, with the compiler built from that checkout |
 
 The examples are `pantry` (SQL tables, references, a job, actions), `blog` (post-backed kinds, a user
 projection, a global, files, synced content, `public/`) and `full-site` (`tp/app/` pages and
@@ -39,13 +39,14 @@ layouts).
   store the same things. A release may not refuse source an earlier release accepted.
 - A changed `plan.json` shows up in the PR's diff. Say why the plan changed in the PR.
 
-## Breaks before the rule
+## Authoring changes
 
-Captures of the same three examples at earlier commits of main, compiled with main at `6ca0f37fe`
-(2026-11-14). They are recorded here, not kept as fixtures: the rule starts at `head`.
+The current `head` capture includes the HTTP guard change. The earlier rows describe captures
+compiled with main at `6ca0f37fe` (2026-11-14), before the first kept fixture.
 
 | captured at | example | form before | form after | what the current compiler says |
 |---|---|---|---|---|
+| current `head` | full-site | `export const access = "anyone"` on an HTTP route | `export const guard = "anyone"` | The captured source recompiles against its existing migration and storage baseline. |
 | `4ff013b52` (#243, the rename to TypedPress) | pantry | `timestamp().notNull().defaultNow()` | required by default; `.optional()` for one that may be empty (#273) | `` `.notNull()` is gone: fields are required by default `` |
 | `4ff013b52` | blog | `text().notNull().max(80)` | `text().max(80)` (#273) | `` `.notNull()` is gone: fields are required by default `` |
 | `4ff013b52` | full-site | TSX pages for the old pages renderer (`tp/pages.json`) | pages under `tp/app/` (#315) | `this bundle has TSX pages from the old pages renderer (tp/pages.json), which TypedPress no longer has` |

@@ -74,7 +74,8 @@ problem('a term has no author', fn () => $db->insert('topics', ['name' => 'A', '
 $updated = $db->update('topics', ['name' => 'World news', 'description' => 'Everywhere', 'color' => null], ['id' => $news['id']], true)[0];
 eq('an update writes core\'s fields and term meta', [$updated['name'], $updated['slug'], $updated['description'], $updated['color']], ['World news', 'news', 'Everywhere', null]);
 eq('a cleared field is gone from term meta', get_term_meta($news['id'], 'tp_color', true), '');
-eq('a term with no fields of its own is a row too', array_keys($db->insert('tags', ['name' => 'Short'], true)[0]), ['id', 'name', 'slug', 'description', 'count', 'url']);
+$short = $db->insert('tags', ['name' => 'Short'], true)[0];
+eq('a term with no fields of its own is a row too', array_keys($short), ['id', 'name', 'slug', 'description', 'count', 'url']);
 
 // ================================================================ hierarchy (ruling 30)
 
@@ -83,6 +84,16 @@ $city = $db->insert('topics', ['name' => 'City', 'parent' => $local['id']], true
 eq('parent is a term of the same taxonomy', $local['parent'], $news['id']);
 eq('`:path` is the chain of ancestor slugs', $city['url'], home_url('/topics/news/local/city/'));
 $tag = $db->insert('tags', ['name' => 'Elsewhere'], true)[0];
+foreach ([$tag, $short] as $row) {
+    wp_cache_delete($row['id'], 'terms');
+}
+$readUrls = static fn () => array_column($db->findMany('tags', ['columns' => ['url' => true]]), 'url');
+$beforeUrls = $wpdb->num_queries;
+eq('term lists use the core permalink for each row', $readUrls(), [home_url('/tags/elsewhere/'), home_url('/tags/short/')]);
+$coldQueries = $wpdb->num_queries - $beforeUrls;
+$beforeUrls = $wpdb->num_queries;
+$readUrls();
+eq('cold term links need one more WordPress query than cached links', $coldQueries - ($wpdb->num_queries - $beforeUrls), 1);
 problem('a parent from another taxonomy is refused', fn () => $db->insert('topics', ['name' => 'X', 'parent' => $tag['id']]), 409, 'reference_violation', '/parent');
 problem('a term can\'t be its own parent', fn () => $db->update('topics', ['parent' => $local['id']], ['id' => $local['id']]), 409, 'reference_violation', '/parent');
 problem('a flat taxonomy has no parent', fn () => $db->insert('tags', ['name' => 'Y', 'parent' => $tag['id']]), 422, 'invalid_input', '/parent');
@@ -195,5 +206,12 @@ $wide = array_map(static fn (array $r): array => array_intersect_key($r, array_f
 eq('a term read with columns returns what reading every column gave', $narrow, $wide);
 $termSql = array_values(array_filter($statements, static fn (string $s): bool => str_contains($s, 'AS `name`')))[0] ?? '';
 check('and selects no other term field or meta join', !str_contains($termSql, 'AS `color`') && !str_contains($termSql, 'AS `description`') && !str_contains($termSql, "meta_key = 'tp_color'"), $termSql);
+
+// Older sites can share the same term ID across taxonomies. Core never caches an ambiguous ID.
+$wpdb->insert($wpdb->term_taxonomy, ['term_id' => $tag['id'], 'taxonomy' => 'category', 'description' => '']);
+wp_cache_delete($tag['id'], 'terms');
+check('a shared term still has its taxonomy-specific URL', in_array(home_url('/tags/elsewhere/'), $readUrls(), true));
+$shared = get_term($tag['id']);
+check('listing URLs keeps unqualified shared term IDs ambiguous', is_wp_error($shared) && $shared->get_error_code() === 'ambiguous_term_id');
 
 finish('taxonomy');

@@ -1096,8 +1096,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // `metadata` function takes the same props.
             Slot::Component { .. } => vec![],
             Slot::AppPage { file } | Slot::AppMetadata { file } => vec![self.app_props(file)],
-            Slot::AppGuard { .. } => vec![types::hook_ctx()],
-            Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
+            Slot::AppGuard { .. } | Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
             Slot::AppHandler { .. } => vec![types::route_request(), ctx],
             Slot::AppStaticParams { .. } => vec![],
             Slot::ActionHandler { action } => vec![
@@ -7051,16 +7050,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             JsxKind::Fragment => {
                 let children = self.jsx_children(&jsx.children)?;
-                // A fragment of static markup is that markup.
-                if let [only] = children.as_slice()
-                    && static_markup(only).is_some()
-                {
-                    return Ok(Out::atom(only.clone(), Ty::Html));
-                }
-                Ok(Out::atom(
-                    format!("\\TypedPress\\Html::children({})", children.join(", ")),
-                    Ty::Html,
-                ))
+                Ok(Out::atom(self.fold_children(children), Ty::Html))
             }
             JsxKind::Intrinsic(tag) => self.jsx_element(tag, jsx, span),
         }
@@ -7440,23 +7430,43 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => children.to_vec(),
         };
         let mut parts = vec![format!("\\TypedPress\\Html::raw({})", php_str(&format!("{open}>")))];
-        // A folded child element's parts join this element's, so static runs span the boundary.
+        parts.extend(children);
+        parts.push(format!("\\TypedPress\\Html::raw({})", php_str(&format!("</{tag}>"))));
+        Some(self.fold_children(parts))
+    }
+
+    /// Flatten static runs across nested tags and fragments. Only compiler-escaped literals
+    /// enter the template. The other children keep their source evaluation order and render lazily.
+    fn fold_children(&mut self, children: Vec<String>) -> String {
+        let mut parts = Vec::new();
         for child in children {
             match self.folded_parts.remove(&child) {
                 Some(inner) => parts.extend(inner),
                 None => parts.push(child),
             }
         }
-        parts.push(format!("\\TypedPress\\Html::raw({})", php_str(&format!("</{tag}>"))));
         let parts = merge_static(parts);
-        Some(match parts.as_slice() {
-            [only] => only.clone(),
-            _ => {
-                let php = format!("\\TypedPress\\Html::children({})", parts.join(", "));
-                self.folded_parts.insert(php.clone(), parts);
-                php
+        let mut literals = vec![String::new()];
+        let mut slots = Vec::new();
+        for part in &parts {
+            if let Some(markup) = static_markup(part) {
+                literals.last_mut().unwrap().push_str(&markup);
+            } else {
+                slots.push(part.as_str());
+                literals.push(String::new());
             }
-        })
+        }
+        if slots.is_empty() {
+            return format!("\\TypedPress\\Html::raw({})", php_str(&literals[0]));
+        }
+        let php = if literals.iter().all(String::is_empty) {
+            format!("\\TypedPress\\Html::children({})", slots.join(", "))
+        } else {
+            let literals = literals.iter().map(|s| php_str(s)).collect::<Vec<_>>().join(", ");
+            format!("\\TypedPress\\Html::template([{literals}], {})", slots.join(", "))
+        };
+        self.folded_parts.insert(php.clone(), parts);
+        php
     }
 
     /// One attribute of an intrinsic element, named in the source or set by a closed spread,

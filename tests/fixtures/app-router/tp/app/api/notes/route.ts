@@ -1,6 +1,6 @@
 import { db } from "typedpress";
 
-export const access = "anyone";
+export const guard = "anyone";
 
 export async function GET() {
   const notes = await db.query.notes.findMany({});

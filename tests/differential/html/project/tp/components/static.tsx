@@ -61,3 +61,9 @@ function boom(): string {
 export function VoidThrows() {
   return <p><hr>{boom()}</hr></p>;
 }
+
+export function TemplateSlots({ text }: { text: string }) {
+  let n = 0;
+  const pair = <>{++n}<i>{text}</i>{++n}</>;
+  return <article><>{pair}{pair}</><p>{n}</p></article>;
+}

@@ -329,7 +329,7 @@ final class Db
                 }
             }
             if ($viewer !== null) {
-                array_push($guards, ...$this->readGuards($collection, $viewer));
+                array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true));
             }
             $filterViewer ??= $viewer;
             // `search`: the rows whose searchable fields this reader may read hold every word, as one
@@ -349,7 +349,7 @@ final class Db
             $only = $prune ? $this->selected($collection, $opts, $viewer, $partition) : null;
 
             return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
-                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer), $only);
+                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer, forSelect: true), $only);
         });
     }
 
@@ -380,15 +380,28 @@ final class Db
     /**
      * The primary keys $viewer's read or update rule (+ draft visibility for read) covers, or null when
      * it covers every row. Throws 401/403 when the rule denies. Rows as stored: no locale or other
-     * query extension narrows them.
+     * query extension narrows them. For integer primary keys a candidate narrows this first read
+     * and $remaining can read the complete set later under the same evaluated guards.
      *
+     * @param-out ?\Closure(): list<int|string> $remaining
      * @return ?list<int|string>
      */
-    public function permittedKeys(string $collection, string $op, Viewer $viewer): ?array
+    public function permittedKeys(string $collection, string $op, Viewer $viewer, ?int $candidate = null, ?\Closure &$remaining = null): ?array
     {
+        $remaining = null;
         $guards = $op === 'read' ? $this->readGuards($collection, $viewer) : $this->writeGuards($collection, $op, $viewer, null);
+        if ($guards === []) {
+            return null;
+        }
+        $spec = $this->schema->collection($collection);
+        $pk = $spec['primaryKey'];
+        if ($candidate !== null && $spec['columns'][$pk]['type'] === 'integer') {
+            // A later list or second ID uses the already evaluated rule, including any callback.
+            $remaining = fn (): array => $this->keysMatching($collection, null, $guards);
+            return $this->keysMatching($collection, [$pk => $candidate], $guards);
+        }
 
-        return $guards === [] ? null : $this->keysMatching($collection, null, $guards);
+        return $this->keysMatching($collection, null, $guards);
     }
 
     /** @return list<int|string> primary keys of rows matching $where and every guard, as stored */
@@ -396,7 +409,7 @@ final class Db
     {
         return $this->current(function () use ($collection, $where, $guards): array {
             $pk = $this->schema->collection($collection)['primaryKey'];
-            $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], null, '', $guards);
+            $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], guards: $guards, only: [$pk => true]);
 
             return array_column($this->store->select($collection, $q), $pk);
         });
@@ -415,7 +428,7 @@ final class Db
     }
 
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
-    private function readGuards(string $collection, Viewer $viewer): array
+    private function readGuards(string $collection, Viewer $viewer, bool $forSelect = false): array
     {
         $spec = $this->schema->collection($collection);
         $rule = Access::collectionRules($spec)['read'];
@@ -430,7 +443,7 @@ final class Db
             $guards[] = ['status' => 'published'];
         }
 
-        return [...$guards, ...$this->store->readGuards($collection, $viewer)];
+        return [...$guards, ...$this->store->readGuards($collection, $viewer, $forSelect)];
     }
 
     /**
@@ -1533,6 +1546,25 @@ final class Db
         $opts = ['where' => [$this->schema->collection($collection)['primaryKey'] => $pk], 'limit' => 1];
 
         return $this->selectDecoded($collection, $opts, '', null)[0] ?? null;
+    }
+
+    /** Stored rows for a page of WordPress post IDs, with the same decoding as editorRow(). */
+    public function editorRows(string $collection, array $ids): array
+    {
+        $pk = $this->schema->collection($collection)['primaryKey'];
+        $opts = ['where' => [$pk => ['in' => $ids]], 'limit' => count($ids) + 1];
+        $found = $this->selectDecoded($collection, $opts, '', null);
+        if (count($found) > count($ids)) {
+            return []; // Duplicate postmeta multiplied the joins. Fall back to the individual LIMIT 1 reads.
+        }
+        $rows = [];
+        foreach ($found as $row) {
+            $id = (int) $row[$pk];
+            // Non-unique WordPress postmeta can return several rows for one post. Let the normal
+            // LIMIT 1 query choose that item's row exactly as it would for an individual response.
+            $rows[$id] = array_key_exists($id, $rows) ? null : $row;
+        }
+        return $rows;
     }
 
     /**

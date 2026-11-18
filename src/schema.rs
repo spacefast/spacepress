@@ -812,13 +812,14 @@ pub struct AppFile {
     pub component: Option<String>,
     /// A literal metadata object, or `{ "fn": name }` for a function.
     pub metadata: Option<Json>,
+    /// Read access for a page or layout (`export const guard`).
     pub guard: Option<Access>,
     pub search: Option<AppSearch>,
     /// HTTP method → compiled handler.
     pub methods: IndexMap<String, String>,
-    /// Who may call the handlers (`export const access`), or the signature that authenticates
-    /// them (`export const signature`, a raw signed webhook). Exactly one when there are handlers.
-    pub access: Option<Access>,
+    /// Who may call the handlers (`guard`), or the signature authenticating a raw signed webhook.
+    /// Exactly one when there are handlers.
+    pub handler_guard: Option<Access>,
     pub signature: Option<Json>,
     /// `export const prerender = true | false` (pages): `None` when the page says nothing, so it
     /// follows the config's `output`.

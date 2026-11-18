@@ -71,11 +71,19 @@ eq('an editor cannot remove the Checkout Block', get_post_field('post_content', 
 eq('checkout cannot be trashed', wp_trash_post($checkout), false);
 wp_update_post(['ID' => $checkout, 'post_content' => '<!-- wp:woocommerce/checkout-fields /-->']);
 eq('a similarly named block cannot replace checkout', get_post_field('post_content', $checkout), $originalCheckout);
-$nested = '<!-- wp:group --><!-- wp:woocommerce/checkout /--><!-- /wp:group -->';
-wp_update_post(['ID' => $checkout, 'post_content' => $nested]);
+$nested = '<!-- wp:group -->' . $originalCheckout . '<!-- /wp:group -->';
+wp_update_post(['ID' => $checkout, 'post_content' => wp_slash($nested)]);
 eq('an editor can save nested checkout', get_post_field('post_content', $checkout), $nested);
-wp_update_post(['ID' => $checkout, 'post_content' => '<!-- wp:woocommerce/checkout broken -->']);
-eq('malformed checkout markup preserves the last valid edit', get_post_field('post_content', $checkout), $nested);
+foreach ([
+    '<!-- wp:woocommerce/checkout broken -->',
+    '<!-- wp:woocommerce/checkout /-->',
+    '<!-- wp:woocommerce/checkout -->   <!-- /wp:woocommerce/checkout -->',
+    '<!-- wp:woocommerce/checkout --><div></div>',
+    '<!-- /wp:group -->' . $nested,
+] as $invalid) {
+    wp_update_post(['ID' => $checkout, 'post_content' => wp_slash($invalid)]);
+    eq('malformed or empty checkout preserves the last valid edit', get_post_field('post_content', $checkout), $nested);
+}
 wp_set_current_user($previousUser);
 wp_update_post(['ID' => $checkout, 'post_content' => wp_slash($originalCheckout)]);
 $checkoutRoute = get_post_meta($checkout, \TypedPress\Wp\ContentPages::META, true);

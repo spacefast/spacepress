@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace TypedPress\Commerce;
 
+use TypedPress\Vendor\WordPress\DataLiberation\BlockMarkup\BlockMarkupProcessor;
 use TypedPress\Wp\Plugin;
 use TypedPress\Wp\Runtime;
 
@@ -95,7 +96,7 @@ final class Module
         foreach (['pre_delete_post', 'pre_trash_post'] as $hook) { add_filter($hook, static fn ($check, $post) => $post instanceof \WP_Post && $post->ID === self::checkoutPage($plugin) ? false : $check, PHP_INT_MAX, 2); }
         add_filter('wp_insert_post_data', static function (array $data, array $input) use ($plugin): array {
             $id = (int) ($input['ID'] ?? 0);
-            if ($id > 0 && $id === self::checkoutPage($plugin) && !self::containsCheckout(parse_blocks(wp_unslash($data['post_content'] ?? '')))) {
+            if ($id > 0 && $id === self::checkoutPage($plugin) && !self::validCheckout(wp_unslash($data['post_content'] ?? ''))) {
                 $data['post_content'] = wp_slash(get_post_field('post_content', $id, 'raw'));
             }
             return $data;
@@ -296,10 +297,24 @@ final class Module
         return hash('sha256', (string) wp_json_encode($state));
     }
 
+    private static function validCheckout(string $content): bool
+    {
+        // Core recovers truncated blocks at EOF. Reject incomplete edits before using its parsed tree.
+        $markup = new BlockMarkupProcessor($content);
+        while ($markup->next_token()) {
+            if ($markup->get_last_error() !== null) { return false; }
+        }
+        return $markup->get_last_error() === null && $markup->get_block_depth() === 0
+            && self::containsCheckout(parse_blocks($content));
+    }
+
     private static function containsCheckout(array $blocks): bool
     {
         foreach ($blocks as $block) {
-            if ($block['blockName'] === 'woocommerce/checkout' || self::containsCheckout($block['innerBlocks'])) {
+            if ($block['blockName'] === 'woocommerce/checkout' && (trim($block['innerHTML']) !== '' || $block['innerBlocks'] !== [])) {
+                return true;
+            }
+            if (self::containsCheckout($block['innerBlocks'])) {
                 return true;
             }
         }

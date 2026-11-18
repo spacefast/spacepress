@@ -655,10 +655,31 @@ fn has_checkout_block(body: &str) -> bool {
         }
     }
     let comments = regex::Regex::new(r"(?s)<!--(.*?)-->").unwrap();
-    let checkout = regex::Regex::new(r"(?s)^\s+wp:woocommerce/checkout\s+(?:\{.*\}\s+)?/?$").unwrap();
-    comments
-        .captures_iter(&html)
-        .any(|comment| checkout.is_match(&comment[1]))
+    let delimiter =
+        regex::Regex::new(r"(?s)^\s+(/?)wp:([a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)?)\s+(?:\{.*\}\s+)?(/?)$").unwrap();
+    let mut open = Vec::new();
+    let mut found = false;
+    for comment in comments.captures_iter(&html) {
+        let Some(token) = delimiter.captures(comment.get(1).unwrap().as_str()) else {
+            continue;
+        };
+        let name = token.get(2).unwrap().as_str();
+        let span = comment.get(0).unwrap();
+        if &token[1] == "/" {
+            let Some((opened, start)) = open.pop() else {
+                return false;
+            };
+            if opened != name {
+                return false;
+            }
+            if name == "woocommerce/checkout" && !html[start..span.start()].trim().is_empty() {
+                found = true;
+            }
+        } else if token[3].is_empty() {
+            open.push((name, span.end()));
+        }
+    }
+    found && open.is_empty()
 }
 
 #[cfg(test)]
@@ -667,7 +688,16 @@ mod tests {
 
     #[test]
     fn checkout_requires_a_native_block_outside_code() {
-        let block = "<!-- wp:woocommerce/checkout /-->";
+        let block = r#"<!-- wp:woocommerce/checkout --><div class="wp-block-woocommerce-checkout"></div><!-- /wp:woocommerce/checkout -->"#;
+        for invalid in [
+            "<!-- wp:woocommerce/checkout /-->",
+            "<!-- wp:woocommerce/checkout -->   <!-- /wp:woocommerce/checkout -->",
+            "<!-- wp:woocommerce/checkout --><div></div>",
+            &format!("<!-- /wp:group -->{block}"),
+            &format!("<!-- wp:group -->{block}<!-- /wp:paragraph -->"),
+        ] {
+            assert!(!has_checkout_block(invalid), "{invalid}");
+        }
         assert!(has_checkout_block(&format!(
             "<!-- wp:group -->{block}<!-- /wp:group -->"
         )));

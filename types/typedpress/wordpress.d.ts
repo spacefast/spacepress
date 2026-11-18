@@ -118,6 +118,8 @@ export declare function get_userdata(user_id: number): WP_User | false;
 export declare function get_permalink(post: number): string | false;
 /** WordPress `home_url()`. */
 export declare function home_url(path: string): string;
+/** WordPress `wp_login_url()`. */
+export declare function wp_login_url(redirect: string): string;
 /** WordPress `sanitize_text_field()`. */
 export declare function sanitize_text_field(str: string): string;
 /** WordPress `sanitize_title()`. */

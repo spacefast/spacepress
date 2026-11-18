@@ -130,8 +130,19 @@ foreach (texts($home['body'], "$cards//h2/a/@href") as $href) {
     $out['catalog direct'][] = [$response['status'], $response['headers']['location'] ?? null];
 }
 $out['catalog navigation'] = count(texts($home['body'], "$cards//h2/a[@data-tp-template='tp-blank' and @data-wp-on--click='actions.navigate' and @data-wp-on--mouseenter='actions.prefetch']"));
+$staffEntry = texts($home['body'], "//nav//a[normalize-space(.)='Staff']/@href")[0];
+$out['guest staff entry'] = $staffEntry === wp_login_url(home_url('/staff/'));
 $out['search'] = texts(fetch("$url/?q=samsung")['body'], "$cards//h2");
 $out['filter'] = texts(fetch("$url/?media=nvme")['body'], "$cards//h2");
+
+// The sign-in template's links leave the template, so they work without the app router.
+$signin = fetch("$url/wp-login.php");
+$out['sign-in navigation'] = [
+    'form' => texts($signin['body'], "//form[@id='loginform']/@method"),
+    'catalog' => paths($signin['body'], "//nav//a[normalize-space(.)='Catalog']/@href"),
+    'router' => str_contains($signin['body'], 'typedpress-router-js-module'),
+    'enhanced' => texts($signin['body'], "//nav//a/@data-wp-on--click"),
+];
 
 // A product page.
 $page = fetch("$url/drives/wd-red-plus-4tb/");

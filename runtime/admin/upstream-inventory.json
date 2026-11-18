@@ -6841,7 +6841,7 @@
       "sha256": "c4b68013ea1f4d527da575a43338a03050680e5b759a9ee31ef5557d54d5cabf",
       "path": "apps/packages/wp-build/lib/php-generator.js",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "e203f4176442bbd660124f8f1f66c17a0a7e4d5f13be9a51b1f439e751b8d62f",
+      "adaptedSha256": "ae3fc662cbd385876c02664b4e171563cc54d1747a30905fea726720b4bfbfbe",
       "normalizedSha256": "c4b68013ea1f4d527da575a43338a03050680e5b759a9ee31ef5557d54d5cabf",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/wp-build/lib/php-generator.js"
     },
@@ -6850,7 +6850,7 @@
       "sha256": "c0e408dd007b067991fe946af96b4c0872ec8ea279de951ed4ca9a96b3fc2060",
       "path": "apps/packages/wp-build/lib/templates/index.php",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "ec4f14773f66ffdb7ad493e1bb12d5a7dd07813220448c0d2c3b3902f2937e28",
+      "adaptedSha256": "2a20d3609b458ef57676c8d63b6cdaa5e9c56c8f248a0f73a6c23d25811076c2",
       "normalizedSha256": "847b7d08208a187955329f6a49cc1de1cc9e0444faeb926ce785ded80b70a210",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/wp-build/lib/templates/index.php"
     },

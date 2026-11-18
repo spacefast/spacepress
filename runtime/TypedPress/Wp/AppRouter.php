@@ -254,6 +254,16 @@ final class AppRouter
         return $this->templates[$path] = $template;
     }
 
+    /** wp-login.php has its own template. Links that leave it use full browser navigation. */
+    public function linkTemplateFor(string $path): ?string
+    {
+        $target = $this->templateFor($path);
+        if ($this->template === BlockTemplates::LOGIN && $target !== (self::themed() ? BlockTemplates::LOGIN : 'document')) {
+            return null;
+        }
+        return $target;
+    }
+
     /** Whether pages render in block templates: the active theme is a block theme. */
     public static function themed(): bool
     {
@@ -690,7 +700,6 @@ final class AppRouter
      */
     private function serve(array $route, array $params, Viewer $viewer, int $status, ?string $moved = null): never
     {
-        $this->plugin->app(); // the compiled page functions live in the app's functions.php
         $this->styles = $route['styles'] ?? [];
         $page = $this->file($route['page']);
         $layouts = $this->layouts($route);
@@ -716,6 +725,7 @@ final class AppRouter
                     $this->document(403, ['title' => __('Forbidden')], '<h1>' . esc_html__('You do not have access to this page.') . '</h1>');
                 }
             }
+            $this->plugin->app(); // the compiled page functions live in the app's functions.php
             $props = new JsObject([
                 'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \TypedPress\JsArray($v) : $v, $params)),
             ]);
@@ -1080,6 +1090,9 @@ final class AppRouter
 
     private function allowed(array $rule, Viewer $viewer): bool
     {
+        if (!\TypedPress\Access::isShorthand($rule)) {
+            $this->plugin->app(); // A callback guard needs the compiled functions before the page does.
+        }
         $result = \TypedPress\Access::evaluate($rule, $viewer, 'read');
         return $result === true;
     }

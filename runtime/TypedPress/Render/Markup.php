@@ -47,17 +47,16 @@ final class Markup
         $local = is_string($href) ? self::localHref($href) : null;
         if ($local !== null) {
             $props['href'] = home_url(\TypedPress\Wp\AppRouter::href($local));
-            Navigation::used();
-            $props['data-wp-interactive'] = Navigation::NAMESPACE;
-            $props['data-wp-on--click'] = 'actions.navigate';
-            // The template the target renders in: the router swaps the region only within one.
             $path = (string) (wp_parse_url($local, PHP_URL_PATH) ?? '/');
-            $template = \TypedPress\Wp\AppRouter::instance()?->templateFor($path);
+            $template = \TypedPress\Wp\AppRouter::instance()?->linkTemplateFor($path);
             if ($template !== null) {
+                Navigation::used();
+                $props['data-wp-interactive'] = Navigation::NAMESPACE;
+                $props['data-wp-on--click'] = 'actions.navigate';
                 $props['data-tp-template'] = $template;
-            }
-            if ($prefetch === true) {
-                $props['data-wp-on--mouseenter'] = 'actions.prefetch';
+                if ($prefetch === true) {
+                    $props['data-wp-on--mouseenter'] = 'actions.prefetch';
+                }
             }
         }
         return Html::element('a', $props, $children);

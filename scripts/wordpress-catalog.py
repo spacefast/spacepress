@@ -85,6 +85,7 @@ SELECT_FUNCTIONS = {
     "get_userdata": {"params": ["user_id"], "returns": "WP_User | false"},
     "get_permalink": {"params": ["post"], "paramTypes": {"post": "number"}},
     "home_url": {"params": ["path"]},
+    "wp_login_url": {"params": ["redirect"]},
     "sanitize_text_field": {"params": ["str"]},
     "sanitize_title": {"params": ["title"]},
     "esc_html": {"params": ["text"]},

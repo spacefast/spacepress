@@ -5063,6 +5063,12 @@ fn drive_store_example_sells_on_wordpress() {
         json!(seen["catalog"]["links"].as_array().unwrap().len()),
         "every product link enables region navigation and prefetch"
     );
+    assert_eq!(
+        seen["sign-in navigation"],
+        json!({"form": ["post"], "catalog": ["/"], "router": false, "enhanced": []}),
+        "{seen}"
+    );
+    assert_eq!(seen["guest staff entry"], true, "{seen}");
     assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
     assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));
     assert_eq!(

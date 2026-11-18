@@ -173,6 +173,7 @@ final class WpTableStore implements Store, Links
     {
         $g = $this->schema->global($name);
         $postId = $g['wp']['postId'];
+        wp_prime_option_caches(array_map(static fn ($field) => $postId . '_' . $field, array_keys($g['fields'])));
         $out = [];
         foreach ($g['fields'] as $field => $col) {
             $fieldKey = $g['wp']['fieldKeyPrefix'] . $field;

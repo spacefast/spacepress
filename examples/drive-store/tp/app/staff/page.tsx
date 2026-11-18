@@ -12,10 +12,25 @@ export default async function Staff() {
   const shop = await db.globals.shop.get();
   const shipped = useFormState(markShipped);
   const restocked = useFormState(restock);
-  const open = await orders.list({ where: { status: "placed" }, orderBy: { id: "asc" }, limit: 100, with: { drive: true } });
-  const stock = await drives.list({ orderBy: { stock: "asc" }, limit: 100 });
-  const low = stock.filter((d) => d.stock <= shop.lowStockAt);
-  const moves = await stockMovements.list({ orderBy: { id: "desc" }, limit: 10, with: { drive: true } });
+  const open = await orders.list({
+    where: { status: "placed" },
+    orderBy: { id: "asc" },
+    limit: 100,
+    columns: { id: true, code: true, quantity: true, total: true, buyerName: true, buyerEmail: true },
+    with: { drive: { columns: { name: true } } },
+  });
+  const low = await drives.list({
+    where: { stock: { lte: shop.lowStockAt } },
+    orderBy: { stock: "asc" },
+    limit: 100,
+    columns: { id: true, name: true, stock: true },
+  });
+  const moves = await stockMovements.list({
+    orderBy: { id: "desc" },
+    limit: 10,
+    columns: { at: true, change: true, reason: true },
+    with: { drive: { columns: { name: true } } },
+  });
   return (
     <>
       <h1>Staff</h1>

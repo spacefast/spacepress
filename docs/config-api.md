@@ -2047,6 +2047,7 @@ return post === null ? "" : esc_html(post.post_title);
 | `get_userdata(user_id)` | `WP_User \| false` |
 | `get_permalink(post_id)` | `string \| false` |
 | `home_url(path)` | `string` |
+| `wp_login_url(redirect)` | `string` |
 | `sanitize_text_field`, `sanitize_title`, `esc_html`, `esc_attr`, `esc_url`, `wp_strip_all_tags` | `string` → `string` |
 
 - Types come from `php-stubs/wordpress-stubs` 7.1.2 (WordPress's own

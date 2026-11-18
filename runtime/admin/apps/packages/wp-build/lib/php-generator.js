@@ -1,4 +1,4 @@
-import { writeFile, readFile, mkdir } from 'node:fs/promises';
+import { writeFile, readFile, readdir, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename } from 'node:path';
 
@@ -16,7 +16,20 @@ export async function generatePhpIndex() {
 	// Read the template
 	const packageJson = JSON.parse(await readFile('package.json','utf8'));
 	const modulePrefix = packageJson.name.replace(/[^a-zA-Z0-9_-]/g,'-');
-	const template = (await readFile( templatePath, 'utf8' )).replaceAll('__PLUGIN_MODULE_PREFIX__',modulePrefix);
+	const modules = await readdir( 'build/packages', { withFileTypes: true } ).catch( ( error ) => {
+		if ( error.code === 'ENOENT' ) return [];
+		throw error;
+	} );
+	const frontend = [];
+	for ( const entry of modules ) {
+		if ( ! entry.isDirectory() ) continue;
+		const metadata = JSON.parse( await readFile( join( 'build/packages', entry.name, 'package.json' ), 'utf8' ) );
+		if ( metadata.frontendOnly ) {
+			frontend.push( "'" + entry.name.replaceAll( "\\", "\\\\" ).replaceAll( "'", "\\'" ) + "'" );
+		}
+	}
+	const template = (await readFile( templatePath, 'utf8' )).replaceAll('__PLUGIN_MODULE_PREFIX__',modulePrefix)
+		.replace( '__FRONTEND_MODULES__', () => frontend.sort().join( ', ' ) );
 
 	// Generate a unique function prefix based on the current working directory
 	const pluginName = basename( process.cwd() ).replace(

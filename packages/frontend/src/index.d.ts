@@ -7,7 +7,7 @@ export interface FrontendOptions {
 
 export interface EntryMetadata {
   scripts: string[];
-  links: { rel: "stylesheet"; href: string }[];
+  links: { rel: "stylesheet" | "modulepreload"; href: string }[];
 }
 
 /** Compile the entries and write the generated WordPress route metadata. */

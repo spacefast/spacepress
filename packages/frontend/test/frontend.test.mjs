@@ -29,13 +29,13 @@ test('builds browser entries and native Tailwind utilities with route-level asse
 
   const entries = { main: 'browser/index.ts', other: 'browser/other.ts', style: 'browser/style-only.css' };
   const first = await buildFrontend({ root, entries });
-  assert.equal(first.main.links.length, 1);
-  assert.deepEqual(first.other.links, []);
+  assert.deepEqual(first.main.links.map(({ rel }) => rel), ['stylesheet', 'modulepreload']);
+  assert.deepEqual(first.other.links.map(({ rel }) => rel), ['modulepreload']);
   assert.deepEqual(first.style.scripts, []);
   assert.equal(first.style.links.length, 1);
 
   const asset = (url) => path.join(root, 'public', url);
-  assert.match(await readFile(asset(first.main.scripts[0]), 'utf8'), /from the alias/);
+  assert.match(await readFile(asset(first.main.links[1].href), 'utf8'), /from the alias/);
   assert.match(await readFile(asset(first.main.links[0].href), 'utf8'), /font-size:19px/);
   assert.deepEqual(await buildFrontend({ root, entries }), first);
 
@@ -110,7 +110,13 @@ test('serves frontend assets only on the route that uses them', { skip: !process
   assert.equal(css.status, 200);
   assert.match(js.headers.get('content-type'), /javascript/);
   assert.match(css.headers.get('content-type'), /text\/css/);
-  assert.match(await js.text(), /Browser entry/);
+  const preload = html.match(/<link rel="modulepreload" href="([^"]+)"/)?.[1];
+  assert.ok(preload, 'The browser can preload the canonical module while loading the launcher');
+  const [launchCode, entry] = await Promise.all([js.text(), fetch(preload)]);
+  const relativeImport = JSON.parse(launchCode.match(/^import (".+");/)[1]);
+  assert.equal(new URL(relativeImport, script).href, preload);
+  assert.equal(entry.status, 200);
+  assert.match(await entry.text(), /Browser entry/);
   assert.match(await css.text(), /font-size:19px/);
 
   const plain = await fetch(new URL('/plain/', url));

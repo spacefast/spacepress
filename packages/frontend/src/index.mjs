@@ -28,7 +28,7 @@ async function ensureDirectory(directory) {
   }
 }
 
-function entryMetadata(manifest, name, source) {
+async function entryMetadata(manifest, name, source, output) {
   const entry = manifest[source];
   if (!entry?.isEntry) throw new Error(`Vite did not emit the "${name}" entry (${source}).`);
   const url = (file) => `/${assetDirectory}/${file}`;
@@ -41,11 +41,16 @@ function entryMetadata(manifest, name, source) {
     for (const style of chunk.css ?? []) styles.add(style);
   }
   visit(entry);
-  if (entry.file.endsWith('.css')) styles.add(entry.file);
-  return {
-    scripts: entry.file.endsWith('.css') ? [] : [url(entry.file)],
-    links: [...styles].map((file) => ({ rel: 'stylesheet', href: url(file) })),
-  };
+  const stylesheetEntry = entry.file.endsWith('.css');
+  if (stylesheetEntry) styles.add(entry.file);
+  const links = [...styles].map((file) => ({ rel: 'stylesheet', href: url(file) }));
+  if (stylesheetEntry) return { scripts: [], links };
+
+  // WordPress versions the launcher. Every import of the Vite entry uses its bare hashed URL.
+  const launcher = `entrypoints/${path.posix.basename(entry.file)}`;
+  await writeFile(path.join(output, launcher), `import ${JSON.stringify(`../${entry.file}`)};\n`);
+  links.push({ rel: 'modulepreload', href: url(entry.file) });
+  return { scripts: [url(launcher)], links };
 }
 
 export async function buildFrontend({
@@ -123,10 +128,11 @@ async function compileFrontend({ root, inputs, publicDir, generated }) {
 
     const manifestFile = path.join(output, '.vite', 'manifest.json');
     const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
-    const result = Object.fromEntries(inputs.map(([name, file]) => [
-      name,
-      entryMetadata(manifest, name, file.split(path.sep).join('/')),
-    ]));
+    await mkdir(path.join(output, 'entrypoints'));
+    const result = {};
+    for (const [name, file] of inputs) {
+      result[name] = await entryMetadata(manifest, name, file.split(path.sep).join('/'), output);
+    }
     await rm(path.dirname(manifestFile), { recursive: true });
     await writeFile(path.join(output, marker), '');
     const metadata = path.join(staging, 'frontend.ts');

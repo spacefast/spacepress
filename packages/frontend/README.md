@@ -65,8 +65,8 @@ await buildFrontend({
 });
 ```
 
-A CSS entry emits stylesheet metadata. A JavaScript entry emits its module and
-the styles reachable through static imports. Vite splits shared imports and
+A CSS entry emits stylesheet metadata. A JavaScript entry emits a launcher, a
+preload for the hashed module, and the styles reachable through static imports. Vite splits shared imports and
 loads dynamic chunks as needed. Each page can select entries in its
 `metadata`. A layout's entries load on every page it wraps.
 

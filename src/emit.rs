@@ -225,20 +225,20 @@ pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std
     if built.schema.store.is_some() {
         let seeds = crate::bundle::seed_records(&crate::loader::Disk, project, &built.schema)
             .map_err(|e| std::io::Error::other(e.message))?;
-        let mut contents = String::new();
+        use sha2::{Digest, Sha256};
+        let mut hashes = serde_json::Map::new();
         for (name, records) in seeds {
             let php = format!("<?php\nreturn {};\n", crate::compile::php_json(&records));
-            contents.push_str(&php);
+            hashes.insert(format!("{name}.php"), crate::hex(Sha256::digest(php.as_bytes())).into());
             files.push((
                 format!("typedpress-app-{}/tp/app/seed/{name}.php", built.schema.name),
                 php.into_bytes(),
             ));
         }
-        use sha2::{Digest, Sha256};
-        let digest = crate::hex(Sha256::digest(contents.as_bytes()));
+        let manifest = crate::compile::php_json(&serde_json::Value::Object(hashes));
         files.push((
             format!("typedpress-app-{}/tp/app/seed-version.php", built.schema.name),
-            format!("<?php return '{digest}';\n").into_bytes(),
+            format!("<?php return {manifest};\n").into_bytes(),
         ));
     }
     Ok((schema_php, files))

@@ -35,7 +35,7 @@ final class Seed
         }
     }
 
-    public static function run(Plugin $plugin, string $directory, bool $dry = false): array
+    public static function run(Plugin $plugin, string $directory, bool $dry = false, ?array $expectedHashes = null): array
     {
         if (!is_dir($directory)) {
             throw new HttpError(400, 'invalid_command', 'Seed records directory does not exist.', '/records');
@@ -51,6 +51,12 @@ final class Seed
             }
         }
         sort($files, SORT_STRING);
+        if ($expectedHashes !== null) {
+            $actual = [];
+            foreach ($files as $file) { $actual[basename($file)] = hash_file('sha256', $file); }
+            ksort($expectedHashes, SORT_STRING);
+            if ($actual !== $expectedHashes) { throw new \RuntimeException('Commerce seed files do not match the compiled seed version'); }
+        }
         $files = self::ordered($plugin, $files);
         $plan = static function () use ($plugin, $files, $dry): array {
             $receipt = [];

@@ -226,13 +226,28 @@ $seedDir = dirname($seedFile);
 $versionFile = dirname($seedDir) . '/seed-version.php';
 $originalVersion = file_get_contents($versionFile);
 $originalMarker = get_option($seedKey);
+rename($seedFile, $seedFile . '.held');
+try {
+    delete_option($seedKey);
+    $partial = clone $plugin;
+    \TypedPress\Commerce\Module::onInit($partial);
+    check('a missing product seed among present terms prevents a receipt', $partial->unavailable() !== null && get_option($seedKey) === false);
+    file_put_contents($seedFile, $originalSeed . "\n");
+    $modified = clone $plugin;
+    \TypedPress\Commerce\Module::onInit($modified);
+    check('a changed seed file prevents a receipt', $modified->unavailable() !== null && get_option($seedKey) === false);
+} finally {
+    rename($seedFile . '.held', $seedFile);
+}
+\TypedPress\Commerce\Module::onInit($plugin);
+eq('restoring the product seed allows the same build to finish', get_option($seedKey), $originalMarker);
 rename($seedDir, $seedDir . '.held');
 try {
     delete_option($seedKey);
     $missingSeedPlugin = clone $plugin;
     \TypedPress\Commerce\Module::onInit($missingSeedPlugin);
     check('a missing nonempty seed bundle is refused without a receipt', str_contains($missingSeedPlugin->unavailable() ?? '', 'Missing commerce seed directory') && get_option($seedKey) === false);
-    $emptyVersion = hash('sha256', '');
+    $emptyVersion = [];
     file_put_contents($versionFile, '<?php return ' . var_export($emptyVersion, true) . ';');
     \TypedPress\Commerce\Module::onInit($plugin);
     eq('an intentionally empty seed bundle receives its receipt', get_option($seedKey), $emptyVersion);

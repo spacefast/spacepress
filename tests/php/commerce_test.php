@@ -125,7 +125,13 @@ try {
 }
 \TypedPress\Commerce\Module::initialize($plugin);
 eq('retry restores the declared order', (new WC_Shipping_Zone(reset($zoneIds)))->get_zone_order('edit'), 0);
-$extra = new WC_Shipping_Zone(); $extra->set_zone_name('Admin addition'); $extra->save();
+$extra = new WC_Shipping_Zone();
+$extra->set_zone_name('Admin addition');
+$extra->add_location('FR', 'country');
+$extra->save();
+$extraRate = $extra->add_shipping_method('flat_rate');
+check('the obsolete zone has a configured rate before reconciliation', $extraRate > 0
+    && update_option('woocommerce_flat_rate_' . $extraRate . '_settings', ['title' => 'Local courier', 'cost' => '8.50']));
 $shippingSnapshot = static function (): array {
     $state = [];
     foreach ([...array_keys(WC_Shipping_Zones::get_zones()), 0] as $id) {

@@ -92,17 +92,34 @@ pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
     TREE.get_or_init(build_runtime_tree).clone()
 }
 
+/// Pack the browser entry modules with the same minifier used for app client modules.
+fn embedded_runtime() -> impl Iterator<Item = (&'static str, std::borrow::Cow<'static, [u8]>)> {
+    use std::borrow::Cow;
+
+    runtime_files::FILES
+        .iter()
+        .filter(|(rel, _)| rel.starts_with("TypedPress/"))
+        .map(|(rel, bytes)| {
+            let bytes = if rel.starts_with("TypedPress/Render/client/") && rel.ends_with(".js") {
+                let source = std::str::from_utf8(bytes).expect("runtime browser module is UTF-8");
+                Cow::Owned(crate::minify::module(source).into_bytes())
+            } else {
+                Cow::Borrowed(*bytes)
+            };
+            (*rel, bytes)
+        })
+}
+
 fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
     use std::borrow::Cow;
+    let runtime: Vec<_> = embedded_runtime().collect();
     let runtime_hash = {
         use sha2::Digest;
         let mut hash = sha2::Sha256::new();
-        for (rel, bytes) in runtime_files::FILES {
-            if rel.starts_with("TypedPress/") {
-                hash.update(rel.as_bytes());
-                hash.update([0]);
-                hash.update(bytes);
-            }
+        for (rel, bytes) in &runtime {
+            hash.update(rel.as_bytes());
+            hash.update([0]);
+            hash.update(bytes.as_ref());
         }
         crate::hex(&hash.finalize()[..8])
     };
@@ -140,10 +157,12 @@ fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
             Cow::Borrowed(runtime_file("wp-plugin/typedpress-loader.php").expect("embedded loader")),
         ),
     ];
+    files.extend(runtime.into_iter().map(|(rel, bytes)| {
+        let rest = rel.strip_prefix("TypedPress/").expect("TypedPress runtime tree");
+        (format!("typedpress-runtime/tp/{rest}"), bytes)
+    }));
     for (rel, bytes) in runtime_files::FILES {
-        if let Some(rest) = rel.strip_prefix("TypedPress/") {
-            files.push((format!("typedpress-runtime/tp/{rest}"), Cow::Borrowed(*bytes)));
-        } else if let Some(rest) = rel.strip_prefix("identity/") {
+        if let Some(rest) = rel.strip_prefix("identity/") {
             files.push((format!("typedpress-identity/{rest}"), Cow::Borrowed(*bytes)));
         } else if let Some(rest) = rel.strip_prefix("admin/") {
             // The committed admin plugin (PHP, routes.js, notices, the built modules); its header

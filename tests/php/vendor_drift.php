@@ -74,7 +74,9 @@ eq('bundled merge combines independent edits', [$result->has_conflicts(), $resul
 eval('namespace Firebase\JWT; final class JWT {}');
 eval('namespace OTPHP; final class TOTP {}');
 $identity = __DIR__ . '/../../runtime/identity';
+$issues = 'caller-owned';
 require "$identity/src/autoload.php";
+eq('identity platform check preserves the caller scope', $issues, 'caller-owned');
 $classes = require "$identity/vendor-prefixed/composer/autoload_classmap.php";
 $globals = array_filter(array_keys($classes), static fn (string $name) => !str_starts_with($name, 'TypedPress\\Identity\\Vendor\\'));
 eq('identity registers every Composer global polyfill class', array_keys(require "$identity/vendor-prefixed/composer/polyfill_classes.php"), array_values($globals));

@@ -666,6 +666,10 @@ fn has_checkout_block(body: &str) -> bool {
         r#"(?i)^<div class="(?:[a-z0-9_-]+ +)*wp-block-woocommerce-checkout(?: +[a-z0-9_-]+)*"></div>$"#,
     )
     .unwrap();
+    let wrapper = regex::Regex::new(
+        r#"(?i)<div\s+(?:[^<>]*?\s)?class\s*=\s*["'](?:[^"'<>]*\s)?wp-block-woocommerce-checkout(?:\s[^"'<>]*)?["']"#,
+    )
+    .unwrap();
     let action_tag =
         regex::Regex::new(r#"(?i)<div\s+[^<>]*?\bdata-block-name="woocommerce/checkout-actions-block"(?:\s|>)"#)
             .unwrap();
@@ -678,7 +682,7 @@ fn has_checkout_block(body: &str) -> bool {
         let name = token.get(2).unwrap().as_str();
         let span = comment.get(0).unwrap();
         if &token[1] == "/" {
-            let Some((opened, start)) = open.pop() else {
+            let Some((opened, start, has_action)) = open.pop() else {
                 return false;
             };
             if opened != name {
@@ -687,16 +691,20 @@ fn has_checkout_block(body: &str) -> bool {
             if name == "woocommerce/checkout" {
                 let content = &html[start..span.start()];
                 let markup = comments.replace_all(content, "");
-                found |= legacy.is_match(content.trim()) || action_tag.is_match(&markup);
+                found |= legacy.is_match(content.trim())
+                    || (wrapper.is_match(&markup) && (has_action || action_tag.is_match(&markup)));
             }
         } else {
             if name == "woocommerce/checkout-actions-block"
-                && open.iter().any(|(parent, _)| *parent == "woocommerce/checkout")
+                && let Some((_, _, has_action)) = open
+                    .iter_mut()
+                    .rev()
+                    .find(|(parent, _, _)| *parent == "woocommerce/checkout")
             {
-                found = true;
+                *has_action = true;
             }
             if token[3].is_empty() {
-                open.push((name, span.end()));
+                open.push((name, span.end(), false));
             }
         }
     }
@@ -712,6 +720,7 @@ mod tests {
         let block = r#"<!-- wp:woocommerce/checkout --><div class="wp-block-woocommerce-checkout"></div><!-- /wp:woocommerce/checkout -->"#;
         for invalid in [
             "<!-- wp:woocommerce/checkout /-->",
+            "<!-- wp:woocommerce/checkout --><!-- wp:woocommerce/checkout-actions-block /--><!-- /wp:woocommerce/checkout -->",
             "<!-- wp:woocommerce/checkout -->   <!-- /wp:woocommerce/checkout -->",
             "<!-- wp:woocommerce/checkout --><div></div>",
             "<!-- wp:woocommerce/checkout --><div></div><!-- /wp:woocommerce/checkout -->",

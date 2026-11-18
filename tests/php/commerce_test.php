@@ -63,6 +63,9 @@ eq('custom Woo endpoint resolves to checkout', \TypedPress\Commerce\Module::rout
 eq('custom Woo endpoint populates the canonical query variable', get_query_var('order-pay'), '123');
 delete_option('woocommerce_checkout_pay_endpoint');
 check('Woo checkout is a real Page containing its native block', ($checkout = \TypedPress\Commerce\Module::checkoutPage($plugin)) > 0 && has_block('woocommerce/checkout', get_post($checkout)));
+$actionsOnly = '<!-- wp:woocommerce/checkout --><!-- wp:woocommerce/checkout-actions-block /--><!-- /wp:woocommerce/checkout -->';
+set_query_var('order-pay', ''); unset($GLOBALS['wp']->query_vars['order-pay']);
+eq('Woo renders no form for an actions-only checkout', trim(do_blocks($actionsOnly)), '');
 $previousUser = get_current_user_id();
 wp_set_current_user($site->userId('ed'));
 $originalCheckout = get_post_field('post_content', $checkout);
@@ -78,6 +81,7 @@ $nested = '<!-- wp:group -->' . $originalCheckout . '<!-- /wp:group -->';
 wp_update_post(['ID' => $checkout, 'post_content' => wp_slash($nested)]);
 eq('an editor can save nested checkout', get_post_field('post_content', $checkout), $nested);
 foreach ([
+    $actionsOnly,
     '<!-- wp:woocommerce/checkout broken -->',
     '<!-- wp:woocommerce/checkout /-->',
     '<!-- wp:woocommerce/checkout -->   <!-- /wp:woocommerce/checkout -->',

@@ -316,6 +316,10 @@ final class Module
                 if ($block['innerBlocks'] === [] && preg_match('~^<div class="(?:[a-z0-9_-]+ +)*wp-block-woocommerce-checkout(?: +[a-z0-9_-]+)*"></div>$~iD', trim($block['innerHTML']))) {
                     return true;
                 }
+                $wrapper = new \WP_HTML_Tag_Processor($block['innerHTML']);
+                if (!$wrapper->next_tag(['tag_name' => 'DIV', 'class_name' => 'wp-block-woocommerce-checkout'])) {
+                    continue;
+                }
                 $content = serialize_block($block);
                 if (has_block('woocommerce/checkout-actions-block', $content)) { return true; }
                 $tags = new \WP_HTML_Tag_Processor($content);

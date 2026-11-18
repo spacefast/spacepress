@@ -183,7 +183,9 @@ final class MarkdownTwins
         if ($tagline !== '') {
             array_push($lines, '> ' . $tagline, '');
         }
-        array_push($lines, 'Every page has a Markdown version at its URL plus `.md`; the home page is ' . self::link('/index.md', self::twin(home_url('/'))) . '.', '');
+        $intro = self::guarded(home_url('/')) ? 'Public pages have a Markdown version at their URL plus `.md`.'
+            : 'Every page has a Markdown version at its URL plus `.md`; the home page is ' . self::link('/index.md', self::twin(home_url('/'))) . '.';
+        array_push($lines, $intro, '');
         foreach (get_post_types(['public' => true], 'objects') as $type) {
             if ($type->name === 'attachment') {
                 continue;
@@ -193,12 +195,13 @@ final class MarkdownTwins
                 'post_type' => $type->name, 'post_status' => 'publish', 'numberposts' => self::LLMS_LIMIT,
                 'orderby' => $type->hierarchical ? ['menu_order' => 'ASC', 'title' => 'ASC'] : ['date' => 'DESC', 'ID' => 'DESC'],
             ]) as $post) {
-                if (self::hasTwin($post)) {
-                    $entries[] = self::entry($post);
+                $entry = self::entry($post);
+                if ($entry !== null) {
+                    $entries[] = $entry;
                 }
             }
             $archive = $type->name === 'post' ? self::postsPage() : get_post_type_archive_link($type->name);
-            if (is_string($archive) && $archive !== '' && $entries !== []) {
+            if (is_string($archive) && $archive !== '' && $entries !== [] && !self::guarded($archive)) {
                 $entries[] = '- ' . self::link('All ' . self::plain((string) $type->labels->name), self::twin($archive));
             }
             self::section($lines, (string) $type->labels->name, (string) $type->description, $entries);
@@ -217,7 +220,7 @@ final class MarkdownTwins
             $entries = [];
             foreach (is_array($terms) ? $terms : [] as $term) {
                 $url = get_term_link($term);
-                if (is_string($url)) {
+                if (is_string($url) && !self::guarded($url)) {
                     $about = self::plain($term->description);
                     $entries[] = '- ' . self::link(self::plain($term->name), self::twin($url)) . ($about !== '' ? ': ' . $about : '');
                 }
@@ -440,9 +443,16 @@ final class MarkdownTwins
         if (is_404() || is_feed() || is_robots() || is_favicon() || is_trackback() || is_embed() || is_preview()) {
             return null;
         }
+        $post = is_singular() ? get_queried_object() : null;
+        $router = AppRouter::instance();
+        if ($router !== null) {
+            $path = self::relative((string) wp_parse_url(self::requestUri(), PHP_URL_PATH));
+            // The home route owns the front page. WordPress still owns queries such as /?p=123 or /?s=term.
+            if (($path !== '/' || is_home() || is_front_page()) && $router->guarded($path, $post instanceof \WP_Post ? $post->post_type : '')) {
+                return null;
+            }
+        }
         if (is_singular()) {
-            $post = get_queried_object();
-
             return $post instanceof \WP_Post && self::hasTwin($post) ? 'singular' : null;
         }
 
@@ -461,8 +471,8 @@ final class MarkdownTwins
         }
         $entries = [];
         foreach ($wp_query instanceof \WP_Query ? $wp_query->posts : [] as $post) {
-            if ($post instanceof \WP_Post && self::hasTwin($post)) {
-                $entries[] = self::entry($post);
+            if ($post instanceof \WP_Post && ($entry = self::entry($post)) !== null) {
+                $entries[] = $entry;
             }
         }
         array_push($lines, ...($entries === [] ? ['Nothing is published here yet.'] : $entries));
@@ -497,9 +507,16 @@ final class MarkdownTwins
     }
 
     /** `- [Title](twin): summary`; a password-protected post shows its title only. */
-    private static function entry(\WP_Post $post): string
+    private static function entry(\WP_Post $post): ?string
     {
-        $line = '- ' . self::link(self::plain($post->post_title) ?: '(untitled)', self::twin((string) get_permalink($post)));
+        if (!self::hasTwin($post)) {
+            return null;
+        }
+        $url = (string) get_permalink($post);
+        if (self::guarded($url, $post->post_type)) {
+            return null;
+        }
+        $line = '- ' . self::link(self::plain($post->post_title) ?: '(untitled)', self::twin($url));
         if ($post->post_password !== '') {
             return $line;
         }
@@ -583,6 +600,13 @@ final class MarkdownTwins
         }
 
         return $headers;
+    }
+
+    /** Whether an app guard covers this WordPress URL, including kind items listed by /llms.txt. */
+    private static function guarded(string $url, string $postType = ''): bool
+    {
+        $router = AppRouter::instance();
+        return $router !== null && $router->guarded(self::relative((string) wp_parse_url($url, PHP_URL_PATH)), $postType);
     }
 
     /**

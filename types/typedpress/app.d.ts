@@ -17,7 +17,7 @@ export interface Routes {}
 export type ReactNode = JSX.Children;
 
 /** A path the app serves, checked against the generated route map once it exists. */
-export type Href = keyof Routes extends never ? string : RoutePaths | `http${string}` | `mailto:${string}` | `#${string}` | `?${string}`;
+export type Href = keyof Routes extends never ? string : RoutePaths | `${RoutePaths}?${string}` | `${RoutePaths}#${string}` | `http${string}` | `mailto:${string}` | `#${string}` | `?${string}`;
 type RoutePaths = { [K in keyof Routes]: Routes[K] extends { path: infer P extends string } ? P : never }[keyof Routes];
 
 type Params<R> = R extends keyof Routes ? (Routes[R] extends { params: infer P } ? P : Record<string, string>) : Record<string, string | string[]>;
@@ -165,6 +165,8 @@ export declare function Link(props: {
   href: Href;
   children?: JSX.Element | string | number | (JSX.Element | string | number)[];
   prefetch?: boolean;
+  /** Override automatic sign-in routing for a local destination. By default its page and layout access rules decide. */
+  requireAuth?: boolean;
   className?: string;
   id?: string;
   title?: string;

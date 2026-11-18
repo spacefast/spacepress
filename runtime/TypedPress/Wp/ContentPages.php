@@ -400,8 +400,8 @@ final class ContentPages
         // serves that path, the path is that route's, whatever Page core resolved it to.
         $base = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
         $path = $base !== '' && str_starts_with($have, $base) ? (substr($have, strlen($base)) ?: '/') : $have;
-        $routes = $this->plugin->schema->app()['routes'] ?? [];
-        if ($own === [] && rawurldecode($have) !== rawurldecode($want) && (AppRouter::match($routes, $path)['route']['page'] ?? null) !== null) {
+        $app = $this->plugin->schema->app();
+        if ($own === [] && rawurldecode($have) !== rawurldecode($want) && (AppRouter::match($app['routes'] ?? [], $path, $app['routeIndex'] ?? null)['route']['page'] ?? null) !== null) {
             return;
         }
         if (rawurldecode($have) === rawurldecode($want) && $own === []) {

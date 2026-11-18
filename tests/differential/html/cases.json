@@ -1,5 +1,9 @@
 [
   {
+    "component": "components/static.tsx#TemplateSlots",
+    "props": { "text": "<b>Tom & Kate's</b>" }
+  },
+  {
     "component": "components/children.tsx#Values",
     "props": {
       "n": 42,

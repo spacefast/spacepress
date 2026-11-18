@@ -73,7 +73,7 @@ final class Prebuilt
     {
         $app = $plugin->schema->app();
         // A build mounted to inspect serves no page and schedules no build of them.
-        if (!is_array($app) || !self::any($app) || \TypedPress\Wp\Runtime::inspecting()) {
+        if (!is_array($app) || !($app['hasPrebuilt'] ?? self::any($app)) || \TypedPress\Wp\Runtime::inspecting()) {
             return;
         }
         self::$plugin = $plugin;
@@ -301,7 +301,7 @@ final class Prebuilt
         $redirects = [];
         $anonymous = new Viewer(null);
         foreach ($app['routes'] as $route) {
-            if (!($route['prerender'] ?? false) || ($route['page'] ?? null) === null) {
+            if (!($route['prerender'] ?? false) || ($route['page'] ?? null) === null || AppRouter::guardFiles($route, $app['files']) !== []) {
                 continue;
             }
             $pattern = (string) $route['pattern'];
@@ -819,7 +819,7 @@ final class Prebuilt
                 $path = substr($path, strlen($base)) ?: '/';
             }
             $path = $path === '/' ? '/' : rtrim($path, '/');
-            $match = AppRouter::match($app['routes'], $path);
+            $match = AppRouter::match($app['routes'], $path, $app['routeIndex'] ?? null);
             if ($match !== null && ($match['route']['prerender'] ?? false)) {
                 $hit[$path] = true;
             }

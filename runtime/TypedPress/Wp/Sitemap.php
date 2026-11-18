@@ -371,7 +371,7 @@ final class Sitemap
                 continue;
             }
             $path = KindUrls::instance()?->path($kind, $post);
-            if ($path === null || AppRouter::instance()?->guarded($path) === true) {
+            if ($path === null || AppRouter::instance()?->guarded($path, $post->post_type) === true) {
                 continue;
             }
             $out[] = $id;

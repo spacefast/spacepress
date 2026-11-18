@@ -46,7 +46,7 @@ foreach ([
         Schema::load($tmp);
         check('incompatible schema is refused', false);
     } catch (RuntimeException $e) {
-        $expected = $raw['version'] !== 3 ? 'schema.php version 3 required; rebuild with this TypedPress version'
+        $expected = $raw['version'] !== 3 ? 'schema.php version 3 or 4 required; rebuild with this TypedPress version'
             : 'schema.php built for runtime ' . ($raw['runtime'] ?? '(missing)') . '; this runtime is 0.3; rebuild with this TypedPress version';
         eq('incompatible schema is refused', $e->getMessage(), $expected);
     }

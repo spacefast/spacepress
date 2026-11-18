@@ -188,7 +188,7 @@ pub fn build(
     let mut hooks: HookFunctions = indexmap::IndexMap::new();
     let plugin_lock = read_plugin_lock(program, &project.join(crate::plugins::LOCK_PATH))?;
     let previous_value;
-    let (functions, slots, settled) = {
+    let (functions, slots, settled, uses_html_template) = {
         let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
         c.abilities = catalog.clone();
         c.resolve_json_types().map_err(|d| d.phase(diag::Code::Compile))?;
@@ -247,8 +247,9 @@ pub fn build(
                 "function {function}(): ?array\n{{\n    return {value};\n}}\n\n"
             ));
         }
-        (std::mem::take(&mut c.output), slots, settled)
+        (std::mem::take(&mut c.output), slots, settled, c.uses_html_template)
     };
+    schema.uses_html_template = uses_html_template;
     for ((table, kind), list) in hooks {
         let (_, name) = list.into_iter().next().expect("one hook per kind");
         schema

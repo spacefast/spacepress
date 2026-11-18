@@ -1852,6 +1852,35 @@ fn compiled_php_matches_node_on_every_differential_case() {
     );
 }
 
+#[test]
+fn mixed_jsx_requires_a_runtime_with_html_templates() {
+    let project = tempfile::tempdir().unwrap();
+    let path = project.path();
+    std::fs::write(
+        path.join("typedpress.config.ts"),
+        "import { defineConfig } from 'typedpress'; export default defineConfig({ name: 'markup' });",
+    )
+    .unwrap();
+    std::fs::create_dir_all(path.join("tp/components")).unwrap();
+    let schema = path.join("tp/dist/wp-content/plugins/typedpress-app-markup/tp/app/schema.php");
+    for (children, version) in [("Hello", "3"), ("Hello {name}", "4")] {
+        std::fs::write(
+            path.join("tp/components/Greeting.tsx"),
+            format!("export function Greeting({{name}}: {{name: string}}) {{ return <p>{children}</p>; }}"),
+        )
+        .unwrap();
+        let built = first().arg("build").arg(path).output().unwrap();
+        assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+        let read = Command::new("php")
+            .args(["-r", "echo (require $argv[1])['version'];"])
+            .arg(&schema)
+            .output()
+            .unwrap();
+        assert!(read.status.success(), "{}", String::from_utf8_lossy(&read.stderr));
+        assert_eq!(String::from_utf8(read.stdout).unwrap(), version);
+    }
+}
+
 /// Every case in tests/differential/html/cases.json renders a compiled TSX component under PHP
 /// and the same TSX under React 19 (react-dom/static `prerender`); the HTML must be identical
 /// (docs/decisions/2026-11-08-tsx-to-php.md, "Parity tests"). Two things are normalized: React's
@@ -2044,6 +2073,9 @@ fn compiled_tsx_renders_the_html_react_renders() {
             .skip(1)
             .any(|call| call.trim_start().starts_with(element))
     };
+    let slots = body("static__TemplateSlots");
+    assert_eq!(slots.matches("\\TypedPress\\Html::template(").count(), 2, "{slots}");
+    assert!(!slots.contains("\\TypedPress\\Html::raw("), "{slots}");
     let folded = body("static__Static");
     for element in [
         "'main'",

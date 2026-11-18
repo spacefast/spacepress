@@ -41,6 +41,10 @@ fn build(project: &Path) {
 #[test]
 fn app_router_serves_pages_on_wordpress() {
     let project = fixture("app-router", "serve");
+    copy(
+        &root().join("tests/fixtures/page-access/tp/app"),
+        &project.join("tp/app"),
+    );
     build(&project);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
@@ -65,6 +69,61 @@ fn app_router_serves_pages_on_wordpress() {
             p["body"].as_str().unwrap_or_default().to_string(),
         )
     };
+    let access = &seen["page access"];
+    for (link, path) in [
+        ("Office", "/office/?view=todo#queue"),
+        ("Archive", "/members/archive/2026/"),
+        ("Tools", "/members/tools/"),
+    ] {
+        assert_eq!(
+            access["links"]["guest"][link],
+            serde_json::json!([access["login"][link], false, false])
+        );
+        for viewer in ["reader", "admin"] {
+            assert_eq!(
+                access["links"][viewer][link],
+                serde_json::json!([format!("{}{path}", seen["base"].as_str().unwrap()), true, true])
+            );
+        }
+    }
+    for viewer in ["guest", "reader", "admin"] {
+        for (link, path) in [
+            ("Guests", "/guest/"),
+            ("Notes list", "/notes/"),
+            ("Onboarding", "/onboarding/"),
+        ] {
+            assert_eq!(
+                access["links"][viewer][link],
+                serde_json::json!([format!("{}{path}", seen["base"].as_str().unwrap()), true, true])
+            );
+        }
+    }
+    for (page, statuses) in [
+        ("Office records", [302, 403, 200]),
+        ("Member archive", [302, 200, 200]),
+        ("Admin tools", [302, 403, 200]),
+        ("Admin onboarding", [302, 403, 200]),
+        ("Guest preview", [200, 403, 403]),
+    ] {
+        for (viewer, status) in ["guest", "reader", "admin"].into_iter().zip(statuses) {
+            assert_eq!(
+                access["pages"][viewer][page],
+                serde_json::json!([status, status == 200]),
+                "{viewer} {page}"
+            );
+        }
+    }
+    assert_eq!(access["direct login"][0], access["direct login"][1]);
+    assert_eq!(
+        access["guard redirect"],
+        format!("{}/guest/", seen["base"].as_str().unwrap())
+    );
+    assert_eq!(access["private pages"], serde_json::json!(["private", "private"]));
+    assert_eq!(access["private twin"], 404);
+    assert_eq!(access["live"]["guest"], serde_json::json!([401, false]));
+    assert_eq!(access["live"]["reader"], serde_json::json!([403, false]));
+    assert_eq!(access["live"]["admin"], serde_json::json!([200, true]));
+    assert_eq!(access["guest cache"], "private, no-store, max-age=0");
     // The page renders inside its layout, with the layout's title template and its reads.
     let (status, title, body) = page("home");
     assert_eq!((status, title.as_str()), (200, "Home · Field Notes"));
@@ -324,6 +383,26 @@ fn app_router_serves_item_pages_under_a_subdirectory() {
             "{name}: {seen}"
         );
     }
+    let protected = &seen["auth links"];
+    let direct = serde_json::json!([
+        format!("{url}/notes/dawn-on-the-ridge/?q=tea%20time&sort=new#body"),
+        "actions.navigate",
+        "actions.prefetch",
+        false
+    ]);
+    let login = serde_json::json!([seen["login for target"], "", "", false]);
+    for name in ["protected path", "protected absolute"] {
+        assert_eq!(protected["guest"][name], login, "{name}: {seen}");
+        assert_eq!(protected["member"][name], direct, "{name}: {seen}");
+    }
+    for role in ["guest", "member"] {
+        assert_eq!(protected[role]["public path"], direct, "{role}: {seen}");
+        assert_eq!(
+            protected[role]["external"],
+            serde_json::json!(["https://example.test/notes?q=tea#body", "", "", false]),
+            "{role}: {seen}"
+        );
+    }
     assert_eq!(seen["links"]["home"]["href"], format!("{url}/"));
     assert_eq!(
         seen["links"]["without slash"],
@@ -382,6 +461,9 @@ fn generated_routes_type_links_and_params() {
 export const ok = [<Link href="/notes/anything">x</Link>, <Link href="/docs">x</Link>, <Link href="/docs/a/b">x</Link>, <Link href="https://example.com">x</Link>];
 // @ts-expect-error: no route serves /nowhere
 export const missing = <Link href="/nowhere">x</Link>;
+export const returnTo = <Link href="/docs?mode=read#intro" requireAuth prefetch>Docs</Link>;
+// @ts-expect-error: requireAuth takes a boolean
+export const invalidAuth = <Link href="/docs" requireAuth="yes">Docs</Link>;
 export function slug({ params }: PageProps<"notes/[slug]">): string {
   // @ts-expect-error: notes/[slug] binds `slug`, not `id`
   return params.id;
@@ -982,9 +1064,18 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "tp/app/page.tsx",
-            "export const access = \"anyone\";\nexport default function P() { return <p/>; }\n",
+            "export const signature = {};\nexport default function P() { return <p/>; }\n",
         )],
-        "exports `access` or `signature` but no HTTP handler",
+        "no HTTP handler",
+        "tp/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/app/page.tsx",
+            "export const access = \"admin\";\nexport const guard = \"editor\";\nexport default function P() { return <p/>; }\n",
+        )],
+        "exports both `access` and `guard` for page reads",
         "tp/app/page.tsx",
     );
     rejects(
@@ -1741,11 +1832,12 @@ fn client_components_compile_to_interactivity_stores() {
     build(&project);
     let plugin = project.join("tp/dist/wp-content/plugins/typedpress-app-clients");
     let schema = Command::new("php")
-        .args(["-r", "echo json_encode((require $argv[1])['islands']);"])
+        .args(["-r", "echo json_encode(require $argv[1]);"])
         .arg(plugin.join("tp/app/schema.php"))
         .output()
         .unwrap();
-    let islands: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
+    let schema: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
+    let islands = &schema["islands"];
     assert_eq!(
         islands["clients/LikeButton"]["actions"],
         serde_json::json!(["like"]),
@@ -1786,14 +1878,16 @@ fn client_components_compile_to_interactivity_stores() {
     let functions = std::fs::read_to_string(plugin.join("tp/app/functions.php")).unwrap();
     // A server component a client component renders stays a server component: Badge (in a file
     // that sorts before Switch.tsx) binds none of the Switch's state, though both have an `on`.
+    let badge_name = schema["components"]["components/Badge.tsx#Badge"].as_str().unwrap();
     let badge = functions
-        .split("function component__components_badge__Badge(")
+        .split(&format!("function {badge_name}("))
         .nth(1)
         .and_then(|rest| rest.split("\n}\n").next())
         .unwrap_or_else(|| panic!("no Badge in functions.php"));
     assert!(!badge.contains("data-wp-"), "{badge}");
     assert!(islands.get("clients/Badge").is_none(), "{islands}");
     assert!(islands["clients/Switch"]["file"].is_string(), "{islands}");
+    let directives = functions.split_whitespace().collect::<Vec<_>>().join(" ");
     for directive in [
         "'data-wp-interactive' => 'clients/LikeButton'",
         "'data-wp-bind--disabled' => 'context.busy'",
@@ -1803,7 +1897,7 @@ fn client_components_compile_to_interactivity_stores() {
         "'data-wp-init---mount2' => 'callbacks.mount2'",
         "'data-wp-on--submit' => 'actions.submit'",
     ] {
-        assert!(functions.contains(directive), "{directive}");
+        assert!(directives.contains(directive), "{directive}");
     }
     let _ = std::fs::remove_dir_all(project);
 }
@@ -5069,6 +5163,7 @@ fn drive_store_example_sells_on_wordpress() {
         "{seen}"
     );
     assert_eq!(seen["guest staff entry"], true, "{seen}");
+    assert_eq!(seen["member staff entry"], true, "{seen}");
     assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
     assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));
     assert_eq!(
@@ -6019,27 +6114,6 @@ fn pages_render_in_block_templates() {
     let without_login = fixture("block-templates", "no-login");
     std::fs::remove_file(without_login.join("tp/app/login.tsx")).unwrap();
     build(&without_login);
-    let schema = std::fs::read_to_string(
-        project.join("tp/dist/wp-content/plugins/typedpress-app-blocktemplates/tp/app/schema.php"),
-    )
-    .unwrap();
-    // `export const template` reaches the route table; a layout placing <TemplatePart> is blank.
-    assert!(
-        schema.contains("'app/bare/page.tsx' => [") && schema.contains("'template' => 'blank'"),
-        "{schema}"
-    );
-    assert!(
-        schema
-            .lines()
-            .any(|l| l.contains("'app/studio/layout.tsx'") && l.contains("'template' => 'blank'")),
-        "{schema}"
-    );
-    assert!(
-        schema
-            .lines()
-            .any(|l| l.contains("'app/layout.tsx'") && !l.contains("'template'")),
-        "{schema}"
-    );
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/block_templates.php"))
@@ -6059,6 +6133,10 @@ fn pages_render_in_block_templates() {
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     assert_eq!(seen["block theme"], true, "{seen}");
+    assert_eq!(
+        seen["compiled templates"],
+        serde_json::json!({ "app/bare/page.tsx": "blank", "app/studio/layout.tsx": "blank", "app/layout.tsx": null }),
+    );
     // The default: the theme's header and footer parts around the page, one wp-site-blocks, the
     // router region inside it, the root layout's chrome not doubled, WordPress's title and styles.
     let home = &seen["home"];

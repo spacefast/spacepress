@@ -179,6 +179,7 @@ $out['my orders signed out'] = [$anon['status'], str_contains($anon['headers']['
 $out['staff as customer'] = fetch("$url/staff/", headers: ["Cookie: $ann"])['status'];
 $editor = session($site, 'editor');
 $staff = fetch("$url/staff/", headers: ["Cookie: $editor"]);
+$out['member staff entry'] = texts($staff['body'], "//nav//a[normalize-space(.)='Staff' and @data-wp-on--click='actions.navigate']/@href") === [home_url('/staff/')];
 $out['staff'] = ['status' => $staff['status'], 'to ship' => count(texts($staff['body'], '//table[1]//tbody/tr')), 'low' => texts($staff['body'], "//ul[@class='list']/li/span")];
 $out['ship'] = preg_replace('/[0-9A-F]{8}/', 'CODE', texts(submit(form($staff['body'], '/actions/markShipped'), [], $editor)['body'], "//p[@class='ok']")[0] ?? '');
 $out['restock'] = texts(submit(form($staff['body'], '/actions/restock'), ['quantity' => '4'], $editor)['body'], "//p[@class='ok']");

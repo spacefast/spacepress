@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TypedPress;
 
 /**
- * Read-only view of the generated schema.php (version 3, phase-2 §3.1) plus the value codecs shared
+ * Read-only view of the generated schema.php (versions 3 and 4, phase-2 §3.1) plus the value codecs shared
  * by the write pipeline, filters, globals and action input validation (§3.4).
  *
  * Values exist in three forms:
@@ -37,8 +37,8 @@ final class Schema
         if (!is_array($raw)) {
             throw new \RuntimeException("$file must return an array");
         }
-        if (($raw['version'] ?? null) !== 3) {
-            throw new \RuntimeException('schema.php version 3 required; rebuild with this TypedPress version');
+        if (!in_array($raw['version'] ?? null, [3, 4], true)) {
+            throw new \RuntimeException('schema.php version 3 or 4 required; rebuild with this TypedPress version');
         }
 
         if (($raw['runtime'] ?? null) !== self::SERIES) {

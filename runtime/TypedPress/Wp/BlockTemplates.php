@@ -178,6 +178,9 @@ final class BlockTemplates
         if ($route === null) {
             return 'theme';
         }
+        if (isset($route['template'])) {
+            return $route['template'];
+        }
         foreach ([$route['page'] ?? null, ...array_reverse($route['layouts'] ?? [])] as $file) {
             $template = is_string($file) ? ($files[$file]['template'] ?? null) : null;
             if (is_string($template) && $template !== '') {

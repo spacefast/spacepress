@@ -594,6 +594,8 @@ pub struct Schema {
     pub app: Option<App>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
     pub wp_views: bool,
+    /// Generated functions call the v4 rendering helper for mixed static and dynamic JSX.
+    pub uses_html_template: bool,
     pub files: IndexMap<String, FileBucket>,
     pub webhooks: Vec<Json>,
     pub media: Json,
@@ -656,6 +658,7 @@ impl Default for Schema {
             blocks: Vec::new(),
             assets: IndexMap::new(),
             wp_views: false,
+            uses_html_template: false,
             files: IndexMap::new(),
             webhooks: Vec::new(),
             media: serde_json::json!({"sizes": {}}),
@@ -812,6 +815,7 @@ pub struct AppFile {
     pub component: Option<String>,
     /// A literal metadata object, or `{ "fn": name }` for a function.
     pub metadata: Option<Json>,
+    /// Read access for a page or layout (`guard`, or `access` when it has no HTTP handlers).
     pub guard: Option<Access>,
     pub search: Option<AppSearch>,
     /// HTTP method → compiled handler.

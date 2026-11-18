@@ -82,6 +82,10 @@ function links(array $r): array
 $admin = ['Authorization: Basic ' . base64_encode($site->appPassword('admin')), 'Content-Type: application/json'];
 $stylesheet = get_stylesheet();
 $out = ['stylesheet' => $stylesheet, 'block theme' => wp_is_block_theme()];
+$files = \TypedPress\Wp\Runtime::plugin()->schema->app()['files'];
+foreach (['app/bare/page.tsx', 'app/studio/layout.tsx', 'app/layout.tsx'] as $file) {
+    $out['compiled templates'][$file] = $files[$file]['template'] ?? null;
+}
 
 // The theme's template wraps each page; the root layout's chrome isn't doubled.
 $out['home'] = shape(fetch("$url/"));

@@ -4,7 +4,8 @@
 //! - `default`: the page, layout, not-found or error component, compiled like any component;
 //! - `metadata`: a literal object (title, description, robots, canonical) or a function of the
 //!   page's props returning one;
-//! - `guard` (layouts): a role name, `false`, or a function of `{ user }` returning a boolean;
+//! - `guard` (pages and layouts), or `access` without HTTP handlers: a role name, a boolean,
+//!   or a function of `{ user }` returning a boolean;
 //! - `search` (pages): an object of field builders, parsed from the query string and passed to the
 //!   page as `search`;
 //! - `GET`/`POST`/... (pages and `route.ts`): HTTP handlers, `(req, ctx) => { status, headers, body }`,
@@ -178,6 +179,10 @@ fn stem(file: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
+fn access_role(role: &str) -> bool {
+    matches!(role, "anyone" | "authenticated") || crate::schema::ROLES.contains(&role)
+}
+
 pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
     if program.app.routes.is_empty() && program.app.not_found.is_none() && program.app.login.is_none() {
         return Ok(());
@@ -257,31 +262,6 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
                 }
             }
         }
-        if let Some(guard) = exports.get("guard") {
-            file.guard = Some(match guard {
-                Value::Str(s)
-                    if s.as_ref() == "anyone"
-                        || s.as_ref() == "authenticated"
-                        || crate::schema::ROLES.contains(&s.as_ref()) =>
-                {
-                    crate::schema::Access::Role(s.to_string())
-                }
-                Value::Bool(b) => crate::schema::Access::Allow(*b),
-                Value::Closure(c) => {
-                    ext.roots.push(Root {
-                        closure: c.clone(),
-                        slot: Slot::AppGuard { file: path.clone() },
-                        name: format!("{stem}__guard"),
-                        plugin: None,
-                    });
-                    crate::schema::Access::Fn(String::new())
-                }
-                other => {
-                    return Err(Diag::new(span, format!("`guard` is {}, not a role or a function", other.describe()))
-                        .help("use a role (\"subscriber\", \"author\", \"editor\", \"admin\", \"authenticated\") or `({ user }) => boolean`"));
-                }
-            });
-        }
         if let Some(search) = exports.get("search") {
             file.search = Some(search_fields(search, span, ev, ext)?);
         }
@@ -354,23 +334,66 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
             return Err(Diag::new(span, format!("{path} exports no HTTP handler"))
                 .help("export `GET`, `POST`, `PUT`, `PATCH` or `DELETE`"));
         }
+        // A co-located HTTP handler keeps its existing access rule. The page can set a different guard.
+        let access = exports.get("access");
+        let (page_access, handler_access) = if file.methods.is_empty() {
+            (access, None)
+        } else {
+            (None, access)
+        };
+        let read_access = match (exports.get("guard"), page_access) {
+            (Some(_), Some(_)) => {
+                return Err(Diag::new(
+                    export_at(program, *module, "access"),
+                    format!("{path} exports both `access` and `guard` for page reads"),
+                )
+                .help("keep one read access rule"));
+            }
+            (Some(rule), None) => Some(("guard", rule)),
+            (None, Some(rule)) => Some(("access", rule)),
+            (None, None) => None,
+        };
+        if let Some((name, rule)) = read_access {
+            file.guard = match rule {
+                Value::Str(s) if name == "access" && s.as_ref() == "anyone" => None,
+                Value::Bool(true) if name == "access" => None,
+                Value::Str(s) if access_role(s) => Some(crate::schema::Access::Role(s.to_string())),
+                Value::Bool(b) => Some(crate::schema::Access::Allow(*b)),
+                Value::Closure(c) => {
+                    ext.roots.push(Root {
+                        closure: c.clone(),
+                        slot: Slot::AppGuard { file: path.clone() },
+                        name: format!("{stem}__guard"),
+                        plugin: None,
+                    });
+                    Some(crate::schema::Access::Fn(String::new()))
+                }
+                other => {
+                    return Err(Diag::new(
+                        export_at(program, *module, name),
+                        format!("`{name}` is {}, not a role, boolean or function", other.describe()),
+                    )
+                    .help("use \"anyone\", \"authenticated\", a role, a boolean, or `({ user }) => boolean`"));
+                }
+            };
+        }
         // Who may call the handlers: said explicitly, as a route is public only when it says so.
         // A signed webhook proves its sender with an HMAC over the raw body and runs as the system.
-        match (exports.get("access"), exports.get("signature")) {
+        match (handler_access, exports.get("signature")) {
             (Some(_), Some(_)) => {
                 return Err(Diag::new(span, format!("{path} exports both `access` and `signature`"))
                     .help("keep `signature` for a signed webhook (it authenticates the caller), or `access` for everyone else"));
             }
+            (None, Some(_)) if file.methods.is_empty() => {
+                return Err(
+                    Diag::new(span, format!("{path} exports `signature` but no HTTP handler"))
+                        .help("a signature authenticates `GET`/`POST`/… handlers; use `access` for the page itself"),
+                );
+            }
             (None, Some(s)) => file.signature = Some(extract::signature_config(s, span, ev.legacy())?),
             (Some(a), None) => {
                 file.access = Some(match a {
-                    Value::Str(s)
-                        if s.as_ref() == "anyone"
-                            || s.as_ref() == "authenticated"
-                            || crate::schema::ROLES.contains(&s.as_ref()) =>
-                    {
-                        crate::schema::Access::Role(s.to_string())
-                    }
+                    Value::Str(s) if access_role(s) => crate::schema::Access::Role(s.to_string()),
                     Value::Bool(b) => crate::schema::Access::Allow(*b),
                     Value::Closure(c) => {
                         ext.roots.push(Root {
@@ -395,10 +418,6 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
                     .help("say who may call them: `export const access = \"anyone\"` (or a role), or `export const signature = { secret: env(\"…\"), header, scheme }` for a signed webhook"));
             }
             (None, None) => {}
-        }
-        if (exports.contains_key("access") || exports.contains_key("signature")) && file.methods.is_empty() {
-            return Err(Diag::new(span, format!("{path} exports `access` or `signature` but no HTTP handler"))
-                .help("they govern `GET`/`POST`/… handlers; a page's own readers are decided by its reads and its layouts' `guard`"));
         }
         files.insert(path.clone(), file);
     }
@@ -580,6 +599,12 @@ fn prebuilt(
                 format!("{path} has HTTP handlers, and a static site has no server to answer them"),
             )
             .help("move the handler into an action the page's client component calls, or set `output: \"server\"`"));
+        }
+        if file.guard.is_some() {
+            return Err(
+                Diag::new(at, format!("{path} is prebuilt ({why}), and it has a read access rule"))
+                    .help(format!("a prebuilt page is the same file for every visitor; {fix}")),
+            );
         }
         if let Some(layout) = route
             .layouts

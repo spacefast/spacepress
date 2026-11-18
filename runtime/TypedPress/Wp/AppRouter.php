@@ -21,7 +21,7 @@ use TypedPress\Viewer;
  * never reach it, so they work in every mode):
  *
  * 1. Match the path against the compiled route table (most specific first).
- * 2. Guards: each layout's `guard`, outermost first, as the visitor. A refusal sends a signed-out
+ * 2. Guards: outer layouts first, then the page's own rule, as the visitor. A refusal sends a signed-out
  *    visitor to the login page and answers 403 to a signed-in one.
  * 3. Render the page inside its layouts with compiled reads bound to the visitor
  *    (`Seam::asViewer`), so drafts and hidden fields never reach the HTML. `notFound()` renders
@@ -38,7 +38,7 @@ use TypedPress\Viewer;
  * `not-found.tsx` (or WordPress's own 404 page when there is none). Kind URLs WordPress itself
  * resolves (a post, a term archive) keep rendering with the theme until an app route matches them.
  *
- * An anonymous visitor's render of a page outside any guarded layout is cacheable (Batcache and
+ * An anonymous visitor's render of a page without a guard is cacheable (Batcache and
  * the edge, `TypedPress\Render\Cache::policy`); everything else is `private, no-store`. Each cacheable
  * render records the rows it read, so a write purges exactly the URLs that showed it.
  */
@@ -81,7 +81,7 @@ final class AppRouter
             return $preempt;
         }
         $path = $this->path();
-        $match = $path === null || $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        $match = $path === null || $this->reserved($path) ? null : $this->matchPath($path);
         if ($match === null || ($match['route']['page'] ?? null) === null || $this->kindType($match['route']) !== $query->post->post_type) {
             return $preempt;
         }
@@ -116,13 +116,18 @@ final class AppRouter
 
     // ------------------------------------------------------------------ matching
 
+    private function matchPath(string $path): ?array
+    {
+        return self::match($this->app['routes'], $path, $this->app['routeIndex'] ?? null);
+    }
+
     /**
      * The route for a path below the home URL, with its decoded params: `:name` takes one segment,
      * `*name` one or more, `**name` zero or more (catch-alls as lists).
      *
      * @return ?array{route: array<string, mixed>, params: array<string, string|list<string>>}
      */
-    public static function match(array $routes, string $path): ?array
+    public static function match(array $routes, string $path, ?array $index = null): ?array
     {
         $segments = [];
         foreach (explode('/', trim($path, '/')) as $raw) {
@@ -138,7 +143,15 @@ final class AppRouter
             }
             $segments[] = $decoded;
         }
-        foreach ($routes as $route) {
+        if ($index !== null) {
+            $literal = $index['literal']['/' . implode('/', $segments)] ?? null;
+            if ($literal !== null) {
+                return ['route' => $routes[$literal], 'params' => []];
+            }
+        }
+        // The compiler preserves specificity order in the dynamic list. Older builds use the full table.
+        foreach ($index === null ? $routes : $index['dynamic'] as $candidate) {
+            $route = $index === null ? $candidate : $routes[$candidate];
             $pattern = $route['pattern'] === '/' ? [] : explode('/', trim((string) $route['pattern'], '/'));
             $params = [];
             $ok = true;
@@ -233,6 +246,29 @@ final class AppRouter
         return preg_match('#\Aapp/(?:\([^/]+\)/)*layout\.tsx\z#', $path) === 1;
     }
 
+    /** The owning page for a local link. A public file takes precedence over a dynamic route. */
+    private array $linkPages = [];
+
+    private function linkPage(string $path): ?array
+    {
+        if (array_key_exists($path, $this->linkPages)) {
+            return $this->linkPages[$path];
+        }
+        $route = $this->reserved($path) ? null : ($this->matchPath($path)['route'] ?? null);
+        if (($route['page'] ?? null) === null
+            || (strpbrk($route['pattern'], ':*') !== false && PublicFiles::serves($this->plugin, $path))) {
+            $route = null;
+        }
+        return $this->linkPages[$path] = $route;
+    }
+
+    /** Only a destination the app owns and whose policy always requires a session can skip the guest redirect. */
+    public function linkRequiresLogin(string $path): bool
+    {
+        $route = $this->linkPage($path);
+        return !empty($route['loginRequired']) && !$this->rootKind($route);
+    }
+
     /**
      * The block template a path renders in (a template slug), or `document` when pages print their
      * own document (a classic theme), or null when no app page serves it. `<Link>` carries it, so a
@@ -243,13 +279,13 @@ final class AppRouter
         if (array_key_exists($path, $this->templates)) {
             return $this->templates[$path];
         }
-        $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        $route = $this->linkPage($path);
         // A kind served at the site root (`/:path`) answers only its own items, and claim() leaves
         // every other path to WordPress: which one a path is, only that request knows.
         $template = match (true) {
-            $match === null || ($match['route']['page'] ?? null) === null || $this->rootKind($match['route']) => null,
+            $route === null || $this->rootKind($route) => null,
             !self::themed() => 'document',
-            default => BlockTemplates::slug(BlockTemplates::choice($match['route'], $this->app['files'] ?? [])),
+            default => BlockTemplates::slug(BlockTemplates::choice($route, $this->app['files'] ?? [])),
         };
         return $this->templates[$path] = $template;
     }
@@ -286,10 +322,10 @@ final class AppRouter
         }
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $legacy = $this->app['legacyRoutes'] ?? false;
-        $match = self::match($legacy ? $this->legacyRoutes($method) : $this->app['routes'], $path);
+        $match = $legacy ? self::match($this->legacyRoutes($method), $path) : $this->matchPath($path);
         if ($match === null) {
             // 0.3.0 answered a path its routes serve with another method with a 405.
-            if ($legacy && self::match($this->app['routes'], $path) !== null) {
+            if ($legacy && $this->matchPath($path) !== null) {
                 $this->emit(405, ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify([
                     'type' => 'about:blank', 'title' => 'Method not allowed', 'status' => 405, 'code' => 'method_not_allowed', 'detail' => "$method is not allowed on $path",
                 ]));
@@ -367,7 +403,7 @@ final class AppRouter
         if ($path === null || $this->reserved($path)) {
             return;
         }
-        $match = self::match($this->app['routes'], $path);
+        $match = $this->matchPath($path);
         $page = $match === null ? null : ($match['route']['page'] ?? null);
         if ($page === null) {
             // A URL WordPress resolved itself (a post, an archive, search) keeps its theme
@@ -436,7 +472,7 @@ final class AppRouter
         if ($base !== '' && str_starts_with($path, $base)) {
             $path = substr($path, strlen($base)) ?: '/';
         }
-        $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        $match = $this->reserved($path) ? null : $this->matchPath($path);
         if ($match === null || ($match['route']['page'] ?? null) === null) {
             return null;
         }
@@ -450,7 +486,7 @@ final class AppRouter
     }
 
     /**
-     * Whether a page renders for $viewer at $path (below the home URL): its layouts' guards admit
+     * Whether a page renders for $viewer at $path (below the home URL): its guards admit
      * them, the item a kind route names is theirs to read, and nothing in the render calls notFound()
      * or fails. What it rendered is dropped.
      *
@@ -458,14 +494,12 @@ final class AppRouter
      */
     private function renders(array $route, array $params, string $path, Viewer $viewer): bool
     {
+        if (!$this->pageAllowed(self::guardFiles($route, $this->app['files']), $viewer)) {
+            return false;
+        }
         $this->plugin->app();
         $page = $this->file($route['page']);
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
-        foreach ($layouts as $layout) {
-            if (($layout['guard'] ?? null) !== null && !$this->allowed($layout['guard'], $viewer)) {
-                return false;
-            }
-        }
         try {
             return Reads::during(function () use ($route, $params, $path, $viewer, $page, $layouts): bool {
                 $props = new JsObject([
@@ -497,20 +531,7 @@ final class AppRouter
      */
     public function canonical(string $path): string
     {
-        if ($this->reserved($path)) {
-            return $path;
-        }
-        $match = self::match($this->app['routes'], $path);
-        if ($match === null || ($match['route']['page'] ?? null) === null) {
-            return $path;
-        }
-        // A file in `public/` answers before a dynamic route (`[slug]`), though not before a page at a
-        // literal path (PublicFiles::page): its path is the file's own.
-        $pattern = (string) $match['route']['pattern'];
-        if ((str_contains($pattern, ':') || str_contains($pattern, '*')) && PublicFiles::serves($this->plugin, $path)) {
-            return $path;
-        }
-        return self::address($path);
+        return $this->linkPage($path) === null ? $path : self::address($path);
     }
 
     /**
@@ -701,30 +722,26 @@ final class AppRouter
     private function serve(array $route, array $params, Viewer $viewer, int $status, ?string $moved = null): never
     {
         $this->styles = $route['styles'] ?? [];
-        $page = $this->file($route['page']);
-        $layouts = $this->layouts($route);
         if ($status !== 404) {
             self::found();
         }
-        // The 404 renders in the theme's own `404` template (BlockTemplates), every other page in
-        // the template its files chose.
         $this->template = $status === 404 ? BlockTemplates::NOT_FOUND : BlockTemplates::slug(BlockTemplates::choice($route, $this->app['files'] ?? []));
+        $guards = self::guardFiles($route, $this->app['files']);
         try {
-            foreach ($layouts as $layout) {
-                if (($layout['guard'] ?? null) !== null && !$this->allowed($layout['guard'], $viewer)) {
-                    if ($viewer->user === null) {
-                        // Back to this page after signing in, at its one address. REQUEST_URI holds a
-                        // subdirectory install's home path, which home_url() adds again: the path
-                        // below the home URL is used instead.
-                        $query = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '');
-                        $back = home_url($this->canonical((string) ($this->path() ?? '/'))) . ($query !== '' ? '?' . $query : '');
-                        nocache_headers();
-                        wp_safe_redirect(wp_login_url($back));
-                        exit;
-                    }
-                    $this->document(403, ['title' => __('Forbidden')], '<h1>' . esc_html__('You do not have access to this page.') . '</h1>');
-                }
+            $allowed = $this->pageAllowed($guards, $viewer);
+            if (!$allowed && $viewer->user === null) {
+                // Back to this page after signing in, at its one address including the query.
+                $query = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '');
+                $back = home_url($this->canonical((string) ($this->path() ?? '/'))) . ($query !== '' ? '?' . $query : '');
+                nocache_headers();
+                wp_safe_redirect(wp_login_url($back));
+                exit;
             }
+            if (!$allowed) {
+                $this->document(403, ['title' => __('Forbidden')], '<h1>' . esc_html__('You do not have access to this page.') . '</h1>');
+            }
+            $page = $this->file($route['page']);
+            $layouts = $this->layouts($route);
             $this->plugin->app(); // the compiled page functions live in the app's functions.php
             $props = new JsObject([
                 'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \TypedPress\JsArray($v) : $v, $params)),
@@ -764,17 +781,18 @@ final class AppRouter
             $this->failed($route, $error, $viewer);
         }
         if ($moved !== null) {
-            // A permanent move, cacheable like core's canonical redirect (redirect() isn't). The
-            // render's body, reads and cache headers go nowhere.
+            // Only public pages share their canonical redirect. A guard may have admitted this visitor alone.
+            if ($guards !== []) {
+                nocache_headers();
+            }
             wp_safe_redirect($moved, 301);
             exit;
         }
         // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
-        // page no layout guards is shared; what it read decides which writes purge its URL.
-        $guarded = array_filter($layouts, static fn (array $l): bool => ($l['guard'] ?? null) !== null) !== [];
+        // page without a guard is shared; what it read decides which writes purge its URL.
         // A page a form came back to (`?_flash=`), or one that ran a search, shows that visitor's
         // result: never shared, never recorded for purges.
-        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guarded);
+        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
         if ($shared) {
             \TypedPress\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         }
@@ -850,7 +868,7 @@ final class AppRouter
 
     /**
      * The app's public static pages for `/llms.txt`: (path, title), for each page route with no
-     * parameters and no layout guard, titled by its metadata (a literal title, else its path).
+     * parameters and no guard, titled by its metadata (a literal title, else its path).
      *
      * @return list<array{string, string}>
      */
@@ -861,7 +879,7 @@ final class AppRouter
             if (($route['page'] ?? null) === null || str_contains((string) $route['pattern'], ':') || str_contains((string) $route['pattern'], '*')) {
                 continue;
             }
-            if ($this->twinRoute(home_url($route['pattern'])) === null) {
+            if (self::guardFiles($route, $this->app['files']) !== []) {
                 continue;
             }
             // Only pages that render: the twin's heading is the page's title.
@@ -877,7 +895,7 @@ final class AppRouter
 
     /**
      * Whether a URL is a `tp/app/` page anyone may see, so whether it has a Markdown twin: a
-     * page route (not a handler), outside any layout `guard`.
+     * page route (not a handler), without a page or layout guard.
      */
     public function serves(string $url): bool
     {
@@ -886,22 +904,21 @@ final class AppRouter
     }
 
     /**
-     * Whether a `tp/app/` page under a layout `guard` serves this path (below the home URL): a
+     * Whether a guarded `tp/app/` page serves this path (below the home URL): a
      * signed-out visitor is sent to sign in there, so the address is not public.
      */
-    public function guarded(string $path): bool
+    public function guarded(string $path, ?string $postType = null): bool
     {
-        $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        $match = $this->reserved($path) ? null : $this->matchPath($path);
         if ($match === null || ($match['route']['page'] ?? null) === null) {
             return false;
         }
-        foreach ($match['route']['layouts'] as $layout) {
-            if (($this->file($layout)['guard'] ?? null) !== null) {
-                return true;
-            }
+        $route = $match['route'];
+        if (self::guardFiles($route, $this->app['files']) === []) {
+            return false;
         }
-
-        return false;
+        // A kind mounted at /:path leaves other post types and WordPress archives to the theme.
+        return $postType === null || !$this->rootKind($route) || $this->kindType($route) === $postType;
     }
 
     /** @return ?array{route: array, params: array} */
@@ -915,14 +932,12 @@ final class AppRouter
         if ($this->reserved($path)) {
             return null;
         }
-        $match = self::match($this->app['routes'], $path);
+        $match = $this->matchPath($path);
         if ($match === null || ($match['route']['page'] ?? null) === null) {
             return null;
         }
-        foreach ($match['route']['layouts'] as $layout) {
-            if (($this->file($layout)['guard'] ?? null) !== null) {
-                return null; // a guarded page is not public: no twin
-            }
+        if (self::guardFiles($match['route'], $this->app['files']) !== []) {
+            return null;
         }
         return $match;
     }
@@ -1008,21 +1023,19 @@ final class AppRouter
         if ($base !== '' && str_starts_with($path, $base . '/')) {
             $path = substr($path, strlen($base)) ?: '/';
         }
-        $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        $match = $this->reserved($path) ? null : $this->matchPath($path);
         if ($match === null || ($match['route']['page'] ?? null) === null) {
             throw new \TypedPress\HttpError(404, 'not_found', 'No page at ' . $path);
         }
         $route = $match['route'];
+        if (!$this->pageAllowed(self::guardFiles($route, $this->app['files']), $viewer)) {
+            throw $viewer->user === null
+                ? new \TypedPress\HttpError(401, 'unauthenticated', 'Sign in to see this page')
+                : new \TypedPress\HttpError(403, 'forbidden', 'You do not have access to this page');
+        }
         $this->plugin->app();
         $page = $this->file($route['page']);
         $layouts = $this->layouts($route);
-        foreach ($layouts as $layout) {
-            if (($layout['guard'] ?? null) !== null && !$this->allowed($layout['guard'], $viewer)) {
-                throw $viewer->user === null
-                    ? new \TypedPress\HttpError(401, 'unauthenticated', 'Sign in to see this page')
-                    : new \TypedPress\HttpError(403, 'forbidden', 'You do not have access to this page');
-            }
-        }
         // The render sees the request a GET of $url would be: the page's typed search reads its query
         // string, and a kind item's canonical-URL check and its components read its URI.
         $saved = [$_SERVER['QUERY_STRING'] ?? null, $_SERVER['REQUEST_URI'] ?? null];
@@ -1086,6 +1099,34 @@ final class AppRouter
             }
         }
         $this->document(500, ['title' => __('Something went wrong')], '<h1>' . esc_html__('Something went wrong.') . '</h1>');
+    }
+
+    /** The compiler emits these paths in evaluation order. Older builds carry the rules only on their files.
+     * @return list<string>
+     */
+    public static function guardFiles(array $route, array $files): array
+    {
+        if (isset($route['guards'])) {
+            return $route['guards'];
+        }
+        $guards = [];
+        foreach ([...($route['layouts'] ?? []), $route['page'] ?? null] as $path) {
+            if (($files[$path]['guard'] ?? null) !== null) {
+                $guards[] = $path;
+            }
+        }
+        return $guards;
+    }
+
+    /** @param list<string> $guards */
+    private function pageAllowed(array $guards, Viewer $viewer): bool
+    {
+        foreach ($guards as $path) {
+            if (!$this->allowed($this->app['files'][$path]['guard'], $viewer)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private function allowed(array $rule, Viewer $viewer): bool

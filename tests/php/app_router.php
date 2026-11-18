@@ -3,9 +3,8 @@
 declare(strict_types=1);
 
 /*
- * `tp/app/` on WordPress over HTTP (tests/compiler.rs `app_router_serves_pages_on_wordpress`):
- * the fixture tests/fixtures/app-router, built by `typedpress build`, installed with every plugin active
- * and served by php -S with the theme front end on. Prints one JSON object: label => observed.
+ * `app_router_serves_pages_on_wordpress` in tests/app_router.rs builds the app-router fixture
+ * with the page-access routes and serves it through WordPress with the theme active.
  *
  *   TP_WP_THEMES=1 php tests/php/app_router.php <wp-content dir>
  */
@@ -15,6 +14,14 @@ require __DIR__ . '/wp.php';
 // The webhook secret, as a wp-config constant would set it (env() reads constants first).
 $site = wpSite('app', ['wpContent' => $argv[1], 'users' => ['reader' => 'subscriber', 'chief' => 'editor'],
     'muPlugins' => ['secret' => "<?php define('APPROUTER_HOOK_SECRET', 'hook-secret');"]]);
+// An older app has no route index. Both representations must select the same route and parameters.
+$app = \TypedPress\Wp\Runtime::plugin()->schema->app();
+foreach (['/', '/notes/', '/notes/hello', '/notes/%68ello/', '/docs', '/docs/a/b', '/missing', '/notes/%2F', '/notes/%zz'] as $path) {
+    $indexed = \TypedPress\Wp\AppRouter::match($app['routes'], $path, $app['routeIndex']);
+    if ($indexed !== \TypedPress\Wp\AppRouter::match($app['routes'], $path)) {
+        throw new RuntimeException("Compiled route lookup disagrees with the ordered matcher for $path");
+    }
+}
 wp_set_current_user(1);
 \TypedPress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'secret' => 'desk only', 'status' => 'published']);
 \TypedPress\db()->insert('notes', ['title' => 'Draft', 'slug' => 'draft', 'status' => 'draft']);
@@ -79,9 +86,52 @@ $session = static function (string $user) use ($site, &$sessions): array {
 };
 $cookie = static fn (string $user): string => $session($user)['cookie'];
 
+$access = [];
+foreach (['guest' => null, 'reader' => 'reader', 'admin' => 'admin'] as $viewer => $user) {
+    $headers = $user === null ? [] : [$cookie($user)];
+    $listing = fetch("$url/directory/all/", headers: $headers);
+    $doc = new DOMDocument();
+    @$doc->loadHTML($listing['body']);
+    foreach ((new DOMXPath($doc))->query('//main//a') as $a) {
+        $access['links'][$viewer][trim($a->textContent)] = [
+            $a->getAttribute('href'), $a->hasAttribute('data-wp-on--click'), $a->hasAttribute('data-wp-on--mouseenter'),
+        ];
+    }
+    $live = fetch("$url/__tp/api/v1/_live", 'POST', [
+        'Content-Type: application/json', ...$headers, ...($user === null ? [] : [$session($user)['nonce']]),
+    ], json_encode(['queries' => [['op' => 'page', 'args' => ['url' => '/office/', 'region' => 'records']]]]));
+    $region = json_decode($live['body'], true)['data']['results'][0] ?? [];
+    $access['live'][$viewer] = [$region['error']['status'] ?? $live['status'], str_contains($region['data']['html'] ?? '', 'Office records')];
+    foreach ([
+        '/office/?view=todo' => 'Office records', '/members/archive/2026/' => 'Member archive',
+        '/members/tools/' => 'Admin tools', '/guest/' => 'Guest preview', '/onboarding/' => 'Admin onboarding',
+    ] as $path => $heading) {
+        $response = fetch($url . $path, headers: $headers);
+        $access['pages'][$viewer][$heading] = [$response['status'], str_contains($response['body'], "<h1>$heading</h1>")];
+        if ($viewer === 'guest' && $heading === 'Guest preview') {
+            $access['guest cache'] = $response['headers']['cache-control'][0] ?? null;
+        }
+        if ($viewer === 'guest' && $heading === 'Office records') {
+            $access['direct login'] = [$response['headers']['location'][0] ?? null, wp_login_url($url . $path)];
+        }
+        if ($viewer === 'guest' && $heading === 'Admin onboarding') {
+            $access['guard redirect'] = $response['headers']['location'][0] ?? null;
+        }
+    }
+}
+foreach (['Office' => '/office/?view=todo#queue', 'Archive' => '/members/archive/2026/', 'Tools' => '/members/tools/'] as $link => $path) {
+    $access['login'][$link] = wp_login_url($url . $path);
+}
+$pages = \TypedPress\Wp\RoutePages::instance()->pages();
+foreach (['office', 'members/tools'] as $name) {
+    $access['private pages'][] = isset($pages[$name]) ? get_post_status($pages[$name]) : null;
+}
+$access['private twin'] = fetch("$url/office.md", headers: [$cookie('admin')])['status'];
+
 $home = fetch("$url/");
 $out = [
     'base' => $url,
+    'page access' => $access,
     'home' => page($home),
     'home description' => str_contains($home['body'], '<meta name="description" content="Notes.">'),
     'home cache' => $home['headers']['cache-control'] ?? null,

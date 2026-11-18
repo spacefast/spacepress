@@ -20,7 +20,7 @@ tp/app/
 ├── notes/page.tsx             # /notes?page=2, with export const search
 ├── notes/[slug]/page.tsx      # /notes/<slug>: params.slug
 ├── docs/[[...path]]/page.tsx  # /docs, /docs/a/b: params.path is a string[]
-├── account/layout.tsx         # export const guard = "subscriber"
+├── account/layout.tsx         # export const access = "subscriber"
 ├── api/notes/route.ts         # export async function GET(req) { … }
 └── _lib/                      # never routed: colocated helpers
 ```
@@ -30,7 +30,7 @@ tp/app/
 | `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL. |
 | `page.md` | A route whose content is a WordPress Page (see [Markdown pages](#markdown-pages)). |
 | `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page. |
-| `layout.tsx` | Wraps every page below it, outermost first. May export `guard` and `template` ([Block templates](#block-templates)). |
+| `layout.tsx` | Wraps every page below it, outermost first. May export `access` and `template` ([Block templates](#block-templates)). |
 | `not-found.tsx` | At the root only. |
 | `login.tsx` | At the root only: renders wp-login.php's sign-in page (see [The sign-in page](#the-sign-in-page)). |
 | `error.tsx` | The nearest one above a page renders when the page throws. |
@@ -80,11 +80,23 @@ export async function POST(req: RouteRequest) {
   `title: { default, template: "%s · Site" }` wraps its pages' titles.
 - `export const search = { page: integer().default(1), q: text().optional() }`
   types the query string. A value a field refuses (`?page=abc`) reads as absent.
-- `guard` on a layout: a role (`"subscriber"`, `"editor"`, …),
-  `"authenticated"`, or `({ user }) => boolean`. A signed-out visitor goes to
-  the sign-in page (wp-login.php, or your `login.tsx`); a signed-in one gets a 403.
-- `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router
-  region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
+- Declare page access once. For example, `export const access = "admin"` on
+  `page.tsx` protects that page. On `layout.tsx` it protects the whole section.
+  A page inherits every enclosing layout's rule. A signed-out visitor who opens
+  a protected URL goes to sign-in. A signed-in visitor without the role gets 403.
+  A page with HTTP handlers keeps its `access` export for those handlers and
+  can declare a separate `guard` for rendering. Existing layout guards also work.
+  To restrict the underlying records in the WordPress API, set their read permissions too.
+  Independently published posts can still appear in the WordPress posts sitemap.
+  For standalone plugins, update the runtime before activating an app with a
+  page-level guard. Older runtimes reject that schema.
+- Write `<Link href="/staff" prefetch>Staff</Link>`. The compiler records when a
+  destination requires a session. Guests go straight to sign-in and return to
+  the destination afterward. Signed-in visitors get normal navigation and
+  hover prefetch. A callback that might allow guests runs at the destination.
+  On a prebuilt page the ordinary destination link works for every visitor.
+  For a local destination whose sign-in requirement is known only to the caller,
+  `requireAuth` opts into the shortcut on a server-rendered page.
 - `<Pagination page={search.page} pages={n} />` renders numbered links to the
   other pages of a listing as a `<nav>`: each is this URL with only `page` (or
   `param`) changed, page 1 drops it, the current page is `aria-current` and not

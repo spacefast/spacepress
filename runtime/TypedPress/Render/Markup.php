@@ -42,13 +42,28 @@ final class Markup
     public static function link(array $props, mixed $children): Html
     {
         $prefetch = $props['prefetch'] ?? false;
-        unset($props['prefetch']);
+        $requireAuth = $props['requireAuth'] ?? null;
+        unset($props['prefetch'], $props['requireAuth']);
         $href = $props['href'] ?? null;
         $local = is_string($href) ? self::localHref($href) : null;
         if ($local !== null) {
             $props['href'] = home_url(\TypedPress\Wp\AppRouter::href($local));
             $path = (string) (wp_parse_url($local, PHP_URL_PATH) ?? '/');
-            $template = \TypedPress\Wp\AppRouter::instance()?->linkTemplateFor($path);
+            $router = \TypedPress\Wp\AppRouter::instance();
+            if (is_bool($requireAuth) ? $requireAuth : $router?->linkRequiresLogin($path)) {
+                // Static HTML can be opened by anyone. An inferred guard will run at the destination.
+                if (Prebuilt::prerendering()) {
+                    if ($requireAuth === true) {
+                        Prebuilt::viewerCall('Link requireAuth');
+                    }
+                    return Html::element('a', $props, $children);
+                }
+                if (!is_user_logged_in()) {
+                    $props['href'] = wp_login_url($props['href']);
+                    return Html::element('a', $props, $children);
+                }
+            }
+            $template = $router?->linkTemplateFor($path);
             if ($template !== null) {
                 Navigation::used();
                 $props['data-wp-interactive'] = Navigation::NAMESPACE;

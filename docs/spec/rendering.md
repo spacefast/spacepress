@@ -214,6 +214,11 @@ navigation animation styles and the loading bar. The page's own HTML is not
 processed again.
 Full-page navigation is still experimental in WordPress, so it stays off until
 core marks it stable. `<Link prefetch>` uses the router's `prefetch`.
+The build records each page's ordered guards, inherited template, and whether a role
+requires a session. On a request-rendered page, a local link to such a destination
+takes guests to WordPress sign-in with the canonical destination as the return URL.
+This anchor uses full browser navigation and skips hover prefetch. Opening a URL
+directly still evaluates its guards, including callbacks, on the server.
 
 ### 4.4 Live data over Cast
 

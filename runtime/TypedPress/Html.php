@@ -176,6 +176,24 @@ final class Html
     }
 
     /**
+     * Compiler-escaped literal markup around each child, with one more literal than children.
+     * As with children(), only placement renders the evaluated child values.
+     *
+     * @param list<string> $literals
+     */
+    public static function template(array $literals, mixed ...$children): self
+    {
+        return new self(static function () use ($literals, $children): string {
+            $out = $literals[0];
+            foreach ($children as $i => $child) {
+                $out .= self::child($child);
+                $out .= $literals[$i + 1];
+            }
+            return $out;
+        });
+    }
+
+    /**
      * An intrinsic element: `$attributes` are the props in source order (spreads already applied
      * by the caller), `$children` the rendered children. Tags with React's own rules (input,
      * textarea, select, option, pre) are handled here; anything React would hoist or preload

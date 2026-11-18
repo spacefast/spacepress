@@ -193,8 +193,21 @@ foreach ([['status' => 'scheduled', 'name' => 'Explicit near-term edit'], ['name
     $db->update('products', $edit, ['id' => $future->get_id()], false, $admin);
     $post = get_post($future->get_id());
     eq('a last-minute title edit preserves publication time and status', [$post->post_title, $post->post_status, $post->post_date_gmt], [$edit['name'], 'future', $imminent]);
+    eq('the next publication event uses the edited fixture time', wp_next_scheduled('publish_future_post', [$future->get_id()]), strtotime($imminent . ' UTC'));
     eq('the edited scheduled product stays out of the public catalog', $db->findFirst('products', ['where' => ['id' => $future->get_id()]], $guest), null);
 }
+// Cron has committed publication, but the editing request still has a pre-publication Woo object.
+wp_publish_post($future->get_id());
+$staleSchedule = static function ($id, $product) use ($future): void {
+    if ($id === $future->get_id()) { $product->set_status('future'); }
+};
+add_action('woocommerce_product_read', $staleSchedule, 10, 2);
+try {
+    problem('a stale scheduled edit conflicts after publication', fn () => $db->update('products', ['name' => 'Stale title'], ['id' => $future->get_id()], false, $admin), 409, 'conflict', '/status');
+} finally {
+    remove_action('woocommerce_product_read', $staleSchedule, 10);
+}
+eq('a stale scheduled edit preserves the published product', get_post_status($future->get_id()), 'publish');
 $future->delete(true);
 problem('numeric prices are refused before text coercion', fn () => $db->update('products', ['price' => 12.5], ['id' => $mug['id']], false, $admin), 422, 'invalid_input', '/price');
 $db->update('products', ['status' => 'draft'], ['id' => $mug['id']], false, $admin);

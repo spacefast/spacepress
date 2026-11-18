@@ -164,6 +164,13 @@ final class Store implements \TypedPress\Store
             }
             if (!$p->get_id() && !isset($values['status'])) { $p->set_status('publish'); }
             if ($p->get_status('edit') === 'future') {
+                // Woo may have loaded a cached product before cron published it. Hold the current row
+                // through save so the edit cannot restore a schedule that has already fired.
+                $wpdb = $this->db->wpdb();
+                $row = $this->db->run("SELECT post_status FROM `{$wpdb->posts}` WHERE ID = ? FOR UPDATE", [$p->get_id()]);
+                if (($row[0]['post_status'] ?? null) !== 'future') {
+                    throw new HttpError(409, 'conflict', 'The product publication status changed. Reload it before editing.', '/status');
+                }
                 // Core changes future to publish in the final minute. Leave publication to its scheduled event.
                 $preserveSchedule = static function (array $data, array $post) use ($p): array {
                     if ((int) ($post['ID'] ?? 0) === $p->get_id() && $post['post_status'] === 'future' && $data['post_status'] === 'publish') {

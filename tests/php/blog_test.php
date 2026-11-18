@@ -27,9 +27,19 @@ $open['wp'] = ['postType' => 'tp_open_notes', 'groupKey' => 'group_tp_open_notes
 $schema['collections']['openNotes'] = $open;
 // Signed-in-only action: on a site without typedpress-identity, only WordPress itself can sign anyone in.
 $schema['actions']['signedInCount'] = ['access' => ['role' => 'authenticated']] + $schema['actions']['publishedCount'];
+$schema['collections']['posts']['access']['read'] = ['fn' => 'test_posts_access'];
 $wp = wpSite('blog', [
     'schema' => $schema,
-    'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'),
+    'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
+
+        function test_posts_access(\TypedPress\JsObject $ctx) {
+            if (isset($GLOBALS['test_post_rule'])) {
+                ++$GLOBALS['test_post_rule_calls'];
+                return $GLOBALS['test_post_rule'];
+            }
+            return posts__access__read($ctx);
+        }
+        PHP,
     'users' => ['ed' => 'editor', 'alice' => 'author', 'bob' => 'author', 'sub' => 'subscriber'],
 ]);
 $app = $wp->app();
@@ -130,15 +140,33 @@ $keyQueries = [];
     }
 };
 try {
+    $GLOBALS['test_post_rule_calls'] = 0;
+    $GLOBALS['test_post_rule'] = ['status' => 'published'];
+    eq('collection permission checks only the evaluated rule', \TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous), null);
+    $GLOBALS['test_post_rule'] = false;
+    eq('repeat permission checks retain the decision without selecting IDs',
+        [\TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous), $GLOBALS['test_post_rule_calls'], $keyQueries], [null, 1, []]);
     foreach ([$draft['id'], $draft['id'], $pub['id'], $pub['id']] as $i => $id) {
         eq("anonymous permission check $i", \TypedPress\Wp\CoreAccess::covers('posts', 'read', $id, $anonymous), $id === $pub['id']);
     }
     eq('list after both items has every readable ID', \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
     eq('permission queries are one exact ID then one complete set', $keyQueries, [true, false]);
+    eq('detail and list execute the original filter without invoking the callback again', $GLOBALS['test_post_rule_calls'], 1);
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('a fresh outright refusal retains the guest denial', \TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous)?->get_error_data()['status'] ?? null, 401);
+    $GLOBALS['test_post_rule'] = ['unknown_probe_field' => true];
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('a malformed filter still fails the permission check', \TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous)?->get_error_data()['status'] ?? null, 401);
+    $GLOBALS['test_post_rule'] = ['slug' => 'missing-permission-probe'];
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('a valid empty filter permits the collection without admitting the requested row',
+        [\TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous), \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous)], [null, []]);
+    eq('only the explicit empty list executes SQL', $keyQueries, [true, false, false]);
+    unset($GLOBALS['test_post_rule']);
     \TypedPress\Wp\CoreAccess::flush();
     eq('public item after invalidation', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $pub['id'], $anonymous), true);
     eq('a list immediately after a single item is complete', \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
-    eq('an explicit list promotes the partial key set', $keyQueries, [true, false, true, false]);
+    eq('an explicit list promotes the partial key set', $keyQueries, [true, false, false, true, false]);
 } finally {
     \TypedPress\Wp\Connection::$observer = null;
 }

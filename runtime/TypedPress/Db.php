@@ -389,30 +389,48 @@ final class Db
     public function permittedKeys(string $collection, string $op, Viewer $viewer, ?int $candidate = null, ?\Closure &$remaining = null): ?array
     {
         $remaining = null;
+        $read = $this->preparePermittedKeys($collection, $op, $viewer);
+        return $read === null ? null : $read($candidate, $remaining);
+    }
+
+    /**
+     * Evaluate the rule now. A REST permission check validates its SQL filters, and only needs to
+     * know whether the rule refused. Its later item or list read can execute the same decision.
+     * Null means unrestricted; an outright refusal throws.
+     */
+    public function preparePermittedKeys(string $collection, string $op, Viewer $viewer, bool $validate = false): ?\Closure
+    {
         $guards = $op === 'read' ? $this->readGuards($collection, $viewer) : $this->writeGuards($collection, $op, $viewer, null);
         if ($guards === []) {
             return null;
         }
         $spec = $this->schema->collection($collection);
         $pk = $spec['primaryKey'];
-        if ($candidate !== null && $spec['columns'][$pk]['type'] === 'integer') {
-            // A later list or second ID uses the already evaluated rule, including any callback.
-            $remaining = fn (): array => $this->keysMatching($collection, null, $guards);
-            return $this->keysMatching($collection, [$pk => $candidate], $guards);
-        }
+        $query = $validate ? $this->current(fn () => $this->keyQuery($collection, null, $guards)) : null;
+        $all = fn (): array => $this->keysMatching($collection, null, $guards, $query);
 
-        return $this->keysMatching($collection, null, $guards);
+        return function (?int $candidate, ?\Closure &$remaining) use ($collection, $guards, $pk, $spec, $all): array {
+            if ($candidate !== null && $spec['columns'][$pk]['type'] === 'integer') {
+                $remaining = $all;
+                return $this->keysMatching($collection, [$pk => $candidate], $guards);
+            }
+            return $all();
+        };
     }
 
     /** @return list<int|string> primary keys of rows matching $where and every guard, as stored */
-    private function keysMatching(string $collection, ?array $where, array $guards): array
+    private function keysMatching(string $collection, ?array $where, array $guards, ?array $query = null): array
     {
-        return $this->current(function () use ($collection, $where, $guards): array {
-            $pk = $this->schema->collection($collection)['primaryKey'];
-            $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], guards: $guards, only: [$pk => true]);
+        return $this->current(fn () => array_column(
+            $this->store->select($collection, $query ?? $this->keyQuery($collection, $where, $guards)),
+            $this->schema->collection($collection)['primaryKey'],
+        ));
+    }
 
-            return array_column($this->store->select($collection, $q), $pk);
-        });
+    private function keyQuery(string $collection, ?array $where, array $guards): array
+    {
+        $pk = $this->schema->collection($collection)['primaryKey'];
+        return Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], guards: $guards, only: [$pk => true]);
     }
 
     /**

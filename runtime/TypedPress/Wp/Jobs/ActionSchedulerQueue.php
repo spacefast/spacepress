@@ -101,15 +101,34 @@ final class ActionSchedulerQueue
         if (self::maintenanceScheduled()) {
             return;
         }
-        // A site scheduled by an older runtime keeps its old interval: Action Scheduler repeats a
-        // recurring action as it was scheduled. Schedule the current one first and cancel the old run
-        // only once that worked, so a refused schedule never leaves the site without maintenance.
-        $old = self::pendingMaintenance();
-        if (as_schedule_recurring_action(time() + self::MAINTAIN_EVERY, self::MAINTAIN_EVERY, self::MAINTAIN, [], 'typedpress') === 0) {
-            throw new \RuntimeException('Action Scheduler refused to schedule TypedPress job maintenance');
+        $connection = Runtime::plugin()->connection();
+        if ($connection->inTransaction()) {
+            return; // the next request schedules it
         }
-        if ($old !== null) {
-            \ActionScheduler::store()->cancel_action($old);
+        try {
+            // One request at a time, so two first requests don't both add a schedule.
+            \TypedPress\Wp\Migrator::locked($connection, self::MAINTAIN, static function (): void {
+                if (self::maintenanceScheduled()) {
+                    return;
+                }
+                // A site scheduled by an older runtime keeps its old interval: Action Scheduler repeats a
+                // recurring action as it was scheduled. Schedule the current one first and cancel the old
+                // run only once that worked, so a refused schedule never leaves the site without maintenance.
+                $old = self::pendingMaintenance();
+                if (as_schedule_recurring_action(time() + self::MAINTAIN_EVERY, self::MAINTAIN_EVERY, self::MAINTAIN, [], 'typedpress') === 0) {
+                    throw new \RuntimeException('Action Scheduler refused to schedule TypedPress job maintenance');
+                }
+                if ($old !== null) {
+                    \ActionScheduler::store()->cancel_action($old);
+                }
+            });
+        } catch (\Throwable $e) {
+            // initialize's receipt must mean maintenance is scheduled; a request keeps serving, leaves
+            // the install marker unrecorded (installed() is false) and the next request retries.
+            if (Runtime::managed()) {
+                throw $e;
+            }
+            error_log('[typedpress] scheduling job maintenance failed (next request retries): ' . $e->getMessage());
         }
     }
 

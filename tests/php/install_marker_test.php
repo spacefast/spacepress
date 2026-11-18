@@ -134,22 +134,23 @@ $recheck('maintenance on an older runtime\'s daily interval', static function ()
     as_schedule_recurring_action(time() + DAY_IN_SECONDS, DAY_IN_SECONDS, 'tp_jobs_maintain', [], 'typedpress');
 });
 eq('which the checking request replaced with one hourly schedule', $maintenance(), [HOUR_IN_SECONDS]);
-// A refused schedule keeps the old run: the site is never left without maintenance, and install says so.
+// A refused schedule keeps the old run, and the request that hit it keeps serving: the site is
+// never left without maintenance, and the next request retries.
+$refuser = $wp->dir . '/content/mu-plugins/refuse-maintenance.php';
+file_put_contents($refuser, <<<'PHP'
+    <?php
+    add_filter('pre_as_schedule_recurring_action', static fn ($pre, $at, $every, $hook) => $hook === 'tp_jobs_maintain' ? 0 : $pre, 10, 4);
+    PHP);
 as_unschedule_all_actions('tp_jobs_maintain', [], 'typedpress');
 as_schedule_recurring_action(time() + DAY_IN_SECONDS, DAY_IN_SECONDS, 'tp_jobs_maintain', [], 'typedpress');
-$refuse = static fn () => 0;
-add_filter('pre_as_schedule_recurring_action', $refuse);
-$refused = null;
-try {
-    \TypedPress\Wp\Jobs\ActionSchedulerQueue::install();
-} catch (\RuntimeException $e) {
-    $refused = $e->getMessage();
-}
-remove_filter('pre_as_schedule_recurring_action', $refuse);
-eq('a refused schedule fails the install', $refused, 'Action Scheduler refused to schedule TypedPress job maintenance');
+wp_cache_flush();
+[$status] = request($url, '/');
+eq('a request whose maintenance schedule is refused still serves', $status, 200);
 eq('and keeps the daily run it would have replaced', $maintenance(), [DAY_IN_SECONDS]);
-\TypedPress\Wp\Jobs\ActionSchedulerQueue::install();
-eq('which the next install replaces', $maintenance(), [HOUR_IN_SECONDS]);
+eq('and records no marker, so the next request retries', $marker(), null);
+unlink($refuser);
+[$status] = request($url, '/');
+eq('which replaces it once Action Scheduler accepts', [$status, $maintenance()], [200, [HOUR_IN_SECONDS]]);
 
 // ---- a failed install is never hidden ------------------------------------------------------------------
 // A migration the database refuses: the request that runs it fails, records nothing, and every request

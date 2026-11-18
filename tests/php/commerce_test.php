@@ -469,6 +469,10 @@ eq('orders remain read-only with every grant', $request('/__tp/api/v1/orders', '
 add_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
 \TypedPress\Commerce\Module::onInit($plugin);
 check('request installation failure is caught and remains retryable', str_contains($plugin->unavailable() ?? '', 'Could not add source shipping method') && !get_option(\TypedPress\Wp\InstallMarker::OPTION));
+foreach (['/wc/store/v1/checkout', '/wc/store/v1/checkout/' . $order->get_id()] as $route) {
+    $response = rest_do_request(new WP_REST_Request('POST', $route));
+    eq('unavailable shop refuses native checkout before payment', [$response->get_status(), $response->get_data()['code'] ?? null], [503, 'tp_unavailable']);
+}
 remove_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
 \TypedPress\Commerce\Module::initialize($plugin);
 eq('repair can finish shipping installation after the request failure', \TypedPress\Commerce\Module::plan($plugin), []);

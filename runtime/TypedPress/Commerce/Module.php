@@ -106,6 +106,19 @@ final class Module
             if ($type === 'page' && ($id = self::checkoutPage($plugin)) > 0) { $args['post__not_in'] = [...($args['post__not_in'] ?? []), $id]; }
             return $args;
         }, 10, 2);
+        // Woo handles checkout outside TypedPress REST, including Store API batch subrequests.
+        add_filter('rest_request_before_callbacks', static function ($result, $handler, $request) use ($plugin) {
+            if ($plugin->unavailable() !== null && preg_match('~^/wc/store/(?:v[0-9]+/)?checkout(?:/|$)~i', $request->get_route())) {
+                return new \WP_Error('tp_unavailable', Plugin::UNAVAILABLE, ['status' => 503]);
+            }
+            return $result;
+        }, 10, 3);
+        add_action('woocommerce_before_checkout_process', static function () use ($plugin): void {
+            if ($plugin->unavailable() !== null) { throw new \Exception(Plugin::UNAVAILABLE); }
+        }, 0);
+        add_action('woocommerce_before_pay_action', static function () use ($plugin): void {
+            if ($plugin->unavailable() !== null) { wp_die(esc_html(Plugin::UNAVAILABLE), '', ['response' => 503]); }
+        }, 0);
         add_filter('wp_robots', static function ($robots) use ($plugin) { if (self::privatePath($plugin, (string) wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH))) { $robots['noindex'] = true; } return $robots; });
         foreach (['woocommerce_new_product', 'woocommerce_update_product', 'woocommerce_delete_product'] as $hook) { add_action($hook, static fn ($id) => self::changed($plugin, 'product', (int) $id)); }
         foreach (['created_term', 'edited_term', 'delete_term'] as $hook) { add_action($hook, static function ($id, $tt, $taxonomy) use ($plugin): void { $kind = ['product_cat' => 'productCategory', 'product_tag' => 'productTag'][$taxonomy] ?? null; if ($kind) { self::changed($plugin, $kind, (int) $id); } }, 10, 3); }

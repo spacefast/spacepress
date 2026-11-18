@@ -22,6 +22,12 @@ For deployment, use a standalone plugin installation or a qualified commerce hos
 TypedPress `push` receiver currently refuses commerce builds, including rollback, because it does
 not yet suspend checkout and shipping writers or enforce shipping-compatible selection/recovery.
 
+For a standalone update that changes shipping policy, put the shop in maintenance mode and drain
+in-flight checkout requests and shipping writers before replacing the plugin. Reopen checkout
+once initialization succeeds and the active build’s shipping policy matches the installed zones.
+If a later step fails, recover with a compatible build and verify the zones before reopening.
+Restoring the previous plugin files alone does not restore shipping rows.
+
 ## Declarations
 
 ```ts

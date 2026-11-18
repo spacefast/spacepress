@@ -33,7 +33,10 @@ final class CompositeStore implements Store, Links
         $dialect = $db->sqlite() ? Dialect::mysqlOnSqlite() : Dialect::mysql($db->ciCollation());
         $tables = new WpTableStore($db, $schema, $dialect);
 
-        return new self($schema, $db, new WpPostStore($db, $schema, $dialect), $tables, new WpUserStore($db, $schema, $dialect, $tables), new WpTermStore($db, $schema, $dialect));
+        $users = ($schema->auth()['collection'] ?? null) !== null ? new WpUserStore($db, $schema, $dialect, $tables) : null;
+        $terms = $schema->taxonomies() !== [] ? new WpTermStore($db, $schema, $dialect) : null;
+
+        return new self($schema, $db, new WpPostStore($db, $schema, $dialect), $tables, $users, $terms);
     }
 
     public function isPostBacked(string $collection): bool
@@ -106,9 +109,9 @@ final class CompositeStore implements Store, Links
         return $this->for($collection)->showsUnique($collection, $column, $viewer);
     }
 
-    public function readGuards(string $collection, \TypedPress\Viewer $viewer): array
+    public function readGuards(string $collection, \TypedPress\Viewer $viewer, bool $forSelect = false): array
     {
-        return $this->for($collection)->readGuards($collection, $viewer);
+        return $this->for($collection)->readGuards($collection, $viewer, $forSelect);
     }
 
     public function globalRead(string $name): ?array

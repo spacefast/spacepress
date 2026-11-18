@@ -141,7 +141,7 @@ final class WpTermStore implements Store, Links
         return false;
     }
 
-    public function readGuards(string $collection, \TypedPress\Viewer $viewer): array
+    public function readGuards(string $collection, \TypedPress\Viewer $viewer, bool $forSelect = false): array
     {
         return [];
     }

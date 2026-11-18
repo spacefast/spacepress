@@ -213,7 +213,12 @@ $out['member staff entry'] = texts($staff['body'], "//nav//a[normalize-space(.)=
 $out['staff'] = ['status' => $staff['status'], 'to ship' => count(texts($staff['body'], '//table[1]//tbody/tr')), 'low' => texts($staff['body'], "//ul[@class='list']/li/span")];
 $out['ship'] = preg_replace('/[0-9A-F]{8}/', 'CODE', texts(submit(form($staff['body'], '/actions/markShipped'), [], $editor)['body'], "//p[@class='ok']")[0] ?? '');
 $out['restock'] = texts(submit(form($staff['body'], '/actions/restock'), ['quantity' => '4'], $editor)['body'], "//p[@class='ok']");
-$out['movements'] = texts(fetch("$url/staff/", headers: ["Cookie: $editor"])['body'], '//table[last()]//tbody/tr/td[4]');
+$afterRestock = fetch("$url/staff/", headers: ["Cookie: $editor"]);
+$out['movements'] = texts($afterRestock['body'], '//table[last()]//tbody/tr/td[4]');
+$out['staff drive names'] = [
+    'orders' => texts($staff['body'], '//table[1]//tbody/tr/td[2]'),
+    'movements' => texts($afterRestock['body'], '//table[last()]//tbody/tr/td[2]'),
+];
 $restock = fetch("$url/__tp/api/v1/actions/restock", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('ann'))], '{"drive":1,"quantity":1}');
 $out['restock as customer'] = $restock['status'];
 foreach (['editor', 'ann'] as $name) {

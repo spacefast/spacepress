@@ -216,5 +216,34 @@ if (isset($argv[2])) {
     $out['login without login.tsx'] = ['status' => $r['status'], 'form' => str_contains($r['body'], 'id="loginform"'), 'app' => str_contains($r['body'], 'Sign in to Field Notes'), 'wordpress page' => str_contains($r['body'], 'login.min.css')];
 }
 
+// The slot can be nested in a theme part. Stop consulting parts as soon as one contains it.
+$lookups = [];
+$contents = [
+    'slot-test' => '<!-- wp:template-part {"slug":"outer"} /--><!-- wp:template-part {"slug":"unused"} /-->',
+    'outer' => '<!-- wp:template-part {"slug":"inner"} /-->',
+    'inner' => '<!-- wp:tp/page /-->',
+    'unused' => '<!-- wp:paragraph /-->',
+];
+$fixture = static function ($found, $id, $type) use ($contents, &$lookups) {
+    $slug = explode('//', $id, 2)[1] ?? '';
+    if (!isset($contents[$slug])) {
+        return $found;
+    }
+    $lookups[] = $slug;
+    $template = new WP_Block_Template();
+    $template->slug = $slug;
+    $template->content = $contents[$slug];
+    return $template;
+};
+add_filter('pre_get_block_template', $fixture, 10, 3);
+try {
+    $resolved = \TypedPress\Wp\BlockTemplates::resolve('slot-test');
+    if ($resolved?->slug !== 'slot-test' || $lookups !== ['slot-test', 'outer', 'inner']) {
+        throw new RuntimeException('Expected the nested page slot to satisfy the template');
+    }
+} finally {
+    remove_filter('pre_get_block_template', $fixture);
+}
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

@@ -122,6 +122,15 @@ $public = $db->insert('posts', ['title' => 'Public next page'], true)[0];
 wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
 $anon = new \TypedPress\Viewer(null);
 $protectedWhere = ['id' => $protected['id']];
+\TypedPress\Wp\CoreAccess::flush();
+$queries = 0;
+\TypedPress\Wp\Connection::$observer = static function () use (&$queries): void { ++$queries; };
+try {
+    $masked = $db->findMany('posts', ['where' => $protectedWhere, 'columns' => ['id' => true]], $anon);
+    eq('a projected guest read filters the password in its only SQL statement', [$masked, $queries], [[], 1]);
+} finally {
+    \TypedPress\Wp\Connection::$observer = null;
+}
 isProblem('native password masks First item', req('GET', "/posts/{$protected['id']}"), 404, 'not_found');
 eq('native password constrains body-filtered projections', $db->findMany('posts', [
     'where' => ['body' => ['like' => '%native-password-secret%']], 'columns' => ['body' => true],

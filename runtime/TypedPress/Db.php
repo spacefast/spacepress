@@ -329,7 +329,7 @@ final class Db
                 }
             }
             if ($viewer !== null) {
-                array_push($guards, ...$this->readGuards($collection, $viewer));
+                array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true));
             }
             $filterViewer ??= $viewer;
             // `search`: the rows whose searchable fields this reader may read hold every word, as one
@@ -349,7 +349,7 @@ final class Db
             $only = $prune ? $this->selected($collection, $opts, $viewer, $partition) : null;
 
             return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
-                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer), $only);
+                $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer, forSelect: true), $only);
         });
     }
 
@@ -415,7 +415,7 @@ final class Db
     }
 
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
-    private function readGuards(string $collection, Viewer $viewer): array
+    private function readGuards(string $collection, Viewer $viewer, bool $forSelect = false): array
     {
         $spec = $this->schema->collection($collection);
         $rule = Access::collectionRules($spec)['read'];
@@ -430,7 +430,7 @@ final class Db
             $guards[] = ['status' => 'published'];
         }
 
-        return [...$guards, ...$this->store->readGuards($collection, $viewer)];
+        return [...$guards, ...$this->store->readGuards($collection, $viewer, $forSelect)];
     }
 
     /**

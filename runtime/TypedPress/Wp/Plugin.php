@@ -55,24 +55,24 @@ final class Plugin
         add_action('init', [$this, 'registerPostTypes'], 0);
         NativePosts::register($schema);
         add_action('acf/init', [$this, 'registerFields'], 5);
-        add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
         if (($this->schema->auth()['collection'] ?? null) !== null) {
+            add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
             WpUserStore::trackRoles();
+            // Users created outside TypedPress become members with the collection's defaults.
+            add_action('user_register', function (int $userId): void {
+                if (!$this->connection()->busy()) {
+                    WpUserStore::fillDefaults($this->schema, $userId);
+                }
+            });
         }
-        // Users created outside TypedPress (identity's hosted sign-up, wp-admin) become members with defaults.
-        add_action('user_register', function (int $userId): void {
-            if (!$this->connection()->busy()) {
-                WpUserStore::fillDefaults($this->schema, $userId);
-            }
-        });
         CoreAccess::register();
         AgentScope::register();
-        EditorSave::register();
-        ProfileForm::register();
+        $this->registerEditorSave();
         if (($this->schema->auth()['collection'] ?? null) !== null) {
+            ProfileForm::register();
             UserMeta::register();
         }
-        IdentityBridge::hook($this->connection());
+        IdentityBridge::hook($this);
         add_action('rest_api_init', fn () => TableController::registerAll($this));
         // While storage is behind, TypedPress collections' posts can't be written by any path (core REST,
         // wp-admin, other plugins): their hooks would run against tables the build doesn't match.
@@ -158,6 +158,27 @@ final class Plugin
         add_action('_wp_put_post_revision', [$this, 'snapshotRevision'], 10, 2);
         add_action('before_delete_post', [$this, 'beforeEditorDelete'], 10, 2);
         add_action('deleted_post', [$this, 'afterEditorDelete'], 10, 2);
+    }
+
+    private function registerEditorSave(): void
+    {
+        add_filter('pre_wp_unique_post_slug', [EditorSave::class, 'uniqueSlug'], PHP_INT_MAX, 5);
+        add_filter('wp_insert_post_data', [EditorSave::class, 'begin'], PHP_INT_MAX, 4);
+        add_action('wp_insert_post', [EditorSave::class, 'inserted'], 0, 1);
+        // After fillEditorDefaults (8) and core's revision (9), before TypedPress's after hooks (20).
+        add_action('wp_after_insert_post', [EditorSave::class, 'check'], 9, 1);
+        add_action('wp_after_insert_post', [EditorSave::class, 'end'], PHP_INT_MAX, 1);
+        add_action('check_admin_referer', [EditorSave::class, 'beginRestore'], 10, 2);
+        // A permanent delete: beforeDelete, FK actions, core's delete and afterDelete, all or nothing.
+        add_action('before_delete_post', [EditorSave::class, 'beginDelete'], 0, 1);
+        add_action('deleted_post', [EditorSave::class, 'endDelete'], PHP_INT_MAX, 1);
+        add_action('wp_restore_post_revision', [EditorSave::class, 'endRestore'], PHP_INT_MAX, 1);
+        // Keep the rollback in its original shutdown order without autoloading the editor on reads.
+        register_shutdown_function(static function (): void {
+            if (class_exists(EditorSave::class, false)) {
+                EditorSave::shutdown();
+            }
+        });
     }
 
     /**

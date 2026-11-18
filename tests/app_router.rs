@@ -5236,6 +5236,13 @@ fn drive_store_example_sells_on_wordpress() {
         String::from_utf8_lossy(&out.stderr)
     );
     let report: serde_json::Value = serde_json::from_slice(&std::fs::read(profile).unwrap()).unwrap();
+    for (state, max_queries) in [("catalog", 1), ("catalog/no-matches", 1), ("staff/pending", 4)] {
+        let queries = report["states"][state]["typedpress_sql"].as_u64().unwrap();
+        assert!(
+            queries <= max_queries,
+            "{state} executed {queries} TypedPress SQL statements (budget {max_queries})"
+        );
+    }
     for (state, max_joins) in [
         ("catalog", 8),
         ("orders/purchased", 0),
@@ -5352,6 +5359,13 @@ fn drive_store_example_sells_on_wordpress() {
     assert_eq!(seen["ship"], "Order CODE is shipped.");
     assert_eq!(seen["restock"], json!(["Restocked: 5 on the shelf now."]));
     assert_eq!(seen["movements"], json!(["restock", "sale", "sale"]));
+    assert_eq!(
+        seen["staff drive names"],
+        json!({
+            "orders": ["WD Red Plus 4 TB", "Samsung 870 EVO 1 TB"],
+            "movements": ["Crucial P3 2 TB", "Samsung 870 EVO 1 TB", "WD Red Plus 4 TB"],
+        })
+    );
     assert_eq!(seen["restock as customer"], 403);
     assert_eq!(
         seen["pending orders"],

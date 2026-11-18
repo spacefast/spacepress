@@ -93,7 +93,7 @@ function postSource(array $columns): Source
 /** A Store that only answers dialect()/source(): enough to compile. */
 final class CompileOnlyStore implements Store
 {
-    public function readGuards(string $collection, \TypedPress\Viewer $viewer): array { return []; }
+    public function readGuards(string $collection, \TypedPress\Viewer $viewer, bool $forSelect = false): array { return []; }
 
     public function showsUnique(string $collection, string $column, \TypedPress\Viewer $viewer): bool { return false; }
 

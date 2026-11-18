@@ -93,11 +93,30 @@ $methodIds = array_map(static fn ($z) => array_keys($z['shipping_methods']), $zo
 eq('unchanged source does not recreate shipping methods', array_map(static fn ($z) => array_keys($z['shipping_methods']), WC_Shipping_Zones::get_zones()), $methodIds);
 wp_cache_set('notoptions', ['tp_' . $plugin->schema->name() . '_shipping' => true], 'options');
 eq('shipping inspection ignores a stale negative marker cache', \TypedPress\Commerce\Module::plan($plugin), []);
+$translateRest = static fn ($translated, $text) => $text === 'Locations not covered by your other zones' ? 'Autres destinations' : $translated;
+add_filter('gettext_woocommerce', $translateRest, 10, 2);
+eq('localizing the fallback zone preserves the shipping receipt', \TypedPress\Commerce\Module::plan($plugin), []);
+remove_filter('gettext_woocommerce', $translateRest, 10);
 $zoneStore = WC_Data_Store::load('shipping-zone');
 $unknownMethod = $zoneStore->add_method(reset($zoneIds), 'inactive_test_plugin', 9);
 eq('an inactive plugin rate invalidates the shipping receipt', array_column(\TypedPress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
 \TypedPress\Commerce\Module::initialize($plugin);
 check('reconciliation removes the inactive plugin rate', !$zoneStore->get_method($unknownMethod));
+$reordered = new WC_Shipping_Zone(reset($zoneIds));
+$reordered->set_zone_order(7); $reordered->save();
+$skipZoneUpdate = static fn (string $sql): string => preg_match('/^UPDATE `?[^\s`]*woocommerce_shipping_zones`?\s/i', $sql) ? 'SELECT 1' : $sql;
+add_filter('query', $skipZoneUpdate);
+try {
+    $refusedOrder = false;
+    try { \TypedPress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) {
+        $refusedOrder = str_contains($e->getMessage(), 'shipping zone order');
+    }
+    check('a lost zone-order update prevents installation', $refusedOrder);
+} finally {
+    remove_filter('query', $skipZoneUpdate);
+}
+\TypedPress\Commerce\Module::initialize($plugin);
+eq('retry restores the declared order', (new WC_Shipping_Zone(reset($zoneIds)))->get_zone_order('edit'), 0);
 $extra = new WC_Shipping_Zone(); $extra->set_zone_name('Admin addition'); $extra->save();
 $shippingSnapshot = static function (): array {
     $state = [];
@@ -112,6 +131,19 @@ $shippingSnapshot = static function (): array {
 $beforeFailedShipping = $shippingSnapshot();
 eq('shipping drift is included in the install plan', array_column(\TypedPress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
 check('the runtime inspection includes pending commerce installation', in_array('commerce-shipping', array_column(\TypedPress\Wp\Runtime::installPlan(), 'id'), true));
+// Simulate a data store that returns after a zone deletion without deleting its row.
+$skipZoneDelete = static fn (string $sql): string => preg_match('/^DELETE FROM `?[^\s`]*woocommerce_shipping_zones`?\s/i', $sql) ? 'SELECT 1' : $sql;
+add_filter('query', $skipZoneDelete);
+try {
+    $refusedDeletion = false;
+    try { \TypedPress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) {
+        $refusedDeletion = str_contains($e->getMessage(), 'Persisted shipping zones');
+    }
+    check('a surviving obsolete zone prevents installation', $refusedDeletion);
+} finally {
+    remove_filter('query', $skipZoneDelete);
+}
+eq('failed zone deletion preserves the previous shipping configuration', $shippingSnapshot(), $beforeFailedShipping);
 $noMethods = static fn () => [];
 add_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
 $shippingFailed = false;

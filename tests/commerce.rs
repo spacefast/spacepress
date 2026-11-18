@@ -27,6 +27,14 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
             "export const shop = store({currency:'EUR',country:'PL',shipping:[{name:' Poland ',countries:['PL'],methods:[]}]});",
             "shipping zone names cannot start or end with whitespace",
         ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL',shipping:[{name:'0',countries:['PL'],methods:[]}]});",
+            "a named shipping zone cannot be called 0",
+        ),
+        (
+            "export const shop = store({currency:'EUR',country:'PL',shipping:[{name:'North  America',countries:['US'],methods:[]}]});",
+            "shipping zone name contains formatting",
+        ),
         ("export const products = product();", "require an exported store()"),
         (
             "export const a = store({currency:'EUR',country:'PL'}); export const b = store({currency:'EUR',country:'PL'});",

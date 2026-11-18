@@ -212,7 +212,7 @@ final class Module
         foreach ($store['shipping'] as $index => $zone) {
             $id = 0;
             if ($zone['countries'] !== 'rest') {
-                if (wc_clean($zone['name']) !== $zone['name']) {
+                if ($zone['name'] === '0' || wc_clean($zone['name']) !== $zone['name']) {
                     throw new \RuntimeException('Shipping zone names must match their WooCommerce representation');
                 }
                 foreach ($existing as $candidate) { if ($candidate['zone_name'] === $zone['name']) { $id = (int) $candidate['zone_id']; break; } }
@@ -226,6 +226,9 @@ final class Module
                 $expected = array_unique(array_map(static fn ($code) => 'country:' . $code, $zone['countries']));
                 sort($locations); sort($expected);
                 if ($locations !== $expected) { throw new \RuntimeException('Could not persist source shipping locations'); }
+                if ($saved->get_zone_order('edit') !== $index || $saved->get_zone_name('edit') !== $zone['name']) {
+                    throw new \RuntimeException('Could not persist source shipping zone order or name');
+                }
                 $kept[] = $id;
             } else { $z = new \WC_Shipping_Zone(0); }
             self::clearMethods($z);
@@ -242,6 +245,11 @@ final class Module
             }
         }
         foreach ($existing as $zone) { if (!in_array((int) $zone['zone_id'], $kept, true)) { (new \WC_Shipping_Zone($zone['zone_id']))->delete(); } }
+        global $wpdb;
+        $rows = \WC_Data_Store::load('shipping-zone')->get_zones();
+        if ($wpdb->last_error !== '' || array_map('intval', array_column($rows ?? [], 'zone_id')) !== $kept) {
+            throw new \RuntimeException('Persisted shipping zones do not match the source');
+        }
         if (!array_filter($store['shipping'], static fn ($z) => $z['countries'] === 'rest')) { $rest = new \WC_Shipping_Zone(0); self::clearMethods($rest); }
         \WC_Cache_Helper::get_transient_version('shipping', true);
         update_option($key, ['source' => $hash, 'state' => self::shippingState()], false);
@@ -269,7 +277,9 @@ final class Module
             foreach (self::persistedMethods($zone) as $row) {
                 if (!isset($registered[$row->instance_id])) { $methods[] = ['unregistered', $row->method_id, $row->instance_id]; }
             }
-            $state[] = [$zone->get_zone_name(), $zone->get_zone_order(), $zone->get_zone_locations(), $methods];
+            // Zone zero has no stored name. Retain the original English receipt across locales.
+            $name = (int) $id === 0 ? 'Locations not covered by your other zones' : $zone->get_zone_name('edit');
+            $state[] = [$name, $zone->get_zone_order(), $zone->get_zone_locations(), $methods];
         }
         return hash('sha256', (string) wp_json_encode($state));
     }

@@ -71,6 +71,11 @@ fn money(v: &Json) -> bool {
     v.as_str()
         .is_some_and(|s| regex::Regex::new(r"^[0-9]+(?:\.[0-9]+)?$").unwrap().is_match(s))
 }
+fn has_percent_escape(name: &str) -> bool {
+    name.as_bytes()
+        .windows(3)
+        .any(|s| s[0] == b'%' && s[1].is_ascii_hexdigit() && s[2].is_ascii_hexdigit())
+}
 fn validate_store(v: &Json) -> std::result::Result<(), String> {
     let o = object(
         v,
@@ -118,11 +123,17 @@ fn validate_store(v: &Json) -> std::result::Result<(), String> {
             if name.trim() != name {
                 return Err("shipping zone names cannot start or end with whitespace".into());
             }
+            if name.contains("  ") || name.contains(['\t', '\n', '\r', '<']) || has_percent_escape(name) {
+                return Err("shipping zone name contains formatting WooCommerce would remove".into());
+            }
             if !names.insert(name) {
                 return Err("shipping zone names must be unique".into());
             }
             let c = z.get("countries").ok_or("shipping zone needs countries")?;
             countries(c, true)?;
+            if c != "rest" && name == "0" {
+                return Err("a named shipping zone cannot be called 0".into());
+            }
             if c == "rest" && index + 1 != zones.len() {
                 return Err("the rest shipping zone must be last".into());
             }

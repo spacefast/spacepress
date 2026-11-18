@@ -10,14 +10,15 @@ import { EventEmitter, once } from 'node:events';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
-test('native WordPress creation selects the compatible update, never a lower latest release', async () => {
+test('native WordPress creation selects the stable update offered from the floor, never a pre-release', async () => {
   const offered = async (offers) => ({ ok: true, json: async () => ({ offers }) });
   assert.equal(await wordpressVersion(async (url) => {
-    assert.match(url, /version=7\.2-beta5$/);
-    return offered([{ response: 'latest', version: '7.1.4' }, { response: 'autoupdate', version: '7.2-RC1' }]);
-  }), '7.2-RC1');
-  assert.equal(await wordpressVersion(() => offered([{ response: 'latest', version: '7.1.4' }])), '7.2-beta5');
-  assert.equal(await wordpressVersion(async () => { throw new Error('offline'); }), '7.2-beta5');
+    // The stable channel: the beta channel would offer 7.2's release candidates from 7.1.
+    assert.match(url, /\?version=7\.1$/);
+    return offered([{ response: 'upgrade', version: '7.1.4' }, { response: 'autoupdate', version: '7.1.4' }]);
+  }), '7.1.4');
+  assert.equal(await wordpressVersion(() => offered([{ response: 'latest', version: '7.1' }])), '7.1');
+  assert.equal(await wordpressVersion(async () => { throw new Error('offline'); }), '7.1');
 });
 
 test('the CLI runs through a symlink with and without Node path preservation', async (t) => {

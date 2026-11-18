@@ -6,7 +6,7 @@ edits, the examples table and Action Scheduler jobs.
 Use a dedicated nonproduction WordPress site to qualify a destination first.
 Pressable is a candidate: it documents application passwords and writable PHP
 filesystem access. This app has not been verified there. The framework requires
-WordPress 7.2-beta5 or newer, PHP 8.2 or newer, and ZipArchive. Check those versions
+WordPress 7.1 or newer, PHP 8.2 or newer, and ZipArchive. Check those versions
 and installation permissions on the selected site.
 
 ## Build the app

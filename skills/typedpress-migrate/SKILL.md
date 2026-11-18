@@ -1,7 +1,7 @@
 ---
 name: typedpress-migrate
 description: "Use when moving an existing app to TypedPress: converting a Zero 0.8 app with `typedpress migrate app`, or importing the schema of another CMS (EmDash, Payload, Sanity) with `typedpress migrate config`. Covers running the conversion, reading its report, and what the conversion does not do."
-compatibility: "Targets TypedPress 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
+compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `typedpress` CLI and Node.js 22+."
 ---
 
 # Migrate from Zero 0.8 or another CMS

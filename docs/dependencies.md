@@ -25,7 +25,7 @@ aggregated license file and original license files ship with the runtime.
 
 ### What WordPress core provides instead
 
-TypedPress runs only inside WordPress 7.2-beta5 or later, so the runtime uses core's own
+TypedPress runs only inside WordPress 7.1 or later, so the runtime uses core's own
 copies wherever core ships the code
 ([decision](decisions/2026-11-07-wp-core-apis.md)):
 

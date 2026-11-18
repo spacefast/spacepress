@@ -367,7 +367,7 @@ export default defineConfig({
 <h2><span class="n">10</span>What it runs on</h2>
 <div class="scroll"><table>
 <tr><th></th><th>Needs</th></tr>
-<tr><td>WordPress</td><td>7.2-beta5 or later. <span class="b ruled">Ruled</span> The floor stays as high as possible and is set in one place (<code>WORDPRESS</code> in <code>src/platform.rs</code>).</td></tr>
+<tr><td>WordPress</td><td>7.1 or later. <span class="b ruled">Ruled</span> The floor is the release Spacefast runs and is set in one place (<code>WORDPRESS</code> in <code>src/platform.rs</code>).</td></tr>
 <tr><td>PHP</td><td>8.2 with <code>mbstring</code>, <code>gd</code>, <code>fileinfo</code>, <code>openssl</code>, <code>sodium</code></td></tr>
 <tr><td>Database</td><td>MySQL 8.0, MariaDB 10.11, or SQLite through the SQLite Database Integration plugin</td></tr>
 <tr><td>Local development</td><td>Node 22+ and npm</td></tr>
@@ -423,8 +423,8 @@ export default defineConfig({
 <div class="scroll"><table>
 <tr><th>Part of an agent</th><th>Comes from</th><th>State</th></tr>
 <tr><td>Tools</td><td>the app's queries, mutations and kind operations, each already registered as a WordPress ability with input and output schemas (<code>runtime/TypedPress/Wp/Abilities/Register.php</code>)</td><td><span class="b built">Built</span></td></tr>
-<tr><td>The call to the model</td><td>core's <code>wp_ai_client_prompt()</code>; <code>using_abilities()</code> hands abilities to the model as tools, and core's resolver runs the calls it asks for</td><td>in WordPress 7.2-beta5; no typed binding in <code>"php/wordpress"</code></td></tr>
-<tr><td>Model and key</td><td>core Connectors (Settings, Connectors). A key is read from an environment variable, then a PHP constant, then the database. Anthropic, Google and OpenAI are listed by default</td><td>in WordPress 7.2-beta5</td></tr>
+<tr><td>The call to the model</td><td>core's <code>wp_ai_client_prompt()</code>; <code>using_abilities()</code> hands abilities to the model as tools, and core's resolver runs the calls it asks for</td><td>in WordPress 7.1; no typed binding in <code>"php/wordpress"</code></td></tr>
+<tr><td>Model and key</td><td>core Connectors (Settings, Connectors). A key is read from an environment variable, then a PHP constant, then the database. Anthropic, Google and OpenAI are listed by default</td><td>in WordPress 7.1</td></tr>
 <tr><td>Schedules and background runs</td><td><code>cron()</code> and <code>job()</code> on Action Scheduler (API ruling 10). The add-on adds no schedule form</td><td><span class="b ruled">Ruled</span>, built as <code>job({...})</code></td></tr>
 <tr><td>Approving a content change</td><td>staged versions: stage and promote are separate abilities, so an account can be allowed one and not the other</td><td><span class="b built">Built</span></td></tr>
 <tr><td>Replies reaching the browser</td><td>live reads</td><td><span class="b built">Built</span> as <code>useLive</code></td></tr>

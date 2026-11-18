@@ -1,6 +1,6 @@
 # WordPress test harness
 
-The harness runs disposable WordPress 7.2-beta5, PHP 8.5 and MariaDB 11.4. It uses the
+The harness runs disposable WordPress 7.1, PHP 8.5 and MariaDB 11.4. It uses the
 platform floor pins in `tests/fixtures/platform.json`: SCF, Action Scheduler,
 MCP Adapter and, for localized apps, Polylang. Every downloaded ZIP is verified
 against its SHA-256. The database lives on tmpfs and `down` deletes its volume.

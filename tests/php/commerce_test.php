@@ -176,6 +176,17 @@ $future->set_name('Scheduled product'); $future->set_sku('0'); $future->set_date
 $db->update('products', ['status' => 'scheduled', 'name' => 'Still scheduled'], ['id' => $future->get_id()], false, $admin);
 $scheduled = $db->findFirst('products', ['where' => ['id' => $future->get_id()]], $admin);
 eq('a native scheduled product keeps its status and zero SKU', [$scheduled['status'], $scheduled['sku']], ['scheduled', '0']);
+// Model the clock reaching the final minute of a product that is already scheduled.
+global $wpdb;
+$imminent = gmdate('Y-m-d H:i:s', time() + 30);
+$wpdb->update($wpdb->posts, ['post_date_gmt' => $imminent, 'post_date' => get_date_from_gmt($imminent)], ['ID' => $future->get_id()]);
+clean_post_cache($future->get_id());
+foreach ([['status' => 'scheduled', 'name' => 'Explicit near-term edit'], ['name' => 'Implicit near-term edit']] as $edit) {
+    $db->update('products', $edit, ['id' => $future->get_id()], false, $admin);
+    $post = get_post($future->get_id());
+    eq('a last-minute title edit preserves publication time and status', [$post->post_title, $post->post_status, $post->post_date_gmt], [$edit['name'], 'future', $imminent]);
+    eq('the edited scheduled product stays out of the public catalog', $db->findFirst('products', ['where' => ['id' => $future->get_id()]], $guest), null);
+}
 $future->delete(true);
 problem('numeric prices are refused before text coercion', fn () => $db->update('products', ['price' => 12.5], ['id' => $mug['id']], false, $admin), 422, 'invalid_input', '/price');
 $db->update('products', ['status' => 'draft'], ['id' => $mug['id']], false, $admin);

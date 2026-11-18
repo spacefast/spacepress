@@ -163,7 +163,20 @@ final class Store implements \TypedPress\Store
                 $p->set_downloads($downloads);
             }
             if (!$p->get_id() && !isset($values['status'])) { $p->set_status('publish'); }
-            $this->db->core(static fn () => $p->save());
+            if ($p->get_status('edit') === 'future') {
+                // Core changes future to publish in the final minute. Leave publication to its scheduled event.
+                $preserveSchedule = static function (array $data, array $post) use ($p): array {
+                    if ((int) ($post['ID'] ?? 0) === $p->get_id() && $post['post_status'] === 'future' && $data['post_status'] === 'publish') {
+                        $data['post_status'] = 'future';
+                    }
+                    return $data;
+                };
+                add_filter('wp_insert_post_data', $preserveSchedule, PHP_INT_MAX, 2);
+                try { $this->db->core(static fn () => $p->save()); }
+                finally { remove_filter('wp_insert_post_data', $preserveSchedule, PHP_INT_MAX); }
+            } else {
+                $this->db->core(static fn () => $p->save());
+            }
         } catch (\WC_Data_Exception $e) { throw new HttpError(422, $e->getErrorCode(), $e->getMessage()); }
     }
     public function delete(string $collection, int|string $pk): void

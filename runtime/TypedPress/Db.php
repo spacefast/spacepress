@@ -396,7 +396,7 @@ final class Db
     {
         return $this->current(function () use ($collection, $where, $guards): array {
             $pk = $this->schema->collection($collection)['primaryKey'];
-            $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], null, '', $guards);
+            $q = Sql::select($this->schema, $this->store, $collection, $where === null ? [] : ['where' => $where], guards: $guards, only: [$pk => true]);
 
             return array_column($this->store->select($collection, $q), $pk);
         });

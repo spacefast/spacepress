@@ -1,7 +1,7 @@
 // "typedpress/app": pages, layouts and HTTP routes under tp/app/ (docs/spec/rendering.md §2–§4).
 // Types only: the compiler lowers these to PHP; nothing here runs in Node or the browser.
 /// <reference path="./assets.d.ts" />
-import type { Action, ColumnsConfig, RouteRequest, RouteResponse, User } from "typedpress";
+import type { AccessCtx, Action, ColumnsConfig, RouteRequest, RouteResponse } from "typedpress";
 import type { JSX } from "typedpress/jsx-runtime";
 
 export type { RouteRequest, RouteResponse };
@@ -80,7 +80,7 @@ export interface Metadata {
   scripts?: string[];
 }
 
-type GuardRule = "anyone" | "authenticated" | "guest" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: { user: User | null }) => boolean);
+type GuardRule = "anyone" | "authenticated" | "guest" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: AccessCtx) => boolean);
 
 /** A page, layout, or HTTP handler can export one rule. A page with handlers can give each its own rule. */
 export type Guard = GuardRule | { page?: GuardRule; handlers: GuardRule };

@@ -1,6 +1,10 @@
 import type { Guard } from "typedpress/app";
 
-export const guard: Guard = ({ user }) => user?.role === "admin";
+export const guard: Guard = ({ user, op, data }) => {
+  if (!user || data != null) return false;
+  if (op === "read") return user.role === "admin";
+  return op === "create" && (user.role === "subscriber" || user.role === "admin");
+};
 
 export default function Checkout() {
   return <h1>Checkout</h1>;

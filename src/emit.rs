@@ -198,14 +198,18 @@ pub(crate) type Files = Vec<(String, Vec<u8>)>;
 /// were made with.
 pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std::io::Result<(String, Files)> {
     let schema_php = schema_php::render(&built.schema);
-    let public = project.join("public");
-    let public = if public.is_dir() {
-        read_tree(&public)?
-    } else {
-        Vec::new()
-    };
-    let files = crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public);
+    let files = crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public_files(project)?);
     Ok((schema_php, files))
+}
+
+/// The public files carried in the app plugin, with paths relative to `public/`.
+pub(crate) fn public_files(project: &Path) -> std::io::Result<Files> {
+    let public = project.join("public");
+    if public.is_dir() {
+        read_tree(&public)
+    } else {
+        Ok(Vec::new())
+    }
 }
 
 #[cfg(test)]

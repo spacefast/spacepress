@@ -1251,6 +1251,16 @@ final class AppRouter
                 continue;
             }
             $handle = 'typedpress-app-script-' . substr(md5($src), 0, 12);
+            if (str_starts_with($src, '/') && defined('TypedPressApp\\PUBLIC_SCRIPT_VERSIONS')) {
+                $path = wp_parse_url($src, PHP_URL_PATH);
+                $version = is_string($path) ? (\TypedPressApp\PUBLIC_SCRIPT_VERSIONS[rawurldecode(ltrim($path, '/'))] ?? null) : null;
+                if ($version !== null) {
+                    // Keep the author's query and place the version before any fragment.
+                    $parts = explode('#', $src, 2);
+                    $parts[0] .= (str_contains($parts[0], '?') ? '&' : '?') . 'tpv=' . $version;
+                    $src = implode('#', $parts);
+                }
+            }
             wp_register_script_module($handle, self::absolute($src), [], null);
             wp_enqueue_script_module($handle);
         }

@@ -121,13 +121,12 @@ fn app_router_serves_pages_on_wordpress() {
         format!("{}/guest/", seen["base"].as_str().unwrap())
     );
     assert_eq!(access["private pages"], serde_json::json!(["private", "private"]));
-    for (viewer, status) in [("guest", 401), ("reader", 403), ("admin", 200)] {
+    for (viewer, status, post_status) in [("guest", 401, 401), ("reader", 403, 201), ("admin", 200, 201)] {
         assert_eq!(
             access["queue"][viewer],
             serde_json::json!([status, status == 200]),
             "{viewer}"
         );
-        let post_status = if status == 200 { 201 } else { status };
         assert_eq!(
             access["checkout POST"][viewer],
             serde_json::json!([post_status, post_status == 201]),
@@ -5162,11 +5161,15 @@ fn drive_store_example_sells_on_wordpress() {
         let out = first().args(&args).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     }
+    let profile = std::env::var_os("TP_DRIVE_PROFILE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| work.path().join("drive-profile.json"));
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/drive_store.php"))
         .arg(project.join("tp/dist/wp-content"))
         .arg(compiled.join("seed"))
+        .env("TP_DRIVE_PROFILE", &profile)
         .env("TP_WP_THEMES", "1")
         .output()
         .unwrap();
@@ -5176,6 +5179,19 @@ fn drive_store_example_sells_on_wordpress() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(profile).unwrap()).unwrap();
+    for (state, max_joins) in [
+        ("catalog", 8),
+        ("orders/purchased", 0),
+        ("product/in-stock", 22),
+        ("product/review", 22),
+    ] {
+        let joins = report["states"][state]["typedpress_postmeta_joins"].as_u64().unwrap();
+        assert!(
+            joins <= max_joins,
+            "{state} used {joins} postmeta joins, budget is {max_joins}"
+        );
+    }
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     use serde_json::json;
@@ -5227,6 +5243,13 @@ fn drive_store_example_sells_on_wordpress() {
     assert_eq!(seen["member staff entry"], true, "{seen}");
     assert_eq!(seen["search"], json!(["Samsung 870 EVO 1 TB"]));
     assert_eq!(seen["filter"], json!(["Crucial P3 2 TB"]));
+    assert_eq!(seen["filter beyond limit"], seen["filter"]);
+    assert_eq!(seen["invalid filter"], json!(["No drives match your search."]));
+    assert_eq!(seen["sold out"], json!([200, ["Sold out"], ["Buy"]]));
+    assert_eq!(
+        seen["missing products"],
+        json!({"unpublished-nvme": [404, ["Not found"]], "unlisted-model": [404, ["Not found"]]})
+    );
     assert_eq!(
         seen["product"],
         json!({
@@ -5274,6 +5297,10 @@ fn drive_store_example_sells_on_wordpress() {
     assert_eq!(seen["restock"], json!(["Restocked: 5 on the shelf now."]));
     assert_eq!(seen["movements"], json!(["restock", "sale", "sale"]));
     assert_eq!(seen["restock as customer"], 403);
+    assert_eq!(
+        seen["pending orders"],
+        json!({"editor": [200, ["Ann"]], "ann": [403, []]})
+    );
     // Reviews: a first review is held and shown to its author only.
     assert_eq!(seen["review"], json!([303, ["Arrived well packed, SMART clean."]]));
     assert_eq!(seen["review signed out"], json!([[], ["Sign in to comment"]]));
@@ -6496,6 +6523,71 @@ fn root_layout_chrome_without_a_template_is_hinted() {
     let bare = "import type { LayoutProps } from \"typedpress/app\";\nexport default function Root({ children }: LayoutProps) { return <>{children}</>; }\n";
     assert!(!check(&[("tp/app/layout.tsx", bare), page]).contains(hint));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn public_metadata_scripts_carry_a_content_version() {
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    std::fs::create_dir_all(project.join("tp/app/plain")).unwrap();
+    std::fs::create_dir_all(project.join("public/scripts")).unwrap();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        r#"import { defineConfig } from "typedpress";
+export default defineConfig({ name: "publicmodules", admin: false });"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/page.tsx"),
+        r#"export const metadata = () => ({ scripts: [
+  "/scripts/module%20name.mjs?mode=one&mode=two#ready",
+  "https://cdn.example/remote.js?mode=one#ready",
+] });
+export default function Page() { return <p>With scripts</p>; }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/plain/page.tsx"),
+        "export default function Plain() { return <p>Without scripts</p>; }",
+    )
+    .unwrap();
+
+    let content = project.join("tp/dist/wp-content");
+    let schema = content.join("plugins/typedpress-app-publicmodules/tp/app/schema.php");
+    let scripts = |body: &str| {
+        std::fs::write(project.join("public/scripts/module name.mjs"), body).unwrap();
+        build(project);
+        let out = Command::new("php")
+            .args(["-d", "memory_limit=512M"])
+            .arg(root().join("tests/php/public_script_versions.php"))
+            .arg(&content)
+            .env("TP_WP_THEMES", "1")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        let base = seen["base"].as_str().unwrap();
+        use sha2::Digest;
+        let version: String = sha2::Sha256::digest(body)[..8]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(
+            seen["scripts"],
+            serde_json::json!([
+                format!("{base}/scripts/module%20name.mjs?mode=one&mode=two&tpv={version}#ready"),
+                "https://cdn.example/remote.js?mode=one#ready",
+            ])
+        );
+        assert_eq!(seen["plain"], serde_json::json!([]));
+        assert_eq!(seen["body"], body);
+        version
+    };
+    let first = scripts("export const value = 1;\n");
+    let original_schema = std::fs::read(&schema).unwrap();
+    let second = scripts("export const value = 2;\n");
+    assert_ne!(first, second);
+    assert_eq!(std::fs::read(schema).unwrap(), original_schema);
 }
 
 /// The script modules with fixed names (`typedpress-client.js`, the runtime's `live.js` and

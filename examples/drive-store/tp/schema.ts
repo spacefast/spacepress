@@ -77,7 +77,7 @@ export const orders = table({
 }).on({
   // The one place an order's price and stock are checked, whoever creates it.
   async beforeCreate(data) {
-    const drive = await db.query.drives.findFirst({ where: { id: data.drive } });
+    const drive = await db.query.drives.findFirst({ where: { id: data.drive }, columns: { status: true, stock: true, price: true } });
     if (!drive || drive.status !== "published") throw new HttpError(404, "not_found", "That drive isn't for sale.");
     const quantity = data.quantity ?? 1;
     if (drive.stock < quantity) {
@@ -90,7 +90,7 @@ export const orders = table({
   },
   // Selling takes the drives off the shelf, and the movement log says why.
   async afterCreate(order) {
-    const drive = await db.query.drives.findFirst({ where: { id: order.drive } });
+    const drive = await db.query.drives.findFirst({ where: { id: order.drive }, columns: { id: true, stock: true } });
     if (!drive) return;
     await db.update(drives).set({ stock: drive.stock - order.quantity }).where({ id: drive.id });
     await db.insert(stockMovements).values({ drive: drive.id, change: -order.quantity, reason: "sale", order: order.id });

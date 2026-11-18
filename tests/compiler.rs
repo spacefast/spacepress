@@ -2394,12 +2394,8 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
     assert_eq!(posts["data"][0]["title"], "Hello, TypedPress", "{posts}");
     drop(server);
 
-    // §7.3: localized posts ship a wpml-config.xml, so WPML and Polylang know which fields translate.
-    assert_eq!(
-        std::fs::read_to_string(plugin.join("wpml-config.xml")).unwrap(),
-        std::fs::read_to_string(root().join("tests/fixtures/blog.wpml-config.xml")).unwrap(),
-        "wpml-config.xml drifted from tests/fixtures/blog.wpml-config.xml"
-    );
+    // The blog has no localized post types. The localized fixture below checks the XML contents.
+    assert!(!plugin.join("wpml-config.xml").exists());
     // Post-backed collections have no MySQL table; editor:false ones do (no FK to a post type).
     let mysql = std::fs::read_to_string(plugin.join("tp/app/migrations/0001_init.sql")).unwrap();
     assert!(mysql.contains("CREATE TABLE `{prefix}tp_comments`"), "{mysql}");

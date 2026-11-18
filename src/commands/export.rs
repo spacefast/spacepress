@@ -52,9 +52,9 @@ static MODULE_DATA: LazyLock<regex::Regex> = LazyLock::new(|| {
     pattern(r#"(?s)(<script id="wp-script-module-data-([^"]+)" type="application/json">)(.*?)(</script>)"#)
 });
 static CSS_REFERENCE: LazyLock<regex::Regex> =
-    LazyLock::new(|| pattern(r#"url\(\s*['"]?([^'")]+)['"]?\s*\)|@import\s+['"]([^'"]+)['"]()"#));
+    LazyLock::new(|| pattern(r#"url\(\s*['"]?([^'")]+)['"]?\s*\)|@import\s+['"]([^'"]+)['"]"#));
 static JS_IMPORT: LazyLock<regex::Regex> =
-    LazyLock::new(|| pattern(r#"()()(?:\bimport\s*\(\s*|\bfrom\s*|\bimport\s+)['"]((?:\./|\.\./|/)[^'"]+)['"]"#));
+    LazyLock::new(|| pattern(r#"(?:\bimport\s*\(\s*|\bfrom\s*|\bimport\s+)['"]((?:\./|\.\./|/)[^'"]+)['"]"#));
 static NOINDEX: LazyLock<regex::Regex> =
     LazyLock::new(|| pattern(r#"(?i)<meta name=['"]robots['"] content=['"][^'"]*noindex"#));
 
@@ -188,7 +188,8 @@ fn run(flags: Flags) -> Result<(), String> {
         // The checkout's compiled app plugin, hashed as the site hashes its own (Prebuilt::appHash):
         // every file below tp/app/, so a change to any page, component or action counts.
         let schema_php = crate::schema_php::render(&built.schema);
-        let mut files: Vec<(String, Vec<u8>)> = crate::app_plugin::files(&built, &schema_php, Vec::new(), Vec::new())
+        let public = crate::emit::public_files(&project).map_err(|e| format!("couldn't read public/: {e}"))?;
+        let mut files: Vec<(String, Vec<u8>)> = crate::app_plugin::files(&built, &schema_php, Vec::new(), public)
             .into_iter()
             .filter_map(|(path, bytes)| {
                 let rest = path.split_once('/')?.1.strip_prefix("tp/app/")?;
@@ -310,6 +311,9 @@ struct Report {
     files: usize,
     redirects: usize,
 }
+
+/// The exported file paths and, for versioned public modules, the query used to fetch the file.
+type Assets = BTreeMap<String, String>;
 
 struct Export<'a> {
     agent: ureq::Agent,
@@ -466,7 +470,7 @@ impl<'a> Export<'a> {
             .prefix(".typedpress-export-")
             .tempdir_in(parent)
             .map_err(|e| e.to_string())?;
-        let mut assets: BTreeSet<String> = BTreeSet::new();
+        let mut assets = Assets::new();
         let mut refusals = Vec::new();
         for page in &pages {
             let mut html = self.rewrite(&page.html, &page.path, &exported, &moved, &mut assets, &mut refusals);
@@ -498,21 +502,21 @@ impl<'a> Export<'a> {
         }
         // Assets, and what they reference in turn (a stylesheet's fonts and images, a module's imports).
         let mut files = 0;
-        let mut queue: Vec<String> = assets.into_iter().collect();
-        let mut seen: BTreeSet<String> = queue.iter().cloned().collect();
-        while let Some(path) = queue.pop() {
-            let (status, _, body) = self.get(&format!("{}{path}", self.home), None)?;
+        let mut seen: BTreeSet<String> = assets.keys().cloned().collect();
+        let mut queue: Vec<_> = assets.into_iter().collect();
+        while let Some((path, query)) = queue.pop() {
+            let (status, _, body) = self.get(&format!("{}{path}{query}", self.home), None)?;
             if status != 200 {
                 return Err(format!(
                     "{path} answered {status}; the pages reference it, so the export needs it"
                 ));
             }
             let mut body = body;
-            if path.ends_with(".css") || path.ends_with(".js") {
+            if path.ends_with(".css") || crate::assets::is_javascript(&path) {
                 let text = String::from_utf8_lossy(&body).into_owned();
                 for found in self.referenced(&text, &path) {
                     if seen.insert(found.clone()) {
-                        queue.push(found);
+                        queue.push((found, String::new()));
                     }
                 }
                 body = self.relink(&text).into_bytes();
@@ -647,7 +651,7 @@ impl<'a> Export<'a> {
         page: &str,
         exported: &BTreeSet<String>,
         moved: &BTreeSet<String>,
-        assets: &mut BTreeSet<String>,
+        assets: &mut Assets,
         refusals: &mut Vec<String>,
     ) -> String {
         let html = &self.srcsets(html, assets);
@@ -674,13 +678,12 @@ impl<'a> Export<'a> {
                 && !path.ends_with(".md")
                 && !path.ends_with(".php");
             let new = if file {
-                let clean = path.to_string();
                 if name == "action" {
                     out.push_str(whole.as_str());
                     continue;
                 }
-                assets.insert(clean.clone());
-                format!("{}{clean}{}", self.flags.base, version_suffix(suffix))
+                record_asset(assets, path, suffix);
+                format!("{}{path}{}", self.flags.base, version_suffix(suffix))
             } else {
                 let target = path.trim_end_matches('/');
                 let target = if target.is_empty() { "/" } else { target };
@@ -724,7 +727,7 @@ impl<'a> Export<'a> {
     }
 
     /// `srcset` and `imagesrcset`: each candidate's same-site URL is a file of the export.
-    fn srcsets(&self, html: &str, assets: &mut BTreeSet<String>) -> String {
+    fn srcsets(&self, html: &str, assets: &mut Assets) -> String {
         SRCSET
             .replace_all(html, |c: &regex::Captures| {
                 let quote = if c.get(3).is_some() { '"' } else { '\'' };
@@ -737,7 +740,7 @@ impl<'a> Export<'a> {
                         match self.local_path(&url.replace("&#038;", "&").replace("&amp;", "&")) {
                             Some(local) => {
                                 let (path, suffix) = split_suffix(&local);
-                                assets.insert(path.to_string());
+                                record_asset(assets, path, suffix);
                                 format!("{}{path}{} {descriptor}", self.flags.base, version_suffix(suffix))
                                     .trim_end()
                                     .to_string()
@@ -791,11 +794,11 @@ impl<'a> Export<'a> {
     }
 
     /// `<style>` blocks (core's font faces, block styles): their `url(...)` files are exported too.
-    fn inline_styles(&self, html: &str, assets: &mut BTreeSet<String>) -> String {
+    fn inline_styles(&self, html: &str, assets: &mut Assets) -> String {
         STYLE
             .replace_all(html, |c: &regex::Captures| {
                 for found in self.referenced(&c[2], "/inline.css") {
-                    assets.insert(found);
+                    assets.entry(found).or_default();
                 }
                 format!("{}{}{}", &c[1], self.relink(&c[2]), &c[3])
             })
@@ -803,7 +806,7 @@ impl<'a> Export<'a> {
     }
 
     /// The Interactivity API's import map: its module URLs are files of the export.
-    fn import_map(&self, html: &str, assets: &mut BTreeSet<String>) -> String {
+    fn import_map(&self, html: &str, assets: &mut Assets) -> String {
         IMPORT_MAP
             .replace_all(html, |c: &regex::Captures| {
                 let Ok(mut map) = serde_json::from_str::<Value>(&c[2]) else {
@@ -813,7 +816,7 @@ impl<'a> Export<'a> {
                     for value in imports.values_mut() {
                         if let Some(local) = value.as_str().and_then(|u| self.local_path(u)) {
                             let (path, suffix) = split_suffix(&local);
-                            assets.insert(path.to_string());
+                            record_asset(assets, path, suffix);
                             *value = Value::String(format!("{}{path}{}", self.flags.base, version_suffix(suffix)));
                         }
                     }
@@ -894,7 +897,7 @@ impl<'a> Export<'a> {
         let dir = from.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
         let mut out = Vec::new();
         for c in re.captures_iter(text) {
-            let raw = c.get(1).or(c.get(2)).or(c.get(3)).expect("group").as_str();
+            let raw = c.get(1).or(c.get(2)).expect("reference").as_str();
             if raw.starts_with("data:") || raw.starts_with('#') || raw.starts_with("@wordpress/") || raw.contains("${")
             {
                 continue;
@@ -985,12 +988,28 @@ fn split_suffix(path: &str) -> (&str, &str) {
     }
 }
 
-/// A file's `?ver=…` stays (it names the version for caches); other query strings and fragments go.
+/// Preserve WordPress versions and the full suffix of versioned public modules.
 fn version_suffix(suffix: &str) -> &str {
-    if suffix.starts_with("?ver=") && !suffix.contains('&') {
+    if (suffix.starts_with("?ver=") && !suffix.contains('&')) || public_module_query(suffix).is_some() {
         suffix
     } else {
         ""
+    }
+}
+
+fn public_module_query(suffix: &str) -> Option<&str> {
+    let query = suffix.split('#').next()?;
+    query
+        .strip_prefix('?')?
+        .split('&')
+        .any(|part| part.starts_with("tpv="))
+        .then_some(query)
+}
+
+fn record_asset(assets: &mut Assets, path: &str, suffix: &str) {
+    let versioned = assets.entry(path.to_string()).or_default();
+    if let Some(query) = public_module_query(suffix) {
+        *versioned = query.to_string();
     }
 }
 
@@ -1201,5 +1220,47 @@ mod tests {
         assert_eq!(split_suffix("/x.js?ver=1#y"), ("/x.js", "?ver=1#y"));
         assert_eq!(version_suffix("?ver=6a43"), "?ver=6a43");
         assert_eq!(version_suffix("?a=1"), "");
+        assert_eq!(
+            version_suffix("?mode=one&mode=two&tpv=6a43#ready"),
+            "?mode=one&mode=two&tpv=6a43#ready"
+        );
+        assert_eq!(version_suffix("?mode=one#tpv=6a43"), "");
+    }
+
+    #[test]
+    fn the_export_fetches_the_versioned_public_module() {
+        let flags = parse(&["--base".into(), "/docs".into()]).unwrap();
+        let listing = serde_json::json!({});
+        let export = Export::new(
+            "https://render.example.test",
+            &flags,
+            &crate::schema::Schema::default(),
+            &listing,
+        )
+        .unwrap();
+        let html = concat!(
+            r#"<script type="module" src="https://render.example.test/module.mjs?mode=one&#038;tpv=6a43#ready"></script>"#,
+            r#"<link rel="modulepreload" href="https://render.example.test/module.mjs">"#,
+        );
+        let mut assets = Assets::new();
+        let mut refusals = Vec::new();
+        let output = export.rewrite(
+            html,
+            "/",
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &mut assets,
+            &mut refusals,
+        );
+        assert!(
+            output.contains(r#"src="/docs/module.mjs?mode=one&amp;tpv=6a43#ready""#),
+            "{output}"
+        );
+        assert!(refusals.is_empty());
+        assert_eq!(assets["/module.mjs"], "?mode=one&tpv=6a43");
+        assert_eq!(
+            export.referenced(r#"import { name } from "./other.mjs";"#, "/scripts/module.mjs"),
+            ["/scripts/other.mjs"]
+        );
     }
 }

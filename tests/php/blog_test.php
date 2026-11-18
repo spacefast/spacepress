@@ -91,6 +91,16 @@ $db->update('posts', ['publishedAt' => null], ['id' => $draft['id']]);
 
 [$s, $rows] = req('GET', '/posts', query: ['orderBy' => 'id']);
 eq('anonymous: function rule → published only', [$s, $titles($rows)], [200, ['Published one']]);
+$metaJoins = 0;
+\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$metaJoins): void {
+    $metaJoins += preg_match_all('/\bJOIN\s+`?wp_postmeta\b/i', $sql);
+};
+try {
+    $keys = $db->permittedKeys('posts', 'read', $anonymous);
+    eq('checking published IDs skips unrelated post metadata', [array_map('intval', $keys), $metaJoins], [[$pub['id']], 0]);
+} finally {
+    \TypedPress\Wp\Connection::$observer = null;
+}
 eq('subscriber: same filter', $titles(req('GET', '/posts', as: 'sub')[1]), ['Published one']);
 eq('author: function rule returns true → drafts visible', $titles(req('GET', '/posts', as: 'alice', query: ['orderBy' => 'id'])[1]), ['Published one', 'Draft one']);
 eq('?status= shorthand', $titles(req('GET', '/posts', as: 'ed', query: ['status' => 'draft'])[1]), ['Draft one']);

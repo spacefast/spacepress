@@ -36,7 +36,7 @@ export default async function Catalog({ search }: PageProps<"/", Search>) {
       <ul className="cards">
         {rows.map((d) => (
           <li className="card">
-            <h2><Link href={d.href} prefetch>{d.name}</Link></h2>
+            <h2><Link href={`/drives/${d.slug ?? ""}`} prefetch>{d.name}</Link></h2>
             <p className="muted">{d.brand} {d.model} · {size(d.capacityGb)} {mediaName(d.media)}</p>
             {d.summary ? <p>{d.summary}</p> : null}
             <p className="row">

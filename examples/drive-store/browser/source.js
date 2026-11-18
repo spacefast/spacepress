@@ -7,12 +7,8 @@ const tree = document.querySelector("#drive-source-files");
 const viewer = document.querySelector("#drive-source-viewer");
 const status = document.querySelector("#drive-source-status");
 
-async function showSource() {
-  status.hidden = false;
-  status.textContent = "Loading source files…";
-  const response = await fetch(new URL("./files.json", import.meta.url), { cache: "no-cache" });
-  if (!response.ok) throw new Error("Could not load the Drive Store source files");
-  const files = new Map(Object.entries(await response.json()));
+function showSource() {
+  const files = new Map(__DRIVE_SOURCE_FILES__);
   const paths = [...files.keys()];
   const requested = new URLSearchParams(location.search).get("file");
   const first = files.has(requested) ? requested : "tp/schema.ts";
@@ -46,12 +42,14 @@ async function showSource() {
     ?.querySelector('[role="tree"]')?.setAttribute("aria-label", "Project files");
   if (requested === first) fileTree.scrollToPath(first);
   show(first);
-  status.hidden = true;
 }
 
 if (viewer) {
-  showSource().catch(() => {
+  try {
+    showSource();
+  } catch {
     viewer.hidden = true;
+    status.hidden = false;
     status.textContent = "The source viewer could not load. Use the repository link to browse the files.";
-  });
+  }
 }

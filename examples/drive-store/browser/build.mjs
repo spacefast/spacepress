@@ -47,9 +47,30 @@ const packages = {
   "@pierre/highlights/themes": new Set(),
 };
 const unavailable = `Promise.reject(new Error("Highlighter option is not bundled"))`;
+// Keep TS and TSX in the initial viewer. Other grammars are native ESM imports
+// with content-derived URLs so opening a different file loads only its grammar.
+const optionalGrammars = new Map();
+for (const name of ["javascript", "css", "json", "markdown", "shellscript"]) {
+  const specifier = `@shikijs/langs/${name}`;
+  const grammar = await Bun.build({
+    entrypoints: [Bun.resolveSync(specifier, root)],
+    format: "esm",
+    target: "browser",
+    minify: true,
+    naming: `${name}-[hash].js`,
+  });
+  if (!grammar.success || grammar.outputs.length !== 1) {
+    throw new AggregateError(grammar.logs, `Could not build the ${name} grammar`);
+  }
+  optionalGrammars.set(specifier, grammar.outputs[0]);
+}
 const sourceHighlighter = {
   name: "source-highlighter",
   setup(build) {
+    build.onResolve({ filter: /^@shikijs\/langs\// }, ({ path }) => {
+      const grammar = optionalGrammars.get(path);
+      if (grammar) return { path: grammar.path, external: true };
+    });
     build.onLoad({
       filter: /(shiki\/dist\/langs-bundle-full[^/]*\.mjs|@pierre\/theming\/dist\/collections\/(pierre|shiki)\.js|@pierre\/highlights\/dist\/themes\/loader\.js|@pierre\/diffs\/dist\/highlighter\/(backends\/shiki|shared_highlighter)\.js)$/,
     }, async ({ path }) => {
@@ -68,6 +89,7 @@ const build = await Bun.build({
   format: "esm",
   target: "browser",
   minify: true,
+  define: { __DRIVE_SOURCE_FILES__: JSON.stringify(files) },
   plugins: [sourceHighlighter],
 });
 const [bundle] = build.outputs;
@@ -80,7 +102,7 @@ const notices = await Promise.all(["@pierre/diffs/LICENSE.md", "@pierre/trees/LI
 
 await mkdir(out, { recursive: true });
 await Promise.all([
+  ...Array.from(optionalGrammars.values(), (grammar) => Bun.write(resolve(out, grammar.path), grammar)),
   writeFile(resolve(out, "source.js"), await bundle.text()),
-  writeFile(resolve(out, "files.json"), JSON.stringify(Object.fromEntries(files))),
   writeFile(resolve(out, "licenses.txt"), notices.join("\n\n")),
 ]);

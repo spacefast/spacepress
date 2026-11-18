@@ -5539,10 +5539,11 @@ fn login_tsx_is_the_sign_in_page() {
         project.join("tp/dist/wp-content/plugins/typedpress-app-loginpage/tp/app/functions.php"),
     )
     .unwrap();
-    assert!(
-        functions.contains("\\TypedPress\\Render\\LoginView::form('signin-form', 'Sign in', false, null)"),
-        "{functions}"
-    );
+    let form_args = functions
+        .split_once("\\TypedPress\\Render\\LoginView::form(")
+        .and_then(|(_, call)| call.split_once(')'))
+        .map(|(args, _)| args.trim());
+    assert_eq!(form_args, Some("'signin-form', 'Sign in', false, null"), "{functions}");
     // login.tsx is not a URL of its own: no route, no Page, nothing in routes.d.ts.
     assert!(!schema.contains("'pattern' => '/login'"), "{schema}");
     let _ = std::fs::remove_dir_all(&project);

@@ -1548,6 +1548,25 @@ final class Db
         return $this->selectDecoded($collection, $opts, '', null)[0] ?? null;
     }
 
+    /** Stored rows for a page of WordPress post IDs, with the same decoding as editorRow(). */
+    public function editorRows(string $collection, array $ids): array
+    {
+        $pk = $this->schema->collection($collection)['primaryKey'];
+        $opts = ['where' => [$pk => ['in' => $ids]], 'limit' => count($ids) + 1];
+        $found = $this->selectDecoded($collection, $opts, '', null);
+        if (count($found) > count($ids)) {
+            return []; // Duplicate postmeta multiplied the joins. Fall back to the individual LIMIT 1 reads.
+        }
+        $rows = [];
+        foreach ($found as $row) {
+            $id = (int) $row[$pk];
+            // Non-unique WordPress postmeta can return several rows for one post. Let the normal
+            // LIMIT 1 query choose that item's row exactly as it would for an individual response.
+            $rows[$id] = array_key_exists($id, $rows) ? null : $row;
+        }
+        return $rows;
+    }
+
     /**
      * editorRow() for a row WordPress may hold in its trash: what a move into or out of the trash, and
      * a permanent delete from it, know of the row as stored. Every other read leaves the trash out.

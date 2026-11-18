@@ -41,6 +41,44 @@ $openNote = $db->insert('openNotes', ['title' => 'Anonymous unique slug'], true,
 eq('anonymous unique creation succeeds when password guards cannot narrow reads', $openNote['slug'], 'anonymous-unique-slug');
 eq('native unrestricted reads do not enumerate every primary key', $db->permittedKeys('openNotes', 'read', $anonymous), null);
 
+// A projection batches the pre-filter stored snapshots, including those used for nested
+// fields and third-party metadata. Ordinary REST responses keep their per-item reads.
+$db->insert('openNotes', [['title' => 'More notes'], ['title' => 'Final notes']]);
+$projected = static function (?string $fields, string $context = 'view'): array {
+    $request = new \WP_REST_Request('GET', '/wp/v2/tp_open_notes');
+    $request->set_query_params(['context' => $context, 'orderby' => 'id', 'order' => 'asc'] + ($fields === null ? [] : ['_fields' => $fields]));
+    $queries = 0;
+    \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$queries): void {
+        if (str_contains($sql, "post_type = 'tp_open_notes'") && str_contains($sql, 'post_title AS')) {
+            ++$queries;
+        }
+    };
+    try {
+        $response = rest_do_request($request);
+        return [$response->get_status(), $response->get_data(), $queries];
+    } finally {
+        \TypedPress\Wp\Connection::$observer = null;
+    }
+};
+foreach (['id,title', 'id,title.rendered'] as $fields) {
+    [$status, $items, $queries] = $projected($fields);
+    eq("projected $fields uses the core title", [$status, $items[0]['id'], $items[0]['title']['rendered'], $queries],
+        [200, $openNote['id'], 'Anonymous unique slug', 1]);
+}
+eq('embed context respects a nested title projection', $projected('id,title.rendered', 'embed')[2], 1);
+eq('unprojected native REST reads each original row', $projected(null)[2], 3);
+eq('nested meta projection still reads the full row', $projected('id,meta.slug')[2], 1);
+$injectMeta = static function ($response) {
+    $data = $response->get_data();
+    $data['meta'] = ['from_filter' => true];
+    $response->set_data($data);
+    return $response;
+};
+add_filter('rest_prepare_tp_open_notes', $injectMeta);
+[$status, $items, $queries] = $projected('id,title');
+eq('a response filter can add meta to a projected native response', [$items[0]['meta']['from_filter'] ?? null, $queries], [true, 1]);
+remove_filter('rest_prepare_tp_open_notes', $injectMeta);
+
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {
     $users[$name] = $wp->user($name);

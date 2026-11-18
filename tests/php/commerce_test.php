@@ -84,6 +84,11 @@ $methodIds = array_map(static fn ($z) => array_keys($z['shipping_methods']), $zo
 eq('unchanged source does not recreate shipping methods', array_map(static fn ($z) => array_keys($z['shipping_methods']), WC_Shipping_Zones::get_zones()), $methodIds);
 wp_cache_set('notoptions', ['tp_' . $plugin->schema->name() . '_shipping' => true], 'options');
 eq('shipping inspection ignores a stale negative marker cache', \TypedPress\Commerce\Module::plan($plugin), []);
+$zoneStore = WC_Data_Store::load('shipping-zone');
+$unknownMethod = $zoneStore->add_method(reset($zoneIds), 'inactive_test_plugin', 9);
+eq('an inactive plugin rate invalidates the shipping receipt', array_column(\TypedPress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
+\TypedPress\Commerce\Module::initialize($plugin);
+check('reconciliation removes the inactive plugin rate', !$zoneStore->get_method($unknownMethod));
 $extra = new WC_Shipping_Zone(); $extra->set_zone_name('Admin addition'); $extra->save();
 $shippingSnapshot = static function (): array {
     $state = [];

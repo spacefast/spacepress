@@ -23,6 +23,10 @@ fn success(out: Output) -> Output {
 fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
     let project = tempfile::tempdir().unwrap();
     for (exports, error) in [
+        (
+            "export const shop = store({currency:'EUR',country:'PL',shipping:[{name:' Poland ',countries:['PL'],methods:[]}]});",
+            "shipping zone names cannot start or end with whitespace",
+        ),
         ("export const products = product();", "require an exported store()"),
         (
             "export const a = store({currency:'EUR',country:'PL'}); export const b = store({currency:'EUR',country:'PL'});",

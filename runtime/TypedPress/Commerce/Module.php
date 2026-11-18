@@ -210,14 +210,23 @@ final class Module
         foreach ($store['shipping'] as $index => $zone) {
             $id = 0;
             if ($zone['countries'] !== 'rest') {
+                if (wc_clean($zone['name']) !== $zone['name']) {
+                    throw new \RuntimeException('Shipping zone names must match their WooCommerce representation');
+                }
                 foreach ($existing as $candidate) { if ($candidate['zone_name'] === $zone['name']) { $id = (int) $candidate['zone_id']; break; } }
                 $z = new \WC_Shipping_Zone($id ?: null);
                 $z->set_zone_name($zone['name']); $z->set_zone_order($index);
                 $z->set_zone_locations(array_map(static fn ($code) => (object) ['code' => $code, 'type' => 'country'], $zone['countries']));
                 if (!$z->save()) { throw new \RuntimeException('Could not save source shipping zone ' . $zone['name']); }
-                $id = $z->get_id(); $kept[] = $id;
+                $id = $z->get_id();
+                $saved = new \WC_Shipping_Zone($id);
+                $locations = array_map(static fn ($loc) => $loc->type . ':' . $loc->code, $saved->get_zone_locations('edit'));
+                $expected = array_unique(array_map(static fn ($code) => 'country:' . $code, $zone['countries']));
+                sort($locations); sort($expected);
+                if ($locations !== $expected) { throw new \RuntimeException('Could not persist source shipping locations'); }
+                $kept[] = $id;
             } else { $z = new \WC_Shipping_Zone(0); }
-            foreach ($z->get_shipping_methods() as $method) { $z->delete_shipping_method($method->instance_id); }
+            self::clearMethods($z);
             foreach ($zone['methods'] as $method) {
                 $type = ['flatRate' => 'flat_rate', 'freeShipping' => 'free_shipping', 'localPickup' => 'local_pickup'][$method['type']];
                 $instance = $z->add_shipping_method($type);
@@ -231,9 +240,21 @@ final class Module
             }
         }
         foreach ($existing as $zone) { if (!in_array((int) $zone['zone_id'], $kept, true)) { (new \WC_Shipping_Zone($zone['zone_id']))->delete(); } }
-        if (!array_filter($store['shipping'], static fn ($z) => $z['countries'] === 'rest')) { $rest = new \WC_Shipping_Zone(0); foreach ($rest->get_shipping_methods() as $m) { $rest->delete_shipping_method($m->instance_id); } }
+        if (!array_filter($store['shipping'], static fn ($z) => $z['countries'] === 'rest')) { $rest = new \WC_Shipping_Zone(0); self::clearMethods($rest); }
         \WC_Cache_Helper::get_transient_version('shipping', true);
         update_option($key, ['source' => $hash, 'state' => self::shippingState()], false);
+    }
+    private static function persistedMethods(\WC_Shipping_Zone $zone): array
+    {
+        global $wpdb;
+        $methods = $zone->get_data_store()->get_methods($zone->get_id(), false);
+        if ($wpdb->last_error !== '') { throw new \RuntimeException('Could not read shipping methods'); }
+        return $methods;
+    }
+    private static function clearMethods(\WC_Shipping_Zone $zone): void
+    {
+        foreach (self::persistedMethods($zone) as $method) { $zone->delete_shipping_method($method->instance_id); }
+        if (self::persistedMethods($zone) !== []) { throw new \RuntimeException('Could not remove shipping methods'); }
     }
     private static function shippingState(): string
     {
@@ -241,7 +262,11 @@ final class Module
         foreach ([...array_keys(\WC_Shipping_Zones::get_zones()), 0] as $id) {
             $zone = new \WC_Shipping_Zone($id);
             $methods = [];
-            foreach ($zone->get_shipping_methods() as $method) { $methods[] = [$method->id, $method->enabled, get_option($method->get_instance_option_key())]; }
+            $registered = $zone->get_shipping_methods();
+            foreach ($registered as $method) { $methods[] = [$method->id, $method->enabled, get_option($method->get_instance_option_key())]; }
+            foreach (self::persistedMethods($zone) as $row) {
+                if (!isset($registered[$row->instance_id])) { $methods[] = ['unregistered', $row->method_id, $row->instance_id]; }
+            }
             $state[] = [$zone->get_zone_name(), $zone->get_zone_order(), $zone->get_zone_locations(), $methods];
         }
         return hash('sha256', (string) wp_json_encode($state));

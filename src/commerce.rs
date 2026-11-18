@@ -114,7 +114,11 @@ fn validate_store(v: &Json) -> std::result::Result<(), String> {
         let mut rest = false;
         for (index, zone) in zones.iter().enumerate() {
             let z = object(zone, &["name", "countries", "methods"], "shipping zone")?;
-            if !names.insert(text(z.get("name"), "zone name")?) {
+            let name = text(z.get("name"), "zone name")?;
+            if name.trim() != name {
+                return Err("shipping zone names cannot start or end with whitespace".into());
+            }
+            if !names.insert(name) {
                 return Err("shipping zone names must be unique".into());
             }
             let c = z.get("countries").ok_or("shipping zone needs countries")?;

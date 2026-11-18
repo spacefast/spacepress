@@ -380,15 +380,28 @@ final class Db
     /**
      * The primary keys $viewer's read or update rule (+ draft visibility for read) covers, or null when
      * it covers every row. Throws 401/403 when the rule denies. Rows as stored: no locale or other
-     * query extension narrows them.
+     * query extension narrows them. For integer primary keys a candidate narrows this first read
+     * and $remaining can read the complete set later under the same evaluated guards.
      *
+     * @param-out ?\Closure(): list<int|string> $remaining
      * @return ?list<int|string>
      */
-    public function permittedKeys(string $collection, string $op, Viewer $viewer): ?array
+    public function permittedKeys(string $collection, string $op, Viewer $viewer, ?int $candidate = null, ?\Closure &$remaining = null): ?array
     {
+        $remaining = null;
         $guards = $op === 'read' ? $this->readGuards($collection, $viewer) : $this->writeGuards($collection, $op, $viewer, null);
+        if ($guards === []) {
+            return null;
+        }
+        $spec = $this->schema->collection($collection);
+        $pk = $spec['primaryKey'];
+        if ($candidate !== null && $spec['columns'][$pk]['type'] === 'integer') {
+            // A later list or second ID uses the already evaluated rule, including any callback.
+            $remaining = fn (): array => $this->keysMatching($collection, null, $guards);
+            return $this->keysMatching($collection, [$pk => $candidate], $guards);
+        }
 
-        return $guards === [] ? null : $this->keysMatching($collection, null, $guards);
+        return $this->keysMatching($collection, null, $guards);
     }
 
     /** @return list<int|string> primary keys of rows matching $where and every guard, as stored */

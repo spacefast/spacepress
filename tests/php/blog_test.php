@@ -72,6 +72,34 @@ $hidden = $db->insert('authors', ['name' => 'Ghost', 'email' => 'ghost@example.c
     ['title' => 'Draft one', 'status' => 'draft', 'authorId' => $aliceProfile['id']],
 ], true);
 
+// A detail page needs one ID. A second distinct ID or a list must reuse the rule and fetch
+// all matching IDs only once, including when the first ID is denied.
+\TypedPress\Wp\CoreAccess::flush();
+$keyQueries = [];
+\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$keyQueries): void {
+    if (str_starts_with($sql, 'SELECT t0.ID AS `id` FROM')) {
+        $keyQueries[] = str_contains($sql, 't0.ID = ?');
+    }
+};
+try {
+    foreach ([$draft['id'], $draft['id'], $pub['id'], $pub['id']] as $i => $id) {
+        eq("anonymous permission check $i", \TypedPress\Wp\CoreAccess::covers('posts', 'read', $id, $anonymous), $id === $pub['id']);
+    }
+    eq('list after both items has every readable ID', \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
+    eq('permission queries are one exact ID then one complete set', $keyQueries, [true, false]);
+    \TypedPress\Wp\CoreAccess::flush();
+    eq('public item after invalidation', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $pub['id'], $anonymous), true);
+    eq('a list immediately after a single item is complete', \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
+    eq('an explicit list promotes the partial key set', $keyQueries, [true, false, true, false]);
+} finally {
+    \TypedPress\Wp\Connection::$observer = null;
+}
+foreach (['alice' => true, 'bob' => false] as $user => $owns) {
+    eq("$user update rule on an individual post", \TypedPress\Wp\CoreAccess::covers('posts', 'update', $pub['id'], new \TypedPress\Viewer($users[$user])), $owns);
+}
+eq('editor can read the draft the guest could not read', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], new \TypedPress\Viewer($users['ed'])), true);
+eq('unrestricted rule still covers an unmaterialized ID', \TypedPress\Wp\CoreAccess::covers('openNotes', 'read', PHP_INT_MAX, $anonymous), true);
+
 // ================================================================ drafts transitions (§6.1)
 
 check('status absent → published with publishedAt = now', $pub['status'] === 'published' && $pub['publishedAt'] !== null, $pub);
@@ -82,8 +110,11 @@ $dated = $db->insert('posts', ['title' => 'Dated', 'status' => 'published', 'pub
 eq('published with a future publishedAt stays published (only scheduled schedules)', [$dated['status'], $dated['publishedAt']], ['published', '2031-01-01T00:00:00.000Z']);
 $db->delete('posts', ['id' => $dated['id']]);
 $published = $db->update('posts', ['status' => 'published'], ['id' => $draft['id']], true)[0];
+eq('publishing a draft invalidates the guest permission cache', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], $anonymous), true);
+eq('a second published item is in the complete permission set', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $pub['id'], $anonymous), true);
 check('draft → published sets publishedAt', $published['publishedAt'] !== null, $published);
 $again = $db->update('posts', ['status' => 'draft'], ['id' => $draft['id']], true)[0];
+eq('moving back to draft invalidates the complete membership set', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], $anonymous), false);
 eq('published → draft keeps publishedAt', $again['publishedAt'], $published['publishedAt']);
 $db->update('posts', ['publishedAt' => null], ['id' => $draft['id']]);
 

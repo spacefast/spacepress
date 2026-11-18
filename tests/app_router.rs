@@ -6625,6 +6625,7 @@ fn root_layout_chrome_without_a_template_is_hinted() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[cfg(feature = "host")]
 #[test]
 fn public_metadata_scripts_carry_a_content_version() {
     let project = tempfile::tempdir().unwrap();

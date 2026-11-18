@@ -95,8 +95,8 @@ final class Module
         foreach (['pre_delete_post', 'pre_trash_post'] as $hook) { add_filter($hook, static fn ($check, $post) => $post instanceof \WP_Post && $post->ID === self::checkoutPage($plugin) ? false : $check, PHP_INT_MAX, 2); }
         add_filter('wp_insert_post_data', static function (array $data, array $input) use ($plugin): array {
             $id = (int) ($input['ID'] ?? 0);
-            if ($id > 0 && $id === self::checkoutPage($plugin) && !has_block('woocommerce/checkout', $data['post_content'] ?? '')) {
-                $data['post_content'] = get_post_field('post_content', $id);
+            if ($id > 0 && $id === self::checkoutPage($plugin) && !self::containsCheckout(parse_blocks(wp_unslash($data['post_content'] ?? '')))) {
+                $data['post_content'] = wp_slash(get_post_field('post_content', $id, 'raw'));
             }
             return $data;
         }, PHP_INT_MAX, 2);
@@ -272,6 +272,16 @@ final class Module
             $state[] = [$zone->get_zone_name(), $zone->get_zone_order(), $zone->get_zone_locations(), $methods];
         }
         return hash('sha256', (string) wp_json_encode($state));
+    }
+
+    private static function containsCheckout(array $blocks): bool
+    {
+        foreach ($blocks as $block) {
+            if ($block['blockName'] === 'woocommerce/checkout' || self::containsCheckout($block['innerBlocks'])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static function checkoutPage(Plugin $plugin): int

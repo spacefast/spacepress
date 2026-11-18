@@ -623,7 +623,7 @@ pub fn pages(schema: &Schema, span: Span) -> Result<()> {
             format!("commerce checkout needs a page.md at {checkout}"),
         ));
     };
-    if page.status() != "publish" || !page.body.contains("<!-- wp:woocommerce/checkout ") {
+    if page.status() != "publish" || !has_checkout_block(&page.body) {
         return Err(Diag::new(
             span,
             "the checkout page must be public and contain Woo's native Checkout Block",
@@ -632,9 +632,37 @@ pub fn pages(schema: &Schema, span: Span) -> Result<()> {
     Ok(())
 }
 
+fn has_checkout_block(body: &str) -> bool {
+    // CommonMark emits literal code separately from raw HTML, including in quoted fences.
+    let mut html = String::new();
+    for event in pulldown_cmark::Parser::new(body) {
+        match event {
+            pulldown_cmark::Event::Html(raw) | pulldown_cmark::Event::InlineHtml(raw) => html.push_str(&raw),
+            _ => html.push('\n'),
+        }
+    }
+    let comments = regex::Regex::new(r"(?s)<!--(.*?)-->").unwrap();
+    let checkout = regex::Regex::new(r"(?s)^\s+wp:woocommerce/checkout\s+(?:\{.*\}\s+)?/?$").unwrap();
+    comments
+        .captures_iter(&html)
+        .any(|comment| checkout.is_match(&comment[1]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checkout_requires_a_native_block_outside_code() {
+        let block = "<!-- wp:woocommerce/checkout /-->";
+        assert!(has_checkout_block(&format!(
+            "<!-- wp:group -->{block}<!-- /wp:group -->"
+        )));
+        assert!(!has_checkout_block("<!-- wp:woocommerce/checkout broken -->"));
+        assert!(!has_checkout_block(&format!("~~~html\n{block}\n~~~")));
+        assert!(!has_checkout_block(&format!("> ```html\n> {block}\n> ```")));
+        assert!(!has_checkout_block(&format!("`{block}`")));
+    }
 
     #[test]
     fn shipping_amount_uses_ascii_digits() {

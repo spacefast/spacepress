@@ -757,7 +757,7 @@ final class AppRouter
             }
             $page = $this->file($route['page']);
             $layouts = $this->layouts($route);
-            $this->plugin->app(); // the compiled page functions live in the app's functions.php
+            $app = $this->plugin->app(); // the compiled page functions live in the app's functions.php
             $props = new JsObject([
                 'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \TypedPress\JsArray($v) : $v, $params)),
             ]);
@@ -766,7 +766,7 @@ final class AppRouter
             }
             // The item a kind URL names is one of the render's reads: a write to any of its fields
             // purges this URL (and rebuilds a prebuilt one), not only a write core's post hooks see.
-            [$head, $body] = Reads::during(function () use ($route, $params, $viewer, $props, $page, $layouts): array {
+            [$head, $body] = \TypedPress\Render\Live::page($app->db, $status === 200 ? $viewer : null, function () use ($route, $params, $viewer, $props, $page, $layouts): array {
                 if (($route['kind'] ?? null) !== null) {
                     $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
                     if ($item === null) {
@@ -1259,16 +1259,16 @@ final class AppRouter
      *
      * @param array<string, mixed> $head
      */
-    private static function scripts(array $head): void
+    private function scripts(array $head): void
     {
         foreach (is_array($head['scripts'] ?? null) ? $head['scripts'] : [] as $src) {
             if (!is_string($src) || !((str_starts_with($src, '/') && !str_starts_with($src, '//')) || str_starts_with($src, 'https://'))) {
                 continue;
             }
             $handle = 'typedpress-app-script-' . substr(md5($src), 0, 12);
-            if (str_starts_with($src, '/') && defined('TypedPressApp\\PUBLIC_SCRIPT_VERSIONS')) {
+            if (str_starts_with($src, '/')) {
                 $path = wp_parse_url($src, PHP_URL_PATH);
-                $version = is_string($path) ? (\TypedPressApp\PUBLIC_SCRIPT_VERSIONS[rawurldecode(ltrim($path, '/'))] ?? null) : null;
+                $version = is_string($path) ? PublicFiles::scriptVersion($this->plugin, rawurldecode(ltrim($path, '/'))) : null;
                 if ($version !== null) {
                     // Keep the author's query and place the version before any fragment.
                     $parts = explode('#', $src, 2);
@@ -1450,7 +1450,7 @@ final class AppRouter
         Navigation::enqueue(plugins_url('tp/Render/client/router.js', Runtime::file()));
         \TypedPress\Islands::registerClient();
         \TypedPress\Islands::enqueue();
-        self::scripts($head);
+        $this->scripts($head);
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {
             exit;
         }

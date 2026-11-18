@@ -39,17 +39,17 @@ final class Plugin
     /** @var array<string, int> `--drop` confirmations for this process's migration (SchemaCheck) */
     private array $drops = [];
 
-    /** The hash of the `schema.php` this request loaded, taken when it booted. */
-    private string $loadedHash = '';
+    /** A standalone deploy can replace schema.php mid-request. A managed build's files are immutable. */
+    private ?string $loadedHash = null;
 
     public function __construct(public readonly string $dir, string $mainFile, public readonly Schema $schema)
     {
-        $this->loadedHash = (string) @hash_file('sha256', $dir . '/tp/app/schema.php');
         self::$instance = $this;
         $this->mainFile = $mainFile;
         Hardening::apply($schema);
         Sealed::apply($schema);
         if (!Runtime::managed()) {
+            $this->buildHash();
             InstallMarker::register();
         }
         add_action('init', [$this, 'registerPostTypes'], 0);
@@ -573,7 +573,8 @@ final class Plugin
         wp_cache_delete($this->schemaOption(), 'options');
         clearstatcache(true, $this->dir . '/tp/app/schema.php');
 
-        return get_option($this->schemaOption()) === $this->loadedHash && $this->schemaHash() === $this->loadedHash;
+        $loaded = $this->buildHash();
+        return get_option($this->schemaOption()) === $loaded && $this->schemaHash() === $loaded;
     }
 
     private function schemaOption(): string
@@ -589,7 +590,7 @@ final class Plugin
     /** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
     public function buildHash(): string
     {
-        return $this->loadedHash;
+        return $this->loadedHash ??= (string) @hash_file('sha256', $this->dir . '/tp/app/schema.php');
     }
 
     // ================================================================ registration

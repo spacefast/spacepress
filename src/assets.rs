@@ -76,7 +76,7 @@ fn stem(source: &str, kind: Kind) -> String {
     if out.is_empty() { "asset".into() } else { out }
 }
 
-pub(crate) fn hash(bytes: &[u8]) -> String {
+fn hash(bytes: &[u8]) -> String {
     crate::hex(&Sha256::digest(bytes)[..8])
 }
 

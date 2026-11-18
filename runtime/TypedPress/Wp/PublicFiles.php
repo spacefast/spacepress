@@ -21,8 +21,8 @@ namespace TypedPress\Wp;
  * - `index.html` answers for its folder (`/files/` → `public/files/index.html`), except at the
  *   site root, where WordPress's home page stays (`public/index.html` is `/index.html`).
  *
- * The answer carries the type by extension, a validator, and `public, max-age=300`; a file whose
- * name has a content hash in it can be served longer by the host. It also says any origin may read
+ * The answer carries the type by extension, a validator, and `public, max-age=300`. A JavaScript
+ * URL whose version matches an immutable build's file can stay in the browser for a year. Any origin may read
  * it (`Access-Control-Allow-Origin: *`): the file is the same for everyone and needs no sign-in, so
  * a page on another site (WordPress Playground fetching a ZIP, a font or a JSON file used elsewhere)
  * gets what a visitor's own request would. A browser never sends cookies with such a read.
@@ -69,15 +69,19 @@ final class PublicFiles
         if ($method !== 'GET' && $method !== 'HEAD' || MarkdownTwins::negotiating()) {
             return;
         }
-        $file = self::file($plugin->dir . '/public', $plugin->schema->reserved());
+        $root = $plugin->dir . '/public';
+        $file = self::file($root, $plugin->schema->reserved());
         if ($file === null || self::page($plugin)) {
             return;
         }
-        $etag = '"' . dechex((int) filesize($file)) . '-' . dechex((int) filemtime($file)) . '"';
         $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        $version = in_array($extension, ['js', 'mjs'], true) ? self::immutableScriptVersion($plugin, $root, $file) : null;
+        $size = (int) filesize($file);
+        $etag = $version === null ? '"' . dechex($size) . '-' . dechex((int) filemtime($file)) . '"' : '"sha256-' . $version . '"';
         $headers = [
             'Content-Type' => self::TYPES[$extension] ?? 'application/octet-stream',
-            'Cache-Control' => 'public, max-age=300',
+            // Keep the existing shared-cache window. Only the browser keeps a verified version for a year.
+            'Cache-Control' => $version === null ? 'public, max-age=300' : 'public, max-age=31536000, s-maxage=300, immutable',
             'ETag' => $etag,
             'X-Content-Type-Options' => 'nosniff',
             'Access-Control-Allow-Origin' => '*',
@@ -90,8 +94,53 @@ final class PublicFiles
         if (self::matches(wp_unslash((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? '')), $etag)) {
             self::emit(304, $headers, null);
         }
-        $headers['Content-Length'] = (string) filesize($file);
+        $headers['Content-Length'] = (string) $size;
         self::emit(200, $headers, $method === 'HEAD' ? null : $file);
+    }
+
+    /** The digest from packaging, keyed by a decoded path below the app's public directory. */
+    public static function scriptVersion(Plugin $plugin, string $relative): ?string
+    {
+        static $maps = [];
+        if (!isset($maps[$plugin->dir])) {
+            $map = $plugin->dir . '/tp/app/public-script-versions.php';
+            $maps[$plugin->dir] = is_file($map) ? require $map : [];
+        }
+        return $maps[$plugin->dir][$relative] ?? null;
+    }
+
+    private static function immutableScriptVersion(Plugin $plugin, string $root, string $file): ?string
+    {
+        // A loose plugin can change its files in place. The Loader mounts a tree that was hashed and
+        // published as a unit, so its version map still describes the files it serves.
+        if (!Runtime::managed() || !class_exists(\TypedPress\Loader\Loader::class, false)) {
+            return null;
+        }
+        $build = \TypedPress\Loader\Loader::loaded();
+        if ($build === null || $plugin->dir !== $build['root'] . '/app/' . $build['manifest']['app'] . '/plugins/typedpress-app-' . $build['manifest']['name']) {
+            return null;
+        }
+        $query = (string) wp_parse_url(wp_unslash((string) ($_SERVER['REQUEST_URI'] ?? '')), PHP_URL_QUERY);
+        if (str_contains($query, ';')) {
+            return null;
+        }
+        $version = null;
+        foreach (\TypedPress\QueryString::parse($query) as [$key, $value]) {
+            if (str_starts_with($key, 'tpv[')) {
+                return null;
+            }
+            if ($key === 'tpv') {
+                if ($version !== null || preg_match('/\A[0-9a-f]{64}\z/D', $value) !== 1) {
+                    return null;
+                }
+                $version = $value;
+            }
+        }
+        if ($version === null || ($top = realpath($root)) === false) {
+            return null;
+        }
+        $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($file, strlen($top) + 1));
+        return self::scriptVersion($plugin, $relative) === $version ? $version : null;
     }
 
     /** Whether a `tp/app/` page or route serves the request's path: the app's code wins over a file. */

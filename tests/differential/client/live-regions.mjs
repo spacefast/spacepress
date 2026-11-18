@@ -23,12 +23,8 @@ try {
   page.on("response", async (r) => {
     if (r.url().endsWith("/__tp/api/v1/_live")) answers.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.pending ? "pending" : x.changed ? "changed" : x.error ? "error" : "unchanged")));
   });
-  // Renders are counted around the first `/_live` request only: the page's own render seeds the
-  // region with one page read, which is the server render of the page, not the first poll.
-  let rendersAtFirstAsk = null;
-  page.on("request", (r) => {
-    if (r.url().endsWith("/__tp/api/v1/_live") && rendersAtFirstAsk === null) rendersAtFirstAsk = fetch(`${url}/__tp_test/renders`).then((x) => x.text()).then(Number);
-  });
+  // Count the page GET and its first subscription read together, before either request starts.
+  const rendersBeforeGet = Number(await (await fetch(`${url}/__tp_test/renders`)).text());
   await page.goto(`${url}/board`, { waitUntil: "networkidle" });
   // The first request: one, carrying the region, answered unchanged. Waited for, not slept on.
   if (answers.length === 0) await page.waitForResponse((r) => r.url().endsWith("/__tp/api/v1/_live"), { timeout: 15000 });
@@ -39,7 +35,7 @@ try {
   out.first = { requests: live.length, regions: live[0]?.body.queries?.map((q) => q.args?.region) ?? null, answer: answers[0] ?? null, beforePoll: live.length > 0 && live[0].at - ready < 2000 };
   // A fresh page with nothing changed is answered by counter: no render ran for that first request.
   const rendersAfterFresh = Number(await (await fetch(`${url}/__tp_test/renders`)).text());
-  out.first.rendered = rendersAfterFresh - (await rendersAtFirstAsk);
+  out.first.rendered = rendersAfterFresh - rendersBeforeGet;
 
   // State a visitor made: a click on the client component and text typed into the input.
   await page.click(".counter");

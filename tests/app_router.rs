@@ -3001,6 +3001,11 @@ fn live_regions_answer_page_reads() {
         serde_json::json!({
             // The region's own HTML, not the page's.
             // The kinds the render read come back, by the client's schema key, for its deps.
+            "page seed": [0, ["notes"]],
+            "page seed other viewer": "changed",
+            "first poll": ["unchanged", 1],
+            "unsealed page seed": [false, ["notes"], "changed", ["One"]],
+            "write before first poll": ["changed", ["One", "Two"]],
             "first": ["changed", ["One"], false, ["notes"]],
             // Asked again, unchanged: answered by counter, with no render.
             "again": { "0": "unchanged", "rendered": 0 },
@@ -3093,10 +3098,10 @@ fn live_regions_update_in_the_browser() {
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
-    // One first request, before any poll, answered unchanged by counter: no render ran for it.
+    // The GET supplies the HTML. Its first subscription request checks the seed by hash once.
     assert_eq!(
         seen["first"],
-        serde_json::json!({ "requests": 1, "regions": ["board"], "answer": ["unchanged"], "beforePoll": true, "rendered": 0 }),
+        serde_json::json!({ "requests": 1, "regions": ["board"], "answer": ["unchanged"], "beforePoll": true, "rendered": 1 }),
         "{seen}"
     );
     // A cached copy taken before a write: its first request brings the region current, no poll.
@@ -5236,7 +5241,30 @@ fn drive_store_example_sells_on_wordpress() {
         String::from_utf8_lossy(&out.stderr)
     );
     let report: serde_json::Value = serde_json::from_slice(&std::fs::read(profile).unwrap()).unwrap();
-    for (state, max_queries) in [("catalog", 1), ("catalog/no-matches", 1), ("staff/pending", 4)] {
+    for (state, max_queries) in [
+        ("catalog", 1),
+        ("catalog/search", 1),
+        ("catalog/filter", 1),
+        ("catalog/no-matches", 1),
+        ("catalog/shop-notice", 1),
+        ("product/in-stock", 3),
+        ("product/missing", 1),
+        ("product/review", 5),
+        ("product/sold-out", 3),
+        ("orders/guest", 0),
+        ("orders/empty", 1),
+        ("orders/purchased", 3),
+        ("staff/guest", 0),
+        ("staff/forbidden", 0),
+        ("staff/no-orders", 4),
+        ("staff/pending", 4),
+        ("staff/after-shipping", 5),
+        ("login", 0),
+        ("login/return", 0),
+        ("source", 0),
+        ("feed", 0),
+        ("not-found", 0),
+    ] {
         let queries = report["states"][state]["typedpress_sql"].as_u64().unwrap();
         assert!(
             queries <= max_queries,
@@ -5246,8 +5274,10 @@ fn drive_store_example_sells_on_wordpress() {
     for (state, max_joins) in [
         ("catalog", 8),
         ("orders/purchased", 0),
-        ("product/in-stock", 22),
-        ("product/review", 22),
+        ("product/in-stock", 11),
+        ("product/missing", 11),
+        ("product/review", 11),
+        ("product/sold-out", 11),
     ] {
         let joins = report["states"][state]["typedpress_postmeta_joins"].as_u64().unwrap();
         assert!(
@@ -6624,13 +6654,23 @@ export default function Page() { return <p>With scripts</p>; }"#,
 
     let content = project.join("tp/dist/wp-content");
     let schema = content.join("plugins/typedpress-app-publicmodules/tp/app/schema.php");
-    let scripts = |body: &str| {
+    let scripts = |body: &str, stale: Option<&str>| {
         std::fs::write(project.join("public/scripts/module name.mjs"), body).unwrap();
+        std::fs::write(project.join("public/notes.txt"), body).unwrap();
         build(project);
+        let package = tempfile::tempdir().unwrap();
+        let sources = package.path().join("sources");
+        let store = package.path().join("store");
+        typedpress::host::sources(project, &sources).unwrap();
+        let built = typedpress::host::compile_to_store(&sources, &store, project, None).unwrap();
         let out = Command::new("php")
             .args(["-d", "memory_limit=512M"])
             .arg(root().join("tests/php/public_script_versions.php"))
             .arg(&content)
+            .arg(&store)
+            .arg(&built.runtime_revision)
+            .arg(&built.build_id)
+            .arg(stale.unwrap_or_default())
             .env("TP_WP_THEMES", "1")
             .output()
             .unwrap();
@@ -6638,10 +6678,7 @@ export default function Page() { return <p>With scripts</p>; }"#,
         let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
         let base = seen["base"].as_str().unwrap();
         use sha2::Digest;
-        let version: String = sha2::Sha256::digest(body)[..8]
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let version: String = sha2::Sha256::digest(body).iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(
             seen["scripts"],
             serde_json::json!([
@@ -6653,9 +6690,9 @@ export default function Page() { return <p>With scripts</p>; }"#,
         assert_eq!(seen["body"], body);
         version
     };
-    let first = scripts("export const value = 1;\n");
+    let first = scripts("export const value = 1;\n", None);
     let original_schema = std::fs::read(&schema).unwrap();
-    let second = scripts("export const value = 2;\n");
+    let second = scripts("export const value = 2;\n", Some(&first));
     assert_ne!(first, second);
     assert_eq!(std::fs::read(schema).unwrap(), original_schema);
 }

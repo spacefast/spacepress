@@ -253,12 +253,10 @@ fn compile_request(request: Request) -> String {
                     .iter()
                     .map(|(name, sql)| (name.clone(), sql.clone().into_bytes())),
             );
-            let app_plugin: BTreeMap<_, _> = crate::app_plugin::files(&built, &schema_php, migrations, public)
+            let app_plugin = crate::app_plugin::files(&built, &schema_php, migrations, public)
                 .into_iter()
                 .map(|(path, bytes)| (path, String::from_utf8_lossy(&bytes).into_owned()))
                 .collect();
-            let functions_php =
-                app_plugin[&format!("typedpress-app-{}/tp/app/functions.php", built.schema.name)].clone();
             let empty = crate::wp_plugins::Config { plugins: Vec::new() };
             // The config's plugins resolved when it was extracted; this repeats that plan for its order.
             let wordpress_plugins = crate::wp_plugins::resolve(
@@ -283,7 +281,7 @@ fn compile_request(request: Request) -> String {
                 app_plugin,
                 wordpress_plugins,
                 schema_php,
-                functions_php,
+                functions_php: built.functions_php,
                 migrations: built.migrations,
                 snapshot: built.snapshot,
                 client,
@@ -602,9 +600,14 @@ mod tests {
         let plugin = &output["appPlugin"];
         assert_eq!(plugin["typedpress-app-packaged/tp/app/functions.php"], functions);
         assert_eq!(plugin["typedpress-app-packaged/public/modules/example.mjs"], source);
-        let version = crate::assets::hash(source.as_bytes());
-        assert!(functions.contains(&format!("'modules/example.mjs' => '{version}'")));
-        assert!(!functions.contains("image.svg"));
+        let map = plugin["typedpress-app-packaged/tp/app/public-script-versions.php"]
+            .as_str()
+            .unwrap();
+        use sha2::Digest;
+        let version = crate::hex(sha2::Sha256::digest(source));
+        assert!(map.contains(&format!("'modules/example.mjs' => '{version}'")));
+        assert!(!map.contains("image.svg"));
+        assert!(!functions.contains(&version));
     }
 
     /// The browser types `abilities.call` from the lock it is sent, exactly as the command line does.

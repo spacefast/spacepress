@@ -80,7 +80,10 @@ final class AgentScope
         add_filter('rest_user_query', [self::class, 'userQuery'], PHP_INT_MAX);
         // Personal fields are hidden from a credential without `personal` wherever a field rule hides one:
         // rows, filters, sorts, searches, relations, uniqueness checks, core's routes and wp-admin.
-        \TypedPress\FieldAccess::withhold(static fn (array $def): bool => self::restricted($def) && !self::may('personal'));
+        \TypedPress\FieldAccess::withhold(
+            static fn (array $def): bool => self::restricted($def) && !self::may('personal'),
+            static fn (): HttpError => self::refusal('personal'),
+        );
         // A create has no stored row for the field rules to compare with: a credential without
         // `personal` sets no personal field on a new row either.
         \TypedPress\Extensions::onWrite(static function (string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void {

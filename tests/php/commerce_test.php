@@ -447,7 +447,8 @@ eq('a read-only agent cannot edit a product', $request('/__tp/api/v1/products/' 
 eq('a write grant alone cannot change protected download locations', $request('/__tp/api/v1/products/' . $guide['id'], 'PATCH', ['downloads' => [['id' => 'field-guide', 'name' => 'Field guide', 'file' => 'https://private.example.test/new.pdf']]])[0], 403);
 $protectedCreate = ['name' => 'Scoped download create probe', 'virtual' => true, 'downloadable' => true, 'downloads' => [['id' => 'scoped-file', 'name' => 'Scoped file', 'file' => 'https://create-scope.example.test/files/file.pdf']]];
 $beforeScopedApproval = $directories->count(true);
-eq('a write grant alone cannot create protected download locations', $request('/__tp/api/v1/products', 'POST', $protectedCreate)[0], 403);
+$refusedCreate = $request('/__tp/api/v1/products', 'POST', $protectedCreate);
+eq('a write grant alone cannot create protected download locations, and the refusal names the missing grant', [$refusedCreate[0], $refusedCreate[1]['code'] ?? null], [403, 'scope']);
 eq('refused scoped creation leaves no product', $db->findFirst('products', ['where' => ['name' => $protectedCreate['name']]]), null);
 eq('refused scoped creation leaves download approvals unchanged', $directories->count(true), $beforeScopedApproval);
 eq('a write grant can still create a product without protected fields', $request('/__tp/api/v1/products', 'POST', ['name' => 'Scoped ordinary create probe', 'price' => '1.00'])[0], 201);

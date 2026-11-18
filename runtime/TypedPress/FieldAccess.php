@@ -37,17 +37,24 @@ final class FieldAccess
 
     /** @var ?\Closure(array): bool */
     private static ?\Closure $withheld = null;
+    /** @var ?\Closure(): HttpError the credential's own refusal for supplying a withheld field */
+    private static ?\Closure $withheldRefusal = null;
 
     /**
      * Fields this request's credential is not shown, whatever their rules say (a scoped application
      * password, Wp\AgentScope). Such a field is hidden from the viewer everywhere a hidden field is:
      * rows, filters, sorts, searches, relations and uniqueness checks.
      *
+     * A withheld field supplied on create is refused with `$refusal` when given, so the caller learns
+     * which grant is missing.
+     *
      * @param callable(array $def): bool $fn
+     * @param ?callable(): HttpError $refusal
      */
-    public static function withhold(callable $fn): void
+    public static function withhold(callable $fn, ?callable $refusal = null): void
     {
         self::$withheld = $fn(...);
+        self::$withheldRefusal = $refusal === null ? null : $refusal(...);
     }
 
     private static function withheld(array $def): bool
@@ -264,7 +271,7 @@ final class FieldAccess
         $before = $storedIn !== null && array_key_exists($name, $storedIn) ? $storedIn[$name] : null;
         // Credential-withheld fields cannot be supplied on create, including nested fields.
         if ($op === 'create' && self::withheld($def)) {
-            throw self::denied($viewer, $name, $ptr);
+            throw self::$withheldRefusal !== null ? (self::$withheldRefusal)() : self::denied($viewer, $name, $ptr);
         }
         // An allowing update rule explicitly opts into write-only input, at every nesting depth.
         if ($op === 'update' && !isset($def['access']['update'])

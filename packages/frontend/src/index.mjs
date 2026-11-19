@@ -166,8 +166,12 @@ async function compileFrontend({ root, inputs, publicDir, generated, directory, 
     throw new Error(`public/${directory} is reserved for generated frontend files. Move the existing path first.`);
   }
   const previousMetadata = await statIfPresent(metadataFile);
-  if (previousMetadata && (!previousMetadata.isFile() || !(await readFile(metadataFile, 'utf8')).startsWith(header))) {
-    throw new Error(`tp/_generated/${metadataName} is reserved for generated metadata. Move the existing file first.`);
+  if (previousMetadata) {
+    const metadata = previousMetadata.isFile() ? await readFile(metadataFile, 'utf8') : '';
+    const contents = stylesOnly ? metadata : metadata.replace(/^\uFEFF/, '').replace('\r\n', '\n');
+    if (!contents.startsWith(header)) {
+      throw new Error(`tp/_generated/${metadataName} is reserved for generated metadata. Move the existing file first.`);
+    }
   }
 
   const staging = await mkdtemp(path.join(generated, '.frontend-'));

@@ -1230,8 +1230,15 @@ final class AppRouter
                     continue;
                 }
                 if ($key === 'links' && is_array($value)) {
-                    // Keep the first occurrence so a shared stylesheet cannot reapply later.
-                    $out['links'] = array_values(array_unique([...($out['links'] ?? []), ...array_values($value)], SORT_REGULAR));
+                    // Compare stylesheet links with their default type omitted, keeping the first link as written.
+                    $links = [...($out['links'] ?? []), ...array_values($value)];
+                    $normalized = array_map(static function ($link) {
+                        if (is_array($link) && ($link['rel'] ?? null) === 'stylesheet' && ($link['type'] ?? null) === 'text/css') {
+                            unset($link['type']);
+                        }
+                        return $link;
+                    }, $links);
+                    $out['links'] = array_values(array_intersect_key($links, array_unique($normalized, SORT_REGULAR)));
                     continue;
                 }
                 if (($key === 'openGraph' || $key === 'twitter') && is_array($value)) {

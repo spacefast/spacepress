@@ -37,7 +37,14 @@ test('builds browser entries and native Tailwind utilities with route-level asse
   const asset = (url) => path.join(root, 'public', url);
   assert.match(await readFile(asset(first.main.links[1].href), 'utf8'), /from the alias/);
   assert.match(await readFile(asset(first.main.links[0].href), 'utf8'), /font-size:19px/);
-  assert.deepEqual(await buildFrontend({ root, entries }), first);
+  const metadata = 'tp/_generated/frontend.ts';
+  const generated = await readFile(path.join(root, metadata), 'utf8');
+  const crlf = generated.replaceAll('\n', '\r\n');
+  for (const rewritten of [crlf, `\uFEFF${generated}`, `\uFEFF${crlf}`]) {
+    await file(metadata, rewritten);
+    assert.deepEqual(await buildFrontend({ root, entries }), first);
+    assert.equal(await readFile(path.join(root, metadata), 'utf8'), generated);
+  }
 
   await file('browser/index.ts', 'import "./site.css";\ndocument.title = "new version";');
   const second = await buildFrontend({ root, entries });
@@ -72,7 +79,20 @@ test('serves frontend assets only on the route that uses them', { skip: !process
   const file = (name, content) => writeFile(path.join(root, name), content);
   await file('typedpress.config.ts', 'import { defineConfig } from "typedpress"; export default defineConfig({ name: "frontend-test" });');
   await mkdir(path.join(root, 'tp/app/(site)'));
-  await file('tp/app/(site)/layout.tsx', 'import type { LayoutProps } from "typedpress/app"; import "./site.css"; import { frontend } from "../../_generated/frontend"; export const metadata = frontend.main; export default function Layout({ children }: LayoutProps) { return <>{children}</>; }');
+  await file('tp/app/(site)/layout.tsx', `
+    import type { LayoutProps } from "typedpress/app";
+    import "./site.css";
+    import { frontend } from "../../_generated/frontend";
+    export const metadata = {
+      scripts: frontend.main.scripts,
+      links: [
+        { ...frontend.main.links[0], type: "text/css" },
+        { ...frontend.main.links[0], type: "text/x-test-css" },
+        frontend.main.links[1],
+      ],
+    };
+    export default function Layout({ children }: LayoutProps) { return <>{children}</>; }
+  `);
   await file('tp/app/(site)/page.tsx', 'import "./site.css"; import { frontend } from "../../_generated/frontend"; export const metadata = frontend.main; export default function Page() { return <h1 className="text-[19px]">Native page</h1>; }');
   await mkdir(path.join(root, 'tp/app/plain'));
   await file('tp/app/plain/page.tsx', 'export default function Plain() { return <h1>Plain page</h1>; }');
@@ -120,7 +140,10 @@ test('serves frontend assets only on the route that uses them', { skip: !process
     html.match(/(?:href)=["']([^"']+\/typedpress-styles\/[^"']+\.css(?:\?[^"']*)?)["']/)?.[1],
   ];
   assert.ok(script && style, 'The route head must link its generated module and stylesheet');
-  assert.equal(html.split(style).length - 1, 1, 'The layout and page must share one stylesheet link');
+  assert.equal(html.split(style).length - 1, 1, 'The native stylesheet must be enqueued once');
+  const browserStyles = [...html.matchAll(/<link rel="stylesheet" href="([^"]+\/typedpress-assets\/[^"]+\.css)"(?: type="([^"]+)")?>/g)];
+  assert.deepEqual(browserStyles.map(([, , type]) => type), ['text/css', 'text/x-test-css']);
+  assert.equal(browserStyles[0][1], browserStyles[1][1]);
   const [js, css] = await Promise.all([fetch(script), fetch(style)]);
   assert.equal(js.status, 200);
   assert.equal(css.status, 200);

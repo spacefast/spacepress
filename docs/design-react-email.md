@@ -24,13 +24,13 @@ Publish the working invitation example with its dependency setup, template, acti
 
 ## App template directory
 
-Store app-owned templates in `tp/emails/`, alongside `tp/app/` and `tp/components/`. Each email file default-exports one typed component. Use `tp/emails/_components/` for shared layouts. The upstream preview discovers nested templates and skips underscore-prefixed directories. [React Email CLI](https://react.email/docs/cli)
+TypedPress recognizes `emails/` at the app root, beside `typedpress.config.ts`. Each email file default-exports one typed component. Use `emails/_components/` for shared layouts. The upstream preview discovers nested templates and skips underscore-prefixed directories. [React Email CLI](https://react.email/docs/cli)
 
-Use a documented relative path for each built-in override, following the existing [login page convention](pages.md). For example, `tp/emails/identity/organization-invite.tsx` selects the invitation body at build time. App-specific emails such as `tp/emails/welcome.tsx` are imported by their senders.
+Use a documented relative path for each built-in override, following the existing [login page convention](pages.md). For example, `emails/identity/organization-invite.tsx` selects the invitation body at build time. App-specific emails such as `emails/welcome.tsx` are imported by their senders.
 
 ## Preview the template with React Email
 
-Use the upstream preview app for authoring. Default-export the invitation from `tp/emails/identity/organization-invite.tsx`, set `Invitation.PreviewProps` to sample recipient data, and run `email dev --dir tp/emails` from the app root. Edit the template and verify the upstream preview refreshes. The TypedPress action imports that same component and supplies the actual recipient data. [React Email CLI](https://react.email/docs/cli)
+Use the upstream preview app for authoring. Default-export the invitation from `emails/identity/organization-invite.tsx`, set `Invitation.PreviewProps` to sample recipient data, and run `email dev` from the app root. Edit the template and verify the upstream preview refreshes. The TypedPress action imports that same component and supplies the actual recipient data. [React Email CLI](https://react.email/docs/cli)
 
 For the browser demo, investigate linking the example to the upstream preview app built with `email build`. Verify how that app can be served alongside WordPress Playground before promising an embedded preview. In Playground, exercise the compiled action, run its queued job, and capture the payload via `tp_mail_transport` for an automated comparison against the upstream HTML and plain text for identical props.
 

@@ -1522,7 +1522,7 @@
       "sha256": "4ee77e2840097e35aaf3e71552ec27f95995df31fca41766e9fadf05cc155c84",
       "path": "lib/pages/admin.php",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "3613198e22028c7748acd9e899ce90dff569cccb98cd3bc9fb13830a35852876",
+      "adaptedSha256": "fe5507e8ddedb2d973fd9910d15339dacf58320d63e27291b465b416de60275c",
       "normalizedSha256": "a52a5f84bd89933a49bbfcac90a69d8fee37d8a47c3eb2f23ca073e3aa09c81f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/pages/admin.php"
     },
@@ -2179,7 +2179,7 @@
       "sha256": "2ab7ba16f56a25a19a4b7f3ec17358e9954cdb6970b1b38832250726df9eb346",
       "path": "apps/packages/attachment-importer/src/index.ts",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "72ac8408a98269de3400179d12c767c192bbbade9c3d5d62032f65747af5586c",
+      "adaptedSha256": "9c407cf27cd63a14de64dbb3df4e2a8f51bca9ebe38f5e7b3cac1e2bc56e2307",
       "normalizedSha256": "5128a454628c40284b10502520aa835d75d6b5894e5bb797a2fb48a13f74cb22",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/attachment-importer/src/index.ts"
     },

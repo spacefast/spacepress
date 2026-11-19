@@ -30,7 +30,7 @@ Use a documented relative path for each built-in override, following the existin
 
 ## Preview the template with React Email
 
-Use the upstream preview app for authoring. Default-export the invitation from `emails/identity/organization-invite.tsx`, set `Invitation.PreviewProps` to sample recipient data, and run `email dev` from the app root. Edit the template and verify the upstream preview refreshes. The TypedPress action imports that same component and supplies the actual recipient data. [React Email CLI](https://react.email/docs/cli)
+Use the upstream preview app for authoring. Default-export the invitation from `emails/identity/organization-invite.tsx`, set `Invitation.PreviewProps` to sample recipient data, and run `email dev` from the app root. Edit the template and verify the upstream preview refreshes. TypedPress compiles the reserved file at build time. The Identity sender renders it with live invitation data. [React Email CLI](https://react.email/docs/cli)
 
 For the browser demo, investigate linking the example to the upstream preview app built with `email build`. Verify how that app can be served alongside WordPress Playground before promising an embedded preview. In Playground, exercise the compiled action, run its queued job, and capture the payload via `tp_mail_transport` for an automated comparison against the upstream HTML and plain text for identical props.
 

@@ -14,6 +14,12 @@ wpSite('organization-invite', [
     'identity' => true,
 ]);
 
+$value = (object) ['name' => 'Before'];
+$child = \TypedPress\Html::component(static fn ($props): string => $props->name, $value);
+$paragraph = \TypedPress\Render\Email::component('EmailText', null, $child);
+$value->name = 'After';
+assert(str_contains($paragraph->html(), '>After</p>'), 'email components render children when placed');
+
 $request = static function (array $params): WP_REST_Request {
     $request = new WP_REST_Request('POST');
     $request->set_body_params($params);

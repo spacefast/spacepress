@@ -15,6 +15,7 @@ export default function Invitation({ siteName, identityUrl, invitationCode, expi
         <Text>Verify your email and enter this invitation code in Organizations: <span style={{ wordBreak: "break-all" }}>{invitationCode}</span></Text>
         <Text>Expires in {expiresIn}.</Text>
         <Button href={identityUrl}>Open Identity</Button>
+        <Text><a title="Identity help" href="https://example.test/help?a=1&amp;b=2">Identity help</a></Text>
       </Body>
     </Html>
   );

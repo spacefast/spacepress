@@ -22,8 +22,8 @@ Extend the [mail action fixture](../tests/fixtures/mail-import/typedpress.config
 
 Publish the working invitation example with its dependency setup, template, action call and supported component list. The first implementation is complete when the documented example builds on the hosted path and sends both reference bodies with runtime data. Qualify additional components with upstream fixtures as they are added.
 
-## Playground preview
+## Preview the template with React Email
 
-Add an invitation example to the existing [WordPress Playground blueprint](../docs-site/lib/blueprint.ts). Let the visitor edit the recipient name, trigger the compiled action, and see the resulting subject, recipient, HTML and plain text. Run one jobs tick after the action commits so the preview is available immediately.
+Use the upstream preview app for authoring. Default-export the invitation from `emails/invitation.tsx`, set `Invitation.PreviewProps` to sample recipient data, and run `email dev` from the example. Edit the template and verify the upstream preview refreshes. The TypedPress action imports that same component and supplies the actual recipient data. [React Email CLI](https://react.email/docs/cli)
 
-For this example, install a Playground-only mail capture filter on `tp_mail_transport` before the default transport. Save the normalized message in the Playground instance and return true. Display the HTML in a sandboxed frame with scripts disabled and the plain text as text. Verify this first with literal HTML and text through the existing mail API, then use the React Email fixture once its compiler path works. The browser test should change the name and verify both views reflect the second send.
+For the browser demo, investigate linking the example to the upstream preview app built with `email build`. Verify how that app can be served alongside WordPress Playground before promising an embedded preview. In Playground, exercise the compiled action, run its queued job, and capture the payload via `tp_mail_transport` for an automated comparison against the upstream HTML and plain text for identical props.

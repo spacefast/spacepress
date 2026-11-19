@@ -55,6 +55,8 @@ final class Schema
      * (`version`, `hash`) and the site's active version this request runs (`active`: its `version`
      * and `hash`).
      */
+    public function commerce(): ?array { return $this->raw['store'] ?? null; }
+
     public function runtimeSchema(): ?array
     {
         return $this->raw['runtimeSchema'] ?? null;
@@ -316,7 +318,7 @@ final class Schema
                 'auth' => $c['auth'] ?? false,
                 'agents' => $c['agents'] ?? true,
                 'localized' => $c['localized'] ?? false,
-            ] + (($c['taxonomy'] ?? false) ? ['taxonomy' => true, 'hierarchical' => (bool) ($c['hierarchical'] ?? false)] : []) + [
+            ] + (isset($c['commerce']) ? ['commerce' => $c['commerce']] : []) + (($c['taxonomy'] ?? false) ? ['taxonomy' => true, 'hierarchical' => (bool) ($c['hierarchical'] ?? false)] : []) + [
                 'title' => $c['title'] ?? null,
                 'content' => $c['content'] ?? null,
                 'slug' => $c['slug'] ?? null,

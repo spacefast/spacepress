@@ -466,14 +466,14 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
 }
 
 /** Metadata every collection carries alongside its column references. */
-export type StorageKind = "collection" | "table" | "userProjection" | "taxonomy";
+export type StorageKind = "collection" | "table" | "userProjection" | "taxonomy" | "product" | "order";
 
 export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig, TAuth extends boolean = false, TStorage extends StorageKind = StorageKind> {
   readonly [collectionBrand]: { columns: TCols; auth: TAuth; storage: TStorage };
   /** Row type returned by queries. */
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
-  readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
+  readonly $inferInsert: TStorage extends "order" ? never : ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
   /**
    * Hooks on this kind (spec §2.8), in the file that declares it. Returns the kind, so calls chain;
    * several handlers for one event run in order.
@@ -638,6 +638,9 @@ type TermFields = Record<string, ColumnBuilder<TermFieldKind, any, boolean, bool
 
 /** `taxonomy()` options (rulings 25-32). */
 export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THierarchical extends boolean = boolean> {
+  /** Markdown/JSON source with persistent term UIDs, using the normal seed and sync workflow. */
+  sync?: string;
+  agents?: boolean;
   /** Stored as `tp_<storageName>`: at most 26 characters. Defaults to the export name in snake_case. */
   storageName?: string;
   /** Shown in wp-admin. */
@@ -655,10 +658,10 @@ export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THiera
 }
 
 /** A taxonomy: terms in WordPress's term tables, with term meta fields, attached to collections. */
-export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false>(
+export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false, TSync extends string | undefined = undefined>(
   fields?: TFields,
-  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">>> & { hierarchical?: THierarchical },
-): Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">;
+  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">>> & { hierarchical?: THierarchical; sync?: TSync },
+): Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">;
 
 /**
  * An item's terms of `taxonomy`: the term ids in write order (`[]` when none), kept as WordPress's
@@ -1587,3 +1590,81 @@ export type WordPressPlugin = string | ({
       sha256: string;
     }
 ));
+
+/** Native WooCommerce runtime. Source owns only the declared store keys. */
+export interface StoreOptions {
+  currency: string;
+  country: string;
+  address?: { line1: string; line2?: string; city: string; postcode: string };
+  sellTo?: "all" | readonly string[];
+  units?: { weight: "kg" | "g" | "lbs" | "oz"; dimension: "m" | "cm" | "mm" | "in" | "yd" };
+  shipping?: readonly { name: string; countries: readonly string[] | "rest"; methods: readonly (
+    { type: "flatRate"; title: string; cost: string } |
+    { type: "freeShipping"; title: string; minimum?: string } |
+    { type: "localPickup"; title: string; cost?: string }
+  )[] }[];
+  payments?: readonly string[];
+  email?: { fromName: string; fromAddress: string };
+  checkout?: `/${string}`;
+}
+declare const storeBrand: unique symbol;
+export interface CommerceStore { readonly [storeBrand]: true }
+export declare function store(options: StoreOptions): CommerceStore;
+export interface CommerceOptions { sync?: string; url?: `/${string}`; agents?: boolean; label?: string; api?: false | { list?: boolean; get?: boolean; create?: boolean; update?: boolean; delete?: boolean } }
+type ProductColumns = {
+  uid: ColumnBuilder<"text", string, true, true>;
+  name: ColumnBuilder<"text", string, true, false>;
+  slug: ColumnBuilder<"slug", string, true, true>;
+  description: ColumnBuilder<"richText", string, true, true>;
+  shortDescription: ColumnBuilder<"text", string, false, false>;
+  sku: ColumnBuilder<"text", string, false, false>;
+  status: ColumnBuilder<"text", "draft" | "pending" | "scheduled" | "published" | "private", true, true>;
+  price: ColumnBuilder<"text", string, false, false>;
+  images: ColumnBuilder<"mediaList", number[], true, true>;
+  categories: ColumnBuilder<"refList", number[], true, true>;
+  tags: ColumnBuilder<"refList", number[], true, true>;
+  virtual: ColumnBuilder<"boolean", boolean, true, true>;
+  downloadable: ColumnBuilder<"boolean", boolean, true, true>;
+  downloads: ColumnBuilder<"json", { id: string; name: string; file: string }[], true, true>;
+  type: ColumnBuilder<"text", string, true, true>;
+  purchasable: ColumnBuilder<"boolean", boolean, true, true>;
+  availability: ColumnBuilder<"text", string, true, true>;
+  url: ColumnBuilder<"text", string, false, true>;
+};
+export declare function product(options?: CommerceOptions): Collection<string, WithId<ProductColumns>, false, "product">;
+export declare function productCategory(options?: CommerceOptions): Collection<string, WithId<TermColumns<true> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
+export declare function productTag(options?: CommerceOptions): Collection<string, WithId<TermColumns<false> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
+export interface OrderAddress {
+  first_name: string; last_name: string; company: string; address_1: string; address_2: string;
+  city: string; state: string; postcode: string; country: string; email?: string; phone?: string;
+}
+export interface OrderLine {
+  id: number; name: string; product: number; variation: number | null; quantity: number;
+  subtotal: string; subtotalTax: string; total: string; totalTax: string;
+  taxes: { total: Record<string, string>; subtotal: Record<string, string> };
+}
+export declare function order(options?: Pick<CommerceOptions, "agents" | "label"> & { api?: false | { list?: boolean; get?: boolean } }): Collection<string, WithId<{
+  status: ColumnBuilder<"text", string, true, true>;
+  currency: ColumnBuilder<"text", string, true, true>;
+  total: ColumnBuilder<"text", string, true, true>;
+  subtotal: ColumnBuilder<"text", string, true, true>;
+  discountTotal: ColumnBuilder<"text", string, true, true>;
+  shippingTotal: ColumnBuilder<"text", string, true, true>;
+  taxTotal: ColumnBuilder<"text", string, true, true>;
+  precision: ColumnBuilder<"integer", number, true, true>;
+  createdAt: ColumnBuilder<"timestamp", string, true, true>;
+  updatedAt: ColumnBuilder<"timestamp", string, true, true>;
+  paidAt: ColumnBuilder<"timestamp", string, false, true>;
+  completedAt: ColumnBuilder<"timestamp", string, false, true>;
+  customer: ColumnBuilder<"integer", number, false, true>;
+  paymentMethod: ColumnBuilder<"text", string, true, true>;
+  paymentTitle: ColumnBuilder<"text", string, true, true>;
+  billing: ColumnBuilder<"json", OrderAddress, true, true>;
+  shipping: ColumnBuilder<"json", OrderAddress, true, true>;
+  lines: ColumnBuilder<"json", OrderLine[], true, true>;
+  shippingLines: ColumnBuilder<"json", { id: number; name: string; method_id: string; instance_id: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
+  taxLines: ColumnBuilder<"json", { id: number; name: string; rate_id: number; label: string; compound: boolean; tax_total: string; shipping_tax_total: string }[], true, true>;
+  feeLines: ColumnBuilder<"json", { id: number; name: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
+  couponLines: ColumnBuilder<"json", { id: number; name: string; code: string; discount: string; discount_tax: string }[], true, true>;
+  refunds: ColumnBuilder<"json", { id: number; amount: string; reason: string; createdAt: string }[], true, true>;
+}>, false, "order">;

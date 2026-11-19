@@ -1877,6 +1877,10 @@ pub fn document(schema: &Schema, services: Option<&Value>) -> Value {
             "kinds": { "type": "object", "description": "Each kind by name: the WordPress route behind it, its fields, relations and access rules." },
             "globals": { "type": "object" }, "actions": { "type": "object" },
         }, "required": ["name", "kinds", "globals", "actions"] }))));
+    if schema.store.is_some() {
+        b.paths.add("/store", "get", Op::new("Store", "store-get", "Store information", "Currency, precision, origin and checkout URL. No shopper state.")
+            .rule(&Access::anyone()).ok(200, envelope("Store information.", json!({"type":"object","properties":{"currency":{"type":"string"},"precision":{"type":"integer"},"country":{"type":"string"},"checkout":{"type":"string"},"cart":{"type":"string"}},"required":["currency","precision","country","checkout","cart"]}))));
+    }
     b.paths.add(ROUTE, "get", Op::new("Schema", "openapi", "This document", "The app's API as an OpenAPI 3.1 document: what `typedpress build` wrote to `tp/_generated/openapi.json`, with this site's address as its server.")
         .rule(&Access::anyone())
         .ok(200, json!({ "description": "The OpenAPI document.", "content": { "application/json": { "schema": { "type": "object" } } } })));

@@ -156,6 +156,10 @@ fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
             "typedpress-loader.php".into(),
             Cow::Borrowed(runtime_file("wp-plugin/typedpress-loader.php").expect("embedded loader")),
         ),
+        (
+            "typedpress-commerce.php".into(),
+            Cow::Borrowed(runtime_file("wp-plugin/typedpress-commerce.php").expect("embedded commerce bootstrap")),
+        ),
     ];
     files.extend(runtime.into_iter().map(|(rel, bytes)| {
         let rest = rel.strip_prefix("TypedPress/").expect("TypedPress runtime tree");
@@ -217,7 +221,26 @@ pub(crate) type Files = Vec<(String, Vec<u8>)>;
 /// were made with.
 pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std::io::Result<(String, Files)> {
     let schema_php = schema_php::render(&built.schema);
-    let files = crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public_files(project)?);
+    let mut files = crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public_files(project)?);
+    if built.schema.store.is_some() {
+        let seeds = crate::bundle::seed_records(&crate::loader::Disk, project, &built.schema)
+            .map_err(|e| std::io::Error::other(e.message))?;
+        use sha2::{Digest, Sha256};
+        let mut hashes = serde_json::Map::new();
+        for (name, records) in seeds {
+            let php = format!("<?php\nreturn {};\n", crate::compile::php_json(&records));
+            hashes.insert(format!("{name}.php"), crate::hex(Sha256::digest(php.as_bytes())).into());
+            files.push((
+                format!("typedpress-app-{}/tp/app/seed/{name}.php", built.schema.name),
+                php.into_bytes(),
+            ));
+        }
+        let manifest = crate::compile::php_json(&serde_json::Value::Object(hashes));
+        files.push((
+            format!("typedpress-app-{}/tp/app/seed-version.php", built.schema.name),
+            format!("<?php return {manifest};\n").into_bytes(),
+        ));
+    }
     Ok((schema_php, files))
 }
 

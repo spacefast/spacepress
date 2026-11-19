@@ -209,6 +209,7 @@ final class Runtime
             Jobs\ActionSchedulerQueue::install();
             Guests::install();
         }
+        \TypedPress\Commerce\Module::initialize(self::$plugin);
         ContentPages::install();
         RoutePages::install();
         \TypedPress\Search\Index::reindexChanged();
@@ -306,6 +307,7 @@ final class Runtime
     public static function installPlan(): array
     {
         $steps = [...ContentPages::plan(), ...RoutePages::plan()];
+        if (self::$plugin !== null) { $steps = [...$steps, ...\TypedPress\Commerce\Module::plan(self::$plugin)]; }
         if (class_exists(\TypedPress\Search\Index::class, false) && \TypedPress\Search\Index::shapeChanged()) {
             $steps[] = self::step('search-shape', 'search-shape');
         }

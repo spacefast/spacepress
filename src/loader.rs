@@ -1690,6 +1690,10 @@ fn resolve_with(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions: Co
 }
 
 fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<PathBuf> {
+    // An explicit asset never names same-stem TypeScript (shop.css beside shop.ts).
+    if crate::assets::kind(base).is_some() && fs.is_file(base) {
+        return fs.canonicalize(base).map_err(|e| Diag::new(span, e.to_string()));
+    }
     let stripped = base.with_extension("");
     // `./util.js` conventionally names `./util.ts` in TypeScript ESM.
     let mut candidates = Vec::new();

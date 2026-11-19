@@ -1170,7 +1170,9 @@ children to its parent and removes its links.
 Storage is WordPress's own: `tp_<name>` (so a storage name has at most 26
 characters), its fields as term meta `tp_<field>`, and the links as
 `wp_term_relationships` rows in write order. Nothing about a taxonomy enters the
-migration snapshot. Not built yet, each a build error: `was`, `sync`, hooks,
+migration snapshot. A `sync` pattern enables persistent term UIDs and the normal source/merchant
+merge workflow; term assignments and category parents travel as UIDs. `agents: false` hides the
+kind's abilities. Not built yet, each a build error: `was`, hooks,
 `abilities` and `search` on a taxonomy; translations (with `locales` set, write
 `translations: false`); terms on `table()` kinds and `ref(taxonomy)`;
 `terms(wp.categories)`; `.min()`/`.max()` on a terms field; containers,
@@ -1512,7 +1514,15 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   `by` and `summary`. With `admin: false` there is no screen; `typedpress schema list` and the
   `<app>/schema-read` ability show the same.
 
-Taxonomies can't be added at runtime: `taxonomy()` is not in this TypedPress version.
+Taxonomies can't be added through a runtime schema change; declare them with `taxonomy()` in source.
+
+## Commerce
+
+An exported `store()` enables pinned WooCommerce. `product()`, `productCategory()`, `productTag()`
+and `order()` expose fixed kinds over native Woo objects, with the ordinary typed queries,
+facade, abilities and catalog sync. `typedpress add shop` creates a storefront and native checkout
+without changing existing files. See [WooCommerce shops](woocommerce.md) for the fields, settings,
+cart client, permissions and Playground proof.
 
 ## Plugin packages
 

@@ -94,6 +94,23 @@ $functions = <<<'PHP'
     function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \TypedPress\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \TypedPress\JsObject(), default => $patch }; }
     PHP;
 
+foreach (['seedAuthors' => 'seedArticles', 'seedArticles' => 'seedAuthors', 'aSeedItems' => 'seedAuthors'] as $name => $target) {
+    $schema['collections'][$name] = [
+        'primaryKey' => 'id', 'editor' => false, 'uid' => true, 'sync' => ['dir' => 'content/' . $name, 'format' => 'json'],
+        'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
+        'columns' => [
+            'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+            'name' => ['type' => 'text', 'notNull' => true],
+            'peer' => ['type' => 'integer', 'references' => ['collection' => $target, 'column' => 'id', 'onDelete' => 'set null']],
+            'uid' => ['type' => 'text', 'unique' => true, 'system' => true, 'rules' => ['pattern' => ['source' => '^zr_[0-9a-f]{20}$', 'flags' => '']]],
+        ],
+    ];
+}
+$schema['collections']['seedNodes'] = $schema['collections']['seedAuthors'];
+$schema['collections']['seedNodes']['sync']['dir'] = 'content/seedNodes';
+$schema['collections']['seedNodes']['columns']['parent'] = $schema['collections']['seedNodes']['columns']['peer'];
+$schema['collections']['seedNodes']['columns']['parent']['references']['collection'] = 'seedNodes';
+unset($schema['collections']['seedNodes']['columns']['peer']);
 $wp = wpSite('sync', ['schema' => $schema, 'functions' => $functions, 'users' => ['ed' => 'editor', 'au' => 'author']]);
 $app = $wp->app();
 $db = \TypedPress\db();
@@ -168,6 +185,11 @@ check('site id is a uuid in /_schema', preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0
 eq('site id is stable', req('GET', '/_schema')[1]['site']['id'], $described['site']['id']);
 
 // ================================================================ push: create, unchanged, stale, normalized
+
+$nativeUid = 'zr_bbbbbbbbbbbbbbbbbbbb';
+$nativeRecord = ['uid' => $nativeUid, 'fields' => ['title' => 'Native block'], 'body' => '<!-- wp:woocommerce/checkout /-->'];
+isProblem('unrepresentable native blocks are refused before a sync insert', req('POST', '/sync/notes', ['record' => $nativeRecord, 'expect' => 'absent']), 422, 'not_representable');
+eq('the refused native block was never stored', $db->findFirst('notes', ['where' => ['uid' => $nativeUid]]), null);
 
 $noteUid = 'zr_aaaaaaaaaaaaaaaaaaaa';
 $record = ['uid' => $noteUid, 'fields' => ['title' => 'TypedPress', 'slug' => 'first', 'meta' => ['b' => 1, 'a' => [true]], 'authorId' => $ada['uid'], 'status' => 'draft', 'publishedAt' => null],
@@ -352,4 +374,56 @@ $merge = static fn (string $base, string $ours, string $theirs) => req('POST', '
 eq('independent line edits merge', $merge("a\n\nb\n\nc\n", "A\n\nb\n\nc\n", "a\n\nb\n\nC\n"), ['merged' => "A\n\nb\n\nC\n", 'conflicts' => []]);
 eq('the same line edited twice conflicts', $merge("a\n\nb\n", "a\n\nX\n", "a\n\nY\n"), ['merged' => null, 'conflicts' => [['ours' => "X\n", 'theirs' => "Y\n", 'line' => 3]]]);
 
+$seedDir = sys_get_temp_dir() . '/tp-cycle-seed-' . bin2hex(random_bytes(4)); mkdir($seedDir);
+file_put_contents($seedDir . '/.ignored.json', 'not seed input');
+file_put_contents($seedDir . '/README.txt', 'not seed input');
+$writeSeed = static function (string $name, array $records) use ($seedDir): void {
+    file_put_contents($seedDir . '/' . $name . '.json', wp_json_encode(['collection' => $name, 'format' => 'json', 'records' => $records]));
+};
+foreach (['seedAuthors', 'seedArticles'] as $name) { $writeSeed($name, []); }
+$empty = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('empty seeds do not depend on schema reference cycles', array_sum(array_column($empty, 'created')), 0);
+$authorUid = \TypedPress\Sync\Uid::mint(); $articleUid = \TypedPress\Sync\Uid::mint();
+$writeSeed('seedAuthors', [['uid' => $authorUid, 'fields' => ['name' => 'Author', 'peer' => null]]]);
+$writeSeed('seedArticles', [['uid' => $articleUid, 'fields' => ['name' => 'Article']]]);
+$created = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('nullable or omitted references can seed cyclic schemas', array_sum(array_column($created, 'created')), 2);
+$writeSeed('seedAuthors', [['uid' => $authorUid, 'fields' => ['name' => 'Author', 'peer' => $articleUid]]]);
+$writeSeed('seedArticles', [['uid' => $articleUid, 'fields' => ['name' => 'Article', 'peer' => $authorUid]]]);
+$existing = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('already-existing targets resolve when seed schemas form a cycle', [array_sum(array_column($existing, 'created')), array_sum(array_column($existing, 'updated'))], [0, 2]);
+$seedAuthor = $db->findFirst('seedAuthors', ['where' => ['uid' => $authorUid]]);
+$seedArticle = $db->findFirst('seedArticles', ['where' => ['uid' => $articleUid]]);
+eq('cyclic references are stored as their actual target identities', [$seedAuthor['peer'], $seedArticle['peer']], [$seedArticle['id'], $seedAuthor['id']]);
+$writeSeed('seedAuthors', [['uid' => \TypedPress\Sync\Uid::mint(), 'fields' => ['name' => 'Missing target', 'peer' => \TypedPress\Sync\Uid::mint()]]]);
+$writeSeed('seedArticles', []);
+problem('an actual missing seed reference is still refused', fn () => \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir), 422, 'sync_missing_reference', '/fields/peer');
+$itemUid = \TypedPress\Sync\Uid::mint(); $newAuthorUid = \TypedPress\Sync\Uid::mint();
+$item = $db->insert('aSeedItems', ['uid' => $itemUid, 'name' => 'Existing item'], true)[0];
+$writeSeed('aSeedItems', [['uid' => $itemUid, 'fields' => ['name' => 'Existing item', 'peer' => $newAuthorUid]]]);
+$writeSeed('seedAuthors', [['uid' => $newAuthorUid, 'fields' => ['name' => 'New author']]]);
+$outside = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('a dependency cycle is seeded before an outside collection that references it', [$outside['seedAuthors']['created'], $outside['aSeedItems']['updated']], [1, 1]);
+eq('the outside record resolves the new target inside the schema cycle', $db->findFirst('aSeedItems', ['where' => ['id' => $item['id']]])['peer'], $db->findFirst('seedAuthors', ['where' => ['uid' => $newAuthorUid]])['id']);
+$nodes = $db->insert('seedNodes', [['name' => 'A'], ['name' => 'B']], true);
+$writeSeed('seedNodes', [['uid' => $nodes[0]['uid'], 'fields' => ['name' => 'A', 'parent' => $nodes[0]['uid']]]]);
+$selfReference = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('an ordinary parent reference can seed an existing self-reference', $selfReference['seedNodes']['updated'], 1);
+$writeSeed('seedNodes', [['uid' => $nodes[0]['uid'], 'fields' => ['name' => 'A', 'parent' => $nodes[1]['uid']]], ['uid' => $nodes[1]['uid'], 'fields' => ['name' => 'B', 'parent' => $nodes[0]['uid']]]]);
+$parentCycle = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+eq('ordinary parent reference cycles resolve existing targets', $parentCycle['seedNodes']['updated'], 2);
+eq('ordinary parent reference cycles store both target identities', [$db->findFirst('seedNodes', ['where' => ['id' => $nodes[0]['id']]])['parent'], $db->findFirst('seedNodes', ['where' => ['id' => $nodes[1]['id']]])['parent']], [$nodes[1]['id'], $nodes[0]['id']]);
+eq('repeating an ordinary parent cycle seed is unchanged', \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir)['seedNodes']['unchanged'], 2);
+chmod($seedDir, 0000); clearstatcache(true, $seedDir);
+try {
+    // A root test runner can still read mode-000 directories; exercise real permission errors elsewhere.
+    if (!is_readable($seedDir)) {
+        $listingFailed = false;
+        try { \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir); }
+        catch (RuntimeException $e) { $listingFailed = $e->getMessage() === 'Cannot list seed records'; }
+        check('unreadable seed contents throw instead of acknowledging an empty seed', $listingFailed);
+    }
+} finally { chmod($seedDir, 0700); }
+foreach (['seedAuthors', 'seedArticles', 'aSeedItems', 'seedNodes'] as $name) { unlink($seedDir . '/' . $name . '.json'); }
+unlink($seedDir . '/.ignored.json'); unlink($seedDir . '/README.txt'); rmdir($seedDir);
 finish('sync');

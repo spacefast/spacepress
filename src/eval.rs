@@ -256,6 +256,11 @@ pub const TP_EXPORTS: &[&str] = &[
     "collection",
     "table",
     "userProjection",
+    "store",
+    "product",
+    "productCategory",
+    "productTag",
+    "order",
     "taxonomy",
     "terms",
     "integer",
@@ -2899,6 +2904,7 @@ impl<'p> Evaluator<'p> {
             Builtin::Collection(kind) => Some(kind.builder()),
             Builtin::Id => Some("id"),
             Builtin::DefineGlobal => Some("global"),
+            Builtin::Store => Some("store"),
             Builtin::DefineRelations => Some("defineRelations"),
             Builtin::Ref => Some("ref"),
             Builtin::Terms => Some("terms"),
@@ -2919,9 +2925,19 @@ impl<'p> Evaluator<'p> {
         }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         match b {
+            Builtin::Store => {
+                let options = arg(0);
+                if !matches!(options, Value::Object(_)) {
+                    return err(span, "store() needs an options object");
+                }
+                let value = Value::Store(Rc::new(ActionVal { config: options, span }));
+                self.built.push(value.clone());
+                Ok(value)
+            }
             Builtin::Collection(kind) => {
                 // `taxonomy(fields?, options)`: a taxonomy may declare no fields of its own.
                 let cols_val = match arg(0) {
+                    _ if kind.commerce() => Value::object(IndexMap::new()),
                     Value::Undef if *kind == StorageKind::Taxonomy => Value::object(IndexMap::new()),
                     v => v,
                 };
@@ -2959,7 +2975,7 @@ impl<'p> Evaluator<'p> {
                 if !columns.contains_key("id") && !own_key {
                     columns.shift_insert(0, "id".into(), Rc::new(legacy::id(span)));
                 }
-                let options = match arg(1) {
+                let options = match arg(if kind.commerce() { 0 } else { 1 }) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
                     other => {
@@ -3050,7 +3066,7 @@ impl<'p> Evaluator<'p> {
             }
             Builtin::Terms => {
                 let taxonomy = match arg(0) {
-                    k @ Value::Collection(_) if matches!(&k, Value::Collection(c) if c.kind == StorageKind::Taxonomy) => {
+                    k @ Value::Collection(_) if matches!(&k, Value::Collection(c) if c.kind.term()) => {
                         RefTarget::Kind(k)
                     }
                     // A taxonomy declared later: checked once every kind is registered.
@@ -4394,6 +4410,11 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "table" => Builtin::Collection(StorageKind::Table),
         "userProjection" => Builtin::Collection(StorageKind::UserProjection),
         "taxonomy" => Builtin::Collection(StorageKind::Taxonomy),
+        "product" => Builtin::Collection(StorageKind::Product),
+        "productCategory" => Builtin::Collection(StorageKind::ProductCategory),
+        "productTag" => Builtin::Collection(StorageKind::ProductTag),
+        "order" => Builtin::Collection(StorageKind::Order),
+        "store" => Builtin::Store,
         "terms" => Builtin::Terms,
         // Deleted builders still resolve, so the call says what replaces them.
         "id" => Builtin::Id,

@@ -26,6 +26,8 @@ struct Collection {
     slug: Option<String>,
     /// The collection designates a content column: the file's body (`body` key in JSON) is the record body.
     content: bool,
+    /// A catalog file is a definition, not an instruction to retire a native Woo product or term.
+    commerce: bool,
     /// Columns a record's `fields` carries, in schema order.
     fields: Vec<String>,
     references: Vec<String>,
@@ -66,6 +68,7 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
                     && *c != "uid"
                     && def.get("onUpdate").is_none()
                     && def["hidden"] != true
+                    && def["readOnly"] != true
                     && (def["derived"] != true || (*c == "translations" && spec["localized"] == true))
             })
             .map(|(c, _)| c.clone())
@@ -83,6 +86,7 @@ fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Re
                 format: sync["format"].as_str().unwrap_or("md").into(),
                 slug: spec["slug"].as_str().map(String::from),
                 content: content.is_some(),
+                commerce: spec["commerce"].is_string(),
                 fields,
                 references,
                 nested: sync.get("nested").is_some_and(|n| n == true),
@@ -912,6 +916,10 @@ fn perform(
             }
         }
         Action::TrashRemote { expect } => {
+            if c.commerce {
+                report.note(format!("{name}/{uid}: missing source file leaves the native catalog item unchanged; retire it explicitly in Woo or the API"));
+                return Ok(());
+            }
             if options.check {
                 pending(report, "trash on the site (its file was deleted)");
                 return Ok(());

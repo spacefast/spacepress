@@ -176,7 +176,7 @@ final class Cache
         if (!self::listening()) {
             return;
         }
-        $spec = db()->schema()->collections()[$collection] ?? null;
+        $spec = db()->schema()->kinds()[$collection] ?? null;
         if ($spec === null) {
             return;
         }

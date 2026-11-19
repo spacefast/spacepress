@@ -38,6 +38,7 @@ final class Mount
             if ($manifest === null || !Site::complete($manifest)) {
                 throw new \RuntimeException("TypedPress build $build is not in the build store");
             }
+            Site::checkCommerce($manifest);
             $root = (string) Site::root();
             require_once $root . '/runtime/' . $manifest['runtime'] . '/typedpress-loader.php';
             \TypedPress\Loader\Loader::load($root, $build, [

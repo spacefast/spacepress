@@ -242,6 +242,9 @@ fn collection(out: &mut String, c: &Collection) {
     if c.hierarchical {
         out.push_str("            'hierarchical' => true,\n");
     }
+    if let Some(kind) = &c.commerce {
+        let _ = writeln!(out, "            'commerce' => {},", php_str(kind));
+    }
     if c.taxonomy.is_some() {
         out.push_str("            'taxonomy' => true,\n");
     }
@@ -321,7 +324,27 @@ fn collection(out: &mut String, c: &Collection) {
             );
         }
     }
-    if let Some(tax) = &c.taxonomy {
+    if let Some(kind) = &c.commerce {
+        if let Some(tax) = &c.taxonomy {
+            let taxonomy = if kind == "productCategory" {
+                "product_cat"
+            } else {
+                "product_tag"
+            };
+            let on = tax.on.iter().map(|k| php_str(k)).collect::<Vec<_>>().join(", ");
+            let _ = writeln!(
+                out,
+                "            'wp' => ['taxonomy' => '{taxonomy}', 'metaPrefix' => 'tp_', 'on' => [{on}]],\n            'table' => null,"
+            );
+        } else {
+            let post_type = if kind == "product" { "product" } else { "shop_order" };
+            let _ = writeln!(
+                out,
+                "            'wp' => ['postType' => '{post_type}', 'metaPrefix' => 'tp_'],\n            'table' => 'tp_{}',",
+                c.table
+            );
+        }
+    } else if let Some(tax) = &c.taxonomy {
         // A taxonomy's terms are core's (ruling 25): `wp_terms`, `wp_term_taxonomy`, term meta.
         let t = &c.table;
         let on: Vec<String> = tax.on.iter().map(|k| php_str(k)).collect();
@@ -416,6 +439,9 @@ pub fn render(schema: &Schema) -> String {
         "    'locales' => {},",
         schema.locales.as_ref().map(php_json).unwrap_or_else(|| "null".into())
     );
+    if let Some(store) = &schema.store {
+        let _ = writeln!(out, "    'store' => {},", php_json(store));
+    }
     let _ = writeln!(out, "    'media' => {},", php_json(&schema.media));
     if let Some(uploads) = &schema.uploads {
         let _ = writeln!(out, "    'uploads' => {},", php_json(uploads));
@@ -742,7 +768,7 @@ pub fn gen_ts(schema: &Schema) -> String {
             php_str(kind),
             value,
             col.authored_not_null(),
-            col.authored_has_default(),
+            col.authored_has_default() || col.read_only,
             col.localized,
             col.primary_key
         )
@@ -753,6 +779,8 @@ pub fn gen_ts(schema: &Schema) -> String {
             "userProjection"
         } else if c.taxonomy.is_some() {
             "taxonomy"
+        } else if let Some(kind) = &c.commerce {
+            kind.as_str()
         } else if c.editor {
             "collection"
         } else {

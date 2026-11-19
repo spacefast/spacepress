@@ -35,36 +35,71 @@ final class Seed
         }
     }
 
-    public static function run(Plugin $plugin, string $directory, bool $dry = false): array
+    public static function run(Plugin $plugin, string $directory, bool $dry = false, ?array $expectedHashes = null): array
     {
         if (!is_dir($directory)) {
             throw new HttpError(400, 'invalid_command', 'Seed records directory does not exist.', '/records');
         }
         $plugin->app();
-        $files = glob(rtrim($directory, '/') . '/*.json');
-        if ($files === false) { throw new \RuntimeException('Cannot list seed records'); }
+        $entries = @scandir($directory);
+        if ($entries === false) { throw new \RuntimeException('Cannot list seed records'); }
+        $files = [];
+        foreach ($entries as $entry) {
+            // Like the previous glob patterns, ignore hidden files and other extensions.
+            if ($entry[0] !== '.' && (str_ends_with($entry, '.json') || str_ends_with($entry, '.php'))) {
+                $files[] = rtrim($directory, '/') . '/' . $entry;
+            }
+        }
         sort($files, SORT_STRING);
-        $receipt = [];
-        foreach ($files as $file) {
-            try {
-                $input = Seam::container(Js::decodeJson((string) file_get_contents($file)));
-            } catch (\JsonException $e) {
-                throw new HttpError(400, 'invalid_json', 'Invalid seed JSON: ' . $e->getMessage(), '/records/' . basename($file));
+        if ($expectedHashes !== null) {
+            $actual = [];
+            foreach ($files as $file) { $actual[basename($file)] = hash_file('sha256', $file); }
+            $mismatched = [];
+            foreach (array_keys($expectedHashes + $actual) as $name) {
+                if (!isset($expectedHashes[$name], $actual[$name]) || $actual[$name] !== $expectedHashes[$name]) {
+                    $mismatched[] = $name;
+                }
             }
-            $collection = $input['collection'] ?? null;
-            if (!is_string($collection) || basename($file) !== $collection . '.json' || isset($receipt[$collection])) {
-                throw HttpError::invalidInput('Seed collection must match its filename.', '/collection');
+            if ($mismatched !== []) {
+                sort($mismatched, SORT_STRING);
+                throw new \RuntimeException('Commerce seed files do not match the compiled seed version: ' . implode(', ', $mismatched));
             }
-            $spec = $plugin->schema->collection($collection);
-            if (($spec['sync'] ?? null) === null || ($input['format'] ?? null) !== $spec['sync']['format']) {
-                throw HttpError::invalidInput('Seed format must match a synced collection.', '/format');
-            }
-            $records = Seam::container($input['records'] ?? null);
-            if (!is_array($records) || !array_is_list($records)) {
-                throw HttpError::invalidInput('Seed records must be a list.', '/records');
-            }
-            try {
-                $receipt[$collection] = $plugin->connection()->transaction(static function () use ($collection, $spec, $records, $dry): array {
+        }
+        $files = self::ordered($plugin, $files);
+        $plan = static function () use ($plugin, $files, $dry): array {
+            $receipt = [];
+            foreach ($files as $file) {
+                try {
+                    $input = str_ends_with($file, '.php') ? require $file : Seam::container(Js::decodeJson((string) file_get_contents($file)));
+                } catch (\JsonException $e) {
+                    throw new HttpError(400, 'invalid_json', 'Invalid seed JSON: ' . $e->getMessage(), '/records/' . basename($file));
+                }
+                $collection = $input['collection'] ?? null;
+                if (!is_string($collection) || pathinfo($file, PATHINFO_FILENAME) !== $collection || isset($receipt[$collection])) {
+                    throw HttpError::invalidInput('Seed collection must match its filename.', '/collection');
+                }
+                $spec = $plugin->schema->collection($collection);
+                if (($spec['sync'] ?? null) === null || ($input['format'] ?? null) !== $spec['sync']['format']) {
+                    throw HttpError::invalidInput('Seed format must match a synced collection.', '/format');
+                }
+                $records = Seam::container($input['records'] ?? null);
+                if (!is_array($records) || !array_is_list($records)) {
+                    throw HttpError::invalidInput('Seed records must be a list.', '/records');
+                }
+                // Only taxonomy hierarchies need parent-first records; ordinary references may cycle.
+                if (($spec['taxonomy'] ?? false) && isset($spec['columns']['parent']['references'])) {
+                    $pending = $records; $records = []; $done = [];
+                    while ($pending !== []) {
+                        $progress = false;
+                        foreach ($pending as $i => $record) {
+                            $row = Seam::container($record); $fields = Seam::container($row['fields'] ?? []); $parent = $fields['parent'] ?? null;
+                            if ($parent !== null && !isset($done[$parent]) && array_filter($pending, static fn ($r) => Seam::container($r)['uid'] === $parent)) { continue; }
+                            $records[] = $record; $done[$row['uid']] = true; unset($pending[$i]); $progress = true;
+                        }
+                        if (!$progress) { throw HttpError::invalidInput('Cyclic parent terms', '/records'); }
+                    }
+                }
+                $receipt[$collection] = $plugin->connection()->transaction(static function () use ($collection, $spec, $records): array {
                     $counts = array_fill_keys(['created', 'unchanged', 'skipped_existing', 'updated', 'trashed_skipped'], 0);
                     $seen = [];
                     foreach ($records as $index => $record) {
@@ -76,14 +111,49 @@ final class Seed
                         $seen[$uid] = true;
                         $counts[Routes::seedRecord($collection, $spec, $record)]++;
                     }
-                    if ($dry) { throw new SeedDryRun($counts); }
                     return $counts;
                 });
-            } catch (SeedDryRun $rollback) {
-                $receipt[$collection] = $rollback->counts;
+            }
+            if ($dry) { throw new SeedDryRun($receipt); }
+            return $receipt;
+        };
+        if (!$dry) { return $plan(); }
+        try { return $plugin->connection()->transaction($plan); }
+        catch (SeedDryRun $rollback) { return $rollback->counts; }
+    }
+
+    /** Dependencies first; schema cycles stay together, in deterministic source order. */
+    private static function ordered(Plugin $plugin, array $files): array
+    {
+        $names = array_fill_keys(array_map(static fn ($file) => pathinfo($file, PATHINFO_FILENAME), $files), true);
+        $dependencies = [];
+        foreach ($names as $name => $_) {
+            $dependencies[$name] = [];
+            foreach ($plugin->schema->collection($name)['columns'] as $column) {
+                $target = $column['references']['collection'] ?? null;
+                if ($target !== null && isset($names[$target])) { $dependencies[$name][] = $target; }
             }
         }
-        return $receipt;
+        // Tarjan's traversal emits each strongly connected component after its dependencies.
+        // Cyclic schemas can have null/omitted or already-stored references; Wire checks actual UIDs.
+        $indices = []; $low = []; $stack = []; $active = []; $ordered = [];
+        $visit = static function (string $name) use (&$visit, &$indices, &$low, &$stack, &$active, &$ordered, $dependencies, $files): void {
+            $indices[$name] = $low[$name] = count($indices);
+            $stack[] = $name; $active[$name] = true;
+            foreach ($dependencies[$name] as $target) {
+                if (!isset($indices[$target])) {
+                    $visit($target); $low[$name] = min($low[$name], $low[$target]);
+                } elseif (isset($active[$target])) { $low[$name] = min($low[$name], $indices[$target]); }
+            }
+            if ($low[$name] !== $indices[$name]) { return; }
+            $component = [];
+            do { $member = array_pop($stack); unset($active[$member]); $component[$member] = true; } while ($member !== $name);
+            foreach ($files as $file) {
+                if (isset($component[pathinfo($file, PATHINFO_FILENAME)])) { $ordered[] = $file; }
+            }
+        };
+        foreach ($names as $name => $_) { if (!isset($indices[$name])) { $visit($name); } }
+        return $ordered;
     }
 }
 

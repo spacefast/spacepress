@@ -49,6 +49,7 @@ final class Plugin
         }
         self::$instance = $this;
         $this->mainFile = $mainFile;
+        if ($this->schema->commerce() !== null) { \TypedPress\Commerce\Module::register($this); }
         Hardening::apply($schema);
         Sealed::apply($schema);
         if (!Runtime::managed()) {
@@ -673,6 +674,7 @@ final class Plugin
     private function registerTaxonomies(): void
     {
         foreach ($this->schema->taxonomies() as $name => $spec) {
+            if (isset($spec['commerce'])) { continue; }
             $label = (string) ($spec['label'] ?? $name);
             $taxonomy = (string) $spec['wp']['taxonomy'];
             $types = array_values(array_map(fn (string $kind): string => (string) $this->schema->collection($kind)['wp']['postType'], $spec['wp']['on'] ?? []));

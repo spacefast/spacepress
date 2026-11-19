@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,19 +28,27 @@ const messages = await Promise.all(cases.map(async (props) => {
 console.log("Upstream React Email rendered and escaped both invitations.");
 
 const target = new URL("../../target/", import.meta.url);
-const project = fileURLToPath(new URL(".", import.meta.url));
-const native = spawnSync(fileURLToPath(new URL("debug/typedpress", target)), ["check", project], { encoding: "utf8" });
-if (native.error) throw native.error;
-assert.equal(native.status, 1, native.stderr);
-assert.match(native.stderr, /implicit arguments can alias parameters/);
-assert.match(native.stderr, /node_modules\/react\/cjs\/react.production.js/);
-
 const binary = readFileSync(new URL("wasm32-unknown-unknown/wasm/typedpress.wasm", target));
 let exports: WebAssembly.Exports;
 const { instance } = await WebAssembly.instantiate(binary, { host: hostFs(() => exports) });
 exports = instance.exports;
-const { check } = call(exports, "tp_check", { project });
-assert.match(JSON.stringify(check.diagnostics), /implicit arguments can alias parameters/);
+// CI discovers working examples by their config filename. Keep the intentional failure in a temporary app.
+const project = mkdtempSync(join(tmpdir(), "typedpress-react-email-direct-import-"));
+try {
+  copyFileSync(new URL("direct-import-probe.ts", import.meta.url), join(project, "typedpress.config.ts"));
+  mkdirSync(join(project, "emails"));
+  copyFileSync(new URL("emails/invitation.tsx", import.meta.url), join(project, "emails/invitation.tsx"));
+  symlinkSync(fileURLToPath(new URL("node_modules/", import.meta.url)), join(project, "node_modules"), "dir");
+  const native = spawnSync(fileURLToPath(new URL("debug/typedpress", target)), ["check", project], { encoding: "utf8" });
+  if (native.error) throw native.error;
+  assert.equal(native.status, 1, native.stderr);
+  assert.match(native.stderr, /implicit arguments can alias parameters/);
+  assert.match(native.stderr, /node_modules\/react\/cjs\/react.production.js/);
+  const { check } = call(exports, "tp_check", { project });
+  assert.match(JSON.stringify(check.diagnostics), /implicit arguments can alias parameters/);
+} finally {
+  rmSync(project, { recursive: true, force: true });
+}
 console.log("Native and WASM compilers hit the same upstream React CommonJS blocker.");
 
 const layout = call(exports, "tp_check", {

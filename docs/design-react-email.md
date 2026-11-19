@@ -63,3 +63,14 @@ from `react-email` for this override. Use default component styling, optional
 that preserves paragraph breaks and link destinations. WordPress sends both
 through its existing organization invitation flow. An app without the file
 uses the built-in plain-text message.
+
+## App templates
+
+Every `.tsx` file under `emails/` outside underscore-prefixed folders is a
+template. The build compiles its default export with props typed from its
+annotation. App code may import a template, and `mail.render(Template, props)`
+compiles to `TypedPress\Render\Email::message()`, which returns `{ html, text }`
+for `mail.send()`. The organization invitation is the same kind of template
+with props supplied by the Identity sender. The example's `welcome` action
+renders `emails/welcome.tsx` with a shared `_components` footer and matches
+upstream React Email for two sets of props.

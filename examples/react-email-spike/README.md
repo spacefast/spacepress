@@ -25,6 +25,11 @@ Run `npm run email:dev` to preview the organization invitation override in
 `transport/emails/identity/organization-invite.tsx`. The preview reads the
 example values from `Invitation.PreviewProps`.
 
+The `welcome` action imports `transport/emails/welcome.tsx` and renders it
+with `mail.render(Welcome, props)` before `mail.send()`. The test runs it
+for two sets of live props on WordPress and compares the delivered HTML and
+plain text with upstream React Email.
+
 The override uses the same TSX file in the React Email preview and the native
 and WASM TypedPress builds. The test captures HTML and plain text from WordPress,
 compares both with upstream React Email, and accepts the invitation using the

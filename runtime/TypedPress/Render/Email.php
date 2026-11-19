@@ -19,13 +19,24 @@ final class Email
             return null;
         }
         $plugin->app();
-        $render = '\\TypedPressApp\\' . $name;
-        $html = Html::child($render(new JsObject([
+        return self::render('\\TypedPressApp\\' . $name, new JsObject([
             'siteName' => $siteName,
             'identityUrl' => $identityUrl,
             'invitationCode' => $invitationCode,
             'expiresIn' => 'seven days',
-        ])));
+        ]));
+    }
+
+    /** `mail.render(Template, props)`: `{ html, text }` to pass to `mail.send()`. */
+    public static function message(string $template, mixed $props): JsObject
+    {
+        return new JsObject(self::render($template, $props));
+    }
+
+    /** @return array{html: string, text: string} */
+    public static function render(string $template, mixed $props): array
+    {
+        $html = Html::child($template($props));
 
         // The supported components use paragraphs and links. Preserve both in the plain-text alternative.
         $text = preg_replace_callback('/(<a\b[^>]*>)(.*?)<\/a>/is', static function (array $match): string {

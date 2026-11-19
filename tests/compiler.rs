@@ -733,6 +733,15 @@ fn mail_send_needs_recipients_a_subject_and_a_body() {
 }
 
 #[test]
+fn mail_render_checks_template_props() {
+    rejects(
+        "reject-mail-render-props",
+        "but it receives { name: number }",
+        "typedpress.config.ts:3:",
+    );
+}
+
+#[test]
 fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-hook-typo",

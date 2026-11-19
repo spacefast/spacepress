@@ -12,10 +12,13 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub const TP_MODULE: &str = "typedpress";
+/// Email templates (docs/design-react-email.md), beside `typedpress.config.ts`.
+pub const EMAILS_DIR: &str = "emails";
+/// The template that replaces Identity's built-in organization invitation.
 pub const INVITATION_EMAIL: &str = "emails/identity/organization-invite.tsx";
 
 pub(crate) fn email_module(root: &Path, path: &Path) -> bool {
-    path.starts_with(root.join("emails"))
+    path.starts_with(root.join(EMAILS_DIR))
 }
 
 /// Page and layout helpers for `tp/app/` and components (docs/spec/rendering.md §2–§4).
@@ -174,7 +177,9 @@ pub struct Program {
     /// `tp/app/`: the route table, and each route file's module by its path relative to `tp/`.
     pub app: crate::app::Table,
     pub app_files: Vec<(String, usize)>,
-    pub invitation_email: Option<usize>,
+    /// `emails/` templates by their app-relative path (`emails/welcome.tsx`), outside
+    /// underscore-prefixed folders, which hold shared parts.
+    pub emails: Vec<(String, usize)>,
     /// Files components and pages import that are not code (`.css`, `.module.css`, images), by
     /// module id: the evaluator binds their import to a URL or a class map (`crate::assets`).
     pub assets: HashMap<usize, crate::assets::Asset>,
@@ -212,7 +217,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         components: Vec::new(),
         app: crate::app::Table::default(),
         app_files: Vec::new(),
-        invitation_email: None,
+        emails: Vec::new(),
         assets: HashMap::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
@@ -324,24 +329,33 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         }
         Err(d) => diagnostics.extend(d.into_iter().map(|d| d.phase(diag::Code::Import))),
     }
-    let invitation = program.root.join(INVITATION_EMAIL);
-    if fs.exists(&invitation) {
-        let module = fs
-            .canonicalize(&invitation)
-            .map_err(|e| Diag::new(Span::NONE, format!("{}: {e}", invitation.display())))
-            .and_then(|path| {
-                if !email_module(&program.root, &path) {
-                    return Err(Diag::new(
-                        Span::NONE,
-                        "the invitation template must resolve inside emails/",
-                    ));
+    match component_files(&*fs, &program.root.join(EMAILS_DIR)) {
+        Ok(files) => {
+            for path in files {
+                let relative = path.strip_prefix(&program.root).unwrap_or(&path);
+                if relative
+                    .components()
+                    .any(|c| c.as_os_str().to_string_lossy().starts_with('_'))
+                {
+                    continue;
                 }
-                load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics)
-            });
-        match module {
-            Ok(module) => program.invitation_email = Some(module),
-            Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                let relative = relative.to_string_lossy().replace('\\', "/");
+                let module = fs
+                    .canonicalize(&path)
+                    .map_err(|e| Diag::new(Span::NONE, format!("{}: {e}", path.display())))
+                    .and_then(|path| {
+                        if !email_module(&program.root, &path) {
+                            return Err(Diag::new(Span::NONE, format!("{relative} must resolve inside emails/")));
+                        }
+                        load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics)
+                    });
+                match module {
+                    Ok(module) => program.emails.push((relative, module)),
+                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                }
+            }
         }
+        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
     if diagnostics.is_empty() {
         diagnostics.extend(jsx_reachability(&program));
@@ -384,6 +398,10 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
             continue;
         }
         let module = &program.modules[id];
+        // Handlers reference email templates for `mail.render()`; their imports stay inside emails/.
+        if email_module(&program.root, &module.path) {
+            continue;
+        }
         if module.jsx {
             out.push(
                 Diag::new(
@@ -810,7 +828,9 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
             )
         };
     }
-    if !spec.starts_with('.') || installed(from) || target.starts_with(root.join(crate::layout::ROOT)) {
+    // App code imports email templates to render them with `mail.render()`.
+    let template = email_module(root, &target) && target.extension().is_some_and(|e| e == "tsx");
+    if !spec.starts_with('.') || installed(from) || template || target.starts_with(root.join(crate::layout::ROOT)) {
         return Ok(target);
     }
     let importer = from.strip_prefix(root).unwrap_or(from).display().to_string();

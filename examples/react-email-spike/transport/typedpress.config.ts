@@ -1,4 +1,5 @@
 import { action, defineConfig, mail, text } from "typedpress";
+import Welcome from "./emails/welcome";
 
 export const invite = action({
   access: "anyone",
@@ -10,6 +11,15 @@ export const invite = action({
       html,
       text: plainText,
     })).id;
+  },
+});
+
+export const welcome = action({
+  access: "anyone",
+  input: { email: text(), name: text(), dashboardUrl: text() },
+  async handler({ email, name, dashboardUrl }) {
+    const { html, text } = mail.render(Welcome, { name, dashboardUrl, siteName: "Example site" });
+    return (await mail.send({ to: email, subject: `Welcome, ${name}`, html, text })).id;
   },
 });
 

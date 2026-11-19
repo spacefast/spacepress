@@ -9,6 +9,7 @@ import { render, toPlainText } from "react-email";
 import { call, hostFs } from "../../tests/wasm/host-fs.mjs";
 import Invitation from "./emails/invitation";
 import OrganizationInvite from "./transport/emails/identity/organization-invite";
+import Welcome from "./transport/emails/welcome";
 
 const cases = [
   Invitation.PreviewProps,
@@ -64,10 +65,11 @@ assert.equal(layout.check.diagnostics[0]?.code, "F1210");
 assert.match(layout.check.diagnostics[0]?.message, /emails\/probe.ts.*outside tp\//);
 console.log("An isolated app-root email import hits the source boundary.");
 
-const { output } = call(exports, "tp_compile", {
-  name: "react-email-transport",
-  files: { "typedpress.config.ts": readFileSync(new URL("transport/typedpress.config.ts", import.meta.url), "utf8") },
-});
+const appFiles = Object.fromEntries(
+  ["typedpress.config.ts", "emails/welcome.tsx", "emails/_components/Footer.tsx"]
+    .map((path) => [path, readFileSync(new URL(`transport/${path}`, import.meta.url), "utf8")]),
+);
+const { output } = call(exports, "tp_compile", { name: "react-email-transport", files: appFiles });
 assert.ok(output?.schemaPhp && output.functionsPhp, "WASM must compile the transport control");
 const temp = mkdtempSync(join(tmpdir(), "typedpress-email-spike-"));
 try {
@@ -83,6 +85,32 @@ try {
   rmSync(temp, { recursive: true, force: true });
 }
 
+const welcomeCases = [
+  { email: "ada@example.test", ...Welcome.PreviewProps },
+  { email: "b@example.test", name: "A & <B>", dashboardUrl: "https://example.test/dashboard?team=2&tab=billing", siteName: "Example site" },
+].map(({ siteName, ...input }) => input);
+const welcomeTemp = mkdtempSync(join(tmpdir(), "typedpress-email-welcome-"));
+try {
+  writeFileSync(join(welcomeTemp, "schema.php"), output.schemaPhp);
+  writeFileSync(join(welcomeTemp, "functions.php"), output.functionsPhp);
+  const result = spawnSync(process.env.PHP ?? "php", [
+    "-d", "zend.assertions=1", fileURLToPath(new URL("verify-welcome.php", import.meta.url)), welcomeTemp,
+  ], { input: JSON.stringify(welcomeCases), encoding: "utf8" });
+  if (result.error) throw result.error;
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const sent = JSON.parse(result.stdout);
+  assert.equal(sent.length, welcomeCases.length);
+  for (const [index, { email, ...props }] of welcomeCases.entries()) {
+    const upstream = await render(createElement(Welcome, { ...props, siteName: "Example site" }));
+    // The PHP JSX renderer coalesces adjacent text nodes.
+    assert.equal(sent[index].html.replaceAll("<!-- -->", ""), upstream.replaceAll("<!-- -->", ""));
+    assert.equal(sent[index].text, toPlainText(upstream));
+  }
+} finally {
+  rmSync(welcomeTemp, { recursive: true, force: true });
+}
+console.log("An action rendered emails/welcome.tsx with live props and WordPress sent both bodies.");
+
 const templatePath = "emails/identity/organization-invite.tsx";
 const invitationProject = fileURLToPath(new URL("transport/", import.meta.url));
 const nativeInvite = spawnSync(fileURLToPath(new URL("debug/typedpress", target)), ["check", invitationProject], { encoding: "utf8" });
@@ -90,7 +118,7 @@ if (nativeInvite.error) throw nativeInvite.error;
 assert.equal(nativeInvite.status, 0, nativeInvite.stderr);
 
 const invitationFiles = {
-  "typedpress.config.ts": readFileSync(new URL("transport/typedpress.config.ts", import.meta.url), "utf8"),
+  ...appFiles,
   [templatePath]: readFileSync(new URL(`transport/${templatePath}`, import.meta.url), "utf8"),
 };
 const checkTemplate = (source: string) => call(exports, "tp_check", {

@@ -445,6 +445,8 @@ pub struct Compiler<'a, 'p> {
     /// Each server component's props type (`tp/components/x.tsx#Name` → its first parameter),
     /// for the blocks Markdown pages use (`crate::content_blocks`).
     pub component_props: HashMap<String, Ty>,
+    /// Each compiled `emails/` template's function, by its closure, for `mail.render()`.
+    email_templates: HashMap<usize, String>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
     /// The `this` type for the next object-literal method compiled (the literal's own type).
@@ -550,6 +552,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             fx: None,
             action_results: HashMap::new(),
             component_props: HashMap::new(),
+            email_templates: HashMap::new(),
             plugin: None,
             current: String::new(),
             uses: Vec::new(),
@@ -950,7 +953,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.root_capabilities(root);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
-            let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. } | Slot::Email);
+            let no_db = matches!(
+                root.slot,
+                Slot::Access { .. } | Slot::FieldAccess { .. } | Slot::Email { .. }
+            );
             self.compile_function(&root.closure, &name, Some(params), Some(&root.slot), no_db)?;
             if let Some(ctx) = self.client.take() {
                 if ctx.root_pending {
@@ -968,10 +974,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let props = params.first().cloned().unwrap_or(Ty::Obj(IndexMap::new()));
                 self.component_props.insert(component.clone(), props);
             }
-            if matches!(root.slot, Slot::Email)
-                && !matches!(self.helper_types.get(&key), Some(Ty::Fn(_, ret)) if **ret == Ty::Html)
-            {
-                return err(root.closure.func.span, "the invitation email must return JSX");
+            if let Slot::Email { .. } = &root.slot {
+                if !matches!(self.helper_types.get(&key), Some(Ty::Fn(_, ret)) if **ret == Ty::Html) {
+                    return err(root.closure.func.span, "an email template must return JSX");
+                }
+                self.email_templates.insert(key, name.clone());
             }
             if let Slot::ActionHandler { action } = &root.slot
                 && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)
@@ -1100,12 +1107,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // A component's own annotation types its props (see `compile_function`); a page's
             // `metadata` function takes the same props.
             Slot::Component { .. } => vec![],
-            Slot::Email => vec![Ty::Obj(
+            Slot::Email { file } if file == crate::loader::INVITATION_EMAIL => vec![Ty::Obj(
                 ["siteName", "identityUrl", "invitationCode", "expiresIn"]
                     .into_iter()
                     .map(|name| (name.to_owned(), (Ty::Str, false)))
                     .collect(),
             )],
+            // Other templates type their props with their own annotation, as components do.
+            Slot::Email { .. } => vec![],
             Slot::AppPage { file } | Slot::AppMetadata { file } => vec![self.app_props(file)],
             Slot::AppGuard { .. } | Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
             Slot::AppHandler { .. } => vec![types::route_request(), ctx],
@@ -1215,7 +1224,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "read what you need from the handler's parameters, or from a variable it captures, instead of `this`",
             );
         }
-        if matches!(slot, Some(Slot::Component { .. })) {
+        if matches!(slot, Some(Slot::Component { .. } | Slot::Email { .. })) {
             if f.params.len() > 1 {
                 return err_help(
                     f.span,
@@ -1292,7 +1301,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // for a non-literal argument.
                     let g = match (slot, &g, &d) {
                         (
-                            Some(Slot::AppPage { .. } | Slot::AppMetadata { .. } | Slot::Email),
+                            Some(Slot::AppPage { .. } | Slot::AppMetadata { .. } | Slot::Email { .. }),
                             Ty::Obj(given),
                             Ty::Obj(named),
                         ) => Ty::Obj(
@@ -1339,7 +1348,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some(ps) = &params
             && !matches!(
                 slot,
-                Some(Slot::Component { .. } | Slot::AppPage { .. } | Slot::AppMetadata { .. })
+                Some(Slot::Component { .. } | Slot::Email { .. } | Slot::AppPage { .. } | Slot::AppMetadata { .. })
             )
             && ps.len()
                 < f.params
@@ -8512,11 +8521,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn mail_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if name == "render" {
+            return self.mail_render(args, span);
+        }
         if name != "send" {
             return err_help(
                 span,
                 format!("`mail` has no function `{name}`"),
-                "use `mail.send(message)`",
+                "use `mail.send(message)` or `mail.render(Template, props)`",
             );
         }
         if self.fx().no_db {
@@ -8583,6 +8595,52 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(
             format!("\\TypedPress\\Mail::send({})", v.php),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
+        ))
+    }
+
+    /// `mail.render(Template, props)`: an `emails/` template's HTML and plain text for `mail.send()`.
+    fn mail_render(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        let help = "import the template from emails/ and write mail.render(Welcome, { name })";
+        if args.len() != 2 {
+            return err_help(span, "mail.render() takes a template and its props", help);
+        }
+        let template = self.arg(args, 0, span, "a template")?;
+        let closure = match &template.kind {
+            ExprKind::Ident(n) => match self.resolve(n, template.span)? {
+                Resolved::Value(Value::Closure(c), _) => Some(c),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some((function, Some(Ty::Fn(params, _)))) = closure
+            .map(|c| {
+                let key = closure_key(&c);
+                (
+                    self.email_templates.get(&key).cloned(),
+                    self.helper_types.get(&key).cloned(),
+                )
+            })
+            .and_then(|(f, t)| f.map(|f| (f, t)))
+        else {
+            return err_help(
+                template.span,
+                "mail.render() renders the default export of an emails/ template",
+                help,
+            );
+        };
+        let e = self.arg(args, 1, span, "props")?;
+        let props = self.expr(e)?;
+        let props = self.finish_value(props, e.span)?;
+        let declared = params.first().cloned().unwrap_or(Ty::Obj(IndexMap::new()));
+        check_parameter_argument(&props.ty, &declared, e.span)?;
+        self.uses("mail", "render", span);
+        Ok(Out::atom(
+            format!(
+                "\\TypedPress\\Render\\Email::message({}, {})",
+                php_str(&format!("\\TypedPressApp\\{function}")),
+                props.php
+            ),
+            types::obj_pub(&[("html", Ty::Str), ("text", Ty::Str)]),
         ))
     }
 

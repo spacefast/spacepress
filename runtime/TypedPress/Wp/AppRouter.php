@@ -804,10 +804,12 @@ final class AppRouter
             exit;
         }
         // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
-        // page without a guard is shared; what it read decides which writes purge its URL.
+        // page without a guard is shared, unless the request carries a cookie a render may read (a
+        // comment author's name, an unlocked post's password); what it read decides which writes
+        // purge its URL.
         // A page a form came back to (`?_flash=`), or one that ran a search, shows that visitor's
         // result: never shared, never recorded for purges.
-        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
+        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Cache::viewerCookie() && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
         if ($shared) {
             \TypedPress\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         }
@@ -1418,7 +1420,7 @@ final class AppRouter
         if (str_starts_with($this->cacheControl, 'private')) {
             self::privateResponse();
         }
-        header('Cache-Control: ' . $this->cacheControl);
+        \TypedPress\Render\Cache::send($this->cacheControl);
         if (\TypedPress\Render\Prebuilt::prerendering()) {
             // The prebuild writes a file only from an answer the router rendered for it.
             header('X-TypedPress-Prerendered: 1');
@@ -1485,7 +1487,7 @@ final class AppRouter
         }
         $this->cacheControl = 'private, no-store, max-age=0';
         nocache_headers();
-        header('Cache-Control: ' . $this->cacheControl);
+        \TypedPress\Render\Cache::send($this->cacheControl);
         if (function_exists('batcache_cancel')) {
             batcache_cancel();
         }

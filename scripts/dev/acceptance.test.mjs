@@ -3,12 +3,16 @@ import { test } from 'node:test';
 import { spawn, execFile } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { watch } from 'node:fs';
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { createServer } from 'node:net';
 import { get } from 'node:http';
+import { chromiumPath } from '../../tests/differential/client/chromium.mjs';
+
+const require = createRequire(new URL('../../tests/differential/client/package.json', import.meta.url));
+const { chromium } = require('playwright-core');
 
 const exec = promisify(execFile);
 const first = resolve(process.env.TP_BIN ?? 'target/debug/typedpress');
@@ -35,14 +39,6 @@ async function mcp(flags, env, calls) {
   const answers = (await running).stdout.trim().split('\n').map((line) => JSON.parse(line));
   assert.deepEqual(answers.map((answer) => answer.id), calls.map((_, id) => id));
   return answers.map((answer) => answer.result);
-}
-
-async function freePort() {
-  const server = createServer();
-  await new Promise((done) => server.listen(0, '127.0.0.1', done));
-  const port = server.address().port;
-  await new Promise((done) => server.close(done));
-  return port;
 }
 
 function foreground(args, env) {
@@ -81,9 +77,16 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   const env = { ...inherited, PATH: tools };
   await writeFile(join(project, 'typedpress.config.ts'), config('first'));
   await writeFile(join(project, 'public/index.html'), '<h1>Native TypedPress dev</h1>');
+  const pageFile = join(project, 'tp/app/page.tsx');
+  const pageSource = (title) => `export default function Page() { return <h1>${title}</h1>; }\n`;
+  await mkdir(join(project, 'tp/app'), { recursive: true });
+  await writeFile(pageFile, pageSource('Original dev page'));
+  const dbTypes = join(project, 'tp/_generated/db.d.ts');
   let session;
+  let browser;
   const site = join(project, '.tp/dev/wordpress');
   t.after(async () => {
+    await browser?.close();
     const failures = [];
     const studio = async (...args) => (await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', ...args], { timeout: 60000, maxBuffer: 4 * 1024 * 1024 })).stdout;
     const sites = async () => JSON.parse(await studio('list', '--format=json'));
@@ -107,10 +110,13 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
       if (!t.error) throw error;
     }
   });
-  const firstStart = await command(['dev', project, '--port', String(await freePort()), '--no-watch'], env);
+  const firstStart = await command(['dev', project, '--port', process.env.TP_DEV_TEST_PORT ?? '8813', '--no-watch'], env);
   const status = JSON.parse(await command(['dev', 'status', project], env));
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
+  const originalTypes = await readFile(dbTypes, 'utf8');
+  assert.match(originalTypes, /processed/);
+  assert.doesNotMatch(await (await fetch(base)).text(), /typedpress-dev\/live-client/);
   // The summary links TypedPress Admin where it is mounted. Studio's server reads no .htaccess, so the
   // address answers with the form every server serves, wp-admin's own page for TypedPress Admin.
   assert.match(firstStart, new RegExp(`TypedPress Admin: ${base}/wp-admin/new/\n`));
@@ -216,6 +222,40 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   let cursor = await session.wait('Watching config');
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).siteUrl, status.siteUrl);
   assert.equal((await api('/items')).find((row) => row.id === item.id).name, 'Chickpeas');
+  await t.test('open WordPress tabs reload after a page edit and recover from a compile error', async () => {
+    browser = await chromium.launch({ executablePath: chromiumPath() });
+    const tabs = await Promise.all([browser.newPage(), browser.newPage()]);
+    await Promise.all(tabs.map((page) => page.goto(base)));
+    await Promise.all(tabs.map((page) => page.getByRole('heading', { name: 'Original dev page' }).waitFor()));
+    await writeFile(pageFile, pageSource('Updated dev page'));
+    await Promise.all(tabs.map((page) => page.getByRole('heading', { name: 'Updated dev page' }).waitFor()));
+
+    const generated = join(project, 'tp/_generated');
+    const files = async () => {
+      const entries = await readdir(generated, { recursive: true, withFileTypes: true });
+      const paths = entries.filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name)).sort();
+      return Promise.all(paths.map(async (path) => [path, await readFile(path)]));
+    };
+    const lastGood = await files();
+    await writeFile(pageFile, 'export default function Page() { return ; const broken = ; }\n');
+    cursor = await session.wait('error[F1001]', cursor);
+    cursor = await session.wait('Fix the error and save to retry.', cursor);
+    for (const page of tabs) {
+      const overlay = page.locator('typedpress-dev-error');
+      const code = overlay.getByRole('link', { name: 'error[F1001]' });
+      await code.waitFor();
+      assert.match(await code.getAttribute('href'), /\/reference\/diagnostics\.mdx#codes:~:text=F1001$/);
+      assert.match(await overlay.locator('code').innerText(), /tp\/app\/page\.tsx:1:\d+/);
+      assert.match(await overlay.locator('pre').textContent(), /\S/);
+    }
+    assert.deepEqual(await files(), lastGood);
+
+    await writeFile(pageFile, pageSource('Recovered dev page'));
+    await Promise.all(tabs.map(async (page) => {
+      await page.getByRole('heading', { name: 'Recovered dev page' }).waitFor();
+      await page.locator('typedpress-dev-error').waitFor({ state: 'detached' });
+    }));
+  });
   await writeFile(join(project, 'typedpress.config.ts'), 'export default { broken: ;');
   cursor = await session.wait('Fix the error and save to retry.', cursor);
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'first');
@@ -230,6 +270,8 @@ if (defined('WP_CLI') && WP_CLI) {
   cursor = await session.wait('Fix the error and save to retry.', cursor);
   const interrupted = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8'));
   assert.notDeepEqual(interrupted.pending.migrations, interrupted.migrations);
+  assert.doesNotMatch(originalTypes, /shelf/);
+  assert.match(await readFile(dbTypes, 'utf8'), /shelf/);
   const interruptedExit = once(session.child, 'exit');
   await command(['dev', 'stop', project], env);
   assert.deepEqual(await interruptedExit, [0, null]);
@@ -248,7 +290,7 @@ if (defined('WP_CLI') && WP_CLI) {
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');
   // Restoring the config must not replay a hidden DROP migration from the rejected save.
   await writeFile(join(project, 'typedpress.config.ts'), config('third', 'shelf: text().optional(),', false));
-  cursor = await session.wait('Updated. Refresh', cursor);
+  cursor = await session.wait('Updated.', cursor);
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');
   const plugins = JSON.parse(await wp('plugin', 'list', '--status=active', '--format=json'));
   assert.equal(plugins.some((plugin) => plugin.name === 'acceptance-extra'), true);
@@ -256,7 +298,7 @@ if (defined('WP_CLI') && WP_CLI) {
   const pluginPage = await fetch(`${base}/wp-content/plugins/typedpress-app-app/public/index.html`);
   assert.equal(await pluginPage.text(), '<h1>Native TypedPress dev</h1>');
   await writeFile(join(project, 'public/index.html'), '<h1>Updated public file</h1>');
-  await session.wait('Updated. Refresh', cursor);
+  await session.wait('Updated.', cursor);
   assert.equal(await (await fetch(`${base}/wp-content/plugins/typedpress-app-app/public/index.html`)).text(), '<h1>Updated public file</h1>');
   const exit = once(session.child, 'exit');
   await command(['dev', 'stop', project], env);
@@ -282,7 +324,7 @@ if (defined('WP_CLI') && WP_CLI) {
   await assert.rejects(command(['dev', project, '--detach'], env), /Another typedpress dev command owns this project/);
   assert.match(await readFile(log, 'utf8'), /Website:/);
   await writeFile(join(project, 'typedpress.config.ts'), config('background', 'shelf: text().optional(),', false));
-  await waitForLog('Updated. Refresh');
+  await waitForLog('Updated.');
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'background');
   // An agent's shell (no terminal, CLAUDECODE set) gets the same without the flag; here the
   // session above still owns the project, so the background start is what is refused.
@@ -304,5 +346,16 @@ if (defined('WP_CLI') && WP_CLI) {
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'deliberate');
   assert.equal((await api('/items')).find((row) => row.id === item.id).name, 'Chickpeas');
   assert.equal(await readFile(join(extra, 'acceptance-extra.php'), 'utf8'), '<?php /* Plugin Name: Acceptance extra */');
+  await t.test('production build excludes the dev client and its WordPress hook', async () => {
+    const production = join(root, 'production');
+    await command(['build', project, '--out', production], env);
+    const entries = await readdir(production, { recursive: true, withFileTypes: true });
+    for (const entry of entries) {
+      assert.doesNotMatch(entry.name, /typedpress-dev|live-client/);
+      if (entry.isFile() && /\.(?:js|php)$/.test(entry.name)) {
+        assert.doesNotMatch(await readFile(join(entry.parentPath, entry.name), 'utf8'), /typedpress-dev-error|typedpress-dev\/live-client/);
+      }
+    }
+  });
   console.log('Studio acceptance: native editor + SCF, identity, uploads, queued job, schema/public watching, invalid-build recovery, data/plugin persistence; no host PHP or Docker on PATH.');
 });

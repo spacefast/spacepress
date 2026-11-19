@@ -547,6 +547,13 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     let built = match build(&project, frozen) {
         Ok(b) => b,
         Err(d) => {
+            if let Some(path) = &args.diagnostics_file {
+                let envelope = diag::envelope(std::slice::from_ref(&d), &project);
+                let bytes = serde_json::to_vec(&envelope).expect("diagnostic envelope serializes");
+                if let Err(error) = write(path, bytes) {
+                    eprintln!("error: couldn't write diagnostics: {error}");
+                }
+            }
             eprint!("{}", diag::render(&d, &project));
             return ExitCode::from(1);
         }

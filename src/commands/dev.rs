@@ -6,6 +6,8 @@ const STUDIO: &str = "wp-studio@2.2.0";
 const TOOLS: &[(&str, &str)] = &[
     ("studio.mjs", include_str!("../../scripts/dev/studio.mjs")),
     ("setup.php", include_str!("../../scripts/dev/setup.php")),
+    ("live.mjs", include_str!("../../scripts/dev/live.mjs")),
+    ("live-client.js", include_str!("../../scripts/dev/live-client.js")),
 ];
 
 fn runner() -> Result<PathBuf, String> {

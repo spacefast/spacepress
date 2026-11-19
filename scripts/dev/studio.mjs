@@ -59,9 +59,10 @@ async function studioBinary() {
   throw new Error(`Cannot find wp-studio@${STUDIO_VERSION}. Run typedpress dev with Node.js 22+ and npm installed.`);
 }
 
-function execute(file, args, { capture = false, timeout = 180000, env = process.env, input = 'ignore' } = {}) {
+function execute(file, args, { capture = false, log = false, timeout = 180000, env = process.env, input = 'ignore' } = {}) {
   return new Promise((resolveResult, reject) => {
-    const child = spawn(file, args, { stdio: [input, capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'], env });
+    const output = capture || log ? 'pipe' : 'inherit';
+    const child = spawn(file, args, { stdio: [input, output, output], env });
     let stdout = '', stderr = '', timedOut = false;
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); }, timeout);
     child.stdout?.on('data', (chunk) => { stdout += chunk; });
@@ -69,8 +70,10 @@ function execute(file, args, { capture = false, timeout = 180000, env = process.
     child.once('error', (error) => { clearTimeout(timer); reject(error); });
     child.once('close', (code, signal) => {
       clearTimeout(timer);
-      if (code === 0) resolveResult(stdout);
-      else reject(Object.assign(new Error(`${timedOut ? 'Timed out' : `Failed (${code ?? signal})`}: ${args[0]}\n${stderr || stdout}`), { stdout }));
+      if (code === 0) {
+        if (log) { process.stdout.write(stdout); process.stderr.write(stderr); }
+        resolveResult(stdout);
+      } else reject(Object.assign(new Error(`${timedOut ? 'Timed out' : `Failed (${code ?? signal})`}: ${args[0]}\n${stderr || stdout}`), { stdout }));
     });
   });
 }
@@ -138,6 +141,13 @@ async function migrationHistory(project) {
     history[name] = createHash('sha256').update(await readFile(join(directory, name))).digest('hex');
   }
   return history;
+}
+
+async function appRevision(content) {
+  const manifest = await readFile(join(content, 'typedpress-manifest.json'));
+  const { app } = JSON.parse(manifest);
+  const plugin = await readFile(join(content, 'plugins', `typedpress-app-${app}.zip`));
+  return createHash('sha256').update(manifest).update(plugin).digest('hex');
 }
 
 async function availablePort(port) {
@@ -396,6 +406,18 @@ const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENER
 // Markdown pages under tp/app/, and the project's tp/theme.json.
 const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^tp\/app\/(.*\/)?page\.md$/.test(name) || name === 'tp/theme.json';
 
+const DEV_PLUGIN = `<?php
+// Local development only: allow identity callbacks on the site's HTTP origin.
+if (!defined('TP_IDENTITY_DEV_HTTP')) define('TP_IDENTITY_DEV_HTTP', true);
+add_action('wp_enqueue_scripts', static function () {
+    $state = __DIR__ . '/typedpress-dev/live.json';
+    if (!is_readable($state)) return;
+    $live = json_decode(file_get_contents($state), true);
+    if (!$live) return;
+    wp_enqueue_script('typedpress-dev', add_query_arg($live, plugins_url('typedpress-dev/live-client.js', __FILE__)), [], null, ['strategy' => 'defer']);
+});
+`;
+
 export async function sourceDigest(project) {
   const digest = createHash('sha256');
   async function visit(directory, prefix = '') {
@@ -611,8 +633,9 @@ async function main() {
   if (flags.includes('--detach') && !noWatch) return detached(managed);
   const release = await lock(managed.state);
   const statePath = join(managed.state, 'state.json');
+  const diagnosticPath = join(managed.state, 'diagnostics.json');
   await rm(join(managed.state, 'stop'), { force: true });
-  let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl, relay;
+  let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl, relay, live;
   let finish;
   const finished = new Promise((resolveDone) => { finish = resolveDone; });
   const stop = async () => {
@@ -622,12 +645,13 @@ async function main() {
     if (!running) finish();
   };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
+  let publishedRevision;
   const build = async (allowDestructive = false) => {
     // Before the history check, which would read a moved ledger as changed and point at --allow-destructive.
     if (await exists(join(project, 'tp/migrations'))) {
       throw new Error('tp/migrations/ moved to tp/_generated/migrations/; move it with `mkdir -p tp/_generated && rmdir tp/_generated/migrations 2>/dev/null; git mv tp/migrations tp/_generated/migrations`, then start again.');
     }
-    const args = ['build', project, '--out', content];
+    const args = ['build', project, '--out', content, '--diagnostics-file', diagnosticPath];
     if (managed.owner.snapshot && !allowDestructive) {
       // A prebuilt/edited migration can hide an intermediate destructive step even if the final
       // snapshot looks unchanged. Only the dev-owned build may extend the accepted history.
@@ -639,12 +663,21 @@ async function main() {
       await atomicJson(snapshot, managed.owner.pending?.snapshot ?? managed.owner.snapshot);
       args.push('--preserve-data', snapshot);
     }
-    await execute(first, args, { timeout: 300000 });
+    await rm(diagnosticPath, { force: true });
+    try {
+      await execute(first, args, { timeout: 300000, log: true });
+    } catch (error) {
+      error.diagnostics = (await json(diagnosticPath).catch(() => null))?.diagnostics;
+      throw error;
+    }
+    const revision = await appRevision(content);
+    if (revision === publishedRevision && !managed.owner.pending) return revision;
     managed.owner.pending = {
       migrations: await migrationHistory(project),
       snapshot: await json(join(project, 'tp/_generated/migrations/snapshot.json')),
     };
     await atomicJson(managed.marker, managed.owner);
+    return revision;
   };
   // `wp typedpress migrate`, checked against live rows (spec §2.9). With --allow-destructive, a refused
   // drop is confirmed at the counts the refusal reports; anything else (a required field rows lack)
@@ -686,7 +719,18 @@ async function main() {
     running = true;
     if (!await exists(join(project, 'typedpress.config.ts'))) throw new Error(`No typedpress.config.ts in ${project}`);
     let digest = await sourceDigest(project);
-    await build(flags.includes('--allow-destructive'));
+    const allowDestructive = flags.includes('--allow-destructive');
+    const report = (error) => {
+      console.error(error.message);
+      console.error('Fix the error and save to retry.');
+      live?.failed(error);
+    };
+    let startupError, initialRevision;
+    try { initialRevision = await build(allowDestructive); }
+    catch (error) {
+      if (noWatch || !error.diagnostics?.length) throw error;
+      startupError = error;
+    }
     if (!managed.owner.created) {
       await availablePort(Number(requestedPort));
       if (await exists(managed.owner.site) && (await readdir(managed.owner.site)).length) {
@@ -714,12 +758,25 @@ async function main() {
     if (address.listen) relay = await forward(address.listen, port, port);
     const mu = join(managed.owner.site, 'wp-content/mu-plugins/typedpress-dev-runtime.php');
     if (!managed.owner.devMu && await exists(mu)) throw new Error('typedpress-dev-runtime.php already exists and is not managed by TypedPress.');
-    await writeFile(mu, "<?php\n// Local development only: allow identity callbacks on the site's HTTP origin.\nif (!defined('TP_IDENTITY_DEV_HTTP')) define('TP_IDENTITY_DEV_HTTP', true);\n");
+    await writeFile(mu, DEV_PLUGIN);
     managed.owner.devMu = true;
     await atomicJson(managed.marker, managed.owner);
-    await configure(flags.includes('--allow-destructive'));
-    const response = await fetch(`${local}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${local}`);
+    const devAssets = join(dirname(mu), 'typedpress-dev');
+    await mkdir(devAssets, { recursive: true });
+    const publish = (state) => atomicJson(join(devAssets, 'live.json'), state);
+    if (noWatch) await publish(null);
+    else {
+      const { liveUpdates } = await import(pathToFileURL(join(here, 'live.mjs')));
+      await cp(join(here, 'live-client.js'), join(devAssets, 'live-client.js'));
+      live = await liveUpdates({ bind: address.listen ? await listenAddress(address.listen) : 'localhost', site: url, publish });
+    }
+    if (startupError) report(startupError);
+    else {
+      await configure(allowDestructive);
+      publishedRevision = initialRevision;
+      const response = await fetch(`${local}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
+      if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${local}`);
+    }
     const summary = [`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`];
     if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/index.html`);
     if (managed.owner.generated.includes('typedpress-admin')) summary.push(`TypedPress Admin: ${url}/wp-admin/new/`);
@@ -751,8 +808,14 @@ async function main() {
           if (next === digest) continue;
           digest = next;
           console.log('\nSources changed; rebuilding…');
-          try { await build(); await configure(); console.log('Updated. Refresh the page to see your changes.'); }
-          catch (error) { console.error(error.message); console.error('Fix the error and save to retry.'); }
+          try {
+            const revision = await build();
+            const changed = revision !== publishedRevision || Boolean(managed.owner.pending);
+            if (changed) await configure();
+            await live.updated(changed);
+            publishedRevision = revision;
+            console.log('Updated.');
+          } catch (error) { report(error); }
         } while (dirty && !stopping);
       } catch (error) { console.error(error.message); }
       finally { running = false; if (stopping) finish(); }
@@ -767,6 +830,7 @@ async function main() {
     await finished;
   } finally {
     watcher?.close(); clearTimeout(timer); clearInterval(stopTimer);
+    await live?.close();
     await relay?.close();
     process.off('SIGINT', stop); process.off('SIGTERM', stop);
     if (await exists(join(managed.state, 'stop'))) stopping = true;

@@ -207,7 +207,8 @@ fn line_col(src: &str, offset: usize) -> (usize, usize) {
 /// Renders a diagnostic with a code frame, rustc-style.
 pub fn render(diag: &Diag, root: &Path) -> String {
     let mut out = String::new();
-    let _ = writeln!(out, "error: {}", diag.message);
+    let code = serde_json::to_string(&diag.code).expect("code serializes");
+    let _ = writeln!(out, "error[{}]: {}", code.trim_matches('"'), diag.message);
     FILES.with(|files| {
         let files = files.borrow();
         if let Some((path, src)) = files.get(diag.span.file as usize) {

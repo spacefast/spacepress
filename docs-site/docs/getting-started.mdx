@@ -77,7 +77,9 @@ App:       http://localhost:9187/wp-content/plugins/typedpress-app-my-app/public
 TypedPress Admin: http://localhost:9187/typedpress-admin/
 ```
 
-Your port can differ. The next line prints a local admin login. Use it only on your machine. Keep this terminal open. `dev` rebuilds the app when you save `typedpress.config.ts`.
+Your port can differ. The next line prints a local admin login. Use it only on your machine. Keep this terminal open while you edit.
+
+`typedpress dev` compiles on startup and on save. When a build changes the app, open WordPress pages reload. A compile error appears in the page and in the terminal. The compiler keeps the last successful files in `tp/_generated` until the next successful compile.
 
 ## Add a note
 

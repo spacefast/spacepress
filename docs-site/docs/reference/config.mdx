@@ -363,7 +363,11 @@ export declare function store(options: StoreOptions): CommerceStore;
 ### `product`
 
 ```ts
-export declare function product(options?: CommerceOptions): Collection<string, WithId<ProductColumns>, false, "product">;
+export declare function product<F extends ProductFields = {}, I extends boolean = false>(
+  options?: CommerceOptions & { fields?: F; inventory?: I; reviews?: boolean },
+): Collection<string, WithId<ProductColumns & F & (I extends true ? {
+  stockQuantity: ColumnBuilder<"integer", number, false, true>;
+} : {})>, false, "product">;
 ```
 
 ### `productCategory`

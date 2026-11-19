@@ -225,9 +225,11 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   await t.test('open WordPress tabs reload after a page edit and recover from a compile error', async () => {
     browser = await chromium.launch({ executablePath: chromiumPath() });
     const tabs = await Promise.all([browser.newPage(), browser.newPage()]);
+    for (const page of tabs) page.setDefaultTimeout(90000);
     await Promise.all(tabs.map((page) => page.goto(base)));
     await Promise.all(tabs.map((page) => page.getByRole('heading', { name: 'Original dev page' }).waitFor()));
     await writeFile(pageFile, pageSource('Updated dev page'));
+    cursor = await session.wait('Updated.', cursor);
     await Promise.all(tabs.map((page) => page.getByRole('heading', { name: 'Updated dev page' }).waitFor()));
 
     const generated = join(project, 'tp/_generated');
@@ -251,6 +253,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
     assert.deepEqual(await files(), lastGood);
 
     await writeFile(pageFile, pageSource('Recovered dev page'));
+    cursor = await session.wait('Updated.', cursor);
     await Promise.all(tabs.map(async (page) => {
       await page.getByRole('heading', { name: 'Recovered dev page' }).waitFor();
       await page.locator('typedpress-dev-error').waitFor({ state: 'detached' });

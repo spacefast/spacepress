@@ -3410,11 +3410,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     // TypedPress's API and Identity's answer for whoever asks: Batcache never keeps them, signed in
     // by an application password or not, nor Identity's own API, which finds its session from its
     // cookie without WordPress setting the user.
-    for (key, status) in [
-        ("api anonymous", 200),
-        ("api app password", 200),
-        ("identity api", 401),
-    ] {
+    for (key, status) in [("api anonymous", 200), ("api app password", 200), ("identity api", 401)] {
         assert_eq!(seen[key]["status"], status, "{key}");
         assert_eq!(seen[key]["batcache"], "cancel", "{key}");
     }

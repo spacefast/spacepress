@@ -85,7 +85,10 @@ export async function archive({ binary, target, output, revision, workingTree = 
         const vcs = JSON.parse(await readFile(join(directory, '.cargo_vcs_info.json'), 'utf8'));
         const repository = new URL(dependency.repository);
         if (repository.hostname !== 'github.com' || !/^[a-f0-9]{40}$/.test(vcs.git?.sha1)) throw new Error(`No verifiable original license notice for ${dependency.name}.`);
-        const url = `https://raw.githubusercontent.com${repository.pathname.replace(/\.git$/, '').replace(/\/$/, '')}/${vcs.git.sha1}/LICENSE`;
+        // `repository` may point inside the repo (`/owner/repo/tree/main/crate`); raw files live at /owner/repo/<sha>/.
+        const [owner, repo] = repository.pathname.split('/').filter(Boolean);
+        if (!owner || !repo) throw new Error(`No verifiable original license notice for ${dependency.name}.`);
+        const url = `https://raw.githubusercontent.com/${owner}/${repo.replace(/\.git$/, '')}/${vcs.git.sha1}/LICENSE`;
         let bytes = upstreamNotices.get(url);
         if (!bytes) {
           const response = await fetch(url, { signal: AbortSignal.timeout(30000) });

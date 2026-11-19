@@ -41,3 +41,9 @@ After the compiler spike, start with the organization invitation. Give the messa
 Resolve the template for the current app at the point where the sender still has those structured values, before it calls `wp_mail()`. An absent override selects the existing built-in body. A discovered override supplies rendered HTML and plain text. The identity sender owns challenge creation, recipient, subject and delivery timing. Validate the default export and its prop types at build time. A template used for identity mail should render only from its supplied props, with no action effects or external requests.
 
 Exercise the invitation flow with and without an override. Capture the actual mail, verify that both custom bodies contain the issued code and identity URL, and redeem the code through the existing flow. Once proven, apply the same pattern to verification codes and form notifications with separately typed props for each.
+
+## Spike results
+
+The [runnable invitation fixture](../examples/react-email-spike) renders through the upstream preview and produces HTML and text for two sets of props. Native and WASM compilation both stop at implicit `arguments` in React's production CommonJS entry. A separate WASM probe isolates the app-root import restriction (`F1210`).
+
+The transport control compiles a TypedPress action to PHP and uses the WordPress test harness to verify that Action Scheduler hands both upstream-rendered bodies to the mail transport intact. A same-template PHP renderer still needs an email compiler entry point and a viable way to lower the React Email components. The spike establishes the first failures of the direct-import approach.

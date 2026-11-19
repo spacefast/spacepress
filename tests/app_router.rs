@@ -3376,16 +3376,48 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     );
     let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
+    // WP Cloud's edge stores a PHP response only beside `A8C-Edge-Cache: cache`, and never one
+    // marked `no-cache`: the header follows the policy on every answer.
     for key in ["home", "note", "other note", "about"] {
         assert_eq!(
             seen[key],
-            serde_json::json!({ "status": 200, "cache": shared }),
+            serde_json::json!({ "status": 200, "cache": shared, "edge": "cache" }),
             "{key}"
         );
     }
-    assert_eq!(seen["as editor"]["cache"], private);
-    assert_eq!(seen["guarded"]["cache"], private);
-    assert_eq!(seen["missing"], serde_json::json!({ "status": 404, "cache": private }));
+    // A private page also cancels Batcache, which reads only `max-age` and would keep it otherwise.
+    // A cookie a render may answer for makes the page private though WordPress signs no one in
+    // (a comment author's name and email, an unlocked post, an Identity session), and so does a
+    // response that sets a cookie.
+    for key in [
+        "as editor",
+        "guarded",
+        "comment author",
+        "post password",
+        "identity session",
+        "sets a cookie",
+    ] {
+        assert_eq!(
+            seen[key],
+            serde_json::json!({ "status": 200, "cache": private, "edge": "no-cache", "batcache": "cancel" }),
+            "{key}"
+        );
+    }
+    assert_eq!(
+        seen["missing"],
+        serde_json::json!({ "status": 404, "cache": private, "edge": "no-cache", "batcache": "cancel" })
+    );
+    // TypedPress's API and Identity's answer for whoever asks: Batcache never keeps them, signed in
+    // by an application password or not, nor Identity's own API, which finds its session from its
+    // cookie without WordPress setting the user.
+    for (key, status) in [
+        ("api anonymous", 200),
+        ("api app password", 200),
+        ("identity api", 401),
+    ] {
+        assert_eq!(seen[key]["status"], status, "{key}");
+        assert_eq!(seen[key]["batcache"], "cancel", "{key}");
+    }
     // The index: `/` listed notes (and read both), each note page read its own row, /about nothing.
     let index: Vec<String> = seen["index"]
         .as_array()
@@ -3432,6 +3464,8 @@ fn app_pages_cache_and_purge_by_what_they_read() {
             }
         }
     }
+    // The WP Cloud edge gets every path in one purge call.
+    want.push("edge / /index.md /notes/hello/ /notes/hello.md".to_string());
     want.sort();
     assert_eq!(cleared, want);
     // A twin fetched before its page was ever rendered records what it read under its own URL, so
@@ -3442,12 +3476,17 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["twin purged"],
         serde_json::json!([["/", "/index.md", "/notes/third.md"]])
     );
-    assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *"]));
+    assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *", "edge *"]));
     // Over VIP's 100 URLs a request: one site ban, and every path still for Batcache.
     assert_eq!(seen["cleared many"], serde_json::json!([1, true, 101]));
     assert_eq!(
         seen["without batcache drop-in"],
-        serde_json::json!(["vip /about", "boost /about"])
+        serde_json::json!(["vip /about", "boost /about", "edge /about"])
+    );
+    // A response made as a signed-in user is never Batcache's to keep, however the user signed in.
+    assert_eq!(
+        seen["batcache cancelled"],
+        serde_json::json!({ "anonymous": false, "signed in": true })
     );
 }
 

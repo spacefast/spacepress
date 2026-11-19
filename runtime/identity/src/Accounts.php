@@ -179,6 +179,8 @@ final class Accounts
     }
     private const DUMMY_PASSWORD_HASH = "tp_identity_dummy_password_hash";
     private const PASSWORD_PROFILES = "tp_identity_password_profiles";
+    /** The options provisionPasswordHash() reads on every request of a plugin-installed site. */
+    public const INSTALL_OPTIONS = [self::DUMMY_PASSWORD_HASH, self::PASSWORD_PROFILES, self::PASSWORD_INVENTORY];
 
     private const UNSUPPORTED_PASSWORD_PROFILE = 'unsupported';
     private const PASSWORD_INVENTORY = "tp_identity_password_inventory";

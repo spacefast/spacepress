@@ -307,6 +307,11 @@ final class Site
         ];
         update_option(self::HISTORY, $history, false);
         update_option(self::LIVE, $build, true);
+        // Every page may render differently now: page caches and the edge purge the whole host, once,
+        // when this request ends (nothing is announced where no page cache listens).
+        if (method_exists(\TypedPress\Wp\Purges::class, 'everything')) {
+            \TypedPress\Wp\Purges::everything();
+        }
     }
 
     /**

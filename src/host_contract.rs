@@ -68,7 +68,7 @@ pub const HOOKS: &[(&str, &str, &str)] = &[
     (
         "tp_purge_urls",
         "action",
-        "the root-relative URLs a committed content write changed, for a host's page cache",
+        "the root-relative URLs a committed content write changed, for a host's page cache; `/*` after a new build goes live",
     ),
     (
         "tp_private_probe_url",

@@ -40,11 +40,9 @@ pub const RESERVED_TP_SEGMENTS: &[&str] = &[
     "wp-mail.php",
     // The host's and TypedPress's own entry points.
     ".well-known",
-    "__zero",
     "identity",
     "index.php",
     "wp-config.php",
-    "typedpress-admin",
     "auth",
 ];
 

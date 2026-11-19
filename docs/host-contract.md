@@ -18,16 +18,8 @@ manifests until they implement this lifecycle requirement.
 ## Uploads
 
 `compile-sources <sources> <new-output> <assets> [previous-output]` takes a captured source bundle:
-`typedpress.source-bundle.v1` (`app.typedpress.json`, `vendor.typedpress.json`, `manifest.json`), and, for clients
-released before the rename to TypedPress, `zero.source-bundle.v1` (see [Deploy on Spacefast](spacefast-deploy.md)).
+`typedpress.source-bundle.v1` (`app.typedpress.json`, `vendor.typedpress.json`, `manifest.json`).
 `previous-output` is the tree of the version being replaced: its snapshot is the migration baseline.
-
-A client released before the rename (the hosted MCP server 0.9.0) uploads the raw project instead of
-a capture: `zero.config.ts` at the root, the relative modules it imports and `public/`. A host may
-pass that directory as `<sources>` to `compile-sources` or `compile-to-store`, or capture it first
-with `typedpress::host::sources`; TypedPress captures it as the 0.3.0 compiler did and compiles that capture. Refused: an npm import (a host
-installs no packages; the owner publishes from the CLI), TSX pages (`pages/` or `zero/pages.json`),
-and a tree that also holds `typedpress.config.ts` or a capture.
 
 ## Manifest
 
@@ -42,8 +34,6 @@ Besides `format`, `hostContract`, `compiler` and the platform versions (`wordpre
 
 ## Lifecycle
 
-See [Spacefast host checklist](spacefast-host-checklist.md) for what one host changes to meet this.
-
 Builds come from the build store: `typedpress compile-to-store <sources> <store> <assets> [previous-build]`
 writes one and prints its id (see `docs/decisions/2026-11-07-build-store.md`). `Loader::load` mounts store
 builds only; a `compile-sources` tree is for hosts that mount it themselves and is not part of this
@@ -54,7 +44,7 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
    pages render from the app plugin.
 2. Before exposing a new version, call `Loader::initialize` once. (It does not take the schema check's
    `--drop` confirmations yet: a version that drops data is refused there until it does.) It brings this site's storage up to
-   the build (including the one-time upgrade of a site that ran a build from before the rename), applies
+   the build, applies
    pending migrations forward only, schedules identity maintenance, seeds content, and writes the ready
    marker. A ready build returns its receipt and changes nothing.
 3. Rollback is selecting an older ready build: no migration runs, and the older build reads the newer
@@ -95,9 +85,7 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
    no need to read generated files, private options, or compare
    a host-computed hash.
 4. Run `wp typedpress jobs tick` on a schedule. It does one bounded pass of the site's background work and
-   prints `{processed, failures, outboxDispatched, requeued, receiptsExpired, remaining}`
-   (`outboxDispatched` is always 0: jobs reach Action Scheduler in the transaction that queues them;
-   the key stays for hosts that read it). Run it again
+   prints `{processed, failures, requeued, receiptsExpired, remaining}`. Run it again
    while `remaining` is true. It exits non-zero when it could not run. It takes the same locks as
    WordPress's own runners: it claims Action Scheduler actions before running them and runs WP-Cron
    events under core's `doing_cron` lock, so overlapping ticks, or a tick beside `wp-cron.php` or

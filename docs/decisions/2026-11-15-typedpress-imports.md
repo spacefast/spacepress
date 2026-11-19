@@ -412,7 +412,7 @@ const tp = createClient();
 3. Last, rename First to typedpress everywhere (binary, packages,
    `typedpress.config.ts`, the `typedpress/` folder, PHP namespaces, table and
    option prefixes, REST namespaces, headers, diagnostics) with a codemod in
-   the style of `scripts/rename-to-first.mjs`.
+   a single source change.
 
 No First app runs in production (#243), so none of this keeps aliases. Stored
 bundles captured earlier read their old specifiers through

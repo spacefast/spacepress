@@ -314,7 +314,7 @@ owners for the actual storage behavior rather than adding a parallel harness.
 ## What better UX must demonstrate
 
 The competitor research is recorded in [research adoption](research-adoption.md)
-and [config migration](config-migration.md). It motivates these acceptance
+and [config migration](../migrate/docs/config-migration.md). It motivates these acceptance
 criteria; it is not an executed current-version comparison of all products.
 
 | User task | Acceptance bar |

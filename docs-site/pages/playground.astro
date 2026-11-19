@@ -8,12 +8,12 @@ import { readFileSync } from "node:fs";
 import type { ExampleRun } from "../lib/blueprint.ts";
 import { example, repo } from "../lib/examples.ts";
 import { platformVersions } from "../lib/platform.ts";
-import { firstFiles, wordpressFiles } from "../lib/playground-catalog.ts";
+import { wordpressFiles } from "../lib/playground-catalog.ts";
 import { exampleRun } from "../lib/showcase.ts";
 import { siteExamples } from "../lib/site-examples.ts";
 
 const examples = Object.fromEntries(await Promise.all(
-	siteExamples.map(async ({ name }) => [name, firstFiles((await example(name)).files)]),
+	siteExamples.map(async ({ name }) => [name, (await example(name)).files]),
 ));
 // What "Run in WordPress" needs to build a blueprint for the edited config (lib/blueprint.ts).
 const runs: Record<string, ExampleRun> = Object.fromEntries(await Promise.all(siteExamples.map(async ({ name }) => [name, await exampleRun(name)])));

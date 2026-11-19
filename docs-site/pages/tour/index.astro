@@ -2,7 +2,6 @@
 // The tour: one page per walk through an example (lib/stops.ts).
 import PageLayout from "blume/components/layout/PageLayout.astro";
 import data from "blume:data";
-import { toTypedPress } from "../../lib/names.ts";
 import { tours } from "../../lib/stops.ts";
 
 const { config } = data;
@@ -29,10 +28,10 @@ const { config } = data;
 		</p>
 		{tours.map((tour) => (
 			<section>
-				<h2><a href={`/tour/${tour.example}`}>{toTypedPress(tour.title)}</a></h2>
-				{tour.intro.slice(0, 1).map((p) => <p>{toTypedPress(p)}</p>)}
+				<h2><a href={`/tour/${tour.example}`}>{tour.title}</a></h2>
+				{tour.intro.slice(0, 1).map((p) => <p>{p}</p>)}
 				<ol>
-					{tour.stops.map((stop) => <li><a href={`/tour/${tour.example}#${stop.slug}`}>{toTypedPress(stop.title)}</a></li>)}
+					{tour.stops.map((stop) => <li><a href={`/tour/${tour.example}#${stop.slug}`}>{stop.title}</a></li>)}
 				</ol>
 			</section>
 		))}

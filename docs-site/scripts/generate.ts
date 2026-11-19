@@ -15,7 +15,6 @@ import { fileURLToPath } from "node:url";
 import { Compiler } from "../lib/compiler.ts";
 import { sources } from "../lib/examples.ts";
 import { siteExamples } from "../lib/site-examples.ts";
-import { toTypedPress } from "../lib/names.ts";
 
 const site = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repo = path.dirname(site);
@@ -77,17 +76,6 @@ function readme(dir: string): { body: string } | null {
 }
 
 /**
- * Markdown from the repository, as a page here shows it: relative links point at the file on
- * GitHub, and the text reads with First names. GitHub URLs keep the paths the files have on main,
- * so a link never points at a file that doesn't exist yet.
- */
-function prose(markdown: string, from: string): string {
-	const urls: string[] = [];
-	const held = repoLinks(markdown, from).replace(/\]\((https:\/\/github\.com\/[^)\s]+)\)/g, (_, url: string) => `](\u0000${urls.push(url) - 1}\u0000)`);
-	return toTypedPress(held).replace(/\u0000(\d+)\u0000/g, (_, i: string) => urls[Number(i)]!);
-}
-
-/**
  * Relative links in a README point into the repository on GitHub. Code is left as written:
  * `obj[sym](x)` in a code span or fence is a call, not a link.
  */
@@ -110,7 +98,7 @@ function compileSummary(name: string, dir: string): { ok: boolean; text: string;
 	if (!result.output) {
 		const first = result.check.diagnostics[0];
 		const where = first?.location ? `${first.location.file}:${first.location.line}:${first.location.column}` : "";
-		return { ok: false, text: toTypedPress(`${first?.code ?? ""} ${where} ${first?.message ?? ""}`.trim()) };
+		return { ok: false, text: `${first?.code ?? ""} ${where} ${first?.message ?? ""}`.trim() };
 	}
 	return { ok: true, text: `${result.output.migrations.map(([file]) => file).join(", ")}` };
 }
@@ -135,7 +123,7 @@ for (const { name, title, summary } of siteExamples) {
 	// The summary is the page's description, which Blume shows under the title.
 	parts.push(`Source: [\`examples/${name}\`](${tree}/examples/${name}). To edit the config and compile it in your browser, open it in the [playground](/playground?example=${name}).`);
 	parts.push(`<Showcase name="${name}" />`);
-	if (info) parts.push(`## README\n\n${mdx(prose(info.body, `examples/${name}/README.md`))}`);
+	if (info) parts.push(`## README\n\n${mdx(repoLinks(info.body, `examples/${name}/README.md`))}`);
 	page(`docs/examples/${name}.mdx`, { title, description: summary }, `examples/${name}`, parts.join("\n\n"));
 }
 
@@ -215,7 +203,7 @@ page(
 	"docs/agents.mdx",
 	{ title: "Agents", description: "Set a project up for coding agents with typedpress init and typedpress mcp, and connect an agent to a running app's MCP endpoint.", sidebar: { order: 5 } },
 	"docs/agents.md",
-	mdx(prose(read("docs/agents.md").replace(/^#\s+.+\n+/, ""), "docs/agents.md")),
+	mdx(repoLinks(read("docs/agents.md").replace(/^#\s+.+\n+/, ""), "docs/agents.md")),
 );
 
 // ---------------------------------------------------------------------------------------------
@@ -236,15 +224,9 @@ const usage = (prefix: string, c: Command) => `${prefix} ${c.name}${c.args ? ` $
 // that becomes a link to the file on GitHub.
 const docLinks = (text: string) => text.replace(/\((docs\/[\w./-]+\.md)\)/g, (_, file: string) => `([${file}](${github}/${file}))`);
 const commandRows = (prefix: string, rows: Command[]) =>
-	rows.map((c) => `| \`${cell(toTypedPress(usage(prefix, c)))}\` | ${cell(docLinks(mdx(sentence(toTypedPress(c.summary)))))} |`).join("\n");
-// Commands that move an app or its data from another system. Migrations are experimental, so the
-// reference leaves them out and says so. `migrate` (apply database migrations) is not one of them.
-const experimental = new Set(["migrate app", "migrate config", "migrate-legacy", "migrate-legacy-users", "migrate-spacefast"]);
-for (const name of experimental) {
-	if (![...commands.build, ...commands.site].some((c) => c.name === name)) throw new Error(`commands.json has no ${name}; update the experimental list in scripts/generate.ts`);
-}
-const buildRows = commands.build.filter((c) => !experimental.has(c.name));
-const siteRows = commands.site.filter((c) => c.via !== "wp" && !experimental.has(c.name));
+	rows.map((c) => `| \`${cell(usage(prefix, c))}\` | ${cell(docLinks(mdx(sentence(c.summary))))} |`).join("\n");
+const buildRows = commands.build;
+const siteRows = commands.site.filter((c) => c.via !== "wp");
 const createHelp = read("packages/create-typedpress/bin/create-typedpress.mjs");
 const noInstall = createHelp.includes("--no-install");
 
@@ -275,7 +257,6 @@ ${commandRows("wp typedpress", siteRows)}
 
 Site commands sign in with \`TP_APP_PASSWORD\` or \`TP_TOKEN\`.
 
-The commands that move an app or its content from another system are experimental and are not listed here.
 
 ## Create an app
 
@@ -351,7 +332,7 @@ page(
 
 | Code | Category | Meaning |
 | --- | --- | --- |
-${codes.map((c) => `| \`${toTypedPress(c.code)}\` | \`${categoryOf(c.variant)}\` | ${cell(mdx(variantNames[c.variant]!))} |`).join("\n")}
+${codes.map((c) => `| \`${c.code}\` | \`${categoryOf(c.variant)}\` | ${cell(mdx(variantNames[c.variant]!))} |`).join("\n")}
 
 ## Tested refusals
 
@@ -361,7 +342,7 @@ Each row is a fixture under [\`tests/fixtures\`](${tree}/tests/fixtures) that th
 | --- | --- | --- |
 ${refusals
 	.sort((a, b) => (a.code ?? "").localeCompare(b.code ?? "") || a.id.localeCompare(b.id))
-	.map((e) => `| \`${toTypedPress(e.code ?? "")}\` | ${cell(mdx(toTypedPress(e.message ?? "")))} | [\`${path.basename(e.fixture ?? "")}\`](${tree}/${e.fixture}) |`)
+	.map((e) => `| \`${e.code ?? ""}\` | ${cell(mdx(e.message ?? ""))} | [\`${path.basename(e.fixture ?? "")}\`](${tree}/${e.fixture}) |`)
 	.join("\n")}
 
 The codes come from the \`Code\` enum in [\`src/diag.rs\`](${github}/src/diag.rs). The refusals come from [\`tests/compatibility/registry.json\`](${github}/tests/compatibility/registry.json).
@@ -388,7 +369,7 @@ const languageTable = (status: string) => {
 		evidence ? "| Construct | What happens | Test |" : "| Construct | What to do instead |",
 		evidence ? "| --- | --- | --- |" : "| --- | --- |",
 		...rows.map((e) => {
-			const what = cell(mdx(prose(e.guidance, "tests/compatibility/registry.json")));
+			const what = cell(mdx(repoLinks(e.guidance, "tests/compatibility/registry.json")));
 			const test = e.test ? `[\`${e.test}\`](${github}/${e.evidence ?? "tests/compiler_contracts.rs"})` : "";
 			return evidence ? `| \`${e.id}\` | ${what} | ${test} |` : `| \`${e.id}\` | ${what} |`;
 		}),
@@ -505,13 +486,13 @@ A TypedPress app starts at \`typedpress.config.ts\`. It imports its building blo
 
 | Option | What it sets |
 | --- | --- |
-${configKeys.map((k) => `| \`${k.key}\` | ${cell(mdx(toTypedPress(defaultDocs[k.key] || k.doc)))} |`).join("\n")}
+${configKeys.map((k) => `| \`${k.key}\` | ${cell(mdx(defaultDocs[k.key] || k.doc))} |`).join("\n")}
 
 ${sections
 	.filter((s) => s.items.some((item) => item.signature))
 	.map((s) => `## ${s.title}\n\n${s.items
 		.filter((item) => item.signature)
-		.map((item) => `### \`${item.name}\`\n\n${item.doc ? `${mdx(toTypedPress(item.doc))}\n\n` : ""}${fence("ts", toTypedPress(item.signature))}`)
+		.map((item) => `### \`${item.name}\`\n\n${item.doc ? `${mdx(item.doc)}\n\n` : ""}${fence("ts", item.signature)}`)
 		.join("\n\n")}`)
 	.join("\n\n")}
 
@@ -575,7 +556,7 @@ const interfaceBody = (name: string) => {
 const memberBlock = (name: string) => {
 	const { head, body } = interfaceBody(name);
 	const declared = body.replace(/^[ \t]*\/\*\*[\s\S]*?\*\/\n/gm, "").replace(/^[ \t]*\/\/.*\n/gm, "");
-	return fence("ts", toTypedPress(`interface ${head} {${declared}\n}`));
+	return fence("ts", `interface ${head} {${declared}\n}`);
 };
 const pantryClient = read("examples/pantry/tp/_generated/client/README.md");
 
@@ -598,7 +579,7 @@ The client unwraps \`data\`, so \`list()\` returns the rows themselves.
 
 | Name | Kind |
 | --- | --- |
-${clientExports.map((e) => `| \`${toTypedPress(e.name)}\` | ${e.kind} |`).join("\n")}
+${clientExports.map((e) => `| \`${e.name}\` | ${e.kind} |`).join("\n")}
 
 ## A collection
 
@@ -620,7 +601,7 @@ ${memberBlock("ClientOptions")}
 
 ## The README that build writes
 
-${mdx(toTypedPress(pantryClient.replace(/^#\s+.+\n+/, "")))}
+${mdx(pantryClient.replace(/^#\s+.+\n+/, ""))}
 
 This page is read from [\`runtime/client/index.ts\`](${github}/runtime/client/index.ts).
 `,
@@ -633,13 +614,13 @@ This page is read from [\`runtime/client/index.ts\`](${github}/runtime/client/in
 const packagesDir = path.join(repo, "packages");
 const changelogs = readdirSync(packagesDir)
 	.filter((dir) => existsSync(path.join(packagesDir, dir, "CHANGELOG.md")))
-	.map((dir) => ({ dir, name: toTypedPress(json<{ name: string }>(`packages/${dir}/package.json`).name), text: read(`packages/${dir}/CHANGELOG.md`) }));
+	.map((dir) => ({ dir, name: json<{ name: string }>(`packages/${dir}/package.json`).name, text: read(`packages/${dir}/CHANGELOG.md`) }));
 for (const { dir, name, text } of changelogs) {
 	page(
 		`docs/changelog/${dir}.mdx`,
 		{ title: name, description: `Changes to ${name}, from its CHANGELOG.md.` },
 		`packages/${dir}/CHANGELOG.md`,
-		`${mdx(toTypedPress(text.replace(/^#\s+Changelog\s*\n+/i, "")))}\n\nRead from [\`packages/${dir}/CHANGELOG.md\`](${github}/packages/${dir}/CHANGELOG.md).`,
+		`${mdx(text.replace(/^#\s+Changelog\s*\n+/i, ""))}\n\nRead from [\`packages/${dir}/CHANGELOG.md\`](${github}/packages/${dir}/CHANGELOG.md).`,
 	);
 }
 const withoutChangelog = readdirSync(packagesDir).filter((dir) => existsSync(path.join(packagesDir, dir, "package.json")) && !changelogs.some((c) => c.dir === dir));
@@ -650,7 +631,7 @@ page(
 	[
 		"Each package TypedPress publishes keeps its own changelog.",
 		changelogs.map((c) => `- [\`${c.name}\`](/changelog/${c.dir})`).join("\n"),
-		withoutChangelog.length ? `These packages have no changelog yet: ${withoutChangelog.map((dir) => `\`${toTypedPress(json<{ name: string }>(`packages/${dir}/package.json`).name)}\``).join(", ")}.` : "",
+		withoutChangelog.length ? `These packages have no changelog yet: ${withoutChangelog.map((dir) => `\`${json<{ name: string }>(`packages/${dir}/package.json`).name}\``).join(", ")}.` : "",
 	].join("\n\n"),
 );
 

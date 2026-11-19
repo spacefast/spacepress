@@ -50,7 +50,6 @@ Each is a short procedure that links to the documentation for depth:
 | `typedpress-fix-diagnostic` | Read a compiler diagnostic and fix its cause.                               |
 | `typedpress-dev-site`       | Run the local dev site and inspect it.                                      |
 | `typedpress-connect-mcp`    | Connect an MCP client to a site's runtime endpoint.                         |
-| `typedpress-migrate`        | Convert a Zero 0.8 app, or import another CMS's schema.                     |
 
 - Text outside the two markers in `AGENTS.md` is yours. A rerun replaces the
   section and nothing else. A marker counts only on a line of its own, so prose

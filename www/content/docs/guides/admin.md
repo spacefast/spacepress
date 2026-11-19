@@ -40,7 +40,6 @@ REST nonces, users, settings, plugins, themes, media and the block editor.
 | `/wp-admin/new/<route>`                               | TypedPress Admin. Apache rewrites it to `wp-admin/admin.php?page=typedpress-admin`; the route stays in the path.                                                            |
 | `/wp-admin/admin.php?page=typedpress-admin&p=<route>` | The same page on any server. A server that does not read `.htaccess` (nginx, and WordPress Studio's server behind `typedpress dev`) redirects `/wp-admin/new/<route>` here. |
 | `/wp-admin/`                                          | Classic wp-admin, unchanged. Its `TypedPress` menu entry opens TypedPress Admin.                                                                                            |
-| `/typedpress-admin/<route>`                           | The earlier address: a permanent redirect to `/wp-admin/new/<route>`.                                                                                                       |
 
 The page is a wp-admin page: `admin.php` signs the visitor in (`auth_redirect`)
 and builds wp-admin's menus, so plugin menu entries appear in TypedPress Admin's

@@ -768,17 +768,4 @@ remove_action('update_option', $spy);
 eq('a wp-admin save of the item runs no revision upgrade', $upgrades, []);
 eq('… and the staged version is as it was', api('GET', "/posts/$bare/staged", as: 'ed')[1]['row']['title'] ?? null, 'Bare staged');
 
-// A staged revision written before staged revisions had their own status is `inherit`: the runtime
-// upgrade step gives it the staged status, keeps everything else, and leaves other revisions alone.
-$old = $db->insert('posts', ['title' => 'Old', 'slug' => 'old'], true)[0]['id'];
-[, $oldStaged] = api('PATCH', "/posts/$old/staged", ['title' => 'Old staged'], 'ed');
-$site->sql("UPDATE {prefix}posts SET post_status = 'inherit' WHERE ID = ?", [$oldStaged['id']]);
-clean_post_cache($oldStaged['id']);
-$statuses = static fn (): array => array_column($site->sql("SELECT ID, post_status FROM {prefix}posts WHERE post_type = 'revision' ORDER BY ID"), 'post_status', 'ID');
-$before = $statuses();
-\TypedPress\Wp\WpPostStore::upgradeStagedStatus($db->store());
-\TypedPress\Wp\WpPostStore::upgradeStagedStatus($db->store());
-eq('the upgrade gives an old staged revision the staged status, and changes no other revision', array_diff_assoc($statuses(), $before), [$oldStaged['id'] => 'typedpress-staged']);
-eq('… which still reads as the staged version', api('GET', "/posts/$old/staged", as: 'ed')[1]['row']['title'] ?? null, 'Old staged');
-
 finish('staged');

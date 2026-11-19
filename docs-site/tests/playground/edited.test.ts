@@ -17,7 +17,6 @@ import { after, before, test } from "node:test";
 import { editedBlueprint, runRequest } from "../../lib/blueprint.ts";
 import { loadCompiler, sources } from "../../lib/examples.ts";
 import { platformVersions } from "../../lib/platform.ts";
-import { compilerFiles, firstFiles } from "../../lib/playground-catalog.ts";
 import { exampleRun } from "../../lib/showcase.ts";
 import { repo, site } from "../unit/helpers.ts";
 import { browser, serveFiles } from "./helpers.ts";
@@ -53,12 +52,12 @@ before(async () => {
 	const { port } = zips.address() as AddressInfo;
 
 	// The editor holds First names; the page hands the compiler the names it reads.
-	const shown = firstFiles(sources(path.join(repo, "examples/pantry")));
+	const shown = sources(path.join(repo, "examples/pantry"));
 	const config = shown["typedpress.config.ts"]!;
 	const edited = config.replace("  opened: boolean().default(false),", "  opened: boolean().default(false),\n  note: text().optional(),");
 	assert.notEqual(edited, config, "the edit did not apply; examples/pantry changed");
 	const run = await exampleRun("pantry");
-	const { check, output } = (await loadCompiler()).compile(runRequest("pantry", compilerFiles({ ...shown, "typedpress.config.ts": edited }), run.ledger));
+	const { check, output } = (await loadCompiler()).compile(runRequest("pantry", { ...shown, "typedpress.config.ts": edited }, run.ledger));
 	assert.ok(output, JSON.stringify(check.diagnostics));
 	const built = editedBlueprint({ output, example: run, site: `http://127.0.0.1:${port}`, platform: platformVersions() });
 	assert.ok(!("refused" in built), "refused" in built ? built.refused : "");

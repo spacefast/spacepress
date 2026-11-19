@@ -9,7 +9,6 @@
 import CodeFile from "./CodeFile.astro";
 import { compileFiles, repo, site, sources } from "./examples.ts";
 import { excerpt } from "./excerpt.ts";
-import { toTypedPress } from "./names.ts";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -33,4 +32,4 @@ if (!output) throw new Error(`examples/${example} does not compile: ${check.diag
 const text = excerpt(output.functionsPhp, { from, toLine });
 ---
 
-<CodeFile name={name} contents={toTypedPress(text)} />
+<CodeFile name={name} contents={text} />

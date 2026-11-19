@@ -77,17 +77,6 @@ impl Fs for Recording {
     fn allow_packages(&self) -> bool {
         self.packages
     }
-    // How the sources are read is the wrapped tree's: a raw 0.3 project (`crate::zero_bundle`) is
-    // captured with the reading its capture is compiled with.
-    fn frozen_capture(&self) -> bool {
-        self.fs.frozen_capture()
-    }
-    fn module_alias(&self) -> Option<&'static str> {
-        self.fs.module_alias()
-    }
-    fn legacy_fields(&self) -> bool {
-        self.fs.legacy_fields()
-    }
     fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         self.fs.read_dir(path)
     }
@@ -358,8 +347,6 @@ fn public_assets(from: &Path, to: Option<&Path>) -> Result<(), Diag> {
 struct CapturedFs {
     root: PathBuf,
     sources: SourceBundle,
-    /// The name a pre-rename capture imports TypedPress by (`crate::zero_bundle`).
-    module_alias: Option<&'static str>,
 }
 #[cfg(feature = "host")]
 impl CapturedFs {
@@ -369,15 +356,6 @@ impl CapturedFs {
 }
 #[cfg(feature = "host")]
 impl Fs for CapturedFs {
-    fn frozen_capture(&self) -> bool {
-        true
-    }
-    fn module_alias(&self) -> Option<&'static str> {
-        self.module_alias
-    }
-    fn legacy_fields(&self) -> bool {
-        self.module_alias.is_some()
-    }
     fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         let prefix = self
             .key(path)
@@ -650,17 +628,9 @@ pub(crate) fn compile_tree(
     previous: Option<&Path>,
     runtime: bool,
 ) -> Result<Compiled, Diag> {
-    // A raw project from a client released before the rename is captured here first, exactly as
-    // `host::sources` captures it, and read as that capture (`crate::zero_bundle::capture_raw`).
-    let (bytes, raw) = if crate::zero_bundle::is_raw(source)? {
-        let [app, vendor, manifest] = crate::zero_bundle::capture_raw(source)?;
-        (manifest.into_bytes(), Some([app, vendor]))
-    } else {
-        (std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?, None)
-    };
+    let bytes = std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?;
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
-    let legacy = manifest.format == crate::zero_bundle::FORMAT;
-    if !(legacy || manifest.format == "typedpress.source-bundle.v1")
+    if manifest.format != "typedpress.source-bundle.v1"
         || manifest.name.is_empty()
         || !manifest
             .name
@@ -669,52 +639,24 @@ pub(crate) fn compile_tree(
     {
         return Err(failure("invalid source bundle format or app name"));
     }
-    let sources = if legacy {
-        crate::zero_bundle::read(source, &manifest, raw)?
-    } else {
-        let captured = read_bundles(
-            source,
-            [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)],
-        )?;
-        // A bundle captured before `tp/_generated/` names its locks and ledger at their old paths.
-        // The hashes cover the bytes as captured; only the paths are read on this layout.
-        SourceBundle {
-            files: captured
-                .files
-                .into_iter()
-                .map(|(path, text)| (crate::layout::current(&path), text))
-                .collect(),
-            canonical: captured
-                .canonical
-                .into_iter()
-                .map(|(path, real)| (crate::layout::current(&path), crate::layout::current(&real)))
-                .collect(),
-        }
-    };
-    // A capture from before `tp/app/` may hold TSX pages for the old renderer (`pages/`, with
-    // their `tp/pages.json` artifact). There is no renderer for them any more, and compiling the
-    // rest would publish the site without its pages.
-    if let Some(path) = sources
-        .files
-        .keys()
-        .find(|p| *p == "tp/pages.json" || p.starts_with("pages/"))
-    {
-        return Err(failure(format!(
-            "this bundle has TSX pages from the old pages renderer ({path}), which TypedPress no longer has"
-        ))
-        .help("move the pages to tp/app/ (docs/pages.md), then publish again with `typedpress sources`"));
+    let sources = read_bundles(
+        source,
+        [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)],
+    )?;
+    if sources.files.keys().any(|path| {
+        path.strip_prefix(crate::pipeline::OLD_LEDGER)
+            .is_some_and(|suffix| suffix.starts_with('/'))
+    }) {
+        return Err(crate::pipeline::moved_ledger());
     }
     let name = manifest.name;
     let root = source.join("modules");
     let source_migrations = sources
         .files
         .iter()
-        // A capture is frozen: one taken by an older compiler keeps its ledger at the old path, and
-        // its archive must survive a recompile (docs/spacefast-deploy.md).
         .filter_map(|(path, text)| {
-            [crate::pipeline::LEDGER, crate::pipeline::OLD_LEDGER]
-                .iter()
-                .find_map(|ledger| path.strip_prefix(ledger)?.strip_prefix('/'))
+            path.strip_prefix(crate::pipeline::LEDGER)?
+                .strip_prefix('/')
                 .map(|name| (name, text))
         })
         .map(|(name, text)| {
@@ -725,7 +667,6 @@ pub(crate) fn compile_tree(
     let fs = Rc::new(CapturedFs {
         root: root.clone(),
         sources,
-        module_alias: legacy.then_some(crate::zero_bundle::MODULE),
     });
     let program = loader::load_from(fs.clone(), &root.join("typedpress.config.ts")).map_err(|mut d| d.remove(0))?;
     let snapshot = previous

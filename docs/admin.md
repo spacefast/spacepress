@@ -35,7 +35,6 @@ REST nonces, users, settings, plugins, themes, media and the block editor.
 | `/wp-admin/admin.php?page=typedpress-admin&p=<route>` | The same page on any server. A server that does not read `.htaccess` (nginx, and WordPress Studio's server behind `typedpress dev`) redirects `/wp-admin/new/<route>` here. |
 | `/wp-admin/new/classic/<slug>` | A classic wp-admin page (`options-permalink.php`, `edit-comments.php`, `admin.php?page=<plugin>`) framed inside TypedPress Admin, without wp-admin's menu and toolbar. |
 | `/wp-admin/` | Classic wp-admin. Without developer mode its pages open framed in TypedPress Admin (below). Its `TypedPress` menu entry opens TypedPress Admin. |
-| `/typedpress-admin/<route>` | The earlier address: a permanent redirect to `/wp-admin/new/<route>`. |
 | `/wp-admin/new/legacy/<slug>` | The frame route's earlier address: a permanent redirect to `/wp-admin/new/classic/<slug>`. |
 
 The page is a wp-admin page: `admin.php` signs the visitor in (`auth_redirect`)

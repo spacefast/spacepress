@@ -46,7 +46,7 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
 The crate is a library plus the `typedpress` binary. The core (`loader`, `lower`, `eval`, `extract`,
 `compile`, `migrate`, `client`, `schema_php`, tied together by `pipeline`) does no I/O of its own:
 sources come through `loader::Fs` and the previous snapshot is a value. The `cli` feature (on by
-default) adds `commands/`, `sync/`, `config_migrate/`, plugin downloads and the embedded runtime.
+default) adds `commands/`, `sync/`, plugin downloads and the embedded runtime.
 `src/wasm.rs` exports the core to the browser; `docs-site/` builds it with
 `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown` and
 serves it as the docs site's playground compiler (see [`docs-site/README.md`](docs-site/README.md)).
@@ -68,7 +68,7 @@ files under `runtime/` are picked up without code changes.
 ## The commands
 
 `typedpress help` prints every command, grouped. **Build** commands (`dev`, `build`,
-`check`, `add`, `doctor`, `init`, `mcp`, `sync`, `abilities pull`, `styles pull`, `migrate app|config`, `deploy`) run in the `typedpress`
+`check`, `add`, `doctor`, `init`, `mcp`, `sync`, `abilities pull`, `styles pull`, `deploy`) run in the `typedpress`
 binary against the project's files (`abilities pull` reads a site's abilities
 into the committed `tp/_generated/abilities.json`; `styles pull` reads a site's Global Styles
 into `tp/theme.json`). **Site** commands (`migrate`, `seed`,
@@ -142,13 +142,7 @@ PHP dependencies regenerate byte-for-byte (see
 
 ### Kept sources: a PR that changes what the authoring surface accepts
 
-Two suites hold source that hosts keep and compile again later. A PR that changes what
-`typedpress.config.ts` and `tp/` accept runs both:
-
-- `cargo test --test zero_bundle`: source bundles the 0.3.0 compiler captured (before the rename to
-  TypedPress). They must keep compiling as 0.3.0 served them, with no new migration. Only
-  `src/zero_bundle.rs` reads their old forms.
-- `cargo test --test tp_sources`: TypedPress source bundles captured at chosen commits
+Run `cargo test --test tp_sources` for: TypedPress source bundles captured at chosen commits
   ([`tests/fixtures/typedpress-sources/`](tests/fixtures/typedpress-sources/README.md)). Each compiles with the
   current compiler, plans exactly its committed plan against its own baseline, loses no data, and
   stores what it stored when captured. Until the first release is tagged, a PR that deliberately
@@ -255,7 +249,7 @@ The [installation guide](docs/installation.md#maintainer-release-steps) has the 
 | `src/wp_plugins/` | plugin acquisition, checksums and the lock |
 | `src/sync/` | the `typedpress sync` CLI |
 | `src/cli.rs`, `src/commands/site.rs` | the command table, and forwarding to WP-CLI |
-| `src/config_migrate/` | `typedpress migrate config` importers |
+| `migrate/` | The standalone `typedpress-migrate` project importer |
 | `runtime/TypedPress/` | the PHP runtime (`Wp/` is the WordPress binding) |
 | `runtime/identity/` | the `typedpress-identity` plugin and its screens |
 | `runtime/admin/` | the `typedpress-admin` plugin and its screens, emitted unless `admin: false` |

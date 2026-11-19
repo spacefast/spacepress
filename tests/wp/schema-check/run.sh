@@ -10,8 +10,6 @@ target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-schema-check}"
 export TP_WP_PORT="${TP_WP_PORT:-8902}"
-# The Space whose 0.8 tables the app binds (existingTable); TypedPress refuses any other Space's.
-export TP_WP_SPACE_ID=spc_schema_check
 work="$(mktemp -d)"
 cleanup() { "$wp/harness.sh" down >/dev/null; rm -rf "$work"; }
 trap cleanup EXIT
@@ -28,12 +26,12 @@ mkdir -p "$work/live"
 rsync -a --delete "$work/content/initial/" "$work/live/"
 "$wp/harness.sh" down >/dev/null
 "$wp/harness.sh" up --wp-content "$work/live" --bare > "$work/bare.json"
-# A table the app didn't create, with rows, as a migrated 0.8 Space has before its first v2 deploy.
-"$wp/harness.sh" sql "CREATE TABLE sf_spc_schema_check_tasks_510ec462fc (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, title LONGTEXT NOT NULL, note LONGTEXT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-"$wp/harness.sh" sql "INSERT INTO sf_spc_schema_check_tasks_510ec462fc (title, note) VALUES ('kept', 'from 0.8'), ('also kept', NULL)"
+# A table the app did not create, seeded before the first deploy.
+"$wp/harness.sh" sql "CREATE TABLE wp_external_tasks (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, title LONGTEXT NOT NULL, note LONGTEXT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+"$wp/harness.sh" sql "INSERT INTO wp_external_tasks (title, note) VALUES ('kept', 'existing row'), ('also kept', NULL)"
 # A second table the app didn't create, for the adopted retype step: rank holds no values.
-"$wp/harness.sh" sql "CREATE TABLE sf_spc_schema_check_retype_082186420c (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, rank BIGINT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-"$wp/harness.sh" sql "INSERT INTO sf_spc_schema_check_retype_082186420c (name) VALUES ('from 0.8')"
+"$wp/harness.sh" sql "CREATE TABLE wp_external_retype (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, rank BIGINT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+"$wp/harness.sh" sql "INSERT INTO wp_external_retype (name) VALUES ('existing row')"
 "$wp/harness.sh" up --wp-content "$work/live" > "$work/harness.json"
 TP_WP_HARNESS="$work/harness.json" TP_SCHEMA_CHECK_CONTENT="$work/content" TP_SCHEMA_CHECK_LIVE="$work/live" \
   node --test "$here/schema-check.test.ts"

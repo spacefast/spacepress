@@ -47,8 +47,7 @@ final class Mail
     }
 
     /**
-     * The original runtime's `emailPayload`: the same required fields, address coercion and header
-     * rules, so a message that sent from a 0.8 handler sends from here.
+     * Validate message fields, recipients, and headers before enqueueing a send.
      *
      * @return array<string, mixed>
      */

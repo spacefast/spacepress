@@ -12,7 +12,6 @@ export function Cli() {
       <tr><td><code>typedpress add &lt;module&gt;</code></td><td>add a module as files you own</td><td><Built /> for <code>db</code>, <code>api-reference</code></td></tr>
       <tr><td><code>typedpress export</code></td><td>write the pages as a static site</td><td><Built /></td></tr>
       <tr><td><code>typedpress sync</code></td><td>content files to the site and back</td><td><Built /></td></tr>
-      <tr><td><code>typedpress migrate</code></td><td>create a project from another system</td><td><Built /> as <code>migrate config</code> and <code>migrate app</code></td></tr>
       <tr><td><code>typedpress doctor</code></td><td>check a build and a running site; <code>--links</code> follows every link</td><td><Built /></td></tr>
       <tr><td><code>typedpress init</code>, <code>typedpress mcp</code></td><td>set a project up for coding agents; serve it to one</td><td><Built /></td></tr>
       <tr><td><code>typedpress wp &lt;args&gt;</code></td><td>run any WP-CLI command on the dev site</td><td><Built /></td></tr>

@@ -6,7 +6,7 @@ namespace TypedPress\Wp;
 
 /**
  * One autoloaded option saying that a plugin-installed site already holds everything this build and
- * this runtime install on requests: the stored-name upgrade, the shared system tables, the app's
+ * this runtime install on requests: the shared system tables, the app's
  * migrations, Action Scheduler's groups and recurring actions, route and content Pages, Polylang's
  * languages, the search index shape, the runtime-schema capability. While it matches, a request runs
  * none of those checks ({@see Runtime::installs()}), as a managed build never does on a request.
@@ -28,7 +28,7 @@ final class InstallMarker
 
     /** Options the install checks read or write: a change to any of them means checking again. */
     private const WATCHED = [
-        'tp_runtime_tables', ZeroNames::DONE, Jobs\ActionSchedulerQueue::PREPARED, 'tp_search_shape', 'tp_kind_urls',
+        'tp_runtime_tables', Jobs\ActionSchedulerQueue::PREPARED, 'tp_search_shape', 'tp_kind_urls',
         'tp_polylang_languages', 'tp_schema_apply_granted', 'tp_upload_namespace', 'active_plugins', 'active_sitewide_plugins',
     ];
 
@@ -134,10 +134,8 @@ final class InstallMarker
         if ($plugin->unavailable() !== null) {
             return false;
         }
-        foreach (['tp_runtime_tables', ZeroNames::DONE] as $option) {
-            wp_cache_delete($option, 'options');
-        }
-        if (ZeroNames::pending() || get_option('tp_runtime_tables') !== Runtime::tablesVersion() || !$plugin->installed()) {
+        wp_cache_delete('tp_runtime_tables', 'options');
+        if (get_option('tp_runtime_tables') !== Runtime::tablesVersion() || !$plugin->installed()) {
             return false;
         }
         if (function_exists('as_has_scheduled_action') && class_exists(\ActionScheduler::class, false) && \ActionScheduler::is_initialized()

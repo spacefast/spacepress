@@ -152,7 +152,7 @@ final class Module
             if (Runtime::installs()) { self::initialize($plugin); }
             if (!Runtime::managed() && is_file($plugin->dir . '/tp/app/seed-version.php') && $plugin->unavailable() === null) {
                 $version = require $plugin->dir . '/tp/app/seed-version.php';
-                if (!is_array($version) && !(is_string($version) && preg_match('/^[a-f0-9]{64}$/D', $version))) {
+                if (!is_array($version)) {
                     throw new \RuntimeException('Invalid commerce seed version');
                 }
                 $key = 'tp_' . $plugin->schema->name() . '_seed';
@@ -163,16 +163,8 @@ final class Module
                         if (get_option($key) === $version) { return; }
                         $seed = $plugin->dir . '/tp/app/seed';
                         if (is_dir($seed)) {
-                            // Older compiler versions emitted one digest and one PHP file per synced kind.
-                            if (is_string($version)) {
-                                foreach ($plugin->schema->kinds() as $kind => $spec) {
-                                    if (isset($spec['sync']) && !is_file("$seed/$kind.php")) {
-                                        throw new \RuntimeException("Missing commerce seed file for $kind");
-                                    }
-                                }
-                            }
-                            \TypedPress\Sync\Seed::run($plugin, $seed, false, is_array($version) ? $version : null);
-                        } elseif ($version !== [] && $version !== hash('sha256', '')) {
+                            \TypedPress\Sync\Seed::run($plugin, $seed, false, $version);
+                        } elseif ($version !== []) {
                             throw new \RuntimeException('Missing commerce seed directory for a nonempty seed version');
                         }
                         update_option($key, $version, false);

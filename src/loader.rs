@@ -56,22 +56,6 @@ pub trait Fs {
     fn allow_packages(&self) -> bool {
         true
     }
-    /// A stored source bundle: frozen data captured by some earlier compiler, so layout rules that
-    /// came later (the `tp/` import fence) don't apply to it. A live project is never frozen.
-    fn frozen_capture(&self) -> bool {
-        false
-    }
-    /// Another name these sources import `"first"` by: a stored bundle captured before the rename
-    /// imports `"zero"` (`crate::zero_bundle`). Read on parsed import statements, never source text.
-    fn module_alias(&self) -> Option<&'static str> {
-        None
-    }
-    /// The 0.3.0 field reading (docs/decisions/2026-11-11-authoring-surface.md, ruling 21): a capture
-    /// in the pre-rename format holds source written when a plain builder was nullable and
-    /// `.notNull()` made it required, so it is read that way. Only `crate::zero_bundle` sets it.
-    fn legacy_fields(&self) -> bool {
-        false
-    }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
     fn is_file(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;
@@ -96,15 +80,6 @@ impl Fs for Generated<'_> {
     }
     fn allow_packages(&self) -> bool {
         self.inner.allow_packages()
-    }
-    fn frozen_capture(&self) -> bool {
-        self.inner.frozen_capture()
-    }
-    fn module_alias(&self) -> Option<&'static str> {
-        None
-    }
-    fn legacy_fields(&self) -> bool {
-        self.inner.legacy_fields()
     }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
         if path == self.path {
@@ -228,10 +203,8 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
     }
     // A checkout from before `tp/_generated/` (a leftover `tp/client/`, an old lock) is refused
     // before any module under `tp/` loads, so its message is the move, not whatever the stale
-    // files fail on. A stored bundle reads those paths on the new layout instead.
-    if !fs.frozen_capture()
-        && let Some((message, help)) = crate::layout::old_in_checkout(|p| fs.exists(p), &program.root)
-    {
+    // files fail on.
+    if let Some((message, help)) = crate::layout::old_in_checkout(|p| fs.exists(p), &program.root) {
         return Err(vec![Diag::new(Span::NONE, message).help(help).code(diag::Code::Import)]);
     }
     match app_files(&*fs, &program.root.join(crate::layout::ROOT)) {
@@ -262,8 +235,8 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         Err(d) => diagnostics.push(d),
     }
     // Pages beside typedpress.config.ts are from before `tp/app/`: refuse them rather than build a
-    // site without them. (A converted 0.8 capsule's `pages/` is read by `typedpress migrate`, not here.)
-    if !fs.frozen_capture() && fs.is_dir(&program.root.join("pages")) {
+    // site without them.
+    if fs.is_dir(&program.root.join("pages")) {
         let pages = program.root.join("pages");
         let file = diag::register_file(&pages, "");
         diagnostics.push(
@@ -614,7 +587,7 @@ fn load_module(
     by_path.insert(path.to_path_buf(), id);
     let Parsed {
         mut body,
-        mut commonjs,
+        commonjs,
         type_names,
         use_client,
     } = parse(fs, &source, path, &program.root, file, id, diagnostics)?;
@@ -637,9 +610,6 @@ fn load_module(
             !matches!(&target.kind, ExprKind::Member { obj, prop, optional: false, .. }
                 if prop == "PreviewProps" && matches!(obj.kind, ExprKind::Ident(_)))
         });
-    }
-    if let Some(alias) = fs.module_alias() {
-        rename_module(&mut body, commonjs.as_mut(), alias);
     }
     // `"typedpress:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
     // them on under another module's name, which no evaluator path resolves.
@@ -735,13 +705,7 @@ fn load_module(
         } else {
             resolve(fs, path, &spec, span)
         }
-        .and_then(|target| {
-            if fs.frozen_capture() && !is_email {
-                Ok(target)
-            } else {
-                fence(&program.root, path, &spec, target, span)
-            }
-        });
+        .and_then(|target| fence(&program.root, path, &spec, target, span));
         let target = target.and_then(|target| match crate::assets::kind(&target) {
             Some(kind) => load_asset(fs, &target, kind, program, by_path, span),
             None => load_module(fs, &target, program, by_path, diagnostics),
@@ -846,27 +810,6 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
     .help(format!(
         "TypedPress loads app code only from tp/: move {shown} to {destination} and import it from there, or install it as an npm package"
     )))
-}
-
-/// Reads every import, re-export and `require` of `alias` as one of `"first"`.
-fn rename_module(body: &mut [Stmt], commonjs: Option<&mut CommonJs>, alias: &str) {
-    for stmt in body {
-        match stmt {
-            Stmt::Import { source, .. }
-            | Stmt::ExportNames { from: Some(source), .. }
-            | Stmt::ExportAll { from: source, .. }
-                if source == alias =>
-            {
-                *source = TP_MODULE.to_owned();
-            }
-            _ => {}
-        }
-    }
-    for (spec, _) in commonjs.into_iter().flat_map(|c| c.requires.iter_mut()) {
-        if spec == alias {
-            *spec = TP_MODULE.to_owned();
-        }
-    }
 }
 
 fn import_source(s: &Stmt) -> Option<(String, Span)> {

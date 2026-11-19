@@ -72,9 +72,6 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	const framed = page.frameLocator('iframe[title="Classic admin page"]');
 	await expect(framed.locator('#your-profile')).toBeVisible();
 	await expect(framed.locator('#adminmenu')).toBeHidden();
-	// The route's earlier address still opens it.
-	await page.goto(`${site}/wp-admin/new/legacy/profile.php`);
-	await expect(page).toHaveURL(`${site}/wp-admin/new/classic/profile.php`);
 	// Developer mode is a setting on the user's own profile.
 	await page.goto(`${site}/wp-admin/new/profile`);
 	const developer = page.getByRole('checkbox', { name: 'Developer mode', exact: true });

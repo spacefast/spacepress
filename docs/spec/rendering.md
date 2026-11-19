@@ -224,7 +224,7 @@ directly still evaluates its guards, including callbacks, on the server.
 ### 4.4 Live data over Cast
 
 This exists for Zero 0.3 builds (monorepo #5152, zero #128). For TypedPress builds, steps 2 and 3 wait on
-the engine's move to TypedPress ([host checklist](../spacefast-host-checklist.md), item 7): today the
+the engine's move to TypedPress ([host checklist](../../migrate/docs/spacefast-host-checklist.md), item 7): today the
 event is `zero.changes` and the browser registry `__zeroRealtime`.
 1. A committed write fires `tp_realtime_changes` with ids only.
 2. The control plane broadcasts the notice into the Space's Cast room.

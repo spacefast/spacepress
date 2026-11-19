@@ -461,7 +461,7 @@ name only.
 | option | default | meaning |
 |---|---|---|
 | `storageName` | export name in snake_case | explicit physical resource name without `wp_` / `tp_` prefixes; retain existing storage on upgrade |
-| `existingTable` | none | `table()` only; exact pre-existing SQL table name, with no added prefixes: one under this site's table prefix, or this Space's own Zero 0.8 table. The first migration checks columns and declared index/foreign-key names without creating or copying the table. See [Tables TypedPress didn't create](#tables-first-didnt-create). |
+| `existingTable` | none | `table()` only; exact pre-existing SQL table name, with no added prefixes: one under this site's table prefix. The first migration checks columns and declared index/foreign-key names without creating or copying the table. See [Tables TypedPress didn't create](#tables-first-didnt-create). |
 | `was` | none | `table()` only; the name this table was stored under. The deploy renames it and keeps its rows. See [Schema changes at deploy](#schema-changes-at-deploy). |
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
@@ -691,8 +691,6 @@ Rows are TypedPress rows: fields flat, `status` as `draft`, `pending`, `schedule
 `published` or `private`. Errors are RFC 9457 problem documents (`code`,
 `detail`, `pointer`). Callers authenticate the way core accepts: the cookie
 with `X-WP-Nonce`, an application password, or a TypedPress Identity bearer token.
-The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
-`/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
 
 ### The OpenAPI document
 
@@ -1189,25 +1187,11 @@ filters cannot probe them. Media and private file references work on both kinds.
 
 An `existingTable` binding accepts an ASCII SQL identifier of at most 64 characters.
 Several sites can share one database, each under its own table prefix
-([host contract](host-contract.md#table-prefix)), so the runtime checks the name
-before the first migration reads the table and on every request that uses it
-(`409 existing_table_refused` otherwise). It must be either:
-
-- a table under this site's `$wpdb->prefix` that is not WordPress's own (`posts`,
-  `users`, `options`, ..., and the tables `CUSTOM_USER_TABLE` and
-  `CUSTOM_USER_META_TABLE` name), TypedPress's (`{prefix}tp_*`), identity's,
-  WooCommerce's, Action Scheduler's (`{prefix}actionscheduler_*`) or another
-  site's: a network site (`{prefix}2_*`) or a site whose longer prefix starts with
-  this one (`wp_shop_` or `wp_shop` beside `wp_`, found by its `options` table); or
-- this Space's own Zero 0.8 table, `sf_<space>_<table>_<10 hex>` as
-  [`typedpress migrate app --space`](migrating-from-zero.md#application-source-migration)
-  writes it, with the converter's digest of the Space id and the table name (the
-  collection that binds it is named after that table; a `was` rename keeps that
-  name as the snapshot's `adoptedAs`). The Space id comes from the
-  host: Spacefast's `spacefast_content_space_id()`, or the `TP_SPACE_ID`
-  constant elsewhere; on a Spacefast `sfz_` prefix it must also be the Space the
-  prefix was made from. A host that names no Space binds no 0.8 table, and a
-  Space never binds another's, even one whose id starts with its own.
+([host contract](host-contract.md#table-prefix)). TypedPress checks the name before
+applying a migration and on every request that reads or writes the table.
+The name must start with the site's `$wpdb->prefix`, and tables owned by
+WordPress, TypedPress, Identity, WooCommerce, Action Scheduler or another
+site are refused with `409 existing_table_refused`.
 
 The first migration's adoption record is checked the same way on its own, so a
 deploy that applies it together with a later migration that drops the table's
@@ -1230,8 +1214,6 @@ compiler's names, columns, uniqueness and reference actions. Prefix-only unique
 indexes are refused. Other existing indexes are retained and remain unmanaged.
 This keeps later constraint removals consistent with the committed snapshot. Database
 engine checks include these tables. Uninstall retains their rows like normal tables.
-An [adopted application table](migrating-from-zero.md#application-source-migration)
-keeps its TEXT/DOUBLE storage and string response IDs.
 
 ### Schema changes at deploy
 

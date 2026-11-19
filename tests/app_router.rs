@@ -4618,14 +4618,7 @@ fn a_root_catch_all_leaves_reserved_paths_alone() {
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     assert_eq!(seen["app path"], serde_json::json!([200, "app"]), "{seen}");
     assert_eq!(seen["app path POST"], serde_json::json!([200, "app"]), "{seen}");
-    for reserved in [
-        "connector GET",
-        "connector POST",
-        "space client",
-        "first",
-        "zero",
-        "rest",
-    ] {
+    for reserved in ["connector GET", "connector POST", "space client", "first", "rest"] {
         assert_eq!(seen[reserved][1], "not the app", "{reserved}: {seen}");
     }
 }

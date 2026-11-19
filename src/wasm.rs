@@ -83,7 +83,7 @@ struct Response<'a> {
 }
 
 /// Sources by absolute path under one project directory.
-pub(crate) struct Memory {
+pub struct Memory {
     files: BTreeMap<PathBuf, String>,
 }
 
@@ -93,7 +93,7 @@ fn not_found() -> std::io::Error {
 }
 
 impl Memory {
-    pub(crate) fn new(files: BTreeMap<PathBuf, String>) -> Self {
+    pub fn new(files: BTreeMap<PathBuf, String>) -> Self {
         Memory { files }
     }
 
@@ -302,7 +302,7 @@ fn compile_request(request: Request) -> String {
 }
 
 /// Filesystem operations accept either an absolute `project` on the host or a `files`
-/// map relative to it. Migration returns a candidate file map; the caller owns writes.
+/// map relative to it.
 pub fn operation(operation: &str, request: &str) -> String {
     diag::isolated(|| {
         let result = (|| -> Result<serde_json::Value, String> {
@@ -341,42 +341,6 @@ pub fn operation(operation: &str, request: &str) -> String {
                         Ok(output) => Ok(serde_json::to_value(output).unwrap()),
                         Err(d) => Ok(serde_json::json!({"check":diag::envelope(&[d], &project), "output":null})),
                     }
-                }
-                "migrateApp" => {
-                    // `fresh: true` creates new v2 tables, even with a `space` named: a new Space has
-                    // no 0.8 tables to adopt. `space` alone adopts; neither refuses a schema.
-                    let tables = crate::config_migrate::app::Tables::from(
-                        request["space"].as_str(),
-                        request["fresh"].as_bool().unwrap_or(false),
-                    );
-                    let mut candidate = crate::config_migrate::app::migrate(
-                        fs,
-                        &project,
-                        tables,
-                        crate::config_migrate::app::Inputs {
-                            users: request["users"].as_bool().unwrap_or(false),
-                            zero_css: request["zeroCss"].as_str().map(str::to_owned),
-                        },
-                    );
-                    candidate.finish();
-                    Ok(serde_json::to_value(candidate).unwrap())
-                }
-                "migrateConfig" => {
-                    let source = crate::config_migrate::Source::parse(request["source"].as_str().unwrap_or("zero"))
-                        .ok_or("unknown source CMS")?;
-                    let path = project.join(request["input"].as_str().unwrap_or("capsule.ts"));
-                    let text = fs.read_to_string(&path).map_err(|e| e.to_string())?;
-                    let mut entries = vec![];
-                    Ok(
-                        match crate::config_migrate::convert(source, &path, &text, &mut entries) {
-                            Ok(config) => {
-                                serde_json::json!({"status":"candidate", "entries":entries,"errors":[],"files":{"typedpress.config.ts":config}})
-                            }
-                            Err(e) => {
-                                serde_json::json!({"status":"refused", "entries":entries,"errors":[e],"files":{}})
-                            }
-                        },
-                    )
                 }
                 "check" => {
                     let root = fs.canonicalize(&project).map_err(|e| e.to_string())?;
@@ -495,8 +459,6 @@ mod abi {
     }
     operation!(tp_sources, "sources");
     operation!(tp_check, "check");
-    operation!(tp_migrate_app, "migrateApp");
-    operation!(tp_migrate_config, "migrateConfig");
 }
 
 #[cfg(test)]

@@ -35,11 +35,9 @@
         "wp-comments-post.php",
         "wp-mail.php",
         ".well-known",
-        "__zero",
         "identity",
         "index.php",
         "wp-config.php",
-        "typedpress-admin",
         "auth"
     ],
     "site": {

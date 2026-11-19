@@ -6,7 +6,7 @@
 //! Registration fills the config's internal registries (`collections`, `tables`, `users`, `taxonomies`,
 //! `globals`, `files`, `actions`, `jobs`, `screens`), so everything after it reads one shape. `defineConfig`
 //! itself no longer takes those keys (docs/decisions/2026-11-11-authoring-surface.md, ruling 36);
-//! only a 0.3.0 capture still writes them (ruling 41), and its registration is the one it had.
+//! the compiler rejects them before collecting exports.
 
 use crate::diag::{Code, Diag, Result, Span};
 use crate::eval::Evaluator;
@@ -79,8 +79,7 @@ fn duplicate(root: &Path, name: &str, first: Span, second: Span) -> Diag {
 }
 
 /// The `defineConfig` keys that registered named things before exports did (ruling 36): each is
-/// refused where it's written, with the export form that replaces it. A 0.3.0 capture still
-/// writes them, and is read as it was (ruling 41).
+/// refused where it's written, with the export form that replaces it.
 const REMOVED: &[(&str, &str, &str)] = &[
     ("stores", "a store registers by its export", "store"),
     ("products", "a product kind registers by its export", "product"),
@@ -232,32 +231,27 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
     let Value::Object(cfg) = config else {
         return ev.bind_db(&IndexMap::new());
     };
-    if !ev.legacy() {
-        for key in cfg.borrow().keys() {
-            if let Some(d) = removed_key(ev, program, config, key) {
-                return Err(d);
-            }
-            // `screens` is the registry exports fill, never a config option.
-            if key == "screens" {
-                let span = ev.key_span(config, key).map_or(
-                    Span {
-                        file: program.modules[program.entry].file,
-                        start: 0,
-                        end: 0,
-                    },
-                    |value| crate::diag::key_of(value, key),
-                );
-                return Err(Diag::new(span, "defineConfig() has no option `screens`: a screen registers by its export")
-                    .help("write `export const pendingOrders = adminScreen({ ... })` in typedpress.config.ts or any file under tp/; the export name is its id"));
-            }
+    for key in cfg.borrow().keys() {
+        if let Some(d) = removed_key(ev, program, config, key) {
+            return Err(d);
+        }
+        // `screens` is the registry exports fill, never a config option.
+        if key == "screens" {
+            let span = ev.key_span(config, key).map_or(
+                Span {
+                    file: program.modules[program.entry].file,
+                    start: 0,
+                    end: 0,
+                },
+                |value| crate::diag::key_of(value, key),
+            );
+            return Err(Diag::new(span, "defineConfig() has no option `screens`: a screen registers by its export")
+                .help("write `export const pendingOrders = adminScreen({ ... })` in typedpress.config.ts or any file under tp/; the export name is its id"));
         }
     }
     let mut taken: IndexMap<String, Taken> = IndexMap::new();
     let mut found: Vec<(&'static str, String, Value)> = Vec::new();
-    // A 0.3.0 capture registered its config file's values through the config's keys only, so its
-    // exports there register nothing new (ruling 41).
-    let entry = (!ev.legacy()).then_some(program.entry);
-    for module in entry.into_iter().chain(program.app_modules.iter().copied()) {
+    for module in std::iter::once(program.entry).chain(program.app_modules.iter().copied()) {
         let exports = ev.run_module(module).map_err(|d| d.phase(Code::Evaluation))?;
         for (name, value) in exports {
             let Some(registry) = registry(&value) else { continue };
@@ -292,46 +286,41 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             found.push((registry, name, value));
         }
     }
-    // A value built in app source registers only by its export (ruling 37): one that no export
-    // names would have no name, so it would silently not exist. A 0.3.0 capture registered values
-    // by its config keys, and keeps that reading.
-    if !ev.legacy() {
-        for value in &ev.built {
-            let span = span_of(value);
-            if !app_source(program, span.file) || taken.values().any(|t| same(&t.value, value)) {
-                continue;
-            }
-            let local = program
-                .modules
-                .iter()
-                .position(|m| m.file == span.file)
-                .and_then(|module| ev.module_scope(module))
-                .and_then(|scope| {
-                    let vars = scope.vars.borrow();
-                    let mut names: Vec<String> = vars
-                        .iter()
-                        .filter(|(_, b)| same(&b.value, value))
-                        .map(|(n, _)| n.clone())
-                        .collect();
-                    names.sort();
-                    names.into_iter().next()
-                });
-            let (subject, name) = match &local {
-                Some(local) => (format!("`{local}` is {}", noun(value)), local.as_str()),
-                None => (format!("this is {}", noun(value)), "name"),
-            };
-            let args = if matches!(value, Value::Action(_) | Value::Job(_)) {
-                "..."
-            } else {
-                "{ ... }"
-            };
-            return Err(Diag::new(span, format!("{subject} but isn't exported, so it has no name"))
-                .code(Code::Unexported)
-                .help(format!(
-                    "write `export const {name} = {}({args})`; to share fields between kinds, share the fields object instead",
-                    builder(value)
-                )));
+    for value in &ev.built {
+        let span = span_of(value);
+        if !app_source(program, span.file) || taken.values().any(|t| same(&t.value, value)) {
+            continue;
         }
+        let local = program
+            .modules
+            .iter()
+            .position(|m| m.file == span.file)
+            .and_then(|module| ev.module_scope(module))
+            .and_then(|scope| {
+                let vars = scope.vars.borrow();
+                let mut names: Vec<String> = vars
+                    .iter()
+                    .filter(|(_, b)| same(&b.value, value))
+                    .map(|(n, _)| n.clone())
+                    .collect();
+                names.sort();
+                names.into_iter().next()
+            });
+        let (subject, name) = match &local {
+            Some(local) => (format!("`{local}` is {}", noun(value)), local.as_str()),
+            None => (format!("this is {}", noun(value)), "name"),
+        };
+        let args = if matches!(value, Value::Action(_) | Value::Job(_)) {
+            "..."
+        } else {
+            "{ ... }"
+        };
+        return Err(Diag::new(span, format!("{subject} but isn't exported, so it has no name"))
+            .code(Code::Unexported)
+            .help(format!(
+                "write `export const {name} = {}({args})`; to share fields between kinds, share the fields object instead",
+                builder(value)
+            )));
     }
     for (registry, name, value) in found {
         let listed = cfg.borrow().get(registry).cloned();
@@ -346,40 +335,7 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
             Some(_) => continue,
         };
         let Value::Object(map) = &entries else { unreachable!() };
-        // Listed in a 0.3.0 capture's config under any key already: one registration, the config's.
-        if map.borrow().values().any(|v| same(v, &value)) {
-            continue;
-        }
-        if let Some(listed) = map.borrow().get(&name) {
-            return Err(duplicate(&program.root, &name, span_of(listed), span_of(&value)));
-        }
         map.borrow_mut().insert(name, value);
-    }
-    // An export name is unique across the app, not per registry (docs/spec/spec.md §1.1): in a 0.3.0
-    // capture it may not also name something its config lists, such as an action listed under an
-    // exported table's name. Names only listed in such a config keep their per-registry
-    // namespaces, as 0.3.0 read them (ruling 41).
-    for (name, taken) in &taken {
-        for registry in [
-            "collections",
-            "tables",
-            "users",
-            "taxonomies",
-            "globals",
-            "files",
-            "actions",
-            "jobs",
-            "screens",
-        ] {
-            let Some(Value::Object(entries)) = cfg.borrow().get(registry).cloned() else {
-                continue;
-            };
-            if let Some(listed) = entries.borrow().get(name)
-                && !same(listed, &taken.value)
-            {
-                return Err(duplicate(&program.root, name, span_of(listed), taken.span));
-            }
-        }
     }
     // `"typedpress:db"` resolves to every registered kind, by its registry key.
     let mut kinds = IndexMap::new();

@@ -9,7 +9,7 @@ use crate::diag::{Diag, Span, suggest};
 use crate::ir::*;
 use crate::loader::{Program, TP_MODULE, WORDPRESS_MODULE};
 use crate::num::js_number_to_string;
-use crate::schema::{ColType, RefAction, RelKind};
+use crate::schema::{ColType, RefAction};
 use crate::value::*;
 use indexmap::IndexMap;
 use std::cell::{OnceCell, RefCell};
@@ -590,8 +590,6 @@ pub struct Evaluator<'p> {
     /// A field of such an object written `value as T`, by (object, key): its declared type and
     /// module. `this.<key>` is typed `T`, as TypeScript types the literal.
     pub method_home_fields: HashMap<(usize, String), (TyAnn, usize)>,
-    /// The 0.3.0 field reading for pre-rename captures (`Fs::legacy_fields`).
-    pub(crate) legacy: bool,
     /// Every kind, global, bucket, action and job value built so far, in call order. Registration
     /// refuses one built in app source that no export names (ruling 37).
     pub built: Vec<Value>,
@@ -623,7 +621,6 @@ impl<'p> Evaluator<'p> {
             db_kinds: None,
             method_homes: HashMap::new(),
             method_home_fields: HashMap::new(),
-            legacy: program.fs.legacy_fields(),
             built: Vec::new(),
         }
     }
@@ -648,11 +645,6 @@ impl<'p> Evaluator<'p> {
 
     pub fn program(&self) -> &'p Program {
         self.program
-    }
-
-    /// Whether these sources are read as a 0.3.0 capture (`Fs::legacy_fields`, ruling 21).
-    pub fn legacy(&self) -> bool {
-        self.legacy
     }
 
     /// Fills every `"typedpress:db"` binding from `kinds` (registered name → kind), once registration has
@@ -1043,7 +1035,7 @@ impl<'p> Evaluator<'p> {
 
     fn import_value(&mut self, from: usize, source: &str, name: &str, span: Span) -> R<Value> {
         if source == TP_MODULE {
-            return tp_export(name, self.legacy, span);
+            return tp_export(name, span);
         }
         if let Some(module) = crate::builtins::module(source) {
             return node_crypto_export(module, source, name, span);
@@ -1204,9 +1196,8 @@ impl<'p> Evaluator<'p> {
                     }
                     if source == TP_MODULE {
                         let mut map = IndexMap::new();
-                        let extra: &[&str] = if self.legacy { legacy::EXPORTS } else { &[] };
-                        for n in TP_EXPORTS.iter().chain(extra) {
-                            map.insert(n.to_string(), tp_export(n, self.legacy, span)?);
+                        for n in TP_EXPORTS {
+                            map.insert(n.to_string(), tp_export(n, span)?);
                         }
                         Value::object(map)
                     } else {
@@ -2224,17 +2215,6 @@ impl<'p> Evaluator<'p> {
                     return Err(Ctl::Short);
                 }
                 let argv = self.eval_args(args, scope)?;
-                // 0.3.0 captures: `json().$type<T>()` types the field like `json<T>()` (`legacy`).
-                if self.legacy
-                    && let Value::Bound(recv, m) = &f
-                    && &**m == "$type"
-                    && let Value::Column(c) = recv.as_ref()
-                    && let [t] = type_args.as_slice()
-                {
-                    let mut c = (**c).clone();
-                    c.ts_type = Some((t.clone(), scope.module, call_span));
-                    return Ok(Value::Column(Rc::new(c)));
-                }
                 // `json<T>()`: the type argument types the field.
                 if matches!(f, Value::Builtin(Builtin::Column(ColType::Json))) && !type_args.is_empty() {
                     if type_args.len() != 1 {
@@ -2514,14 +2494,11 @@ impl<'p> Evaluator<'p> {
                 _ => unreachable!(),
             };
             if surface == "column"
-                && !(self.legacy && legacy::MODIFIERS.contains(&prop))
                 && let Some((message, fix)) = removed_modifier(prop)
             {
                 return err_help(span, message, fix);
             }
-            if crate::builtins::contract(surface, prop).is_none()
-                && !(surface == "column" && self.legacy && legacy::MODIFIERS.contains(&prop))
-            {
+            if crate::builtins::contract(surface, prop).is_none() {
                 return err_help(
                     span,
                     format!("unsupported built-in property `{surface}.{prop}`"),
@@ -2879,7 +2856,7 @@ impl<'p> Evaluator<'p> {
         excerpt.optional = true;
         excerpt.multiline = true;
         let mut all = IndexMap::new();
-        all.insert("id".to_string(), Rc::new(legacy::id(span)));
+        all.insert("id".to_string(), Rc::new(implicit_id(span)));
         all.insert("title".to_string(), Rc::new(title));
         all.insert("slug".to_string(), Rc::new(slug));
         all.insert("content".to_string(), Rc::new(content));
@@ -2913,10 +2890,8 @@ impl<'p> Evaluator<'p> {
             Builtin::Files => Some("files"),
             Builtin::Action => Some("action"),
             Builtin::Job => Some("job"),
-            Builtin::Route => Some("route"),
             Builtin::AdminScreen => Some("adminScreen"),
             Builtin::Item => Some("item"),
-            Builtin::RelFn(..) => Some("relation"),
             _ => None,
         };
         if let Some(name) = name {
@@ -2960,21 +2935,14 @@ impl<'p> Evaluator<'p> {
                     }
                 }
                 // Every kind with rows has the integer `id`; declaration and reference evaluation see the same one.
-                if let Some(authored) = columns.get("id")
-                    && !(self.legacy && authored.primary_key)
-                {
+                if let Some(authored) = columns.get("id") {
                     return err_help(
                         authored.span,
                         "`id` is built in: every kind has an integer `id`",
                         "delete this field; for a text key, declare `code: text().unique().max(191)`",
                     );
                 }
-                // 0.3.0 gave a table that declared its own primary key (`code: text().primaryKey()`)
-                // no `id`; its stored table has none.
-                let own_key = self.legacy && columns.values().any(|c| c.primary_key);
-                if !columns.contains_key("id") && !own_key {
-                    columns.shift_insert(0, "id".into(), Rc::new(legacy::id(span)));
-                }
+                columns.shift_insert(0, "id".into(), Rc::new(implicit_id(span)));
                 let options = match arg(if kind.commerce() { 0 } else { 1 }) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
@@ -3001,25 +2969,21 @@ impl<'p> Evaluator<'p> {
             Builtin::Column(ty) => self.make_column(ty.name(), &args, span),
             Builtin::Field(name) => self.make_column(name, &args, span),
             Builtin::DefineGlobal => {
-                // `global(fields, options?)`: the export names it. A 0.3.0 capture passes the name first.
-                let (name, at) = match arg(0) {
-                    Value::Str(name) if self.legacy => (Some(name.to_string()), 1),
-                    Value::Str(name) => {
-                        return err_help(
-                            span,
-                            format!("`global(\"{name}\", ...)` no longer takes a name: the export names it"),
-                            format!("write `export const {name} = global({{ ... }})`"),
-                        );
-                    }
-                    _ => (None, 0),
-                };
-                let fields_val = arg(at);
+                // `global(fields, options?)`: the export names it.
+                if let Value::Str(name) = arg(0) {
+                    return err_help(
+                        span,
+                        format!("`global(\"{name}\", ...)` no longer takes a name: the export names it"),
+                        format!("write `export const {name} = global({{ ... }})`"),
+                    );
+                }
+                let fields_val = arg(0);
                 let fields = self.fields_object(
                     &fields_val,
                     span,
                     "global() needs an object of fields: `export const settings = global({ title: text() })`",
                 )?;
-                let options = match arg(at + 1) {
+                let options = match arg(1) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
                     other => {
@@ -3029,12 +2993,8 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                 };
-                let cell = OnceCell::new();
-                if let Some(name) = name {
-                    let _ = cell.set(name);
-                }
                 let value = Value::Global(Rc::new(GlobalVal {
-                    name: cell,
+                    name: OnceCell::new(),
                     fields,
                     options,
                     span,
@@ -3042,7 +3002,6 @@ impl<'p> Evaluator<'p> {
                 self.built.push(value.clone());
                 Ok(value)
             }
-            Builtin::Id if self.legacy => Ok(Value::Column(Rc::new(legacy::id(span)))),
             Builtin::Id => err_help(
                 span,
                 "`id()` is gone: every kind already has an integer `id`",
@@ -3088,51 +3047,11 @@ impl<'p> Evaluator<'p> {
                 c.terms = true;
                 Ok(Value::Column(Rc::new(c)))
             }
-            Builtin::DefineRelations if !self.legacy => err_help(
+            Builtin::DefineRelations => err_help(
                 span,
                 "`defineRelations()` is gone: a reference is a field",
                 "declare `location: ref(locations)` on the referencing kind; `with: { location: true }` loads the row, and the target gets the reverse list named after the referencing kind",
             ),
-            Builtin::DefineRelations => {
-                let Value::Object(schema) = arg(0) else {
-                    return err(
-                        span,
-                        "defineRelations() needs your schema first: `defineRelations(schema, (r) => ({ ... }))`",
-                    );
-                };
-                let mut one = IndexMap::new();
-                let mut many = IndexMap::new();
-                let mut r = IndexMap::new();
-                for (k, v) in schema.borrow().iter() {
-                    if !matches!(v, Value::Collection(_)) {
-                        return err(
-                            span,
-                            format!("schema entry `{k}` is {}, not a collection", v.describe()),
-                        );
-                    }
-                    one.insert(
-                        k.clone(),
-                        Value::Builtin(Builtin::RelFn(RelKind::One, Rc::from(k.as_str()))),
-                    );
-                    many.insert(
-                        k.clone(),
-                        Value::Builtin(Builtin::RelFn(RelKind::Many, Rc::from(k.as_str()))),
-                    );
-                    r.insert(k.clone(), v.clone());
-                }
-                r.insert("one".into(), Value::object(one));
-                r.insert("many".into(), Value::object(many));
-                let f = arg(1);
-                if !matches!(f, Value::Closure(_)) {
-                    return err(span, "defineRelations() needs a function as its second argument");
-                }
-                let defs = self.call(&f, vec![Value::object(r)], span)?;
-                let mut out = IndexMap::new();
-                out.insert("schema".to_string(), arg(0));
-                out.insert("relations".to_string(), defs);
-                out.insert("$zeroRelations".to_string(), Value::Bool(true));
-                Ok(Value::object(out))
-            }
             Builtin::DefineConfig => Ok(arg(0)),
             Builtin::AdminScreen => match arg(0) {
                 config @ Value::Object(_) => {
@@ -3187,18 +3106,15 @@ impl<'p> Evaluator<'p> {
                 ),
             },
             Builtin::Files => {
-                // `files(options)`: the export names the bucket. A 0.3.0 capture passes the name first.
-                let (name, options) = match arg(0) {
-                    Value::Str(name) if self.legacy => (Some(name.to_string()), arg(1)),
-                    Value::Str(name) => {
-                        return err_help(
-                            span,
-                            format!("`files(\"{name}\", ...)` no longer takes a name: the export names the bucket"),
-                            format!("write `export const {name} = files({{ accept: [...], maxBytes }})`"),
-                        );
-                    }
-                    options => (None, options),
-                };
+                // `files(options)`: the export names the bucket.
+                let options = arg(0);
+                if let Value::Str(name) = &options {
+                    return err_help(
+                        span,
+                        format!("`files(\"{name}\", ...)` no longer takes a name: the export names the bucket"),
+                        format!("write `export const {name} = files({{ accept: [...], maxBytes }})`"),
+                    );
+                }
                 if !matches!(options, Value::Object(_)) {
                     return err_help(
                         span,
@@ -3206,12 +3122,8 @@ impl<'p> Evaluator<'p> {
                         "write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20_000_000 })`",
                     );
                 }
-                let cell = OnceCell::new();
-                if let Some(name) = name {
-                    let _ = cell.set(name);
-                }
                 let value = Value::FileBucket(Rc::new(FileBucketVal {
-                    name: cell,
+                    name: OnceCell::new(),
                     options,
                     span,
                 }));
@@ -3228,45 +3140,18 @@ impl<'p> Evaluator<'p> {
                 "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
-            Builtin::Action | Builtin::Job | Builtin::Route => {
+            Builtin::Action | Builtin::Job => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
-                    return err(
-                        span,
-                        if *b == Builtin::Route {
-                            "route() needs `{ method, path, handler }`"
-                        } else {
-                            "action() needs `{ input, handler }`"
-                        },
-                    );
+                    return err(span, "action() needs `{ input, handler }`");
                 }
                 let value = Rc::new(ActionVal { config: cfg, span });
                 let value = match b {
                     Builtin::Job => Value::Job(value),
-                    Builtin::Route => Value::Route(value),
                     _ => Value::Action(value),
                 };
-                if !matches!(value, Value::Route(_)) {
-                    self.built.push(value.clone());
-                }
+                self.built.push(value.clone());
                 Ok(value)
-            }
-            Builtin::RelFn(kind, target) => {
-                let config = match arg(0) {
-                    Value::Undef => None,
-                    o @ Value::Object(_) => Some(o),
-                    other => {
-                        return err(
-                            span,
-                            format!("relation config must be an object, not {}", other.describe()),
-                        );
-                    }
-                };
-                Ok(Value::Relation(Rc::new(RelVal {
-                    kind: *kind,
-                    target: target.clone(),
-                    config,
-                })))
             }
             Builtin::Db => err(
                 span,
@@ -3329,17 +3214,9 @@ impl<'p> Evaluator<'p> {
 
     /// `text()`, `email()`, `select(["a", "b"])`, `group({ title: text() })`, ...
     fn make_column(&self, builder: &'static str, args: &[Value], span: Span) -> R<Value> {
-        if self.legacy {
-            return legacy::column(self, builder, args, span);
-        }
         if let Some((message, fix)) = removed_builder(builder) {
             return err_help(span, message, fix);
         }
-        self.current_column(builder, args, span)
-    }
-
-    /// A builder call on the current surface.
-    fn current_column(&self, builder: &'static str, args: &[Value], span: Span) -> R<Value> {
         crate::builtins::check("field", builder, args.len(), crate::builtins::Phase::Evaluator, span)
             .map_err(Ctl::Err)?;
         let ty = match builder {
@@ -3368,10 +3245,9 @@ impl<'p> Evaluator<'p> {
             // `file(decks)`: the exported `files()` value (ruling 12).
             "file" => match &opts_val {
                 Value::FileBucket(b) => {
-                    c.bucket = Some(BucketRef::Value(b.clone()));
+                    c.bucket = Some(b.clone());
                     return Ok(Value::Column(Rc::new(c)));
                 }
-                Value::Object(o) if self.legacy && o.borrow().contains_key("bucket") => {}
                 Value::Object(o) if matches!(o.borrow().get("bucket"), Some(Value::Str(_))) => {
                     let Some(Value::Str(name)) = o.borrow().get("bucket").cloned() else {
                         unreachable!()
@@ -3437,7 +3313,6 @@ impl<'p> Evaluator<'p> {
         let allowed: &[&str] = match builder {
             "text" => &["multiline"],
             "slug" => &["source"],
-            "file" => &["bucket"],
             "media" => &["accept"],
             _ => &[],
         };
@@ -3451,9 +3326,6 @@ impl<'p> Evaluator<'p> {
                 );
             }
         };
-        if builder == "file" && !opts.contains_key("bucket") {
-            return err_help(span, "file() needs `bucket`", "write `file({ bucket: \"decks\" })`");
-        }
         for (k, v) in &opts {
             let ksp = self.key_span(&opts_val, k).unwrap_or(span);
             if let Some((message, fix)) = removed_option(builder, k) {
@@ -3475,10 +3347,6 @@ impl<'p> Evaluator<'p> {
                             format!("`multiline` must be true or false, not {}", other.describe()),
                         );
                     }
-                },
-                "bucket" => match v {
-                    Value::Str(s) if !s.is_empty() => c.bucket = Some(BucketRef::Name(s.to_string())),
-                    _ => return err(ksp, "`bucket` must be a bucket name"),
                 },
                 "source" => match v {
                     Value::Str(s) => c.source = Some(s.to_string()),
@@ -4070,7 +3938,6 @@ impl<'p> Evaluator<'p> {
                 };
                 self.object_prototype_method(method, &this, &rest, span)
             }
-            Value::Column(c) if self.legacy && legacy::MODIFIERS.contains(&m) => legacy::modifier(c, m, &args, span),
             Value::Column(c) => column_method(c, m, &args, span),
             Value::Builtin(Builtin::WpPosts) => self.wp_posts(m, args, span),
             // `.on({ beforeCreate, ... })` (spec §2.8, ruling 18): handlers in call order; returns the kind.
@@ -4403,9 +4270,8 @@ pub fn uncaught(c: Ctl) -> Diag {
     }
 }
 
-fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
+fn tp_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
-        "route" if legacy => Builtin::Route,
         "collection" => Builtin::Collection(StorageKind::Collection),
         "table" => Builtin::Collection(StorageKind::Table),
         "userProjection" => Builtin::Collection(StorageKind::UserProjection),
@@ -4890,11 +4756,7 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         "localized" => c.localized = true,
         "optional" => c.optional = true,
         "many" => match c.ty {
-            ColType::Integer
-                if c.references
-                    .as_ref()
-                    .is_some_and(|r| !matches!(r.0, RefTarget::Column(_))) =>
-            {
+            ColType::Integer if c.references.is_some() => {
                 c.ty = ColType::RefList;
             }
             ColType::Text if c.enum_values.is_some() => c.ty = ColType::Select,
@@ -6039,6 +5901,14 @@ pub fn to_json(v: &Value) -> Option<serde_json::Value> {
     })
 }
 
+/// The implicit integer primary key of every kind with rows.
+fn implicit_id(span: Span) -> ColBuilder {
+    let mut id = ColBuilder::new(ColType::Integer, span);
+    id.primary_key = true;
+    id.auto_increment = true;
+    id
+}
+
 #[cfg(test)]
 mod tests {
     /// env() takes a name of letters, digits and `_` that doesn't start with a digit.
@@ -6184,167 +6054,5 @@ export default [values.map(truth), applyEach(Boolean, values), values.filter(glo
             let rendered = crate::diag::render(&error, &root);
             assert!(rendered.contains(&format!("--> {name}:1:1")), "{rendered}");
         }
-    }
-}
-
-/// The 0.3.0 field reading (docs/decisions/2026-11-11-authoring-surface.md, ruling 21). Sources in a
-/// `zero.source-bundle.v1` capture were written when a plain builder was nullable, `.notNull()` made
-/// it required, and `id()`, `.primaryKey()`, `real()`, `text({ enum })`, `select({ options,
-/// multiple })`, `group({ fields })`, `blocks({ layouts })` and `json().$type<T>()` existed. Each
-/// reads into the same field model the current forms build; nothing below this reading differs.
-/// Delete with `crate::zero_bundle`.
-mod legacy {
-    use super::*;
-
-    /// Modifiers this reading accepts besides the current ones.
-    pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type", "references"];
-
-    /// `"zero"` exports this reading accepts besides the current ones (for `import * as z`).
-    pub const EXPORTS: &[&str] = &["id", "real", "route", "defineRelations"];
-
-    /// The integer primary key: the implicit `id`, or `id()`.
-    pub fn id(span: Span) -> ColBuilder {
-        let mut id = ColBuilder::new(ColType::Integer, span);
-        id.primary_key = true;
-        id.auto_increment = true;
-        id
-    }
-
-    pub fn modifier(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<Value> {
-        if !args.is_empty() && m != "references" {
-            return err(span, format!("`.{m}()` takes no arguments"));
-        }
-        let mut c = (**c).clone();
-        match m {
-            "notNull" => c.optional = false,
-            "references" => return references(&Rc::new(c), args, span),
-            "primaryKey" => {
-                c.primary_key = true;
-                c.optional = false;
-                c.auto_increment = c.ty == ColType::Integer;
-            }
-            // `$type<T>()` is a call with a type argument, handled where calls are evaluated.
-            _ => return err(span, format!("`.{m}()` isn't valid here")),
-        }
-        Ok(Value::Column(Rc::new(c)))
-    }
-
-    pub fn references(c: &Rc<ColBuilder>, args: &[Value], span: Span) -> R<Value> {
-        let mut c = (**c).clone();
-        let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
-        let Value::Closure(f) = arg(0) else {
-            return err(
-                span,
-                format!("`references` needs a function, not {}", arg(0).describe()),
-            );
-        };
-        let (mut on_delete, mut on_update) = (None, None);
-        match arg(1) {
-            Value::Undef => {}
-            Value::Object(o) => {
-                for (k, v) in o.borrow().iter() {
-                    let action = match v {
-                        Value::Str(s) => match &**s {
-                            "cascade" => RefAction::Cascade,
-                            "restrict" => RefAction::Restrict,
-                            "set null" => RefAction::SetNull,
-                            "no action" => RefAction::NoAction,
-                            other => {
-                                return err_help(
-                                    span,
-                                    format!("unknown reference action \"{other}\""),
-                                    "use \"cascade\", \"restrict\", \"set null\", or \"no action\"",
-                                );
-                            }
-                        },
-                        other => {
-                            return err(span, format!("reference actions are strings, not {}", other.describe()));
-                        }
-                    };
-                    match k.as_str() {
-                        "onDelete" => on_delete = Some(action),
-                        "onUpdate" => on_update = Some(action),
-                        other => return err(span, format!("references() has no option `{other}`")),
-                    }
-                }
-            }
-            other => {
-                return err(
-                    span,
-                    format!("references() options must be an object, not {}", other.describe()),
-                );
-            }
-        }
-        c.references = Some((RefTarget::Column(f), on_delete, on_update, span));
-        c.mods.push(("references", span));
-        Ok(Value::Column(Rc::new(c)))
-    }
-
-    /// A builder call as 0.3.0 read it: nullable, with its options object.
-    pub fn column(ev: &Evaluator<'_>, builder: &'static str, args: &[Value], span: Span) -> R<Value> {
-        let opts_val = args.first().cloned().unwrap_or(Value::Undef);
-        let opts = match &opts_val {
-            Value::Object(o) => o.borrow().clone(),
-            _ => IndexMap::new(),
-        };
-        let take = |k: &str| opts.get(k).cloned();
-        let strings = |v: Value| -> R<Value> {
-            match v {
-                arr @ Value::Array(_) => Ok(arr),
-                other => err(span, format!("expected an array of strings, not {}", other.describe())),
-            }
-        };
-        let flag = |k: &str| matches!(opts.get(k), Some(Value::Bool(true)));
-        let without = |keys: &[&str]| -> Value {
-            let rest: IndexMap<String, Value> = opts
-                .iter()
-                .filter(|(k, _)| !keys.contains(&k.as_str()))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            if rest.is_empty() {
-                Value::Undef
-            } else {
-                Value::object(rest)
-            }
-        };
-        let built = match builder {
-            "real" => ev.current_column("number", &[], span)?,
-            "text" if opts.contains_key("enum") => {
-                let enum_values = strings(take("enum").unwrap())?;
-                let Value::Column(mut c) = ev.current_column("select", &[enum_values], span)? else {
-                    unreachable!()
-                };
-                Rc::make_mut(&mut c).multiline = flag("multiline");
-                Value::Column(c)
-            }
-            "select" => {
-                let options = strings(take("options").unwrap_or(Value::Undef))?;
-                let col = ev.current_column("select", &[options], span)?;
-                if flag("multiple") {
-                    column_method(&as_col(&col), "many", &[], span)?
-                } else {
-                    col
-                }
-            }
-            "media" if opts.contains_key("multiple") => {
-                let col = ev.current_column("media", &[without(&["multiple"])], span)?;
-                if flag("multiple") {
-                    column_method(&as_col(&col), "many", &[], span)?
-                } else {
-                    col
-                }
-            }
-            "group" | "repeater" => ev.current_column(builder, &[take("fields").unwrap_or(opts_val.clone())], span)?,
-            "blocks" => ev.current_column(builder, &[take("layouts").unwrap_or(opts_val.clone())], span)?,
-            _ => ev.current_column(builder, args, span)?,
-        };
-        let Value::Column(mut c) = built else { unreachable!() };
-        Rc::make_mut(&mut c).optional = true;
-        Ok(Value::Column(c))
-    }
-
-    fn as_col(v: &Value) -> Rc<ColBuilder> {
-        let Value::Column(c) = v else { unreachable!() };
-        c.clone()
     }
 }

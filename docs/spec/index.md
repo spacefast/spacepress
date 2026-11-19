@@ -1,8 +1,5 @@
 # TypedPress framework spec
 
-TypedPress was formerly Zero v2. Zero 0.8 keeps the name Zero; it is retired, and Zero
-0.9 is its last release apart from security fixes, made to migrate Zero apps to TypedPress.
-
 Written 2026-11-08. Design only;
 nothing is implemented. Baseline: spacefast/zero `origin/main` de46201a and
 monorepo main (Cast live updates #5152).
@@ -24,11 +21,10 @@ front, with a typed client and cache purges that just work.
 
 | File | Owns | Workstream |
 |---|---|---|
-| [spec.md](spec.md) | layout, built-in WordPress kinds (users, comments, posts, pages, media, menus, settings) and how to extend them, your own kinds, URLs, queries, server code, jobs and schedules, front-end modes, config, opinionated WordPress, build output, 0.8 mapping | schema and layout |
+| [spec.md](spec.md) | layout, built-in WordPress kinds (users, comments, posts, pages, media, menus, settings) and how to extend them, your own kinds, URLs, queries, server code, jobs and schedules, front-end modes, config, opinionated WordPress, build output | schema and layout |
 | [rendering.md](rendering.md) | routing compared with Next/TanStack/Vite frameworks, pages, everything interactive on the Interactivity API, forms, navigation, live data over Cast, markdown, caching on Batcache + edge with URL purges | rendering |
 | [external-frontends.md](external-frontends.md) | Astro, Next.js, TanStack Start, preview, cache tags, webhooks, agents and MCP | frontends |
 | [tsx-to-php.md](tsx-to-php.md) | compiler spike: JSX → component IR → PHP renderer and Interactivity store, with parity tests | compiler |
-| [coexistence.md](coexistence.md) | how Zero 0.8 and v2 run side by side while this is built: one generation per Space, rules every workstream keeps, the suites that hold them | all |
 | [build-plan.md](build-plan.md) | the twelve workstreams from today's `main` to this spec: what exists, what to build and delete, order | all |
 
 ## Decisions, 2026-11-08

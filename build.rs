@@ -79,15 +79,12 @@ const GUIDES: &[&str] = &[
     "compiler-diagnostics.md",
     "config-api.md",
     "woocommerce.md",
-    "config-migration.md",
     "deployment.md",
     "examples.md",
-    "typedpress-compatibility.md",
     "identity-api.md",
     "identity-security.md",
     "installation.md",
     "language-support.md",
-    "migrating-from-zero.md",
     "npm-compatibility.md",
     "pages.md",
     "plugin.md",
@@ -100,19 +97,16 @@ const GUIDES: &[&str] = &[
     "wp-plugins.md",
 ];
 /// The ones it leaves out: design proposals and records of decisions and plans (some never built),
-/// and pages for hosts, for the compiler's own maintainers, or about one migration's progress. An
+/// and pages for hosts, for the compiler's own maintainers. An
 /// agent that searched them would answer with APIs an app does not have.
 const NOT_GUIDES: &[&str] = &[
-    "api-cutover-0.3.md",
     "authoring-direction.md",
     "dependencies.md",
     "emdash-coverage.md",
     "host-contract.md",
     "research-adoption.md",
     "runtime-contract.md",
-    "spacefast-host-checklist.md",
     "wordpress-internals.md",
-    "zero-08-parity.md",
 ];
 
 /// Whether `docs/<name>` is embedded. Every page is in one list or the other, so a new page is a

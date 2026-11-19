@@ -100,11 +100,9 @@ import json,sys
 out=json.loads(sys.argv[1])
 assert out['refusals']==[], out['refusals']
 assert [(m['id'], m['statements']) for m in out['migrations']]==[('0001_init', [1, 2])], out['migrations']
-# A site no runtime ran on yet still has the stored-name check from before the rename to run.
-assert out['legacyNames'] is True, out
 assert len(out['migrations'][0]['sql'])==64
 steps=out['systemTables']['steps']
-assert '__tp_jobs' in steps and steps['__tp_staged_status']==['step@1'], steps
+assert '__tp_jobs' in steps, steps
 assert out['seed'] is True and out['manifest']['baseline'] is None, out
 PY
 [[ $fresh == "$(site)" ]] || { diff <(echo "$fresh") <(site) >&2; fail "inspecting a fresh site changed it"; }
@@ -172,7 +170,7 @@ out=json.loads(sys.argv[1])
 codes=[r['code'] for r in out['refusals']]
 assert codes==['required_field_missing'], codes
 assert [m['id'] for m in out['migrations']]==[], out['migrations']
-assert out['systemTables'] is None and out['identitySchema'] is None and out['legacyNames'] is False, out
+assert out['systemTables'] is None and out['identitySchema'] is None, out
 assert out['seed'] is True and out['manifest']['baseline'], out
 PY
 after=$(site)

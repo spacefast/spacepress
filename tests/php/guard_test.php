@@ -133,81 +133,8 @@ foreach (['wp_tp_identity_accounts', 'wp_identity_sessions', 'wp_wc_orders', 'wp
     $refused("$t is refused", $t, 'wp_');
 }
 
-// The 0.8 table name `sf_<space>_<table>_<digest>` as src/config_migrate/app/transform.rs `physical` writes it.
-$part = static fn (string $s) => substr(trim((string) preg_replace('/[^a-z0-9]+/', '_', strtolower($s)), '_'), 0, 48);
-$legacyOf = static fn (string $space, string $t) => substr('sf_' . $part($space) . '_' . $part($t), 0, 53) . '_' . substr(hash('sha256', "$space\0$t"), 0, 10);
-$sfz = static fn (string $space) => 'sfz_' . substr(hash('sha256', $space), 0, 24) . '_';
-eq('the helper matches the converter fixture name', $legacyOf('spc_migrate_test', 'tasks'), 'sf_spc_migrate_test_tasks_3c47092ff0');
-eq('and a camelCase one (typedpress migrate app --space spc_x)', $legacyOf('spc_x', 'myTasks'), 'sf_spc_x_mytasks_a102734393');
-// No Space from the host: no 0.8 table binds, whatever the prefix.
-$refused('a 0.8 table on a host that names no Space is refused', $legacyOf('spc_mine', 'tasks'), $sfz('spc_mine'));
-eq('no TP_SPACE_ID in the in-process site', defined('TP_SPACE_ID'), false);
-
-// Spacefast names the Space (spacefast_content_space_id); the digest needs the real id and table.
-$GLOBALS['GUARD_SPACE'] = 'spc_mine';
-eval('function spacefast_content_space_id(): string { return (string) ($GLOBALS["GUARD_SPACE"] ?? ""); }');
-$mine = $sfz('spc_mine');
-$allowed("this Space's own 0.8 table", $legacyOf('spc_mine', 'tasks'), $mine);
-$refused("another Space's 0.8 table", $legacyOf('spc_other', 'tasks'), $mine);
-$refused("another Space's v2 table", $sfz('spc_other') . 'tp_tasks', $mine);
-$refused("another Space's WordPress users", $sfz('spc_other') . 'users', $mine);
-$refused('a name without the converter digest', 'sf_spc_mine_tasks', $mine);
-$refused('a made-up digest', 'sf_spc_mine_tasks_0123456789', $mine);
-$refused('the host Space must be the one its sfz_ prefix was made from', $legacyOf('spc_mine', 'tasks'), $sfz('spc_other'));
-// spc_a's name starts spc_a_b's: the digest keeps them apart in both directions.
-$GLOBALS['GUARD_SPACE'] = 'spc_a';
-$allowed("spc_a's table under spc_a", $legacyOf('spc_a', 'tasks'), $sfz('spc_a'));
-$refused("spc_a_b's table is not spc_a's", $legacyOf('spc_a_b', 'tasks'), $sfz('spc_a'));
-$GLOBALS['GUARD_SPACE'] = 'spc_a_b';
-$refused("spc_a's table is not spc_a_b's", $legacyOf('spc_a', 'b_tasks'), $sfz('spc_a_b'));
-$allowed("spc_a_b's own b_tasks-free name", $legacyOf('spc_a_b', 'tasks'), $sfz('spc_a_b'));
-// The converter lowercases and normalizes the id, and cuts long names.
-$GLOBALS['GUARD_SPACE'] = 'Space-Mixed.1';
-$allowed('a mixed-case Space id adopts its own tables', $legacyOf('Space-Mixed.1', 'tasks'), $sfz('Space-Mixed.1'));
-$GLOBALS['GUARD_SPACE'] = 'spc_long';
-$refused('a cut name alone is not enough: the digest needs the table name', $legacyOf('spc_long', str_repeat('t', 60)), $sfz('spc_long'));
-$adopts = static function (string $label, string $table, string $prefix, array $names) {
-    try {
-        Guard::table($table, $prefix, $names);
-        check($label, true);
-    } catch (\TypedPress\HttpError $e) {
-        check($label, false, $e->getMessage());
-    }
-};
-$adopts('a long table name the converter cut adopts through the collection named after it', $legacyOf('spc_long', str_repeat('t', 60)), $sfz('spc_long'), [str_repeat('t', 60)]);
-// A collection renamed with `was` keeps its 0.8 table: the digest is over the name it was adopted
-// under, which the compiler keeps as `adoptedAs` (src/pipeline.rs adopted_names).
-$GLOBALS['GUARD_SPACE'] = 'spc_mine';
-$myTasks = $legacyOf('spc_mine', 'myTasks');
-$spec = ['key' => 'items', 'existingTable' => $myTasks];
-try {
-    Guard::table($myTasks, $mine, Guard::names('items', $spec));
-    check('a renamed collection without its adopted name does not match the digest', false, 'accepted');
-} catch (\TypedPress\HttpError $e) {
-    check('a renamed collection without its adopted name does not match the digest', $e->errorCode === 'existing_table_refused');
-}
-$adopts('a collection renamed with was still binds its 0.8 table', $myTasks, $mine, Guard::names('items', $spec + ['adoptedAs' => 'myTasks']));
-$adopts("a snapshot from before adoptedAs names the stored table (my_tasks), whose key's digest still matches", $myTasks, $mine, Guard::names('items', $spec + ['adoptedAs' => 'my_tasks']));
-// The stored name has lost the key's case however it was written: APIKeys is stored as api_keys.
-$apiKeys = $legacyOf('spc_mine', 'APIKeys');
-$adopts('a stored name stands for its key in any casing (APIKeys as api_keys)', $apiKeys, $mine, Guard::names('items', ['key' => 'items', 'existingTable' => $apiKeys, 'adoptedAs' => 'api_keys']));
-// A Space id long enough that the converter cuts the table part: the stored name still finds it.
-$GLOBALS['GUARD_SPACE'] = $longSpace = 'spc_' . str_repeat('l', 44);
-$adopts('and when the converter cut the 0.8 name', $legacyOf($longSpace, 'APIKeys'), $sfz($longSpace), Guard::names('items', ['key' => 'items', 'adoptedAs' => 'api_keys']));
-$GLOBALS['GUARD_SPACE'] = 'spc_mine';
-// However long the key: customerPaymentMethods is stored as customer_payment_methods.
-$adopts('a long key is found from its stored name', $legacyOf('spc_mine', 'customerPaymentMethods'), $mine,
-    Guard::names('items', ['key' => 'items', 'adoptedAs' => 'customer_payment_methods']));
-$adopts('and an acronym-heavy one', $legacyOf('spc_mine', 'HTTPServerLogEntriesV2'), $mine,
-    Guard::names('items', ['key' => 'items', 'adoptedAs' => 'http_server_log_entries_v2']));
-$refused("another Space's APIKeys, whatever casing is tried", $legacyOf('spc_other', 'APIKeys'), $mine);
-$adopts('a renamed collection over a cut 0.8 name', $legacyOf('spc_mine', 'aVeryLongTableNameThatTheConverterCutsDownToSize'), $mine,
-    Guard::names('short', ['key' => 'short', 'adoptedAs' => 'aVeryLongTableNameThatTheConverterCutsDownToSize']));
-// The converter hashes the whole 0.8 name, however long; only the physical name is cut.
-$huge = 'items' . str_repeat('X', 70);
-$adopts('a 0.8 table name longer than 64 characters still adopts', $legacyOf('spc_mine', $huge), $mine, Guard::names('items', ['key' => 'items', 'adoptedAs' => $huge]));
-$refused("another Space's renamed table, whatever names the app gives", $legacyOf('spc_other', 'myTasks'), $mine);
-$GLOBALS['GUARD_SPACE'] = '';
+$mine = 'guard_';
+$refused('a table outside the site prefix cannot be adopted', 'external_tasks', $mine);
 
 // The migrator refuses an unchecked binding before it reads the table or writes the ledger.
 $bad = $schema;
@@ -248,10 +175,9 @@ array_map('unlink', glob("$dir/*"));
 
 // A historical adoption is checked on its own: a later migration of the same deploy dropped its
 // collection, so no collection binds the table any more.
-$GLOBALS['GUARD_SPACE'] = 'spc_mine';
-$legacy = $legacyOf('spc_mine', 'myTasks');
-$wp->connection()->run("CREATE TABLE `$legacy` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)");
-$wp->connection()->run("INSERT INTO `$legacy` (`title`) VALUES ('kept')");
+$imported = 'guard_imported_tasks';
+$wp->connection()->run("CREATE TABLE `$imported` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)");
+$wp->connection()->run("INSERT INTO `$imported` (`title`) VALUES ('kept')");
 // The Migrator reads $wpdb->prefix; the Space's sfz_ prefix is set around each run.
 $under = static function (string $prefix, callable $fn) use ($wpdb) {
     $was = $wpdb->prefix;
@@ -271,7 +197,7 @@ $history = static function (string $adopt, string $table) use ($dir): void {
     file_put_contents("$dir/0002_update.sql", '-- typedpress-check ' . json_encode(['check' => 'drop', 'name' => 'myTasks', 'table' => $table, 'adopted' => true]) . "\nDROP TABLE `$table`;");
 };
 $later = $schema; // the blog schema binds no existingTable: the collection is gone
-$history($adoptRecord($legacy, 'myTasks'), $legacy);
+$history($adoptRecord($imported, 'myTasks'), $imported);
 $wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
 $replay = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['myTasks' => 1]);
 try {
@@ -281,9 +207,9 @@ try {
     check('an adoption whose collection a later migration drops replays with the drop confirmed', false, $e->getMessage());
 }
 eq('and both migrations are recorded', $under($mine, static fn () => array_values(array_intersect(['0001_adopt', '0002_update'], $replay->pending()))), []);
-eq('the drop ran as confirmed', $wp->connection()->run("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", [$legacy]), []);
+eq('the drop ran as confirmed', $wp->connection()->run("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", [$imported]), []);
 // The same historical record is still refused for a table no Space or site may bind.
-foreach (['wp_users' => 'WordPress users', $sfz('spc_other') . 'users' => "another Space's users", $legacyOf('spc_other', 'myTasks') => "another Space's 0.8 table",
+foreach (['wp_users' => 'WordPress users', 'other_users' => "another site's users", 'other_tasks' => "another site's custom table",
     'wp_tp__migrations' => "TypedPress's own", 'wp_actionscheduler_actions' => "Action Scheduler's", 'wp_shopusers' => "another install's"] as $table => $what) {
     $history($adoptRecord($table, 'myTasks'), $table);
     $site = $table === 'wp_shopusers' ? 'wp_' : $mine;
@@ -292,25 +218,6 @@ foreach (['wp_users' => 'WordPress users', $sfz('spc_other') . 'users' => "anoth
     problem("a historical adoption of $what's table is still refused", static fn () => $under($site, static fn () => $replay->migrate()), 409, 'existing_table_refused');
 }
 $wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
-
-// An adoption record from before `name`, whose collection was renamed (myTasks to items) and then
-// removed: the drop check carries the name it was adopted under, so this Space's table still drops.
-$GLOBALS['GUARD_SPACE'] = 'spc_mine';
-$wp->connection()->run("CREATE TABLE IF NOT EXISTS `$legacy` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)");
-array_map('unlink', glob("$dir/*"));
-file_put_contents("$dir/0001_adopt.sql", $adoptRecord($legacy, null));
-file_put_contents("$dir/0002_update.sql", '-- typedpress-check ' . json_encode(['check' => 'drop', 'name' => 'items', 'table' => $legacy, 'adopted' => true, 'adoptedAs' => 'myTasks']) . "\nDROP TABLE `$legacy`;");
-$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
-$renamedAway = new Migrator($wp->connection(), $dir, new \TypedPress\Schema($later), ['items' => 0]);
-try {
-    $under($mine, static fn () => $renamedAway->plan());
-    check('a renamed then removed adoption plans with its drop confirmed', true);
-} catch (\Throwable $e) {
-    check('a renamed then removed adoption plans with its drop confirmed', false, $e->getMessage());
-}
-$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}tp__migrations`");
-$wp->connection()->run("DROP TABLE IF EXISTS `$legacy`");
-$GLOBALS['GUARD_SPACE'] = '';
 
 // An adoption an earlier runtime applied, whose collection is gone, is checked again before a later
 // statement drops its table: a ledger that recorded `0001_adopt` of wp_users can't drop wp_users.
@@ -326,7 +233,6 @@ $wp->connection()->run('DROP TABLE IF EXISTS wp_tp__migrations');
 
 // plan() checks an adoption against the live table as migrate() does: a declared index the table
 // lacks is a refusal at plan time, not a successful plan that then fails to apply.
-$GLOBALS['GUARD_SPACE'] = 'spc_mine';
 $wp->connection()->run('CREATE TABLE wp_legacy_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)');
 array_map('unlink', glob("$dir/*"));
 file_put_contents("$dir/0001_adopt.sql", '-- typedpress-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
@@ -340,9 +246,7 @@ file_put_contents("$dir/0001_adopt.sql", '-- typedpress-adopt ' . json_encode(['
     'indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']]], 'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]])
     . "\nSELECT `id`, `missing` FROM `wp_legacy_notes` LIMIT 0;");
 problem('and one whose declared column the table lacks', static fn () => $planner->plan(), 409, 'schema_refused');
-$GLOBALS['GUARD_SPACE'] = '';
 array_map('unlink', glob("$dir/*"));
 rmdir($dir);
-$GLOBALS['GUARD_SPACE'] = '';
 
 finish('guard');

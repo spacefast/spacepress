@@ -2,7 +2,7 @@
 
 Build with `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown`.
 `tp_alloc`, `tp_free` and `tp_compile` retain their existing ABI. New exports
-`tp_sources`, `tp_check`, `tp_migrate_app` and `tp_migrate_config` use the
+`tp_sources` and `tp_check` use the
 same owned UTF-8 JSON request and length-prefixed JSON response buffers.
 
 The module imports `host.read_file`, `host.stat`, `host.canonicalize` and

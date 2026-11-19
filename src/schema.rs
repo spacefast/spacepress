@@ -415,10 +415,6 @@ pub struct Collection {
     pub existing_table: Option<String>,
     /// `was: "old"`: the stored name before a rename (spec §2.6).
     pub was: Option<String>,
-    /// The registry key an `existingTable` binding was first built under, kept across `was` renames
-    /// (the snapshot's `adoptedAs`). The converter names a Zero 0.8 table's collection after it, so
-    /// this is the name the 0.8 table's digest is over (`TypedPress\Wp\Guard`). Set by the pipeline.
-    pub adopted_as: Option<String>,
     pub label: String,
     pub editor: bool,
     pub drafts: bool,
@@ -785,9 +781,6 @@ pub struct App {
     pub files: IndexMap<String, AppFile>,
     /// Content-owned pages (`page.md`), by URL path: what the site stores as a WordPress Page.
     pub content: IndexMap<String, crate::content_page::Page>,
-    /// The table is a 0.3.0 capture's `routes` config (`extract::legacy::routes`), served as 0.3.0
-    /// served it: matched per method, reads trusted, the front end left to the theme.
-    pub legacy_routes: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -190,8 +190,7 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "url",
     "hierarchical",
 ];
-/// The registries `crate::pipeline` fills from the app's exports (a 0.3.0 capture's config writes
-/// them itself): the model extraction reads, never an option a current config can set.
+/// Registries populated by the app's named exports.
 const REGISTRIES: &[&str] = &[
     "stores",
     "products",
@@ -288,8 +287,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     let span_of =
         |ev: &Evaluator<'_>, obj: &Value, key: &str, fallback: Span| ev.key_span(obj, key).unwrap_or(fallback);
     for key in cfg_map.keys() {
-        let old_key = ev.legacy() && legacy::CONFIG_KEYS.contains(&key.as_str());
-        if !CONFIG_KEYS.contains(&key.as_str()) && !REGISTRIES.contains(&key.as_str()) && !old_key {
+        if !CONFIG_KEYS.contains(&key.as_str()) && !REGISTRIES.contains(&key.as_str()) {
             let mut d = Diag::new(
                 span_of(ev, config, key, config_span),
                 format!("defineConfig() has no option `{key}`"),
@@ -534,7 +532,6 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     table: c.table().to_string(),
                     existing_table: None,
                     was: None,
-                    adopted_as: None,
                     label: title_case(c.table()),
                     editor: true,
                     drafts: true,
@@ -806,16 +803,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     phase2_collections(ev, &mut out)?;
     postmeta_hints(&mut out);
 
-    // Relations: each `ref()` field and its reverse list; a 0.3.0 capture's `defineRelations`.
+    // Each `ref()` field and its reverse list.
     ref_relations(&mut out)?;
-    if let Some(rel) = cfg_map.get("relations") {
+    if cfg_map.contains_key("relations") {
         let span = span_of(ev, config, "relations", config_span);
-        if !ev.legacy {
-            return Err(Diag::new(span, "`relations` is gone: a reference is a field").help(
+        return Err(Diag::new(span, "`relations` is gone: a reference is a field").help(
                 "delete `relations` and declare `location: ref(locations)` on the referencing kind; `with: { location: true }` loads the row, and the target gets the reverse list named after the referencing kind",
             ));
-        }
-        relations(rel, ev, &mut out, span)?;
     }
 
     // Globals
@@ -836,9 +830,6 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
     }
 
-    if let Some(hooks_val) = cfg_map.get("hooks") {
-        hooks(hooks_val, span_of(ev, config, "hooks", config_span), ev, &mut out, None)?;
-    }
     // `.on({ ... })` on each registered kind, in call order (spec §2.8, ruling 18).
     for c in out.collections.clone() {
         let calls = c.hooks.borrow().clone();
@@ -868,9 +859,6 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         )?;
     }
     phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
-    if let Some(v) = cfg_map.get("routes").filter(|v| !matches!(v, Value::Undef)) {
-        legacy::routes(v, span_of(ev, config, "routes", config_span), &mut out, None)?;
-    }
     if let Some(v) = cfg_map.get("use").filter(|v| !matches!(v, Value::Undef)) {
         uses(v, span_of(ev, config, "use", config_span), ev, &mut out)?;
     }
@@ -1067,7 +1055,7 @@ fn actions(
                     return Err(Diag::new(a.span, "signature cannot be combined with access")
                         .help("remove access; signature authenticates the caller"));
                 }
-                Some(signature_config(v, a.span, ev.legacy())?)
+                Some(signature_config(v, a.span)?)
             }
         };
         let access = match cfg.get("access") {
@@ -1120,12 +1108,7 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                 .help("call the package's export: use: [seo({ ... })]"));
         };
         let o = object(&p.config, p.span, "definePlugin")?;
-        let plugin_keys: &[&str] = if ev.legacy() {
-            &["name", "hooks", "actions", "jobs", "routes"]
-        } else {
-            &["name", "hooks", "actions", "jobs"]
-        };
-        keys(&o, plugin_keys, p.span, "definePlugin")?;
+        keys(&o, &["name", "hooks", "actions", "jobs"], p.span, "definePlugin")?;
         let name = string(o.get("name"), p.span, "plugin name")?;
         if !(valid_ident(&name)
             && name
@@ -1154,9 +1137,6 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
         }
         if let Some(j) = o.get("jobs").filter(|v| !matches!(v, Value::Undef)) {
             jobs(j, ev, p.span, out, owner)?;
-        }
-        if let Some(r) = o.get("routes").filter(|v| !matches!(v, Value::Undef)) {
-            legacy::routes(r, p.span, out, owner)?;
         }
         for root in &mut out.roots[first..] {
             root.plugin = Some(index);
@@ -1822,8 +1802,7 @@ fn collection_options(
             ),
         )
         .help(format!(
-            "use a name of at most {MAX_POST_TYPE_TABLE} characters, or use table() for SQL data; a site that ran this collection before the rename to TypedPress keeps its posts under `zero_{}` until they are moved to the new name",
-            c.table()
+            "use a name of at most {MAX_POST_TYPE_TABLE} characters, or use table() for SQL data"
         )));
     }
 
@@ -2192,16 +2171,6 @@ fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, 
 }
 
 fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> Result<()> {
-    // The registry key (the export name) names the global; a 0.3.0 capture's own name must match it.
-    if let Some(named) = g.name.get()
-        && named != key
-    {
-        return Err(Diag::new(
-            span,
-            format!("`globals.{key}` holds global(\"{named}\"); the key and the name must match"),
-        )
-        .help(format!("write `{0}: global(\"{0}\", ...)`", key)));
-    }
     if g.name.set(key.to_string()).is_err() && g.name.get().map(String::as_str) != Some(key) {
         return Err(Diag::new(span, "a global can only be registered once"));
     }
@@ -2414,7 +2383,7 @@ fn column(
         .transpose()?;
     let bucket_name = match &b.bucket {
         None => None,
-        Some(bucket) => Some(bucket.name().map(str::to_string).ok_or_else(|| {
+        Some(bucket) => Some(bucket.name.get().cloned().ok_or_else(|| {
             Diag::new(b.span, "file() refers to a files() bucket that isn't exported")
                 .help("export it by name: `export const decks = files({ ... })`")
         })?),
@@ -2423,7 +2392,7 @@ fn column(
         && !out.schema.files.contains_key(bucket)
     {
         return Err(Diag::new(b.span, format!("unknown file bucket {bucket:?}"))
-            .help("declare it in config.files with files()"));
+            .help("export your bucket by name with files()"));
     }
     if b.bucket.is_some() && matches!(owner, Owner::Global(_)) {
         return Err(Diag::new(b.span, "file() columns belong to collections, not globals")
@@ -2536,21 +2505,9 @@ fn column(
     let references = match &b.references {
         None => None,
         Some((target, on_delete, on_update, span)) => {
-            let (target_kind, column) = match target {
-                RefTarget::Kind(v) => (v.clone(), "id".to_string()),
-                RefTarget::Thunk(f) => (ev.call_closure_public(f, vec![], *span)?, "id".to_string()),
-                RefTarget::Column(f) => match ev.call_closure_public(f, vec![], *span)? {
-                    Value::ColRef(r) => (Value::Collection(r.collection.clone()), r.column.clone()),
-                    other => {
-                        return Err(Diag::new(
-                            *span,
-                            format!(
-                                "`references(() => ...)` must return a column like `locations.id`, not {}",
-                                other.describe()
-                            ),
-                        ));
-                    }
-                },
+            let target_kind = match target {
+                RefTarget::Kind(v) => v.clone(),
+                RefTarget::Thunk(f) => ev.call_closure_public(f, vec![], *span)?,
             };
             let Value::Collection(kind) = target_kind else {
                 return Err(
@@ -2579,29 +2536,6 @@ fn column(
                     kind.table()
                 )));
             }
-            let target_col = &kind.columns[&column];
-            if target_col.ty != if many_ref { ColType::Integer } else { b.ty } {
-                return Err(Diag::new(
-                    *span,
-                    format!(
-                        "`{name}` is {}() but references {}.{}, which is {}()",
-                        b.ty.name(),
-                        kind.table(),
-                        column,
-                        target_col.ty.name()
-                    ),
-                ));
-            }
-            if !target_col.primary_key && !target_col.unique {
-                return Err(Diag::new(
-                    *span,
-                    format!(
-                        "{}.{} must be a primary key or unique to be referenced",
-                        kind.table(),
-                        column
-                    ),
-                ));
-            }
             let on_delete_span = b
                 .mods
                 .iter()
@@ -2617,13 +2551,13 @@ fn column(
             }
             // A `ref()` defaults to `restrict` when required and `setNull` when optional (spec §2.5);
             // a many-ref's links go with either side.
-            let on_delete = match (on_delete, matches!(target, RefTarget::Column(_))) {
-                (None, false) if many_ref => Some(RefAction::Cascade),
-                (Some(action), _) => Some(*action),
-                (None, true) => None,
-                (None, false) if b.optional => Some(RefAction::SetNull),
-                (None, false) => Some(RefAction::Restrict),
-            };
+            let on_delete = on_delete.or(Some(if many_ref {
+                RefAction::Cascade
+            } else if b.optional {
+                RefAction::SetNull
+            } else {
+                RefAction::Restrict
+            }));
             if on_delete == Some(RefAction::SetNull) && !b.optional {
                 return Err(Diag::new(
                     on_delete_span,
@@ -2631,9 +2565,7 @@ fn column(
                 )
                 .help("make it `.optional()`, or use `.onDelete(\"cascade\")` or `.onDelete(\"restrict\")`"));
             }
-            if !matches!(target, RefTarget::Column(_))
-                && let Owner::Collection(table) = owner
-            {
+            if let Owner::Collection(table) = owner {
                 out.refs.push(RefField {
                     table: table.clone(),
                     field: name.to_string(),
@@ -2652,7 +2584,7 @@ fn column(
             };
             Some(Reference {
                 collection: kind.table().to_string(),
-                column,
+                column: "id".into(),
                 on_delete,
                 on_update: *on_update,
                 join,
@@ -2759,7 +2691,7 @@ fn column(
         access,
         show_if,
         ui,
-        bucket: b.bucket.as_ref().and_then(|r| r.name().map(str::to_string)),
+        bucket: b.bucket.as_ref().and_then(|r| r.name.get().cloned()),
         derived: false,
         hidden: false,
         ts_type: b.ts_type.clone(),
@@ -3103,205 +3035,6 @@ pub fn join_key(table: &str, field: &str) -> String {
     format!("{table}_{}", crate::schema::physical_name(field))
 }
 
-fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -> Result<()> {
-    let Value::Object(o) = rel else {
-        return Err(Diag::new(
-            span,
-            "`relations` must come from defineRelations(schema, (r) => ({ ... }))",
-        ));
-    };
-    let o = o.borrow();
-    if !matches!(o.get("$zeroRelations"), Some(Value::Bool(true))) {
-        return Err(Diag::new(
-            span,
-            "`relations` must come from defineRelations(schema, (r) => ({ ... }))",
-        ));
-    }
-    let defs_val = o.get("relations").cloned().unwrap_or(Value::Undef);
-    let Value::Object(defs) = &defs_val else {
-        return Err(Diag::new(
-            span,
-            "the defineRelations() callback must return an object keyed by collection",
-        ));
-    };
-    let col_ref = |v: Option<&Value>, what: &str, rspan: Span| -> Result<Option<(String, String)>> {
-        match v {
-            None | Some(Value::Undef) => Ok(None),
-            Some(Value::ColRef(r)) => Ok(Some((r.collection.table().to_string(), r.column.clone()))),
-            Some(other) => Err(Diag::new(
-                rspan,
-                format!(
-                    "`{what}` must be a column like `r.items.locationId`, not {}",
-                    other.describe()
-                ),
-            )),
-        }
-    };
-    let mut pending_many = Vec::new();
-    for (key, rels) in defs.borrow().iter() {
-        let kspan = ev.key_span(&defs_val, key).unwrap_or(span);
-        let Some(coll) = out.schema.by_key(key) else {
-            return Err(Diag::new(
-                kspan,
-                format!("relations for `{key}`, which is not registered"),
-            ));
-        };
-        let table = coll.table.clone();
-        let Value::Object(rels_map) = rels else {
-            return Err(Diag::new(kspan, format!("relations for `{key}` must be an object")));
-        };
-        for (rname, rv) in rels_map.borrow().iter() {
-            let rspan = ev.key_span(rels, rname).unwrap_or(kspan);
-            let Value::Relation(r) = rv else {
-                return Err(Diag::new(
-                    rspan,
-                    format!("`{rname}` must be r.one.<collection>(...) or r.many.<collection>(...)"),
-                ));
-            };
-            if out.schema.collections[&table].columns.contains_key(rname) {
-                return Err(Diag::new(
-                    rspan,
-                    format!("relation `{rname}` has the same name as a column of \"{table}\""),
-                ));
-            }
-            let target = out
-                .schema
-                .by_key(&r.target)
-                .expect("relation targets come from schema keys")
-                .table
-                .clone();
-            let (mut from, mut to, mut optional) = (None, None, true);
-            if let Some(cfg_val) = &r.config {
-                let Value::Object(cfg) = cfg_val else { unreachable!() };
-                for (k, v) in cfg.borrow().iter() {
-                    match k.as_str() {
-                        "from" => from = col_ref(Some(v), "from", rspan)?,
-                        "to" => to = col_ref(Some(v), "to", rspan)?,
-                        "optional" => match v {
-                            Value::Bool(b) => optional = *b,
-                            _ => return Err(Diag::new(rspan, "`optional` must be true or false")),
-                        },
-                        other => {
-                            return Err(Diag::new(rspan, format!("relations have no option `{other}`"))
-                                .help("use from, to, optional"));
-                        }
-                    }
-                }
-            }
-            match (r.kind, from, to) {
-                (RelKind::One, Some((ft, fc)), Some((tt, tc))) => {
-                    if ft != table || tt != target {
-                        return Err(Diag::new(
-                            rspan,
-                            format!("`{rname}` must go from a column of \"{table}\" to a column of \"{target}\""),
-                        ));
-                    }
-                    out.schema
-                        .collections
-                        .get_mut(&table)
-                        .expect("collection")
-                        .relations
-                        .insert(
-                            rname.clone(),
-                            Relation {
-                                name: rname.clone(),
-                                kind: RelKind::One,
-                                collection: target,
-                                from: fc,
-                                to: tc,
-                                optional,
-                                through: None,
-                            },
-                        );
-                }
-                (RelKind::One, _, _) => {
-                    return Err(
-                        Diag::new(rspan, format!("`{rname}` needs `from` and `to`")).help(format!(
-                            "r.one.{}({{ from: r.{key}.someId, to: r.{}.id }})",
-                            r.target, r.target
-                        )),
-                    );
-                }
-                (RelKind::Many, Some((ft, fc)), Some((tt, tc))) => {
-                    if ft != table || tt != target {
-                        return Err(Diag::new(
-                            rspan,
-                            format!("`{rname}` must go from a column of \"{table}\" to a column of \"{target}\""),
-                        ));
-                    }
-                    out.schema
-                        .collections
-                        .get_mut(&table)
-                        .expect("collection")
-                        .relations
-                        .insert(
-                            rname.clone(),
-                            Relation {
-                                name: rname.clone(),
-                                kind: RelKind::Many,
-                                collection: target,
-                                from: fc,
-                                to: tc,
-                                optional: false,
-                                through: None,
-                            },
-                        );
-                }
-                (RelKind::Many, None, None) => pending_many.push((table.clone(), rname.clone(), target, rspan)),
-                (RelKind::Many, _, _) => {
-                    return Err(Diag::new(
-                        rspan,
-                        format!("`{rname}` needs both `from` and `to`, or neither"),
-                    ));
-                }
-            }
-        }
-    }
-    // `r.many.x()` with no config mirrors the one `r.one` pointing back.
-    for (table, rname, target, rspan) in pending_many {
-        let back: Vec<&Relation> = out.schema.collections[&target]
-            .relations
-            .values()
-            .filter(|r| r.kind == RelKind::One && r.collection == table)
-            .collect();
-        let (from, to) = match back.as_slice() {
-            [one] => (one.to.clone(), one.from.clone()),
-            [] => {
-                return Err(Diag::new(
-                    rspan,
-                    format!("can't infer `{rname}`: \"{target}\" has no r.one relation pointing at \"{table}\""),
-                )
-                .help("add `from` and `to`"));
-            }
-            _ => {
-                return Err(Diag::new(
-                    rspan,
-                    format!("can't infer `{rname}`: \"{target}\" has several relations pointing at \"{table}\""),
-                )
-                .help("add `from` and `to`"));
-            }
-        };
-        out.schema
-            .collections
-            .get_mut(&table)
-            .expect("collection")
-            .relations
-            .insert(
-                rname.clone(),
-                Relation {
-                    name: rname,
-                    kind: RelKind::Many,
-                    collection: target,
-                    from,
-                    to,
-                    optional: false,
-                    through: None,
-                },
-            );
-    }
-    Ok(())
-}
-
 /// Keys the function assigns on its first parameter (`data.slug = ...`).
 pub fn assigned_keys(f: &Closure) -> Vec<String> {
     let Some(Pat::Id(param, _)) = f.func.params.first().map(|p| &p.pat) else {
@@ -3589,9 +3322,7 @@ fn env_value(v: Option<&Value>, span: Span) -> Result<Json> {
     }
 }
 
-/// `legacy`: a 0.3.0 capture, whose timestamped scheme was named `"zero"`; it reads as `"first"`,
-/// the same scheme renamed.
-pub(crate) fn signature_config(v: &Value, span: Span, legacy: bool) -> Result<Json> {
+pub(crate) fn signature_config(v: &Value, span: Span) -> Result<Json> {
     let o = object(v, span, "signature")?;
     keys(&o, &["secret", "header", "scheme"], span, "signature")?;
     let secret = env_value(o.get("secret"), span)?;
@@ -3603,14 +3334,10 @@ pub(crate) fn signature_config(v: &Value, span: Span, legacy: bool) -> Result<Js
         return Err(Diag::new(span, "signature.header must be an HTTP header name")
             .help("use stripe-signature or typedpress-signature"));
     }
-    let mut scheme = string(o.get("scheme"), span, "signature.scheme")?;
-    if legacy && scheme == "zero" {
-        scheme = "typedpress".into();
-    }
+    let scheme = string(o.get("scheme"), span, "signature.scheme")?;
     if scheme != "typedpress" && scheme != "hmac-sha256" {
-        return Err(
-            Diag::new(span, "signature.scheme must be first or hmac-sha256").help("choose a supported HMAC scheme")
-        );
+        return Err(Diag::new(span, "signature.scheme must be typedpress or hmac-sha256")
+            .help("choose a supported HMAC scheme"));
     }
     Ok(serde_json::json!({"secret": secret, "header": header, "scheme": scheme}))
 }
@@ -3750,10 +3477,8 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
                 ));
             };
             let sp = bucket.span;
-            // The export name (the registry key) names the bucket; a 0.3.0 capture's own name must match.
-            let named_differently = bucket.name.get().is_some_and(|n| *n != name);
-            if named_differently || !valid_ident(&name) || name == "media" {
-                return Err(Diag::new(sp, "file bucket name must match its key and cannot be media")
+            if !valid_ident(&name) || name == "media" {
+                return Err(Diag::new(sp, "file bucket name must be an identifier other than media")
                     .help("use a distinct bucket name, such as decks"));
             }
             let _ = bucket.name.set(name.clone());
@@ -4345,200 +4070,5 @@ mod tests {
         ] {
             assert!(!is_iso_timestamp(bad), "{bad}");
         }
-    }
-}
-
-/// The 0.3.0 authoring forms extraction still reads, for sources in a `zero.source-bundle.v1`
-/// capture only (`Evaluator::legacy`; docs/decisions/2026-11-11-authoring-surface.md, rulings 21
-/// and 22). Each maps onto the model the current forms build. Delete with `crate::zero_bundle`.
-mod legacy {
-    use super::*;
-
-    /// `defineConfig()` keys this reading accepts besides the current ones.
-    pub const CONFIG_KEYS: &[&str] = &["routes", "hooks"];
-
-    /// `routes: { feed: route({ method, path, access | signature, handler }) }`, from the config or a
-    /// plugin, read onto the `tp/app/` route table as one handler route per entry: its path is the
-    /// route pattern, its handler and access rule are the route file's. The table says it came from
-    /// here (`App::legacy_routes`), so the runtime serves it as 0.3.0 did: a route is matched among
-    /// those of the request's method, its reads are trusted, and the theme keeps the front end.
-    pub fn routes(v: &Value, span: Span, out: &mut Extracted, plugin: Option<(usize, &str)>) -> Result<()> {
-        let mut table = out.schema.app.take().unwrap_or_default();
-        table.legacy_routes = true;
-        for (name, value) in object(v, span, "routes")? {
-            let Value::Route(r) = value else {
-                return Err(Diag::new(span, format!("routes.{name} must use route()"))
-                    .help("write route({ method, path, access, handler })"));
-            };
-            if !valid_ident(&name) {
-                return Err(Diag::new(r.span, format!("\"{name}\" isn't a valid route name")).help("use an identifier"));
-            }
-            let o = object(&r.config, r.span, "route")?;
-            keys(
-                &o,
-                &["method", "path", "access", "signature", "handler"],
-                r.span,
-                "route",
-            )?;
-            let method = string(o.get("method"), r.span, "route method")?;
-            if !matches!(method.as_str(), "GET" | "POST" | "PUT" | "PATCH" | "DELETE") {
-                return Err(Diag::new(r.span, format!("route method {method} is not supported"))
-                    .help("use GET, POST, PUT, PATCH or DELETE; GET also answers HEAD"));
-            }
-            let path = path(&string(o.get("path"), r.span, "route path")?, r.span)?;
-            let name = registered(plugin, &name);
-            let file = format!("routes/{name}");
-            let shape = |p: &str| -> Vec<String> {
-                p.split('/')
-                    .map(|s| match s.chars().next() {
-                        Some(':') => ":".to_string(),
-                        Some('*') => "*".to_string(),
-                        _ => s.to_string(),
-                    })
-                    .collect()
-            };
-            if let Some(other) = table.routes.iter().find(|o| {
-                shape(&o.pattern) == shape(&path)
-                    && o.handler
-                        .as_ref()
-                        .and_then(|f| table.files.get(f))
-                        .is_some_and(|f| f.methods.contains_key(&method))
-            }) {
-                return Err(Diag::new(
-                    r.span,
-                    format!("routes.{name} and routes.{} both match {method} {path}", other.id),
-                )
-                .help("give each method and path one route"));
-            }
-            let mut entry = AppFile::default();
-            match (
-                o.get("access").filter(|v| !matches!(v, Value::Undef)),
-                o.get("signature").filter(|v| !matches!(v, Value::Undef)),
-            ) {
-                (Some(_), Some(_)) => {
-                    return Err(Diag::new(r.span, "signature cannot be combined with access")
-                        .help("remove access; signature authenticates the caller"));
-                }
-                (None, None) => {
-                    return Err(Diag::new(r.span, format!("routes.{name} needs access or signature"))
-                        .help("a route is public only when it says so: access: \"anyone\""));
-                }
-                (Some(Value::Closure(f)), None) => {
-                    out.roots.push(Root {
-                        closure: f.clone(),
-                        slot: Slot::AppAccess { file: file.clone() },
-                        name: format!("route__{name}__access"),
-                        plugin: plugin.map(|(i, _)| i),
-                    });
-                    entry.handler_guard = Some(Access::Fn(String::new()));
-                }
-                (Some(Value::Bool(b)), None) => entry.handler_guard = Some(Access::Allow(*b)),
-                (Some(Value::Str(s)), None) if &**s == "anyone" || &**s == "authenticated" || ROLES.contains(&&**s) => {
-                    entry.handler_guard = Some(Access::Role(s.to_string()));
-                }
-                (Some(other), None) => {
-                    return Err(Diag::new(
-                        r.span,
-                        format!("route access is {}, not a role or a function", other.describe()),
-                    )
-                    .help("use \"anyone\", \"authenticated\", a role, a boolean or (ctx) => boolean"));
-                }
-                (None, Some(s)) => entry.signature = Some(signature_config(s, r.span, true)?),
-            }
-            let Some(Value::Closure(handler)) = o.get("handler") else {
-                return Err(Diag::new(r.span, format!("routes.{name} needs a handler function"))
-                    .help("add handler(req, ctx) { return { status, headers, body }; }"));
-            };
-            out.roots.push(Root {
-                closure: handler.clone(),
-                slot: Slot::AppHandler {
-                    file: file.clone(),
-                    method: method.clone(),
-                },
-                name: format!("route__{name}"),
-                plugin: plugin.map(|(i, _)| i),
-            });
-            entry.methods.insert(method, String::new());
-            table.files.insert(file.clone(), entry);
-            table.routes.push(AppRoute {
-                explicit_id: None,
-                id: name,
-                pattern: path,
-                page: None,
-                handler: Some(file),
-                layouts: Vec::new(),
-                error: None,
-                kind: None,
-                styles: Vec::new(),
-                prerender: false,
-            });
-        }
-        // The runtime takes the first match: most specific first, as the 0.3.0 runtime ranked them
-        // (left to right, a literal before a `:param` before a `*rest`; a longer route first).
-        let rank = |p: &str| -> Vec<u8> {
-            let mut r: Vec<u8> = p
-                .trim_start_matches('/')
-                .split('/')
-                .map(|s| match s.chars().next() {
-                    Some(':') => 1,
-                    Some('*') => 2,
-                    _ => 0,
-                })
-                .collect();
-            r.push(3);
-            r
-        };
-        table.routes.sort_by_key(|r| rank(&r.pattern));
-        out.schema.app = Some(table);
-        Ok(())
-    }
-
-    /// A 0.3.0 route path: literal segments, `:name`, and a last `*name`; never one of WordPress's or
-    /// TypedPress's own first segments.
-    fn path(path: &str, span: Span) -> Result<String> {
-        let bad = |why: &str| {
-            Diag::new(span, format!("route path {path:?} {why}")).help(
-                "publish again with a client that captures TypedPress sources: an HTTP route is tp/app/<path>/route.ts",
-            )
-        };
-        let Some(rest) = path.strip_prefix('/') else {
-            return Err(bad("must start with /"));
-        };
-        let rest = rest.strip_suffix('/').unwrap_or(rest);
-        if rest.is_empty() {
-            return Err(bad("cannot be the site root"));
-        }
-        let segments: Vec<&str> = rest.split('/').collect();
-        let mut params = std::collections::HashSet::new();
-        for (i, segment) in segments.iter().enumerate() {
-            if let Some(param) = segment.strip_prefix('*') {
-                if i + 1 != segments.len() {
-                    return Err(bad("has a *catch-all that is not the last segment"));
-                }
-                if !valid_ident(param) || !params.insert(param) {
-                    return Err(bad("has an invalid or repeated *catch-all name"));
-                }
-            } else if let Some(param) = segment.strip_prefix(':') {
-                if !valid_ident(param) || !params.insert(param) {
-                    return Err(bad("has an invalid or repeated :parameter"));
-                }
-            } else if segment.is_empty()
-                || *segment == "."
-                || *segment == ".."
-                || !segment
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"._~-".contains(&b))
-            {
-                return Err(bad("has an invalid segment"));
-            }
-        }
-        let first = segments[0].to_ascii_lowercase();
-        if first.starts_with(':')
-            || first.starts_with('*')
-            || crate::kind_url::RESERVED_TP_SEGMENTS.contains(&first.as_str())
-        {
-            return Err(bad("starts with a segment WordPress or TypedPress owns"));
-        }
-        Ok(format!("/{rest}"))
     }
 }

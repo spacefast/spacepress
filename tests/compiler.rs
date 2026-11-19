@@ -2585,7 +2585,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-files-accept", "accept entries must be type/subtype or type/*"),
         (
             "reject-files-media",
-            "file bucket name must match its key and cannot be media",
+            "file bucket name must be an identifier other than media",
         ),
         ("reject-localized-kind", "translate text, not values"),
         ("reject-localized-missing", ".localized() requires locales"),
@@ -4997,7 +4997,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
     );
 
     // Media: the library's rows, uploads and edits.
-    let png = std::fs::read(root().join("tests/fixtures/app-migrate/omitted/assets/logo.png")).unwrap();
+    let png = std::fs::read(root().join("tests/fixtures/public-binary/logo.png")).unwrap();
     let uploaded = check(
         "POST",
         "/media",

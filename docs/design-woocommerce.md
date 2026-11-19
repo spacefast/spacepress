@@ -8,7 +8,7 @@ An agent builds a TypedPress application, adds commerce, and deploys it on Space
 TypedPress provides the authoring and typed API; WooCommerce supplies the commerce runtime.
 The current scope is a complete store on Playground, where TypedPress already runs (WordPress
 on SQLite). Running it on Spacefast needs the host upgrade in the
-[Spacefast host checklist](spacefast-host-checklist.md), which proceeds in parallel and does
+[Spacefast host checklist](../migrate/docs/spacefast-host-checklist.md), which proceeds in parallel and does
 not block this work. A separate Astro commerce product, standalone distribution milestone, or
 open-source release plan is not part of this work.
 
@@ -598,7 +598,7 @@ has a `store()`, and the runtime refuses to initialize Woo under a longer one, n
 limit. SQLite has no such limit, so the refusal applies there too: a preview must not pass
 where production would fail.
 
-The [Spacefast host checklist](spacefast-host-checklist.md) records the existing compiler and
+The [Spacefast host checklist](../migrate/docs/spacefast-host-checklist.md) records the existing compiler and
 runtime integration gap. That upgrade is a prerequisite for commerce on Spacefast and runs in
 parallel with this work, which is proved on Playground first.
 

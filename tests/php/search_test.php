@@ -392,16 +392,11 @@ foreach ($ledger as $row) {
 \TypedPress\Search\Index::reindexChanged();
 check('once migrated, the check runs and records the shape', $plugin->migrated() && is_array(get_option('tp_search_shape', null)));
 
-// ---------------------------------------------------------------- an index table from before keys were bytes
-
-// The first release stored ids as text (case-insensitive): the runtime's table upgrade replaces such
-// a table, and every kind is indexed again by the next request's check.
+// A fresh system table uses byte keys. Reapplying its DDL keeps its data.
 $wp->exec("DROP TABLE `{$prefix}tp__search`");
-$wp->exec("CREATE TABLE `{$prefix}tp__search` (`kind` varchar(64) NOT NULL, `item` varchar(191) NOT NULL, `field` varchar(64) NOT NULL, `body` LONGTEXT NOT NULL, PRIMARY KEY (`kind`, `item`, `field`))");
-$wp->exec("INSERT INTO `{$prefix}tp__search` VALUES ('posts', '1', 'title', 'Old table tea')");
 \TypedPress\Wp\Runtime::applySystemTables();
 $type = static fn (): ?string => $wp->sql('SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$prefix . 'tp__search', 'item'])[0]['DATA_TYPE'] ?? null;
-eq('the old table is replaced by one with byte keys, and its rows are gone', [$type(), $wp->sql("SELECT COUNT(*) AS n FROM `{$prefix}tp__search`")[0]['n']], ['varbinary', 0]);
+eq('system DDL creates search with byte keys', [$type(), $wp->sql("SELECT COUNT(*) AS n FROM `{$prefix}tp__search`")[0]['n']], ['varbinary', 0]);
 eq('the recorded shape is cleared, so the next request queues a rebuild of every kind', get_option('tp_search_shape', null), null);
 \TypedPress\Wp\Runtime::applySystemTables();
 $wp->exec("INSERT INTO `{$prefix}tp__search` (`kind`, `item`, `field`, `body`) VALUES (?, ?, ?, 'Kept')", [$bytes('posts'), $bytes('1'), $bytes('title')]);

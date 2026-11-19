@@ -8,7 +8,6 @@
 import { preloadFile } from "@pierre/diffs/ssr";
 
 import type { Diagnostic } from "./compiler.ts";
-import { toTypedPress } from "./names.ts";
 
 export interface InlineDiagnostic {
 	line: number;
@@ -17,11 +16,11 @@ export interface InlineDiagnostic {
 	help: string | null;
 }
 
-/** The diagnostics of one file, keyed to its lines, with First names. */
+/** The diagnostics of one file, keyed to its lines. */
 export function diagnosticsFor(file: string, diagnostics: Diagnostic[]): InlineDiagnostic[] {
-	return diagnostics
-		.filter((d) => d.location && toTypedPress(d.location.file) === file)
-		.map((d) => ({ line: d.location!.line, code: toTypedPress(d.code), message: toTypedPress(d.message), help: d.help === null ? null : toTypedPress(d.help) }));
+	return diagnostics.flatMap(({ location, code, message, help }) =>
+		location?.file === file ? [{ line: location.line, code, message, help }] : [],
+	);
 }
 
 const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

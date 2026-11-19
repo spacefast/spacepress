@@ -18,7 +18,6 @@ builds its disposable app under `.tp/showcase/`, leaving its sources unchanged.
 | [`examples/drive-locker/`](../examples/drive-locker/README.md) | Owner-scoped drive inventory, health trends, Action Scheduler, typed React SPA and capacity reports; owner deletes of referenced rows wait on [#533](https://github.com/spacefast/zero/issues/533), not verified live |
 | [`examples/docs/`](../examples/docs/README.md) | A documentation site: a docs kind synced from a folder of Markdown, navigation, components and highlighted code in Markdown, and a Markdown page, with a browser test |
 | [`examples/garden/`](../examples/garden/README.md) and [`examples/astro-garden/`](../examples/astro-garden/README.md) | One plant guide twice: as a TypedPress app with `tp/app/` pages, and as an Astro site reading that app with `@typedpress/astro`; a browser test reads both |
-| [`examples/migrate-astro/`](../examples/migrate-astro/README.md) | An Astro site before and after the `typedpress-migrate-astro` skill: what it converted, what it flagged, and a browser test of the result |
 | `examples/blog/` | The CMS tour: every phase-2 feature, with a browser page |
 | `examples/site/` | The publication that `tests/system` drives end to end |
 | `examples/wp-plugins/` | Extra pinned WordPress plugins (see [plugin dependencies](wp-plugins.md)) |
@@ -90,13 +89,11 @@ TypedPress watching and rebuilding sources in the foreground.
 cargo test                     # compiler; the pantry and blog examples built and run on WordPress-on-SQLite
 tests/php/run.sh               # the PHP runtime, on an in-process WordPress
 tests/wp/run.sh                # the runtime on real WordPress (Docker)
-tests/system/run.sh            # examples/site on WordPress, a site migration, the blog's sync
+tests/system/run.sh            # examples/site on WordPress and the blog's sync
 ```
 
-`tests/system/run.sh` boots three fresh WordPress sites, one at a time:
+`tests/system/run.sh` boots a fresh WordPress site for each example.
 
 1. `examples/site`, installed as a site owner would and walked through the
    whole journey, then upgraded, deactivated and reinstalled.
-2. A site built with an earlier Zero, moved over as
-   [migrating from Zero](migrating-from-zero.md) describes.
-3. `examples/blog`, whose committed Markdown posts sync in.
+2. `examples/blog`, whose committed Markdown posts sync in.

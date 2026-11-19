@@ -101,14 +101,14 @@ fn help_lists_build_and_site_commands_from_one_table() {
 fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
     let wp = fake_wp();
     let mut command = first();
-    command.args(["migrate-legacy", "-", "--dry-run", "--site", "@prod", "--space=s1"]);
+    command.args(["seed", "-", "--dry-run", "--site", "@test"]);
     with_path(&mut command, wp.path());
     let out = run_with_stdin(command, "<?php return [];");
     assert_eq!(out.status.code(), Some(7), "{}", text(&out.stderr));
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         seen["args"],
-        serde_json::json!(["@prod", "typedpress", "migrate-legacy", "-", "--dry-run", "--space=s1"])
+        serde_json::json!(["@test", "typedpress", "seed", "-", "--dry-run"])
     );
     assert_eq!(seen["stdin"], "<?php return [];");
 
@@ -2922,8 +2922,6 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
             "typedpress-connect-mcp",
             "typedpress-dev-site",
             "typedpress-fix-diagnostic",
-            "typedpress-migrate",
-            "typedpress-migrate-astro",
             "typedpress-write-action"
         ]
     );

@@ -48,7 +48,6 @@ PARITY_HEADERS=1 pnpm test:parity                   # also the _headers rules, o
 
 ## Names
 
-The pages use First names. Until the code on `main` is renamed too, `lib/names.ts` maps the old names in text the generator copies out of the code, and `tests/unit/names.test.ts` checks that Zero 0.8 names stay as they are. Once `main` uses First names, no rule matches and the file can go.
 
 ## Publish
 

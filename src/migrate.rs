@@ -42,7 +42,7 @@ fn physical(t: &str, tables: &Map) -> String {
     table(t, tables).trim_matches('`').replace("``", "`")
 }
 
-/// Whether Zero didn't create this table (`existingTable`, e.g. adopted from Zero 0.8). Such a table
+/// Whether the app binds a table it did not create (`existingTable`). Such a table
 /// is never dropped, and no column of it is dropped, renamed or retyped, without an explicit
 /// `--drop` naming it, even when empty. Columns and indexes may still be added.
 fn adopted(def: &Json) -> bool {
@@ -154,10 +154,6 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
     }
     if let Some(old) = &c.was {
         table["was"] = old.clone().into();
-    }
-    // Only when it isn't the stored name: without `adoptedAs` the table was adopted under that.
-    if let Some(name) = c.adopted_as.as_ref().filter(|name| **name != c.table) {
-        table["adoptedAs"] = name.clone().into();
     }
     if c.auth {
         // WordPress keeps auth rows in wp_users/wp_usermeta (§6.2), so MySQL gets no table.
@@ -515,10 +511,7 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
                 "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
             })
             .collect();
-        // `name`, the name it is adopted under, lets the runtime check this record on its own, even
-        // once a later migration drops the table's collection (a Zero 0.8 table's digest is over it).
-        let name = def["adoptedAs"].as_str().unwrap_or(t);
-        let adoption = json!({ "table": def["existingTable"], "name": name, "indexes": expected_indexes,
+        let adoption = json!({ "table": def["existingTable"], "indexes": expected_indexes,
             "foreignKeys": foreign_keys, "integerColumns": integer_columns });
         return format!(
             "-- typedpress-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
@@ -947,12 +940,8 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         }
     }
     for t in prev_t.keys().filter(|t| !next_t.contains_key(*t)) {
-        let mut check =
+        let check =
             json!({ "check": "drop", "name": t, "table": physical(t, &prev_t), "adopted": adopted(&prev_t[t]) });
-        // The name a dropped binding was adopted under: the runtime checks the adoption again first.
-        if prev_t[t]["adoptedAs"].is_string() {
-            check["adoptedAs"] = prev_t[t]["adoptedAs"].clone();
-        }
         out.push(checked(check, format!("DROP TABLE {};", table(t, &prev_t))));
     }
     out
@@ -1265,15 +1254,16 @@ mod tests {
     }
     #[test]
     fn adopts_exact_table_and_keeps_later_column_changes_on_that_table() {
-        let def = json!({"editor":false,"drafts":false,"existingTable":"sf_space_tasks_hash","columns":{"id":col("integer")}});
+        let def =
+            json!({"editor":false,"drafts":false,"existingTable":"wp_external_tasks","columns":{"id":col("integer")}});
         let previous = snap(json!({"tasks":def}));
         let initial = plan(&snap(json!({})), &previous);
-        assert!(initial[0].ends_with("\nSELECT `id` FROM `sf_space_tasks_hash` LIMIT 0;"));
+        assert!(initial[0].ends_with("\nSELECT `id` FROM `wp_external_tasks` LIMIT 0;"));
         let mut next = previous.clone();
         next["tables"]["tasks"]["columns"]["note"] = col("text");
         assert_eq!(
             plan(&previous, &next),
-            ["ALTER TABLE `sf_space_tasks_hash` ADD COLUMN `note` LONGTEXT;"]
+            ["ALTER TABLE `wp_external_tasks` ADD COLUMN `note` LONGTEXT;"]
         );
     }
 
@@ -1354,7 +1344,7 @@ mod tests {
 
     #[test]
     fn checks_name_the_stored_table_and_mark_adopted_tables() {
-        let adopted = json!({ "editor": false, "drafts": false, "existingTable": "sf_space_tasks_hash",
+        let adopted = json!({ "editor": false, "drafts": false, "existingTable": "wp_external_tasks",
             "columns": { "id": id(), "note": col("text") } });
         let v1 = snap(json!({ "tasks": adopted }));
         let mut v2 = v1.clone();
@@ -1363,7 +1353,7 @@ mod tests {
         assert_eq!(
             checks,
             [
-                json!({ "check": "drop", "name": "tasks.note", "table": "sf_space_tasks_hash", "column": "note", "adopted": true })
+                json!({ "check": "drop", "name": "tasks.note", "table": "wp_external_tasks", "column": "note", "adopted": true })
             ]
         );
         let removed = plan(
@@ -1373,7 +1363,7 @@ mod tests {
         let checks: Vec<Json> = removed.iter().filter_map(|s| check_of(s)).collect();
         assert_eq!(
             checks,
-            [json!({ "check": "drop", "name": "tasks", "table": "sf_space_tasks_hash", "adopted": true })]
+            [json!({ "check": "drop", "name": "tasks", "table": "wp_external_tasks", "adopted": true })]
         );
     }
 

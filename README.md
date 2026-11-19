@@ -320,9 +320,6 @@ boot on a site that misses any of them and names each one;
   anything out; uploads stay out.
 - **Markdown sync**: `typedpress sync` keeps `content/posts/*.md` and your records in
   step, with a three-way merge and conflict files.
-- **Migrations in**: `typedpress migrate config` imports EmDash, Payload or Sanity
-  schemas, and `typedpress migrate-legacy` moves a site built with the
-  [original Zero](docs/migrating-from-zero.md).
 
 ## Alongside WordPress
 
@@ -396,17 +393,11 @@ Hosting on [Spacefast](https://spacefast.com) is in progress; the
 - [`docs/deployment.md`](docs/deployment.md): artifact preflight and offline WordPress backup and recovery
 - [`docs/pages.md`](docs/pages.md): optional TSX routes, layouts and viewer-bound pages, with a complete site example
 - [`docs/identity-api.md`](docs/identity-api.md) and [`docs/identity-security.md`](docs/identity-security.md): the `typedpress-identity` plugin
-- [`docs/config-migration.md`](docs/config-migration.md): importing EmDash, Payload and Sanity schemas
-- [`docs/migrating-from-zero.md`](docs/migrating-from-zero.md): moving a site from the original Zero
+- [Migration tools](migrate/README.md)
 - [`docs/runtime-contract.md`](docs/runtime-contract.md): the seam between compiler output and the PHP runtime
-- [`docs/api-cutover-0.3.md`](docs/api-cutover-0.3.md): what a host and its clients see change moving from the 0.3.0 API to `/__tp/api/v1`
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how the compiler works, the test suites, the layout
 
 ## Status
-
-Zero, the 0.8 runtime that existing Spaces use, is retired.
-Zero 0.9 is its last release apart from security fixes; Zero 0.9 exists to move 0.8 apps to TypedPress.
-See [migrating from Zero](docs/migrating-from-zero.md).
 
 TypedPress is new and experimental. The examples build and run end to end on
 WordPress, and CI proves it on every change, but the config API, the wire

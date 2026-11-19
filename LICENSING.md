@@ -12,6 +12,7 @@ of WordPress. Everything else is MIT.
 
 | Path | What |
 |---|---|
+| `migrate/zero/wp/` | the offline WordPress importer, licensed under GPL-2.0-or-later |
 | `runtime/TypedPress/` | the PHP runtime, shipped as the `typedpress-runtime` plugin |
 | `runtime/identity/` | the `typedpress-identity` plugin and its screens |
 | `runtime/admin/` | the `typedpress-admin` plugin and its screens, emitted unless `admin: false` |
@@ -71,7 +72,7 @@ Third-party code keeps its own license and is not relicensed by this file:
 | `runtime/identity/build/` | the bundled identity screens |
 | `runtime/admin/build/` | the bundled admin screens |
 | `examples/emdash/` | examples adapted from EmDash (MIT, Copyright Cloudflare Inc.); each keeps its upstream license file |
-| `src/config_migrate/app/client08/preact/` | Preact (MIT), for migrated 0.8 client pages |
+| `migrate/src/zero/client08/preact/` | Preact (MIT), for imported client pages |
 | `tests/fixtures/openapi-3.1.schema.json` | the OpenAPI Initiative's JSON Schema for OpenAPI 3.1 documents (Apache-2.0), unmodified; a test validates the generated `openapi.json` with it and no build ships it |
 
 Each vendored runtime directory carries a `THIRD-PARTY-LICENSES.txt` listing

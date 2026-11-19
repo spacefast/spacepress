@@ -16,8 +16,6 @@ in #504. The framework website remains in `www/`.
 | npm CLI and starter | `typedpress` and `create-typedpress` |
 | Binary packages | `@typedpress/bin-*` |
 
-`scripts/rename-to-typedpress.mjs` records the transformation and supports
-`--dry-run`. It preserves ordinary English, WordPress metadata such as
 `first_name`, collection methods, third-party originals, decision history, the
 repository name and legacy Zero converter inputs. The converted browser client's
 target endpoint changes to `/__tp/api/v1`.

@@ -42,7 +42,6 @@ compiled WordPress hooks, so none of the app's own code runs while it is read. T
 
 | kind | id | when |
 |---|---|---|
-| `names` | `names:identity`, `names:runtime` | a site that ran the 0.3 compiler, before the rename to First |
 | `system-tables` | `system-tables` | the site recorded another set of system tables or step versions |
 | `identity-schema` | `identity-schema` | identity's schema version is older than the runtime's |
 | `migration` | `migration:<id>` | each pending migration file, with the hash of its SQL |

@@ -13,9 +13,8 @@ import. Static files in `public/` are published as they are, at the site root
 
 ## Publish an app
 
-No released `spacefast` CLI captures a `typedpress.config.ts` project yet. The
-current release, 0.9.0, captures a project only when it has `zero.config.ts`,
-and has no `sf typedpress` commands; run the checks below with the `typedpress` command.
+Publishing requires a `spacefast` CLI build that captures `typedpress.config.ts` projects.
+Run project checks with the `typedpress` command.
 
 1. Install the `spacefast` CLI and authenticate with `sf login`.
 2. Check the project from its root:
@@ -50,14 +49,6 @@ package resolution. Install the project's dependencies and publish with
 `sf publish`. The CLI captures supported
 installed package sources into the vendor bundle. The host never runs npm
 install or JavaScript.
-
-`compile-sources` also accepts the bundle the compiler wrote before the rename to
-TypedPress, format `zero.source-bundle.v1` (`app.zero.json`, `vendor.zero.json`, sources
-importing `"zero"`), which the `spacefast` CLI and `@spacefast/mcp` 0.9.0 still
-upload. It compiles to the same tree as the app captured as TypedPress. A capture with
-0.3.0-rendered TSX pages is refused; publish it again with a current client.
-`src/zero_bundle.rs` holds all of it, to be deleted once no released client sends
-that format.
 
 Use `typedpress build` to emit local WordPress plugins and `typedpress dev` to run
 WordPress Studio. See the [local development guide](../CONTRIBUTING.md#the-commands).
@@ -100,10 +91,9 @@ import { createClient } from "./tp/_generated/client/index.ts";
 createClient().todos.list({ where: { done: false } }).subscribe((todos) => render(todos));
 ```
 
-For a TypedPress build, Spacefast's Publisher and Cast transport don't register yet:
-they use the 0.3.0 runtime's names ([host checklist](spacefast-host-checklist.md),
-item 7), so subscriptions poll. Once they do, each commit's change notice goes
-to the Space's realtime room and subscriptions refresh as soon as it arrives. See [Live updates](realtime.md) for the API.
+TypedPress subscriptions poll until Spacefast's Publisher and Cast transport register.
+With a registered transport, each commit sends a change notice to the Space's realtime room
+and subscriptions refresh when the notice arrives. See [Live updates](realtime.md) for the API.
 
 ## Connectors
 
@@ -150,11 +140,6 @@ export function Deals() {
 Server code can't call connectors on TypedPress yet: there is no connector API in
 `typedpress`, and actions, hooks and routes can't reach a role.
 
-## Migrate an existing 0.8 Space
-
-To move an existing Space from an earlier Zero, follow
-[Migrate a Spacefast app](migrating-from-zero.md#migrate-a-spacefast-app).
-
 ## Prepare the WordPress host
 
 This section is for host operators. Ordinary publication uses the CLI or MCP.
@@ -188,8 +173,7 @@ compiled schema. Uploaded SQL must never select the baseline or execute during
 initialization.
 
 Versions in one environment share its latest forward schema. Bind media and
-request origins to that Space. The [migration guide](migrating-from-zero.md#retire-imported-spacefast-sessions)
-lists the extra rules for Spaces moved from an earlier Zero.
+request origins to that Space.
 
 The app's `tp/app/` pages (`pagePaths` in the manifest) and routes (`routes`)
 are WordPress front-controller requests on the Space hostname, so send those
@@ -205,7 +189,7 @@ HTTP. Multisite, hosted Pages, and Atomic SQLite are outside this
 publish contract. Qualify MU-plugin ordering, persistent object-cache isolation,
 auth-salt continuity, and action routing on the actual provider before rollout.
 
-## Verify the compiler and migration
+## Verify the compiler and host
 
 In the TypedPress repository, run the targeted host and data proofs:
 
@@ -215,14 +199,11 @@ cargo build --no-default-features --features host --target x86_64-unknown-linux-
 cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown
 node --test tests/wasm/host.test.mjs
 TP_WP_PROJECT=typedpress-wp-pages TP_WP_PORT=8873 tests/wp/hosted-pages-run.sh
-TP_WP_PROJECT=typedpress-wp-spacefast TP_WP_PORT=8892 tests/wp/legacy/spacefast-run.sh
 ```
 
 The host-feature and wasm tests compare pantry and `examples/full-site` capture
 against native `typedpress sources` byte for byte. The hosted-pages lane installs only
 `compile-sources` output on real WordPress/MariaDB. It serves the pages, hydrates
-the island in Chromium, calls the action, and calls both routes. The
-cross-prefix lane is described in the [migration guide](migrating-from-zero.md#copy-data-under-the-hosts-migration-lock).
-Both lanes use disposable local
+the island in Chromium, calls the action, and calls both routes. The lane uses disposable local
 credentials intentionally tracked only for isolated test infrastructure. It does
 not qualify a production provider or exchange a real Google authorization code.

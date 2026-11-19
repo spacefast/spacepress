@@ -1,9 +1,7 @@
 // Resolves a tour against the compiled example: every pane's anchors are cut from the real sources
-// and outputs at build time, so a stop that no longer matches fails the build. Text is shown with
-// First names (lib/names.ts).
+// and outputs at build time, so a stop that no longer matches fails the build.
 import { type Example } from "./examples.ts";
 import { excerpt } from "./excerpt.ts";
-import { toTypedPress } from "./names.ts";
 import type { Artifact, Pane, Stop, Tour } from "../tour/stops.ts";
 
 export interface ResolvedPane {
@@ -43,10 +41,10 @@ export function resolvePane(example: Example, pane: Pane): ResolvedPane {
   if (typeof pane.file === "string") {
     const text = example.files[pane.file];
     if (text === undefined) throw new Error(`examples/${example.name} has no ${pane.file}`);
-    return { label: toTypedPress(pane.file), lang: "ts", code: toTypedPress(cut(text, pane, `examples/${example.name}/${pane.file}`)) };
+    return { label: pane.file, lang: "ts", code: cut(text, pane, `examples/${example.name}/${pane.file}`) };
   }
   const { label, lang, text } = artifactText(example, pane.file.artifact);
-  return { label, lang, code: toTypedPress(cut(text, pane, `${example.name} ${label}`)) };
+  return { label, lang, code: cut(text, pane, `${example.name} ${label}`) };
 }
 
 function cut(text: string, pane: Pane, where: string): string {
@@ -60,8 +58,6 @@ function cut(text: string, pane: Pane, where: string): string {
 export function resolveTour(tour: Tour, example: Example): ResolvedStop[] {
   return tour.stops.map((stop) => ({
     ...stop,
-    title: toTypedPress(stop.title),
-    prose: stop.prose.map(toTypedPress),
     config: resolvePane(example, stop.config),
     inputs: (stop.inputs ?? []).map((pane) => resolvePane(example, pane)),
     outputs: stop.outputs.map((pane) => resolvePane(example, pane)),

@@ -375,9 +375,6 @@ fn collection(out: &mut String, c: &Collection) {
         if let Some(name) = &c.existing_table {
             let _ = writeln!(out, "            'existingTable' => {},", php_str(name));
         }
-        if let Some(name) = c.adopted_as.as_ref().filter(|name| **name != c.table) {
-            let _ = writeln!(out, "            'adoptedAs' => {},", php_str(name));
-        }
         let _ = writeln!(out, "            'table' => {},", php_str(&format!("tp_{}", c.table)));
     }
     let _ = writeln!(out, "        ],");
@@ -546,9 +543,6 @@ pub fn render(schema: &Schema) -> String {
                 if r.prerender { ", 'prerender' => true" } else { "" }
             )
         };
-        if app.legacy_routes {
-            out.push_str("        'legacyRoutes' => true,\n");
-        }
         if schema.output == crate::schema::Output::Static {
             out.push_str("        'output' => 'static',\n");
         }
@@ -568,24 +562,21 @@ pub fn render(schema: &Schema) -> String {
             app.not_found.as_ref().map(route).unwrap_or_else(|| "null".into())
         );
         // App routes have unique literal paths with precedence over parameter matches.
-        // Legacy config routes can share a path across HTTP methods and retain their ordered lookup.
-        if !app.legacy_routes {
-            let mut literal = Vec::new();
-            let mut dynamic = Vec::new();
-            for (position, route) in app.routes.iter().enumerate() {
-                if route.pattern.split('/').any(|segment| segment.starts_with([':', '*'])) {
-                    dynamic.push(position.to_string());
-                } else {
-                    literal.push(format!("{} => {position}", php_str(&route.pattern)));
-                }
+        let mut literal = Vec::new();
+        let mut dynamic = Vec::new();
+        for (position, route) in app.routes.iter().enumerate() {
+            if route.pattern.split('/').any(|segment| segment.starts_with([':', '*'])) {
+                dynamic.push(position.to_string());
+            } else {
+                literal.push(format!("{} => {position}", php_str(&route.pattern)));
             }
-            let _ = writeln!(
-                out,
-                "        'routeIndex' => ['literal' => [{}], 'dynamic' => [{}]],",
-                literal.join(", "),
-                dynamic.join(", ")
-            );
         }
+        let _ = writeln!(
+            out,
+            "        'routeIndex' => ['literal' => [{}], 'dynamic' => [{}]],",
+            literal.join(", "),
+            dynamic.join(", ")
+        );
         if let Some(login) = &app.login {
             let _ = writeln!(out, "        'login' => {},", route(login));
         }

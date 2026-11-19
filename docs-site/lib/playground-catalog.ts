@@ -1,29 +1,3 @@
-import { toTypedPress } from "./names.ts";
-
-// The names the compiler on main reads for the entry file, the app folder and the module a config
-// imports. The playground shows First names and hands the compiler these. After the rename lands on
-// main, they are "typedpress.config.ts", "first" and "first", and both functions below change nothing.
-export const compilerEntry = "typedpress.config.ts";
-export const compilerRoot = "tp";
-export const compilerModule = "typedpress";
-
-const moved = (file: string, from: string, to: string) => (file.startsWith(`${from}/`) ? `${to}/${file.slice(from.length + 1)}` : file);
-
-/** An example's sources as the docs show them: First names, the entry as typedpress.config.ts, app code under tp/. */
-export function firstFiles(files: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(files).map(([file, text]) => [file === compilerEntry ? "typedpress.config.ts" : moved(file, compilerRoot, "tp"), toTypedPress(text)]));
-}
-
-/** What the editor shows, handed back with the names the compiler reads. */
-export function compilerFiles(files: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(files).map(([file, text]) => [
-    file === "typedpress.config.ts" ? compilerEntry : moved(file, "tp", compilerRoot),
-    text
-      .replace(/(from |import\()(["'])typedpress\2/g, `$1$2${compilerModule}$2`)
-      .replace(/(["'])((?:\.\.?\/)+)tp\//g, `$1$2${compilerRoot}/`),
-  ]));
-}
-
 export const wordpressFiles = [
   { path: "runtime/TypedPress/Wp/Plugin.php", label: "Post types & hooks", find: "register_post_type(", description: "Shared WordPress runtime. Registers native post types, editor support, revisions and WordPress hooks from the generated schema." },
   { path: "runtime/TypedPress/Wp/WpPostStore.php", label: "Post writes", find: "wp_insert_post(", description: "Shared WordPress runtime. Collection writes call wp_insert_post() and wp_update_post(); custom fields use Secure Custom Fields." },

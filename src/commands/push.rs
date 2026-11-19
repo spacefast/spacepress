@@ -349,7 +349,6 @@ fn step_line(step: &Value) -> String {
     let text = match step["kind"].as_str().unwrap_or("") {
         "system-tables" => "create or upgrade TypedPress's own tables".to_string(),
         "identity-schema" => "create or upgrade the sign-in tables".to_string(),
-        "names" => "rename data stored by a build from before TypedPress's rename".to_string(),
         "migration" => format!("run migration {detail}"),
         "front-page" => "set the site's front page".to_string(),
         "search-shape" => "rebuild the search index for the new searchable fields".to_string(),

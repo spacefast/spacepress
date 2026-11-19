@@ -7,17 +7,11 @@ namespace TypedPress\Identity;
 final class Schema
 {
     public const VERSION = 4;
-    /** The version that added `sessions.wp_token`, the WordPress session a session came from. */
-    public const WP_TOKEN = 4;
-    /**
-     * Whether this site's stored schema has `sessions.wp_token`. A managed build can serve requests
-     * before its `Loader::initialize` brings storage up to it: until then nothing reads or writes
-     * the column, and no WordPress sign-in opens an identity session.
-     */
-    public static function linksWordPressSessions(): bool
+    public static function ready(): bool
     {
-        return (int) get_option("tp_identity_schema_version", 0) >= self::WP_TOKEN;
+        return (int) get_option("tp_identity_schema_version", 0) === self::VERSION;
     }
+
     public static function migrate(DB $db): void
     {
         $database = $db->row("SELECT DATABASE() AS name");
@@ -39,7 +33,13 @@ final class Schema
 
     private static function migrateLocked(DB $db): void
     {
-        require_once ABSPATH . "wp-admin/includes/upgrade.php";
+        $installed = $db->row(
+            "SELECT option_value FROM {$db->wp->options} WHERE option_name=%s",
+            "tp_identity_schema_version",
+        );
+        if ($installed !== null && (int) $installed["option_value"] !== self::VERSION) {
+            throw new Failure("storage_unavailable", "Unsupported TypedPress Identity schema version.", 503);
+        }
         $tables = [
             "accounts" =>
                 'wp_user_id bigint unsigned NOT NULL, primary_email_id bigint unsigned NULL, status varchar(20) NOT NULL DEFAULT \'active\', created_at bigint NOT NULL, PRIMARY KEY  (wp_user_id)',
@@ -75,9 +75,8 @@ final class Schema
                 "id bigint unsigned NOT NULL AUTO_INCREMENT, event_id bigint unsigned NOT NULL, endpoint_id varchar(64) NOT NULL, attempts int NOT NULL DEFAULT 0, next_at bigint NOT NULL, delivered_at bigint NULL, last_status int NOT NULL DEFAULT 0, PRIMARY KEY  (id), UNIQUE KEY delivery (event_id,endpoint_id)",
         ];
         foreach ($tables as $name => $columns) {
-            $columns = str_replace(", ", ",\n ", $columns);
-            dbDelta(
-                "CREATE TABLE {$db->prefix}{$name} (\n $columns\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+            $db->run(
+                "CREATE TABLE IF NOT EXISTS {$db->prefix}{$name} ($columns) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
             );
         }
         $db->run(

@@ -7,7 +7,6 @@ import path from "node:path";
 import CodeFile from "./CodeFile.astro";
 import { diagnosticsFor } from "./code-file.ts";
 import { compileExample, repo } from "./examples.ts";
-import { compilerEntry, firstFiles } from "./playground-catalog.ts";
 
 interface Props {
 	/** The directory under examples/. */
@@ -15,9 +14,9 @@ interface Props {
 	/** A source file of the example. Defaults to the config. */
 	file?: string;
 }
-const { name, file = compilerEntry } = Astro.props;
-const [[shownName, contents]] = Object.entries(firstFiles({ [file]: readFileSync(path.join(repo, "examples", name, file), "utf8") })) as [[string, string]];
+const { name, file = "typedpress.config.ts" } = Astro.props;
+const contents = readFileSync(path.join(repo, "examples", name, file), "utf8");
 const { check } = await compileExample(name);
 ---
 
-<CodeFile name={shownName} contents={contents} diagnostics={diagnosticsFor(shownName, check.diagnostics)} />
+<CodeFile name={file} contents={contents} diagnostics={diagnosticsFor(file, check.diagnostics)} />

@@ -36,7 +36,7 @@ export const tours: Tour[] = [
     example: "pantry",
     title: "The pantry: tables, hooks, actions and a job",
     intro: [
-      "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its first.config.ts next to what typedpress build turned it into.",
+      "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its typedpress.config.ts next to what typedpress build turned it into.",
       "Everything on the right was produced from the file on the left by the same compiler that runs in this browser; nothing here is pasted by hand.",
     ],
     stops: [
@@ -86,7 +86,7 @@ export const tours: Tour[] = [
         title: "An action is an endpoint",
         prose: [
           "An action takes typed input and returns whatever its handler returns. Its export name is its name: it is served at `/__tp/api/v1/actions/consume`, its input is validated against the declared columns, and `access` decides who may call it.",
-          "The typed client gets an `Actions` entry for it, so `first.actions.consume({ itemId })` is checked in your editor.",
+          "The typed client gets an `Actions` entry for it, so `tp.actions.consume({ itemId })` is checked in your editor.",
         ],
         config: { file: "typedpress.config.ts", lines: { from: "export const consume = action({", toLine: "});" } },
         outputs: [

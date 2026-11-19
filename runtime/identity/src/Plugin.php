@@ -60,9 +60,7 @@ final class Plugin
 
     private static function installStorage(): void
     {
-        // A site that ran zero-identity (before the rename to TypedPress) keeps its accounts and sessions.
-        Legacy\ZeroNames::upgrade(self::$db);
-        if ((int) get_option("tp_identity_schema_version", 0) < Schema::VERSION) {
+        if (!Schema::ready()) {
             Schema::migrate(self::$db);
         }
     }
@@ -78,7 +76,7 @@ final class Plugin
         if (!self::managed()) {
             // The install checks below and provisionPasswordHash() read these on every request, and
             // none is autoloaded: one query instead of one each.
-            wp_prime_option_caches([Legacy\ZeroNames::DONE, "tp_identity_schema_version", ...Accounts::INSTALL_OPTIONS]);
+            wp_prime_option_caches(["tp_identity_schema_version", ...Accounts::INSTALL_OPTIONS]);
             add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
         }
         add_filter('cron_schedules', static function (array $schedules): array {
@@ -612,7 +610,7 @@ final class Plugin
         // Until this site's storage has `sessions.wp_token` (a managed build serves requests before
         // its initialize), a WordPress sign-in opens no identity session: one it couldn't tie to the
         // WordPress session would outlive it.
-        if (!$bridge || !Schema::linksWordPressSessions()) {
+        if (!$bridge || !Schema::ready()) {
             return null;
         }
         $token = wp_get_session_token();
@@ -723,7 +721,7 @@ final class Plugin
      */
     private static function toLogin(string $back): never
     {
-        if (!Schema::linksWordPressSessions() && (int) wp_validate_auth_cookie("", "logged_in") > 0) {
+        if (!Schema::ready() && (int) wp_validate_auth_cookie("", "logged_in") > 0) {
             status_header(503);
             header("Retry-After: 30");
             header("Content-Type: text/html; charset=utf-8");

@@ -24,50 +24,6 @@ test('host imports capture pantry byte for byte like native sources', () => {
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
-test('wasm migrates real source and returns a compilable file map without writes', () => {
-  const project = path.resolve('tests/fixtures/app-migrate/board');
-  const candidate = call(exports, 'tp_migrate_app', { project, space: 'spc_migrate_test' });
-  assert.deepEqual(candidate.report.errors, []);
-  assert.equal(candidate.report.status, 'candidate');
-  assert.ok(candidate.files['tp/_generated/migrations/snapshot.json']);
-  assert.deepEqual(call(exports, 'tp_check', { project: '/candidate', files: candidate.files }).check.diagnostics, []);
-  // A new Space has no 0.8 tables: `fresh: true` creates them instead of adopting; a schema with
-  // neither `fresh` nor `space` is refused with the choice.
-  const unset = call(exports, 'tp_migrate_app', { project });
-  assert.deepEqual(unset.report.errors.map((e) => e.code), ['Z08_SPACE_REQUIRED']);
-  for (const request of [{ project, space: 'spc_new', fresh: true }, { project, fresh: true }]) {
-    const fresh = call(exports, 'tp_migrate_app', request);
-    assert.deepEqual(fresh.report.errors, [], JSON.stringify(request));
-    assert.equal(fresh.report.tables, 'fresh');
-    assert.ok(fresh.files['tp/_generated/migrations/0001_init.sql'].includes('CREATE TABLE'));
-    assert.ok(!fresh.files['tp/server/index.ts'].includes('existingTable'));
-    assert.equal(JSON.parse(fresh.files['tp/_generated/migrations/snapshot.json']).tables.tasks.existingTable, undefined);
-    assert.deepEqual(call(exports, 'tp_check', { project: '/candidate', files: fresh.files }).check.diagnostics, []);
-  }
-  const config = call(exports, 'tp_migrate_config', { project: path.resolve('tests/wp/legacy'), input: 'capsule.ts' });
-  assert.equal(config.status, 'candidate');
-  assert.deepEqual(config.errors, []);
-});
-
-test('wasm converts a 0.8 client app to the same public/ files as the native CLI', () => {
-  // The publish path converts in wasm, so a client app without pages must not depend on the native CLI.
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'typedpress-wasm-client-'));
-  try {
-    const project = path.resolve('tests/fixtures/app-migrate/client-app');
-    const out = path.join(temp, 'native');
-    const styles = path.resolve('tests/fixtures/app-migrate/client-app-styles/zero.css');
-    execFileSync(first, ['migrate', 'app', '--from', 'zero-0.8', project, '--out', out, '--space', 'spc_migrate_test', '--users', '--zero-css', styles]);
-    const candidate = call(exports, 'tp_migrate_app', { project, space: 'spc_migrate_test', users: true, zeroCss: fs.readFileSync(styles, 'utf8') });
-    assert.deepEqual(candidate.report.errors, []);
-    assert.equal(candidate.report.status, 'candidate');
-    const client = Object.keys(candidate.files).filter((name) => name.startsWith('public/')).sort();
-    assert.ok(['public/app/client/index.js', 'public/index.html', 'public/zero.css'].every((f) => client.includes(f)), client.join(' '));
-    for (const name of client) assert.equal(candidate.files[name], fs.readFileSync(path.join(out, name), 'utf8'), name);
-    assert.equal(candidate.files['typedpress.config.ts'], fs.readFileSync(path.join(out, 'typedpress.config.ts'), 'utf8'));
-    assert.deepEqual(call(exports, 'tp_check', { project: '/candidate', files: candidate.files }).check.diagnostics, []);
-  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
-});
-
 test('host capture gives npm imports an actionable stable diagnostic', () => {
   const response = call(exports, 'tp_sources', { project: '/project', packages: false, files: {
     'typedpress.config.ts': 'import thing from "some-npm-package"; export default thing;',

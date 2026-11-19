@@ -41,7 +41,7 @@ test("activation registers the post types, field groups and options page, and cr
   assert.deepEqual(scf.pages, [["typedpress-global-settings", "tp_global_settings", "typedpress-blog"]]);
 
   const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_tp%' AND TABLE_NAME NOT LIKE 'wp\\_tp\\_identity\\_%'");
-  const sharedTables = ["wp_tp__files", "wp_tp__jobs", "wp_tp__migrations", "wp_tp__outbox", "wp_tp__receipts", "wp_tp__revisions", "wp_tp_comments", "wp_tp_field_teams", "wp_tp_fuse_log", "wp_tp_guestbook", "wp_tp_hook_notes", "wp_tp_job_notes", "wp_tp_phrases", "wp_tp_reviews", "wp_tp_signups", "wp_tp_tour_log"];
+  const sharedTables = ["wp_tp__files", "wp_tp__jobs", "wp_tp__migrations", "wp_tp__receipts", "wp_tp__revisions", "wp_tp_comments", "wp_tp_field_teams", "wp_tp_fuse_log", "wp_tp_guestbook", "wp_tp_hook_notes", "wp_tp_job_notes", "wp_tp_phrases", "wp_tp_reviews", "wp_tp_signups", "wp_tp_tour_log"];
   assert.deepEqual(tables.filter((r) => sharedTables.includes(r.t)).map((r) => r.t).sort(), sharedTables);
   assert.deepEqual([...new Set(tables.map((r) => r.e))], ["InnoDB"]);
   assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]]);
@@ -307,7 +307,7 @@ describe("while an app update has failed half way", () => {
   });
 
   test("the trusted CLI refuses every command but migrate, with the reason", () => {
-    for (const args of [["find", "posts"], ["migrate-legacy", "--dry-run"]]) {
+    for (const args of [["find", "posts"], ["find", "comments"]]) {
       const out = JSON.parse(wpTry("typedpress", ...args));
       assert.deepEqual([out.error.status, out.error.code], [503, "unavailable"], args.join(" "));
       assert.match(out.error.detail, /Migration 9999_upgrade_probe failed at statement 2/);
@@ -487,46 +487,9 @@ test("a second app on the site runs its own 0001_init: the ledger is per app", (
   assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]], "the blog's ledger is untouched");
 });
 
-test("an old unkeyed ledger goes to its one recorded app without replaying anything, or is refused", () => {
-  // A drop-then-re-add history with data in the re-added column: a replay would destroy it.
-  assert.deepEqual(evalFixture("legacy-ledger.php"), {
-    converted: { applied: [], ledger: ["legacy/0001_init", "legacy/0002_update", "legacy/0003_update"], data: "kept" },
-    refused: { unclear: true, keyed: false, data: "kept" },
-  });
-  assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]], "the blog's ledger is restored");
-});
-
-test("the ledger records the hash of each file it applies; rows from before the column count by id", () => {
-  const out = evalFixture("ledger-hash.php");
-  assert.deepEqual(out.plan, [{ id: "0001_init", sql: out.hash, statements: [1] }], "the plan names the file and its hash");
-  assert.deepEqual(out.afterPlan, ["app", "id", "applied_at"], "planning changes nothing, the ledger's shape included");
-  assert.deepEqual(out.applied, ["0001_init"]);
-  assert.deepEqual(out.afterMigrate, ["app", "id", "applied_at", "sql"]);
-  assert.deepEqual(out.ledger, [{ app: "blog", id: "0001_init", sql: null }, { app: "hashed", id: "0001_init", sql: out.hash }]);
-  assert.deepEqual(out.history, [{ id: "0001_init", sql: out.hash }]);
-});
-
-test("a runtime-only update converts the blog's old ledger on its next request, without replaying", async () => {
-  // The blog's build is unchanged (its schema hash stands); only the ledger is the old, unkeyed shape.
-  const saved = sql("SELECT app, id, applied_at FROM wp_tp__migrations");
-  sql("DROP TABLE wp_tp__migrations");
-  sql("CREATE TABLE wp_tp__migrations (`id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB");
-  sql("INSERT INTO wp_tp__migrations (id, applied_at) VALUES ('0001_init', '2026-01-01T00:00:00.000Z')");
-  // A runtime update ships new runtime files, so the site's install marker (keyed by the runtime's
-  // hash) no longer matches and the next request checks storage again; here only the ledger changed.
-  sql("DELETE FROM wp_options WHERE option_name = 'tp_installed'");
-  wp("cache", "flush");
-  const comments = sql("SELECT COUNT(*) AS n FROM wp_tp_comments")[0].n;
-  try {
-    assert.equal((await fetch(`${api}/comments?limit=1`)).status, 200);
-    assert.deepEqual(sql("SELECT app, id FROM wp_tp__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]], "the old rows are the blog's");
-    assert.equal(sql("SELECT COUNT(*) AS n FROM wp_tp_comments")[0].n, comments, "nothing was replayed or dropped");
-  } finally {
-    // Whatever happened above, put back the canonical keyed ledger and the blog's rows.
-    sql("DROP TABLE IF EXISTS wp_tp__migrations");
-    sql("CREATE TABLE wp_tp__migrations (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, PRIMARY KEY (`app`, `id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    for (const r of saved) sql(`INSERT INTO wp_tp__migrations (app, id, applied_at) VALUES ('${r.app}', '${r.id}', '${r.applied_at}')`);
-  }
+test("the migration ledger records the SQL hash it applied", () => {
+  const [row] = sql("SELECT `sql` FROM wp_tp__migrations WHERE app = 'blog' AND id = '0001_init'");
+  assert.match(row.sql, /^[a-f0-9]{64}$/);
 });
 
 test("two apps' uninstallers run in one request, remove only derived capabilities, and keep queued work", () => {

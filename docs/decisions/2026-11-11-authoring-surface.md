@@ -112,69 +112,7 @@ the earlier API becomes `.optional()`.
     the visitor; jobs and signed routes as the system; `first/wp-hooks/` as the request's visitor, or
     the system under WP-Cron, Action Scheduler and WP-CLI.
 
-## Captures from before the rename
-
-21. **The 0.3.0 field reading.** A `zero.source-bundle.v1` upload (what released clients that predate
-    the rename still send, and what hosts store for the deployed First Spaces) is source written when a
-    plain builder was nullable and `.notNull()` made it required. It is read that way: `Fs::legacy_fields`,
-    set only by `src/zero_bundle.rs`, turns on a reading in `src/eval.rs` (`mod legacy`) that accepts
-    `.notNull()`, `id()`, `.primaryKey()`, `real()`, `text({ enum })`, `select({ options, multiple })`,
-    `group({ fields })`, `blocks({ layouts })` and `json().$type<T>()` and maps each onto the same field
-    model the current forms build. Nothing after that reading differs. The boundary is the bundle format,
-    not `frozen_capture()`: a First-format capture and every live project get the current surface only,
-    and the old forms are located errors there. This is stored-data compatibility, not an alias: a
-    recompile that read `text()` as required would change the stored schema of a deployed Space. Later
-    cutover slices (implicit `createdAt`, handler-typed action input) go through the same hook; one that
-    can't be expressed as a reading into the current model goes to the owner. Delete the reading with
-    `src/zero_bundle.rs`, once no released client uploads `zero.source-bundle.v1` and no host stores one.
-
-22. **`ref()` refers to `id` only.** `ref(kind)` takes a kind and nothing else; a reference to
-    another column (`integer().references(() => payroll.badge)`) is not part of the surface. Rulings 1
-    and 2 make the field the relation, the `with` key and the reverse name, all resolved through the
-    target's `id`, and a second join path would bring the hidden-key rule with it for a form no example,
-    ledger or converter output uses. A kind that links by a natural key stores the value as a plain
-    field and queries by it. The runtime keeps non-id references for 0.3.0 captures (ruling 21), and
-    its tests move to a fixture in that format. Cost: authors lose database-enforced natural-key
-    foreign keys; bringing them back is a new surface decision.
-
-23. **One old reading, every 0.3.0 form.** Ruling 21's switch is the only old-reading mode: the one
-    flag (`Fs::legacy_fields`, which only `src/zero_bundle.rs` sets, read as `Evaluator::legacy`) also
-    turns on `mod legacy` in `src/extract.rs`. There is no per-form switch, CLI flag or config key, and
-    nothing a normal project can reach. With it, besides ruling 21's field forms and ruling 22's
-    references:
-    - a table that declares its own primary key (`code: text().primaryKey()`) gets no implicit `id`,
-      as 0.3.0 built it, so its stored table and snapshot are unchanged;
-    - `route()` and the `routes` key (in `defineConfig` and `definePlugin`) read onto the
-      `first/app/` route table, one handler route per entry, with its access rule or signature. The
-      table is marked `legacyRoutes` and the runtime serves it as 0.3.0 did: a path is matched among
-      the routes of the request's method (405 when only another method has it), reads in the handler
-      are trusted, and the theme keeps the front end (no First 404 page). The 0.3.0 plugin lock's
-      `routes` grants are ignored;
-    - the signature scheme `"zero"` reads as `"first"`, the same timestamped HMAC renamed.
-
-    `tests/fixtures/zero-0.3/forms/` holds every form 0.3.0 accepted, captured and compiled by the
-    0.3.0 compiler, and `tests/zero_bundle.rs` asserts its recompile adds no migration and serves the
-    0.3.0 schema; `routes/` holds what the 0.3.0 runtime answered each route request. A PR that
-    removes or changes an authoring form runs that test (docs/spacefast-host-checklist.md, "Old
-    bundles"). Delete `mod legacy` in both files with `src/zero_bundle.rs`.
-
-24. **A raw 0.3 project is captured, then read as its capture.** One released client, the hosted
-    MCP server 0.9.0, uploads the project itself (`zero.config.ts` at the root, the relative modules
-    it imports, `public/`) and labels it `zero.source-bundle.v1`; the 0.3.0 host captured it before
-    compiling. First's host entries do the same: `host::sources`, `compile-sources` and
-    `compile-to-store` capture such a tree into the exact `zero.source-bundle.v1` the 0.3.0 host
-    capture wrote (the fixtures check it byte for byte), and hand that to the reader of ruling 23. So
-    there is still one old-reading mode and one path after the capture, and a raw upload compiles,
-    migrates and is refused exactly as its capture is. The capture reads the tree through a view
-    that puts the 0.3.0 paths on the current layout and turns on the same reading; nothing else
-    constructs it. As 0.3.0's host did, it refuses npm imports (a host installs no packages) with
-    "publish this project from the Spacefast CLI to capture installed npm sources", and refuses
-    `pages/` or `zero/pages.json` with the capture's pages message. A tree that holds both
-    `zero.config.ts` and `first.config.ts`, or a raw project beside a capture (`.zero-source/`,
-    `.first-source/` or the bundle files), is refused as ambiguous. `first build`, `check`, `dev`
-    and `sources` read only `first.config.ts`, so a normal project never reaches it. Considered and
-    dropped: reading the raw tree directly in the compile, which would be a second old-reading path
-    beside the capture's. Delete with `src/zero_bundle.rs`.
+22. **`ref()` refers to `id` only.** A kind that links by a natural key stores the value as a field and queries by it.
 
 ## Taxonomies
 
@@ -300,7 +238,7 @@ Rulings for `taxonomy()` and `terms()` (spec §2.1, §2.4, §2.6, §2.7). They d
 
     Cost: spec §6 writes the image-sizes key as `images` while the code and every example use `media`; it stays `media`, and renaming it is a separate decision.
 
-37. **A kind, global, bucket, action or job that is built but not exported is a build error.** Every `collection()`, `table()`, `userProjection()`, `global()`, `files()`, `action()` and `job()` value built while evaluating `first.config.ts` or a module under `first/` must be a named export of one of them. The error is located at the builder call, with its own code beside `F1221`: "`hidden` is a table but isn't exported, so it has no name; write `export const hidden = table(...)`". It applies whether or not anything refers to the value: under the old API that value was registered, so ignoring it would turn a missed `export` in a port into a dropped table on the next deploy. `export { a as b }` counts, the name is `b`. Values built inside a plugin package (ruling 38) and 0.3.0 captures (ruling 41) are not covered. One namespace: an action may no longer share a name with a kind (`F1221`, spec §1.1).
+37. **A kind, global, bucket, action or job that is built but not exported is a build error.** Every `collection()`, `table()`, `userProjection()`, `global()`, `files()`, `action()` and `job()` value built while evaluating `first.config.ts` or a module under `first/` must be a named export of one of them. The error is located at the builder call, with its own code beside `F1221`: "`hidden` is a table but isn't exported, so it has no name; write `export const hidden = table(...)`". It applies whether or not anything refers to the value: under the old API that value was registered, so ignoring it would turn a missed `export` in a port into a dropped table on the next deploy. `export { a as b }` counts, the name is `b`. Values built inside a plugin package (ruling 38) are outside this check. One namespace: an action may no longer share a name with a kind (`F1221`, spec §1.1).
 
     Cost: a kind can't be built as a private helper value, for example to share a field set; share the fields object instead.
 
@@ -316,11 +254,7 @@ Rulings for `taxonomy()` and `terms()` (spec §2.1, §2.4, §2.6, §2.7). They d
 
     Costs: clients of a current-format app that call `members` change to `users` in the same deploy; a constraint authored on `name` or `email` (`max(80)`) is lost; removing a users field leaves its usermeta behind with no deploy warning. Open for the built-ins PR: the default `access` of `users`, and whether a row carries `role` or the spec's `roles`.
 
-41. **A 0.3.0 capture reads every removed form as before.** Under ruling 23's one switch, all the registry keys, `userProjection`, registry keys that differ from the binding name, kinds registered without an export, and per-registry names are read onto the same model. Its users kind keeps the registry key as its name: a deployed Space's `first.members`, `/__first/api/v1/members`, events, Abilities and snapshot entry are unchanged, and `users` keeps answering beside it. Ruling 37's error is off in this mode. The model therefore keeps the users kind's name as data, and only this reading can set it to anything but `users`. `tests/zero_bundle.rs` gains one refusal per removed key and one for `userProjection` in a current project, and its recompile test must still add no migration.
-
-    Cost: the internal registries stay as the model the 0.3.0 reading fills, until `src/zero_bundle.rs` is deleted.
-
-42. **What else changes in the same PRs.** Docs-site tour stops quote example source by text anchors and are updated in the PR that changes their example. The generated config reference's fallback descriptions for the removed keys are deleted with them. `create-first`'s template moves to an export and is released with the compiler; an older `create-first` against a newer compiler scaffolds a project that fails with ruling 36's error on first build, which is accepted. `first add db` already uses exports. `first init`'s text describing `first.config.ts` is rewritten. `docs/config-api.md`, the README, `docs/migrating-from-zero.md` and the MCP connect skill are rewritten for exports; dated design documents are left as they are. Every example's `_generated/db.d.ts` is regenerated in the second PR. In the second PR the schema's `auth.collection` becomes `users` for current-format apps; the host-contract lane confirms nothing on the host is keyed by that value, and the stored names in ruling 40 are the contract. The legacy users suite moves to an export, then to `wp.users.extend`, and must still pass against the same stored usermeta.
+42. **What else changes in the same PRs.** Docs-site tour stops quote example source by text anchors and are updated in the PR that changes their example. The generated config reference's fallback descriptions for the removed keys are deleted with them. `create-first`'s template moves to an export and is released with the compiler; an older `create-first` against a newer compiler scaffolds a project that fails with ruling 36's error on first build, which is accepted. `first add db` already uses exports. `first init`'s text describing `first.config.ts` is rewritten. `docs/config-api.md`, the README, `migrate/docs/migrating-from-zero.md` and the MCP connect skill are rewritten for exports; dated design documents are left as they are. Every example's `_generated/db.d.ts` is regenerated in the second PR. In the second PR the schema's `auth.collection` becomes `users` for current-format apps; the host-contract lane confirms nothing on the host is keyed by that value, and the stored names in ruling 40 are the contract. The legacy users suite moves to an export, then to `wp.users.extend`, and must still pass against the same stored usermeta.
 
     Cost: two releases in a row each change every example and the docs site.
 

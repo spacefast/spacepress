@@ -28,19 +28,17 @@ test("stop slugs are unique within a tour", () => {
   }
 });
 
-test("every playground example compiles with the First names the editor shows", async () => {
+test("every playground example compiles with the files the editor shows", async () => {
 	const { readFileSync } = await import("node:fs");
 	const path = await import("node:path");
 	const { Compiler } = await import("../../lib/compiler.ts");
-	const { firstFiles, compilerFiles } = await import("../../lib/playground-catalog.ts");
 	const { siteExamples } = await import("../../lib/site-examples.ts");
 	const { sources, repo, site } = await import("../../lib/examples.ts");
 	const compiler = await Compiler.load(readFileSync(path.join(site, "public/compiler.wasm")));
 	for (const { name } of siteExamples) {
-		// What the browser does: show First names, then hand the compiler the names it reads.
-		const shown = firstFiles(sources(path.join(repo, "examples", name)));
+		const shown = sources(path.join(repo, "examples", name));
 		assert.ok("typedpress.config.ts" in shown, name);
-		const { check } = compiler.compile({ name, files: compilerFiles(shown), previous: null });
+		const { check } = compiler.compile({ name, files: shown, previous: null });
 		assert.equal(check.ok, true, `${name}: ${check.diagnostics.map((d) => d.message).join("; ")}`);
 	}
 });

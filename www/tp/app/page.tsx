@@ -23,14 +23,12 @@ import { Agents } from "../components/guide/agents";
 import { AppAgents } from "../components/guide/app-agents";
 import { Wordpress } from "../components/guide/wordpress";
 import { Packages } from "../components/guide/packages";
-import { Migrate } from "../components/guide/migrate";
 import { Rules } from "../components/guide/rules";
 import { Host } from "../components/guide/host";
 import { Run } from "../components/guide/run";
 import { Cli } from "../components/guide/cli";
 import { Config } from "../components/guide/config";
 import { Compare } from "../components/guide/compare";
-import { Rename } from "../components/guide/rename";
 import { Limits } from "../components/guide/limits";
 import { Open } from "../components/guide/open";
 
@@ -80,14 +78,12 @@ export default async function Home() {
       <AppAgents />
       <Wordpress />
       <Packages />
-      <Migrate />
       <Rules />
       <Host />
       <Run />
       <Cli />
       <Config />
       <Compare />
-      <Rename />
       <Limits />
       <Open />
       <LatestPosts list={latest} />

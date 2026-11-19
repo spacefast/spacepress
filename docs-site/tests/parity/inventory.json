@@ -5439,7 +5439,7 @@
 		"/tour/pantry": {
 			"title": "The pantry: tables, hooks, actions and a job \u00b7 TypedPress",
 			"h1": "The pantry: tables, hooks, actions and a job",
-			"description": "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its first.config.ts next to what typedpress build turned it into.",
+			"description": "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its typedpress.config.ts next to what typedpress build turned it into.",
 			"canonical": "/tour/pantry",
 			"markdown": null,
 			"ogImage": null,

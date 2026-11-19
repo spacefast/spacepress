@@ -8,11 +8,6 @@ name. Work already open when they were made merges as it is. Each ruling below t
 built as its own change on top of `main`, and that change deletes the form it replaces from current
 projects, with no compatibility form: no released First project uses the old ones.
 
-**0.3.0 captures are not current projects.** Every form these rulings delete stays readable in a
-stored 0.3.0 capture through the one old reading (authoring-surface rulings 21 and 23), and compiles
-there as 0.3.0 compiled it. Rulings 3 and 4 don't apply to captures, because either would change what
-a recompiled stored Space does. Each change that builds a ruling runs `cargo test --test zero_bundle`.
-
 ## Problem
 
 First was compared with Convex, Supabase, EmDash, Astro and Payload, using what each system's own
@@ -82,9 +77,6 @@ three facts.
       caller;
    4. tests each rewritten hook as a signed-out visitor and as a subscriber;
    5. deletes `db.*` and the "trusted" wording together.
-
-   A 0.3.0 capture keeps `db.*` trusted. The change adds a `tests/zero_bundle.rs` case that runs a
-   0.3.0 hook's `db.insert` as a signed-out visitor and shows the write still happens.
 
 ## Validation and errors
 
@@ -171,7 +163,7 @@ three facts.
 17. **The transport is the host's.** First keeps `registerRealtimeTransport` in the browser and
     `First\Realtime\Publisher` in PHP. Without a transport, subscriptions poll `_live`. A Spacefast
     Space uses Cast. That is not wired for First builds yet: see
-    [the host checklist](../spacefast-host-checklist.md), item 7.
+    [the host checklist](../../migrate/docs/spacefast-host-checklist.md), item 7.
 
 18. **Co-editing.** First's collections are post types, so the Gutenberg plugin's real-time
     collaboration covers them, and it is what co-editing uses first. A transport that carries it over

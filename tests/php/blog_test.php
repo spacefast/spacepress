@@ -560,40 +560,13 @@ eq('onDelete cascade', $db->findMany('comments', ['where' => ['postId' => $pub['
 // ================================================================ extension seams
 
 \TypedPress\SystemTables::register('seam', [
-    'CREATE TABLE IF NOT EXISTS `{prefix}tp__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB',
-    \TypedPress\SystemTables::step(1, static function (\TypedPress\Store $store): void {
-        $db = $store instanceof \TypedPress\Wp\CompositeStore ? $store->db : throw new \LogicException('the upgrade needs the WordPress store');
-        $have = $db->run('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$db->prefix() . 'tp__seam', 'extra']);
-        if ($have === []) {
-            $store->applySystemStatements(['ALTER TABLE `{prefix}tp__seam` ADD COLUMN `extra` LONGTEXT']);
-        }
-    }),
+    'CREATE TABLE IF NOT EXISTS `{prefix}tp__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, `extra` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB',
 ]);
 \TypedPress\SystemTables::apply($db->store());
 $wp->exec('INSERT INTO {prefix}tp__seam (`id`, `event`, `extra`) VALUES (1, ?, ?)', ['kept', 'upgraded']);
 \TypedPress\SystemTables::apply($db->store());
-eq('idempotent system DDL and guarded ALTER preserve data', $wp->sql('SELECT `event`, `extra` FROM {prefix}tp__seam')[0], ['event' => 'kept', 'extra' => 'upgraded']);
+eq('reapplying system table DDL preserves data', $wp->sql('SELECT `event` FROM {prefix}tp__seam')[0], ['event' => 'kept']);
 problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \TypedPress\SystemTables::apply($db->store())), 500, 'internal');
-
-// A site records the fingerprint of the set it applied (`tp_runtime_tables`); before guarded steps
-// had versions it was computed with every step written as the word `step`. With every step at
-// version 1 the fingerprint is that same value, so a site already up to date runs nothing again.
-$recordedByOlderRuntime = static function (): string {
-    $parts = [];
-    foreach (\TypedPress\SystemTables::plan() as $table => $steps) {
-        $parts[$table] = ['mysql' => array_map(static fn (string $s): string => preg_match('/\Astep@\d+\z/', $s) === 1 ? 'step' : $s, $steps)];
-    }
-    ksort($parts);
-
-    return substr(hash('sha256', (string) \TypedPress\Json::encode($parts)), 0, 16);
-};
-eq('every guarded step of this runtime is at version 1', array_values(array_filter(array_merge(...array_values(\TypedPress\SystemTables::plan())), static fn (string $s): bool => str_starts_with($s, 'step@') && $s !== 'step@1')), []);
-eq('the fingerprint is the one runtimes before step versions recorded', \TypedPress\SystemTables::fingerprint(), $recordedByOlderRuntime());
-$before = \TypedPress\SystemTables::fingerprint();
-\TypedPress\SystemTables::register('seam_v2', [\TypedPress\SystemTables::step(2, static fn () => null)]);
-eq('the plan names a guarded step by its version', \TypedPress\SystemTables::plan()['seam_v2'], ['step@2']);
-check('a raised step version changes the fingerprint, so sites run the steps again', \TypedPress\SystemTables::fingerprint() !== $recordedByOlderRuntime());
-problem('a guarded step without a version is refused', fn () => \TypedPress\SystemTables::register('seam_bare', [static fn () => null]), 500, 'internal');
 
 $transformMutationRows = false;
 \TypedPress\Extensions::onRead(static function (array $rows, string $c) use (&$transformMutationRows): array {

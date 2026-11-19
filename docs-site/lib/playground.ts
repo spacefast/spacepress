@@ -3,10 +3,9 @@ import { File } from "@pierre/diffs";
 import { editedBlueprint, playgroundUrl, runRequest, type ExampleRun } from "./blueprint.ts";
 import { Compiler } from "./compiler.ts";
 import { highlightHtml, languageOf } from "./highlight.ts";
-import { toTypedPress } from "./names.ts";
 
 const dark = () => document.documentElement.dataset.theme === "dark";
-import { compilerFiles, wordpressFiles } from "./playground-catalog.ts";
+import { wordpressFiles } from "./playground-catalog.ts";
 
 function readFiles(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid source files");
@@ -129,14 +128,14 @@ const compile = () => {
   diagnostics.hidden = true;
   diagnostics.textContent = "";
   try {
-    const { check, output } = compiler.compile({ name: example.value, files: compilerFiles(files), previous: null });
+    const { check, output } = compiler.compile({ name: example.value, files, previous: null });
     if (!check.ok || !output) {
       clearOutputs();
       status.dataset.state = "diagnostics";
       status.textContent = "Fix the config to generate files.";
       diagnostics.textContent = check.diagnostics.map((d) => {
         const location = d.location ? `${d.location.file}:${d.location.line}:${d.location.column}: ` : "";
-        return toTypedPress(`${location}${d.message}${d.help ? `\n${d.help}` : ""}`);
+        return `${location}${d.message}${d.help ? `\n${d.help}` : ""}`;
       }).join("\n\n");
       diagnostics.hidden = false;
       return;
@@ -144,11 +143,11 @@ const compile = () => {
     const selected = generatedFile.value;
     // Generated files read with First names, like every other file on the site.
     outputs = {
-      "tp/app/functions.php": toTypedPress(output.functionsPhp),
-      "tp/app/schema.php": toTypedPress(output.schemaPhp),
-      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`tp/_generated/migrations/${name}`, toTypedPress(sql)])),
-      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`tp/_generated/client/${name}`, toTypedPress(text)])),
-      "tp/_generated/db.d.ts": toTypedPress(output.genTs),
+      "tp/app/functions.php": output.functionsPhp,
+      "tp/app/schema.php": output.schemaPhp,
+      ...Object.fromEntries(output.migrations.map(([name, sql]) => [`tp/_generated/migrations/${name}`, sql])),
+      ...Object.fromEntries(Object.entries(output.client).map(([name, text]) => [`tp/_generated/client/${name}`, text])),
+      "tp/_generated/db.d.ts": output.genTs,
       "tp/_generated/migrations/snapshot.json": JSON.stringify(output.snapshot, null, 2) + "\n",
     };
     updateFileMenu(selected);
@@ -205,7 +204,7 @@ const ran = wordpressNote.innerHTML;
 runWordPress.addEventListener("click", () => {
   const run = runs.get(example.value);
   if (!compiler || !run) return;
-  const { output } = compiler.compile(runRequest(example.value, compilerFiles(files), run.ledger));
+  const { output } = compiler.compile(runRequest(example.value, files, run.ledger));
   wordpress.hidden = false;
   if (!output) {
     // The status line and the diagnostics already say what to fix.

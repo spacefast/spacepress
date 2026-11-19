@@ -52,9 +52,6 @@ It also runs core image scale/restore, owner denial, rollback, provider outage,
 and durable deletion recovery. Cleanup uses `TP_WP_S3=1` to include both replicas
 and the provider volume. `TP_WP_KEEP=1` retains the stack for investigation.
 
-`run.sh` ends with `tests/wp/migrate-run.sh`: the 0.8 site, app-user and app migration lanes, each on a fresh stack. `TP_WP_SKIP_MIGRATE=1` skips them; CI runs them with the Spacefast lane in the `wp-migrate` job; the schema-check, seed, fetch and WordPress lanes run in `wp-schema`, and the S3 lane in its own job, so no job nears its time limit. The app migration proof also runs on its own with `tests/wp/app-migrate/run.sh`. It
-uses the dedicated `typedpress-wp-app-migrate` project and port 8798, configurable with
-`TP_WP_APP_MIGRATE_PROJECT` and `TP_WP_APP_MIGRATE_PORT`. It seeds original
 BIGINT/TEXT/DOUBLE tables before activation and checks retained rows, DDL, action
 results and rollback. As with the full lane, use Bash 4+ and GNU-compatible
 `sha256sum` flags.

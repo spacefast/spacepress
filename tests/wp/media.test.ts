@@ -474,13 +474,6 @@ test("a site already on runtime tables 0.2 gains the files table and working pro
   assert.equal((await uploadDeck(pdf("after upgrade"))).status, 201, "uploads work without reactivating anything");
 });
 
-test("a files table from before rows carried their app gains the column on upgrade", () => {
-  sql("ALTER TABLE wp_tp__files DROP KEY app, DROP COLUMN app");
-  wp("option", "update", "tp_runtime_tables", "0.2");
-  wp("eval", "do_action('admin_init');");
-  assert.equal(sql("SHOW COLUMNS FROM wp_tp__files LIKE 'app'").length, 1);
-});
-
 test("file rows belong to their app: another app's ids don't resolve", async () => {
   probe();
   const row = await deck("mine");
@@ -876,4 +869,3 @@ test("a media item reads on the API exactly as on core's media route: its parent
     assert.equal(logs.includes("GK111111111111111111111111"), false, "provider identity never enters server logs");
   });
 }
-

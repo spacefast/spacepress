@@ -11,6 +11,10 @@ integer `hostContract`. It changes only when something below changes incompatibl
 don't change it. A host refuses a compiled tree whose `hostContract` it doesn't know, rather than serving
 it on assumptions.
 
+Version 2 requires managed commerce hosts to check shipping compatibility before selecting a build,
+including rollback and recovery after a failed initialization. Version 1 hosts must refuse version 2
+manifests until they implement this lifecycle requirement.
+
 ## Uploads
 
 `compile-sources <sources> <new-output> <assets> [previous-output]` takes a captured source bundle:
@@ -57,7 +61,39 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
    schema's data. Interim limit: a request never installs anything, and `Loader::initialize` on a ready
    build changes nothing, so the stored rewrite rules and the app's Pages stay those of the build
    initialized last until a new build initializes; builds selected per request must share URL patterns
-   and page records with the build initialized last.
+   and page records with the build initialized last. A commerce build that declares shipping must also match the installed
+   shipping policy. Omitting `shipping` leaves the installed zones and rates under merchant control.
+   Inspection then reports no commerce-shipping step, including after a build that managed them.
+   An explicit `shipping: []` manages an empty policy and is checked like any other declaration. Selecting an older ready build does not restore shipping zones or methods;
+   its scalar store settings apply immediately while shipping rows remain at their last committed
+   state. Refuse a selection whose declared shipping policy differs from that installed state.
+   This applies after failed initialization too: a completed shipping transaction is not rolled
+   back if a later installation step fails. Block new checkout requests and drain active ones before changing shipping.
+   If initialization stopped partway through migrations, first repair the cause and retry initialization
+   of that same build. The migrator skips recorded statements. If DDL committed just before its
+   ledger entry could be written, verify the actual schema against that statement before using
+   `wp typedpress migrate --mark-applied <id>:<n>`. Keep checkout suspended if the schema cannot
+   be verified or the build cannot finish. A partially migrated schema has no supported recovery
+   baseline until it matches a stored snapshot.
+   Once the schema matches a stored build, use its ID as `previous-build` and compile the sources
+   declaring the intended shipping policy. If these inputs reproduce a ready ID, give the recovery
+   source tree a fresh public deployment revision (for example, a unique non-secret identifier in
+   `public/deployment-revision.txt`), recapture with `typedpress sources`, and compile again with
+   the same baseline. The changed asset produces a distinct build ID. Verify that the resulting
+   build has no ready receipt before initialization. After initialization, inspect the candidate as described below,
+   select it only when compatible, and then resume checkout. Historical orders must not be restored or rewritten as part of this recovery.
+   Check compatibility in a separate WordPress request/process: call `Loader::load($root, $build,
+   ['inspect' => true])` before WordPress initializes, then `Loader::inspect($root, $build)` after
+   `init`. Its `steps` list contains `{id: "commerce-shipping", kind: "commerce-shipping",
+   state: "pending"}` when the selected build's declared shipping differs from the site's recorded
+   source or current shipping rows. Refuse the selection when that entry exists, or when `refusals`
+   is non-empty or inspection fails. This reads live state even for an already-ready build; do not
+   use its stored initialization receipt as a compatibility check. Keep the host's deployment lock
+   and checkout suspension across this check and selection. Block every shipping writer for that
+   window: other initializers, Woo merchant administration and REST writes, CLI commands and jobs.
+   Rechecking without excluding those writers still leaves a race and is insufficient. There is
+   no need to read generated files, private options, or compare
+   a host-computed hash.
 4. Run `wp typedpress jobs tick` on a schedule. It does one bounded pass of the site's background work and
    prints `{processed, failures, outboxDispatched, requeued, receiptsExpired, remaining}`
    (`outboxDispatched` is always 0: jobs reach Action Scheduler in the transaction that queues them;
@@ -67,8 +103,13 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
    events under core's `doing_cron` lock, so overlapping ticks, or a tick beside `wp-cron.php` or
    Action Scheduler's runner, run each action and event once.
 
+The built-in TypedPress deployment receiver is not a qualified commerce host yet. It refuses
+commerce builds before mounting or initializing them and before selecting a rollback, rather than
+changing shared shipping rows without these safeguards. Standalone plugin installations and local
+`typedpress dev` remain available; external managed hosts must complete commerce qualification.
+
 <!-- generated by `cargo test --test host_contract` from src/host_contract.rs; do not edit below -->
-Host contract version: **1** (`hostContract` in the manifest).
+Host contract version: **2** (`hostContract` in the manifest).
 
 ### Reserved paths
 
@@ -88,6 +129,7 @@ The app API is `/__tp/api/v1`; actions are `POST /__tp/api/v1/actions/<name>`. T
 |---|---|
 | `TypedPress\Loader\Loader::load($root, $build, $options)` | before WordPress initializes, with the build the host selected for this request |
 | `TypedPress\Loader\Loader::initialize($root, $build)` | once per build per site, before the host exposes it: storage upgrades, migrations, identity maintenance, the content seed |
+| `TypedPress\Loader\Loader::inspect($root, $build)` | after mounting with load(..., ['inspect' => true]) and WordPress init, without initialization: returns steps and refusals; a steps entry with id commerce-shipping means the build's declared shipping policy does not match the site's recorded source and current shipping rows |
 | `TypedPress\Loader\Loader::sealed($root, $build)` | a sealed build's plugin allow-list, or null; with `Loader::allowedPlugins` and `Loader::keepUnlisted` in the host's own early code, before WordPress reads its active plugins |
 | `TypedPress\Loader\Store::gc($root, $keep)` | after the host deletes a version: keeps exactly the builds it still serves |
 
@@ -131,6 +173,11 @@ A build with prebuilt pages writes their HTML and Markdown below `wp-content/cac
 TypedPress puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}tp_<table>`, system tables `{prefix}tp__<name>`, identity tables `{prefix}tp_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads. An app's `existingTable` must be under that prefix (and not WordPress's, TypedPress's or Action Scheduler's own table, nor under another site's longer prefix, which need not end in `_`), or the Space's own Zero 0.8 table `sf_<space>_<table>_<10 hex>` with the converter's digest of that Space id and table name. The Space id comes from the host: `spacefast_content_space_id()` when it exists, else the `TP_SPACE_ID` constant defined before WordPress loads; on a `sfz_<24 hex>_` prefix it must also be the Space that prefix was made from. With neither, no 0.8 table binds. The longest name TypedPress adds after it is 29 characters, so a prefix may be at most 35 characters.
 
 ### Manifest `host` object
+
+For a build with `store()`, both the hosted manifest's `maxTablePrefix` and
+`host.maxTablePrefix` are **20**, because Woo's longest table suffix is 44 characters.
+The loader's early commerce policy enforces this before Woo initializes. Other builds use
+the ordinary 35-character limit shown below.
 
 ```json
 {

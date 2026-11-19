@@ -89,6 +89,8 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("typedpress", &["global"], overload("fields: object, options?: object", arity(1, 3), None, None)),
     ("typedpress", &["defineRelations"], overload("schema: object, relations: function", arity(2, 2), None, None)),
     ("typedpress", &["ref"], overload("kind: Collection | () => Collection", arity(1, 1), None, None)),
+    ("typedpress", &["store"], overload("options: object", arity(1, 1), None, None)),
+    ("typedpress", &["product", "productCategory", "productTag", "order"], overload("options?: object", arity(0, 1), None, None)),
     ("typedpress", &["taxonomy"], overload("fields?: object, options?: object", arity(0, 2), None, None)),
     ("typedpress", &["terms"], overload("taxonomy: Taxonomy | () => Taxonomy", arity(1, 1), None, None)),
     ("typedpress", &["defineConfig", "action", "job", "route", "env", "adminScreen", "item"], overload("one configuration or environment name", arity(1, 1), None, None)),

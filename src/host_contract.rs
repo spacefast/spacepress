@@ -10,7 +10,7 @@
 use serde_json::{Value, json};
 
 /// The host contract version, in every hosted manifest as `hostContract`.
-pub const HOST_CONTRACT: u32 = 1;
+pub const HOST_CONTRACT: u32 = 2;
 
 /// Paths below the site root that TypedPress answers itself; a host routes them to WordPress and keeps
 /// its own paths out of them.
@@ -121,6 +121,10 @@ pub const MOUNT: &[(&str, &str)] = &[
         "once per build per site, before the host exposes it: storage upgrades, migrations, identity maintenance, the content seed",
     ),
     (
+        "TypedPress\\Loader\\Loader::inspect($root, $build)",
+        "after mounting with load(..., ['inspect' => true]) and WordPress init, without initialization: returns steps and refusals; a steps entry with id commerce-shipping means the build's declared shipping policy does not match the site's recorded source and current shipping rows",
+    ),
+    (
         "TypedPress\\Loader\\Loader::sealed($root, $build)",
         "a sealed build's plugin allow-list, or null; with `Loader::allowedPlugins` and `Loader::keepUnlisted` in the host's own early code, before WordPress reads its active plugins",
     ),
@@ -187,7 +191,7 @@ pub fn render_doc() -> String {
     out.push_str(&format!("### Sealed mode\n\n{SEALED}\n\n"));
     out.push_str(&format!("### Prebuilt pages\n\n{PREBUILT}\n\n"));
     out.push_str(&format!("### Table prefix\n\n{TABLE_PREFIX} The longest name TypedPress adds after it is {MAX_SUFFIX} characters, so a prefix may be at most {} characters.\n\n", 64 - MAX_SUFFIX));
-    out.push_str("### Manifest `host` object\n\n```json\n");
+    out.push_str("### Manifest `host` object\n\nFor a build with `store()`, both the hosted manifest's `maxTablePrefix` and\n`host.maxTablePrefix` are **20**, because Woo's longest table suffix is 44 characters.\nThe loader's early commerce policy enforces this before Woo initializes. Other builds use\nthe ordinary 35-character limit shown below.\n\n```json\n");
     out.push_str(&serde_json::to_string_pretty(&manifest_host()).unwrap());
     out.push_str("\n```\n");
     out

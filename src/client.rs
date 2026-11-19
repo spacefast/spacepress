@@ -332,6 +332,20 @@ pub(crate) fn names(schema: &Schema) -> ClientNames {
         actions: IndexMap::new(),
     };
     let mut used = HashSet::new();
+    if schema.store.is_some() {
+        used.extend(
+            [
+                "WooCartItem",
+                "WooCartTotals",
+                "WooAddress",
+                "WooShippingPackage",
+                "WooCart",
+                "WooStoreError",
+                "WooCartClient",
+            ]
+            .map(String::from),
+        );
+    }
     for c in schema.collections.values() {
         let suffixes: &[&str] = if c.localized {
             &["", "Insert", "Patch", "With", "Filter", "Order", "Fields"]
@@ -566,7 +580,9 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
         // Write-only: accepted on create/update, never returned.
         insert.push("password?: string".into());
     }
-    if c.localized {
+    if c.commerce.as_deref() == Some("order") {
+        let _ = writeln!(s, "export type {n}Insert = never;");
+    } else if c.localized {
         // §7.3: a new row, or a translation joining another row's group. A translation copies every
         // synced (non-localized) column from its group, so those may be omitted there.
         insert.push("translationOf?: undefined".into());
@@ -598,7 +614,11 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     if c.auth {
         patch.push("password?: string".into());
     }
-    let _ = writeln!(s, "export interface {n}Patch {{ {} }}", patch.join("; "));
+    if c.commerce.as_deref() == Some("order") {
+        let _ = writeln!(s, "export type {n}Patch = never;");
+    } else {
+        let _ = writeln!(s, "export interface {n}Patch {{ {} }}", patch.join("; "));
+    }
 
     // With: relations (true or nested options) and media columns (true).
     let mut with = Vec::new();
@@ -779,9 +799,15 @@ pub fn files(
     // optional hooks entry point: it imports no React, so it type-checks in a project without one.
     for f in ["index.ts", "react.ts", "README.md", "LICENSE"] {
         if let Some(bytes) = runtime(&format!("client/{f}")) {
-            let text = String::from_utf8_lossy(bytes).replace("{{name}}", &schema.name);
+            let mut text = String::from_utf8_lossy(bytes).replace("{{name}}", &schema.name);
+            if f == "index.ts" && schema.store.is_some() {
+                text.push_str("\nexport * from \"./commerce.ts\";\n");
+            }
             out.push((f.to_string(), text.into_bytes()));
         }
+    }
+    if schema.store.is_some() {
+        out.push(("commerce.ts".into(), COMMERCE_RUNTIME.as_bytes().to_vec()));
     }
     out
 }
@@ -794,6 +820,7 @@ pub(crate) fn registry_value(c: &Column) -> String {
 /// The runtime half of the typed client, compiled in, so the browser compiler (which carries no
 /// embedded runtime) writes the same `client.js` as `typedpress build`.
 const CLIENT_RUNTIME: &str = include_str!("../runtime/client/index.ts");
+const COMMERCE_RUNTIME: &str = include_str!("../runtime/client/commerce.ts");
 
 /// The canonical client as one TypeScript module: the app's types and schema, then the runtime
 /// half without its imports (`runtime/client/index.ts`).
@@ -805,7 +832,13 @@ fn browser_source(schema: &Schema, results: &HashMap<String, Ty>) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    format!("{}\n{}\n{}", types_ts(schema, results), schema_ts(schema), body)
+    format!(
+        "{}\n{}\n{}\n{}",
+        types_ts(schema, results),
+        schema_ts(schema),
+        body,
+        if schema.store.is_some() { COMMERCE_RUNTIME } else { "" }
+    )
 }
 
 /// The declarations matching [`browser_javascript`], for TypeScript projects that import `client.js`.

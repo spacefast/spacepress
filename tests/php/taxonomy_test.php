@@ -14,8 +14,15 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $fixture = dirname(__DIR__) . '/fixtures/taxonomy';
+$schema = require "$fixture/schema.php";
+$merchantTags = $schema['taxonomies']['tags'];
+$merchantTags['key'] = 'merchantTags'; $merchantTags['label'] = 'Merchant tags';
+$merchantTags['columns']['uid'] = ['type' => 'text'];
+$merchantTags['relations'] = []; $merchantTags['url'] = null;
+$merchantTags['wp'] = ['taxonomy' => 'tp_merchant_tags', 'groupKey' => 'group_tp_merchant_tags', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_merchant_tags_', 'on' => ['posts']];
+$schema['taxonomies']['merchantTags'] = $merchantTags;
 $wp = wpSite('taxonomy', [
-    'schema' => require "$fixture/schema.php",
+    'schema' => $schema,
     'functions' => file_get_contents("$fixture/functions.php"),
     'users' => ['ed' => 'editor', 'alice' => 'author', 'sub' => 'subscriber'],
 ]);
@@ -37,6 +44,20 @@ function isProblem(string $label, array $r, int $status, string $code, ?string $
 }
 
 $names = static fn (array $rows): array => array_column($rows, 'name');
+
+// Authored uid keeps ordinary term metadata, including SCF's underscore-prefixed field reference.
+$merchant = wp_insert_term('Existing merchant tag', 'tp_merchant_tags')['term_id'];
+update_term_meta($merchant, 'tp_uid', 'merchant-42');
+update_term_meta($merchant, '_tp_uid', 'field_tp_merchant_tags_uid');
+eq('existing authored taxonomy uid values keep their metadata key', $db->findFirst('merchantTags', ['where' => ['id' => $merchant]])['uid'], 'merchant-42');
+eq('authored uid filters use the existing metadata', array_column($db->findMany('merchantTags', ['where' => ['uid' => 'merchant-42']]), 'id'), [$merchant]);
+$db->update('merchantTags', ['uid' => 'merchant-43'], ['id' => $merchant]);
+eq('API writes preserve authored uid storage and the SCF field reference', [get_term_meta($merchant, 'tp_uid', true), get_term_meta($merchant, '_tp_uid', true)], ['merchant-43', 'field_tp_merchant_tags_uid']);
+eq('SCF reads the authored uid written through the API', get_field('field_tp_merchant_tags_uid', 'term_' . $merchant), 'merchant-43');
+update_field('field_tp_merchant_tags_uid', 'merchant-44', 'term_' . $merchant);
+eq('API reads the authored uid written through SCF', $db->findFirst('merchantTags', ['where' => ['id' => $merchant]])['uid'], 'merchant-44');
+$newMerchant = $db->insert('merchantTags', ['name' => 'New merchant tag', 'uid' => 'merchant-45'], true)[0];
+eq('API-created authored uid values use ordinary term metadata', [$newMerchant['uid'], get_term_meta($newMerchant['id'], 'tp_uid', true)], ['merchant-45', 'merchant-45']);
 
 // ================================================================ registration (ruling 25)
 

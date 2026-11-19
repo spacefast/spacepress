@@ -1041,6 +1041,11 @@
 				"once",
 				"env",
 				"files",
+				"store",
+				"product",
+				"productcategory",
+				"producttag",
+				"order",
 				"reusable-fields"
 			],
 			"prev": "/reference",

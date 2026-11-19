@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,14 +33,16 @@ for (const dir of clients) {
   test(`${dir} matches runtime/client/`, () => {
     const name = /"name":\s*"([^"]*)"/.exec(readFileSync(join(repo, dir, "schema.ts"), "utf8"))?.[1];
     assert.ok(name, `${dir}/schema.ts names no app`);
-    const stale = COPIED.filter((file) => {
+    const commerce = existsSync(join(repo, dir, 'commerce.ts'));
+    const stale = [...COPIED, ...(commerce ? ['commerce.ts'] : [])].filter((file) => {
       let committed: string;
       try {
         committed = readFileSync(join(repo, dir, file), "utf8");
       } catch {
         return true;
       }
-      return committed !== runtime(file).replaceAll("{{name}}", name);
+      const expected = runtime(file).replaceAll("{{name}}", name) + (file === 'index.ts' && commerce ? '\nexport * from "./commerce.ts";\n' : '');
+      return committed !== expected;
     });
     assert.deepEqual(stale, [], `${dir} is stale: run \`typedpress build\` in ${dirname(dirname(dirname(dir)))} and commit ${dir}/`);
   });

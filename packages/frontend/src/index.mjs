@@ -82,7 +82,17 @@ async function frameworkPlugins(root, frameworks) {
     const { default: solidPlugin } = await import('vite-plugin-solid');
     // The Solid plugin applies its filter before stripping an import query.
     const include = solid.flatMap((glob) => [glob, `${glob}[?]*`]);
-    plugins.push(solidPlugin({ include, exclude: resourceQuery, hot: false }));
+    plugins.push(solidPlugin({ include, exclude: resourceQuery, hot: false }), {
+      name: 'typedpress:solid-browser-exports',
+      configEnvironment: {
+        order: 'post',
+        handler(_name, config) {
+          // The Solid JSX transform is scoped to the app's globs. Dependencies use their compiled exports.
+          const resolve = config.resolve;
+          if (resolve?.conditions) resolve.conditions = resolve.conditions.filter((condition) => condition !== 'solid');
+        },
+      },
+    });
   }
   if (frameworks.vue) {
     const { default: vuePlugin } = await import('@vitejs/plugin-vue');

@@ -57,11 +57,12 @@ test('one WordPress route loads interactive React, Preact, Solid and Vue compone
       render(<Counter />, document.querySelector('#preact')!);
     `,
     'browser/solid.tsx': `
+      import { ToggleButton } from '@kobalte/core/toggle-button';
       import { createSignal } from 'solid-js';
       import { render } from 'solid-js/web';
       function Counter() {
         const [count, setCount] = createSignal(0);
-        return <button onClick={() => setCount(count() + 1)}>Solid {count()}</button>;
+        return <ToggleButton onChange={() => setCount(count() + 1)}>Solid {count()}</ToggleButton>;
       }
       render(() => <Counter />, document.querySelector('#solid')!);
     `,
@@ -108,6 +109,7 @@ test('one WordPress route loads interactive React, Preact, Solid and Vue compone
     await button.click();
     await page.getByRole('button', { name: `${framework} 1`, exact: true }).waitFor();
   }
+  assert.equal(await page.getByRole('button', { name: 'Solid 1', exact: true }).getAttribute('aria-pressed'), 'true');
   const color = await page.getByRole('button', { name: 'Vue 1', exact: true }).evaluate((button) => getComputedStyle(button).color);
   assert.equal(color, 'rgb(31, 71, 131)');
   assert.deepEqual(errors, []);

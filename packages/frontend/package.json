@@ -46,6 +46,7 @@
     "access": "public"
   },
   "devDependencies": {
+    "@kobalte/core": "0.13.14",
     "preact": "11.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -109,7 +109,8 @@ React JSX works by default. Set project-relative include globs for Preact
 and Solid JSX, and enable Vue to import `.vue` single-file components.
 A JSX file can have one transform. React and Preact keep their own runtime
 imports. Solid uses the Solid 1.x compiler integration and Vue uses the
-compiler from the project's Vue 3 package.
+compiler from the project's Vue 3 package. Solid dependencies use their
+compiled browser-compatible exports.
 
 ```js
 import { buildFrontend } from "@typedpress/frontend";

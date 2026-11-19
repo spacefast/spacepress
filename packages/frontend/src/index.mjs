@@ -100,7 +100,10 @@ async function compileFrontend({ root, inputs, publicDir, generated }) {
     throw new Error(`public/${assetDirectory} is reserved for generated frontend files. Move the existing path first.`);
   }
   const previousMetadata = await statIfPresent(metadataFile);
-  if (previousMetadata && (!previousMetadata.isFile() || !(await readFile(metadataFile, 'utf8')).startsWith(generatedHeader))) {
+  if (previousMetadata && (
+    !previousMetadata.isFile() || !(await readFile(metadataFile, 'utf8'))
+      .replace(/^\uFEFF/, '').replace('\r\n', '\n').startsWith(generatedHeader)
+  )) {
     throw new Error('tp/_generated/frontend.ts is reserved for generated metadata. Move the existing file first.');
   }
 

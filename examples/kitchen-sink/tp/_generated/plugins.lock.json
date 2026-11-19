@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "plugins": {
+    "policy": {
+      "package": "typedpress-plugin-kitchen-policy",
+      "version": "1.0.0",
+      "integrity": "sha256-88a8887f1887fc420f3040a401f202823ef6a49b2d8c7eef590b1557dcda66cb",
+      "grant": {
+        "read": [
+          "events"
+        ],
+        "write": [
+          "events.venue"
+        ],
+        "delete": [],
+        "hooks": [
+          "events.beforeCreate"
+        ],
+        "actions": [],
+        "http": [],
+        "env": [],
+        "mail": [],
+        "jobs": [],
+        "timers": [],
+        "abilities": [],
+        "wpHooks": [],
+        "php": []
+      }
+    }
+  }
+}

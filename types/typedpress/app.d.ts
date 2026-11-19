@@ -176,3 +176,9 @@ export declare function Link(props: {
   target?: string;
   "aria-current"?: string;
 }): JSX.Element;
+
+/** A GET search form using the app's `q` query parameter. */
+export declare function Search(props: { action?: Href; label?: string; placeholder?: string; className?: string }): JSX.Element;
+
+/** Search results from one kind with a URL, or from every searchable kind with a URL. */
+export declare function SearchResults(props: { kind?: string; q: string | null | undefined; page?: number; perPage?: number; className?: string }): JSX.Element;

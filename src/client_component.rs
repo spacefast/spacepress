@@ -856,7 +856,7 @@ impl Analysis {
                 Some(Binding::State { .. } | Binding::Prop | Binding::Item) => format!("context.{n}"),
                 Some(Binding::Derived) => format!("state.{n}"),
                 Some(Binding::Shared) => format!("state.{n}"),
-                Some(Binding::Ref) => "getElement().ref".to_string(),
+                Some(Binding::Ref) => "({ current: getElement().ref })".to_string(),
                 Some(Binding::Static(js)) => format!("({js})"),
                 Some(Binding::Action) => format!(
                     "(() => {{ throw new Error({}) }})()",

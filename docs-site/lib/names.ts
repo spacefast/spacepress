@@ -14,7 +14,8 @@ const rules: [RegExp, string][] = [
 	[/\/wp-json\/zero\/v1/g, "/wp-json/tp/v1"],
 	[/\bzero\/v1\b/g, "tp/v1"],
 	// v2 browser paths only. /__zero/auth, /__zero/run, /__zero/config and /__zero/realtime/* are 0.8.
-	[/\/__zero\/(api\/v1\/|client\.js|client\.d\.ts|realtime\.js)/g, "/__tp/$1"],
+	[/\/__zero\/api\/v1\//g, "/wp-json/typedpress/v1/"],
+	[/\/__zero\/(client\.js|client\.d\.ts|realtime\.js)/g, "/__tp/$1"],
 	[/zero-identity/g, "typedpress-identity"],
 	[/zero-(app|pages)-(?=[a-z<{\\])/g, "typedpress-$1-"],
 	[/\bzero-test-(admin|editor)\b/g, "typedpress-test-$1"],

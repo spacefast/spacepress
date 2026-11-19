@@ -332,7 +332,7 @@ eq('valid native cookie unlocks the same viewer-bound body as WordPress', [post_
 unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
 eq('removing password proof invalidates visibility', [$db->findMany('posts', ['where' => $protectedWhere], $anon), $coreRead()->get_status()], [[], 404]);
 $wp->startServer();
-$wire = json_decode(file_get_contents($wp->url() . '/__tp/api/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
+$wire = json_decode(file_get_contents($wp->url() . '/wp-json/typedpress/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
 eq('anonymous HTTP cannot read a native password-protected record', [$wire['status'] ?? null, $wire['code'] ?? null], [404, 'not_found']);
 $db->delete('comments', ['id' => $linked['id']]);
 $db->delete('posts', ['id' => ['in' => [$protected['id'], $public['id']]]]);

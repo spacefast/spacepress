@@ -134,7 +134,7 @@ if (!subdir) {
 			Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
 		};
 		const authorName = `Browser author ${Date.now()}`;
-		const author = await request.post(`${site}/__tp/api/v1/authors`, {
+		const author = await request.post(`${site}/wp-json/typedpress/v1/authors`, {
 			headers: adminHeaders,
 			data: { name: authorName, email: `browser-${Date.now()}@example.com` },
 		});
@@ -225,7 +225,7 @@ if (!subdir) {
 		const headers = {
 			Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}`,
 		};
-		const persisted = await request.get(`${site}/__tp/api/v1/posts/${id}`, {
+		const persisted = await request.get(`${site}/wp-json/typedpress/v1/posts/${id}`, {
 			headers,
 		});
 		expect(persisted.status()).toBe(200);
@@ -241,7 +241,7 @@ if (!subdir) {
 			['POST', 'PUT'].includes(r.request().method()));
 		await page.getByRole('button', { name: 'Publish', exact: true }).click();
 		expect((await published).status()).toBe(200);
-		const publicRecord = await request.get(`${site}/__tp/api/v1/posts/${id}`);
+		const publicRecord = await request.get(`${site}/wp-json/typedpress/v1/posts/${id}`);
 		expect(publicRecord.status()).toBe(200);
 		expect((await publicRecord.json()).data).toMatchObject({
 			status: 'published', excerpt: 'Edited in native Fields',
@@ -292,7 +292,7 @@ if (!subdir) {
 		).toHaveValue(`${title} edited`);
 		await page.screenshot({ path: test.info().outputPath('table-edit.png') });
 		const comment = await request.get(
-			`${site}/__tp/api/v1/comments/${commentId}`,
+			`${site}/wp-json/typedpress/v1/comments/${commentId}`,
 			{ headers }
 		);
 		expect(comment.status()).toBe(200);
@@ -305,7 +305,7 @@ if (!subdir) {
 		await page.getByRole('link', { name: 'Back to Comments', exact: true }).click();
 		const leave = page.getByRole('dialog');
 		const refused = page.waitForResponse((r) =>
-			new URL(r.url()).pathname.endsWith(`/__tp/api/v1/comments/${commentId}`) &&
+			new URL(r.url()).pathname.endsWith(`/wp-json/typedpress/v1/comments/${commentId}`) &&
 			['POST', 'PATCH'].includes(r.request().method()));
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await refused).status()).toBe(422);
@@ -317,7 +317,7 @@ if (!subdir) {
 		await page.getByRole('link', { name: 'Back to Comments', exact: true }).click();
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
 		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/comments`);
-		const corrected = await request.get(`${site}/__tp/api/v1/comments/${commentId}`, { headers });
+		const corrected = await request.get(`${site}/wp-json/typedpress/v1/comments/${commentId}`, { headers });
 		expect((await corrected.json()).data.body).toBe('Corrected table record');
 		expect(errors).toEqual([]);
 	});
@@ -332,7 +332,7 @@ if (!subdir) {
 		};
 		await login(page, 'admin');
 		// Invalid JSON is an unsaved draft even when core-data has no edits.
-		const event = await request.post(`${site}/__tp/api/v1/dossier`, {
+		const event = await request.post(`${site}/wp-json/typedpress/v1/dossier`, {
 			headers: adminHeaders, data: { title: 'JSON browser draft', payload: { committed: true }, entries: [], sections: [{ layout: 'first', configuration: { initial: true } }] },
 		});
 		expect(event.status(), await event.text()).toBe(201);
@@ -370,7 +370,7 @@ if (!subdir) {
 			['POST', 'PUT'].includes(r.request().method()));
 		await eventSave.click();
 		expect((await jsonSaved).status()).toBe(200);
-		const eventRead = await request.get(`${site}/__tp/api/v1/dossier/${eventId}`, { headers: adminHeaders });
+		const eventRead = await request.get(`${site}/wp-json/typedpress/v1/dossier/${eventId}`, { headers: adminHeaders });
 		const savedEvent = (await eventRead.json()).data;
 		expect(savedEvent.payload).toBe(false);
 		expect(savedEvent.sections).toEqual([{ layout: 'second', configuration: null }]);
@@ -387,7 +387,7 @@ if (!subdir) {
 			['POST', 'PUT'].includes(r.request().method()));
 		await eventSave.click();
 		expect((await siblingSaved).status()).toBe(200);
-		const siblingRead = await request.get(`${site}/__tp/api/v1/dossier/${eventId}`, { headers: adminHeaders });
+		const siblingRead = await request.get(`${site}/wp-json/typedpress/v1/dossier/${eventId}`, { headers: adminHeaders });
 		expect((await siblingRead.json()).data).toMatchObject({
 			payload: savedEvent.payload,
 			sections: [{ layout: 'second', configuration: null }, { layout: 'first', configuration: null }],
@@ -404,7 +404,7 @@ if (!subdir) {
 		await expect(page.getByRole('group', { name: 'Entries', exact: true }).locator('textarea')).toHaveCount(0);
 		await page.screenshot({ path: test.info().outputPath('retired-json-drafts.png'), animations: 'disabled' });
 		// Plain forms use the same document-level leave flow, including invalid-only drafts.
-		const plain = await request.post(`${site}/__tp/api/v1/events`, {
+		const plain = await request.post(`${site}/wp-json/typedpress/v1/events`, {
 			headers: adminHeaders, data: { title: 'Plain saved title', extra: { saved: true } },
 		});
 		expect(plain.status(), await plain.text()).toBe(201);
@@ -452,7 +452,7 @@ if (!subdir) {
 		await page.getByRole('dialog').getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await plainSaved).status()).toBe(200);
 		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/events`);
-		const plainRead = await request.get(`${site}/__tp/api/v1/events/${plainId}`, { headers: adminHeaders });
+		const plainRead = await request.get(`${site}/wp-json/typedpress/v1/events/${plainId}`, { headers: adminHeaders });
 		expect((await plainRead.json()).data).toMatchObject({ title: 'Plain saved on leave', extra: { saved: true } });
 		expect(errors).toEqual([]);
 	});
@@ -461,7 +461,7 @@ if (!subdir) {
 		request,
 	}) => {
 		const postTitle = `Read-only browser ${Date.now()}`;
-		const seeded = await request.post(`${site}/__tp/api/v1/posts`, {
+		const seeded = await request.post(`${site}/wp-json/typedpress/v1/posts`, {
 			headers: {
 				Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}`,
 			},
@@ -470,7 +470,7 @@ if (!subdir) {
 		expect(seeded.status(), await seeded.text()).toBe(201);
 		const { id } = (await seeded.json()).data;
 		const title = `Readable dossier ${Date.now()}`;
-		const dossier = await request.post(`${site}/__tp/api/v1/dossier`, {
+		const dossier = await request.post(`${site}/wp-json/typedpress/v1/dossier`, {
 			headers: {
 				Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
 			},
@@ -479,7 +479,7 @@ if (!subdir) {
 		expect(dossier.status(), await dossier.text()).toBe(201);
 		const dossierId = (await dossier.json()).data.id;
 		const claimTitle = `Readable foreign claim ${Date.now()}`;
-		const claim = await request.post(`${site}/__tp/api/v1/claims`, {
+		const claim = await request.post(`${site}/wp-json/typedpress/v1/claims`, {
 			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
 			data: { title: claimTitle, ownerId: harness.users.admin.id, meta: {} },
 		});
@@ -517,7 +517,7 @@ if (!subdir) {
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill(`${title} edited`);
 		await page.getByRole('button', { name: 'Save changes', exact: true }).click();
 		await expect(page.locator('.components-notice__content').getByText('Saved.', { exact: true })).toBeVisible();
-		const readback = await request.get(`${site}/__tp/api/v1/dossier/${dossierId}`, {
+		const readback = await request.get(`${site}/wp-json/typedpress/v1/dossier/${dossierId}`, {
 			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
 		});
 		expect((await readback.json()).data).toMatchObject({ title: `${title} edited`, body: '<p>Private original body</p>' });
@@ -530,13 +530,13 @@ if (!subdir) {
 		await page.reload();
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(claimTitle);
 		await page.screenshot({ path: test.info().outputPath('readable-rule-record.png'), animations: 'disabled' });
-		const denied = await request.patch(`${site}/__tp/api/v1/claims/${claimId}`, {
+		const denied = await request.patch(`${site}/wp-json/typedpress/v1/claims/${claimId}`, {
 			headers: { Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}` },
 			data: { title: 'Forbidden update' },
 		});
 		// Row-filtered updates conceal rows outside the caller's update scope.
 		expect(denied.status()).toBe(404);
-		const claimReadback = await request.get(`${site}/__tp/api/v1/claims/${claimId}`, {
+		const claimReadback = await request.get(`${site}/wp-json/typedpress/v1/claims/${claimId}`, {
 			headers: { Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}` },
 		});
 		expect(claimReadback.status()).toBe(200);
@@ -570,7 +570,7 @@ if (!subdir) {
 			page.getByRole('textbox', { name: 'Tagline', exact: true })
 		).toHaveValue(/Saved from the browser/);
 		const global = await request.get(
-			`${site}/__tp/api/v1/settings`,
+			`${site}/wp-json/typedpress/v1/settings`,
 			{ headers }
 		);
 		expect((await global.json()).data.tagline).toMatch(
@@ -580,7 +580,7 @@ if (!subdir) {
 		const name = `browser-${Date.now()}`;
 		const uploaded = page.waitForResponse(
 				(r) =>
-					r.url().includes('/__tp/api/v1/media') && r.request().method() === 'POST' && r.status() === 201
+					r.url().includes('/wp-json/typedpress/v1/media') && r.request().method() === 'POST' && r.status() === 201
 		);
 		const chooser = page.waitForEvent('filechooser');
 		await page
@@ -620,7 +620,7 @@ if (!subdir) {
 			page.getByRole('textbox', { name: 'Alt text', exact: true })
 		).toHaveValue('Browser image description');
 		const media = await request.get(
-			`${site}/__tp/api/v1/media/${mediaId}`,
+			`${site}/wp-json/typedpress/v1/media/${mediaId}`,
 			{ headers }
 		);
 		expect((await media.json()).data.alt).toBe('Browser image description');
@@ -652,7 +652,7 @@ if (!subdir) {
 		await expect(page).toHaveURL(`${site}/wp-admin/new/media/${mediaId}`);
 		await leave.getByRole('button', { name: 'Close', exact: true }).click();
 		await expect(caption).toHaveValue('Saved caption on leave');
-		const partial = await request.get(`${site}/__tp/api/v1/media/${mediaId}`, { headers });
+		const partial = await request.get(`${site}/wp-json/typedpress/v1/media/${mediaId}`, { headers });
 		expect((await partial.json()).data.alt).toBe('Saved on media leave');
 		await page.unroute(captionUrl);
 		await caption.fill(originalCaption);
@@ -710,8 +710,8 @@ if (!subdir) {
 		await expect(page).toHaveURL(`${site}/wp-admin/new/media`);
 		// The rotated copy retains the title; deletion targets the original ID.
 		await expect(page.locator(`a[href$="/wp-admin/new/media/${mediaId}"]`)).toHaveCount(0);
-		expect((await request.get(`${site}/__tp/api/v1/media/${mediaId}`, { headers })).status()).toBe(404);
-		expect((await request.get(`${site}/__tp/api/v1/media/${editedImage.id}`, { headers })).status()).toBe(200);
+		expect((await request.get(`${site}/wp-json/typedpress/v1/media/${mediaId}`, { headers })).status()).toBe(404);
+		expect((await request.get(`${site}/wp-json/typedpress/v1/media/${editedImage.id}`, { headers })).status()).toBe(200);
 	});
 
 test('restored native WordPress routes persist settings and published content and keep classic pages reachable in TypedPress Admin', async ({ page, request }) => {

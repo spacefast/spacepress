@@ -188,7 +188,7 @@ $out['guest buy'] = [$sold['status'], $sold['path'], preg_replace('/[0-9A-F]{8}/
 $out['stock after'] = texts(fetch("$url/drives/wd-red-plus-4tb/")['body'], "//aside[@class='buybox']//p[@class='muted']");
 $out['over stock'] = texts(submit($buy, ['buyerName' => 'Greedy', 'buyerEmail' => 'g@example.test', 'quantity' => '3'])['body'], "//p[@class='error']");
 // The buyer never sends a price: the action takes none (an unknown field is refused), and the hook sets it.
-$priced = fetch("$url/__tp/api/v1/actions/buy", 'POST', ['Content-Type: application/json'], '{"drive":1,"buyerName":"X","buyerEmail":"x@example.test","total":1}');
+$priced = fetch("$url/wp-json/typedpress/v1/actions/buy", 'POST', ['Content-Type: application/json'], '{"drive":1,"buyerName":"X","buyerEmail":"x@example.test","total":1}');
 $out['price from buyer'] = $priced['status'];
 
 // A signed-in customer buys, then finds the order under My orders; nobody else sees it.
@@ -219,13 +219,13 @@ $out['staff drive names'] = [
     'orders' => texts($staff['body'], '//table[1]//tbody/tr/td[2]'),
     'movements' => texts($afterRestock['body'], '//table[last()]//tbody/tr/td[2]'),
 ];
-$restock = fetch("$url/__tp/api/v1/actions/restock", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('ann'))], '{"drive":1,"quantity":1}');
+$restock = fetch("$url/wp-json/typedpress/v1/actions/restock", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('ann'))], '{"drive":1,"quantity":1}');
 $out['restock as customer'] = $restock['status'];
 foreach (['editor', 'ann'] as $name) {
-    $pending = fetch("$url/__tp/api/v1/actions/pendingOrders", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword($name))], '{}');
+    $pending = fetch("$url/wp-json/typedpress/v1/actions/pendingOrders", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword($name))], '{}');
     $out['pending orders'][$name] = [$pending['status'], array_column(json_decode($pending['body'], true)['data']['rows'] ?? [], 'buyer')];
 }
-$orders = fetch("$url/__tp/api/v1/orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('ann'))]);
+$orders = fetch("$url/wp-json/typedpress/v1/orders", headers: ['Authorization: Basic ' . base64_encode($site->appPassword('ann'))]);
 $out['orders api as ann'] = array_column(json_decode($orders['body'], true)['data'] ?? [], 'buyerName');
 
 // Reviews: a customer's first review is held and shown only to them; a signed-out visitor gets a link.
@@ -257,7 +257,7 @@ $after = fetch("$url/");
 $out['settings'] = [texts($after['body'], "//p[@class='notice']"), texts($after['body'], "$cards//strong[@class='price']")[0] ?? null];
 
 // The price rule holds on the API too.
-$bad = fetch("$url/__tp/api/v1/drives", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('editor'))], '{"name":"X","brand":"B","model":"M","capacityGb":10,"price":1.234}');
+$bad = fetch("$url/wp-json/typedpress/v1/drives", 'POST', ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($site->appPassword('editor'))], '{"name":"X","brand":"B","model":"M","capacityGb":10,"price":1.234}');
 $out['bad price'] = [$bad['status'], json_decode($bad['body'], true)['detail'] ?? $bad['body']];
 
 // TypedPress Admin's classic list screen for a table labels its columns from `.ui({ label })`.

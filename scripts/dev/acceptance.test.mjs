@@ -160,7 +160,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
       console.error('Native request failed:', method, path, error.cause ?? error);
       // Diagnose a fresh read-only connection without replaying the failed operation.
       const health = await new Promise((done) => {
-        const probe = get(`${base}/__tp/api/v1`, { agent: false, signal: AbortSignal.timeout(3000) }, (response) => {
+        const probe = get(`${base}/wp-json/typedpress/v1`, { agent: false, signal: AbortSignal.timeout(3000) }, (response) => {
           response.resume();
           response.on('end', () => done({ status: response.statusCode }));
           response.on('error', (failure) => done({ error: failure.message, code: failure.code }));
@@ -179,7 +179,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
     assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(result)}`);
     return result.data ?? result;
   }
-  const api = (path, options) => request(`/__tp/api/v1${path}`, options);
+  const api = (path, options) => request(`/wp-json/typedpress/v1${path}`, options);
   const schema = await api('');
   assert.equal(schema.runtime.wp.database.kind, 'sqlite');
   assert.equal(schema.runtime.identity, true);

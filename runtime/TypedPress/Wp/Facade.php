@@ -8,38 +8,43 @@ use TypedPress\HttpError;
 use TypedPress\Js;
 
 /**
- * `/__tp/api/v1` (spec §3a): one clean HTTP shape over core's routes. Every request is dispatched
+ * `/wp-json/typedpress/v1` (spec §3a): one clean HTTP shape over core's routes. Every request is dispatched
  * to the core route with `rest_do_request()` as the caller, and only input and output are mapped, so
  * there is no second permission check, query path or write path to disagree with core:
  *
- *   GET    /__tp/api/v1/<kind>          → GET  /wp/v2/<base>        { data: rows, cursor }
- *   GET    /__tp/api/v1/<kind>/<id>     → GET  /wp/v2/<base>/<id>   { data: row } (`?format=md`: markdown)
- *   POST   /__tp/api/v1/<kind>          → POST /wp/v2/<base>        TypedPress input → core input
- *   PATCH  /__tp/api/v1/<kind>/<id>     → POST /wp/v2/<base>/<id>
- *   DELETE /__tp/api/v1/<kind>/<id>     → DELETE /wp/v2/<base>/<id> (post kinds: force)
- *   GET    /__tp/api/v1/me              → GET  /wp/v2/users/me      { id, name, role } + the user's row
- *   POST   /__tp/api/v1/actions/<name>  → /wp-abilities/v1/abilities/<app>/<name>/run (GET if readonly)
- *   GET/PATCH /__tp/api/v1/<global>      → the global's get/update Ability, through the same run route
- *   GET/PATCH /__tp/api/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
- *   GET    /__tp/api/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
- *   POST   /__tp/api/v1/_live           → subscribed reads: "not modified" or fresh results (Live\Module)
- *   GET    /__tp/api/v1                 → the app's schema: kinds, fields, actions (`typedpress pull`)
+ *   GET    /wp-json/typedpress/v1/<kind>          → GET  /wp/v2/<base>        { data: rows, cursor }
+ *   GET    /wp-json/typedpress/v1/<kind>/<id>     → GET  /wp/v2/<base>/<id>   { data: row } (`?format=md`: markdown)
+ *   POST   /wp-json/typedpress/v1/<kind>          → POST /wp/v2/<base>        TypedPress input → core input
+ *   PATCH  /wp-json/typedpress/v1/<kind>/<id>     → POST /wp/v2/<base>/<id>
+ *   DELETE /wp-json/typedpress/v1/<kind>/<id>     → DELETE /wp/v2/<base>/<id> (post kinds: force)
+ *   GET    /wp-json/typedpress/v1/me              → GET  /wp/v2/users/me      { id, name, role } + the user's row
+ *   POST   /wp-json/typedpress/v1/actions/<name>  → /wp-abilities/v1/abilities/<app>/<name>/run (GET if readonly)
+ *   GET/PATCH /wp-json/typedpress/v1/<global>      → the global's get/update Ability, through the same run route
+ *   GET/PATCH /wp-json/typedpress/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
+ *   GET    /wp-json/typedpress/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
+ *   POST   /wp-json/typedpress/v1/_live           → subscribed reads: "not modified" or fresh results (Live\Module)
+ *   GET    /wp-json/typedpress/v1                 → the app's schema: kinds, fields, actions (`typedpress pull`)
  *   …/<kind>/<id>/staged[/compare|/promote|/preview] → a post kind's staged version ({@see Staged})
  *
- * Errors are RFC 9457 problem documents mapped from core's `WP_Error`. Callers authenticate as core
- * accepts: the cookie with `X-WP-Nonce`, an application password, or a TypedPress Identity bearer token.
- * It sits outside `/wp-json` (like `/__spacefast/`), served on `do_parse_request` before the theme.
+ * Errors are RFC 9457 problem documents mapped from core's `WP_Error`. It is one route on WordPress's
+ * REST server (`typedpress/v1`), so core does what every `/wp-json` route gets: authentication (the
+ * cookie with `X-WP-Nonce`, an application password, or a TypedPress Identity bearer token), CORS and
+ * preflights, `_method` and `X-HTTP-Method-Override`, and `HEAD`. The callback answers with
+ * TypedPress's own body and headers ({@see served()}).
  * 0.8's `/__zero/config`, `/__zero/run`, `/__zero/auth/*` and `/__zero/realtime/events` are not
  * this facade's and are never answered here.
  */
 final class Facade
 {
-    public const PREFIX = '/__tp/api/v1';
+    /** The REST namespace the API is served under. */
+    public const NAMESPACE = 'typedpress/v1';
+    /** The API's path on a site with WordPress's default REST prefix (`rest_url()` gives the real one). */
+    public const PREFIX = '/wp-json/' . self::NAMESPACE;
 
-    /** The absolute URL of a facade path (`/media/42`), below the site's home URL. */
+    /** The absolute URL of a facade path (`/media/42`), as WordPress's REST URL. */
     public static function url(string $path = ''): string
     {
-        return home_url(self::PREFIX . $path);
+        return rest_url(self::NAMESPACE . $path);
     }
 
     /**
@@ -93,60 +98,90 @@ final class Facade
 
     public static function register(Plugin $plugin): void
     {
-        add_filter('do_parse_request', static function (bool $parse) use ($plugin): bool {
-            if ($parse) {
-                self::serve($plugin);
-            }
-
-            return $parse;
-        }, 0);
+        add_action('rest_api_init', static function () use ($plugin): void {
+            $handler = [
+                'methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+                'callback' => static fn (\WP_REST_Request $request): \WP_REST_Response => self::answer($plugin, $request),
+                // Each path is checked by what it dispatches to: core's route, the ability's own check.
+                'permission_callback' => '__return_true',
+            ];
+            register_rest_route(self::NAMESPACE, '/(?P<path>.+)', $handler);
+            // The namespace's own path is the app's schema, in place of core's namespace index.
+            rest_get_server()->register_route(self::NAMESPACE, '/' . self::NAMESPACE, [$handler], true);
+        });
+        add_filter('rest_pre_serve_request', [self::class, 'served'], 100, 3);
+        add_filter('rest_allowed_cors_headers', static fn (array $headers, mixed $request = null): array => $request instanceof \WP_REST_Request && self::below((string) $request->get_route()) !== null
+            ? array_merge($headers, ['Idempotency-Key', 'TypedPress-Signature']) : $headers, 10, 2);
     }
 
-    private static function serve(Plugin $plugin): void
+    /** The answer the API's callback made for this request: status, headers, body. */
+    private static ?array $answer = null;
+
+    /** The API path being answered ('' for the schema), once core has dispatched to the API. */
+    private static ?string $serving = null;
+
+    /** The API's callback: TypedPress's answer, sent as it is by {@see served()}. */
+    private static function answer(Plugin $plugin, \WP_REST_Request $request): \WP_REST_Response
     {
-        $path = self::path();
-        if ($path === null) {
-            return;
-        }
-        if (!defined('REST_REQUEST')) {
-            define('REST_REQUEST', true); // core's REST behaviour (auth, caching headers) for the dispatches
-        }
-        // Every answer here depends on who asks (PRIVATE). Batcache ignores `Cache-Control` and keeps
-        // what any request without a WordPress cookie printed, so it would replay an anonymous list
-        // after a write, or a signed-in answer to an anonymous visitor.
-        if (function_exists('batcache_cancel')) {
-            batcache_cancel();
-        }
-        // WordPress's CORS for the request's origin, as /wp-json sends it (rest_send_cors_headers and
-        // the filters on it), and its answer to a preflight.
-        $method = self::method();
-        rest_send_cors_headers(false);
-        if ($method === 'OPTIONS') {
-            header('Access-Control-Allow-Headers: ' . implode(', ', (array) apply_filters('rest_allowed_cors_headers',
-                ['Authorization', 'X-WP-Nonce', 'Content-Disposition', 'Content-MD5', 'Content-Type', 'Idempotency-Key', 'TypedPress-Signature'], new \WP_REST_Request('OPTIONS', self::PREFIX . $path))));
-            self::emit(204, self::PRIVATE, '');
-        }
+        $path = self::below((string) $request->get_route()) ?? '';
+        self::$serving = $path;
         try {
             if ($plugin->unavailable() !== null) {
                 throw new HttpError(503, 'unavailable', Plugin::UNAVAILABLE);
             }
-            $auth = self::authenticate();
-            if ($auth instanceof \WP_Error) {
-                // A form whose nonce has expired goes back to its page with the error, as a refused action does.
-                if (($form = self::formAction($method, $path)) !== null) {
-                    self::emit(...\TypedPress\Render\Forms::redirect($form, (string) file_get_contents('php://input'), null, \TypedPress\App::problem(self::fromWpError($auth, 401))));
-                }
-                self::problem($auth);
-            }
-            $query = self::query();
-            [$status, $headers, $body] = self::route($plugin, $method, $path, $query, (string) file_get_contents('php://input'));
-            self::emit($status, $headers, $body);
+            // Core has decoded the route; route() takes the path as sent, one segment at a time.
+            $sent = implode('/', array_map('rawurlencode', explode('/', $path)));
+            self::$answer = self::route($plugin, $request->get_method(), $sent, self::query(), $request->get_body());
         } catch (HttpError | \TypedPress\JsError $e) {
-            $problem = \TypedPress\App::problem($e);
-            // Storage behind the build is short-lived: a client retries shortly, as /wp-json said.
-            $retry = $problem['status'] === 503 ? ['Retry-After' => '5'] : [];
-            self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + $retry + self::PRIVATE, (string) Js::jsonStringify($problem));
+            self::$answer = self::problemAnswer(\TypedPress\App::problem($e));
         }
+
+        return new \WP_REST_Response([], self::$answer[0]);
+    }
+
+    /**
+     * rest_pre_serve_request: the API's answer goes out as TypedPress made it (its own body, headers and
+     * status), and a request core refused before the API ran (a bad nonce, a scoped credential, a
+     * malformed JSON body) gets the same answer as a problem document, or a form its flash. Every
+     * answer depends on who asks, so Batcache keeps none.
+     */
+    public static function served(mixed $served, mixed $result, mixed $request): mixed
+    {
+        if ($served || !$request instanceof \WP_REST_Request || ($path = self::below((string) $request->get_route())) === null) {
+            return $served;
+        }
+        if (function_exists('batcache_cancel')) {
+            batcache_cancel();
+        }
+        $answer = self::$answer;
+        self::$answer = null;
+        if ($answer === null) {
+            if (!$result instanceof \WP_REST_Response || !$result->is_error()) {
+                return $served; // core's own answer: a preflight's route description
+            }
+            $problem = \TypedPress\App::problem(self::fromWpError($result->as_error(), $result->get_status()));
+            $form = self::formAction($request->get_method(), $path);
+            $answer = $form !== null ? \TypedPress\Render\Forms::redirect($form, $request->get_body(), null, $problem) : self::problemAnswer($problem);
+        }
+        [$status, $headers, $body] = $answer;
+        status_header($status);
+        foreach ($headers as $name => $value) {
+            header($name . ': ' . $value, true);
+        }
+        if ($request->get_method() !== 'HEAD') {
+            \TypedPress\Response::emit($body); // a file download streams through its closure
+        }
+
+        return true;
+    }
+
+    /** @return array{int, array<string, string>, string} */
+    private static function problemAnswer(array $problem): array
+    {
+        // Storage behind the build is short-lived: a client retries shortly.
+        $retry = $problem['status'] === 503 ? ['Retry-After' => '5'] : [];
+
+        return [$problem['status'], ['Content-Type' => 'application/problem+json'] + $retry + self::PRIVATE, (string) Js::jsonStringify($problem)];
     }
 
     /**
@@ -602,6 +637,7 @@ final class Facade
             'rest_post_invalid_id', 'rest_user_invalid_id', 'rest_no_route', 'rest_ability_not_found', 'rest_revision_parent_id_mismatch',
             'rest_term_invalid', 'rest_comment_invalid_id', 'rest_menu_location_invalid' => 'not_found',
             'rest_invalid_param', 'rest_missing_callback_param' => 'invalid_input',
+            'rest_invalid_json' => 'invalid_json',
             'rest_no_route_method', 'rest_ability_invalid_method' => 'method_not_allowed',
             default => !str_starts_with($code, 'rest_') ? $code : match ($status) {
                 401, 403 => $denied,
@@ -626,43 +662,58 @@ final class Facade
 
     // ================================================================ request parsing
 
-    /** The facade path below its prefix ('' for the schema), or null when the request isn't the facade's. */
+    /**
+     * The API path of this request ('' for the schema), or null when it isn't the API's: the REST
+     * route WordPress parsed (`/wp-json/typedpress/v1/…` or `?rest_route=/typedpress/v1/…`).
+     */
     public static function path(): ?string
+    {
+        if (self::$serving !== null) {
+            return self::$serving;
+        }
+        $route = $GLOBALS['wp']->query_vars['rest_route'] ?? null;
+        if (is_string($route) && defined('REST_REQUEST')) {
+            return self::below(untrailingslashit($route));
+        }
+
+        return did_action('parse_request') > 0 ? null : self::requested();
+    }
+
+    /**
+     * The API path this request names, read from the URL as WordPress will parse it, for code that
+     * runs before `parse_request` (accepting an application password at `init`, as core does only
+     * once the request is known to be REST): `/wp-json/typedpress/v1/…` or `?rest_route=/typedpress/v1/…`
+     * on the front controller.
+     */
+    private static function requested(): ?string
     {
         $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
         $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
         if ($base !== '' && str_starts_with($path, $base . '/')) {
             $path = substr($path, strlen($base));
         }
-        if ($path !== self::PREFIX && !str_starts_with($path, self::PREFIX . '/')) {
-            return null;
+        if (str_starts_with($path, '/index.php/')) {
+            $path = substr($path, strlen('/index.php'));
         }
+        $prefix = '/' . rest_get_url_prefix() . '/';
+        $route = match (true) {
+            is_string($_GET['rest_route'] ?? null) && ($path === '/' || $path === '/index.php') => $_GET['rest_route'],
+            str_starts_with($path, $prefix) => '/' . substr($path, strlen($prefix)),
+            default => null,
+        };
 
-        return substr($path, strlen(self::PREFIX));
+        return $route === null ? null : self::below(untrailingslashit(rawurldecode($route)));
     }
 
-    /**
-     * The request's method, with the override core's REST server honours (`?_method=`, then
-     * `X-HTTP-Method-Override`): clients behind proxies that pass only GET and POST, and WordPress's
-     * own api-fetch, which sends PATCH and DELETE that way.
-     */
-    private static function method(): string
+    /** The API path of a REST route ('' for the namespace itself), or null when the route isn't the API's. */
+    public static function below(string $route): ?string
     {
-        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-        if ($method !== 'POST') {
-            return $method;
+        $prefix = '/' . self::NAMESPACE;
+        if (strcasecmp($route, $prefix) === 0) {
+            return '';
         }
-        $override = $_GET['_method'] ?? $_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? null;
 
-        return is_string($override) && $override !== '' ? strtoupper($override) : $method;
-    }
-
-    /** Core's REST authentication, as `/wp-json` runs it: cookie + nonce, application password, bearer. */
-    private static function authenticate(): ?\WP_Error
-    {
-        $result = apply_filters('rest_authentication_errors', null);
-
-        return $result instanceof \WP_Error ? $result : null;
+        return strncasecmp($route, $prefix . '/', strlen($prefix) + 1) === 0 ? substr($route, strlen($prefix)) : null;
     }
 
     /** The raw query string, decoded as the facade's query arguments (no PHP renaming). */
@@ -676,8 +727,9 @@ final class Facade
             [$k, $v] = array_pad(explode('=', $pair, 2), 2, '');
             $out[urldecode($k)] = urldecode($v);
         }
-        // Transport metadata, as core's own routes consume it: api-fetch's locale hint and the nonce.
-        unset($out['_locale'], $out['_wpnonce'], $out['_method']);
+        // Transport metadata, as core's own routes consume it: api-fetch's locale hint, the nonce, the
+        // method override and the route of a `?rest_route=` request.
+        unset($out['_locale'], $out['_wpnonce'], $out['_method'], $out['rest_route']);
 
         return $out;
     }
@@ -960,12 +1012,6 @@ final class Facade
         return [$status, ['Content-Type' => 'application/json; charset=utf-8'] + self::PRIVATE, (string) Js::jsonStringify($body)];
     }
 
-    private static function problem(\WP_Error $error): never
-    {
-        $problem = \TypedPress\App::problem(self::fromWpError($error, 401));
-        self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + self::PRIVATE, (string) Js::jsonStringify($problem));
-    }
-
     /** @return array<string, string> lower-cased request headers, as TypedPress's handlers read them */
     private static function headers(): array
     {
@@ -982,18 +1028,5 @@ final class Facade
         }
 
         return $headers;
-    }
-
-    /** @param array<string, string> $headers */
-    private static function emit(int $status, array $headers, string|\Closure $body): never
-    {
-        status_header($status);
-        foreach ($headers as $name => $value) {
-            header($name . ': ' . $value, true);
-        }
-        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'HEAD') {
-            \TypedPress\Response::emit($body); // a file download streams through its closure
-        }
-        exit;
     }
 }

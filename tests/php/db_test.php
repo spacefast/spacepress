@@ -748,10 +748,10 @@ eq('CLI usage error', $cli('frobnicate')[0], 1);
 
 // ================================================================ HTTP: TypedPress's API on WordPress
 
-// Through the web server (php -S on this site), as a client sees it: /__tp/api/v1 answers with
+// Through the web server (php -S on this site), as a client sees it: /wp-json/typedpress/v1 answers with
 // TypedPress's envelopes, problem documents and headers.
 $port = $wp->startServer();
-$base = "http://127.0.0.1:$port/__tp/api/v1";
+$base = "http://127.0.0.1:$port/wp-json/typedpress/v1";
 
 /** @return array{status: int, headers: array<string, string>, body: string, json: mixed} */
 function http(string $method, string $path, mixed $body = null, ?string $raw = null, array $headers = []): array
@@ -761,6 +761,7 @@ function http(string $method, string $path, mixed $body = null, ?string $raw = n
     $out = [];
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST => $method,
+        CURLOPT_NOBODY => $method === 'HEAD',
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 30,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json', ...$headers],
@@ -793,7 +794,7 @@ $isProblem = function (string $label, array $r, int $status, string $code, ?stri
 };
 
 $r = http('GET', '');
-check('GET /__tp/api/v1 (the schema)', $r['status'] === 200 && $r['json']['data']['kinds']['items']['columns']['qty']['type'] === 'integer'
+check('GET /wp-json/typedpress/v1 (the schema)', $r['status'] === 200 && $r['json']['data']['kinds']['items']['columns']['qty']['type'] === 'integer'
     && isset($r['json']['data']['actions']['restock']['input']['amount']), $r);
 check('schema exposes no function names', !str_contains($r['body'], '__') && !str_contains($r['body'], 'hooks') && !str_contains($r['body'], 'handler'), $r['body']);
 eq('the runtime reports the WordPress platform in the schema', [$r['json']['data']['runtime']['wp']['database']['kind'], $r['json']['data']['runtime']['wp']['incompatibleTables']], ['sqlite', []]);
@@ -819,6 +820,26 @@ $isProblem('unknown collection', http('GET', '/widgets'), 404, 'not_found');
 // A malformed JSON body is refused before anything runs: the API's own parser answers invalid_json.
 eq('invalid JSON body is refused', [http('POST', '/items', raw: '{"name":')['status'], http('POST', '/items', raw: '{"name":')['json']['code'] ?? null], [400, 'invalid_json']);
 eq('… and by TypedPress itself', [$wp->call('POST', '/items', '{"name":')[0], $wp->call('POST', '/items', '{"name":')[1]['code'] ?? null], [400, 'invalid_json']);
+// The API is a route on WordPress's REST server: core's transport works on it as on any route.
+$r = http('GET', '');
+eq('the namespace itself is the app schema, not core\'s namespace index', [$r['status'], isset($r['json']['data']['kinds']['items']), isset($r['json']['routes'])], [200, true, false]);
+$r = http('OPTIONS', '/items', headers: ['Origin: https://elsewhere.test', 'Access-Control-Request-Method: POST']);
+eq('a preflight is core\'s, with the API\'s own headers allowed', [$r['status'] < 300, str_contains($r['headers']['access-control-allow-headers'] ?? '', 'Idempotency-Key')], [true, true]);
+eq('HEAD answers the status and no body', [http('HEAD', '/items')['status'], http('HEAD', '/items')['body']], [200, '']);
+$r = http('POST', '/items/' . $widget['id'] . '?_method=PATCH', ['qty' => 7]);
+eq('_method turns a POST into the PATCH it names, as on every REST route', [$r['status'], $r['json']['data']['qty'] ?? null], [200, 7]);
+$r = http('GET', '/items', headers: ['Cookie: wordpress_logged_in_x=y', 'X-WP-Nonce: nope']);
+// Core's refusal (rest_cookie_invalid_nonce), mapped as every core refusal of a signed-out caller is.
+$isProblem('a bad nonce is core\'s refusal, as a problem document', $r, 401, 'unauthenticated');
+$r = http('GET', '/items');
+eq('every answer is private', [$r['headers']['cache-control'] ?? null, str_contains($r['headers']['vary'] ?? '', 'Authorization')], ['private, no-store', true]);
+$plain = (function () use ($base): array {
+    $ch = curl_init(str_replace('/wp-json/typedpress/v1', '/?rest_route=/typedpress/v1/items', $base));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $body = (string) curl_exec($ch);
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), is_array(json_decode($body, true)['data'] ?? null)];
+})();
+eq('?rest_route= reaches the API too', $plain, [200, true]);
 $isProblem('coercion error with pointer', http('POST', '/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
 $isProblem('missing required', http('POST', '/items', ['qty' => 1]), 422, 'invalid_input', '/name');
 $isProblem('unique violation', http('POST', '/locations', ['name' => 'Garage']), 409, 'unique_violation', '/name');

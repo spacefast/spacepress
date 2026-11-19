@@ -16,8 +16,8 @@ pub const HOST_CONTRACT: u32 = 1;
 /// its own paths out of them.
 pub const RESERVED_PATHS: &[(&str, &str)] = &[
     (
-        "/__tp/*",
-        "TypedPress's HTTP API (`/__tp/api/v1/*`): kinds, globals, actions, files, `/me`; served before the theme, outside `/wp-json`. Route it to WordPress and never cache it: every answer is `Cache-Control: private, no-store` with `Vary: Cookie, Authorization`, except file streams",
+        "/wp-json/typedpress/v1/*",
+        "TypedPress's HTTP API: kinds, globals, actions, files, `/me`, one route on WordPress's REST server. Every answer is `Cache-Control: private, no-store` with `Vary: Origin, Cookie, Authorization`, except file streams and `/openapi.json`",
     ),
     (
         "/identity/*",
@@ -35,8 +35,8 @@ pub const RESERVED_PATHS: &[(&str, &str)] = &[
 ];
 
 /// The app API (`TypedPress\Wp\Facade::PREFIX`), and the path prefix of actions under it.
-pub const API_PREFIX: &str = "/__tp/api/v1";
-pub const ACTION_PREFIX: &str = "/__tp/api/v1/actions/";
+pub const API_PREFIX: &str = "/wp-json/typedpress/v1";
+pub const ACTION_PREFIX: &str = "/wp-json/typedpress/v1/actions/";
 
 /// Live updates: what a host's transport and publisher deal in.
 pub const LIVE_UPDATES: &[(&str, &str)] = &[

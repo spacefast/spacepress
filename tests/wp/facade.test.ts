@@ -1,4 +1,4 @@
-// /__tp/api/v1 (spec §3a): a thin facade over core routes. Every request is dispatched to the core
+// /wp-json/typedpress/v1 (spec §3a): a thin facade over core routes. Every request is dispatched to the core
 // route and only mapped, so it answers what TypedPress's rules answer: the same rows, the same denials,
 // problem documents for errors. Each check compares with TypedPress's own pipeline (`wp typedpress find`), core
 // directly, or the values themselves.
@@ -6,7 +6,7 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { auth, core, harness, http, ok, qs, run, sql, wp, first, type Role } from "./env.ts";
 
-const facade = `${harness.url}/__tp/api/v1`;
+const facade = `${harness.url}/wp-json/typedpress/v1`;
 const f = (method: string, path: string, opts: { as?: Role; body?: unknown } = {}) => http(method, facade + path, opts);
 // The pipeline's row without what differs by design: timestamps, and the API's `_rev` (docs/staged.md).
 const strip = (row: any) => { const { createdAt, updatedAt, _rev, ...rest } = row; return rest; };

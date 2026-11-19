@@ -34,7 +34,7 @@ export function bootstrap() {
 	);
 	return {
 		native,
-		api: (text(b.api) ?? '/__tp/api/v1').replace(/\/+$/, ''),
+		api: (text(b.api) ?? '/wp-json/typedpress/v1').replace(/\/+$/, ''),
 		readable: strings(b.readable),
 		role: text(b.role) ?? 'subscriber',
 	};
@@ -43,7 +43,7 @@ export function native(collection: string) {
 	return bootstrap().native[collection];
 }
 /**
- * A request to TypedPress's API (`/__tp/api/v1`, outside `/wp-json`): `url` instead of `path`, so
+ * A request to TypedPress's API (`/wp-json/typedpress/v1`, from `window.tpAdmin.api`): `url` instead of `path`, so
  * api-fetch sends the nonce and the cookie and parses problems as for any core route.
  */
 export function api(path: string): { url: string } {

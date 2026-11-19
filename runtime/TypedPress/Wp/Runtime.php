@@ -32,14 +32,9 @@ final class Runtime
         // A guarded upgrade step, not a table: staged revisions written before they had their own
         // status get it (WpPostStore::upgradeStagedStatus), once per site with the other steps.
         \TypedPress\SystemTables::register('__tp_staged_status', [\TypedPress\SystemTables::step(1, WpPostStore::upgradeStagedStatus(...))]);
-        // TypedPress's API (/__tp/api/v1) is a REST request outside /wp-json: Polylang must set itself up
-        // as for one (every language, the API's own `locale`), not as a front-end page whose language
-        // would filter every internal query. Its context is chosen on plugins_loaded, after this file.
-        // (With no language yet Polylang sets up no context for a page request; a REST one still gets one.)
-        add_filter('pll_context', static fn (mixed $class): mixed => in_array($class, ['PLL_Frontend', ''], true) && Facade::path() !== null ? 'PLL_REST_Request' : $class);
-        // Core accepts application passwords on REST requests only; the API is one. Registered here, as
-        // the runtime loads, because a plugin (Polylang in its REST context) may resolve the current user
-        // before the app's own plugin has booted.
+        // Core accepts application passwords on REST requests only, and knows a request is REST only at
+        // parse_request, after it first resolved the user at init: the API is one from the start, as the
+        // deploy plugin's routes are. Registered as the runtime loads, before any plugin resolves the user.
         add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || Facade::path() !== null);
         RouteRequest::register();
         AgentScope::trackCookie();

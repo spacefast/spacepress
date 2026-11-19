@@ -1296,7 +1296,7 @@ impl Server {
         self.users[name]["appPassword"].as_str().unwrap().to_string()
     }
 
-    /// Returns (status, body) for a request to TypedPress's API (/__tp/api/v1).
+    /// Returns (status, body) for a request to TypedPress's API (/wp-json/typedpress/v1).
     fn send(&self, method: &str, path: &str, body: Option<&str>) -> (u16, serde_json::Value) {
         let mut s = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
         let body = body.unwrap_or("");
@@ -1307,7 +1307,7 @@ impl Server {
             .map(|u| format!("Authorization: Basic {}\r\n", base64(self.credential(u).as_bytes())))
             .unwrap_or_default();
         let request = format!(
-            "{method} /__tp/api/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "{method} /wp-json/typedpress/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         s.write_all(request.as_bytes()).unwrap();
@@ -3989,7 +3989,7 @@ fn api(
 ) -> (u16, String, String) {
     let mut s = TcpStream::connect(("127.0.0.1", server.port)).unwrap();
     let mut head = format!(
-        "{method} /__tp/api/v1{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: {}\r\n",
+        "{method} /wp-json/typedpress/v1{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: {}\r\n",
         body.len()
     );
     if let Some(user) = user {
@@ -4316,7 +4316,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
 
     // The document itself, as the site serves it: the built file, with this site as its server.
     let live = check("GET", "/openapi.json", None, &[], b"", 200);
-    assert_eq!(live["servers"][0]["url"], format!("{}/__tp/api/v1", server.url()));
+    assert_eq!(live["servers"][0]["url"], format!("{}/wp-json/typedpress/v1", server.url()));
     assert_eq!(live["paths"], document["paths"]);
     assert_eq!(live["components"], document["components"]);
     let described = check("GET", "/", None, &[], b"", 200);

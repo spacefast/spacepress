@@ -74,7 +74,7 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
 - The authoring rewrite produces no data migration.
 - The two-collection hook type test is in the TS suite.
 
-## 2. Core REST underneath, `/__tp/api/v1` facade on top
+## 2. Core REST underneath, `/wp-json/typedpress/v1` facade on top
 
 **Exists:**
 - `runtime/TypedPress/Wp/Rest.php` serves `/wp-json/tp/v1/*` through a catch-all
@@ -100,11 +100,11 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
   annotations from options), with input and output schemas from the TS
   signature, through core's run route.
 - **Errors:** move to core's `WP_Error` JSON.
-- **Facade:** `/__tp/api/v1/<kind>`, `/me`, `/actions/<name>` and `/` (the
+- **Facade:** `/wp-json/typedpress/v1/<kind>`, `/me`, `/actions/<name>` and `/` (the
   schema). Each request is dispatched to the core route with `rest_do_request`,
   and the facade only maps input and output: First row shapes, `{ data, cursor }`,
   problem documents, and `?format=md`.
-- **Typed client and adapters** on the facade; `typedpress pull` reads `GET /__tp/api/v1`.
+- **Typed client and adapters** on the facade; `typedpress pull` reads `GET /wp-json/typedpress/v1`.
 
 **Delete:**
 - `Rest.php`'s own query and write path under `/tp/v1`, replaced by the

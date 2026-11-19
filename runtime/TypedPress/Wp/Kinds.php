@@ -467,7 +467,7 @@ final class Kinds
         return $post instanceof \WP_Post ? MarkdownTwins::post($post) : null;
     }
 
-    /** `GET /__tp/api/v1`: the app's kinds (with their routes), fields, globals and actions. */
+    /** `GET /wp-json/typedpress/v1`: the app's kinds (with their routes), fields, globals and actions. */
     public static function describe(Plugin $plugin): array
     {
         $described = \TypedPress\Extensions::describe($plugin->schema->describe());

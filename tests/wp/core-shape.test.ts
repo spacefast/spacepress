@@ -9,7 +9,7 @@ import { wp } from "./env.ts";
 
 const shape = (php: string) => JSON.parse(wp("eval", php));
 
-test("Polylang's model and REST context, as Wp/Polylang.php and Runtime's pll_context use them", () => {
+test("Polylang's model and REST detection, as Wp/Polylang.php uses them", () => {
   // TypedPress calls PLL()->model->get_language, add_language and update_default_lang. Since Polylang 3.7
   // those are its backward-compatibility __call, forwarding to PLL()->model->languages (get, add,
   // update_default): both halves must still be there.
@@ -20,9 +20,10 @@ test("Polylang's model and REST context, as Wp/Polylang.php and Runtime's pll_co
       ? array_values(array_filter(['get', 'add', 'update_default'], fn ($m) => method_exists(PLL()->model->languages, $m))) : [],
     'callable' => function_exists('PLL') ? array_values(array_filter(['get_language', 'add_language', 'update_default_lang'], fn ($m) => is_callable([PLL()->model, $m]))) : [],
     'rest' => class_exists('PLL_REST_Request'),
-    'context' => has_filter('pll_context') !== false,
+    // The API is under /wp-json, which Polylang sets itself up for as a REST request by itself.
+    'restPrefix' => function_exists('PLL') && method_exists('Polylang', 'is_rest_request'),
   ]);`);
-  assert.deepEqual(seen, { pll: true, direct: true, forwarded: ["get", "add", "update_default"], callable: ["get_language", "add_language", "update_default_lang"], rest: true, context: true });
+  assert.deepEqual(seen, { pll: true, direct: true, forwarded: ["get", "add", "update_default"], callable: ["get_language", "add_language", "update_default_lang"], rest: true, restPrefix: true });
 });
 
 test("core's REST classes TypedPress subclasses keep the protected members it uses", () => {

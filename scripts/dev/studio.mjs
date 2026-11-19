@@ -718,7 +718,7 @@ async function main() {
     managed.owner.devMu = true;
     await atomicJson(managed.marker, managed.owner);
     await configure(flags.includes('--allow-destructive'));
-    const response = await fetch(`${local}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
+    const response = await fetch(`${local}/wp-json/typedpress/v1`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${local}`);
     const summary = [`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`];
     if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/index.html`);

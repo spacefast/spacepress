@@ -70,7 +70,6 @@ final class AgentScope
 
     public static function register(): void
     {
-        add_action('do_parse_request', [self::class, 'facade'], -1);
         add_filter('rest_pre_dispatch', [self::class, 'route'], 0, 3);
         add_filter('wp_pre_execute_ability', [self::class, 'ability'], 0, 4);
         add_filter('map_meta_cap', [self::class, 'capability'], PHP_INT_MAX, 2);
@@ -236,39 +235,24 @@ final class AgentScope
     // ================================================================ routes
 
     /**
-     * do_parse_request, before the facade serves `/__tp/api/v1`: its own features with no core
-     * route (sign-in, sync, files, services) never reach {@see route()}, so the facade's method and
-     * path are judged here. Kinds are judged again on the core route each one dispatches to.
+     * TypedPress's API, as core dispatches to it: its own features with no core route (sign-in,
+     * sync, files, services) never reach another route, so the API's method and path are judged
+     * here. Kinds are judged again on the core route each one dispatches to.
      */
-    public static function facade(mixed $parse): mixed
+    private static function facade(array $scope, string $path, bool $read): ?string
     {
-        $path = Facade::path();
-        $scope = $path === null ? null : self::current();
-        if ($scope === null) {
-            return $parse;
-        }
         $segments = array_map('rawurldecode', array_values(array_filter(explode('/', $path), static fn (string $s): bool => $s !== '')));
         $name = $segments[0] ?? '';
         // An action or a global is an ability: its own annotations say whether it writes.
         $ability = ($name === 'actions' && count($segments) === 2) || (count($segments) === 1 && isset(Plugin::instance()?->schema->globals()[$name]));
-        $read = in_array(strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')), self::READS, true);
-        $refused = match (true) {
+
+        return match (true) {
             $ability => null,
             $scope['abilities'] !== null && $name !== '' => 'abilities',
             !$scope['write'] && !$read => 'write',
             !$scope['personal'] && $name === 'auth' => 'personal',
             default => null,
         };
-        if ($refused !== null) {
-            $problem = \TypedPress\App::problem(self::refusal($refused));
-            status_header($problem['status']);
-            header('Content-Type: application/problem+json');
-            header('Cache-Control: private, no-store');
-            echo \TypedPress\Js::jsonStringify($problem);
-            exit;
-        }
-
-        return $parse;
     }
 
     /**
@@ -284,6 +268,11 @@ final class AgentScope
         }
         $route = $request->get_route();
         $read = in_array(strtoupper($request->get_method()), self::READS, true);
+        if (!Facade::dispatching() && ($path = Facade::below($route)) !== null) {
+            $refused = self::facade($scope, $path, $read);
+
+            return $refused === null ? $result : self::refused($refused);
+        }
         if (preg_match(self::PASSWORDS, $route) && !($read && preg_match('#/application-passwords/introspect/?$#i', $route))) {
             return self::refused('passwords');
         }

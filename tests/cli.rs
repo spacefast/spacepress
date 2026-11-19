@@ -1074,7 +1074,7 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
 
     let rename = &schema["actions"]["rename"];
     assert_eq!(rename["access"], "editor");
-    assert_eq!(rename["endpoint"], "POST /__tp/api/v1/actions/rename");
+    assert_eq!(rename["endpoint"], "POST /wp-json/typedpress/v1/actions/rename");
     assert_eq!(rename["ability"], "agentkit/rename");
     assert_eq!(
         rename["input"]["id"],
@@ -2328,7 +2328,7 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
         .unwrap();
     let _served = Served(child);
     let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
-    let base = format!("{}/__tp/api/v1", served["url"].as_str().unwrap());
+    let base = format!("{}/wp-json/typedpress/v1", served["url"].as_str().unwrap());
     // (status, body) of one request, as `who` (a served user) or signed out.
     let call = |who: Option<&str>, method: &str, path: &str, body: Option<serde_json::Value>| {
         let mut curl = Command::new("curl");
@@ -2507,10 +2507,10 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     // action with its endpoint, its job, its page and route, and the site's MCP endpoint.
     for line in [
         "This project is the TypedPress app `agentkit`.",
-        "| `shoppingList` | table | anyone | editor | editor | admin | `/__tp/api/v1/shopping_list` |",
-        "| `articles` | collection | anyone | author | editor | editor | `/__tp/api/v1/articles` |",
+        "| `shoppingList` | table | anyone | editor | editor | admin | `/wp-json/typedpress/v1/shopping_list` |",
+        "| `articles` | collection | anyone | author | editor | editor | `/wp-json/typedpress/v1/articles` |",
         "- `substitutes`: `item`: ref → shoppingList, `name`: text",
-        "| `rename` | `id`: integer, `name`: text | editor | `POST /__tp/api/v1/actions/rename` |",
+        "| `rename` | `id`: integer, `name`: text | editor | `POST /wp-json/typedpress/v1/actions/rename` |",
         "- `clearDone`: input `keep?`: integer; retried up to 2 times",
         "| `/api/list` | route (GET) | `tp/app/api/list/route.ts` |",
         "| `/` | page | `tp/app/page.tsx` |",

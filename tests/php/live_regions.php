@@ -5,7 +5,7 @@ declare(strict_types=1);
 /*
  * The subscription endpoint's `page` read (docs/decisions/2026-11-14-live-regions.md):
  * tests/fixtures/live-regions, built by `typedpress build`, on WordPress with php -S. Every answer comes
- * from `POST /__tp/api/v1/_live` over HTTP, as the browser asks. Prints one JSON object.
+ * from `POST /wp-json/typedpress/v1/_live` over HTTP, as the browser asks. Prints one JSON object.
  *
  *   TP_WP_THEMES=1 php tests/php/live_regions.php <wp-content dir>
  */
@@ -37,7 +37,7 @@ $url = $site->url();
 
 function post(string $url, array $queries, array $headers = []): array
 {
-    $ch = curl_init("$url/__tp/api/v1/_live");
+    $ch = curl_init("$url/wp-json/typedpress/v1/_live");
     curl_setopt_array($ch, [
         CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json', ...$headers], CURLOPT_POSTFIELDS => json_encode(['queries' => $queries]),

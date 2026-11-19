@@ -4,7 +4,7 @@ const site = process.env.TP_SITE?.replace(/\/$/, "");
 const password = process.env.TP_APP_PASSWORD;
 const otherPassword = process.env.TP_OTHER_APP_PASSWORD;
 assert.ok(site && password, "Set TP_SITE and TP_APP_PASSWORD=user:application-password.");
-const api = `${site}/__tp/api/v1`;
+const api = `${site}/wp-json/typedpress/v1`;
 
 async function request(method, path, body, credential = password, extraHeaders = {}) {
   const headers = { ...extraHeaders };

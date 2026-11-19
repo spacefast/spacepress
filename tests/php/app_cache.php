@@ -115,8 +115,8 @@ $out = [
     // Batcache keeps what any request without a WordPress cookie printed, whatever its Cache-Control:
     // TypedPress's API and Identity's answer for whoever asks, signed in by a header or by the
     // Identity cookie (which never sets the WordPress user for Identity's own API).
-    'api anonymous' => fetch("$url/__tp/api/v1/me"),
-    'api app password' => fetch("$url/__tp/api/v1/me", ['Authorization: Basic ' . base64_encode("chief:$appPassword")]),
+    'api anonymous' => fetch("$url/wp-json/typedpress/v1/me"),
+    'api app password' => fetch("$url/wp-json/typedpress/v1/me", ['Authorization: Basic ' . base64_encode("chief:$appPassword")]),
     'identity api' => fetch("$url/?rest_route=/typedpress-identity/v1/account", ['Cookie: zi_session=x']),
 ];
 // Every policy Cache::policy() hands out, as Batcache reads it: a shareable page is kept for its

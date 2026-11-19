@@ -61,7 +61,7 @@ The platform enforces these, and the spec work keeps them true:
      doesn't change.
 4. **0.8's paths stay 0.8's.** `/__zero/config`, `/__zero/run`, `/__zero/auth/*`
    and `/__zero/realtime/events` keep their 0.8 meaning on 0.8 versions. v2 adds
-   `/__tp/api/v1/*`, `/__tp/client.js`, `/__tp/client.d.ts` and
+   `/wp-json/typedpress/v1/*`, `/__tp/client.js`, `/__tp/client.d.ts` and
    `/__tp/realtime.js`, and never reuses a 0.8 path with a different meaning.
    0.8 never used `/__tp/realtime.js`; rule 3 covers why it answers on
    every version.

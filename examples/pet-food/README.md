@@ -101,7 +101,7 @@ After the verifier succeeds, execute the queued Action Scheduler jobs:
 ```sh
 ./target/debug/typedpress wp --site examples/pet-food action-scheduler run --group=typedpress-pet-food --force
 ./target/debug/typedpress jobs list --site examples/pet-food
-curl --fail-with-body -u "$TP_AUTH" 'http://localhost:8897/__tp/api/v1/shopping_list'
+curl --fail-with-body -u "$TP_AUTH" 'http://localhost:8897/wp-json/typedpress/v1/shopping_list'
 unset TP_AUTH TP_OTHER_AUTH
 ```
 
@@ -143,7 +143,7 @@ all candidates; filter `needed: true` to read the current shopping list:
 ```sh
 curl --get --fail-with-body -u "$TP_AUTH" \
 	--data-urlencode 'where={"needed":true}' \
-	'http://localhost:8897/__tp/api/v1/shopping_list'
+	'http://localhost:8897/wp-json/typedpress/v1/shopping_list'
 ```
 
 ## Customize the admin

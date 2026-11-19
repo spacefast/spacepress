@@ -48,8 +48,8 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    - `typedpress abilities`: the Abilities the app registers.
    - `typedpress wp <args>`: any WP-CLI command, for example `typedpress wp plugin list`.
 
-5. Read the HTTP API as a visitor would: `GET <siteUrl>/__tp/api/v1` describes the app, and
-   `GET <siteUrl>/__tp/api/v1/<storage name>` lists what an anonymous visitor may read.
+5. Read the HTTP API as a visitor would: `GET <siteUrl>/wp-json/typedpress/v1` describes the app, and
+   `GET <siteUrl>/wp-json/typedpress/v1/<storage name>` lists what an anonymous visitor may read.
 
 6. Stop it with `typedpress dev stop`. The database, uploads and plugins are kept in
    `.tp/dev/wordpress` for the next start.

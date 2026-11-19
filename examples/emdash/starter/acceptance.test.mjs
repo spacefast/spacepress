@@ -46,7 +46,7 @@ test('official publishing counterparts run on native Studio with owned cleanup',
       assert.equal(response.status, status, path);
       return response.text();
     }
-    const schema = await json('/__tp/api/v1');
+    const schema = await json('/wp-json/typedpress/v1');
     assert.equal(schema.runtime.wp.database.kind, 'sqlite');
     const front = await html('/');
     await save(`${mode}-home.html`, front);
@@ -93,7 +93,7 @@ test('official publishing counterparts run on native Studio with owned cleanup',
       content: '<!-- wp:paragraph --><p>Native REST blocks reach the public theme.</p><!-- /wp:paragraph -->',
       acf: { tp_excerpt: 'SCF changes appear on archive cards.', tp_seoTitle: 'A saved SEO title', tp_seoDescription: 'A saved description.' },
     } });
-    const records = await json('/__tp/api/v1/posts');
+    const records = await json('/wp-json/typedpress/v1/posts');
     const record = records.find((row) => row.id === post.id);
     assert.equal(record.title, marker);
     assert.equal(record.excerpt, 'SCF changes appear on archive cards.');
@@ -107,7 +107,7 @@ test('official publishing counterparts run on native Studio with owned cleanup',
     const draft = await json('/wp-json/wp/v2/tp_posts', { method: 'POST', body: {
       title: 'Private editorial draft', slug: `${mode}-private`, status: 'draft', content: 'Unpublished draft body.',
     } });
-    const anonymous = await json('/__tp/api/v1/posts', { auth: false });
+    const anonymous = await json('/wp-json/typedpress/v1/posts', { auth: false });
     assert.equal(anonymous.some((row) => row.id === draft.id), false);
     assert.equal((await html('/posts')).includes('Private editorial draft'), false);
     await html(`/posts/${mode}-private`, 404);

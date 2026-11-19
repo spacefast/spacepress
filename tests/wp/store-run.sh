@@ -58,7 +58,7 @@ runtime=$(ls "$store/runtime")
 url=$(json url < "$work/harness.json")
 "$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/typedpress-store-host.php /var/www/html/wp-content/mu-plugins/typedpress-store-host.php && cp /var/www/html/wp-content/plugins/typedpress-store-contract-host.php /var/www/html/wp-content/mu-plugins/typedpress-store-contract-host.php"
 
-action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $1" --data '{}' "$url/__tp/api/v1/actions/which"; }
+action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $1" --data '{}' "$url/wp-json/typedpress/v1/actions/which"; }
 # WP-CLI as the host: select the build before WordPress loads, then call the loader.
 host() { local build="$1"; shift; wp --exec="define('TP_TEST_BUILD', '$build');" eval "$@"; }
 root=/var/www/html/wp-content/plugins/typedpress-store
@@ -66,7 +66,7 @@ inspect() { wp --exec="define('TP_TEST_BUILD', '$1'); define('TP_TEST_INSPECT', 
 initialize() { host "$1" "echo json_encode(TypedPress\\Loader\\Loader::initialize('$root', '$1'));"; }
 gc() { host "$1" "echo json_encode(TypedPress\\Loader\\Store::gc('$root', json_decode('$2'), $3));"; }
 
-status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $first" --data '{}' "$url/__tp/api/v1/actions/which")
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $first" --data '{}' "$url/wp-json/typedpress/v1/actions/which")
 [[ $status == 404 ]] || fail "an uninitialized build is not served, got $status"
 ok "a build is not served before it initializes"
 
@@ -150,7 +150,7 @@ PY
 [[ $(gc "$first" "[\"$first\"]" false) == "$dry" ]] || fail "gc removes what the dry run listed"
 [[ $(ls "$store/app" | wc -l) -eq 1 && $(ls "$store/build" | wc -l) -eq 1 && $(ls "$store/runtime" | wc -l) -eq 1 ]] || fail "gc keeps the kept build's runtime and app"
 [[ $(action "$first" | json data.build) == one ]] || fail "the kept build still answers after gc"
-status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $second" --data '{}' "$url/__tp/api/v1/actions/which")
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $second" --data '{}' "$url/wp-json/typedpress/v1/actions/which")
 [[ $status == 404 ]] || fail "a collected build is gone, got $status"
 ok "gc removes only what the kept builds do not reference"
 
@@ -186,7 +186,7 @@ ok "inspecting a build that already initialized plans nothing"
 # The host contract (docs/host-contract.md): every hook it lists is called by the runtime, and one
 # `wp typedpress jobs tick` runs the queued job, whose mail goes through the host's transport.
 contract() { wp eval "echo wp_json_encode(get_option('tp_test_contract', []));"; }
-added=$(curl -sS -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $first" --data '{"title":"Contract"}' "$url/__tp/api/v1/actions/add")
+added=$(curl -sS -X POST -H 'Content-Type: application/json' -H "X-TypedPress-Build: $first" --data '{"title":"Contract"}' "$url/wp-json/typedpress/v1/actions/add")
 [[ $(json data.added <<< "$added") == Contract ]] || fail "the add action answers: $added"
 seen=$(contract)
 [[ $(json tp_runtime_loaded <<< "$seen") == true ]] || fail "tp_runtime_loaded fired: $seen"

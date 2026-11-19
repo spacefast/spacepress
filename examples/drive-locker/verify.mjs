@@ -20,9 +20,9 @@ function auth(user) {
 }
 
 async function request(label, path, { authorization, method = "GET", body, status = 200 } = {}) {
-  // The app's API lives at /__tp/api/v1; everything else (the MCP adapter) under /wp-json.
-  path = path.replace(/^tp\/v1\/?/, "__tp/api/v1/");
-  const url = path.startsWith("__tp/") ? `${base}/${path}` : `${base}/wp-json/${path}`;
+  // The app's API lives at /wp-json/typedpress/v1; everything else (the MCP adapter) under /wp-json.
+  path = path.replace(/^tp\/v1\/?/, "typedpress/v1/");
+  const url = `${base}/wp-json/${path}`;
   const response = await fetch(url, {
     method, headers: { "Content-Type": "application/json", ...(authorization ? { Authorization: authorization } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -49,8 +49,8 @@ try {
   created.push(["drives", drive.id]);
   await request("Drive edit", `tp/v1/drives/${drive.id}`, { authorization: first, method: "PATCH", body: { label: `${run} edited` } });
   assert.equal(drive.serial, run.toUpperCase());
-  const duplicate = await fetch(`${base}/__tp/api/v1/drives`, { method: "POST", headers: { Authorization: first, "Content-Type": "application/json" }, body: JSON.stringify(driveInput) });
-  console.log(`Duplicate serial: POST /__tp/api/v1/drives -> ${duplicate.status} ${await duplicate.text()}`);
+  const duplicate = await fetch(`${base}/wp-json/typedpress/v1/drives`, { method: "POST", headers: { Authorization: first, "Content-Type": "application/json" }, body: JSON.stringify(driveInput) });
+  console.log(`Duplicate serial: POST /wp-json/typedpress/v1/drives -> ${duplicate.status} ${await duplicate.text()}`);
   assert.equal(duplicate.status, 409);
   const other = await request("Same serial allowed for another owner", "tp/v1/drives", { authorization: second, method: "POST", status: 201, body: { ...driveInput, placeId: null } });
   assert.notEqual(other.ownerId, drive.ownerId);
@@ -99,8 +99,8 @@ try {
 } finally {
   // A failed run leaves its rows; delete what is left as the owner and report a refusal.
   if (first) for (const [table, id] of created.reverse()) {
-    const response = await fetch(`${base}/__tp/api/v1/${table}/${id}`, { method: "DELETE", headers: { Authorization: first } });
-    console.log(`Cleanup: DELETE /__tp/api/v1/${table}/${id} -> ${response.status}`);
+    const response = await fetch(`${base}/wp-json/typedpress/v1/${table}/${id}`, { method: "DELETE", headers: { Authorization: first } });
+    console.log(`Cleanup: DELETE /wp-json/typedpress/v1/${table}/${id} -> ${response.status}`);
   }
   for (const user of credentials) {
     const entries = JSON.parse(wp("user", "application-password", "list", user, "--format=json"));

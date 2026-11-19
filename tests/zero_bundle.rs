@@ -274,7 +274,7 @@ fn a_zero_capture_keeps_its_references_and_relations() {
 
 /// What a deployed 0.3.0 Space's next version serves its pages: recompiled from its stored
 /// `zero.source-bundle.v1`, its generated client, run under Node, calls TypedPress's API at
-/// `/__tp/api/v1` (tests/wp/zero-upgrade proves what the site answers there and on the old paths).
+/// `/wp-json/typedpress/v1` (tests/wp/zero-upgrade proves what the site answers there and on the old paths).
 #[test]
 fn a_recompiled_zero_bundle_client_calls_the_first_api() {
     let work = tempfile::tempdir().unwrap();
@@ -299,10 +299,10 @@ fn a_recompiled_zero_bundle_client_calls_the_first_api() {
     let calls: Vec<(String, String)> = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(calls.len(), 2, "{calls:?}");
     for (_, url) in &calls {
-        assert!(url.starts_with("/__tp/api/v1/"), "{calls:?}");
+        assert!(url.starts_with("/wp-json/typedpress/v1/"), "{calls:?}");
     }
-    assert_eq!(calls[0], ("GET".into(), "/__tp/api/v1/notes".into()));
-    assert_eq!(calls[1].1, "/__tp/api/v1/actions/count");
+    assert_eq!(calls[0], ("GET".into(), "/wp-json/typedpress/v1/notes".into()));
+    assert_eq!(calls[1].1, "/wp-json/typedpress/v1/actions/count");
 }
 
 /// The 0.3.0 fixtures beside the first one: `forms` (every form 0.3.0 accepted) and `routes`.

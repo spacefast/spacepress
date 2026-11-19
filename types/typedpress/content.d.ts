@@ -102,7 +102,7 @@ export interface ApiReference {
   title: string;
   version: string;
   description: string;
-  /** The first server's URL: for the app's own API, this site's `/__tp/api/v1`. */
+  /** The first server's URL: for the app's own API, this site's `/wp-json/typedpress/v1`. */
   server: string;
   tags: ApiTag[];
 }

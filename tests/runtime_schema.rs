@@ -71,7 +71,7 @@ impl Site {
         // One write: `write!` sends the request in pieces, and php -S refuses one that arrives split
         // inside its request line.
         let request = format!(
-            "{method} /__tp/api/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "{method} /wp-json/typedpress/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         stream.write_all(request.as_bytes()).unwrap();

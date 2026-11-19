@@ -227,7 +227,7 @@ test("cascades and generated editor values cannot answer questions about hidden 
 });
 
 // The one new core route (spec §3a): /wp/v2/<table> for a table() kind, in core's shape, answering
-// what /__tp/api/v1 answers because both run TypedPress's pipeline as the viewer.
+// what /wp-json/typedpress/v1 answers because both run TypedPress's pipeline as the viewer.
 test("/wp/v2/<table> lists, reads, writes and deletes table rows in core's shape", async () => {
   const base = `${core}/tp_field_teams`;
   const created = await http("POST", base, { as: "editor", body: { name: `Core team ${run}`, budget: 40 } });
@@ -267,7 +267,7 @@ test("/wp/v2/<table> lists, reads, writes and deletes table rows in core's shape
   assert.deepEqual([schema.title, schema.properties.name.type], ["tp_field_teams", "string"]);
 });
 
-test("/wp/v2/<table> keeps every denial /__tp/api/v1 makes", async () => {
+test("/wp/v2/<table> keeps every denial /wp-json/typedpress/v1 makes", async () => {
   const signups = `${core}/tp_signups`;
   const email = `core-${run}@example.test`;
   // An anonymous create of a unique value is refused on both (it would answer whether it exists).

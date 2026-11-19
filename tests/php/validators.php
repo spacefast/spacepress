@@ -187,13 +187,13 @@ $replaced = fetch("$url/about/", ['If-None-Match: ' . $about['etag']]);
 $out['prebuilt same size and mtime'] = [strlen($changed) === strlen($about['body']), filemtime($aboutFile) === $mtime, $replaced['status'], $replaced['body'] === $changed, $replaced['etag'] !== $about['etag']];
 
 // ---- the OpenAPI document --------------------------------------------------------------------------
-$doc = fetch("$url/__tp/api/v1/openapi.json");
+$doc = fetch("$url/wp-json/typedpress/v1/openapi.json");
 $decoded = json_decode($doc['body'], true);
 $out['openapi'] = [$doc['status'], $doc['type'], $doc['cache'], $decoded['servers'][0]['url'] ?? null, isset($decoded['paths']), $decoded['openapi'] ?? null];
-$out['openapi validators'] = $validated('/__tp/api/v1/openapi.json', $doc);
+$out['openapi validators'] = $validated('/wp-json/typedpress/v1/openapi.json', $doc);
 // The document's server is this site: another site name gives another body and another ETag.
 update_option('blogname', 'Renamed');
-$renamed = fetch("$url/__tp/api/v1/openapi.json");
+$renamed = fetch("$url/wp-json/typedpress/v1/openapi.json");
 $out['openapi follows the site'] = [$renamed['etag'] !== $doc['etag'], json_decode($renamed['body'], true)['servers'][0]['description'] ?? null];
 // The bytes as before: the built file, its `servers` replaced, re-encoded (empty schemas stay objects).
 $file = json_decode((string) file_get_contents($site->plugin()->dir . '/tp/app/openapi.json'), false);
@@ -204,19 +204,19 @@ $out['openapi bytes'] = $renamed['body'] === json_encode($file, JSON_UNESCAPED_S
 $built = $site->plugin()->dir . '/tp/app/openapi.json';
 touch($built, filemtime($built) + 3600);
 clearstatcache();
-$touched = fetch("$url/__tp/api/v1/openapi.json");
+$touched = fetch("$url/wp-json/typedpress/v1/openapi.json");
 $bytes = (string) file_get_contents($built);
 clearstatcache();
 $builtTime = filemtime($built);
 file_put_contents($built, str_replace('"openapi": "3.1.0"', '"openapi": "3.1.1"', $bytes));
 touch($built, $builtTime);
 clearstatcache();
-$edited = fetch("$url/__tp/api/v1/openapi.json", ['If-None-Match: ' . $touched['etag']]);
+$edited = fetch("$url/wp-json/typedpress/v1/openapi.json", ['If-None-Match: ' . $touched['etag']]);
 file_put_contents($built, $bytes);
 // An OpenAPI file that can't be read is no document: never a 304, whatever the client holds.
 chmod($built, 0000);
 clearstatcache();
-$out['openapi unreadable'] = array_map(static fn (string $match): int => fetch("$url/__tp/api/v1/openapi.json", ["If-None-Match: $match"])['status'], ['*', '""']);
+$out['openapi unreadable'] = array_map(static fn (string $match): int => fetch("$url/wp-json/typedpress/v1/openapi.json", ["If-None-Match: $match"])['status'], ['*', '""']);
 // The matcher itself, on headers a test request can't carry or shouldn't have to: a line break after
 // a tag is not part of a list of tags, and a long list is read in one pass (a regex over it ran out
 // of stack at 20,000 tags and lost the match).
@@ -237,8 +237,8 @@ chmod($built, 0644);
 $out['openapi tag follows the bytes'] = [$touched['etag'] === $renamed['etag'], $edited['status'], json_decode($edited['body'], true)['openapi'] ?? null, $edited['etag'] !== $touched['etag']];
 
 // ---- the facade's reads stay private -----------------------------------------------------------------
-$list = fetch("$url/__tp/api/v1/notes");
-$out['facade'] = [$list['status'], $list['cache'], $list['etag'], fetch("$url/__tp/api/v1/notes", ['If-None-Match: *'])['status']];
+$list = fetch("$url/wp-json/typedpress/v1/notes");
+$out['facade'] = [$list['status'], $list['cache'], $list['etag'], fetch("$url/wp-json/typedpress/v1/notes", ['If-None-Match: *'])['status']];
 
 $site->stopServer();
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";

@@ -15,7 +15,7 @@ frontend at `http://127.0.0.1:5196/`. No staging or production deployment exists
 This record was captured before the rename from First to TypedPress. Commands and
 output below are verbatim from that run: `first` is today's `typedpress`,
 `first/` and `.first/` are `tp/` and `.tp/`, and `/wp-json/first/v1` is
-`/__tp/api/v1`.
+`/wp-json/typedpress/v1`.
 
 ## Native compilation and frontend build
 

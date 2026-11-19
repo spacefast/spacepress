@@ -11,7 +11,7 @@ assert.ok(['http:', 'https:'].includes(new URL(site).protocol), 'TP_SITE must us
 assert.equal(new URL(site).username, '', 'Keep credentials in TP_AUTH, not TP_SITE.');
 assert.equal(new URL(site).password, '', 'Keep credentials in TP_AUTH, not TP_SITE.');
 
-const api = '/__tp/api/v1';
+const api = '/wp-json/typedpress/v1';
 
 async function request(path, { method = 'GET', body, credential = auth, key } = {}) {
   const headers = { accept: 'application/json' };

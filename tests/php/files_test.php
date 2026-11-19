@@ -88,7 +88,7 @@ $upload = static function (string $bucket, string $bytes, string $name, ?string 
 $download = static function (string $url) use ($wp): array {
     $parts = parse_url($url);
     parse_str($parts['query'] ?? '', $query);
-    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/__tp/api/v1#', '', $parts['path']), '', null, [], $query);
+    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/wp-json/typedpress/v1#', '', $parts['path']), '', null, [], $query);
     ob_start();
     \TypedPress\Response::emit($payload);
 

@@ -41,12 +41,12 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   const compiled = JSON.parse(readFileSync(join(app, 'compiled/manifest.json'), 'utf8'));
   assert.equal(compiled.pages ?? null, null, 'no separate pages plugin: the app plugin renders tp/app/');
 
-  const note = await api('/__tp/api/v1/notes', { method: 'POST', body: JSON.stringify({
+  const note = await api('/wp-json/typedpress/v1/notes', { method: 'POST', body: JSON.stringify({
     title: 'Hosted light', slug: 'hosted-light', dek: 'Served from compile-sources', status: 'published',
     body: '<!-- wp:paragraph --><p>Rendered by <em>WordPress</em>.</p><!-- /wp:paragraph -->', deskNotes: 'Staff only',
   }) });
   assert.equal(note.status, 201, JSON.stringify(note.body));
-  const draft = await api('/__tp/api/v1/notes', { method: 'POST', body: JSON.stringify({ title: 'Hidden draft', slug: 'hidden-draft', status: 'draft' }) });
+  const draft = await api('/wp-json/typedpress/v1/notes', { method: 'POST', body: JSON.stringify({ title: 'Hidden draft', slug: 'hidden-draft', status: 'draft' }) });
   assert.equal(draft.status, 201, JSON.stringify(draft.body));
 
   // 1. HTML pages: home, a static page with an image, the listing, a note's own URL and the 404.
@@ -136,11 +136,11 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
     await clientBrowser.close();
   }
 
-  const cheers = await api('/__tp/api/v1/cheers');
+  const cheers = await api('/wp-json/typedpress/v1/cheers');
   assert.deepEqual(cheers.body.data.map((row) => [row.noteId, row.count]), [[note.body.data.id, 3]]);
 
   // 3. The action over plain HTTP, as any client calls it.
-  const action = await http('/__tp/api/v1/actions/cheer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ noteId: note.body.data.id }) });
+  const action = await http('/wp-json/typedpress/v1/actions/cheer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ noteId: note.body.data.id }) });
   assert.equal(action.status, 200, action.text);
   assert.deepEqual(JSON.parse(action.text), { data: { count: 4 } });
 
@@ -166,11 +166,11 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   assert.equal(hook.status, 202, hook.text);
   assert.equal(hook.text, `accepted ${signature.slice(0, 8)}`);
   assert.equal(hook.headers.get('content-type'), 'text/plain; charset=utf-8');
-  assert.equal((await api('/__tp/api/v1/cheers')).body.data[0].count, 5, 'the signed route wrote');
+  assert.equal((await api('/wp-json/typedpress/v1/cheers')).body.data[0].count, 5, 'the signed route wrote');
   const forged = await http('/webhooks/stripe', { method: 'POST', headers: { 'x-fullsite-signature': 'f'.repeat(64) }, body: event });
   assert.equal(forged.status, 401);
   assert.equal(JSON.parse(forged.text).code, 'invalid_signature');
-  assert.equal((await api('/__tp/api/v1/cheers')).body.data[0].count, 5, 'a forged delivery wrote nothing');
+  assert.equal((await api('/wp-json/typedpress/v1/cheers')).body.data[0].count, 5, 'a forged delivery wrote nothing');
 
   // Percent-encoded unreserved characters name the same path.
   assert.equal((await http('/%61pi/feed%2Ejson')).status, 200);
@@ -218,7 +218,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   // Unclaimed paths still belong to WordPress.
   assert.equal((await http('/unclaimed/other.json')).status, 404);
   assert.equal((await http('/api/a/b/c')).status, 404, 'no route has three segments under /api');
-  assert.equal((await http('/__tp/api/v1/notes')).status, 200);
+  assert.equal((await http('/wp-json/typedpress/v1/notes')).status, 200);
 });
 
 test('a route sees the caller WordPress REST would: Bearer always, cookie on GET or with a nonce, never an application password', { timeout: 120000 }, async () => {

@@ -98,7 +98,7 @@ You can also add notes in TypedPress Admin, the admin at `/wp-admin/new/`, or in
 ## Read it through the API
 
 ```sh
-curl http://localhost:9187/__tp/api/v1/notes
+curl http://localhost:9187/wp-json/typedpress/v1/notes
 ```
 
 You should see the same note in a list, with a `cursor` for the next page (`null`: there is none):
@@ -110,7 +110,7 @@ You should see the same note in a list, with a `cursor` for the next page (`null
 Now try to create a note without signing in:
 
 ```sh
-curl -X POST http://localhost:9187/__tp/api/v1/notes \
+curl -X POST http://localhost:9187/wp-json/typedpress/v1/notes \
 	-H 'Content-Type: application/json' \
 	--data '{"title":"From curl"}'
 ```

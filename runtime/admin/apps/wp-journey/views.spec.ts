@@ -49,7 +49,7 @@ async function newSession(browser: Browser, path: string, label: string, hidden:
 }
 
 test.beforeAll(async ({ request }) => {
-	const author = await request.post(`${site}/__tp/api/v1/authors`, {
+	const author = await request.post(`${site}/wp-json/typedpress/v1/authors`, {
 		headers, data: { name: `View author ${Date.now()}`, email: `views-${Date.now()}@example.test` },
 	});
 	expect(author.status(), await author.text()).toBe(201);
@@ -58,9 +58,9 @@ test.beforeAll(async ({ request }) => {
 		data: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'),
 	});
 	expect(image.status(), await image.text()).toBe(201);
-	const post = await request.post(`${site}/__tp/api/v1/posts`, { headers, data: { title: `View post ${Date.now()}` } });
+	const post = await request.post(`${site}/wp-json/typedpress/v1/posts`, { headers, data: { title: `View post ${Date.now()}` } });
 	expect(post.status(), await post.text()).toBe(201);
-	const comment = await request.post(`${site}/__tp/api/v1/comments`, {
+	const comment = await request.post(`${site}/wp-json/typedpress/v1/comments`, {
 		headers: { Authorization: `Basic ${Buffer.from(`subscriber:${harness.users.subscriber.appPassword}`).toString('base64')}` },
 		data: { postId: (await post.json()).data.id, name: 'View reader', body: `View comment ${Date.now()}` },
 	});

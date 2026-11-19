@@ -48,7 +48,14 @@ final class Module
         global $wpdb;
         if (strlen($wpdb->prefix) > 20) { throw new \RuntimeException('WooCommerce requires a WordPress table prefix of at most 20 characters'); }
         if (!defined('WC_VERSION') || version_compare(WC_VERSION, '11.3.0', '<')) { throw new \RuntimeException('This store requires WooCommerce 11.3.0 or later'); }
-        self::checkOrderStorage();
+        // A managed build is refused before a host exposes it. A plugin install reports the same
+        // problem from onInit(), so wp-admin stays usable for changing order storage back.
+        if (Runtime::managed()) { self::checkOrderStorage(); }
+        add_action('before_woocommerce_init', static function () use ($plugin): void {
+            if (class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
+                \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', $plugin->dir . '/' . basename($plugin->dir) . '.php', false);
+            }
+        });
         $options = [
             'woocommerce_enable_coupons' => 'no', 'woocommerce_enable_reviews' => 'no', 'woocommerce_enable_review_rating' => 'no',
             'woocommerce_enable_signup_and_login_from_checkout' => 'no', 'woocommerce_enable_myaccount_registration' => 'no', 'woocommerce_enable_delayed_account_creation' => 'no',
@@ -141,6 +148,7 @@ final class Module
     {
         $type = get_post_type_object('product'); if ($type) { $type->show_in_abilities = false; }
         try {
+            if (!Runtime::managed()) { self::checkOrderStorage(); }
             if (Runtime::installs()) { self::initialize($plugin); }
             if (!Runtime::managed() && is_file($plugin->dir . '/tp/app/seed-version.php') && $plugin->unavailable() === null) {
                 $version = require $plugin->dir . '/tp/app/seed-version.php';

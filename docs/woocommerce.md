@@ -6,6 +6,9 @@ There is no second commerce database or merchant REST credential.
 Orders use legacy WordPress post storage. Existing stores with HPOS or order synchronization
 enabled are refused without changing their settings; complete synchronization and choose
 legacy storage in WooCommerce before enabling TypedPress commerce.
+On a plugin install the refusal closes the shop and its checkout and shows the reason as an
+admin notice; wp-admin stays available for changing the setting back. A managed build is refused
+before its host exposes it.
 
 ```sh
 typedpress add shop

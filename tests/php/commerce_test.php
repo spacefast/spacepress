@@ -48,13 +48,14 @@ $zones = WC_Shipping_Zones::get_zones();
 eq('source shipping zones are present', array_column($zones, 'zone_name'), ['Poland', 'Germany']);
 foreach (['woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
     update_option($option, 'yes');
-    foreach ([static fn () => \TypedPress\Commerce\Module::checkOrderStorage(), static function () use ($plugin): void { require dirname($plugin->dir, 2) . '/mu-plugins/typedpress-commerce.php'; }] as $policy) {
-        $refused = false;
-        try { $policy(); } catch (RuntimeException $e) { $refused = str_contains($e->getMessage(), 'legacy order storage'); }
-        check('existing HPOS or synchronization is refused without overriding ' . $option, $refused && get_option($option) === 'yes');
-    }
+    $refused = false;
+    try { \TypedPress\Commerce\Module::checkOrderStorage(); } catch (RuntimeException $e) { $refused = str_contains($e->getMessage(), 'legacy order storage'); }
+    check('existing HPOS or synchronization is refused without overriding ' . $option, $refused && get_option($option) === 'yes');
+    // As a must-use plugin the early policy leaves this to the runtime: throwing there would take wp-admin down.
+    require dirname($plugin->dir, 2) . '/mu-plugins/typedpress-commerce.php';
     update_option($option, 'no');
 }
+check('Woo is told the app does not support HPOS', in_array(basename($plugin->dir) . '/' . basename($plugin->dir) . '.php', \Automattic\WooCommerce\Utilities\FeaturesUtil::get_compatible_plugins_for_feature('custom_order_tables')['incompatible'], true));
 foreach (['/%63art', '/%63heckout', '/%63heckout/order-received/123', '//checkout/'] as $path) {
     check('encoded or normalized private route stays private: ' . $path, \TypedPress\Commerce\Module::privatePath($plugin, $path));
 }
@@ -465,6 +466,21 @@ check('an administrator credential with personal scope retains download manageme
 eq('even a personal write agent cannot use Woo REST', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('even a personal write agent cannot use Woo core aliases', $request('/wp-json/wp/v2/product')[0], 403);
 eq('orders remain read-only with every grant', $request('/__tp/api/v1/orders', 'POST', [])[0], 405);
+// An administrator who turns HPOS synchronization on closes the shop, not wp-admin. Woo itself
+// refuses HPOS as the authoritative storage while orders are unsynchronized, so this is the first step.
+foreach (['woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
+    update_option($option, 'yes');
+    $login = curl_init($site->url() . '/wp-login.php');
+    curl_setopt_array($login, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60]);
+    curl_exec($login);
+    eq('WordPress login survives ' . $option, (int) curl_getinfo($login, CURLINFO_RESPONSE_CODE), 200);
+    $closed = $request('/__tp/api/v1/store');
+    eq('the shop is unavailable under ' . $option, [$closed[0], $closed[1]['code'] ?? null], [503, 'unavailable']);
+    check('the reason is logged for the administrator', str_contains($site->debugLog(), 'TypedPress commerce requires legacy order storage'));
+    eq('native checkout is refused under ' . $option, $request('/wp-json/wc/store/v1/checkout', 'POST', [])[0], 503);
+    update_option($option, 'no');
+    eq('the shop returns once storage is changed back from ' . $option, $request('/__tp/api/v1/store')[0], 200);
+}
 // A request-time install failure refuses TypedPress and leaves core admin available for repairs.
 \TypedPress\Wp\InstallMarker::forget(); delete_option('tp_shop_shipping');
 add_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);

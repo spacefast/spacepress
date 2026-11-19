@@ -7,7 +7,7 @@ builds its disposable app under `.tp/showcase/`, leaving its sources unchanged.
 | Example | What it shows |
 | --- | --- |
 | [`examples/showcase/`](../examples/showcase/README.md) | One-command seeded demo: native admin, structured fields, SQL relations, media and a compiled class/action |
-| [`examples/drive-store/`](../examples/drive-store/README.md) | Most of TypedPress at once: a used hard-drive shop with a catalog, a fake checkout through a form action, stock rules in hooks, SQL order tables, reviews, an RSS feed, guarded pages, a settings global and TypedPress Admin, with a WordPress test |
+| [`examples/drive-store/`](../examples/drive-store/README.md) | A native WooCommerce shop with typed drive specs, live stock, reviews, checkout, and staff fulfilment in TypedPress Admin |
 | [`examples/reading-list/`](../examples/reading-list/README.md) | Each part of an app once: a collection, a table, owner-scoped access, hooks, an action, a job, a route and two npm packages compiled to PHP |
 | `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, hooks and jobs |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |

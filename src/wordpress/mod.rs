@@ -35,6 +35,21 @@ pub fn hook_names() -> impl Iterator<Item = &'static str> {
 }
 
 pub fn hook(name: &str) -> Option<Hook> {
+    if name == "typedpress_woo_order_stock" {
+        return Some(Hook {
+            filter: false,
+            params: vec![
+                ("product_id".into(), Ty::Num),
+                ("order_id".into(), Ty::Num),
+                ("change".into(), Ty::Num),
+                (
+                    "reason".into(),
+                    Ty::union([Ty::StrLit("sale".into()), Ty::StrLit("return".into())]),
+                ),
+            ],
+            returns: Ty::Void,
+        });
+    }
     let h = catalog()["hooks"].get(name)?;
     let params: Vec<(String, Ty)> = h["params"]
         .as_array()

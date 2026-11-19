@@ -526,6 +526,31 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
             ));
         }
     }
+    if schema
+        .collections
+        .values()
+        .any(|c| c.commerce.as_deref() == Some("product") && c.columns.contains_key("stockQuantity"))
+    {
+        let shapes: Value = serde_json::from_str(include_str!("../../runtime/TypedPress/Commerce/operations.json"))
+            .expect("commerce operation schemas");
+        for (name, shape) in shapes.as_object().expect("commerce operations") {
+            if name == "complete-order"
+                && !schema
+                    .collections
+                    .values()
+                    .any(|c| c.commerce.as_deref() == Some("order"))
+            {
+                continue;
+            }
+            out.push((
+                format!("{app}/{name}"),
+                (
+                    schema_ty(&shape["input"], &mut Vec::new(), ""),
+                    schema_ty(&shape["output"], &mut Vec::new(), ""),
+                ),
+            ));
+        }
+    }
     out
 }
 

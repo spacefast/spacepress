@@ -184,3 +184,8 @@ export interface Hooks {
   login_message: { kind: "filter"; args: [message: string] };
 }
 // END GENERATED
+
+// WooCommerce stock movements emitted from native order reduction and restoration.
+export interface Hooks {
+  typedpress_woo_order_stock: { kind: "action"; args: [productId: number, orderId: number, change: number, reason: "sale" | "return"] };
+}

@@ -49,7 +49,7 @@ export const tags = productTag({sync: 'content/tags/*.md'});
 export const orders = order();
 ```
 
-Each is a fixed native kind, with at most one export per builder. Fields and access rules
+Each is a fixed native kind, with at most one export per builder. Native fields and access rules
 cannot be replaced. Products are public only while published and visible; writes require
 `admin`. Orders are read-only and require `admin`, including server-side page reads.
 Use the ordinary `db.query.products`, generated client, facade, OpenAPI and app abilities.
@@ -62,7 +62,20 @@ exact decimal `price`, ordered media `images`, category/tag references, `virtual
 `availability` and `url`. Native variable/grouped/external products identify their type;
 v1 writes accept simple products only. Schedule publication in WooCommerce, where you can set
 the future date. TypedPress reads that status as `scheduled` and preserves an existing schedule when editing the product.
-Stock is operational data managed by Woo.
+Stock is operational data managed by Woo. Set `product({ inventory: true })` to
+start new products with managed stock at zero and expose the read-only
+`stockQuantity` field. The app can call the administrator-only
+`<app>/increase-product-stock` and `<app>/complete-order` abilities from
+actions. Completing an order requires an exported `order()` and a processing
+order. The `typedpress_woo_order_stock` hook receives the product ID, order ID,
+signed quantity, and reason (`sale` or `return`) when Woo changes order stock.
+
+Use `product({ fields: { capacityGb: integer().min(1).optional() } })` to add
+typed scalar fields to Woo's product metadata. Optional fields allow the app
+to read products created in Woo admin before the fields were declared.
+TypedPress Admin and Markdown sync use the same field definitions.
+Set `reviews: true` on `product()` to enable text reviews and render them
+with `<Comments for={item} />`.
 
 Category and tag lists replace the current assignments and retain their submitted order in
 TypedPress reads and sync. WooCommerce assigns its configured
@@ -101,7 +114,7 @@ are option filters, so removing a declaration restores the stored setting. Shipp
 Woo zone CRUD: a declared list owns the whole zone list, matched by name; `[]` ships nothing.
 Reconciliation is transactional: a failed replacement preserves the previous zones and methods.
 Undeclared settings remain Woo's. Gateways take credentials from their own server settings.
-Taxes, coupons, signup/accounts, reviews/ratings, sale prices and backorders stay disabled.
+Taxes, coupons, signup/accounts, star ratings, sale prices and backorders stay disabled.
 Historical order tax, coupon, item and refund snapshots remain readable.
 
 ## Cart, checkout and agents
@@ -125,7 +138,7 @@ its core REST product/term aliases, or `woocommerce/*` abilities. Cart and check
 
 ## Verification and hosting
 
-[The example README](../examples/shop/README.md) gives the Playground test commands.
+[The Drive Store README](../examples/drive-store/README.md) gives the Playground test commands.
 `tests/commerce.rs` checks declarations, scaffold preservation and native WordPress CRUD,
 settings, access scopes, MCP visibility, stock purges and historical order reads.
 `docs-site/tests/playground/commerce.test.ts` clicks cart/shipping/COD checkout and a dummy

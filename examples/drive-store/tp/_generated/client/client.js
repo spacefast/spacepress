@@ -3,26 +3,26 @@
 export const SCHEMA = {
 	"name": "drive-store",
 	"collections": {
+		"stockMovements": {
+			"path": "stock_movements",
+			"primaryKey": "id",
+			"drafts": false,
+			"revisions": false,
+			"localized": false,
+			"relations": {},
+			"media": [],
+			"mediaList": [],
+			"files": []
+		},
 		"drives": {
 			"path": "drives",
 			"primaryKey": "id",
-			"drafts": true,
-			"revisions": true,
+			"drafts": false,
+			"revisions": false,
 			"localized": false,
-			"relations": {
-				"orders": {
-					"kind": "many",
-					"collection": "orders",
-					"optional": false
-				},
-				"stockMovements": {
-					"kind": "many",
-					"collection": "stockMovements",
-					"optional": false
-				}
-			},
-			"media": [],
-			"mediaList": [],
+			"relations": {},
+			"media": ["images"],
+			"mediaList": ["images"],
 			"files": []
 		},
 		"orders": {
@@ -31,48 +31,14 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": {
-				"drive": {
-					"kind": "one",
-					"collection": "drives",
-					"optional": false
-				},
-				"stockMovements": {
-					"kind": "many",
-					"collection": "stockMovements",
-					"optional": false
-				}
-			},
-			"media": [],
-			"mediaList": [],
-			"files": []
-		},
-		"stockMovements": {
-			"path": "stock_movements",
-			"primaryKey": "id",
-			"drafts": false,
-			"revisions": false,
-			"localized": false,
-			"relations": {
-				"drive": {
-					"kind": "one",
-					"collection": "drives",
-					"optional": false
-				},
-				"order": {
-					"kind": "one",
-					"collection": "orders",
-					"optional": true
-				}
-			},
+			"relations": {},
 			"media": [],
 			"mediaList": [],
 			"files": []
 		}
 	},
-	"globals": ["shop"],
+	"globals": ["settings"],
 	"actions": [
-		"buy",
 		"restock",
 		"markShipped",
 		"pendingOrders"
@@ -1283,3 +1249,152 @@ function toError(res, body) {
 		detail: `HTTP ${res.status}`
 	});
 }
+export class WooStoreError extends Error {
+	code;
+	status;
+	constructor(code, message, status) {
+		super(message);
+		this.name = "WooStoreError";
+		this.code = code;
+		this.status = status;
+	}
+}
+/** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
+export function wooDecimal(minor, precision) {
+	if (!Number.isInteger(precision) || precision < 0 || precision > 12 || !/^-?\d+$/.test(minor)) throw new Error("Invalid Store API money");
+	const negative = minor.startsWith("-");
+	const digits = (negative ? minor.slice(1) : minor).padStart(precision + 1, "0");
+	return (negative ? "-" : "") + (precision ? `${digits.slice(0, -precision)}.${digits.slice(-precision)}` : digits);
+}
+function wooCart(data) {
+	const precision = data.totals.currency_minor_unit;
+	const decimal = (value) => wooDecimal(value, precision);
+	return {
+		items: data.items.map((item) => ({
+			key: item.key,
+			id: item.id,
+			name: item.name,
+			quantity: item.quantity,
+			images: item.images,
+			variation: item.variation,
+			prices: {
+				price: wooDecimal(item.prices.price, item.prices.currency_minor_unit),
+				currencyCode: item.prices.currency_code,
+				currencyMinorUnit: item.prices.currency_minor_unit
+			},
+			totals: {
+				lineTotal: decimal(item.totals.line_total),
+				lineSubtotal: decimal(item.totals.line_subtotal)
+			}
+		})),
+		itemsCount: data.items_count,
+		needsShipping: data.needs_shipping,
+		totals: {
+			totalItems: decimal(data.totals.total_items),
+			totalPrice: decimal(data.totals.total_price),
+			totalShipping: data.totals.total_shipping === null ? null : decimal(data.totals.total_shipping),
+			totalDiscount: decimal(data.totals.total_discount),
+			totalFees: decimal(data.totals.total_fees ?? "0"),
+			totalTax: decimal(data.totals.total_tax),
+			currencyCode: data.totals.currency_code,
+			currencyMinorUnit: precision
+		},
+		coupons: data.coupons.map((coupon) => ({
+			code: coupon.code,
+			totals: { totalDiscount: decimal(coupon.totals.total_discount) }
+		})),
+		fees: (data.fees ?? []).map((fee) => ({
+			id: fee.key,
+			name: fee.name,
+			total: decimal(fee.totals.total),
+			totalTax: decimal(fee.totals.total_tax)
+		})),
+		shippingRates: (data.shipping_rates ?? []).map((pack) => ({
+			packageId: pack.package_id,
+			name: pack.name,
+			rates: pack.shipping_rates.map((rate) => ({
+				id: rate.rate_id,
+				name: rate.name,
+				price: wooDecimal(rate.price, rate.currency_minor_unit),
+				selected: rate.selected,
+				currencyCode: rate.currency_code,
+				currencyMinorUnit: rate.currency_minor_unit
+			}))
+		}))
+	};
+}
+export function createCartClient(options = {}) {
+	const request = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const base = (options.base ?? "/wp-json/wc/store/v1").replace(/\/$/, "");
+	let nonce = null;
+	let pending = Promise.resolve();
+	const listeners = new Set();
+	async function send(path, body) {
+		const response = await request(`${base}/cart${path}`, {
+			method: body === undefined ? "GET" : "POST",
+			credentials: "same-origin",
+			cache: "no-store",
+			headers: body === undefined ? {} : {
+				"Content-Type": "application/json",
+				...nonce ? { Nonce: nonce } : {}
+			},
+			...body === undefined ? {} : { body: JSON.stringify(body) }
+		});
+		nonce = response.headers.get("Nonce") ?? nonce;
+		const data = await response.json();
+		if (!response.ok) throw new WooStoreError(data.code ?? "woocommerce_error", data.message ?? "The cart request failed", response.status);
+		const cart = wooCart(data);
+		for (const listener of listeners) listener(cart);
+		return cart;
+	}
+	function queue(path, body) {
+		const next = pending.catch(() => undefined).then(async () => {
+			if (body !== undefined && !nonce) await send("");
+			try {
+				return await send(path, body);
+			} catch (error) {
+				if (body !== undefined && error instanceof WooStoreError && error.code === "woocommerce_rest_invalid_nonce") {
+					nonce = null;
+					await send("");
+					return send(path, body);
+				}
+				throw error;
+			}
+		});
+		pending = next;
+		return next;
+	}
+	const address = (input) => Object.fromEntries(Object.entries(input).map(([key, value]) => [{
+		firstName: "first_name",
+		lastName: "last_name",
+		address1: "address_1",
+		address2: "address_2"
+	}[key] ?? key, value]));
+	return {
+		get: () => queue(""),
+		add: (id, quantity = 1) => queue("/add-item", {
+			id,
+			quantity
+		}),
+		update: (key, quantity) => queue("/update-item", {
+			key,
+			quantity
+		}),
+		remove: (key) => queue("/remove-item", { key }),
+		updateCustomer: (input) => queue("/update-customer", {
+			...input.billing ? { billing_address: address(input.billing) } : {},
+			...input.shipping ? { shipping_address: address(input.shipping) } : {}
+		}),
+		selectShipping: (packageId, rateId) => queue("/select-shipping-rate", {
+			package_id: packageId,
+			rate_id: rateId
+		}),
+		subscribe: (listener) => {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		}
+	};
+}
+export const cart = createCartClient();

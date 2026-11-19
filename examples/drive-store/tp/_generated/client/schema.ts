@@ -4,26 +4,30 @@
 export const SCHEMA = {
   "name": "drive-store",
   "collections": {
+    "stockMovements": {
+      "path": "stock_movements",
+      "primaryKey": "id",
+      "drafts": false,
+      "revisions": false,
+      "localized": false,
+      "relations": {},
+      "media": [],
+      "mediaList": [],
+      "files": []
+    },
     "drives": {
       "path": "drives",
       "primaryKey": "id",
-      "drafts": true,
-      "revisions": true,
+      "drafts": false,
+      "revisions": false,
       "localized": false,
-      "relations": {
-        "orders": {
-          "kind": "many",
-          "collection": "orders",
-          "optional": false
-        },
-        "stockMovements": {
-          "kind": "many",
-          "collection": "stockMovements",
-          "optional": false
-        }
-      },
-      "media": [],
-      "mediaList": [],
+      "relations": {},
+      "media": [
+        "images"
+      ],
+      "mediaList": [
+        "images"
+      ],
       "files": []
     },
     "orders": {
@@ -32,50 +36,16 @@ export const SCHEMA = {
       "drafts": false,
       "revisions": false,
       "localized": false,
-      "relations": {
-        "drive": {
-          "kind": "one",
-          "collection": "drives",
-          "optional": false
-        },
-        "stockMovements": {
-          "kind": "many",
-          "collection": "stockMovements",
-          "optional": false
-        }
-      },
-      "media": [],
-      "mediaList": [],
-      "files": []
-    },
-    "stockMovements": {
-      "path": "stock_movements",
-      "primaryKey": "id",
-      "drafts": false,
-      "revisions": false,
-      "localized": false,
-      "relations": {
-        "drive": {
-          "kind": "one",
-          "collection": "drives",
-          "optional": false
-        },
-        "order": {
-          "kind": "one",
-          "collection": "orders",
-          "optional": true
-        }
-      },
+      "relations": {},
       "media": [],
       "mediaList": [],
       "files": []
     }
   },
   "globals": [
-    "shop"
+    "settings"
   ],
   "actions": [
-    "buy",
     "restock",
     "markShipped",
     "pendingOrders"

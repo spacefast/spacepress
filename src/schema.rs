@@ -207,6 +207,8 @@ pub struct Column {
     pub hidden: bool,
     /// Computed by storage and never written: a term's `count` and `url`.
     pub read_only: bool,
+    /// An authored Woo product field, stored via Woo's product metadata API.
+    pub commerce_meta: bool,
     /// `json<T>()` annotation, module and call position.
     pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
     /// `.was("old")`: the stored name before a rename (spec §2.5).
@@ -241,6 +243,7 @@ impl Column {
             derived: false,
             hidden: false,
             read_only: false,
+            commerce_meta: false,
             ts_type: None,
             was: None,
         }

@@ -41,6 +41,9 @@ fn num(n: f64) -> String {
 fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     let top = ctx == Ctx::Column;
     let mut parts = vec![format!("'type' => {}", php_str(c.ty.name()))];
+    if c.commerce_meta {
+        parts.push("'commerceMeta' => true".into());
+    }
     if c.primary_key && top {
         parts.push("'primaryKey' => true".into());
     }

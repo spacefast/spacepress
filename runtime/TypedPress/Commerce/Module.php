@@ -25,10 +25,16 @@ final class Module
         });
         \TypedPress\Extensions::beforeRead(static function (string $collection, array &$opts, ?\TypedPress\Viewer $viewer) use ($plugin): void {
             if (!$plugin->schema->hasCollection($collection)) { return; }
-            $kind = $plugin->schema->collection($collection)['commerce'] ?? '';
+            $spec = $plugin->schema->collection($collection);
+            $kind = $spec['commerce'] ?? '';
             if (!in_array($kind, ['product', 'order'], true)) { return; }
             if ($kind === 'order' && !\TypedPress\Wp\AgentScope::may('personal')) { throw \TypedPress\Wp\AgentScope::refusal('personal'); }
             $fields = $kind === 'product' ? ['id', 'uid', 'name', 'slug', 'description', 'shortDescription', 'status', 'sku', 'price', 'availability', 'virtual', 'downloadable', 'categories', 'tags'] : ['id', 'status', 'createdAt', 'updatedAt', 'customer', 'total', 'currency'];
+            if ($kind === 'product') {
+                foreach ($spec['columns'] as $name => $column) {
+                    if (($column['commerceMeta'] ?? false) || $name === 'stockQuantity') { $fields[] = $name; }
+                }
+            }
             $where = static function (array $filter) use (&$where, $fields): void {
                 foreach ($filter as $key => $value) {
                     if (in_array($key, ['AND', 'OR'], true)) { foreach ($value as $part) { $where($part); } }
@@ -56,8 +62,15 @@ final class Module
                 \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', $plugin->dir . '/' . basename($plugin->dir) . '.php', false);
             }
         });
+        $reviews = false;
+        foreach ($plugin->schema->kinds() as $spec) {
+            if (($spec['commerce'] ?? '') === 'product' && ($spec['comments'] ?? false)) { $reviews = true; }
+            if (($spec['commerce'] ?? '') === 'product' && isset($spec['columns']['stockQuantity'])) {
+                Operations::register($plugin);
+            }
+        }
         $options = [
-            'woocommerce_enable_coupons' => 'no', 'woocommerce_enable_reviews' => 'no', 'woocommerce_enable_review_rating' => 'no',
+            'woocommerce_enable_coupons' => 'no', 'woocommerce_enable_reviews' => $reviews ? 'yes' : 'no', 'woocommerce_enable_review_rating' => 'no',
             'woocommerce_enable_signup_and_login_from_checkout' => 'no', 'woocommerce_enable_myaccount_registration' => 'no', 'woocommerce_enable_delayed_account_creation' => 'no',
             'woocommerce_enable_guest_checkout' => 'yes', 'woocommerce_calc_taxes' => 'no', 'woocommerce_coming_soon' => 'no',
             'woocommerce_currency' => $store['currency'], 'woocommerce_default_country' => $store['country'],

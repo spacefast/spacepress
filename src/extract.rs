@@ -579,6 +579,46 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     for c in out.collections.clone() {
         if c.kind.commerce() {
             crate::commerce::kind(&c, &mut out.schema)?;
+            if c.kind == StorageKind::Product {
+                for (name, builder) in c.columns.iter().filter(|(name, _)| name.as_str() != "id") {
+                    if out.schema.collections[c.table()].columns.contains_key(name)
+                        || name == "stockQuantity"
+                        || matches!(name.as_str(), "categories" | "tags")
+                    {
+                        return Err(Diag::new(builder.span, format!("product() already defines `{name}`")));
+                    }
+                    let mut col = lock_column(name, builder, false, c.table(), ev, &mut out)?;
+                    if !matches!(
+                        col.ty,
+                        ColType::Text
+                            | ColType::Integer
+                            | ColType::Real
+                            | ColType::Boolean
+                            | ColType::Date
+                            | ColType::Email
+                            | ColType::Url
+                    ) || col.not_null
+                        || col.unique
+                        || col.references.is_some()
+                        || col.was.is_some()
+                        || col.localized
+                        || col.on_update.is_some()
+                        || col.default.is_some()
+                    {
+                        return Err(Diag::new(
+                            builder.span,
+                            "product() fields must be optional scalar metadata without defaults, references, or storage modifiers",
+                        ));
+                    }
+                    col.commerce_meta = true;
+                    out.schema
+                        .collections
+                        .get_mut(c.table())
+                        .unwrap()
+                        .columns
+                        .insert(name.clone(), col);
+                }
+            }
             let kind = &out.schema.collections[c.table()];
             if let Some(pattern) = &kind.url {
                 let shape = crate::kind_url::check(
@@ -2755,6 +2795,7 @@ fn column(
         layouts,
         system: false,
         read_only: false,
+        commerce_meta: false,
         localized: b.localized,
         access,
         show_if,

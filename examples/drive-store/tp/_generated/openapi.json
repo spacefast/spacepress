@@ -14,16 +14,13 @@
     { "bearer": [] }
   ],
   "tags": [
-    {
-      "name": "Drives",
-      "description": "A collection: WordPress posts of their own type, with the block editor."
-    },
+    { "name": "Stock movements", "description": "A table of the app's own." },
+    { "name": "Drives", "description": "A table of the app's own." },
     {
       "name": "Sync",
       "description": "What `typedpress sync` calls to keep content files and rows in step, for kinds with `sync`."
     },
-    { "name": "Orders", "description": "A table of the app's own." },
-    { "name": "Stock movements", "description": "A table of the app's own." },
+    { "name": "WooCommerce orders", "description": "A table of the app's own." },
     { "name": "Globals", "description": "Single records, such as site-wide settings." },
     { "name": "Actions", "description": "The app's own server functions." },
     {
@@ -40,6 +37,230 @@
     { "name": "Schema", "description": "The app described to its clients." }
   ],
   "paths": {
+    "/stock_movements": {
+      "get": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.list",
+        "summary": "List stock_movements",
+        "x-typedpress-access": "admin",
+        "description": "The stock_movements rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "where",
+            "in": "query",
+            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StockMovementFilter" }
+              }
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `drive`, `change`, `reason`, `order`, `at`.",
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/StockMovement" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.create",
+        "summary": "Create in stock_movements",
+        "x-typedpress-access": false,
+        "description": "Creates one stock_movements row and returns it.\n\nAccess: Nobody may do this over the API.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new row's fields.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StockMovementInsert" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/StockMovement" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/stock_movements/{id}": {
+      "get": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.get",
+        "summary": "Get one of stock_movements",
+        "x-typedpress-access": "admin",
+        "description": "One stock_movements row.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/StockMovement" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.update",
+        "summary": "Update in stock_movements",
+        "x-typedpress-access": false,
+        "description": "Changes the fields sent on one stock_movements row and returns the row.\n\nAccess: Nobody may do this over the API.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StockMovementPatch" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/StockMovement" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["Stock movements"],
+        "operationId": "stockMovements.delete",
+        "summary": "Delete from stock_movements",
+        "x-typedpress-access": false,
+        "description": "Deletes one stock_movements row for good and returns the row as it was.\n\nAccess: Nobody may do this over the API.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deleted row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/StockMovement" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
     "/drives": {
       "get": {
         "tags": ["Drives"],
@@ -52,7 +273,7 @@
           { "applicationPassword": [] },
           { "bearer": [] }
         ],
-        "description": "The drives rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Anyone may do this, signed in or not.\n\nRows that are not published are returned to editors and administrators only.",
+        "description": "The drives rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Anyone may do this, signed in or not.",
         "parameters": [
           {
             "name": "where",
@@ -67,7 +288,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `name`, `slug`, `summary`, `description`, `brand`, `model`, `capacityGb`, `media`, `connector`, `condition`, `powerOnHours`, `price`, `stock`, `status`, `publishedAt`, `uid`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `uid`, `name`, `slug`, `description`, `sku`, `shortDescription`, `price`, `status`, `images`, `virtual`, `downloadable`, `downloads`, `type`, `purchasable`, `availability`, `stockQuantity`, `url`, `brand`, `model`, `capacityGb`, `media`, `connector`, `condition`, `powerOnHours`, `serial`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -80,15 +301,9 @@
             "schema": { "type": "string", "maxLength": 200 }
           },
           {
-            "name": "status",
-            "in": "query",
-            "description": "Only rows with this status; shorthand for a filter on `status`.",
-            "schema": { "type": "string", "enum": ["draft", "published", "scheduled"] }
-          },
-          {
             "name": "with",
             "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `orders`, `stockMovements`. A relation holds only rows the caller may read.",
+            "description": "What to load with each row, comma-separated or as a JSON object: `images`. A relation holds only rows the caller may read.",
             "schema": { "type": "string" }
           }
         ],
@@ -119,8 +334,17 @@
         "tags": ["Drives"],
         "operationId": "drives.create",
         "summary": "Create in drives",
-        "x-typedpress-access": "editor",
-        "description": "Creates one drives row and returns it.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Creates one drives row and returns it.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        ],
         "requestBody": {
           "required": true,
           "description": "The new row's fields.",
@@ -166,31 +390,20 @@
           { "applicationPassword": [] },
           { "bearer": [] }
         ],
-        "description": "One drives row.\n\nAccess: Anyone may do this, signed in or not.\n\nRows that are not published are returned to editors and administrators only.",
+        "description": "One drives row.\n\nAccess: Anyone may do this, signed in or not.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
           },
           {
             "name": "with",
             "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `orders`, `stockMovements`. A relation holds only rows the caller may read.",
+            "description": "What to load with each row, comma-separated or as a JSON object: `images`. A relation holds only rows the caller may read.",
             "schema": { "type": "string" }
-          },
-          {
-            "name": "format",
-            "in": "query",
-            "description": "`md` answers with the row as Markdown (`text/markdown`) instead of JSON.",
-            "schema": { "type": "string", "enum": ["md"] }
           }
         ],
         "responses": {
@@ -205,9 +418,6 @@
                   },
                   "required": ["data"]
                 }
-              },
-              "text/markdown": {
-                "schema": { "type": "string" }
               }
             }
           },
@@ -219,20 +429,15 @@
         "tags": ["Drives"],
         "operationId": "drives.update",
         "summary": "Update in drives",
-        "x-typedpress-access": "editor",
-        "description": "Changes the fields sent on one drives row and returns the row.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Changes the fields sent on one drives row and returns the row.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
           }
         ],
         "requestBody": {
@@ -279,25 +484,8 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          },
-          {
-            "name": "_rev",
-            "in": "query",
-            "description": "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.",
-            "schema": { "type": "string" }
-          },
-          {
-            "name": "takeover",
-            "in": "query",
-            "description": "`1` takes over another user's edit lock.",
-            "schema": { "type": "string", "enum": ["1"] }
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
           }
         ],
         "responses": {
@@ -323,631 +511,13 @@
         }
       }
     },
-    "/drives/{id}/revisions": {
-      "get": {
-        "tags": ["Drives"],
-        "operationId": "drives.revisions.list",
-        "summary": "Revisions of drives",
-        "x-typedpress-access": "editor",
-        "description": "Each saved version of the row, newest first, with its time and who saved it, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          },
-          { "$ref": "#/components/parameters/limit" },
-          { "$ref": "#/components/parameters/offset" },
-          { "$ref": "#/components/parameters/cursor" }
-        ],
-        "responses": {
-          "200": {
-            "description": "One page of rows.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": { "$ref": "#/components/schemas/RevisionSummary" }
-                    },
-                    "cursor": { "type": ["string", "null"] }
-                  },
-                  "required": ["data", "cursor"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/drives/{id}/revisions/{revision}": {
-      "get": {
-        "tags": ["Drives"],
-        "operationId": "drives.revisions.get",
-        "summary": "Get a revision of drives",
-        "x-typedpress-access": "editor",
-        "description": "The row as this revision saved it.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          },
-          {
-            "name": "revision",
-            "in": "path",
-            "required": true,
-            "description": "The revision's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The row as it was.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Drive" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/drives/{id}/revisions/{revision}/restore": {
-      "post": {
-        "tags": ["Drives"],
-        "operationId": "drives.revisions.restore",
-        "summary": "Restore a revision of drives",
-        "x-typedpress-access": "editor",
-        "description": "Makes the revision the current row, as an update of the row.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          },
-          {
-            "name": "revision",
-            "in": "path",
-            "required": true,
-            "description": "The revision's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The row after the restore.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Drive" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/drives/{id}/staged": {
-      "get": {
-        "tags": ["Drives"],
-        "operationId": "drives.staged",
-        "summary": "Staged version of drives",
-        "x-typedpress-access": "editor",
-        "description": "The row as it would be once promoted, the fields that are staged, and who staged last. With `preview=<token>` it answers without signing in, through an anonymous visitor's field masks.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          },
-          {
-            "name": "preview",
-            "in": "query",
-            "description": "A preview token from the preview route.",
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The staged version.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "row": { "$ref": "#/components/schemas/Drive" },
-                        "fields": {
-                          "type": "array",
-                          "items": { "type": "string" },
-                          "description": "The staged fields."
-                        },
-                        "id": { "type": "integer", "description": "The revision that holds the staged version." },
-                        "by": {
-                          "type": ["object", "null"],
-                          "properties": {
-                            "id": { "type": "integer" },
-                            "name": { "type": "string" }
-                          }
-                        },
-                        "at": { "type": "string", "format": "date-time" },
-                        "promoteAt": {
-                          "type": ["string", "null"],
-                          "format": "date-time",
-                          "description": "When a scheduled promote runs."
-                        },
-                        "_rev": {
-                          "type": "string",
-                          "description": "The staged version's token, for the next stage, promote or discard."
-                        }
-                      },
-                      "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"]
-                    }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "patch": {
-        "tags": ["Drives"],
-        "operationId": "drives.stage",
-        "summary": "Stage a change to drives",
-        "x-typedpress-access": "editor",
-        "description": "Saves the fields sent into the row's staged version. The live row stays as it is until the staged version is promoted. Checked as an update would be; no hook runs.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "The fields to stage.",
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/DrivePatch" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The staged version.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "row": { "$ref": "#/components/schemas/Drive" },
-                        "fields": {
-                          "type": "array",
-                          "items": { "type": "string" },
-                          "description": "The staged fields."
-                        },
-                        "id": { "type": "integer", "description": "The revision that holds the staged version." },
-                        "by": {
-                          "type": ["object", "null"],
-                          "properties": {
-                            "id": { "type": "integer" },
-                            "name": { "type": "string" }
-                          }
-                        },
-                        "at": { "type": "string", "format": "date-time" },
-                        "promoteAt": {
-                          "type": ["string", "null"],
-                          "format": "date-time",
-                          "description": "When a scheduled promote runs."
-                        },
-                        "_rev": {
-                          "type": "string",
-                          "description": "The staged version's token, for the next stage, promote or discard."
-                        }
-                      },
-                      "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"]
-                    }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "delete": {
-        "tags": ["Drives"],
-        "operationId": "drives.discard",
-        "summary": "Discard the staged version of drives",
-        "x-typedpress-access": "editor",
-        "description": "Ends the staged version. The live row is untouched; the discarded version stays in the row's revisions.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          },
-          {
-            "name": "_rev",
-            "in": "query",
-            "description": "The staged version's `_rev`: the discard is refused with `409 stale_revision` if it changed since.",
-            "schema": { "type": "string" }
-          },
-          {
-            "name": "takeover",
-            "in": "query",
-            "description": "`1` takes over another user's edit lock.",
-            "schema": { "type": "string", "enum": ["1"] }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The revision that held it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "revision": { "type": "integer" }
-                      },
-                      "required": ["revision"]
-                    }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/drives/{id}/staged/compare": {
-      "get": {
-        "tags": ["Drives"],
-        "operationId": "drives.compare",
-        "summary": "Compare staged and live drives",
-        "x-typedpress-access": "editor",
-        "description": "The staged fields whose value differs from the live row, with both values, as the caller may read each side.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The changes.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "changes": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "field": { "type": "string" },
-                              "live": {},
-                              "staged": {}
-                            },
-                            "required": ["field", "live", "staged"]
-                          }
-                        },
-                        "id": { "type": "integer", "description": "The revision that holds the staged version." },
-                        "by": {
-                          "type": ["object", "null"],
-                          "properties": {
-                            "id": { "type": "integer" },
-                            "name": { "type": "string" }
-                          }
-                        },
-                        "at": { "type": "string", "format": "date-time" },
-                        "promoteAt": {
-                          "type": ["string", "null"],
-                          "format": "date-time",
-                          "description": "When a scheduled promote runs."
-                        },
-                        "_rev": {
-                          "type": "string",
-                          "description": "The staged version's token, for the next stage, promote or discard."
-                        }
-                      },
-                      "required": ["id", "changes", "by", "at", "promoteAt", "_rev"]
-                    }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/drives/{id}/staged/promote": {
-      "post": {
-        "tags": ["Drives"],
-        "operationId": "drives.promote",
-        "summary": "Promote the staged version of drives",
-        "x-typedpress-access": "editor",
-        "description": "Makes the staged version live, as an update of the row by the caller: its rules, hooks, unique checks and webhooks run. With `at` (a future time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both answer with the staged version.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "Empty, or `at`; `_rev` and `takeover` as on a stage.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "at": { "type": ["string", "null"], "format": "date-time" },
-                  "_rev": { "type": "string" },
-                  "takeover": { "type": "boolean" }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The row after the promote, or the staged version when `at` was sent.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "oneOf": [
-                        { "$ref": "#/components/schemas/Drive" },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "row": { "$ref": "#/components/schemas/Drive" },
-                            "fields": {
-                              "type": "array",
-                              "items": { "type": "string" },
-                              "description": "The staged fields."
-                            },
-                            "id": { "type": "integer", "description": "The revision that holds the staged version." },
-                            "by": {
-                              "type": ["object", "null"],
-                              "properties": {
-                                "id": { "type": "integer" },
-                                "name": { "type": "string" }
-                              }
-                            },
-                            "at": { "type": "string", "format": "date-time" },
-                            "promoteAt": {
-                              "type": ["string", "null"],
-                              "format": "date-time",
-                              "description": "When a scheduled promote runs."
-                            },
-                            "_rev": {
-                              "type": "string",
-                              "description": "The staged version's token, for the next stage, promote or discard."
-                            }
-                          },
-                          "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"]
-                        }
-                      ]
-                    }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/drives/{id}/staged/preview": {
-      "post": {
-        "tags": ["Drives"],
-        "operationId": "drives.previewLink",
-        "summary": "Preview link for staged drives",
-        "x-typedpress-access": "editor",
-        "description": "A signed link to the staged version that works without signing in until it expires (an hour by default, a day at most) or the staged version is promoted or discarded.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
-            "schema": {
-              "anyOf": [
-                { "type": "integer" },
-                { "type": "string", "pattern": "^slug:." }
-              ]
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "Empty, or `ttl` in seconds.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "ttl": { "type": "integer", "minimum": 60, "maximum": 86400 }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The link.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "token": { "type": "string" },
-                        "expiresAt": { "type": "string", "format": "date-time" },
-                        "api": { "type": "string", "description": "Reads the staged version without signing in." },
-                        "url": {
-                          "type": ["string", "null"],
-                          "description": "The row's own page showing the staged version, when the theme renders it."
-                        }
-                      },
-                      "required": ["token", "expiresAt", "api", "url"]
-                    }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/sync/drives": {
       "get": {
         "tags": ["Sync"],
         "operationId": "sync.drives.read",
         "summary": "Read drives for sync",
-        "x-typedpress-access": "editor",
-        "description": "Rows as sync records with their digests, in pages by id.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Rows as sync records with their digests, in pages by id.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "parameters": [
           {
             "name": "after",
@@ -996,8 +566,8 @@
         "tags": ["Sync"],
         "operationId": "sync.drives.apply",
         "summary": "Apply a drives sync record",
-        "x-typedpress-access": "editor",
-        "description": "Creates or updates one row from a content file, when the row still matches `expect`. A row that changed since answers 409 `sync_stale`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Creates or updates one row from a content file, when the row still matches `expect`. A row that changed since answers 409 `sync_stale`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "requestBody": {
           "required": true,
           "description": "The record and the digest it expects.",
@@ -1130,8 +700,8 @@
         "tags": ["Sync"],
         "operationId": "sync.drives.convert",
         "summary": "Convert drives content between formats",
-        "x-typedpress-access": "editor",
-        "description": "Converts a body between block markup, Markdown and HTML, as the site's own converters do. One item, or up to a batch under `records`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Converts a body between block markup, Markdown and HTML, as the site's own converters do. One item, or up to a batch under `records`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "requestBody": {
           "required": true,
           "description": "The text and the direction.",
@@ -1197,8 +767,8 @@
         "tags": ["Sync"],
         "operationId": "sync.drives.merge",
         "summary": "Three-way merge drives content",
-        "x-typedpress-access": "editor",
-        "description": "Merges two versions of a body over their common base. One item, or up to a batch under `records`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Merges two versions of a body over their common base. One item, or up to a batch under `records`.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "requestBody": {
           "required": true,
           "description": "The base and the two versions.",
@@ -1263,17 +833,11 @@
     },
     "/orders": {
       "get": {
-        "tags": ["Orders"],
+        "tags": ["WooCommerce orders"],
         "operationId": "orders.list",
         "summary": "List orders",
-        "x-typedpress-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "The orders rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "x-typedpress-access": "admin",
+        "description": "The orders rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "parameters": [
           {
             "name": "where",
@@ -1288,7 +852,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `code`, `drive`, `quantity`, `unitPrice`, `total`, `buyerName`, `buyerEmail`, `buyerId`, `status`, `placedAt`, `shippedAt`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `status`, `currency`, `precision`, `createdAt`, `updatedAt`, `paidAt`, `completedAt`, `customer`, `paymentMethod`, `paymentTitle`, `total`, `subtotal`, `discountTotal`, `shippingTotal`, `taxTotal`, `billing`, `shipping`, `lines`, `shippingLines`, `taxLines`, `feeLines`, `couponLines`, `refunds`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -1299,12 +863,6 @@
             "in": "query",
             "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
             "schema": { "type": "string", "maxLength": 200 }
-          },
-          {
-            "name": "with",
-            "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `drive`, `stockMovements`. A relation holds only rows the caller may read.",
-            "schema": { "type": "string" }
           }
         ],
         "responses": {
@@ -1331,68 +889,15 @@
           "403": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
-      },
-      "post": {
-        "tags": ["Orders"],
-        "operationId": "orders.create",
-        "summary": "Create in orders",
-        "x-typedpress-access": "editor",
-        "description": "Creates one orders row and returns it.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "The new row's fields.",
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/OrderInsert" }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "The new row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Order" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
       }
     },
     "/orders/{id}": {
       "get": {
-        "tags": ["Orders"],
+        "tags": ["WooCommerce orders"],
         "operationId": "orders.get",
         "summary": "Get one of orders",
-        "x-typedpress-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "One orders row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "x-typedpress-access": "admin",
+        "description": "One orders row.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "parameters": [
           {
             "name": "id",
@@ -1400,12 +905,6 @@
             "required": true,
             "description": "The row's id.",
             "schema": { "type": "integer" }
-          },
-          {
-            "name": "with",
-            "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `drive`, `stockMovements`. A relation holds only rows the caller may read.",
-            "schema": { "type": "string" }
           }
         ],
         "responses": {
@@ -1428,340 +927,13 @@
           "404": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
-      },
-      "patch": {
-        "tags": ["Orders"],
-        "operationId": "orders.update",
-        "summary": "Update in orders",
-        "x-typedpress-access": "editor",
-        "description": "Changes the fields sent on one orders row and returns the row.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "The fields to change.",
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/OrderPatch" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The row after the change.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Order" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "delete": {
-        "tags": ["Orders"],
-        "operationId": "orders.delete",
-        "summary": "Delete from orders",
-        "x-typedpress-access": "admin",
-        "description": "Deletes one orders row for good and returns the row as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The deleted row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Order" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
       }
     },
-    "/stock_movements": {
-      "get": {
-        "tags": ["Stock movements"],
-        "operationId": "stockMovements.list",
-        "summary": "List stock_movements",
-        "x-typedpress-access": "editor",
-        "description": "The stock_movements rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "where",
-            "in": "query",
-            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/StockMovementFilter" }
-              }
-            }
-          },
-          {
-            "name": "orderBy",
-            "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `drive`, `change`, `reason`, `order`, `note`, `at`.",
-            "schema": { "type": "string" }
-          },
-          { "$ref": "#/components/parameters/limit" },
-          { "$ref": "#/components/parameters/offset" },
-          { "$ref": "#/components/parameters/cursor" },
-          {
-            "name": "search",
-            "in": "query",
-            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
-            "schema": { "type": "string", "maxLength": 200 }
-          },
-          {
-            "name": "with",
-            "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `drive`, `order`. A relation holds only rows the caller may read.",
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "One page of rows.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": { "$ref": "#/components/schemas/StockMovement" }
-                    },
-                    "cursor": { "type": ["string", "null"] }
-                  },
-                  "required": ["data", "cursor"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "post": {
-        "tags": ["Stock movements"],
-        "operationId": "stockMovements.create",
-        "summary": "Create in stock_movements",
-        "x-typedpress-access": "admin",
-        "description": "Creates one stock_movements row and returns it.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "The new row's fields.",
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/StockMovementInsert" }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "The new row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/StockMovement" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/stock_movements/{id}": {
-      "get": {
-        "tags": ["Stock movements"],
-        "operationId": "stockMovements.get",
-        "summary": "Get one of stock_movements",
-        "x-typedpress-access": "editor",
-        "description": "One stock_movements row.\n\nAccess: Users with the `editor` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          },
-          {
-            "name": "with",
-            "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `drive`, `order`. A relation holds only rows the caller may read.",
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/StockMovement" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "patch": {
-        "tags": ["Stock movements"],
-        "operationId": "stockMovements.update",
-        "summary": "Update in stock_movements",
-        "x-typedpress-access": "admin",
-        "description": "Changes the fields sent on one stock_movements row and returns the row.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "The fields to change.",
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/StockMovementPatch" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The row after the change.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/StockMovement" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "delete": {
-        "tags": ["Stock movements"],
-        "operationId": "stockMovements.delete",
-        "summary": "Delete from stock_movements",
-        "x-typedpress-access": "admin",
-        "description": "Deletes one stock_movements row for good and returns the row as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The deleted row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/StockMovement" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/shop": {
+    "/settings": {
       "get": {
         "tags": ["Globals"],
-        "operationId": "globals.shop.get",
-        "summary": "Read Shop settings",
+        "operationId": "globals.settings.get",
+        "summary": "Read Storefront settings",
         "x-typedpress-access": "anyone",
         "security": [
           {},
@@ -1778,7 +950,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": { "$ref": "#/components/schemas/Shop" }
+                    "data": { "$ref": "#/components/schemas/Settings" }
                   },
                   "required": ["data"]
                 }
@@ -1790,8 +962,8 @@
       },
       "patch": {
         "tags": ["Globals"],
-        "operationId": "globals.shop.update",
-        "summary": "Update Shop settings",
+        "operationId": "globals.settings.update",
+        "summary": "Update Storefront settings",
         "x-typedpress-access": "admin",
         "description": "Changes the fields sent and returns every value.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "requestBody": {
@@ -1799,7 +971,7 @@
           "description": "The fields to change.",
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ShopPatch" }
+              "schema": { "$ref": "#/components/schemas/SettingsPatch" }
             }
           }
         },
@@ -1811,7 +983,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": { "$ref": "#/components/schemas/Shop" }
+                    "data": { "$ref": "#/components/schemas/Settings" }
                   },
                   "required": ["data"]
                 }
@@ -1826,74 +998,22 @@
         }
       }
     },
-    "/actions/buy": {
-      "post": {
-        "tags": ["Actions"],
-        "operationId": "actions.buy",
-        "summary": "Call buy",
-        "x-typedpress-access": "anyone",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Runs the `buy` action with the input sent and returns its result.\n\nAccess: Anyone may do this, signed in or not.",
-        "requestBody": {
-          "required": true,
-          "description": "The action's input.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "drive": { "type": "integer" },
-                  "quantity": { "type": "integer", "minimum": 1, "maximum": 5 },
-                  "buyerName": { "type": "string", "minLength": 1, "maxLength": 80 },
-                  "buyerEmail": { "type": "string", "maxLength": 191 }
-                },
-                "required": ["drive", "buyerName", "buyerEmail"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The action's result.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "code": { "type": "string" },
-                        "quantity": { "type": ["number", "null"] },
-                        "total": { "type": ["number", "null"] },
-                        "buyerEmail": { "type": "string" }
-                      },
-                      "required": ["code", "quantity", "total", "buyerEmail"]
-                    }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/actions/restock": {
       "post": {
         "tags": ["Actions"],
         "operationId": "actions.restock",
         "summary": "Call restock",
-        "x-typedpress-access": "editor",
-        "description": "Runs the `restock` action with the input sent and returns its result.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Runs the `restock` action with the input sent and returns its result.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        ],
         "requestBody": {
           "required": true,
           "description": "The action's input.",
@@ -1902,9 +1022,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "drive": { "type": "integer" },
-                  "quantity": { "type": "integer", "minimum": 1, "maximum": 500 },
-                  "note": { "type": ["string", "null"], "maxLength": 200 }
+                  "drive": { "type": "integer", "minimum": 1 },
+                  "quantity": { "type": "integer", "minimum": 1, "maximum": 500 }
                 },
                 "required": ["drive", "quantity"]
               }
@@ -1922,10 +1041,9 @@
                     "data": {
                       "type": "object",
                       "properties": {
-                        "drive": { "type": ["number", "null"] },
                         "stock": { "type": ["number", "null"] }
                       },
-                      "required": ["drive", "stock"]
+                      "required": ["stock"]
                     }
                   },
                   "required": ["data"]
@@ -1946,8 +1064,17 @@
         "tags": ["Actions"],
         "operationId": "actions.markShipped",
         "summary": "Call markShipped",
-        "x-typedpress-access": "editor",
-        "description": "Runs the `markShipped` action with the input sent and returns its result.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Runs the `markShipped` action with the input sent and returns its result.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        ],
         "requestBody": {
           "required": true,
           "description": "The action's input.",
@@ -1956,7 +1083,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "order": { "type": "integer" }
+                  "order": { "type": "integer", "minimum": 1 }
                 },
                 "required": ["order"]
               }
@@ -1974,10 +1101,9 @@
                     "data": {
                       "type": "object",
                       "properties": {
-                        "code": { "type": "string" },
-                        "status": { "type": ["string"], "enum": ["placed", "shipped", "cancelled"] }
+                        "id": { "type": ["number", "null"] }
                       },
-                      "required": ["code", "status"]
+                      "required": ["id"]
                     }
                   },
                   "required": ["data"]
@@ -1998,8 +1124,8 @@
         "tags": ["Actions"],
         "operationId": "actions.pendingOrders",
         "summary": "Call pendingOrders",
-        "x-typedpress-access": "editor",
-        "description": "Runs the `pendingOrders` action with the input sent and returns its result.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Runs the `pendingOrders` action with the input sent and returns its result.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "requestBody": {
           "required": true,
           "description": "The action's input.",
@@ -2026,12 +1152,10 @@
                             "type": "object",
                             "properties": {
                               "id": { "type": ["number", "null"] },
-                              "code": { "type": "string" },
-                              "buyer": { "type": "string" },
-                              "quantity": { "type": ["number", "null"] },
-                              "total": { "type": ["number", "null"] }
+                              "total": { "type": "string" },
+                              "drives": { "type": "string" }
                             },
-                            "required": ["id", "code", "buyer", "quantity", "total"]
+                            "required": ["id", "total", "drives"]
                           }
                         }
                       },
@@ -2054,8 +1178,8 @@
         "tags": ["Actions"],
         "operationId": "actions.pendingOrders.read",
         "summary": "Call pendingOrders with GET",
-        "x-typedpress-access": "editor",
-        "description": "Runs the read-only `pendingOrders` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "admin",
+        "description": "Runs the read-only `pendingOrders` action. The input is `?input=<json>`; without it, the other query arguments are the input, as strings.\n\nAccess: Users with the `admin` role or a higher one may do this.",
         "parameters": [
           {
             "name": "input",
@@ -2085,12 +1209,10 @@
                             "type": "object",
                             "properties": {
                               "id": { "type": ["number", "null"] },
-                              "code": { "type": "string" },
-                              "buyer": { "type": "string" },
-                              "quantity": { "type": ["number", "null"] },
-                              "total": { "type": ["number", "null"] }
+                              "total": { "type": "string" },
+                              "drives": { "type": "string" }
                             },
-                            "required": ["id", "code", "buyer", "quantity", "total"]
+                            "required": ["id", "total", "drives"]
                           }
                         }
                       },
@@ -3871,86 +2993,6 @@
         }
       }
     },
-    "/settings": {
-      "get": {
-        "tags": ["WordPress"],
-        "operationId": "settings.get",
-        "summary": "Read site settings",
-        "x-typedpress-access": "anyone",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "The site's title, tagline, timezone, locale, icon, logo and front page.\n\nAccess: Anyone may do this, signed in or not.",
-        "responses": {
-          "200": {
-            "description": "The settings.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/SiteSettings" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "patch": {
-        "tags": ["WordPress"],
-        "operationId": "settings.update",
-        "summary": "Update site settings",
-        "x-typedpress-access": "admin",
-        "description": "Changes the fields sent. Any other field is refused.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "requestBody": {
-          "required": true,
-          "description": "The fields to change.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "title": { "type": "string" },
-                  "tagline": { "type": "string" },
-                  "timezone": { "type": "string" },
-                  "locale": { "type": "string" },
-                  "icon": { "type": ["integer", "null"] },
-                  "logo": { "type": ["integer", "null"] },
-                  "frontPage": { "type": ["integer", "null"] }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The settings.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/SiteSettings" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/me": {
       "get": {
         "tags": ["Account"],
@@ -4127,7 +3169,7 @@
                       "properties": {
                         "kind": {
                           "type": "string",
-                          "enum": ["drives", "orders", "stockMovements"],
+                          "enum": ["stockMovements", "drives", "orders"],
                           "description": "The kind, by the name the typed client uses."
                         },
                         "op": { "type": "string", "enum": ["list", "paginate", "get", "count"] },
@@ -4223,7 +3265,7 @@
           {
             "name": "kinds",
             "in": "query",
-            "description": "Only these kinds, comma-separated: `drives`, `orders`, `stock_movements`.",
+            "description": "Only these kinds, comma-separated: `drives`, `orders`.",
             "schema": { "type": "string" }
           },
           {
@@ -4250,14 +3292,13 @@
                           "items": {
                             "type": "object",
                             "properties": {
-                              "kind": { "type": "string", "enum": ["drives", "orders", "stock_movements"] },
+                              "kind": { "type": "string", "enum": ["drives", "orders"] },
                               "rows": {
                                 "type": "array",
                                 "items": {
                                   "anyOf": [
                                     { "$ref": "#/components/schemas/Drive" },
-                                    { "$ref": "#/components/schemas/Order" },
-                                    { "$ref": "#/components/schemas/StockMovement" }
+                                    { "$ref": "#/components/schemas/Order" }
                                   ]
                                 }
                               }
@@ -4321,6 +3362,48 @@
                         "actions": { "type": "object" }
                       },
                       "required": ["name", "kinds", "globals", "actions"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/store": {
+      "get": {
+        "tags": ["Store"],
+        "operationId": "store-get",
+        "summary": "Store information",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Currency, precision, origin and checkout URL. No shopper state.\n\nAccess: Anyone may do this, signed in or not.",
+        "responses": {
+          "200": {
+            "description": "Store information.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "currency": { "type": "string" },
+                        "precision": { "type": "integer" },
+                        "country": { "type": "string" },
+                        "checkout": { "type": "string" },
+                        "cart": { "type": "string" }
+                      },
+                      "required": ["currency", "precision", "country", "checkout", "cart"]
                     }
                   },
                   "required": ["data"]
@@ -4454,90 +3537,36 @@
         },
         "required": ["id", "url", "mime"]
       },
-      "Drive": {
+      "StockMovement": {
         "type": "object",
         "properties": {
           "id": { "type": "integer" },
-          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "slug": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
-          "summary": { "type": ["string", "null"], "maxLength": 200 },
-          "description": { "type": ["string", "null"] },
-          "brand": { "type": "string", "minLength": 1, "maxLength": 60 },
-          "model": { "type": "string", "minLength": 1, "maxLength": 80 },
-          "capacityGb": { "type": "integer", "minimum": 1, "maximum": 100000 },
-          "media": { "type": "string", "enum": ["hdd", "ssd", "nvme"] },
-          "connector": { "type": "string", "enum": ["sata", "sas", "nvme", "usb"] },
-          "condition": { "type": "string", "enum": ["like-new", "good", "fair", "for-parts"] },
-          "powerOnHours": { "type": ["integer", "null"], "minimum": 0 },
-          "price": { "type": "number", "minimum": 0.01, "maximum": 100000 },
-          "stock": { "type": "integer", "minimum": 0, "maximum": 10000 },
-          "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
-          "publishedAt": { "type": ["string", "null"], "format": "date-time" },
-          "uid": { "type": ["string", "null"] },
-          "_rev": {
-            "type": "string",
-            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
-          },
-          "orders": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/Order" },
-            "description": "Present when the request asks for it with `with`."
-          },
-          "stockMovements": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/StockMovement" },
-            "description": "Present when the request asks for it with `with`."
-          }
+          "drive": { "type": "integer", "minimum": 1 },
+          "change": { "type": "number" },
+          "reason": { "type": "string", "enum": ["sale", "restock", "return"] },
+          "order": { "type": ["integer", "null"], "minimum": 1 },
+          "at": { "type": "string", "format": "date-time" }
         }
       },
-      "DriveInsert": {
+      "StockMovementInsert": {
         "type": "object",
         "properties": {
-          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "slug": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
-          "summary": { "type": ["string", "null"], "maxLength": 200 },
-          "description": { "type": ["string", "null"] },
-          "brand": { "type": "string", "minLength": 1, "maxLength": 60 },
-          "model": { "type": "string", "minLength": 1, "maxLength": 80 },
-          "capacityGb": { "type": "integer", "minimum": 1, "maximum": 100000 },
-          "media": { "type": "string", "enum": ["hdd", "ssd", "nvme"] },
-          "connector": { "type": "string", "enum": ["sata", "sas", "nvme", "usb"] },
-          "condition": { "type": "string", "enum": ["like-new", "good", "fair", "for-parts"] },
-          "powerOnHours": { "type": ["integer", "null"], "minimum": 0 },
-          "price": { "type": "number", "minimum": 0.01, "maximum": 100000 },
-          "stock": { "type": "integer", "minimum": 0, "maximum": 10000 },
-          "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
-          "publishedAt": { "type": ["string", "integer", "null"] },
-          "uid": { "type": ["string", "null"] }
+          "drive": { "type": "integer", "minimum": 1 },
+          "change": { "type": "number" },
+          "reason": { "type": "string", "enum": ["sale", "restock", "return"] },
+          "order": { "type": ["integer", "null"], "minimum": 1 },
+          "at": { "type": ["string", "integer"] }
         },
-        "required": ["name", "brand", "model", "capacityGb", "price"]
+        "required": ["drive", "change", "reason"]
       },
-      "DrivePatch": {
+      "StockMovementPatch": {
         "type": "object",
         "properties": {
-          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "slug": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
-          "summary": { "type": ["string", "null"], "maxLength": 200 },
-          "description": { "type": ["string", "null"] },
-          "brand": { "type": "string", "minLength": 1, "maxLength": 60 },
-          "model": { "type": "string", "minLength": 1, "maxLength": 80 },
-          "capacityGb": { "type": "integer", "minimum": 1, "maximum": 100000 },
-          "media": { "type": "string", "enum": ["hdd", "ssd", "nvme"] },
-          "connector": { "type": "string", "enum": ["sata", "sas", "nvme", "usb"] },
-          "condition": { "type": "string", "enum": ["like-new", "good", "fair", "for-parts"] },
-          "powerOnHours": { "type": ["integer", "null"], "minimum": 0 },
-          "price": { "type": "number", "minimum": 0.01, "maximum": 100000 },
-          "stock": { "type": "integer", "minimum": 0, "maximum": 10000 },
-          "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
-          "publishedAt": { "type": ["string", "integer", "null"] },
-          "_rev": {
-            "type": "string",
-            "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since."
-          },
-          "takeover": {
-            "type": "boolean",
-            "description": "Take over another user's edit lock instead of being refused with `409 locked`."
-          }
+          "drive": { "type": "integer", "minimum": 1 },
+          "change": { "type": "number" },
+          "reason": { "type": "string", "enum": ["sale", "restock", "return"] },
+          "order": { "type": ["integer", "null"], "minimum": 1 },
+          "at": { "type": ["string", "integer"] }
         }
       },
       "IntegerFilter": {
@@ -4558,6 +3587,36 @@
           "notIn": {
             "type": "array",
             "items": { "type": "integer" }
+          },
+          "NOT": { "type": "object" },
+          "OR": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "AND": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "NumberFilter": {
+        "type": ["number", "object", "null"],
+        "properties": {
+          "eq": { "type": ["number", "null"] },
+          "ne": { "type": ["number", "null"] },
+          "isNull": { "type": "boolean" },
+          "isNotNull": { "type": "boolean" },
+          "gt": { "type": "number" },
+          "gte": { "type": "number" },
+          "lt": { "type": "number" },
+          "lte": { "type": "number" },
+          "in": {
+            "type": "array",
+            "items": { "type": "number" }
+          },
+          "notIn": {
+            "type": "array",
+            "items": { "type": "number" }
           },
           "NOT": { "type": "object" },
           "OR": {
@@ -4604,25 +3663,186 @@
           }
         }
       },
-      "NumberFilter": {
-        "type": ["number", "object", "null"],
+      "StockMovementFilter": {
+        "type": "object",
         "properties": {
-          "eq": { "type": ["number", "null"] },
-          "ne": { "type": ["number", "null"] },
+          "id": { "$ref": "#/components/schemas/IntegerFilter" },
+          "drive": { "$ref": "#/components/schemas/IntegerFilter" },
+          "change": { "$ref": "#/components/schemas/NumberFilter" },
+          "reason": { "$ref": "#/components/schemas/StringFilter" },
+          "order": { "$ref": "#/components/schemas/IntegerFilter" },
+          "at": { "$ref": "#/components/schemas/StringFilter" },
+          "AND": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/StockMovementFilter" }
+          },
+          "OR": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/StockMovementFilter" }
+          },
+          "NOT": { "$ref": "#/components/schemas/StockMovementFilter" }
+        }
+      },
+      "Drive": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "uid": { "type": ["string", "null"] },
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "sku": { "type": ["string", "null"] },
+          "shortDescription": { "type": ["string", "null"] },
+          "price": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+          "images": {
+            "type": "array",
+            "items": { "type": ["integer", "object"] }
+          },
+          "virtual": { "type": "boolean" },
+          "downloadable": { "type": "boolean" },
+          "downloads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "file": { "type": "string" }
+              }
+            }
+          },
+          "type": { "type": "string" },
+          "purchasable": { "type": "boolean" },
+          "availability": { "type": "string" },
+          "stockQuantity": { "type": ["integer", "null"] },
+          "url": { "type": ["string", "null"] },
+          "brand": { "type": ["string", "null"], "maxLength": 60 },
+          "model": { "type": ["string", "null"], "maxLength": 80 },
+          "capacityGb": { "type": ["integer", "null"], "minimum": 1, "maximum": 100000 },
+          "media": { "type": ["string", "null"], "enum": ["hdd", "ssd", "nvme", null] },
+          "connector": { "type": ["string", "null"], "enum": ["sata", "sas", "nvme", "usb", null] },
+          "condition": { "type": ["string", "null"], "enum": ["like-new", "good", "fair", "for-parts", null] },
+          "powerOnHours": { "type": ["integer", "null"], "minimum": 0 },
+          "serial": {
+            "type": ["string", "null"],
+            "maxLength": 80,
+            "x-typedpress-access": { "read": "admin" },
+            "description": "Absent for callers who may not read it. Users with the `admin` role or a higher one may read this field."
+          }
+        }
+      },
+      "DriveInsert": {
+        "type": "object",
+        "properties": {
+          "uid": { "type": ["string", "null"] },
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "sku": { "type": ["string", "null"] },
+          "shortDescription": { "type": ["string", "null"] },
+          "price": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+          "images": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "virtual": { "type": "boolean" },
+          "downloadable": { "type": "boolean" },
+          "downloads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "file": { "type": "string" }
+              },
+              "required": ["id", "name", "file"]
+            }
+          },
+          "brand": { "type": ["string", "null"], "maxLength": 60 },
+          "model": { "type": ["string", "null"], "maxLength": 80 },
+          "capacityGb": { "type": ["integer", "null"], "minimum": 1, "maximum": 100000 },
+          "media": { "type": ["string", "null"], "enum": ["hdd", "ssd", "nvme", null] },
+          "connector": { "type": ["string", "null"], "enum": ["sata", "sas", "nvme", "usb", null] },
+          "condition": { "type": ["string", "null"], "enum": ["like-new", "good", "fair", "for-parts", null] },
+          "powerOnHours": { "type": ["integer", "null"], "minimum": 0 },
+          "serial": { "type": ["string", "null"], "maxLength": 80 }
+        },
+        "required": ["name"]
+      },
+      "DrivePatch": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
+          "description": { "type": "string" },
+          "sku": { "type": ["string", "null"] },
+          "shortDescription": { "type": ["string", "null"] },
+          "price": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "private"] },
+          "images": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "virtual": { "type": "boolean" },
+          "downloadable": { "type": "boolean" },
+          "downloads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "file": { "type": "string" }
+              },
+              "required": ["id", "name", "file"]
+            }
+          },
+          "brand": { "type": ["string", "null"], "maxLength": 60 },
+          "model": { "type": ["string", "null"], "maxLength": 80 },
+          "capacityGb": { "type": ["integer", "null"], "minimum": 1, "maximum": 100000 },
+          "media": { "type": ["string", "null"], "enum": ["hdd", "ssd", "nvme", null] },
+          "connector": { "type": ["string", "null"], "enum": ["sata", "sas", "nvme", "usb", null] },
+          "condition": { "type": ["string", "null"], "enum": ["like-new", "good", "fair", "for-parts", null] },
+          "powerOnHours": { "type": ["integer", "null"], "minimum": 0 },
+          "serial": { "type": ["string", "null"], "maxLength": 80 }
+        }
+      },
+      "IntegerListFilter": {
+        "type": ["array", "object", "null"],
+        "items": { "type": "integer" },
+        "properties": {
+          "has": { "type": "integer" },
+          "eq": {
+            "type": ["array", "null"],
+            "items": { "type": "integer" }
+          },
+          "ne": {
+            "type": ["array", "null"],
+            "items": { "type": "integer" }
+          },
           "isNull": { "type": "boolean" },
           "isNotNull": { "type": "boolean" },
-          "gt": { "type": "number" },
-          "gte": { "type": "number" },
-          "lt": { "type": "number" },
-          "lte": { "type": "number" },
-          "in": {
+          "NOT": { "type": "object" },
+          "OR": {
             "type": "array",
-            "items": { "type": "number" }
+            "items": { "type": "object" }
           },
-          "notIn": {
+          "AND": {
             "type": "array",
-            "items": { "type": "number" }
-          },
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "BooleanFilter": {
+        "type": ["boolean", "object", "null"],
+        "properties": {
+          "eq": { "type": ["boolean", "null"] },
+          "ne": { "type": ["boolean", "null"] },
+          "isNull": { "type": "boolean" },
+          "isNotNull": { "type": "boolean" },
           "NOT": { "type": "object" },
           "OR": {
             "type": "array",
@@ -4638,10 +3858,22 @@
         "type": "object",
         "properties": {
           "id": { "$ref": "#/components/schemas/IntegerFilter" },
+          "uid": { "$ref": "#/components/schemas/StringFilter" },
           "name": { "$ref": "#/components/schemas/StringFilter" },
           "slug": { "$ref": "#/components/schemas/StringFilter" },
-          "summary": { "$ref": "#/components/schemas/StringFilter" },
           "description": { "$ref": "#/components/schemas/StringFilter" },
+          "sku": { "$ref": "#/components/schemas/StringFilter" },
+          "shortDescription": { "$ref": "#/components/schemas/StringFilter" },
+          "price": { "$ref": "#/components/schemas/StringFilter" },
+          "status": { "$ref": "#/components/schemas/StringFilter" },
+          "images": { "$ref": "#/components/schemas/IntegerListFilter" },
+          "virtual": { "$ref": "#/components/schemas/BooleanFilter" },
+          "downloadable": { "$ref": "#/components/schemas/BooleanFilter" },
+          "type": { "$ref": "#/components/schemas/StringFilter" },
+          "purchasable": { "$ref": "#/components/schemas/BooleanFilter" },
+          "availability": { "$ref": "#/components/schemas/StringFilter" },
+          "stockQuantity": { "$ref": "#/components/schemas/IntegerFilter" },
+          "url": { "$ref": "#/components/schemas/StringFilter" },
           "brand": { "$ref": "#/components/schemas/StringFilter" },
           "model": { "$ref": "#/components/schemas/StringFilter" },
           "capacityGb": { "$ref": "#/components/schemas/IntegerFilter" },
@@ -4649,13 +3881,7 @@
           "connector": { "$ref": "#/components/schemas/StringFilter" },
           "condition": { "$ref": "#/components/schemas/StringFilter" },
           "powerOnHours": { "$ref": "#/components/schemas/IntegerFilter" },
-          "price": { "$ref": "#/components/schemas/NumberFilter" },
-          "stock": { "$ref": "#/components/schemas/IntegerFilter" },
-          "status": { "$ref": "#/components/schemas/StringFilter" },
-          "publishedAt": { "$ref": "#/components/schemas/StringFilter" },
-          "uid": { "$ref": "#/components/schemas/StringFilter" },
-          "orders": { "type": "object", "description": "A filter on the related rows." },
-          "stockMovements": { "type": "object", "description": "A filter on the related rows." },
+          "serial": { "$ref": "#/components/schemas/StringFilter" },
           "AND": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/DriveFilter" }
@@ -4671,92 +3897,165 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer" },
-          "code": { "type": "string", "maxLength": 16 },
-          "drive": {
-            "anyOf": [
-              { "type": "integer" },
-              {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/Drive" },
-                  { "type": "null" }
-                ]
-              }
-            ]
+          "status": { "type": "string" },
+          "currency": { "type": "string" },
+          "precision": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "paidAt": { "type": ["string", "null"], "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "customer": { "type": ["integer", "null"] },
+          "paymentMethod": { "type": "string" },
+          "paymentTitle": { "type": "string" },
+          "total": { "type": "string" },
+          "subtotal": { "type": "string" },
+          "discountTotal": { "type": "string" },
+          "shippingTotal": { "type": "string" },
+          "taxTotal": { "type": "string" },
+          "billing": {
+            "type": "object",
+            "properties": {
+              "first_name": { "type": "string" },
+              "last_name": { "type": "string" },
+              "company": { "type": "string" },
+              "address_1": { "type": "string" },
+              "address_2": { "type": "string" },
+              "city": { "type": "string" },
+              "state": { "type": "string" },
+              "postcode": { "type": "string" },
+              "country": { "type": "string" },
+              "email": { "type": ["string", "null"] },
+              "phone": { "type": ["string", "null"] }
+            }
           },
-          "quantity": { "type": "integer", "minimum": 1, "maximum": 5 },
-          "unitPrice": {
-            "type": "number",
-            "x-typedpress-access": { "create": false, "update": false }
+          "shipping": {
+            "type": "object",
+            "properties": {
+              "first_name": { "type": "string" },
+              "last_name": { "type": "string" },
+              "company": { "type": "string" },
+              "address_1": { "type": "string" },
+              "address_2": { "type": "string" },
+              "city": { "type": "string" },
+              "state": { "type": "string" },
+              "postcode": { "type": "string" },
+              "country": { "type": "string" },
+              "email": { "type": ["string", "null"] },
+              "phone": { "type": ["string", "null"] }
+            }
           },
-          "total": {
-            "type": "number",
-            "x-typedpress-access": { "create": false, "update": false }
-          },
-          "buyerName": { "type": "string", "minLength": 1, "maxLength": 80 },
-          "buyerEmail": { "type": "string", "maxLength": 191 },
-          "buyerId": {
-            "type": "integer",
-            "x-typedpress-access": { "create": false, "update": false }
-          },
-          "status": { "type": "string", "enum": ["placed", "shipped", "cancelled"] },
-          "placedAt": { "type": "string", "format": "date-time" },
-          "shippedAt": { "type": ["string", "null"], "format": "date-time" },
-          "stockMovements": {
+          "lines": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/StockMovement" },
-            "description": "Present when the request asks for it with `with`."
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "product": { "type": "integer" },
+                "variation": { "type": ["integer", "null"] },
+                "quantity": { "type": "integer" },
+                "subtotal": { "type": "string" },
+                "subtotalTax": { "type": "string" },
+                "total": { "type": "string" },
+                "totalTax": { "type": "string" },
+                "taxes": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] }
+              }
+            }
+          },
+          "shippingLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "method_id": { "type": "string" },
+                "instance_id": { "type": "string" },
+                "total": { "type": "string" },
+                "total_tax": { "type": "string" },
+                "taxes": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] }
+              }
+            }
+          },
+          "taxLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "rate_id": { "type": "integer" },
+                "label": { "type": "string" },
+                "compound": { "type": "boolean" },
+                "tax_total": { "type": "string" },
+                "shipping_tax_total": { "type": "string" }
+              }
+            }
+          },
+          "feeLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "total": { "type": "string" },
+                "total_tax": { "type": "string" },
+                "taxes": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] }
+              }
+            }
+          },
+          "couponLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "code": { "type": "string" },
+                "discount": { "type": "string" },
+                "discount_tax": { "type": "string" }
+              }
+            }
+          },
+          "refunds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "amount": { "type": "string" },
+                "reason": { "type": "string" },
+                "createdAt": { "type": "string", "format": "date-time" }
+              }
+            }
           }
         }
       },
-      "OrderInsert": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "string", "maxLength": 16 },
-          "drive": { "type": "integer" },
-          "quantity": { "type": "integer", "minimum": 1, "maximum": 5 },
-          "unitPrice": { "type": "number" },
-          "total": { "type": "number" },
-          "buyerName": { "type": "string", "minLength": 1, "maxLength": 80 },
-          "buyerEmail": { "type": "string", "maxLength": 191 },
-          "buyerId": { "type": "integer" },
-          "status": { "type": "string", "enum": ["placed", "shipped", "cancelled"] },
-          "placedAt": { "type": ["string", "integer"] },
-          "shippedAt": { "type": ["string", "integer", "null"] }
-        },
-        "required": ["code", "drive", "buyerName", "buyerEmail"]
-      },
+      "OrderInsert": { "type": "object" },
       "OrderPatch": {
         "type": "object",
-        "properties": {
-          "code": { "type": "string", "maxLength": 16 },
-          "drive": { "type": "integer" },
-          "quantity": { "type": "integer", "minimum": 1, "maximum": 5 },
-          "unitPrice": { "type": "number" },
-          "total": { "type": "number" },
-          "buyerName": { "type": "string", "minLength": 1, "maxLength": 80 },
-          "buyerEmail": { "type": "string", "maxLength": 191 },
-          "buyerId": { "type": "integer" },
-          "status": { "type": "string", "enum": ["placed", "shipped", "cancelled"] },
-          "placedAt": { "type": ["string", "integer"] },
-          "shippedAt": { "type": ["string", "integer", "null"] }
-        }
+        "properties": {}
       },
       "OrderFilter": {
         "type": "object",
         "properties": {
           "id": { "$ref": "#/components/schemas/IntegerFilter" },
-          "code": { "$ref": "#/components/schemas/StringFilter" },
-          "drive": { "$ref": "#/components/schemas/IntegerFilter" },
-          "quantity": { "$ref": "#/components/schemas/IntegerFilter" },
-          "unitPrice": { "$ref": "#/components/schemas/NumberFilter" },
-          "total": { "$ref": "#/components/schemas/NumberFilter" },
-          "buyerName": { "$ref": "#/components/schemas/StringFilter" },
-          "buyerEmail": { "$ref": "#/components/schemas/StringFilter" },
-          "buyerId": { "$ref": "#/components/schemas/IntegerFilter" },
           "status": { "$ref": "#/components/schemas/StringFilter" },
-          "placedAt": { "$ref": "#/components/schemas/StringFilter" },
-          "shippedAt": { "$ref": "#/components/schemas/StringFilter" },
-          "stockMovements": { "type": "object", "description": "A filter on the related rows." },
+          "currency": { "$ref": "#/components/schemas/StringFilter" },
+          "precision": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "paidAt": { "$ref": "#/components/schemas/StringFilter" },
+          "completedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "customer": { "$ref": "#/components/schemas/IntegerFilter" },
+          "paymentMethod": { "$ref": "#/components/schemas/StringFilter" },
+          "paymentTitle": { "$ref": "#/components/schemas/StringFilter" },
+          "total": { "$ref": "#/components/schemas/StringFilter" },
+          "subtotal": { "$ref": "#/components/schemas/StringFilter" },
+          "discountTotal": { "$ref": "#/components/schemas/StringFilter" },
+          "shippingTotal": { "$ref": "#/components/schemas/StringFilter" },
+          "taxTotal": { "$ref": "#/components/schemas/StringFilter" },
           "AND": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/OrderFilter" }
@@ -4768,96 +4067,16 @@
           "NOT": { "$ref": "#/components/schemas/OrderFilter" }
         }
       },
-      "StockMovement": {
+      "Settings": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "drive": {
-            "anyOf": [
-              { "type": "integer" },
-              {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/Drive" },
-                  { "type": "null" }
-                ]
-              }
-            ]
-          },
-          "change": { "type": "integer" },
-          "reason": { "type": "string", "enum": ["sale", "restock", "return"] },
-          "order": {
-            "anyOf": [
-              { "type": ["integer", "null"] },
-              {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/Order" },
-                  { "type": "null" }
-                ]
-              }
-            ]
-          },
-          "note": { "type": ["string", "null"], "maxLength": 200 },
-          "at": { "type": "string", "format": "date-time" }
-        }
-      },
-      "StockMovementInsert": {
-        "type": "object",
-        "properties": {
-          "drive": { "type": "integer" },
-          "change": { "type": "integer" },
-          "reason": { "type": "string", "enum": ["sale", "restock", "return"] },
-          "order": { "type": ["integer", "null"] },
-          "note": { "type": ["string", "null"], "maxLength": 200 },
-          "at": { "type": ["string", "integer"] }
-        },
-        "required": ["drive", "change", "reason"]
-      },
-      "StockMovementPatch": {
-        "type": "object",
-        "properties": {
-          "drive": { "type": "integer" },
-          "change": { "type": "integer" },
-          "reason": { "type": "string", "enum": ["sale", "restock", "return"] },
-          "order": { "type": ["integer", "null"] },
-          "note": { "type": ["string", "null"], "maxLength": 200 },
-          "at": { "type": ["string", "integer"] }
-        }
-      },
-      "StockMovementFilter": {
-        "type": "object",
-        "properties": {
-          "id": { "$ref": "#/components/schemas/IntegerFilter" },
-          "drive": { "$ref": "#/components/schemas/IntegerFilter" },
-          "change": { "$ref": "#/components/schemas/IntegerFilter" },
-          "reason": { "$ref": "#/components/schemas/StringFilter" },
-          "order": { "$ref": "#/components/schemas/IntegerFilter" },
-          "note": { "$ref": "#/components/schemas/StringFilter" },
-          "at": { "$ref": "#/components/schemas/StringFilter" },
-          "AND": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/StockMovementFilter" }
-          },
-          "OR": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/StockMovementFilter" }
-          },
-          "NOT": { "$ref": "#/components/schemas/StockMovementFilter" }
-        }
-      },
-      "Shop": {
-        "type": "object",
-        "properties": {
-          "shopName": { "type": "string", "minLength": 1, "maxLength": 60 },
-          "currency": { "type": "string", "enum": ["USD", "EUR", "TRY"] },
           "notice": { "type": ["string", "null"], "maxLength": 300 },
           "lowStockAt": { "type": "integer", "minimum": 0, "maximum": 100 }
         }
       },
-      "ShopPatch": {
+      "SettingsPatch": {
         "type": "object",
         "properties": {
-          "shopName": { "type": "string", "minLength": 1, "maxLength": 60 },
-          "currency": { "type": "string", "enum": ["USD", "EUR", "TRY"] },
           "notice": { "type": ["string", "null"], "maxLength": 300 },
           "lowStockAt": { "type": "integer", "minimum": 0, "maximum": 100 }
         }
@@ -4978,19 +4197,6 @@
           }
         },
         "required": ["location", "items"]
-      },
-      "SiteSettings": {
-        "type": "object",
-        "properties": {
-          "title": { "type": "string" },
-          "tagline": { "type": "string" },
-          "timezone": { "type": "string" },
-          "locale": { "type": "string" },
-          "icon": { "type": ["integer", "null"] },
-          "logo": { "type": ["integer", "null"] },
-          "frontPage": { "type": ["integer", "null"] }
-        },
-        "required": ["title", "tagline", "timezone", "locale", "icon", "logo", "frontPage"]
       },
       "User": {
         "type": "object",

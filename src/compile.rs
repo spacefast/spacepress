@@ -998,7 +998,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(Ty::Fn(_, ret)) => (**ret).clone(),
                     _ => Ty::Unknown,
                 };
-                if matches!(ret, Ty::Promise(_)) {
+                // Woo's stock notification invokes compiled PHP synchronously. Its app handler
+                // can await TypedPress database writes, which also execute synchronously in PHP.
+                if matches!(ret, Ty::Promise(_)) && hook.hook != "typedpress_woo_order_stock" {
                     return err_help(
                         root.closure.func.span,
                         format!("a `{}` handler can't be async", hook.hook),

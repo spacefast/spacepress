@@ -29,3 +29,10 @@ loader also confines ordinary imports to `tp/`. The proposed app-root
 `emails/` discovery needs its own compiler entry point. PHP template rendering,
 the organization invitation override, and the Playground demo remain follow-up
 work. See the [integration plan](../../docs/design-react-email.md).
+
+A separate smoke test booted the native-built transport control in WordPress
+Playground (WordPress 7.1.5, PHP 8.3), passed the upstream-rendered invitation to
+the compiled action, and drained the queue. The Playground transport captured
+one message with both bodies intact. This exercises Playground delivery with
+pre-rendered bodies. The compiler diagnostic still prevents PHP from rendering
+the template there.

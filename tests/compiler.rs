@@ -4321,7 +4321,10 @@ fn the_openapi_document_describes_what_the_api_answers() {
 
     // The document itself, as the site serves it: the built file, with this site as its server.
     let live = check("GET", "/openapi.json", None, &[], b"", 200);
-    assert_eq!(live["servers"][0]["url"], format!("{}/wp-json/typedpress/v1", server.url()));
+    assert_eq!(
+        live["servers"][0]["url"],
+        format!("{}/wp-json/typedpress/v1", server.url())
+    );
     assert_eq!(live["paths"], document["paths"]);
     assert_eq!(live["components"], document["components"]);
     let described = check("GET", "/", None, &[], b"", 200);

@@ -158,7 +158,10 @@ mod tests {
     #[test]
     fn the_facade_prefix_joins_the_sites_path_and_is_never_doubled() {
         assert_eq!(base("https://x.test").unwrap(), "https://x.test/wp-json/typedpress/v1");
-        assert_eq!(base("https://x.test/blog/").unwrap(), "https://x.test/blog/wp-json/typedpress/v1");
+        assert_eq!(
+            base("https://x.test/blog/").unwrap(),
+            "https://x.test/blog/wp-json/typedpress/v1"
+        );
         assert_eq!(
             base("https://x.test/blog/wp-json/typedpress/v1/").unwrap(),
             "https://x.test/blog/wp-json/typedpress/v1"

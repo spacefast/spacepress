@@ -53,7 +53,7 @@ Each is a fixed native kind, with at most one export per builder. Fields and acc
 cannot be replaced. Products are public only while published and visible; writes require
 `admin`. Orders are read-only and require `admin`, including server-side page reads.
 Use the ordinary `db.query.products`, generated client, facade, OpenAPI and app abilities.
-`GET /__tp/api/v1/store` supplies effective currency/precision, display conventions, units,
+`GET /wp-json/typedpress/v1/store` supplies effective currency/precision, display conventions, units,
 selling countries, supported product types, cart/checkout URLs and checkout availability.
 
 Product fields are `uid`, `name`, `slug`, `sku`, `status`, description, `shortDescription`,

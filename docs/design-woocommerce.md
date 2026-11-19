@@ -115,7 +115,7 @@ over WordPress users: it creates no post type, taxonomy or table of its own.
 - The fields are fixed in v1: a builder takes options and no field list. Authored fields on a
   product are later work.
 - `access` is refused in v1; the defaults under [access boundaries](#access-boundaries) apply.
-- Being kinds, they need nothing of their own for the API (`/__tp/api/v1/products`), the typed
+- Being kinds, they need nothing of their own for the API (`/wp-json/typedpress/v1/products`), the typed
   client, `db.query.products`, OpenAPI, abilities, item URLs, purges or sync: each comes from
   the kind machinery. What is new is one store behind each, beside the post and term stores,
   that reads and writes through Woo CRUD.
@@ -360,7 +360,7 @@ session cookie and Store API nonce. The Checkout Block reads the same cookie, so
 shopper fills on a TypedPress page is the cart checkout shows, with nothing to hand over.
 
 - TypedPress adds a typed cart client over those routes, reusing the Woo Store SDK's cart
-  types. It adds no cart actions, no cart routes under `/__tp/api/v1` and no second session.
+  types. It adds no cart actions, no cart routes under `/wp-json/typedpress/v1` and no second session.
 - The Store API uses Woo's cookie session unless a request carries a `Cart-Token` header,
   and a cart write needs a `Nonce` header. Every cart response returns a fresh one, so the
   client reads the cart once before its first write and never needs a nonce in the page's

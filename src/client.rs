@@ -801,13 +801,23 @@ pub fn files(
         if let Some(bytes) = runtime(&format!("client/{f}")) {
             let mut text = String::from_utf8_lossy(bytes).replace("{{name}}", &schema.name);
             if f == "index.ts" && schema.store.is_some() {
-                text.push_str("\nexport * from \"./commerce.ts\";\n");
+                text.push_str("\nexport * from \"./commerce.ts\";\nexport * from \"./cart-store.ts\";\n");
+            }
+            if f == "react.ts" && schema.store.is_some() {
+                text.push_str("\nexport * from \"./cart-react.ts\";\n");
+            }
+            if f == "LICENSE" && schema.store.is_some() {
+                text.push_str(COMMERCE_NOTICE);
             }
             out.push((f.to_string(), text.into_bytes()));
         }
     }
     if schema.store.is_some() {
         out.push(("commerce.ts".into(), COMMERCE_RUNTIME.as_bytes().to_vec()));
+        out.push(("cart-store.ts".into(), CART_STORE_RUNTIME.as_bytes().to_vec()));
+        if let Some(bytes) = runtime("client/cart-react.ts") {
+            out.push(("cart-react.ts".into(), bytes.to_vec()));
+        }
     }
     out
 }
@@ -821,6 +831,8 @@ pub(crate) fn registry_value(c: &Column) -> String {
 /// embedded runtime) writes the same `client.js` as `typedpress build`.
 const CLIENT_RUNTIME: &str = include_str!("../runtime/client/index.ts");
 const COMMERCE_RUNTIME: &str = include_str!("../runtime/client/commerce.ts");
+const CART_STORE_RUNTIME: &str = include_str!("../runtime/client/cart-store.ts");
+const COMMERCE_NOTICE: &str = "\nPortions are adapted from Spacefast's Woo Store SDK (@woo/storefront-core),\nhttps://github.com/spacefast/woo-store-sdk, under the MIT License above.\n";
 
 /// The canonical client as one TypeScript module: the app's types and schema, then the runtime
 /// half without its imports (`runtime/client/index.ts`).
@@ -832,13 +844,14 @@ fn browser_source(schema: &Schema, results: &HashMap<String, Ty>) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    format!(
-        "{}\n{}\n{}\n{}",
-        types_ts(schema, results),
-        schema_ts(schema),
-        body,
-        if schema.store.is_some() { COMMERCE_RUNTIME } else { "" }
-    )
+    let mut source = format!("{}\n{}\n{}\n", types_ts(schema, results), schema_ts(schema), body);
+    if schema.store.is_some() {
+        source.push_str(COMMERCE_RUNTIME);
+        for line in CART_STORE_RUNTIME.lines().filter(|line| !line.starts_with("import ")) {
+            let _ = writeln!(source, "{line}");
+        }
+    }
+    source
 }
 
 /// The declarations matching [`browser_javascript`], for TypeScript projects that import `client.js`.

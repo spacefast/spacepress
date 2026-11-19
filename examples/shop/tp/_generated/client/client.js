@@ -1275,14 +1275,41 @@ function toError(res, body) {
 		detail: `HTTP ${res.status}`
 	});
 }
+const WOO_CART_ERROR_CODES = [
+	"woocommerce_error",
+	"woocommerce_rest_add_to_cart_error",
+	"woocommerce_rest_cart_error",
+	"woocommerce_rest_cart_invalid_key",
+	"woocommerce_rest_cart_invalid_parent_product",
+	"woocommerce_rest_cart_invalid_product",
+	"woocommerce_rest_cart_item_exists",
+	"woocommerce_rest_cart_missing_rate_id",
+	"woocommerce_rest_invalid_nonce",
+	"woocommerce_rest_invalid_variation_data",
+	"woocommerce_rest_missing_attributes",
+	"woocommerce_rest_missing_nonce",
+	"woocommerce_rest_missing_variation_data",
+	"woocommerce_rest_product_invalid_quantity",
+	"woocommerce_rest_product_not_enough_stock",
+	"woocommerce_rest_product_not_purchasable",
+	"woocommerce_rest_product_out_of_stock",
+	"woocommerce_rest_product_partially_out_of_stock",
+	"woocommerce_rest_product_too_many_in_cart",
+	"woocommerce_rest_shipping_disabled",
+	"woocommerce_rest_variation_id_from_variation_data"
+];
 export class WooStoreError extends Error {
 	code;
+	rawCode;
 	status;
-	constructor(code, message, status) {
+	cart;
+	constructor(rawCode, message, status, cart) {
 		super(message);
 		this.name = "WooStoreError";
-		this.code = code;
+		this.code = WOO_CART_ERROR_CODES.find((code) => code === rawCode) ?? "woocommerce_error";
+		this.rawCode = rawCode;
 		this.status = status;
+		this.cart = cart;
 	}
 }
 /** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
@@ -1315,6 +1342,8 @@ function wooCart(data) {
 		})),
 		itemsCount: data.items_count,
 		needsShipping: data.needs_shipping,
+		billingAddress: wooReadAddress(data.billing_address),
+		shippingAddress: wooReadAddress(data.shipping_address),
 		totals: {
 			totalItems: decimal(data.totals.total_items),
 			totalPrice: decimal(data.totals.total_price),
@@ -1349,6 +1378,37 @@ function wooCart(data) {
 		}))
 	};
 }
+function isWooRecord(value) {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function wooReadAddress(value) {
+	if (!isWooRecord(value)) return undefined;
+	const text = (key) => typeof value[key] === "string" ? value[key] : undefined;
+	return {
+		firstName: text("first_name"),
+		lastName: text("last_name"),
+		company: text("company"),
+		address1: text("address_1"),
+		address2: text("address_2"),
+		city: text("city"),
+		state: text("state"),
+		postcode: text("postcode"),
+		country: text("country"),
+		email: text("email"),
+		phone: text("phone")
+	};
+}
+function wooErrorCart(payload) {
+	const data = isWooRecord(payload.data) ? payload.data : {};
+	const candidate = data.cart ?? payload.cart ?? data.refreshed_cart ?? payload.refreshed_cart ?? (Array.isArray(data.items) ? data : payload);
+	if (!isWooRecord(candidate) || !Array.isArray(candidate.items) || typeof candidate.items_count !== "number" || typeof candidate.needs_shipping !== "boolean") return undefined;
+	// A broken error payload must not hide Woo's original refusal.
+	try {
+		return wooCart(candidate);
+	} catch {
+		return undefined;
+	}
+}
 export function createCartClient(options = {}) {
 	const request = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const base = (options.base ?? "/wp-json/wc/store/v1").replace(/\/$/, "");
@@ -1368,7 +1428,10 @@ export function createCartClient(options = {}) {
 		});
 		nonce = response.headers.get("Nonce") ?? nonce;
 		const data = await response.json();
-		if (!response.ok) throw new WooStoreError(data.code ?? "woocommerce_error", data.message ?? "The cart request failed", response.status);
+		if (!response.ok) {
+			const error = isWooRecord(data) ? data : {};
+			throw new WooStoreError(typeof error.code === "string" ? error.code : "woocommerce_error", typeof error.message === "string" ? error.message : "The cart request failed", response.status, wooErrorCart(error));
+		}
 		const cart = wooCart(data);
 		for (const listener of listeners) listener(cart);
 		return cart;
@@ -1424,3 +1487,171 @@ export function createCartClient(options = {}) {
 	};
 }
 export const cart = createCartClient();
+const wooCartStores = new WeakMap();
+/** One cart store per client, shared by React hooks and other browser subscribers. */
+export function createCartStore(client = cart) {
+	const shared = wooCartStores.get(client);
+	if (shared) return shared;
+	const initial = {
+		cart: undefined,
+		loading: true,
+		pending: false,
+		error: undefined
+	};
+	let state = initial;
+	let confirmed;
+	const optimistic = new Set();
+	const listeners = new Set();
+	let unsubscribe;
+	let tail = Promise.resolve();
+	let reading;
+	let writing = false;
+	let receivedDuringWrite;
+	function publish(changes = {}) {
+		let cart = confirmed;
+		if (cart) for (const update of optimistic) cart = update(cart);
+		state = {
+			...state,
+			...changes,
+			cart,
+			pending: optimistic.size > 0
+		};
+		for (const listener of listeners) listener();
+	}
+	function receive(cart) {
+		// The client's subscription can emit the write's own answer before its promise resolves.
+		// Wait for that promise so we can drop the corresponding optimistic update at the same time.
+		if (writing) {
+			receivedDuringWrite = cart;
+			return;
+		}
+		confirmed = cart;
+		publish({
+			loading: false,
+			error: undefined
+		});
+	}
+	function describe(error) {
+		return error instanceof Error ? error : new Error(String(error));
+	}
+	function enqueue(run) {
+		const next = tail.then(run);
+		tail = next.catch(() => undefined);
+		return next;
+	}
+	function refresh() {
+		return reading ??= enqueue(async () => {
+			try {
+				const cart = await client.get();
+				if (cart !== confirmed) receive(cart);
+				return cart;
+			} catch (error) {
+				if (error instanceof WooStoreError && error.cart) confirmed = error.cart;
+				publish({
+					loading: false,
+					error: describe(error)
+				});
+				throw error;
+			} finally {
+				reading = undefined;
+			}
+		});
+	}
+	function write(run, update) {
+		optimistic.add(update);
+		const result = enqueue(async () => {
+			writing = true;
+			let refusal;
+			try {
+				confirmed = await run();
+				return confirmed;
+			} catch (error) {
+				refusal = describe(error);
+				const refreshed = error instanceof WooStoreError ? error.cart : undefined;
+				confirmed = refreshed ?? receivedDuringWrite ?? confirmed;
+				throw error;
+			} finally {
+				writing = false;
+				receivedDuringWrite = undefined;
+				optimistic.delete(update);
+				publish({
+					loading: false,
+					error: refusal
+				});
+			}
+		});
+		publish({ error: undefined });
+		return result;
+	}
+	// Quantity and removal predictions follow @woo/storefront-core (MIT), packages/core/src/resources/cart.ts.
+	function quantity(current, key, next) {
+		const item = current.items.find((item) => item.key === key);
+		if (!item || !Number.isSafeInteger(next) || next < 0) return current;
+		const items = next === 0 ? current.items.filter((item) => item.key !== key) : current.items.map((item) => item.key === key ? {
+			...item,
+			quantity: next
+		} : item);
+		return {
+			...current,
+			items,
+			itemsCount: current.itemsCount + next - item.quantity
+		};
+	}
+	const actions = {
+		refresh,
+		add: (id, count = 1) => write(() => client.add(id, count), (current) => {
+			if (!Number.isSafeInteger(count) || count <= 0) return current;
+			const matches = current.items.filter((item) => item.id === id && item.variation.length === 0);
+			const item = matches.length === 1 ? matches[0] : undefined;
+			// Woo supplies the new line's key, product data and prices. Until then only the count changes.
+			return item ? quantity(current, item.key, item.quantity + count) : {
+				...current,
+				itemsCount: current.itemsCount + count
+			};
+		}),
+		update: (key, count) => write(() => client.update(key, count), (current) => quantity(current, key, count)),
+		remove: (key) => write(() => client.remove(key), (current) => quantity(current, key, 0)),
+		selectShipping: (packageId, rateId) => write(() => client.selectShipping(packageId, rateId), (current) => ({
+			...current,
+			shippingRates: current.shippingRates.map((pack) => pack.packageId === packageId && pack.rates.some((rate) => rate.id === rateId) ? {
+				...pack,
+				rates: pack.rates.map((rate) => ({
+					...rate,
+					selected: rate.id === rateId
+				}))
+			} : pack)
+		})),
+		updateCustomer: (input) => write(() => client.updateCustomer(input), (current) => ({
+			...current,
+			...input.billing ? { billingAddress: {
+				...current.billingAddress,
+				...input.billing
+			} } : {},
+			...input.shipping ? { shippingAddress: {
+				...current.shippingAddress,
+				...input.shipping
+			} } : {}
+		}))
+	};
+	const store = {
+		actions,
+		snapshot: () => state,
+		serverSnapshot: () => initial,
+		subscribe(changed) {
+			listeners.add(changed);
+			if (listeners.size === 1) {
+				unsubscribe = client.subscribe(receive);
+				refresh().catch(() => undefined);
+			}
+			return () => {
+				listeners.delete(changed);
+				if (listeners.size === 0) {
+					unsubscribe?.();
+					unsubscribe = undefined;
+				}
+			};
+		}
+	};
+	wooCartStores.set(client, store);
+	return store;
+}

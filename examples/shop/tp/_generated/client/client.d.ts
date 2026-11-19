@@ -1753,7 +1753,8 @@ export declare function createClient(options?: ClientOptions): Client;
 * an action's result, a global. Returns a function that stops watching.
 */
 export declare function watch<T>(client: Client, collections: readonly CollectionKey[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: TypedPressError) => void): () => void;
-/** Cart contracts adapted from @woo/storefront-core (MIT), packages/core/src/contracts.ts.
+/** Cart contracts and error-cart handling adapted from @woo/storefront-core (MIT),
+* packages/core/src/contracts.ts and packages/core/src/transport.ts.
 * Amounts here are exact decimal strings; the Store API's minor units are normalized on read.
 */
 export interface WooCartItem {
@@ -1822,6 +1823,8 @@ export interface WooCart {
 	totals: WooCartTotals;
 	needsShipping: boolean;
 	shippingRates: WooShippingPackage[];
+	billingAddress?: WooAddress;
+	shippingAddress?: WooAddress;
 	coupons: {
 		code: string;
 		totals: {
@@ -1835,10 +1838,15 @@ export interface WooCart {
 		totalTax: string;
 	}[];
 }
+declare const WOO_CART_ERROR_CODES: readonly ["woocommerce_error", "woocommerce_rest_add_to_cart_error", "woocommerce_rest_cart_error", "woocommerce_rest_cart_invalid_key", "woocommerce_rest_cart_invalid_parent_product", "woocommerce_rest_cart_invalid_product", "woocommerce_rest_cart_item_exists", "woocommerce_rest_cart_missing_rate_id", "woocommerce_rest_invalid_nonce", "woocommerce_rest_invalid_variation_data", "woocommerce_rest_missing_attributes", "woocommerce_rest_missing_nonce", "woocommerce_rest_missing_variation_data", "woocommerce_rest_product_invalid_quantity", "woocommerce_rest_product_not_enough_stock", "woocommerce_rest_product_not_purchasable", "woocommerce_rest_product_out_of_stock", "woocommerce_rest_product_partially_out_of_stock", "woocommerce_rest_product_too_many_in_cart", "woocommerce_rest_shipping_disabled", "woocommerce_rest_variation_id_from_variation_data"];
+/** Core Woo cart refusal codes. Extension codes are available on `WooStoreError.rawCode`. */
+export type WooStoreErrorCode = (typeof WOO_CART_ERROR_CODES)[number];
 export declare class WooStoreError extends Error {
-	readonly code: string;
+	readonly code: WooStoreErrorCode;
+	readonly rawCode: string;
 	readonly status: number;
-	constructor(code: string, message: string, status: number);
+	readonly cart: WooCart | undefined;
+	constructor(rawCode: string, message: string, status: number, cart?: WooCart);
 }
 /** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
 export declare function wooDecimal(minor: string, precision: number): string;
@@ -1860,4 +1868,21 @@ export declare function createCartClient(options?: {
 	fetch?: typeof fetch;
 }): WooCartClient;
 export declare const cart: WooCartClient;
+export interface WooCartState {
+	cart: WooCart | undefined;
+	loading: boolean;
+	pending: boolean;
+	error: Error | undefined;
+}
+export interface WooCartActions extends Pick<WooCartClient, "add" | "update" | "remove" | "selectShipping" | "updateCustomer"> {
+	refresh(): Promise<WooCart>;
+}
+export interface WooCartStore {
+	subscribe(changed: () => void): () => void;
+	snapshot(): WooCartState;
+	serverSnapshot(): WooCartState;
+	actions: WooCartActions;
+}
+/** One cart store per client, shared by React hooks and other browser subscribers. */
+export declare function createCartStore(client?: WooCartClient): WooCartStore;
 export {};

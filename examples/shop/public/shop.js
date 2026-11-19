@@ -1,11 +1,18 @@
-import { cart } from '@typedpress/client';
+import { createCartStore } from '@typedpress/client';
+
+const cartStore = createCartStore();
+const cart = cartStore.actions;
 const element = (name, text, className) => { const e = document.createElement(name); if (text !== undefined) e.textContent = text; if (className) e.className = className; return e; };
 const amount = (value, currency) => `${value} ${currency}`;
 class MiniCart extends HTMLElement {
   connectedCallback() {
     const link = this.querySelector('a') || this.appendChild(element('a')); link.href = '/cart';
-    const show = data => { link.textContent = `Cart (${data.itemsCount})`; };
-    this.stop = cart.subscribe(show); cart.get().catch(() => {});
+    const show = () => {
+      const count = cartStore.snapshot().cart?.itemsCount;
+      link.textContent = count === undefined ? 'Cart' : `Cart (${count})`;
+    };
+    this.stop = cartStore.subscribe(show);
+    show();
   }
   disconnectedCallback() { this.stop?.(); }
 }
@@ -24,27 +31,37 @@ class AddToCart extends HTMLElement {
 }
 class Cart extends HTMLElement {
   connectedCallback() {
-    this.stop = cart.subscribe(data => this.render(data));
-    cart.get().catch(error => this.replaceChildren(element('p', error.message, 'shop-error')));
+    this.stop = cartStore.subscribe(() => this.render());
+    this.render();
   }
   disconnectedCallback() { this.stop?.(); }
-  async change(action, button) {
-    if (this.busy) return;
-    this.busy = true;
+  async change(action) {
+    if (cartStore.snapshot().pending) return;
     this.focusControl = this.contains(document.activeElement) ? document.activeElement.dataset.cartControl : undefined;
-    for (const control of this.querySelectorAll('button,input,select')) control.disabled = true;
-    this.querySelector('.shop-checkout')?.setAttribute('aria-disabled', 'true');
     try { await action(); }
-    catch (error) { if (this.data) this.render(this.data); const message = element('p', error.message, 'shop-error'); message.setAttribute('role', 'alert'); this.appendChild(message); }
-    finally { this.busy = false; for (const control of this.querySelectorAll('button,input,select')) control.disabled = false; this.querySelector('.shop-checkout')?.removeAttribute('aria-disabled'); this.focusControl = undefined; }
+    catch {}
+    finally { this.focusControl = undefined; }
   }
-  render(data) {
-    this.data = data;
+  render() {
+    const { cart: data, error, loading, pending } = cartStore.snapshot();
+    const message = error ? element('p', error.message, 'shop-error') : undefined;
+    message?.setAttribute('role', 'alert');
+    if (!data) {
+      if (message) this.replaceChildren(message);
+      else if (loading) this.replaceChildren(element('p', 'Loading your cart…'));
+      return;
+    }
     const focus = this.focusControl || (this.contains(document.activeElement) ? document.activeElement.dataset.cartControl : undefined);
     const previousCountry = this.querySelector('[aria-label="Shipping country"]');
     const previousPostcode = this.querySelector('[name="postcode"]');
     if (previousCountry) this.destination = { country: previousCountry.value, postcode: previousPostcode.value };
-    if (!data.items.length) { const empty = element('p', 'Your cart is empty. Explore the collection to find something you like.'); empty.tabIndex = -1; this.replaceChildren(empty); if (focus) empty.focus(); return; }
+    if (!data.items.length && !pending) {
+      const empty = element('p', 'Your cart is empty. Explore the collection to find something you like.');
+      empty.tabIndex = -1;
+      this.replaceChildren(empty, ...(message ? [message] : []));
+      if (focus) empty.focus();
+      return;
+    }
     const list = element('div');
     for (const item of data.items) {
       const line = element('section', undefined, 'cart-line'); const info = element('div');
@@ -53,7 +70,7 @@ class Cart extends HTMLElement {
       for (const [label, quantity] of [['−', item.quantity - 1], ['+', item.quantity + 1]]) {
         const button = element('button', label); button.type = 'button'; button.setAttribute('aria-label', `${label === '+' ? 'Increase' : 'Decrease'} ${item.name} quantity`);
         button.dataset.cartControl = `${item.key}:${label}`;
-        button.onclick = () => this.change(() => quantity ? cart.update(item.key, quantity) : cart.remove(item.key), button);
+        button.onclick = () => this.change(() => quantity ? cart.update(item.key, quantity) : cart.remove(item.key));
         if (label === '−') controls.append(button, element('span', String(item.quantity))); else controls.append(button);
       }
       const remove = element('button', 'Remove'); remove.type = 'button'; remove.dataset.cartControl = `${item.key}:remove`; remove.onclick = () => this.change(() => cart.remove(item.key), remove); controls.append(remove);
@@ -68,7 +85,7 @@ class Cart extends HTMLElement {
       country.dataset.cartControl = 'country'; postcode.dataset.cartControl = 'postcode';
       const button = element('button', 'Estimate shipping'); form.append(country, postcode, button);
       button.dataset.cartControl = 'estimate';
-      form.onsubmit = event => { event.preventDefault(); this.change(() => cart.updateCustomer({ shipping: { country: country.value, postcode: postcode.value } }), button); };
+      form.onsubmit = event => { event.preventDefault(); this.change(() => cart.updateCustomer({ shipping: { country: country.value, postcode: postcode.value } })); };
       parts.push(form);
       for (const pack of data.shippingRates) {
         const rates = element('fieldset'); rates.append(element('legend', pack.name));
@@ -79,9 +96,11 @@ class Cart extends HTMLElement {
     const total = element('p', `Total ${amount(data.totals.totalPrice, data.totals.currencyCode)}`, 'cart-total');
     const checkout = element('a', 'Continue to checkout', 'shop-checkout'); checkout.href = '/checkout';
     // Checkout must read the cart Woo confirmed, so the link waits for a pending write.
-    checkout.onclick = event => { if (this.busy) event.preventDefault(); };
-    if (this.busy) checkout.setAttribute('aria-disabled', 'true');
+    checkout.onclick = event => { if (cartStore.snapshot().pending) event.preventDefault(); };
+    if (pending) checkout.setAttribute('aria-disabled', 'true');
     parts.push(total, checkout); this.replaceChildren(...parts);
+    if (message) this.appendChild(message);
+    if (pending) for (const control of this.querySelectorAll('button,input,select')) control.disabled = true;
     if (focus) (Array.from(this.querySelectorAll('[data-cart-control]')).find(control => control.dataset.cartControl === focus) || this.querySelector('[data-cart-control]'))?.focus();
   }
 }

@@ -1,4 +1,5 @@
-/** Cart contracts adapted from @woo/storefront-core (MIT), packages/core/src/contracts.ts.
+/** Cart contracts and error-cart handling adapted from @woo/storefront-core (MIT),
+ * packages/core/src/contracts.ts and packages/core/src/transport.ts.
  * Amounts here are exact decimal strings; the Store API's minor units are normalized on read.
  */
 export interface WooCartItem {
@@ -23,13 +24,53 @@ export interface WooShippingPackage {
 export interface WooCart {
   items: WooCartItem[]; itemsCount: number; totals: WooCartTotals; needsShipping: boolean;
   shippingRates: WooShippingPackage[];
+  billingAddress?: WooAddress;
+  shippingAddress?: WooAddress;
   coupons: { code: string; totals: { totalDiscount: string } }[];
   fees: { id: string; name: string; total: string; totalTax: string }[];
 }
+
+const WOO_CART_ERROR_CODES = [
+  "woocommerce_error",
+  "woocommerce_rest_add_to_cart_error",
+  "woocommerce_rest_cart_error",
+  "woocommerce_rest_cart_invalid_key",
+  "woocommerce_rest_cart_invalid_parent_product",
+  "woocommerce_rest_cart_invalid_product",
+  "woocommerce_rest_cart_item_exists",
+  "woocommerce_rest_cart_missing_rate_id",
+  "woocommerce_rest_invalid_nonce",
+  "woocommerce_rest_invalid_variation_data",
+  "woocommerce_rest_missing_attributes",
+  "woocommerce_rest_missing_nonce",
+  "woocommerce_rest_missing_variation_data",
+  "woocommerce_rest_product_invalid_quantity",
+  "woocommerce_rest_product_not_enough_stock",
+  "woocommerce_rest_product_not_purchasable",
+  "woocommerce_rest_product_out_of_stock",
+  "woocommerce_rest_product_partially_out_of_stock",
+  "woocommerce_rest_product_too_many_in_cart",
+  "woocommerce_rest_shipping_disabled",
+  "woocommerce_rest_variation_id_from_variation_data",
+] as const;
+
+/** Core Woo cart refusal codes. Extension codes are available on `WooStoreError.rawCode`. */
+export type WooStoreErrorCode = (typeof WOO_CART_ERROR_CODES)[number];
+
 export class WooStoreError extends Error {
-  readonly code: string;
+  readonly code: WooStoreErrorCode;
+  readonly rawCode: string;
   readonly status: number;
-  constructor(code: string, message: string, status: number) { super(message); this.name = "WooStoreError"; this.code = code; this.status = status; }
+  readonly cart: WooCart | undefined;
+
+  constructor(rawCode: string, message: string, status: number, cart?: WooCart) {
+    super(message);
+    this.name = "WooStoreError";
+    this.code = WOO_CART_ERROR_CODES.find((code) => code === rawCode) ?? "woocommerce_error";
+    this.rawCode = rawCode;
+    this.status = status;
+    this.cart = cart;
+  }
 }
 /** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
 export function wooDecimal(minor: string, precision: number): string {
@@ -46,6 +87,7 @@ function wooCart(data: any): WooCart {
       prices: { price: wooDecimal(item.prices.price, item.prices.currency_minor_unit), currencyCode: item.prices.currency_code, currencyMinorUnit: item.prices.currency_minor_unit },
       totals: { lineTotal: decimal(item.totals.line_total), lineSubtotal: decimal(item.totals.line_subtotal) } })),
     itemsCount: data.items_count, needsShipping: data.needs_shipping,
+    billingAddress: wooReadAddress(data.billing_address), shippingAddress: wooReadAddress(data.shipping_address),
     totals: { totalItems: decimal(data.totals.total_items), totalPrice: decimal(data.totals.total_price), totalShipping: data.totals.total_shipping === null ? null : decimal(data.totals.total_shipping), totalDiscount: decimal(data.totals.total_discount), totalFees: decimal(data.totals.total_fees ?? '0'), totalTax: decimal(data.totals.total_tax), currencyCode: data.totals.currency_code, currencyMinorUnit: precision },
     coupons: data.coupons.map((coupon: any) => ({ code: coupon.code, totals: { totalDiscount: decimal(coupon.totals.total_discount) } })),
     fees: (data.fees ?? []).map((fee: any) => ({ id: fee.key, name: fee.name, total: decimal(fee.totals.total), totalTax: decimal(fee.totals.total_tax) })),
@@ -53,6 +95,29 @@ function wooCart(data: any): WooCart {
       rates: pack.shipping_rates.map((rate: any) => ({ id: rate.rate_id, name: rate.name, price: wooDecimal(rate.price, rate.currency_minor_unit), selected: rate.selected, currencyCode: rate.currency_code, currencyMinorUnit: rate.currency_minor_unit })) })),
   };
 }
+
+function isWooRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function wooReadAddress(value: unknown): WooAddress | undefined {
+  if (!isWooRecord(value)) return undefined;
+  const text = (key: string) => typeof value[key] === "string" ? value[key] : undefined;
+  return {
+    firstName: text("first_name"), lastName: text("last_name"), company: text("company"),
+    address1: text("address_1"), address2: text("address_2"), city: text("city"), state: text("state"),
+    postcode: text("postcode"), country: text("country"), email: text("email"), phone: text("phone"),
+  };
+}
+
+function wooErrorCart(payload: Record<string, unknown>): WooCart | undefined {
+  const data = isWooRecord(payload.data) ? payload.data : {};
+  const candidate = data.cart ?? payload.cart ?? data.refreshed_cart ?? payload.refreshed_cart ?? (Array.isArray(data.items) ? data : payload);
+  if (!isWooRecord(candidate) || !Array.isArray(candidate.items) || typeof candidate.items_count !== "number" || typeof candidate.needs_shipping !== "boolean") return undefined;
+  // A broken error payload must not hide Woo's original refusal.
+  try { return wooCart(candidate); } catch { return undefined; }
+}
+
 /** One same-origin Woo cookie session, also consumed by the native Checkout Block. Browser only. */
 export interface WooCartClient {
   get(): Promise<WooCart>;
@@ -74,7 +139,15 @@ export function createCartClient(options: { base?: string; fetch?: typeof fetch 
       headers: body === undefined ? {} : { "Content-Type": "application/json", ...(nonce ? { Nonce: nonce } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     nonce = response.headers.get("Nonce") ?? nonce;
     const data = await response.json();
-    if (!response.ok) throw new WooStoreError(data.code ?? "woocommerce_error", data.message ?? "The cart request failed", response.status);
+    if (!response.ok) {
+      const error = isWooRecord(data) ? data : {};
+      throw new WooStoreError(
+        typeof error.code === "string" ? error.code : "woocommerce_error",
+        typeof error.message === "string" ? error.message : "The cart request failed",
+        response.status,
+        wooErrorCart(error),
+      );
+    }
     const cart = wooCart(data); for (const listener of listeners) listener(cart); return cart;
   }
   function queue(path: string, body?: unknown): Promise<WooCart> {

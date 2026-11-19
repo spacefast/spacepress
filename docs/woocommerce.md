@@ -106,10 +106,60 @@ Historical order tax, coupon, item and refund snapshots remain readable.
 
 ## Cart, checkout and agents
 
-The generated client exports `cart` and `createCartClient`: get/add/update/remove,
-update the customer address, select shipping, and subscribe to updates. It calls Woo's
-same-origin Store API with the Woo session cookie and rotating nonce. It uses no Cart-Token
-or TypedPress shopper session. Money normalizes minor units to exact decimal strings.
+The generated client exports `cart` and `createCartClient` for Woo's same-origin Store API.
+The default client uses the Woo session cookie and refreshes an invalid nonce once before
+retrying the write. Money is returned as exact decimal strings.
+
+Create the React hooks once in a client module. They use the React version your app
+already loads.
+
+```tsx
+import * as React from "react";
+import { createCartHooks } from "./tp/_generated/client/react.ts";
+
+export const { useCart, useCartCount } = createCartHooks(React);
+
+export function AddMug({ productId }: { productId: number }) {
+	const { add, loading, pending, error } = useCart();
+
+	return (
+		<>
+			<button disabled={loading || pending} onClick={() => add(productId).catch(() => {})}>
+				Add to cart
+			</button>
+			{error && <p role="alert">{error.message}</p>}
+		</>
+	);
+}
+```
+
+`useCart()` returns `cart`, `loading`, `pending`, `error`, and the actions below.
+`useCartCount()` returns the item count, or `undefined` before the cart loads. Both
+hooks observe the same store. Pass a `WooCartClient` as the second argument to
+`createCartHooks` to use a specific client.
+
+| Action | What it does |
+| --- | --- |
+| `add(productId, quantity?)` | Adds a product. The default quantity is one. |
+| `update(key, quantity)` | Sets the quantity of a line. |
+| `remove(key)` | Removes a line. |
+| `selectShipping(packageId, rateId)` | Selects a rate for a shipping package. |
+| `updateCustomer({ billing, shipping })` | Updates either or both cart addresses. |
+| `refresh()` | Reads the current cart from Woo. |
+
+Writes preview changes to quantities, item count, selected rates, and addresses while Woo
+processes them in order. New lines appear when Woo returns their details. Prices and totals
+stay at the values Woo last confirmed while `pending` is true.
+
+If Woo refuses a write, the action rejects and `error` holds the failure. Narrow the
+error with `instanceof WooStoreError` to read its typed `code`, HTTP `status`, and
+optional `cart`. Extension codes that the client does not recognize use
+`woocommerce_error` as `code` and keep the original string in `rawCode`. When Woo
+sends an updated cart in the error, the store uses that cart. Otherwise it rolls back
+to the confirmed cart. Later pending writes keep their previews in either case.
+
+TypedPress pages can use `createCartStore()` from `@typedpress/client` in a browser
+script, as the native shop does. It shares the hooks' actions and optimistic state.
 
 Checkout is a public `page.md` containing the native Woo Checkout Block. It remains a real
 WordPress Page inside the app layout. Receipt and order-pay endpoints use that same Page;

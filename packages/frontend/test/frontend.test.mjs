@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -72,16 +72,32 @@ test('serves frontend assets only on the route that uses them', { skip: !process
   const file = (name, content) => writeFile(path.join(root, name), content);
   await file('typedpress.config.ts', 'import { defineConfig } from "typedpress"; export default defineConfig({ name: "frontend-test" });');
   await mkdir(path.join(root, 'tp/app/(site)'));
-  await file('tp/app/(site)/layout.tsx', 'import type { LayoutProps } from "typedpress/app"; import { frontend } from "../../_generated/frontend"; export const metadata = frontend.main; export default function Layout({ children }: LayoutProps) { return <>{children}</>; }');
-  await file('tp/app/(site)/page.tsx', 'import { frontend } from "../../_generated/frontend"; export const metadata = frontend.main; export default function Page() { return <h1 className="text-[19px]">Native page</h1>; }');
+  await file('tp/app/(site)/layout.tsx', 'import type { LayoutProps } from "typedpress/app"; import "./site.css"; import { frontend } from "../../_generated/frontend"; export const metadata = frontend.main; export default function Layout({ children }: LayoutProps) { return <>{children}</>; }');
+  await file('tp/app/(site)/page.tsx', 'import "./site.css"; import { frontend } from "../../_generated/frontend"; export const metadata = frontend.main; export default function Page() { return <h1 className="text-[19px]">Native page</h1>; }');
   await mkdir(path.join(root, 'tp/app/plain'));
   await file('tp/app/plain/page.tsx', 'export default function Plain() { return <h1>Plain page</h1>; }');
-  await file('browser/site.css', '@import "tailwindcss" source(none);\n@source "../tp/app";');
+  await file('browser/site.css', '.browser { color: red; }');
+  const icon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><!-- ${'fixture '.repeat(600)} --><circle r="5"/></svg>`;
+  await file('tp/app/(site)/icon.svg', icon);
+  await file('tp/app/(site)/site.css', '@import "tailwindcss" source(none);\n@source "./";\nh1 { background: url("./icon.svg"); }');
+  await file('package.json', '{"devDependencies":{"@typedpress/frontend":"0.1.0"}}');
+  await mkdir(path.join(root, 'node_modules/@typedpress'), { recursive: true });
+  await symlink(fileURLToPath(new URL('../', import.meta.url)), path.join(root, 'node_modules/@typedpress/frontend'), 'junction');
   await file('browser/index.ts', 'import "./site.css"; document.title = "Browser entry";');
 
   const command = fileURLToPath(new URL('../bin/typedpress-frontend.mjs', import.meta.url));
   execFileSync(process.execPath, [command, root]);
   execFileSync(process.env.TP_BIN, ['build', root]);
+  const pageFile = 'tp/app/(site)/page.tsx';
+  await file(pageFile, (await readFile(path.join(root, pageFile), 'utf8')).replace('text-[19px]', 'text-[23px]'));
+  const capture = path.join(root, 'capture');
+  execFileSync(process.env.TP_BIN, ['sources', root, '--out', capture]);
+  const hosted = path.join(root, 'hosted');
+  execFileSync(process.env.TP_BIN, ['compile-sources', capture, hosted, capture], { env: { ...process.env, PATH: '' } });
+  assert.throws(
+    () => execFileSync(process.env.TP_BIN, ['compile-sources', capture, path.join(root, 'incomplete'), root + '/missing-assets'], { stdio: 'pipe' }),
+    /frontend stylesheet .* is missing from public/,
+  );
   const runner = fileURLToPath(new URL('../../../tests/php/wp.php', import.meta.url));
   const child = spawn('php', [runner, 'serve', path.join(root, 'tp/dist/wp-content')], {
     env: { ...process.env, TP_WP_THEMES: '1' },
@@ -101,7 +117,7 @@ test('serves frontend assets only on the route that uses them', { skip: !process
   assert.match(html, />Native page<\/h1>/);
   const [script, style] = [
     html.match(/(?:src)=["']([^"']+\/typedpress-assets\/[^"']+\.js(?:\?[^"']*)?)["']/)?.[1],
-    html.match(/(?:href)=["']([^"']+\/typedpress-assets\/[^"']+\.css(?:\?[^"']*)?)["']/)?.[1],
+    html.match(/(?:href)=["']([^"']+\/typedpress-styles\/[^"']+\.css(?:\?[^"']*)?)["']/)?.[1],
   ];
   assert.ok(script && style, 'The route head must link its generated module and stylesheet');
   assert.equal(html.split(style).length - 1, 1, 'The layout and page must share one stylesheet link');
@@ -117,9 +133,29 @@ test('serves frontend assets only on the route that uses them', { skip: !process
   assert.equal(new URL(relativeImport, script).href, preload);
   assert.equal(entry.status, 200);
   assert.match(await entry.text(), /Browser entry/);
-  assert.match(await css.text(), /font-size:19px/);
+  const cssText = await css.text();
+  assert.match(cssText, /font-size:19px/);
+  const iconName = cssText.match(/url\(["']?(\.\/)?(icon-[^)"']+\.svg)/)?.[2];
+  assert.ok(iconName, 'The CSS keeps a relative URL to the emitted image');
+  const emittedIcon = await fetch(new URL(iconName, style));
+  assert.equal(emittedIcon.status, 200);
+  assert.equal(await emittedIcon.text(), icon);
+  const hostedAssets = path.join(hosted, 'plugins/typedpress-app-frontend-test/public/typedpress-styles/assets');
+  const hostedStyles = (await readdir(hostedAssets)).filter((file) => file.endsWith('.css'));
+  assert.equal(hostedStyles.length, 1);
+  assert.match(await readFile(path.join(hostedAssets, hostedStyles[0]), 'utf8'), /font-size:23px/);
 
   const plain = await fetch(new URL('/plain/', url));
   assert.equal(plain.status, 200);
-  assert.doesNotMatch(await plain.text(), /typedpress-assets/);
+  assert.doesNotMatch(await plain.text(), /typedpress-(?:assets|styles)/);
+
+  await file('package.json', '{}');
+  await file('tp/app/(site)/site.css', 'h1 { font-size: 31px; }');
+  const nativeCapture = path.join(root, 'native-capture');
+  const nativeOutput = path.join(root, 'native-output');
+  execFileSync(process.env.TP_BIN, ['sources', root, '--out', nativeCapture]);
+  execFileSync(process.env.TP_BIN, ['compile-sources', nativeCapture, nativeOutput, nativeCapture]);
+  const nativeAssets = path.join(nativeOutput, 'plugins/typedpress-app-frontend-test/tp/app/assets');
+  const nativeStyle = (await readdir(nativeAssets)).find((file) => file.endsWith('.css'));
+  assert.match(await readFile(path.join(nativeAssets, nativeStyle), 'utf8'), /font-size: 31px/);
 });

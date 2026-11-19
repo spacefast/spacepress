@@ -194,7 +194,7 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
     await rename(staged, generated);
     await rm(previous, { recursive: true });
   }
-  for (const ignored of ['.git', 'node_modules', 'tp/node_modules', 'tp/dist', 'tp/_generated/client']) {
+  for (const ignored of ['.git', 'node_modules', 'tp/node_modules', 'tp/dist', 'tp/_generated/client', 'public/typedpress-styles']) {
     const directory = join(project, ignored, 'nested/generated');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'output.ts'), 'generated');
@@ -252,6 +252,13 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
   await writeFile(join(project, 'README.md'), 'notes');
   await writeFile(join(project, 'tp/app/about/notes.md'), 'notes');
   assert.equal(await sourceDigest(project), styles);
+  await writeFile(join(project, 'package.json'), '{"devDependencies":{"@typedpress/frontend":"0.1.0"}}');
+  const frontend = await sourceDigest(project);
+  await waitForDigest(frontend);
+  await writeFile(join(project, 'tp/app/about/notes.md'), '<aside class="text-lg">Notes</aside>');
+  const tailwind = await sourceDigest(project);
+  assert.notEqual(tailwind, frontend);
+  await waitForDigest(tailwind);
 });
 
 test('--url and --host name one address for WordPress and one for TypedPress to listen on, and refuse what names none', () => {

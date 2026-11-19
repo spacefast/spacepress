@@ -21,6 +21,7 @@ pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
         ));
     }
     let program = loader::load(&entry)?;
+    crate::assets::require_frontend_styles(&program, |file| project.join("public").join(file).is_file())?;
     build_program(project, &program, frozen)
 }
 
@@ -528,6 +529,17 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         };
     }
     let started = std::time::Instant::now();
+    let _frontend = if args.command == "build" {
+        match crate::frontend::prepare_styles(&project) {
+            Ok(guard) => guard,
+            Err(d) => {
+                eprint!("{}", diag::render(&d, &project));
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
     let built = match build(&project, frozen) {
         Ok(b) => b,
         Err(d) => {

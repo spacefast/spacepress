@@ -4,7 +4,7 @@ Use `@typedpress/frontend` to build browser modules and Tailwind styles for
 TypedPress pages. The package sets up Vite, Rolldown, and Tailwind. TypedPress
 ships the resulting assets with the app plugin and WordPress serves them.
 
-## Build one entry
+## Import Tailwind from a page or layout
 
 From this repository's root, run `npm pack ./packages/frontend` to make a
 tarball. Install it and Tailwind in the project.
@@ -12,6 +12,35 @@ tarball. Install it and Tailwind in the project.
 ```sh
 npm install -D /path/to/typedpress-frontend-0.1.0.tgz tailwindcss
 ```
+
+Put a plain stylesheet next to a page or layout.
+
+```css
+/* tp/app/site.css */
+@import "tailwindcss" source("../");
+```
+
+```tsx
+// tp/app/page.tsx
+import "./site.css";
+
+export default function Page() {
+  return <h1 className="text-4xl font-semibold">My site</h1>;
+}
+```
+
+Run `typedpress dev` or `typedpress build`. Installing `@typedpress/frontend`
+as a project dependency enables Vite for plain stylesheet imports. The compiler
+finds the stylesheets through the page and layout import graph, so each route
+links the styles it reaches. CSS modules keep their existing class names and
+compiler behavior.
+
+Native `typedpress sources` and `typedpress push` prepare the same assets
+before capture. The resulting source capture can compile on a host without
+Node.js. Keep `public/typedpress-styles/` and
+`tp/_generated/frontend-styles.json` out of Git.
+
+## Build a browser entry
 
 ```ts
 // browser/index.ts

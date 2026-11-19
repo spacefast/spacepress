@@ -55,6 +55,8 @@ mod commands;
 pub mod config_migrate;
 #[cfg(feature = "host")]
 mod emit;
+#[cfg(feature = "cli")]
+mod frontend;
 #[cfg(feature = "host")]
 pub mod host;
 pub mod host_contract;

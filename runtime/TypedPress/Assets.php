@@ -35,7 +35,8 @@ final class Assets
         Wp\ThemeStyles::enqueue();
         foreach ($files as $file) {
             $handle = 'typedpress-app-' . sanitize_key(str_replace('.', '-', $file));
-            wp_enqueue_style($handle, self::url($file), [], null);
+            $url = str_starts_with($file, '/typedpress-styles/') ? home_url($file) : self::url($file);
+            wp_enqueue_style($handle, $url, [], null);
         }
     }
 }

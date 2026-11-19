@@ -6,7 +6,7 @@ export default function kitchenPolicy() {
     hooks: {
       recipes: {
         beforeCreate(data) {
-          data.title = data.title.trim();
+          if (typeof data.title === "string") data.title = data.title.trim();
         },
       },
     },

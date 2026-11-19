@@ -8,11 +8,41 @@ use TypedPress\App;
 use TypedPress\HttpError;
 use TypedPress\Js;
 use TypedPress\Seam;
+use TypedPress\Wp\Migrator;
 use TypedPress\Wp\Plugin;
 
 /** TypedPress-sync content from compiled sources, with one transaction per collection and no deletes. */
 final class Seed
 {
+    /** Install once per compiled seed version, after the app's kinds and storage are ready. */
+    public static function install(Plugin $plugin, string $versionFile): void
+    {
+        $version = require $versionFile;
+        if (!is_array($version)) {
+            throw new \RuntimeException('Invalid seed version');
+        }
+        $key = 'tp_' . $plugin->schema->name() . '_seed';
+        if (get_option($key) === $version) {
+            return;
+        }
+        Migrator::locked($plugin->connection(), 'seed', static function () use ($plugin, $key, $version): void {
+            // A request waiting for the first seed must see its committed marker.
+            wp_cache_delete($key, 'options');
+            wp_cache_delete('alloptions', 'options');
+            wp_cache_delete('notoptions', 'options');
+            if (get_option($key) === $version) {
+                return;
+            }
+            $seed = $plugin->dir . '/tp/app/seed';
+            if (is_dir($seed)) {
+                self::run($plugin, $seed, false, $version);
+            } elseif ($version !== []) {
+                throw new \RuntimeException('Missing seed directory for a nonempty seed version');
+            }
+            update_option($key, $version, false);
+        });
+    }
+
     public static function wpCli(Plugin $plugin, array $args, array $flags): int
     {
         try {
@@ -62,7 +92,7 @@ final class Seed
             }
             if ($mismatched !== []) {
                 sort($mismatched, SORT_STRING);
-                throw new \RuntimeException('Commerce seed files do not match the compiled seed version: ' . implode(', ', $mismatched));
+                throw new \RuntimeException('Seed files do not match the compiled seed version: ' . implode(', ', $mismatched));
             }
         }
         $files = self::ordered($plugin, $files);

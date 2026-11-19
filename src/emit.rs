@@ -222,7 +222,7 @@ pub(crate) type Files = Vec<(String, Vec<u8>)>;
 pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std::io::Result<(String, Files)> {
     let schema_php = schema_php::render(&built.schema);
     let mut files = crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public_files(project)?);
-    if built.schema.store.is_some() {
+    if built.schema.seed || built.schema.store.is_some() {
         let seeds = crate::bundle::seed_records(&crate::loader::Disk, project, &built.schema)
             .map_err(|e| std::io::Error::other(e.message))?;
         use sha2::{Digest, Sha256};

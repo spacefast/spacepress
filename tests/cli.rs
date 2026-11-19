@@ -1783,13 +1783,12 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
             "compilerOptions": {
-                "types": [], "jsx": "react-jsx", "jsxImportSource": "typedpress", "skipLibCheck": true,
+                "types": [], "skipLibCheck": true,
                 "paths": {
                     "typedpress": [root().join("types/typedpress/index.d.ts")],
-                    "typedpress/app": [root().join("types/typedpress/app.d.ts")],
-                    "typedpress/content": [root().join("types/typedpress/content.d.ts")],
-                    "typedpress/jsx-runtime": [root().join("types/typedpress/jsx-runtime.d.ts")],
-                    "typedpress/jsx-dev-runtime": [root().join("types/typedpress/jsx-dev-runtime.d.ts")]
+                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
+                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
+                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
                 }
             },
             "include": ["tp/**/*.ts", "tp/**/*.tsx"],
@@ -1819,12 +1818,15 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
 #[test]
 fn add_api_reference_exports_every_operation_in_a_static_site() {
     let tmp = tempfile::tempdir().unwrap();
-    let project = scaffold(tmp.path());
-    let config = project.join("typedpress.config.ts");
-    let source = std::fs::read_to_string(&config).unwrap();
-    let static_source = source.replacen("defineConfig({", "defineConfig({ output: \"static\",", 1);
-    assert_ne!(source, static_source, "the scaffold's config calls defineConfig({{");
-    std::fs::write(&config, static_source).unwrap();
+    let project = tmp.path().to_path_buf();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        r#"import { collection, defineConfig, text } from "typedpress";
+export const notes = collection({ title: text() }, { title: "title" });
+export default defineConfig({ name: "static-api", output: "static" });
+"#,
+    )
+    .unwrap();
     let added = add(&project, &["api-reference"]);
     assert_eq!(
         added.status.code(),
@@ -1833,8 +1835,7 @@ fn add_api_reference_exports_every_operation_in_a_static_site() {
         text(&added.stdout),
         text(&added.stderr)
     );
-    // The starter uses public/index.html. This static tp/app/ site also needs the home page
-    // its WordPress header links to; export correctly refuses links to pages it doesn't contain.
+    // Export requires a home page for the WordPress header's home link.
     std::fs::write(
         project.join("tp/app/page.tsx"),
         "export default function Home() { return <main>API documentation</main>; }\n",
@@ -2041,7 +2042,15 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         project.join("tsconfig.test.json"),
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
-            "compilerOptions": { "types": [], "paths": { "typedpress": [root().join("types/typedpress/index.d.ts")] } }
+            "compilerOptions": {
+                "types": [],
+                "paths": {
+                    "typedpress": [root().join("types/typedpress/index.d.ts")],
+                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
+                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
+                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
+                }
+            }
         }))
         .unwrap(),
     )

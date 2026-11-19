@@ -145,6 +145,7 @@ const CONFIG_KEYS: &[&str] = &[
     "frontend",
     "output",
     "runtimeSchema",
+    "seed",
 ];
 /// `wp.posts.extend(fields, options)`: what may change about WordPress's own posts.
 const POST_OPTIONS: &[&str] = &[
@@ -330,6 +331,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("it becomes the WordPress plugin slug `typedpress-<name>`"));
         }
     };
+    out.schema.seed = bool_option(&cfg_map, "seed", false, span_of(ev, config, "seed", config_span))?;
     out.schema.admin = bool_option(&cfg_map, "admin", true, span_of(ev, config, "admin", config_span))?;
     out.schema.public_authors = bool_option(
         &cfg_map,

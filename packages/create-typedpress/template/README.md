@@ -1,37 +1,33 @@
-# Your TypedPress app
+# __ZERO_APP_NAME__
 
 ```sh
 npm run dev
 ```
 
-Open `/index.html` on the WordPress URL printed by TypedPress: the project's `public/` folder is served at the site root. “Write a note” opens the native WordPress editor; use the local credentials printed in the terminal. Notes are public, and only WordPress editors can change them. Local credentials are for development only. WordPress's existing theme still owns its homepage.
+Open the **Website** URL printed in the terminal. Edit the heading in `tp/app/page.tsx`, save, then refresh the page after TypedPress finishes rebuilding.
 
-Edit `typedpress.config.ts` for your backend and `public/` for your frontend. TypedPress rebuilds on save; refresh your browser to see updates. WordPress serves the frontend, API, login and admin at one origin. No separate frontend server is needed. An external frontend framework is optional; this starter has none. Ordinary page templates can be added when supported by your compiler version.
+| To change | Edit |
+| --- | --- |
+| The homepage and greeting form | `tp/app/page.tsx` |
+| The header, navigation, and styles | `tp/app/layout.tsx` and `tp/app/site.css` |
+| Note fields and site settings | `typedpress.config.ts` |
+| The sample notes | `content/notes/` |
+| The server action that answers the form | `tp/actions.ts` |
 
-## Content first, SQL tables when you need them
+Open **Notes** to see the Markdown entries imported on first start. WordPress stores them as posts. Edit a note in the WordPress editor, or run `npx typedpress login <Website URL>` followed by `npx typedpress sync` to bring file edits into the running site. The seed keeps edits already saved in WordPress.
 
-This starter is content only. `notes` is a `collection()`: its rows are WordPress posts (the post type `tp_notes`), edited in wp-admin with drafts and revisions. When the app needs rows it filters, sorts, counts or joins (orders, bookings, votes), add tables:
+Open **Account** to try the signed-in page. Use the local WordPress login printed by `npm run dev`. WordPress returns you to the account page after sign-in.
 
-```sh
-npx typedpress add db
-```
-
-That writes `tp/tables.ts` with two example `table()` kinds, typed client calls and `tp/DATABASE.md`, which says when to use which. It never overwrites a file.
+Add `tp/app/about/page.tsx` to make an **About** page at `/about/`.
 
 ## Commands
 
-```sh
-npm run check                 # compiler diagnostics, without writing output
-npm run typecheck             # generate and check backend + client types
-npm run build                # WordPress plugin artifact in tp/dist/wp-content
-npm run dev -- --port 9123    # choose an available port
-npm run status
-npm run wp -- core version   # WordPress's own WP-CLI
-npm run stop                 # stop the site, preserve its SQLite data
-```
+| Command | What it does |
+| --- | --- |
+| `npm run check` | Report compiler diagnostics. |
+| `npm run typecheck` | Build the app and check its TypeScript types. |
+| `npm run build` | Write the WordPress plugin artifact to `tp/dist/wp-content`. |
+| `npm run stop` | Stop WordPress and keep its local content. |
+| `npx typedpress add db` | Add an example of SQL tables and typed client calls. |
 
-## Next
-
-`client.ts` demonstrates the generated typed client. The static frontend uses same-origin REST directly. Backend TypeScript compiles to PHP and supports a documented subset; it is not a Node.js server. Run `npm run check` when adding library code.
-
-Commit `tp/_generated/migrations/`, `tp/_generated/client/` and `tp/_generated/db.d.ts`. `.tp/` is local state and build output. Do not deploy local SQLite files or development credentials. See the TypedPress installation guide for release availability, compiler overrides and production deployment prerequisites.
+Commit `tp/_generated/` with your source. `tp/dist/` holds build output and `.tp/` holds local WordPress state.

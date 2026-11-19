@@ -172,6 +172,11 @@ jobs:
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
           node --test examples/migrate-astro/migrated.test.mjs
+      - name: Scaffolder on WordPress
+        if: matrix.shard == 'rest'
+        env:
+          TP_BIN: ${{ github.workspace }}/target/debug/typedpress
+        run: npm test --prefix packages/create-typedpress
       - name: Docker-free local development acceptance
         if: matrix.shard == 'rest'
         run: node --test scripts/dev/acceptance.test.mjs

@@ -29,9 +29,9 @@ the database enforces. Both kinds share the field builders, access rules,
 `ref()`, hooks, the API and the typed client, so one app can use both and a
 table row can belong to a post.
 
-A new project from `npm create typedpress` is content only. `typedpress add
-db` adds the database half: an example `tp/tables.ts`, typed client calls
-for it and a note on migrations. It only creates files that are missing.
+A new project from `npm create typedpress` stores its notes as WordPress posts.
+`typedpress add db` adds example SQL tables in `tp/tables.ts`, typed client calls,
+and a note on migrations. It only creates files that are missing.
 
 A collection can't be stored in a table. The earlier `editor: false` option is
 gone and `collection()` refuses it at the option; write `table()` instead. A
@@ -65,6 +65,12 @@ resolve inside `tp/`. Anything else, such as `import { x } from "./lib/x"`
 at the root or `"../src/x"` from `tp/`, fails with `F1210` and names the
 file to move. Packages (`"typedpress"`, `"php/wordpress"`, npm packages) are always
 allowed, and an installed package's own relative imports are its business.
+
+Set `seed: true` in `defineConfig()` to include records from synced files in the
+standalone WordPress plugin. WordPress imports missing records when the plugin
+starts. It preserves edits to existing editorial records and skips records
+already in the trash. Use `typedpress sync` to merge edits from source files into
+an existing site.
 
 ### Exports register by name
 

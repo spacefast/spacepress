@@ -619,11 +619,11 @@ async function main() {
   if (flags.includes('--detach') && !noWatch) return detached(managed);
   const release = await lock(managed.state);
   const statePath = join(managed.state, 'state.json');
-  let frontend;
   await rm(join(managed.state, 'stop'), { force: true });
   let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl, relay;
   let finish;
   const finished = new Promise((resolveDone) => { finish = resolveDone; });
+  let frontend;
   const stop = async () => {
     if (stopping) return;
     stopping = true;

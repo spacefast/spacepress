@@ -8,6 +8,7 @@ import { createElement } from "react";
 import { render, toPlainText } from "react-email";
 import { call, hostFs } from "../../tests/wasm/host-fs.mjs";
 import Invitation from "./emails/invitation";
+import OrganizationInvite from "./transport/emails/identity/organization-invite";
 
 const cases = [
   Invitation.PreviewProps,
@@ -72,4 +73,56 @@ try {
   assert.equal(result.status, 0, result.stderr);
 } finally {
   rmSync(temp, { recursive: true, force: true });
+}
+
+const templatePath = "emails/identity/organization-invite.tsx";
+const invitationProject = fileURLToPath(new URL("transport/", import.meta.url));
+const nativeInvite = spawnSync(fileURLToPath(new URL("debug/typedpress", target)), ["check", invitationProject], { encoding: "utf8" });
+if (nativeInvite.error) throw nativeInvite.error;
+assert.equal(nativeInvite.status, 0, nativeInvite.stderr);
+
+const invitationFiles = {
+  "typedpress.config.ts": readFileSync(new URL("transport/typedpress.config.ts", import.meta.url), "utf8"),
+  [templatePath]: readFileSync(new URL(`transport/${templatePath}`, import.meta.url), "utf8"),
+};
+const checkTemplate = (source: string) => call(exports, "tp_check", {
+  project: "/email-diagnostic-probe",
+  files: { ...invitationFiles, [templatePath]: source },
+}).check.diagnostics;
+const source = invitationFiles[templatePath];
+assert.match(checkTemplate(source.replace("Button, Html", "Link as Button, Html"))[0]?.message,
+  /React Email component `Link` is not supported/);
+assert.match(checkTemplate('import * as Email from "react-email";\n' + source)[0]?.message,
+  /import supported React Email components by name/);
+assert.match(checkTemplate(source.replace("siteName: string", "siteName: number"))[0]?.message,
+  /number/);
+
+const invitation = call(exports, "tp_compile", { name: "react-email-transport", files: invitationFiles });
+assert.ok(invitation.output?.schemaPhp && invitation.output.functionsPhp, JSON.stringify(invitation.check));
+const capture = call(exports, "tp_sources", { project: invitationProject, packages: false });
+assert.ok(JSON.parse(capture.app).files[templatePath], "hosted source capture must include the template");
+
+const inviteTemp = mkdtempSync(join(tmpdir(), "typedpress-organization-invite-"));
+try {
+  for (const [kind, compiled] of [["override", invitation.output], ["fallback", output]] as const) {
+    writeFileSync(join(inviteTemp, "schema.php"), compiled.schemaPhp);
+    writeFileSync(join(inviteTemp, "functions.php"), compiled.functionsPhp);
+    const result = spawnSync(process.env.PHP ?? "php", [
+      "-d", "zend.assertions=1", fileURLToPath(new URL("verify-invitation.php", import.meta.url)), inviteTemp, kind,
+    ], { encoding: "utf8" });
+    if (result.error) throw result.error;
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    if (kind === "override") {
+      const captured = JSON.parse(result.stdout);
+      for (const { props, html, text } of captured) {
+        const upstream = await render(createElement(OrganizationInvite, props));
+        // The PHP JSX renderer coalesces adjacent text nodes.
+        assert.equal(html.replaceAll("<!-- -->", ""), upstream.replaceAll("<!-- -->", ""));
+        assert.equal(text, toPlainText(upstream));
+      }
+    }
+    console.log(`WordPress sent and redeemed the ${kind} invitation.`);
+  }
+} finally {
+  rmSync(inviteTemp, { recursive: true, force: true });
 }

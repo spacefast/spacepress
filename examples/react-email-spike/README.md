@@ -21,18 +21,18 @@ TypedPress action. It runs the generated PHP in the repository's WordPress test
 harness, ticks Action Scheduler, and captures the two messages using the
 existing mail transport hook. It compares both bodies byte for byte.
 
-Run `npm run email:dev` to open the upstream preview for `emails/invitation.tsx`.
-The preview reads sample values from `Invitation.PreviewProps`.
+Run `npm run email:dev` to preview the organization invitation override in
+`transport/emails/identity/organization-invite.tsx`. The preview reads the
+example values from `Invitation.PreviewProps`.
 
-The first compiler diagnostic occurs before template lowering. The app source
-loader also confines ordinary imports to `tp/`. The proposed app-root
-`emails/` discovery needs its own compiler entry point. PHP template rendering,
-the organization invitation override, and the Playground demo remain follow-up
-work. See the [integration plan](../../docs/design-react-email.md).
+The override uses the same TSX file in the React Email preview and the native
+and WASM TypedPress builds. The test captures HTML and plain text from WordPress,
+compares both with upstream React Email, and accepts the invitation using the
+code from the email. It also verifies the built-in message for an app without
+an override. See the [integration notes](../../docs/design-react-email.md).
 
-A separate smoke test booted the native-built transport control in WordPress
-Playground (WordPress 7.1.5, PHP 8.3), passed the upstream-rendered invitation to
-the compiled action, and drained the queue. The Playground transport captured
-one message with both bodies intact. This exercises Playground delivery with
-pre-rendered bodies. The compiler diagnostic still prevents PHP from rendering
-the template there.
+A Playground smoke test installed the native-built plugins on WordPress 7.1.5
+with PHP 8.3. It issued two invitations, captured their multipart email at
+PHPMailer, and accepted each invitation using the code in the message. The
+captured HTML and plain text matched the React Email render for both inputs
+after removing React's empty text-node separators from the HTML.

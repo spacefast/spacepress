@@ -272,6 +272,11 @@ pub fn build(
             Slot::Component { name: component } => {
                 schema.components.insert(component, name);
             }
+            Slot::Email => {
+                schema
+                    .components
+                    .insert(crate::loader::INVITATION_EMAIL.to_owned(), name);
+            }
             Slot::AppPage { .. }
             | Slot::AppMetadata { .. }
             | Slot::AppGuard { .. }
@@ -666,6 +671,33 @@ fn components(
                 plugin: None,
             });
         }
+    }
+    if let Some(module) = program.invitation_email {
+        let exports = ev.run_module(module)?;
+        let source = &program.modules[module];
+        let span = Span {
+            file: source.file,
+            start: 0,
+            end: 0,
+        };
+        let Some(Value::Closure(closure)) = exports.get("default") else {
+            return Err(Diag::new(
+                span,
+                "the organization invitation email needs a default component",
+            ));
+        };
+        if closure.func.is_async || closure.func.params.len() > 1 {
+            return Err(Diag::new(
+                span,
+                "the invitation email must be a synchronous server component with one props object",
+            ));
+        }
+        server_roots.push(extract::Root {
+            closure: closure.clone(),
+            slot: Slot::Email,
+            name: "email__organization_invite".into(),
+            plugin: None,
+        });
     }
     ext.roots.extend(client_roots);
     ext.roots.extend(server_roots);

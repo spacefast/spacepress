@@ -950,7 +950,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.root_capabilities(root);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
-            let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. });
+            let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. } | Slot::Email);
             self.compile_function(&root.closure, &name, Some(params), Some(&root.slot), no_db)?;
             if let Some(ctx) = self.client.take() {
                 if ctx.root_pending {
@@ -967,6 +967,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             {
                 let props = params.first().cloned().unwrap_or(Ty::Obj(IndexMap::new()));
                 self.component_props.insert(component.clone(), props);
+            }
+            if matches!(root.slot, Slot::Email)
+                && !matches!(self.helper_types.get(&key), Some(Ty::Fn(_, ret)) if **ret == Ty::Html)
+            {
+                return err(root.closure.func.span, "the invitation email must return JSX");
             }
             if let Slot::ActionHandler { action } = &root.slot
                 && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)
@@ -1095,6 +1100,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // A component's own annotation types its props (see `compile_function`); a page's
             // `metadata` function takes the same props.
             Slot::Component { .. } => vec![],
+            Slot::Email => vec![Ty::Obj(
+                ["siteName", "identityUrl", "invitationCode", "expiresIn"]
+                    .into_iter()
+                    .map(|name| (name.to_owned(), (Ty::Str, false)))
+                    .collect(),
+            )],
             Slot::AppPage { file } | Slot::AppMetadata { file } => vec![self.app_props(file)],
             Slot::AppGuard { .. } | Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
             Slot::AppHandler { .. } => vec![types::route_request(), ctx],
@@ -1280,15 +1291,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // search, children), so only the named ones are checked, as TypeScript does
                     // for a non-literal argument.
                     let g = match (slot, &g, &d) {
-                        (Some(Slot::AppPage { .. } | Slot::AppMetadata { .. }), Ty::Obj(given), Ty::Obj(named)) => {
-                            Ty::Obj(
-                                given
-                                    .iter()
-                                    .filter(|(k, _)| named.contains_key(*k))
-                                    .map(|(k, v)| (k.clone(), v.clone()))
-                                    .collect(),
-                            )
-                        }
+                        (
+                            Some(Slot::AppPage { .. } | Slot::AppMetadata { .. } | Slot::Email),
+                            Ty::Obj(given),
+                            Ty::Obj(named),
+                        ) => Ty::Obj(
+                            given
+                                .iter()
+                                .filter(|(k, _)| named.contains_key(*k))
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect(),
+                        ),
                         _ => g,
                     };
                     check_parameter_argument(&g, &parameter_input_type(p, d.clone()), p.span)?;

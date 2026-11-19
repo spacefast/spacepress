@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "test": "tsx verify.ts",
-    "email:dev": "email dev"
+    "email:dev": "email dev --dir transport/emails"
   },
   "type": "module",
   "private": true,

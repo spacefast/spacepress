@@ -51,6 +51,8 @@ pub enum Slot {
     Component {
         name: String,
     },
+    /// The app-owned organization invitation template.
+    Email,
     /// The default export of a `tp/app/` route file (page, layout, not-found, error): a component
     /// whose props the router supplies, typed from the route.
     AppPage {

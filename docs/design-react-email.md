@@ -47,3 +47,19 @@ Exercise the invitation flow with and without an override. Capture the actual ma
 The [runnable invitation fixture](../examples/react-email-spike) renders through the upstream preview and produces HTML and text for two sets of props. Native and WASM compilation both stop at implicit `arguments` in React's production CommonJS entry. A separate WASM probe isolates the app-root import restriction (`F1210`).
 
 The transport control compiles a TypedPress action to PHP and uses the WordPress test harness to verify that Action Scheduler hands both upstream-rendered bodies to the mail transport intact. A same-template PHP renderer still needs an email compiler entry point and a viable way to lower the React Email components. The spike establishes the first failures of the direct-import approach.
+
+## First supported override
+
+`typedpress build` and the WASM compiler discover
+`emails/identity/organization-invite.tsx` beside the app configuration.
+The default export is a synchronous server component. The identity sender
+supplies `siteName`, `identityUrl`, `invitationCode` and `expiresIn` as strings. React Email's preview can supply example values through
+`PreviewProps`. Run `email dev` from the template's app root.
+
+The compiler supports named imports of `Html`, `Body`, `Text` and `Button`
+from `react-email` for this override. Use default component styling, optional
+`lang` on `Html` and `href` on `Button`. Relative helper imports stay inside
+`emails/`. The PHP renderer produces an HTML body and a plain-text alternative
+that preserves paragraph breaks and link destinations. WordPress sends both
+through its existing organization invitation flow. An app without the file
+uses the built-in plain-text message.

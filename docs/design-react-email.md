@@ -22,16 +22,22 @@ Extend the [mail action fixture](../tests/fixtures/mail-import/typedpress.config
 
 Publish the working invitation example with its dependency setup, template, action call and supported component list. The first implementation is complete when the documented example builds on the hosted path and sends both reference bodies with runtime data. Qualify additional components with upstream fixtures as they are added.
 
+## App template directory
+
+Store app-owned templates in `tp/emails/`, alongside `tp/app/` and `tp/components/`. Each email file default-exports one typed component. Use `tp/emails/_components/` for shared layouts. The upstream preview discovers nested templates and skips underscore-prefixed directories. [React Email CLI](https://react.email/docs/cli)
+
+Use a documented relative path for each built-in override, following the existing [login page convention](pages.md). For example, `tp/emails/identity/organization-invite.tsx` selects the invitation body at build time. App-specific emails such as `tp/emails/welcome.tsx` are imported by their senders.
+
 ## Preview the template with React Email
 
-Use the upstream preview app for authoring. Default-export the invitation from `emails/invitation.tsx`, set `Invitation.PreviewProps` to sample recipient data, and run `email dev` from the example. Edit the template and verify the upstream preview refreshes. The TypedPress action imports that same component and supplies the actual recipient data. [React Email CLI](https://react.email/docs/cli)
+Use the upstream preview app for authoring. Default-export the invitation from `tp/emails/identity/organization-invite.tsx`, set `Invitation.PreviewProps` to sample recipient data, and run `email dev --dir tp/emails` from the app root. Edit the template and verify the upstream preview refreshes. The TypedPress action imports that same component and supplies the actual recipient data. [React Email CLI](https://react.email/docs/cli)
 
 For the browser demo, investigate linking the example to the upstream preview app built with `email build`. Verify how that app can be served alongside WordPress Playground before promising an embedded preview. In Playground, exercise the compiled action, run its queued job, and capture the payload via `tp_mail_transport` for an automated comparison against the upstream HTML and plain text for identical props.
 
 ## Override built-in email bodies
 
-After the compiler spike, start with the organization invitation. Give the message a stable template key, proposed as `identity.organization-invite`. Let an app register its own React Email component for that key through TypedPress config. Define the invitation props from the existing sender: site name, identity URL, invitation code and expiry. Use synthetic values in `PreviewProps`.
+After the compiler spike, start with the organization invitation. Give the message a stable template key, proposed as `identity.organization-invite`. Resolve that key to the documented override file during compilation. Define the invitation props from the existing sender: site name, identity URL, invitation code and expiry. Use synthetic values in `PreviewProps`.
 
-Resolve the template for the current app at the point where the sender still has those structured values, before it calls `wp_mail()`. An absent override selects the existing built-in body. A registered override supplies rendered HTML and plain text. The identity sender owns challenge creation, recipient, subject and delivery timing. Validate the key and prop types at build time. A template used for identity mail should render only from its supplied props, with no action effects or external requests.
+Resolve the template for the current app at the point where the sender still has those structured values, before it calls `wp_mail()`. An absent override selects the existing built-in body. A discovered override supplies rendered HTML and plain text. The identity sender owns challenge creation, recipient, subject and delivery timing. Validate the default export and its prop types at build time. A template used for identity mail should render only from its supplied props, with no action effects or external requests.
 
 Exercise the invitation flow with and without an override. Capture the actual mail, verify that both custom bodies contain the issued code and identity URL, and redeem the code through the existing flow. Once proven, apply the same pattern to verification codes and form notifications with separately typed props for each.

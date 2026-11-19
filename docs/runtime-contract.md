@@ -345,7 +345,7 @@ rolled the transaction back), every later statement of it and its commit fail.
 A job queued before Action Scheduler is ready (a `wp-hooks` handler on `init`
 at priority 0) commits without an action and gets one once Action Scheduler is
 ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
-daily maintenance action, gives each waiting job that has no `tp_job` action
+hourly maintenance action, gives each waiting job that has no `tp_job` action
 of any status one, at most 1000 per run. That covers a request that died before
 Action Scheduler was ready, deleted actions, and the jobs that runtimes before
 this one left in `tp__outbox`. A job whose action an administrator cancelled

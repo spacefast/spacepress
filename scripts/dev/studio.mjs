@@ -572,7 +572,8 @@ async function main() {
   const project = await realpath(directory);
   const managed = await ownedState(project, mode === 'start');
   const studio = await studioBinary();
-  const runStudio = (args, options) => execute(process.execPath, [studio, ...args, '--path', managed.owner.site], options);
+  const studioEnv = { ...process.env };
+  const runStudio = (args, options) => execute(process.execPath, [studio, ...args, '--path', managed.owner.site], { env: studioEnv, ...options });
   if (mode === 'wp') {
     // `typedpress wp` and the site commands: WP-CLI's own stdio and exit status, untouched.
     const child = spawn(process.execPath, [studio, 'wp', ...process.argv.slice(4), '--path', managed.owner.site], { stdio: 'inherit' });
@@ -618,6 +619,7 @@ async function main() {
   if (flags.includes('--detach') && !noWatch) return detached(managed);
   const release = await lock(managed.state);
   const statePath = join(managed.state, 'state.json');
+  let frontend;
   await rm(join(managed.state, 'stop'), { force: true });
   let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl, relay;
   let finish;
@@ -718,6 +720,10 @@ async function main() {
     siteUrl = local;
     // Studio's own PHP, through WP-CLI without loading WordPress.
     await announce(managed.owner.site, address.url, (code) => runStudio(['wp', 'eval', '--skip-wordpress', code], { capture: true }));
+    const { startFrontend } = await import(pathToFileURL(join(here, 'frontend.mjs')));
+    frontend = await startFrontend(project, managed, {
+      site: url, host: address.listen ? await listenAddress(address.listen) : 'localhost', watch: !noWatch, write: atomicJson,
+    });
     if (address.listen) relay = await forward(address.listen, port, port);
     const mu = join(managed.owner.site, 'wp-content/mu-plugins/typedpress-dev-runtime.php');
     if (!managed.owner.devMu && await exists(mu)) throw new Error('typedpress-dev-runtime.php already exists and is not managed by TypedPress.');
@@ -775,6 +781,7 @@ async function main() {
   } finally {
     watcher?.close(); clearTimeout(timer); clearInterval(stopTimer);
     await relay?.close();
+    await frontend?.close().catch((error) => console.error(error.message));
     process.off('SIGINT', stop); process.off('SIGTERM', stop);
     if (await exists(join(managed.state, 'stop'))) stopping = true;
     if (siteStarted && (stopping || !noWatch)) {

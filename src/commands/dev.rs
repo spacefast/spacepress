@@ -4,6 +4,7 @@ use std::process::{Command, ExitCode};
 
 const STUDIO: &str = "wp-studio@2.2.0";
 const TOOLS: &[(&str, &str)] = &[
+    ("frontend.mjs", include_str!("../../scripts/dev/frontend.mjs")),
     ("studio.mjs", include_str!("../../scripts/dev/studio.mjs")),
     ("setup.php", include_str!("../../scripts/dev/setup.php")),
 ];

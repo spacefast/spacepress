@@ -103,6 +103,14 @@ This command builds browser files. Native server components still compile to
 PHP. React components run when the browser entry mounts them. The package
 does not server-render React or schedule hydration.
 
+## Edit React browser components
+
+Build the browser entries once to create their metadata. Start `typedpress dev`
+and open a WordPress page that uses one of those entries. Saving a React component
+updates the open page through Vite Fast Refresh. Compatible edits preserve React
+state, such as the value of a counter. Run the frontend build again when you
+change the entry list or framework options, then restart `typedpress dev`.
+
 ## Mix UI frameworks in browser entries
 
 React JSX works by default. Set project-relative include globs for Preact

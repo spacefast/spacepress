@@ -8632,7 +8632,20 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let props = self.expr(e)?;
         let props = self.finish_value(props, e.span)?;
         let declared = params.first().cloned().unwrap_or(Ty::Obj(IndexMap::new()));
-        check_parameter_argument(&props.ty, &declared, e.span)?;
+        // The check an ordinary call makes, so `{ kind: "welcome" }` meets `kind: "welcome" | "reminder"`.
+        if !assignable(&props.ty, &declared)
+            && (props.ty.is_nullable() && !declared.is_nullable()
+                || !self.argument_constraint(e).is_some_and(|t| assignable(&t, &declared)))
+        {
+            return err(
+                e.span,
+                format!(
+                    "these props are {}, but the template expects {}",
+                    props.ty.describe(),
+                    declared.describe()
+                ),
+            );
+        }
         self.uses("mail", "render", span);
         Ok(Out::atom(
             format!(

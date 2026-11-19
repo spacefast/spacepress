@@ -736,7 +736,7 @@ fn mail_send_needs_recipients_a_subject_and_a_body() {
 fn mail_render_checks_template_props() {
     rejects(
         "reject-mail-render-props",
-        "but it receives { name: number }",
+        "these props are { name: number; kind: \"welcome\" }",
         "typedpress.config.ts:3:",
     );
 }

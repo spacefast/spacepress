@@ -1,5 +1,5 @@
 import { Body, Html, Text } from "react-email";
 
-export default function Welcome({ name }: { name: string }) {
-  return <Html><Body><Text>Welcome, {name}!</Text></Body></Html>;
+export default function Welcome({ name, kind }: { name: string; kind: "welcome" | "reminder" }) {
+  return <Html><Body><Text>{kind === "welcome" ? "Welcome" : "Reminder"}, {name}!</Text></Body></Html>;
 }

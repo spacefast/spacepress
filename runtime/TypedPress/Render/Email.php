@@ -38,7 +38,7 @@ final class Email
     {
         $html = Html::child($template($props));
 
-        // The supported components use paragraphs and links. Preserve both in the plain-text alternative.
+        // Preserve paragraphs, line breaks and link destinations in the plain-text alternative.
         $text = preg_replace_callback('/(<a\b[^>]*>)(.*?)<\/a>/is', static function (array $match): string {
             $tag = new \WP_HTML_Tag_Processor($match[1]);
             $tag->next_tag('A');
@@ -46,6 +46,7 @@ final class Email
             return $match[2] . (is_string($href) && $href !== '' ? ' ' . Html::escape($href) : '');
         }, $html);
         $text = preg_replace('/<\/?p(?:\s[^>]*)?>/i', "\n\n", $text);
+        $text = preg_replace('/<br\b[^>]*>/i', "\n", $text);
         $text = preg_replace('/<!--.*?-->/s', '', $text);
         $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $text = preg_replace('/[ \t\r]+/u', ' ', $text);

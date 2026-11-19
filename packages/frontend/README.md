@@ -102,3 +102,36 @@ loads dynamic chunks as needed. Each page can select entries in its
 This command builds browser files. Native server components still compile to
 PHP. React components run when the browser entry mounts them. The package
 does not server-render React or schedule hydration.
+
+## Mix UI frameworks in browser entries
+
+React JSX works by default. Set project-relative include globs for Preact
+and Solid JSX, and enable Vue to import `.vue` single-file components.
+A JSX file can have one transform. React and Preact keep their own runtime
+imports. Solid uses the Solid 1.x compiler integration and Vue uses the
+compiler from the project's Vue 3 package.
+
+```js
+import { buildFrontend } from "@typedpress/frontend";
+
+await buildFrontend({
+  frameworks: {
+    preact: ["browser/preact/**/*.{jsx,tsx}"],
+    solid: ["browser/solid/**/*.{jsx,tsx}"],
+    vue: true,
+  },
+});
+```
+
+Use the framework runtimes your browser entry imports in the app's dependency
+manifest. Mount components from that entry with their framework's browser API.
+Vite splits the resulting module graph and the page selects its entry through
+the generated metadata. These transforms support browser modules today.
+Automatic server rendering and hydration of framework islands are separate
+from this entry build.
+
+The mixed-framework check serves the result in WordPress and clicks a
+counter from each framework. With the repo's differential browser tools and
+Chromium installed, run `npm run test:frameworks --prefix packages/frontend`
+from the repo root. Set `TP_BIN` if the local compiler is outside
+`target/debug/typedpress`.

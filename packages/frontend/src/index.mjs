@@ -1,7 +1,8 @@
 import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import tailwind from '@tailwindcss/vite';
-import { build } from 'vite';
+import { build, createFilter, normalizePath, transformWithOxc } from 'vite';
 
 const assetDirectory = 'typedpress-assets';
 const styleDirectory = 'typedpress-styles';
@@ -54,9 +55,47 @@ async function entryMetadata(manifest, name, source, output) {
   return { scripts: [url(launcher)], links };
 }
 
+async function frameworkPlugins(root, frameworks) {
+  const plugins = [];
+  const resourceQuery = /[?&](?:raw|url|worker|sharedworker|inline|no-inline)(?:=|&|$)/;
+  const patterns = (globs) => globs.map((glob) => normalizePath(path.resolve(root, glob)));
+  const preact = frameworks.preact?.length ? createFilter(patterns(frameworks.preact)) : undefined;
+  const solid = frameworks.solid?.length ? patterns(frameworks.solid) : undefined;
+
+  if (preact) {
+    const isSolid = solid && createFilter(solid);
+    plugins.push({
+      name: 'typedpress:preact',
+      enforce: 'pre',
+      transform(code, id) {
+        const filename = id.split(/[?#]/, 1)[0];
+        if (resourceQuery.test(id) || !/\.[jt]sx$/.test(filename) || !preact(filename)) return;
+        if (isSolid?.(filename)) this.error('A JSX file must match only one of the Preact and Solid include globs.');
+        return transformWithOxc(code, filename, {
+          jsx: { runtime: 'automatic', importSource: 'preact' },
+          sourcemap: true,
+        });
+      },
+    });
+  }
+  if (solid) {
+    const { default: solidPlugin } = await import('vite-plugin-solid');
+    // The Solid plugin applies its filter before stripping an import query.
+    const include = solid.flatMap((glob) => [glob, `${glob}[?]*`]);
+    plugins.push(solidPlugin({ include, exclude: resourceQuery, hot: false }));
+  }
+  if (frameworks.vue) {
+    const { default: vuePlugin } = await import('@vitejs/plugin-vue');
+    const require = createRequire(path.join(root, 'package.json'));
+    plugins.push(vuePlugin({ compiler: require('vue/compiler-sfc') }));
+  }
+  return plugins;
+}
+
 export async function buildFrontend({
   root = process.cwd(),
   entries = { main: 'browser/index.ts' },
+  frameworks = {},
 } = {}) {
   root = await realpath(root);
   const requested = Object.entries(entries);
@@ -74,7 +113,7 @@ export async function buildFrontend({
     throw new Error('Each frontend entry must have a different input file.');
   }
 
-  return publishFrontend({ root, inputs, directory: assetDirectory });
+  return publishFrontend({ root, inputs, directory: assetDirectory, plugins: await frameworkPlugins(root, frameworks) });
 }
 
 /** @internal Called by the native compiler while it holds the project build lock. */
@@ -86,7 +125,7 @@ export async function buildStyles({ root, styles }) {
   });
 }
 
-async function publishFrontend({ root, inputs, directory }) {
+async function publishFrontend({ root, inputs, directory, plugins = [] }) {
   const publicDir = path.join(root, 'public');
   const typedpress = path.join(root, 'tp');
   const generated = path.join(typedpress, '_generated');
@@ -100,13 +139,13 @@ async function publishFrontend({ root, inputs, directory }) {
     throw new Error(`Frontend build already running. If it stopped unexpectedly, check ${lock} before removing the lock.`);
   });
   try {
-    return await compileFrontend({ root, inputs, publicDir, generated, directory });
+    return await compileFrontend({ root, inputs, publicDir, generated, directory, plugins });
   } finally {
     await rm(lock, { recursive: true });
   }
 }
 
-async function compileFrontend({ root, inputs, publicDir, generated, directory }) {
+async function compileFrontend({ root, inputs, publicDir, generated, directory, plugins }) {
   const stylesOnly = directory === styleDirectory;
   const destination = path.join(publicDir, directory);
   const metadataName = stylesOnly ? 'frontend-styles.json' : 'frontend.ts';
@@ -133,9 +172,9 @@ async function compileFrontend({ root, inputs, publicDir, generated, directory }
       base: './',
       publicDir: false,
       envPrefix: 'PUBLIC_',
-      plugins: [tailwind()],
+      plugins: [tailwind(), ...plugins],
       oxc: { jsx: { runtime: 'automatic' } },
-      resolve: { alias: { '@': path.join(root, 'src') }, dedupe: ['react', 'react-dom'] },
+      resolve: { alias: { '@': path.join(root, 'src') }, dedupe: ['react', 'react-dom', 'preact', 'solid-js', 'vue'] },
       build: {
         outDir: output,
         manifest: true,

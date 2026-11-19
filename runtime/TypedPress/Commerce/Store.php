@@ -199,7 +199,7 @@ final class Store implements \TypedPress\Store
         $status = get_post_status((int) $pk);
         if ($status !== false && $status !== 'trash') { throw new \RuntimeException("Could not delete product $pk"); }
     }
-    public function readGuards(string $collection, Viewer $viewer): array
+    public function readGuards(string $collection, Viewer $viewer, bool $forSelect = false): array
     {
         $spec = $this->schema->collection($collection);
         if ($spec['commerce'] === 'order') { if (!AgentScope::may('personal')) { throw AgentScope::refusal('personal'); } return []; }

@@ -272,6 +272,9 @@ pub fn build(
             Slot::Component { name: component } => {
                 schema.components.insert(component, name);
             }
+            Slot::Email { file } => {
+                schema.components.insert(file, name);
+            }
             Slot::AppPage { .. }
             | Slot::AppMetadata { .. }
             | Slot::AppGuard { .. }
@@ -667,6 +670,34 @@ fn components(
             });
         }
     }
+    // Templates compile before the handlers that render them, so `mail.render()` finds their props.
+    let mut email_roots = Vec::new();
+    for (path, module) in &program.emails {
+        let exports = ev.run_module(*module)?;
+        let span = Span {
+            file: program.modules[*module].file,
+            start: 0,
+            end: 0,
+        };
+        let Some(Value::Closure(closure)) = exports.get("default") else {
+            return Err(Diag::new(span, format!("{path} needs a default component"))
+                .help("write `export default function Welcome(props: WelcomeProps) { ... }`"));
+        };
+        if closure.func.is_async || closure.func.params.len() > 1 {
+            return Err(Diag::new(
+                span,
+                "an email template is a synchronous server component with one props object",
+            ));
+        }
+        let stem = path.trim_end_matches(".tsx");
+        email_roots.push(extract::Root {
+            closure: closure.clone(),
+            slot: Slot::Email { file: path.clone() },
+            name: extract::slugify_name(stem).replace('-', "_"),
+            plugin: None,
+        });
+    }
+    ext.roots.splice(0..0, email_roots);
     ext.roots.extend(client_roots);
     ext.roots.extend(server_roots);
     Ok(blocks)

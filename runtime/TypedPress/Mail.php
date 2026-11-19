@@ -141,17 +141,24 @@ final class Mail
             throw new \RuntimeException('This host has not connected its mail transport (tp_mail_transport)');
         }
         $mail = self::wpMailArguments($payload);
-        $alt = $mail['alt'];
+        if (!self::sendWordPress($mail['to'], $mail['subject'], $mail['message'], $mail['headers'], $mail['alt'])) {
+            throw new \RuntimeException('Mail transport did not accept the message');
+        }
+    }
+
+    public static function sendWordPress(array|string $to, string $subject, string $body, array $headers, ?string $alt): bool
+    {
+        if ($alt === null) {
+            return (bool) wp_mail($to, $subject, $body, $headers);
+        }
         $configure = static function ($mailer) use ($alt): void {
-            if ($alt !== null && is_object($mailer)) {
+            if (is_object($mailer)) {
                 $mailer->AltBody = $alt;
             }
         };
         add_action('phpmailer_init', $configure);
         try {
-            if (!wp_mail($mail['to'], $mail['subject'], $mail['message'], $mail['headers'])) {
-                throw new \RuntimeException('Mail transport did not accept the message');
-            }
+            return (bool) wp_mail($to, $subject, $body, $headers);
         } finally {
             remove_action('phpmailer_init', $configure);
         }

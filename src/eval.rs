@@ -1079,6 +1079,22 @@ impl<'p> Evaluator<'p> {
                     Ctl::Err(d)
                 });
         }
+        if source == "react-email" && crate::loader::email_module(&self.program.root, &self.program.modules[from].path)
+        {
+            let component = match name {
+                "Html" => "EmailHtml",
+                "Body" => "EmailBody",
+                "Text" => "EmailText",
+                "Button" => "EmailButton",
+                _ => {
+                    return Err(Ctl::Err(Diag::new(
+                        span,
+                        format!("React Email component `{name}` is not supported"),
+                    )));
+                }
+            };
+            return Ok(Value::Builtin(Builtin::App(component)));
+        }
         if source == crate::loader::APP_MODULE {
             return crate::app::export(name)
                 .map(|e| Value::Builtin(Builtin::App(e)))
@@ -1169,6 +1185,11 @@ impl<'p> Evaluator<'p> {
                     Value::Builtin(Builtin::NodeCrypto(None))
                 }
                 ImportName::Namespace => {
+                    if source == "react-email"
+                        && crate::loader::email_module(&self.program.root, &self.program.modules[id].path)
+                    {
+                        return err(spec.span, "import supported React Email components by name");
+                    }
                     if source == WORDPRESS_MODULE {
                         return err_help(
                             spec.span,

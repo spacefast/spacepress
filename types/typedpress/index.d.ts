@@ -1527,10 +1527,13 @@ export interface MailMessage {
 /**
  * Email from hooks, actions, routes and jobs. `send` queues the message in the handler's
  * transaction and hands it to the site's mail transport after commit, retrying a refusal; a
- * rollback sends nothing. It resolves to the queued delivery's id.
+ * rollback sends nothing. It resolves to the queued delivery's id. `render` turns a React Email
+ * template from `emails/` into the `html` and `text` a message carries.
  */
 export declare const mail: {
   send(message: MailMessage): Promise<{ id: string }>;
+  /** The HTML and plain text of an `emails/` template's default export, rendered with `props`. */
+  render<P>(template: (props: P) => unknown, props: P): { html: string; text: string };
 };
 
 export interface EnvValue { readonly [envBrand]: true }

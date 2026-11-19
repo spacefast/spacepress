@@ -1970,6 +1970,56 @@ export default defineConfig({});
   allowance. A managed host without a transport refuses rather than falling
   back to `wp_mail`.
 
+### Email templates
+
+Write a message as a [React Email](https://react.email) component in
+`emails/` beside `typedpress.config.ts`, import it in a handler, and render
+it with `mail.render(Template, props)`. It returns `{ html, text }` for
+`mail.send()`:
+
+```ts
+// emails/welcome.tsx
+import { Body, Button, Html, Text } from "react-email";
+
+export default function Welcome({ name, url }: { name: string; url: string }) {
+  return (
+    <Html>
+      <Body>
+        <Text>Welcome, {name}!</Text>
+        <Button href={url}>Open your dashboard</Button>
+      </Body>
+    </Html>
+  );
+}
+```
+
+```ts
+// typedpress.config.ts
+import Welcome from "./emails/welcome";
+
+export const welcome = action({
+  input: { to: email(), name: text() },
+  access: "editor",
+  async handler({ to, name }) {
+    const { html, text } = mail.render(Welcome, { name, url: "https://example.com/dashboard" });
+    return (await mail.send({ to, subject: `Welcome, ${name}`, html, text })).id;
+  },
+});
+```
+
+- Each template default-exports one synchronous component with typed props.
+  The build checks the props each `mail.render()` call passes.
+- Templates may import `Html`, `Body`, `Text` and `Button` from
+  `react-email` (default styling, `lang` on `Html`, `href` on `Button`) and
+  local modules inside `emails/`. Keep shared parts in an underscore folder
+  such as `emails/_components/`; they aren't templates.
+- `text` keeps paragraph breaks and link destinations.
+- `email dev` previews the same files with `Template.PreviewProps`, which
+  the build ignores.
+- `emails/identity/organization-invite.tsx` replaces Identity's built-in
+  organization invitation (`siteName`, `identityUrl`, `invitationCode`,
+  `expiresIn`).
+
 ## WordPress abilities
 
 A handler can call any ability registered on the site with the WordPress

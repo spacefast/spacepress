@@ -34,10 +34,16 @@ final class Accounts
             time(),
         );
     }
+    /** SQLite's MySQL adapter stores VARBINARY as bytes and compares a string literal as text. */
+    private function emailColumn(): string
+    {
+        return defined('DB_ENGINE') && DB_ENGINE === 'sqlite' ? 'CAST(normalized AS CHAR)' : 'normalized';
+    }
+
     public function owner(string $email): int
     {
         $row = $this->db->row(
-            "SELECT wp_user_id FROM {$this->db->prefix}emails WHERE normalized=%s",
+            "SELECT wp_user_id FROM {$this->db->prefix}emails WHERE {$this->emailColumn()}=%s",
             self::email($email),
         );
         return (int) ($row["wp_user_id"] ?? 0);
@@ -83,7 +89,7 @@ final class Accounts
         $email = self::email($email);
         $account = $this->db->lock($uid);
         $existing = $this->db->row(
-            "SELECT * FROM {$this->db->prefix}emails WHERE normalized=%s",
+            "SELECT * FROM {$this->db->prefix}emails WHERE {$this->emailColumn()}=%s",
             $email,
         );
         if ($existing) {

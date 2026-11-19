@@ -33,9 +33,10 @@ class Cart extends HTMLElement {
     this.busy = true;
     this.focusControl = this.contains(document.activeElement) ? document.activeElement.dataset.cartControl : undefined;
     for (const control of this.querySelectorAll('button,input,select')) control.disabled = true;
+    this.querySelector('.shop-checkout')?.setAttribute('aria-disabled', 'true');
     try { await action(); }
     catch (error) { if (this.data) this.render(this.data); const message = element('p', error.message, 'shop-error'); message.setAttribute('role', 'alert'); this.appendChild(message); }
-    finally { this.busy = false; for (const control of this.querySelectorAll('button,input,select')) control.disabled = false; this.focusControl = undefined; }
+    finally { this.busy = false; for (const control of this.querySelectorAll('button,input,select')) control.disabled = false; this.querySelector('.shop-checkout')?.removeAttribute('aria-disabled'); this.focusControl = undefined; }
   }
   render(data) {
     this.data = data;
@@ -77,6 +78,9 @@ class Cart extends HTMLElement {
     }
     const total = element('p', `Total ${amount(data.totals.totalPrice, data.totals.currencyCode)}`, 'cart-total');
     const checkout = element('a', 'Continue to checkout', 'shop-checkout'); checkout.href = '/checkout';
+    // Checkout must read the cart Woo confirmed, so the link waits for a pending write.
+    checkout.onclick = event => { if (this.busy) event.preventDefault(); };
+    if (this.busy) checkout.setAttribute('aria-disabled', 'true');
     parts.push(total, checkout); this.replaceChildren(...parts);
     if (focus) (Array.from(this.querySelectorAll('[data-cart-control]')).find(control => control.dataset.cartControl === focus) || this.querySelector('[data-cart-control]'))?.focus();
   }

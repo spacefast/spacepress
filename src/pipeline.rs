@@ -401,6 +401,17 @@ pub fn build(
                 .help("declare it with table() again: its rows stay where they are and no migration is written")
                 .phase(diag::Code::Schema));
             }
+            // A commerce kind is Woo's storage and has no table in the next snapshot, so the planner
+            // would drop the SQL table that holds this name's rows.
+            if let Some(commerce) = schema.collections.get(stored).and_then(|c| c.commerce.as_deref()) {
+                let kind = ext.collections.iter().find(|c| c.table() == stored);
+                return Err(Diag::new(
+                    kind.map_or(config_span, |c| c.span),
+                    format!("`{stored}` is stored as a SQL table, and {commerce}() is always WooCommerce storage"),
+                )
+                .help("give the commerce kind another name, or remove the table in one deploy and add the commerce kind in the next")
+                .phase(diag::Code::Schema));
+            }
             let canonical = crate::schema::physical_name(stored);
             if &canonical != stored
                 && !schema.collections.contains_key(stored)

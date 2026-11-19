@@ -100,6 +100,32 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
     }
 }
 #[test]
+fn a_sql_table_cannot_become_a_commerce_kind_of_the_same_name() {
+    let project = tempfile::tempdir().unwrap();
+    let config = |exports: &str| {
+        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,table,text}} from 'typedpress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+    };
+    config("export const products = table({name:text()});");
+    success(cli("build", project.path()));
+    let ledger = project.path().join("tp/_generated/migrations");
+    let deployed = std::fs::read_dir(&ledger).unwrap().count();
+    config("export const shop = store({currency:'EUR',country:'PL'}); export const products = product();");
+    for command in ["check", "build"] {
+        let out = cli(command, project.path());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "{command} accepted the replacement");
+        assert!(
+            stderr.contains("`products` is stored as a SQL table, and product() is always WooCommerce storage"),
+            "{stderr}"
+        );
+        assert_eq!(
+            std::fs::read_dir(&ledger).unwrap().count(),
+            deployed,
+            "{command} wrote a migration"
+        );
+    }
+}
+#[test]
 fn commerce_references_names_and_existing_store_scaffolding() {
     let project = tempfile::tempdir().unwrap();
     std::fs::write(

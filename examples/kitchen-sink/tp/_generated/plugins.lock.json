@@ -4,17 +4,17 @@
     "policy": {
       "package": "typedpress-plugin-kitchen-policy",
       "version": "1.0.0",
-      "integrity": "sha256-88a8887f1887fc420f3040a401f202823ef6a49b2d8c7eef590b1557dcda66cb",
+      "integrity": "sha256-1d0213261ead4a886ea59c75143937a2986af074207cbaac57a097b35b04da41",
       "grant": {
         "read": [
-          "events"
+          "recipes"
         ],
         "write": [
-          "events.venue"
+          "recipes.title"
         ],
         "delete": [],
         "hooks": [
-          "events.beforeCreate"
+          "recipes.beforeCreate"
         ],
         "actions": [],
         "http": [],

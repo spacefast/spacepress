@@ -2786,6 +2786,7 @@ export type CheckScheduleInput = Record<string, never>;
 export type CheckScheduleOutput = {
 	schedule?: unknown;
 	timezone?: unknown;
+	hasWorkshops?: unknown;
 };
 export interface Collections {
 	events: {

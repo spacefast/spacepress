@@ -2,27 +2,34 @@
 
 import { sharedState, useEffect, useEvent, useLive, useMount, useRef, useState } from "typedpress/client";
 
-export const display = sharedState({ open: false });
+export const display = sharedState({ dismissals: 0 });
 
 export function WorkshopBoard() {
   const board = useRef<HTMLElement>();
   const [ready, setReady] = useState(false);
-  const openWorkshops = useLive<{ id: number; title: string }>("events", { where: { registrationOpen: true }, limit: 10 });
+  const [open, setOpen] = useState(false);
+  const openWorkshops = useLive<{ id: number }>("events", {
+    where: { registrationOpen: true }, columns: { id: true }, limit: 100,
+  });
+  const workshops = openWorkshops.data;
+  const count = workshops ? workshops.length : 0;
   useMount(() => { setReady(true); });
   useEffect(() => {
-    if (display.open) board.current?.focus();
-  }, [display.open]);
+    if (display.dismissals > 0) board.current?.querySelector("button")?.focus();
+  }, [display.dismissals]);
   useEvent("keydown", (event) => {
-    if (event.key === "Escape") display.open = false;
+    if (open && event.key === "Escape") {
+      setOpen(false);
+      display.dismissals += 1;
+    }
   });
+
   return (
-    <aside tabIndex={-1}>
-      <button type="button" disabled={!ready} aria-expanded={display.open} onClick={() => { display.open = !display.open; }}>
+    <aside>
+      <button type="button" disabled={!ready} aria-expanded={open} onClick={() => { setOpen(!open); }}>
         Workshops with open registration
       </button>
-      {display.open && (
-        <ul>{(openWorkshops.data ?? []).map((event) => <li key={event.id}>{event.title}</li>)}</ul>
-      )}
+      <p hidden={!open}>{count} workshops have open registration.</p>
     </aside>
   );
 }

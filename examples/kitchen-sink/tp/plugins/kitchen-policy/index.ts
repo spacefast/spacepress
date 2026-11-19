@@ -4,9 +4,9 @@ export default function kitchenPolicy() {
   return definePlugin({
     name: "policy",
     hooks: {
-      events: {
+      recipes: {
         beforeCreate(data) {
-          if (data.venue === "Kitchen") data.venue = "Teaching kitchen";
+          data.title = data.title.trim();
         },
       },
     },

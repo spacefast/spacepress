@@ -1,13 +1,12 @@
 import { action, adminScreen, db, email, HttpError, integer, item, job, mail, once } from "typedpress";
-import { abilities, get_option } from "php/wordpress";
+import { abilities, get_option, update_option } from "php/wordpress";
 import { activity, events, registrations } from "./schema";
 
 export const recordEvent = job({
   input: { eventId: integer() }, retries: 3,
   async handler({ eventId }, ctx) {
-    await once(ctx.jobId, async () => {
-      await db.insert(activity).values({ eventId, summary: "Workshop created" });
-    });
+    await once(ctx.jobId, () => update_option("kitchen_has_workshops", true));
+    await db.insert(activity).values({ eventId, summary: "Workshop created" });
   },
 });
 
@@ -60,7 +59,7 @@ export const checkSchedule = action({
   readonly: true,
   async handler() {
     const schedule = await abilities.call("kitchen-sink/upcoming", {});
-    return { schedule, timezone: get_option("timezone_string") };
+    return { schedule, timezone: get_option("timezone_string"), hasWorkshops: get_option("kitchen_has_workshops") };
   },
 });
 

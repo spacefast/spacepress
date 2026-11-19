@@ -106,7 +106,7 @@ export interface CloseRegistrationInput { id: number }
 export type CloseRegistrationOutput = { id: number };
 
 export type CheckScheduleInput = Record<string, never>;
-export type CheckScheduleOutput = { schedule?: unknown; timezone?: unknown };
+export type CheckScheduleOutput = { schedule?: unknown; timezone?: unknown; hasWorkshops?: unknown };
 
 export interface Collections {
   events: { row: Event; insert: EventInsert; patch: EventPatch; with: EventWith; filter: EventFilter; order: EventOrder };

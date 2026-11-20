@@ -10,7 +10,7 @@
 use serde_json::{Value, json};
 
 /// The host contract version, in every hosted manifest as `hostContract`.
-pub const HOST_CONTRACT: u32 = 2;
+pub const HOST_CONTRACT: u32 = 1;
 
 /// Paths below the site root that TypedPress answers itself; a host routes them to WordPress and keeps
 /// its own paths out of them.

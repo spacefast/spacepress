@@ -18,10 +18,6 @@ integer `hostContract`. It changes only when something below changes incompatibl
 don't change it. A host refuses a compiled tree whose `hostContract` it doesn't know, rather than serving
 it on assumptions.
 
-Version 2 requires managed commerce hosts to check shipping compatibility before selecting a build,
-including rollback and recovery after a failed initialization. Version 1 hosts must refuse version 2
-manifests until they implement this lifecycle requirement.
-
 ## Uploads
 
 `compile-sources <sources> <new-output> <assets> [previous-output]` takes a captured source bundle:
@@ -39,7 +35,34 @@ Besides `format`, `hostContract`, `compiler` and the platform versions (`wordpre
   rest.
 - `host`: the names below, as data.
 
-Host contract version: **2** (`hostContract` in the manifest).
+## Commerce builds
+
+A build with `store()` lists `woocommerce` in the manifest's `requires`. Do not accept commerce builds
+until the host enforces this prerequisite.
+
+Qualify shipping changes as installation changes, not just a version-pointer switch. Block new
+checkout requests and drain active ones before changing shipping. Resume checkout after selecting a
+compatible build. Permit concurrent build selection or rollback only when the selected build's
+declared shipping policy matches the last committed shipping state. Selecting an older ready build
+does not restore shipping zones or methods, and `Loader::initialize` on a ready build changes
+nothing. Check this after initialization failures too: a later failed step does not undo a completed
+shipping transaction. Prove rejection of an incompatible older ready build and recovery through a
+newly initialized build that reapplies the intended policy, without restoring historical orders.
+
+Check compatibility in a separate WordPress request/process: call `Loader::load($root, $build,
+['inspect' => true])` before WordPress initializes, then `Loader::inspect($root, $build)` after
+`init`. Its `steps` list contains `{id: "commerce-shipping", kind: "commerce-shipping",
+state: "pending"}` when the selected build's declared shipping differs from the site's recorded
+source or current shipping rows. Refuse the selection when that entry exists, or when `refusals`
+is non-empty or inspection fails. This reads live state even for an already-ready build; do not
+use its stored initialization receipt as a compatibility check. Keep the host's deployment lock
+and checkout suspension across this check and selection. Block every shipping writer for that
+window: other initializers, Woo merchant administration and REST writes, CLI commands and jobs.
+
+The built-in TypedPress deployment receiver is not a qualified commerce host yet. It refuses
+commerce builds before mounting or initializing them and before selecting a rollback.
+
+Host contract version: **1** (`hostContract` in the manifest).
 
 ### Reserved paths
 

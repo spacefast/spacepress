@@ -778,7 +778,7 @@ final class AppRouter
                     $props->p['item'] = $item;
                 }
                 return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
-            }, $reads);
+            }, $reads, $also);
         } catch (Halt $halt) {
             if ($halt->location !== null) {
                 self::privateResponse();
@@ -814,7 +814,12 @@ final class AppRouter
         // result: never shared, never recorded for purges.
         [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Cache::viewerCookie() && !\TypedPress\Commerce\Module::privatePath($this->plugin, (string) wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)) && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
         if ($shared) {
-            \TypedPress\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
+            $shared = \TypedPress\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads, $also, array_keys($page['search'] ?? []));
+        }
+        // A URL the read index can't hold (a query parameter the page doesn't declare, one query
+        // variant too many) can't be purged, so its response is this visitor's alone.
+        if (!$shared) {
+            $this->cacheControl = \TypedPress\Render\Cache::PRIVATE;
         }
         do_action('tp_app_rendered', (string) $route['id'], (string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         $this->document($status, $head, $body);
@@ -864,7 +869,8 @@ final class AppRouter
         // without `locale` would see only the default locale's rows (Locale\Read).
         $locale = \TypedPress\Locale\Module::localized($name) ? ['locale' => '*'] : [];
         try {
-            $row = Seam::findFirst($name, ['where' => $where] + $locale);
+            // The row this URL names: the page depends on that row, not on a listing of its kind.
+            $row = Reads::named($name, static fn () => Seam::findFirst($name, ['where' => $where] + $locale));
         } catch (\TypedPress\HttpError) {
             return null;
         }
@@ -974,14 +980,19 @@ final class AppRouter
      * output"): the page rendered as an anonymous visitor, its title as the heading, the page's own
      * HTML (not its layouts' navigation) converted to Markdown. Null when the URL is not an app
      * page, so the WordPress twin answers. A missing item or `notFound()` is a 404 twin. `$reads`
-     * gets what the render read, for the caller that serves the twin to record (rendering.md §6.2).
+     * gets what the render read, `$also` the globals among it and `$search` the page's declared
+     * query parameters, for the caller that serves the twin to record (rendering.md §6.2).
      *
      * @param-out array<string, array{ids: list<int|string>, listed: bool}> $reads
+     * @param-out list<string> $also
+     * @param-out list<string> $search
      * @return ?array{int, string}
      */
-    public function twin(string $url, ?array &$reads = null): ?array
+    public function twin(string $url, ?array &$reads = null, ?array &$also = null, ?array &$search = null): ?array
     {
         $reads = [];
+        $also = [];
+        $search = [];
         $match = $this->twinRoute($url);
         if ($match === null) {
             return null;
@@ -990,6 +1001,7 @@ final class AppRouter
         $viewer = new Viewer(null);
         $route = $match['route'];
         $page = $this->file($route['page']);
+        $search = array_keys($page['search'] ?? []);
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
         try {
             $rendered = Reads::during(function () use ($match, $route, $page, $layouts, $viewer): ?array {
@@ -1011,12 +1023,13 @@ final class AppRouter
                 }
                 // The page alone: its layouts add navigation and chrome, which a twin leaves out.
                 return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props, false));
-            }, $reads);
+            }, $reads, $also);
             if ($rendered === null) {
                 return [404, "# Not found\n\nNothing is published at this address.\n"];
             }
             if (isset($rendered['wordpress'])) {
                 $reads = [];
+                $also = [];
                 return null;
             }
             [$head, $body] = $rendered;

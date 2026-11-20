@@ -877,6 +877,33 @@ nothing is collected or announced.
   with inserts of 100 rows each. A committed write to a kind adds every recorded path that read
   that row or listed the kind, with its `.md` twin, to the same announcement
   as the paths above: one `tp_purge_urls` call per committed transaction.
+  - **A read is a listing unless it names its rows.** Only a read whose `where`
+    (or the key a relation joins on) holds the primary key to a value or a list
+    of values, and that found every row it named, is recorded as those rows alone;
+    so is the item a kind URL names. A `unique()` column (a slug) names rows the
+    same way, except in a hierarchical kind (a slug is unique per parent) and, in
+    a kind with drafts, for a read that can see drafts (drafts may share a value
+    until one is published; a visitor's read sees published rows only). Every other read (a
+    filter, a search, a rank with `limit`, a count, a relation's children) records
+    `*` beside the rows it returned, whether it returned none, one or many: a
+    filtered list that showed one row is purged when a second row matches. A
+    localized kind's reads are always listings, since a read may answer with
+    another row of the translation group.
+  - **Globals.** A render that reads a global records `global:<name>` with `*`.
+    A write to the global's fields (`db.globals.<name>.update()`, the API, or
+    its options page in wp-admin, all of which save `tp_global_<name>_<field>`
+    options) adds every path that read it to the write's announcement.
+  - **Query strings.** A URL is shared and recorded only when every parameter in
+    its query is one the page declares (`export const search`). A request with
+    any other parameter (`?utm_source=`, `?fbclid=`, `?junk=1`) is answered with
+    the page, `private, no-store` and `A8C-Edge-Cache: no-cache`, calls
+    `batcache_cancel()`, and records nothing; a `.md` twin follows its page's
+    declaration. So a page with no `search` has one cacheable URL. One path keeps
+    at most 20 recorded query variants (`Render\Cache::MAX_VARIANTS`); a further
+    variant is answered privately until a recorded one has gone two cache windows
+    without a render, and is then dropped from the index. A URL longer than the
+    index's 512 characters is private too. A host that wants shared pages for
+    tracking parameters strips them before the request reaches PHP.
   A page answers at that one address only: the router 301s the other
   spelling of its path (with or without the trailing slash, as the
   permalink structure says) to it, so one spelling is purged. More than 200 paths in that call becomes `/*`, a

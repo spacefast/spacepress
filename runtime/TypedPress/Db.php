@@ -195,12 +195,98 @@ final class Db
     private function fetch(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null): array
     {
         $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards, prune: true);
-        $rows = Extensions::read($decoded, $collection, $viewer);
+        // What a page render read (its purges): only a read that named its rows and found them all
+        // depends on those rows alone.
+        $named = Render\Reads::recording() ? $this->named($collection, $opts, $partition, $viewer) : null;
+        $rows = Render\Reads::exact($collection, $named !== null && count($decoded) === $named, static fn (): array => Extensions::read($decoded, $collection, $viewer));
         if (isset($opts['with']) && $rows !== []) {
             $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with', $viewer, $decoded);
         }
 
         return $rows;
+    }
+
+    /**
+     * How many rows a read names by a unique key, or null when it names none: `where` (or the key a
+     * relation joins on) holds the primary key, or a unique column, to one value or a list of them.
+     * Every other condition only narrows that set. A unique column counts only where one value is
+     * one row: not in a hierarchical kind (a slug per parent), and in a kind with drafts only for a
+     * read that sees published rows alone ({@see publishedOnly()}: drafts may share a value until
+     * one is published). A localized kind names none.
+     *
+     * A read that found exactly the rows it named answers differently only after a write to one of
+     * them: another row can take a found key's value only once the found row gave it up. A named
+     * row that is missing (or hidden from the viewer) can appear with a write to any row.
+     *
+     * @param ?array{string, list<mixed>} $partition
+     */
+    private function named(string $collection, array $opts, ?array $partition, ?Viewer $viewer): ?int
+    {
+        // A localized read may answer with another row of the named row's translation group.
+        if ($this->localized($collection)) {
+            return null;
+        }
+        $spec = $this->schema->collection($collection);
+        $pk = (string) $spec['primaryKey'];
+        $unique = [];
+        if (!($spec['hierarchical'] ?? false)) {
+            foreach ($spec['columns'] as $name => $column) {
+                if (($column['unique'] ?? false) && (string) $name !== $pk) {
+                    $unique[(string) $name] = true;
+                }
+            }
+        }
+        $one = static fn (mixed $v): bool => is_int($v) || is_string($v) || (is_float($v) && floor($v) === $v);
+        $where = is_array($opts['where'] ?? null) ? $opts['where'] : [];
+        // A relation's rows are named by the key it joins on, when that is a key of theirs (the
+        // row a foreign key refers to); a parent's children are joined on a column that is not.
+        $by = array_intersect_key($partition !== null ? [$partition[0] => ['in' => $partition[1]]] : $where, [$pk => true] + $unique);
+        foreach ($by as $column => $value) {
+            if (is_array($value) && array_keys($value) === ['eq']) {
+                $value = $value['eq'];
+            }
+            $count = match (true) {
+                $one($value) => 1,
+                is_array($value) && array_keys($value) === ['in'] && is_array($value['in']) && array_is_list($value['in'])
+                    && array_filter($value['in'], static fn (mixed $v): bool => !$one($v)) === [] => count(array_unique(array_map(self::key(...), $value['in']))),
+                default => null,
+            };
+            if ($count !== null && ($column === $pk || !($spec['drafts'] ?? false) || $this->publishedOnly($spec, $collection, $where, $viewer))) {
+                return $count;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a read of a kind with drafts can see published rows only: its `where` says so, or the
+     * viewer's read rule does (drafts hidden from them, or a rule that answers `{ status: "published" }`).
+     */
+    private function publishedOnly(array $spec, string $collection, array $where, ?Viewer $viewer): bool
+    {
+        $published = static fn (mixed $filter): bool => is_array($filter)
+            && in_array($filter['status'] ?? null, ['published', ['eq' => 'published']], true);
+        if ($published($where)) {
+            return true;
+        }
+        if ($viewer === null) {
+            return false;
+        }
+        $rule = Access::collectionRules($spec)['read'];
+
+        return $this->draftsHidden($spec, $rule, $viewer)
+            || (!Access::isShorthand($rule) && $published($this->current(static fn () => Access::evaluate($rule, $viewer, 'read', null, $spec['columns'], $collection))));
+    }
+
+    /**
+     * Whether $viewer reads only the published rows of a kind with drafts under a shorthand read rule.
+     * WordPress's own posts: who reads a draft is core's answer, applied by the store's guards.
+     */
+    private function draftsHidden(array $spec, array $rule, Viewer $viewer): bool
+    {
+        return ($spec['drafts'] ?? false) && Access::isShorthand($rule) && !($spec['native'] ?? false)
+            && ($viewer->user === null || Schema::roleRank($viewer->user['role']) < Schema::roleRank('editor'));
     }
 
     /**
@@ -455,9 +541,7 @@ final class Db
             throw Access::deny($viewer->user, "read $collection");
         }
         $guards = is_array($r) ? [$r] : [];
-        // WordPress's own posts: who reads a draft is core's answer, applied by the store's guards.
-        if (($spec['drafts'] ?? false) && Access::isShorthand($rule) && !($spec['native'] ?? false)
-            && ($viewer->user === null || Schema::roleRank($viewer->user['role']) < Schema::roleRank('editor'))) {
+        if ($this->draftsHidden($spec, $rule, $viewer)) {
             $guards[] = ['status' => 'published'];
         }
 
@@ -521,6 +605,11 @@ final class Db
         $childPk = $target['primaryKey'];
         $ids = array_values(array_unique(array_merge([], ...array_values($linked))));
         $values = array_map(static fn ($id) => Schema::encode($target['columns'][$childPk], $id, $childPk, ''), $ids);
+        // Read from the side that doesn't store the links: which rows are linked changes with a
+        // write to any row of the other kind, so a page render that read them listed that kind.
+        if ($from === 'target_id') {
+            Render\Reads::listed($rel['collection']);
+        }
         $children = $this->fetch($rel['collection'], $opts, $ptr, $viewer, [$childPk, $values], decoded: $childDecoded);
         $childKeys = array_map(static fn (array $row) => (int) $row[$childPk], $childDecoded);
         $byId = array_combine($childKeys, $this->project($children, $rel['collection'], $opts, $ptr));
@@ -1751,6 +1840,7 @@ final class Db
             if ($viewer !== null) {
                 Access::require(Access::globalRules($g)['read'], $viewer, 'read', null, "read $name");
             }
+            Render\Reads::global($name);
             $stored = $this->store->globalRead($name) ?? [];
             $out = [];
             foreach ($g['fields'] as $field => $f) {

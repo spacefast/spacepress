@@ -27,11 +27,18 @@ use function TypedPress\db;
  *
  * Purges: each cacheable render records the rows it read in `tp__app_reads` (kind, id or `*`
  * for a listing, URL path with its query), under the address WordPress serves the page at
- * (`user_trailingslashit`), whichever spelling the visitor typed. On a write to a kind, the URLs
- * that read that row, and every URL that listed the kind, join the write's other purges
- * (`Wp\Purges::recorded`): one `tp_purge_urls` call after the commit, with their `.md` twins.
+ * (`user_trailingslashit`), whichever spelling the visitor typed. A global it read is recorded as
+ * the kind `global:<name>` with `*`. On a write to a kind, the URLs that read that row, and every
+ * URL that listed the kind, join the write's other purges (`Wp\Purges::recorded`): one
+ * `tp_purge_urls` call after the commit, with their `.md` twins; a write to a global announces the
+ * URLs that read it ({@see globalWritten()}).
  * Nothing is recorded or announced when no host listens (`has_action('tp_purge_urls')`); the
  * runtime listens itself where Batcache, the VIP edge cache or Jetpack Boost runs (`Wp\PageCaches`).
+ *
+ * Query strings ({@see shareable()}, {@see record()}): a URL is shared only when every parameter
+ * in its query is one the page declares (`export const search`), since a cache keeps each query
+ * string as a page of its own and only a recorded URL can be purged. A page's recorded query
+ * variants are capped at MAX_VARIANTS; one more is answered privately.
  */
 final class Cache
 {
@@ -39,6 +46,14 @@ final class Cache
     public const WINDOW = 300;
     /** Rows recorded per render; a page that reads more records its kinds as listings. */
     public const MAX_IDS = 500;
+    /**
+     * Query variants of one path recorded at a time (`/catalog/?media=nvme`, `?media=ssd`, …). Each
+     * is a URL of its own to purge, with its twin: 20 variants of a listing are 40 of the
+     * `Wp\Purges::PURGE_LIMIT` paths one write may name before it purges the whole host.
+     */
+    public const MAX_VARIANTS = 20;
+    /** A recorded URL's longest form: the `url` column's width. A longer one can't be purged, so it isn't shared. */
+    private const MAX_URL = 512;
     /** Rows per insert when recording reads (at most about 900 bytes each). */
     private const BATCH = 100;
 
@@ -100,7 +115,7 @@ final class Cache
 
     /** The WP Cloud edge's per-response cache switch. */
     public const EDGE_HEADER = 'A8C-Edge-Cache';
-    private const PRIVATE = 'private, no-store, max-age=0';
+    public const PRIVATE = 'private, no-store, max-age=0';
 
     /**
      * The request carries a cookie a render may answer differently for: a WordPress or Identity
@@ -118,16 +133,48 @@ final class Cache
     }
 
     /**
-     * Records what a cacheable render of `$uri` read, replacing what that URL read before.
+     * Whether a response to `$uri` may be shared as far as its query string goes: every parameter is
+     * one the page declares, and the address fits the read index. A shared cache keeps each query
+     * string as its own page, so `/?junk=1` … `/?junk=500` would be 500 copies of one page, each
+     * needing its own purge. A request with any other parameter is answered, privately.
+     *
+     * @param list<string> $declared the page's `search` field names
+     */
+    public static function shareable(string $uri, array $declared): bool
+    {
+        $query = (string) (wp_parse_url($uri, PHP_URL_QUERY) ?? '');
+        if ($query === '') {
+            // `/about/?` is another URL to a cache, and the index records it as `/about/`.
+            return !str_contains($uri, '?');
+        }
+        foreach (\TypedPress\QueryString::parse($query) as [$name]) {
+            if (!in_array($name, $declared, true)) {
+                return false;
+            }
+        }
+
+        return strlen(self::path($uri)) <= self::MAX_URL;
+    }
+
+    /**
+     * Records what a cacheable render of `$uri` read, replacing what that URL read before. False
+     * when the URL can't be recorded, so it can't be purged and its response must not be shared: its
+     * query string is not the page's own ({@see shareable()}), or the path already has MAX_VARIANTS
+     * query variants on record.
      *
      * @param array<string, array{ids: list<int|string>, listed: bool}> $reads
+     * @param list<string> $also what the render read besides rows: `global:<name>` (Reads::during)
+     * @param list<string> $declared the page's `search` field names
      */
-    public static function record(string $uri, array $reads): void
+    public static function record(string $uri, array $reads, array $also = [], array $declared = []): bool
     {
+        if (!self::shareable($uri, $declared)) {
+            return false;
+        }
         // A prerender records what it read, so a write knows which prebuilt URLs it changed; other
         // renders only where a host's page cache listens for purges.
         if (!(function_exists('has_action') && has_action('tp_purge_urls') !== false) && !Prebuilt::prerendering()) {
-            return;
+            return true;
         }
         $url = self::path($uri);
         $rows = [];
@@ -141,20 +188,33 @@ final class Cache
                 }
             }
         }
+        foreach ($also as $key) {
+            $rows[] = [$key, '*'];
+        }
         $wanted = [];
         foreach ($rows as [$kind, $item]) {
             $wanted[$kind . "\0" . $item] = [$kind, $item];
         }
+        $now = gmdate('Y-m-d\TH:i:s.000\Z');
+        $variant = str_contains($url, '?');
         // The same reads as the URL's last render (the usual case: a page re-rendered after its cache
         // window): nothing to write.
         $stored = [];
-        foreach (self::run('SELECT "kind", "item" FROM {reads} WHERE "url" = ?', [$url]) as $row) {
+        $seen = null;
+        foreach (self::run('SELECT "kind", "item", "seenAt" FROM {reads} WHERE "url" = ?', [$url]) as $row) {
             $stored[$row['kind'] . "\0" . $row['item']] = true;
+            $seen = $seen === null ? (string) $row['seenAt'] : min($seen, (string) $row['seenAt']);
         }
         if (array_diff_key($wanted, $stored) === [] && array_diff_key($stored, $wanted) === []) {
-            return;
+            // A query variant still being rendered keeps its place among its path's variants.
+            if ($variant && $seen !== null && $seen < self::ago(self::window())) {
+                self::run('UPDATE {reads} SET "seenAt" = ? WHERE "url" = ?', [$now, $url]);
+            }
+            return true;
         }
-        $now = gmdate('Y-m-d\TH:i:s.000\Z');
+        if ($variant && $stored === [] && !self::room($url)) {
+            return false;
+        }
         self::run('DELETE FROM {reads} WHERE "url" = ?', [$url]);
         // Multi-row inserts, BATCH rows each. A row's parameters are at most (191 + 191 + 512)
         // characters of utf8mb4, 4 bytes each, plus the 24-byte timestamp: 3,600 bytes, so a statement
@@ -168,6 +228,52 @@ final class Cache
             }
             self::run('INSERT IGNORE INTO {reads} ("kind", "item", "url", "seenAt") VALUES ' . implode(', ', array_fill(0, count($chunk), '(?, ?, ?, ?)')), $params);
         }
+
+        return true;
+    }
+
+    /**
+     * Whether a path has room for one more recorded query variant. At the limit, the variants no
+     * render has recorded or confirmed for two cache windows go first: no shared cache still holds a
+     * copy it considers fresh.
+     */
+    private static function room(string $url): bool
+    {
+        // Every recorded URL from `<path>?` up to, not including, `<path>@` (the byte after `?`).
+        $path = substr($url, 0, (int) strpos($url, '?'));
+        $range = [$path . '?', $path . '@'];
+        $count = static fn (): int => (int) (self::run('SELECT COUNT(DISTINCT "url") AS n FROM {reads} WHERE "url" >= ? AND "url" < ?', $range)[0]['n'] ?? 0);
+        if ($count() < self::MAX_VARIANTS) {
+            return true;
+        }
+        self::run('DELETE FROM {reads} WHERE "url" >= ? AND "url" < ? AND "seenAt" < ?', [...$range, self::ago(2 * self::window())]);
+
+        return $count() < self::MAX_VARIANTS;
+    }
+
+    /** The cache window in seconds, at least WINDOW: how long a shared copy may be served as fresh. */
+    private static function window(): int
+    {
+        return max(self::WINDOW, (int) apply_filters('tp_app_cache_window', self::WINDOW));
+    }
+
+    private static function ago(int $seconds): string
+    {
+        return gmdate('Y-m-d\TH:i:s.000\Z', time() - $seconds);
+    }
+
+    /**
+     * A global was written (`db.globals.<name>.update()`, the API, or its options page in wp-admin,
+     * all of which save its fields as options): the URLs whose render read it join the write's
+     * announcement, after the commit like a row's.
+     */
+    public static function globalWritten(string $name): void
+    {
+        if (!self::listening()) {
+            return;
+        }
+        $found = self::run('SELECT DISTINCT "url" FROM {reads} WHERE "kind" = ? AND "item" = ?', ['global:' . $name, '*']);
+        \TypedPress\Wp\Purges::recorded(array_map(static fn (array $r): string => self::address((string) $r['url']), $found));
     }
 
     /** Extensions::onWritten: inside the write's transaction; Wp\Purges announces after commit. */
@@ -220,7 +326,8 @@ final class Cache
 
     /**
      * A request URI as stored: the path below the home path as WordPress links it (`/notes/a/` for a
-     * visit to `/notes/a`), with its query string. A `.md` twin keeps its own address.
+     * visit to `/notes/a`), with its query string. A `.md` twin keeps its own address. Never cut to
+     * fit the column: a URL longer than MAX_URL is not recorded at all ({@see shareable()}).
      */
     private static function path(string $uri): string
     {
@@ -230,7 +337,7 @@ final class Cache
         if ($base !== '' && str_starts_with($path, $base)) {
             $path = substr($path, strlen($base)) ?: '/';
         }
-        return substr(\TypedPress\Wp\AppRouter::address($path) . ($query !== '' ? '?' . $query : ''), 0, 512);
+        return \TypedPress\Wp\AppRouter::address($path) . ($query !== '' ? '?' . $query : '');
     }
 
     /** @param list<int|float|string|null> $params @return list<array<string, mixed>> */

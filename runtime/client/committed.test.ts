@@ -5,7 +5,7 @@
 // shard, on main) builds each example and compares everything under tp/_generated/.
 //
 // Run: node --test runtime/client/committed.test.ts
-// Fix: `typedpress build` in each project this names, and commit its first/_generated/client/.
+// Fix: `typedpress build` in each project this names, and commit its tp/_generated/client/.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

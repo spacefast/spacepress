@@ -177,21 +177,11 @@ export interface ColumnBuilder<
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
-  /** Alias of `$default`. */
-  $defaultFn(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /**
    * Computed in PHP on update (`() => new Date()` on a timestamp means "now").
    * Like Drizzle, it also counts as a default for inserts. Not allowed on sub-fields.
    */
   $onUpdate(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
-  /** Alias of `$onUpdate`. */
-  $onUpdateFn(
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
@@ -837,16 +827,57 @@ export interface NestedQueryConfig<
 
 type RelationKind<R> = R extends { readonly [relationBrand]: { kind: infer K } } ? K : never;
 
+/** The `media()` and `file()` columns of kind `K`: `with` puts each one's row in place of its id. */
+type LoadableColumns<TSchema extends Schema, K extends keyof TSchema> = ColumnsOfKind<ColumnsOf<TSchema[K]>, "media" | "mediaList" | "file">;
+
 export type WithConfig<TSchema extends Schema, TRels, K extends keyof TSchema> = {
-  [R in keyof RelationsOf<TRels, K>]?:
-    | boolean
-    | NestedQueryConfig<
-        TSchema,
-        TRels,
-        TargetOf<RelationsOf<TRels, K>[R]> & keyof TSchema,
-        RelationKind<RelationsOf<TRels, K>[R]> & ("one" | "many")
-      >;
+  [R in keyof RelationsOf<TRels, K> | LoadableColumns<TSchema, K>]?: R extends keyof RelationsOf<TRels, K>
+    ?
+        | boolean
+        | NestedQueryConfig<
+            TSchema,
+            TRels,
+            TargetOf<RelationsOf<TRels, K>[R]> & keyof TSchema,
+            RelationKind<RelationsOf<TRels, K>[R]> & ("one" | "many")
+          >
+    : boolean;
 };
+
+/** A media item, as `with: { cover: true }` loads it in place of a `media()` column's id. */
+export interface MediaRow {
+  id: number;
+  url: string;
+  mime: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  alt: string | null;
+  filename: string;
+  createdAt: string;
+  /** The sizes `media.sizes` in `defineConfig` names; empty for a file that is no image. */
+  sizes: Record<string, { url: string; width: number; height: number }>;
+}
+
+/** A private file, as `with` loads it in place of a `file()` column's id. `url` is signed and valid for five minutes. */
+export interface FileRow {
+  id: number;
+  bucket: string;
+  filename: string;
+  mime: string;
+  size: number;
+  ownerId: number | null;
+  createdAt: string;
+  url: string;
+}
+
+/** What `with` puts in place of a media or file column. A file stays its id for a visitor the bucket's read rule refuses. */
+type LoadedColumn<C> = ColumnKindOf<C> extends "mediaList"
+  ? MediaRow[]
+  : ColumnKindOf<C> extends "media"
+    ? MediaRow | (ColumnNotNull<C> extends true ? never : null)
+    : ColumnKindOf<C> extends "file"
+      ? FileRow | number | (ColumnNotNull<C> extends true ? never : null)
+      : never;
 
 type TrueKeys<T> = { [K in keyof T]-?: T[K] extends true ? K : never }[keyof T];
 type FalseKeys<T> = { [K in keyof T]-?: T[K] extends false ? K : never }[keyof T];
@@ -874,7 +905,9 @@ type WithResult<TSchema extends Schema, TRels, K extends keyof TSchema, TWith> =
     K
   >
     ? RelationResult<TSchema, TRels, RelationsOf<TRels, K>[W], TWith[W]>
-    : never;
+    : W extends keyof ColumnsOf<TSchema[K]>
+      ? LoadedColumn<ColumnsOf<TSchema[K]>[W]>
+      : never;
 };
 
 /** One row of `db.query.<K>` given its `columns` and `with`. */
@@ -1514,18 +1547,26 @@ export type JobsApi = [RegisteredJobs] extends [never]
 export declare const jobs: JobsApi;
 export declare function once<T>(key: string, fn: () => Awaitable<T>): Promise<T>;
 
-export type MailAddress = string | { email: string; name?: string };
+export type MailAddress = string | { email: string; name?: string | null };
+/**
+ * An optional field may be left out, `undefined` or `null`; all three send without it. An optional
+ * column reads as `string | null`, so `replyTo: settings.replyTo` needs no conversion.
+ */
 export interface MailMessage {
-  /** Defaults to `noreply@` the site's host. On Spacefast it must use the Space's sending domain. */
-  from?: MailAddress;
+  /**
+   * Defaults to `noreply@` the site's host (or `TP_MAIL_SENDER_DOMAIN`). On Spacefast it must use
+   * the Space's sending domain. A local site on `127.0.0.1` or `localhost` sends as
+   * `noreply@typedpress.localhost`.
+   */
+  from?: MailAddress | null;
   to: MailAddress | MailAddress[];
   subject: string;
-  text?: string;
-  html?: string;
-  cc?: MailAddress | MailAddress[];
-  bcc?: MailAddress | MailAddress[];
-  replyTo?: MailAddress;
-  headers?: Record<string, string>;
+  text?: string | null;
+  html?: string | null;
+  cc?: MailAddress | MailAddress[] | null;
+  bcc?: MailAddress | MailAddress[] | null;
+  replyTo?: MailAddress | null;
+  headers?: Record<string, string> | null;
 }
 /**
  * Email from hooks, actions, routes and jobs. `send` queues the message in the handler's

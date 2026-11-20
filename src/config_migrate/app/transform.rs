@@ -1414,7 +1414,7 @@ fn type_aliases(source: &str) -> String {
 fn table_code(t: &Table) -> String {
     let n = &t.name;
     let mut out = format!(
-        "const __z08_{n} = __z08Table({{\ncreatedAt: __z08Text().$defaultFn(() => new Date().toISOString()),\nupdatedAt: __z08Text().$defaultFn(() => new Date().toISOString()).$onUpdate(() => new Date().toISOString()),\n"
+        "const __z08_{n} = __z08Table({{\ncreatedAt: __z08Text().$default(() => new Date().toISOString()),\nupdatedAt: __z08Text().$default(() => new Date().toISOString()).$onUpdate(() => new Date().toISOString()),\n"
     );
     for f in &t.fields {
         out.push_str(&format!("{}: {},\n", q(&f.name), f.builder()));

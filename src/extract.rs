@@ -4333,7 +4333,8 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
         }
         Ok(())
     };
-    for c in out.schema.collections.values().filter(|c| c.taxonomy.is_none()) {
+    // Taxonomies too: `Register::build` registers the same operations for every kind.
+    for c in out.schema.collections.values() {
         for op in ["list", "get", "create", "update", "delete", "revisions"] {
             add(format!("{}-{op}", kebab(&c.table)))?;
         }

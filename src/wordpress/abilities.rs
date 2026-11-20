@@ -8,12 +8,13 @@ use crate::schema::{ColType, Schema};
 use crate::types::{self, Ty};
 use indexmap::IndexMap;
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The app's own abilities as data: name → (input properties, the required ones). For the drift
 /// test against `Register::operations()`; inputs that are not objects list nothing.
 pub fn own_inputs(schema: &Schema) -> BTreeMap<String, (Vec<String>, Vec<String>)> {
     own(schema)
+        .abilities
         .into_iter()
         .map(|(name, (input, _))| {
             let (mut keys, mut required) = (Vec::new(), Vec::new());
@@ -48,6 +49,9 @@ pub struct Locked {
 #[derive(Debug, Default, Clone)]
 pub struct Catalog {
     pub abilities: BTreeMap<String, (Ty, Ty)>,
+    /// The app's own abilities a scoped credential runs only with its `personal` grant
+    /// (`AgentScope::ability`): every ability of an `order()` kind, and `complete-order`.
+    pub personal: BTreeSet<String>,
 }
 
 impl Catalog {
@@ -62,8 +66,12 @@ impl Catalog {
                 ),
             );
         }
-        abilities.extend(own(schema));
-        Catalog { abilities }
+        let own = own(schema);
+        abilities.extend(own.abilities);
+        Catalog {
+            abilities,
+            personal: own.personal,
+        }
     }
 }
 
@@ -327,9 +335,10 @@ fn escape(key: &str) -> String {
 /// `runtime/TypedPress/Wp/Abilities/Register::build` registers, with the same names and input properties
 /// (`wordpress_own_abilities_match_the_registered_ones` in tests/compiler_contracts.rs runs both and
 /// compares them). Results the runtime publishes no output schema for are `unknown`.
-fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
+fn own(schema: &Schema) -> Own {
     let app = kebab(&schema.name);
-    let mut out = Vec::new();
+    let mut out: Vec<(String, (Ty, Ty))> = Vec::new();
+    let mut personal = BTreeSet::new();
     let opt = |fields: &[(&str, Ty, bool)]| {
         Ty::Obj(
             fields
@@ -350,6 +359,7 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
     };
     // Taxonomies have no abilities yet (docs/decisions/2026-11-11-authoring-surface.md, deferrals).
     for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
+        let first = out.len();
         // As Register::collection: `with` when there is something to load, `locale` when localized.
         let mut extra = Vec::new();
         if !c.relations.is_empty()
@@ -491,6 +501,9 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
                 (opt(&[("uid", Ty::Str, false), ("expect", Ty::Str, false)]), Ty::Unknown),
             ));
         }
+        if c.commerce.as_deref() == Some("order") {
+            personal.extend(out[first..].iter().map(|(name, _)| name.clone()));
+        }
     }
     for a in schema.actions.values() {
         out.push((
@@ -527,6 +540,9 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
         }
     }
     for (name, shape) in commerce_operations(schema) {
+        if name == "complete-order" {
+            personal.insert(format!("{app}/{name}"));
+        }
         out.push((
             format!("{app}/{name}"),
             (
@@ -535,7 +551,17 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
             ),
         ));
     }
-    out
+    Own {
+        abilities: out,
+        personal,
+    }
+}
+
+/// The app's own abilities: each one's name, input and output, and the names that need the
+/// `personal` grant ([`Catalog::personal`]).
+struct Own {
+    abilities: Vec<(String, (Ty, Ty))>,
+    personal: BTreeSet<String>,
 }
 
 /// The stock and fulfilment operations `TypedPress\Commerce\Operations` registers for this schema,

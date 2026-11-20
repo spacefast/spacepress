@@ -234,9 +234,31 @@ HTML stays public for a guest with a Woo cookie. Native stock changes purge item
 reads through TypedPress's usual purge hook.
 
 Scoped agent credentials use app abilities. Product/term writes require `--write`; the
-entire order kind additionally requires `--personal`, and its tools are hidden without it.
-So is an action whose handler reads orders or calls `<app>/complete-order`: without
-`--personal` the action is left out of the MCP tool list, and calling it is refused.
+entire order kind additionally requires `--personal`. Without it every order ability
+(`<app>/orders-list`, `<app>/orders-get`, ...) and `<app>/complete-order` is refused when
+called, and the order kind's abilities are left out of every place abilities are listed or
+described: `GET /wp-abilities/v1/abilities`, one ability's own route, each MCP server's
+`tools/list`, and the default MCP server's `discover-abilities` and `get-ability-info`.
+
+An action is left out of the same lists when its code needs the grant. The build decides
+that from the action's code, not from what one call does. An action is marked when its
+handler, or a helper it calls:
+
+- reads an order kind (`db.query.orders`, a relation to it);
+- calls an ability that needs the grant: `abilities.call("<app>/orders-list")`, any other
+  ability of an order kind, or `abilities.call("<app>/complete-order")`;
+- calls an action that is itself marked, however long the chain of actions is.
+
+Because the mark comes from the code, it covers every branch. An action that reads orders
+only when its input asks for them is hidden as a whole. Calling it is not refused as a
+whole: the call runs until it reaches the order read or the ability, and is refused there
+with a 403 that names the grant. A call that takes a branch with neither succeeds.
+
+The build follows what the action calls, not what runs because of it. A collection hook
+that one of the action's writes fires, and a `wp-hooks/` handler, are not followed: if one
+of them reads orders, the action stays listed, and the order read is still refused for a
+credential without the grant.
+
 An action's `abilities.call` runs as the same credential. A credential limited with
 `--abilities` therefore needs the inner ability on its list as well as the action
 (`--abilities=shop/restock,shop/increase-product-stock`); the refusal names the missing one.

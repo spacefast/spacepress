@@ -230,23 +230,80 @@ $request = static function (string $path, ?array $body = null, array $headers = 
     $text = curl_exec($ch);
     return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), json_decode((string) $text, true), $answered];
 };
-$tools = static function () use ($request): array {
-    $session = $request('/wp-json/mcp/typedpress-drive-store', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-11-25', 'capabilities' => new stdClass(), 'clientInfo' => ['name' => 'Drive Store test', 'version' => '1']]]);
-    $list = $request('/wp-json/mcp/typedpress-drive-store', ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list', 'params' => new stdClass()], ['Mcp-Session-Id: ' . ($session[2]['mcp-session-id'] ?? ''), 'Mcp-Protocol-Version: 2025-11-25']);
-    $names = array_values(array_intersect(['drive-store-restock', 'drive-store-mark-shipped', 'drive-store-pending-orders', 'drive-store-orders-list', 'drive-store-drives-list'], array_column($list[1]['result']['tools'] ?? [], 'name')));
+/** One JSON-RPC call on an MCP server of the site, in a session of its own: the status and the result. */
+$mcp = static function (string $server, string $method, array|object $params) use ($request): array {
+    $session = $request("/wp-json/mcp/$server", ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-11-25', 'capabilities' => new stdClass(), 'clientInfo' => ['name' => 'Drive Store test', 'version' => '1']]]);
+    $answer = $request("/wp-json/mcp/$server", ['jsonrpc' => '2.0', 'id' => 2, 'method' => $method, 'params' => $params], ['Mcp-Session-Id: ' . ($session[2]['mcp-session-id'] ?? ''), 'Mcp-Protocol-Version: 2025-11-25']);
+    return [$answer[0], $answer[1]];
+};
+/** What one tool of the default MCP server answers: whether it is an error, and its data. */
+$adapter = static function (string $tool, array|object $arguments) use ($mcp): array {
+    [, $answer] = $mcp('mcp-adapter-default-server', 'tools/call', ['name' => $tool, 'arguments' => $arguments]);
+    $result = $answer['result'] ?? [];
+    $data = $result['structuredContent'] ?? json_decode((string) ($result['content'][0]['text'] ?? 'null'), true);
+    return [isset($answer['error']) || ($result['isError'] ?? false) || isset($data['error']), $data, $answer];
+};
+// The abilities this app registers for agents that a listing may or may not show, in every place one is listed.
+$orderAbilities = ['drive-store/mark-shipped', 'drive-store/orders-get', 'drive-store/orders-list', 'drive-store/pending-orders'];
+$openAbilities = ['drive-store/drives-list', 'drive-store/restock'];
+$shown = static function (array $names) use ($orderAbilities, $openAbilities): array {
+    $names = array_values(array_intersect([...$orderAbilities, ...$openAbilities], $names));
     sort($names);
-    return [$list[0], $names];
+    return $names;
+};
+$tools = static function () use ($mcp, $shown): array {
+    [$status, $list] = $mcp('typedpress-drive-store', 'tools/list', new stdClass());
+    // The adapter names a tool after its ability, with the slash as a hyphen.
+    return [$status, array_map(static fn (string $name) => str_replace('drive-store/', 'drive-store-', $name), $shown(array_map(static fn (string $tool) => preg_replace('/^drive-store-/', 'drive-store/', $tool), array_column($list['result']['tools'] ?? [], 'name'))))];
+};
+/** Core's abilities list, every page of it: the app's names, and whether any WooCommerce ability is in it. */
+$listed = static function () use ($request, $shown): array {
+    $names = [];
+    for ($page = 1, $pages = 1; $page <= $pages; $page++) {
+        $answer = $request("/wp-json/wp-abilities/v1/abilities?per_page=100&page=$page");
+        if ($answer[0] !== 200) { return [$answer[0], [], false]; }
+        $pages = (int) ($answer[2]['x-wp-totalpages'] ?? 1);
+        array_push($names, ...array_column($answer[1], 'name'));
+    }
+    return [200, $shown($names), array_filter($names, static fn (string $name) => str_starts_with($name, 'woocommerce/')) !== []];
+};
+/** Each ability's own description route: the status per name. */
+$described = static fn (array $names): array => array_map(static fn (string $name) => $request("/wp-json/wp-abilities/v1/abilities/$name")[0], array_combine($names, $names));
+/** The default MCP server's discovery tool: the app's names, and whether any WooCommerce ability is in it. */
+$discovered = static function () use ($adapter, $shown): array {
+    [$error, $data, $answer] = $adapter('mcp-adapter-discover-abilities', new stdClass());
+    $names = array_column($data['abilities'] ?? [], 'name');
+    return [$error ? $answer : false, $shown($names), array_filter($names, static fn (string $name) => str_starts_with($name, 'woocommerce/')) !== []];
+};
+/** The default MCP server's description of one ability: the name it described, or null when it refused. */
+$info = static function (string $name) use ($adapter): ?string {
+    [$error, $data] = $adapter('mcp-adapter-get-ability-info', ['ability_name' => $name]);
+    return $error ? null : ($data['name'] ?? null);
 };
 // A readonly action runs over GET and takes no input here; the others take theirs as JSON.
 $run = static fn (string $ability, ?array $input = null) => $request("/wp-json/wp-abilities/v1/abilities/drive-store/$ability/run", $input === null ? null : ['input' => $input]);
+// A kind's list ability is readonly too, and takes its input in the query string.
+$list = static fn (string $ability) => $request("/wp-json/wp-abilities/v1/abilities/drive-store/$ability/run?input%5Blimit%5D=1");
 // The server is another process: read Woo's stock past this one's object cache.
 $stock = static function () use ($id): ?int { clean_post_cache($id); return wc_get_product($id)->get_stock_quantity(); };
 $scope(['write' => true, 'personal' => false, 'abilities' => null]);
 eq('without the personal grant an agent is offered restocking, and no tool that reads or completes orders', $tools(), [200, ['drive-store-drives-list', 'drive-store-restock']]);
-eq('the order tools it is not offered are refused when called', [$run('pending-orders')[0], $run('mark-shipped', ['order' => $orderId])[0]], [403, 403]);
+eq('the order tools it is not offered are refused when called', [$run('pending-orders')[0], $run('mark-shipped', ['order' => $orderId])[0], $list('orders-list')[0]], [403, 403, 403]);
+eq('and what it is offered runs', $list('drives-list')[0], 200);
+// Every other place abilities are listed or described leaves out the same ones.
+eq('core\'s abilities list leaves them out too, and WooCommerce\'s own', $listed(), [200, $openAbilities, false]);
+eq('each one\'s description is refused, and the others answer', $described([...$orderAbilities, ...$openAbilities]), array_fill_keys($orderAbilities, 403) + array_fill_keys($openAbilities, 200));
+eq('the default MCP server\'s discover-abilities leaves them out too', $discovered(), [false, $openAbilities, false]);
+eq('and its get-ability-info describes none of them', array_map($info, [...$orderAbilities, 'drive-store/restock']), [null, null, null, null, 'drive-store/restock']);
 $scope(['write' => true, 'personal' => true, 'abilities' => null]);
-eq('with the personal grant the order tools are offered', $tools(), [200, ['drive-store-drives-list', 'drive-store-mark-shipped', 'drive-store-orders-list', 'drive-store-pending-orders', 'drive-store-restock']]);
-eq('and run', $run('pending-orders')[0], 200);
+$every = [...$openAbilities, ...$orderAbilities];
+sort($every);
+eq('with the personal grant the order tools are offered', $tools(), [200, ['drive-store-drives-list', 'drive-store-mark-shipped', 'drive-store-orders-get', 'drive-store-orders-list', 'drive-store-pending-orders', 'drive-store-restock']]);
+eq('and run', [$run('pending-orders')[0], $list('orders-list')[0]], [200, 200]);
+eq('core\'s abilities list shows them, and still none of WooCommerce\'s own', $listed(), [200, $every, false]);
+eq('each one is described', $described($every), array_fill_keys($every, 200));
+eq('discover-abilities shows them', $discovered(), [false, $every, false]);
+eq('and get-ability-info describes them', array_map($info, $orderAbilities), $orderAbilities);
 // An action's abilities.call() is judged as the credential: the inner ability belongs on its list too.
 $scope(['write' => true, 'personal' => false, 'abilities' => ['drive-store/restock']]);
 $refused = $run('restock', ['drive' => $id, 'quantity' => 1]);

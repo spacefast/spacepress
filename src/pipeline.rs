@@ -231,14 +231,42 @@ pub fn build(
             reached
         };
         let mut handlers = Vec::new();
+        // Each action: its ability's name, and every function its handler reaches.
+        let app = crate::wordpress::abilities::kebab(&schema.name);
+        let mut actions = Vec::new();
         for ((slot, name), root) in slots.iter().zip(&roots) {
             if let Some(plugin) = root.plugin {
                 handlers.push((plugin, name.clone(), reach(name)));
             }
-            if let Slot::ActionHandler { action } = slot
-                && reach(name).iter().any(|f| c.personal.contains(f))
-            {
-                personal_actions.push(action.clone());
+            if let Slot::ActionHandler { action } = slot {
+                let ability = format!("{app}/{}", crate::wordpress::abilities::kebab(action));
+                actions.push((action.clone(), ability, reach(name)));
+            }
+        }
+        // An action is personal when its code reads orders or calls an ability that needs the grant,
+        // or calls an action that is. Repeated until nothing changes, so a chain of actions calling
+        // actions is followed to its end.
+        let mut personal_abilities = std::collections::BTreeSet::new();
+        loop {
+            let found: Vec<_> = actions
+                .iter()
+                .filter(|(_, ability, reached)| {
+                    !personal_abilities.contains(ability)
+                        && reached.iter().any(|f| {
+                            c.personal.contains(f)
+                                || c.ability_calls
+                                    .get(f)
+                                    .is_some_and(|called| called.iter().any(|a| personal_abilities.contains(a)))
+                        })
+                })
+                .map(|(action, ability, _)| (action.clone(), ability.clone()))
+                .collect();
+            if found.is_empty() {
+                break;
+            }
+            for (action, ability) in found {
+                personal_abilities.insert(ability);
+                personal_actions.push(action);
             }
         }
         let prev = previous()?;

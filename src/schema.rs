@@ -520,8 +520,11 @@ pub struct Action {
     pub signature: Option<Json>,
     /// The handler's result as a JSON Schema, from its TypeScript return type (filled after compile).
     pub output: Option<Json>,
-    /// The handler reads WooCommerce orders or completes one (filled after compile). Those need a
-    /// credential's `personal` grant, so a credential without it is not offered the tool.
+    /// The handler's code reads a WooCommerce order kind, calls an ability that needs a credential's
+    /// `personal` grant (an order kind's, `complete-order`), or calls an action that is itself
+    /// personal (filled after compile, in `pipeline.rs`). Marked from the code on every branch, not
+    /// from one call: a credential without the grant is not shown the action, and a call is refused
+    /// where it reaches that read or ability.
     pub personal: bool,
 }
 

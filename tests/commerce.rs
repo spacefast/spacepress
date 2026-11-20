@@ -145,6 +145,139 @@ fn an_app_cannot_declare_an_ability_the_store_adds() {
         success(config(&exports));
     }
 }
+/// A taxonomy kind gets the same abilities as any kind (`Register::build`), so its names are checked
+/// with the rest: against the store's, and against the app's own actions.
+#[test]
+fn a_taxonomy_cannot_declare_an_ability_twice() {
+    let project = tempfile::tempdir().unwrap();
+    let config = |exports: &str| {
+        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,taxonomy,action}} from 'typedpress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        cli("check", project.path())
+    };
+    let action = "export const shelvesGet = action({input:{}, handler: async () => 1});";
+    success(config("export const shelves = taxonomy({});"));
+    success(config(action));
+    for (exports, error) in [
+        (
+            format!("export const shelves = taxonomy({{}}); {action}"),
+            "ability kebab collision: shelves-get",
+        ),
+        // `<app>/store-get` is the store's: the kind's name is refused before its abilities are.
+        (
+            "const kind = taxonomy({}); export { kind as store };".to_string(),
+            "store is reserved for the store information API",
+        ),
+    ] {
+        let out = config(&exports);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "accepted {exports}");
+        assert!(stderr.contains(error), "{stderr}");
+    }
+}
+
+/// `Action::personal` (what a credential without the `personal` grant is not shown) follows the
+/// action's code: an order read, a call to an ability that needs the grant, and a call to an action
+/// that is itself personal, through any number of actions.
+#[test]
+fn actions_that_reach_orders_are_marked_personal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        r#"import { action, db, defineConfig, integer, boolean, order, product, store } from "typedpress";
+import { abilities } from "php/wordpress";
+export const shop = store({ currency: "EUR", country: "PL" });
+export const products = product({ inventory: true });
+export const orders = order();
+
+// Declared before the actions it reaches: the chain is followed whatever the order.
+export const chainEnd = action({ input: {}, access: "admin", async handler() {
+  return await abilities.call("commerce/chain-middle", {});
+} });
+export const chainMiddle = action({ input: {}, access: "admin", async handler() {
+  return await abilities.call("commerce/lists-orders", {});
+} });
+export const readsOrders = action({ input: {}, access: "admin", async handler() {
+  return (await db.query.orders.findMany({ limit: 1 })).length;
+} });
+export const listsOrders = action({ input: {}, access: "admin", async handler() {
+  return (await abilities.call("commerce/orders-list", {})).rows.length;
+} });
+export const getsOrder = action({ input: { id: integer() }, access: "admin", async handler({ id }) {
+  return (await abilities.call("commerce/orders-get", { id })).id;
+} });
+export const completesOrder = action({ input: { id: integer() }, access: "admin", async handler({ id }) {
+  return await abilities.call("commerce/complete-order", { id });
+} });
+async function count() {
+  return (await abilities.call("commerce/orders-list", {})).rows.length;
+}
+export const throughHelper = action({ input: {}, access: "admin", async handler() {
+  return await count();
+} });
+// Marked from the code, not from one call: the order read is on one branch only.
+export const onOneBranch = action({ input: { orders: boolean() }, access: "admin", async handler(i) {
+  if (i.orders) {
+    return (await db.query.orders.findMany({ limit: 1 })).length;
+  }
+  return 0;
+} });
+// Two actions that call each other and reach no order.
+export const ping = action({ input: { n: integer() }, access: "admin", async handler({ n }): Promise<unknown> {
+  return n > 0 ? await abilities.call("commerce/pong", { n: n - 1 }) : 0;
+} });
+export const pong = action({ input: { n: integer() }, access: "admin", async handler({ n }): Promise<unknown> {
+  return n > 0 ? await abilities.call("commerce/ping", { n: n - 1 }) : 0;
+} });
+export const restocks = action({ input: { id: integer() }, access: "admin", async handler({ id }) {
+  return await abilities.call("commerce/increase-product-stock", { id, quantity: 1 });
+} });
+export const callsRestocks = action({ input: { id: integer() }, access: "admin", async handler({ id }) {
+  return await abilities.call("commerce/restocks", { id });
+} });
+export const listsProducts = action({ input: {}, access: "admin", async handler() {
+  return (await abilities.call("commerce/products-list", {})).rows.length;
+} });
+export default defineConfig({ name: "commerce" });
+"#,
+    )
+    .unwrap();
+    let program = typedpress::loader::load(&project.join("typedpress.config.ts")).unwrap();
+    let built = typedpress::pipeline::build(
+        project,
+        &program,
+        || Ok(typedpress::pipeline::Previous::none()),
+        |_| None,
+    )
+    .unwrap_or_else(|d| panic!("{d:?}"));
+    let personal: std::collections::BTreeMap<&str, bool> = built
+        .schema
+        .actions
+        .values()
+        .map(|a| (a.name.as_str(), a.personal))
+        .collect();
+    assert_eq!(
+        personal,
+        std::collections::BTreeMap::from([
+            ("callsRestocks", false),
+            ("chainEnd", true),
+            ("chainMiddle", true),
+            ("completesOrder", true),
+            ("getsOrder", true),
+            ("listsOrders", true),
+            ("listsProducts", false),
+            ("onOneBranch", true),
+            ("ping", false),
+            ("pong", false),
+            ("readsOrders", true),
+            ("restocks", false),
+            ("throughHelper", true),
+        ])
+    );
+    // The runtime reads the mark from schema.php (`Register::action`).
+    let schema = typedpress::schema_php::render(&built.schema);
+    assert_eq!(schema.matches("'personal' => true").count(), 8, "{schema}");
+}
 #[test]
 fn a_sql_table_cannot_become_a_commerce_kind_of_the_same_name() {
     let project = tempfile::tempdir().unwrap();

@@ -477,8 +477,12 @@ pub struct Compiler<'a, 'p> {
     pub uses: Vec<crate::plugins::Use>,
     /// Which compiled functions each function calls, for the read→send report.
     pub calls: HashMap<String, HashSet<String>>,
-    /// The compiled functions that read WooCommerce orders or complete one ([`Action::personal`]).
+    /// The compiled functions that read a WooCommerce order kind, or call an ability that needs the
+    /// `personal` grant ([`Catalog::personal`](crate::wordpress::abilities::Catalog)).
     pub personal: HashSet<String>,
+    /// The app's own abilities each compiled function calls with `abilities.call`, by ability name.
+    /// The pipeline follows the ones that are actions to settle [`Action::personal`].
+    pub ability_calls: HashMap<String, HashSet<String>>,
     plugin_names: Vec<String>,
     /// Each plugin's PHP function answering its locked fetch hosts, written once the lock settles.
     pub host_functions: Vec<String>,
@@ -560,6 +564,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             uses: Vec::new(),
             calls: HashMap::new(),
             personal: HashSet::new(),
+            ability_calls: HashMap::new(),
             host_functions: Vec::new(),
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
@@ -682,22 +687,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Records a capability the plugin compiling now uses; app code is unrestricted.
     fn uses(&mut self, kind: &'static str, value: impl Into<String>, span: Span) {
         let value = value.into();
-        let orders = match kind {
+        let personal = match kind {
             "read" => self
                 .schema
                 .collections
                 .values()
                 .any(|c| c.key == value && c.commerce.as_deref() == Some("order")),
             "abilities" => {
-                value
-                    == format!(
-                        "{}/complete-order",
-                        crate::wordpress::abilities::kebab(&self.schema.name)
-                    )
+                self.ability_calls
+                    .entry(self.current.clone())
+                    .or_default()
+                    .insert(value.clone());
+                self.abilities.personal.contains(&value)
             }
             _ => false,
         };
-        if orders {
+        if personal {
             self.personal.insert(self.current.clone());
         }
         if let Some((plugin, _)) = &self.plugin {

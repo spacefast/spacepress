@@ -1758,8 +1758,9 @@ fn compiled_php_matches_node_on_every_differential_case() {
         body("numberCompare")
     );
     assert!(body("numberCompare").contains("$a == $b"), "{}", body("numberCompare"));
+    // The literal is written first (WordPress's standard for a comparison with a variable).
     assert!(
-        body("stringEquality").contains("$s === 'a'"),
+        body("stringEquality").contains("'a' === $s"),
         "{}",
         body("stringEquality")
     );

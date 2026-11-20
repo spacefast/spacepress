@@ -1753,7 +1753,8 @@ export declare function createClient(options?: ClientOptions): Client;
 * an action's result, a global. Returns a function that stops watching.
 */
 export declare function watch<T>(client: Client, collections: readonly CollectionKey[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: TypedPressError) => void): () => void;
-/** Cart contracts adapted from @woo/storefront-core (MIT), packages/core/src/contracts.ts.
+/** Cart contracts and error-cart handling adapted from @woo/storefront-core (MIT),
+* packages/core/src/contracts.ts and packages/core/src/transport.ts.
 * Amounts here are exact decimal strings; the Store API's minor units are normalized on read.
 */
 export interface WooCartItem {
@@ -1822,6 +1823,8 @@ export interface WooCart {
 	totals: WooCartTotals;
 	needsShipping: boolean;
 	shippingRates: WooShippingPackage[];
+	billingAddress?: WooAddress;
+	shippingAddress?: WooAddress;
 	coupons: {
 		code: string;
 		totals: {
@@ -1835,10 +1838,18 @@ export interface WooCart {
 		totalTax: string;
 	}[];
 }
+/** The codes Woo 11.3.0's cart routes send for the requests this client makes (`StoreApi/Routes/V1/Cart*.php`,
+* `Utilities/CartController.php`, `Utilities/QuantityLimits.php`, `Authentication.php`), with their statuses. */
+export type WooStoreErrorCode = "invalid_quantity" | "rate_limit_exceeded" | "readonly_quantity" | "rest_invalid_param" | "woocommerce_rest_add_to_cart_error" | "woocommerce_rest_cart_error" | "woocommerce_rest_cart_invalid_key" | "woocommerce_rest_cart_invalid_parent_product" | "woocommerce_rest_cart_invalid_product" | "woocommerce_rest_cart_item_exists" | "woocommerce_rest_cart_missing_rate_id" | "woocommerce_rest_invalid_nonce" | "woocommerce_rest_invalid_variation_data" | "woocommerce_rest_missing_attributes" | "woocommerce_rest_missing_nonce" | "woocommerce_rest_missing_variation_data" | "woocommerce_rest_product_invalid_quantity" | "woocommerce_rest_product_not_purchasable" | "woocommerce_rest_product_out_of_stock" | "woocommerce_rest_product_partially_out_of_stock" | "woocommerce_rest_shipping_disabled" | "woocommerce_rest_unknown_server_error" | "woocommerce_rest_variation_id_from_variation_data";
 export declare class WooStoreError extends Error {
-	readonly code: string;
+	/** The string Woo sent, unchanged. Extensions and other Woo versions send codes outside `WooStoreErrorCode`.
+	* `http_error` is this client's own: the answer was not a Woo error, such as a proxy's or a maintenance page. */
+	readonly code: WooStoreErrorCode | (string & {});
 	readonly status: number;
-	constructor(code: string, message: string, status: number);
+	/** The current cart. Woo sends it with a 409 only. */
+	readonly cart: WooCart | undefined;
+	/** `message` is plain text: Woo's HTML entities are already decoded. */
+	constructor(code: WooStoreErrorCode | (string & {}), message: string, status: number, cart?: WooCart);
 }
 /** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
 export declare function wooDecimal(minor: string, precision: number): string;
@@ -1846,6 +1857,7 @@ export declare function wooDecimal(minor: string, precision: number): string;
 export interface WooCartClient {
 	get(): Promise<WooCart>;
 	add(id: number, quantity?: number): Promise<WooCart>;
+	/** Sets a line's quantity. Woo refuses a quantity of zero, so zero removes the line. */
 	update(key: string, quantity: number): Promise<WooCart>;
 	remove(key: string): Promise<WooCart>;
 	updateCustomer(input: {
@@ -1860,4 +1872,27 @@ export declare function createCartClient(options?: {
 	fetch?: typeof fetch;
 }): WooCartClient;
 export declare const cart: WooCartClient;
+export interface WooCartState {
+	/** Woo's last confirmed cart with the pending writes' previews applied. Undefined until the first read answers. */
+	cart: WooCart | undefined;
+	/** True until the first read answers or fails. */
+	loading: boolean;
+	/** True while a write waits for Woo. */
+	pending: boolean;
+	/** The last failure. A refused write stays until the next write starts, so a later write that was
+	* already queued and succeeds does not hide it. A failed read stays until Woo next answers with a cart. */
+	error: Error | undefined;
+}
+export interface WooCartActions extends Pick<WooCartClient, "add" | "update" | "remove" | "selectShipping" | "updateCustomer"> {
+	/** Reads the cart from Woo, after every write already queued. */
+	refresh(): Promise<WooCart>;
+}
+export interface WooCartStore {
+	subscribe(changed: () => void): () => void;
+	snapshot(): WooCartState;
+	serverSnapshot(): WooCartState;
+	actions: WooCartActions;
+}
+/** One cart store per client, shared by React hooks and other browser subscribers. */
+export declare function createCartStore(client?: WooCartClient): WooCartStore;
 export {};

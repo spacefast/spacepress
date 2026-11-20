@@ -674,6 +674,13 @@ fn markdown_html_block(body: &str, components: bool) -> Option<(usize, String)> 
             continue;
         }
         let html = body[range.clone()].trim();
+        // pulldown-cmark's CommonMark adds `search` to the block tags; the runtime's
+        // league/commonmark doesn't, and reads `<search>` as inline HTML in a paragraph.
+        if html.get(..7).is_some_and(|tag| tag.eq_ignore_ascii_case("<search"))
+            && html[7..].starts_with(|c: char| c == '>' || c == '/' || c.is_ascii_whitespace())
+        {
+            continue;
+        }
         let line = body[..range.start].matches('\n').count() + 1;
         let shown = html.lines().next().unwrap_or_default();
         let shown = match shown.char_indices().nth(60) {
@@ -1277,6 +1284,10 @@ mod seed_check_tests {
             "use `<iframe>` here\n",
             "see <https://example.com>\n",
             "<em>emphasis</em> first on its line\n",
+            // A block tag only in pulldown-cmark's CommonMark version; the runtime keeps it inline.
+            "text\n\n<search>x</search> more\n",
+            "text\n<search>x</search>\n",
+            "<SEARCH role=\"search\">x</SEARCH>\n",
         ] {
             assert_eq!(markdown_html_block(kept, false), None, "{kept}");
         }

@@ -36,12 +36,17 @@ fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Res
         },
         runtime_file,
     )?;
-    // A build that ships its synced files as the seed checks them now, so a file the seed would
-    // refuse on the site is a diagnostic at that file (`typedpress check` reports it too).
+    Ok(built)
+}
+
+/// A build that ships its synced files as the seed checks them, so a file the seed would refuse
+/// on the site is a diagnostic at that file. Only `build` and `check` run it: commands that compile
+/// for another reason (`add`, `pull`, `styles`, `init`) aren't blocked by a content typo.
+fn check_seed(project: &Path, built: &Built) -> Result<(), Diag> {
     if built.schema.ships_seed() {
         crate::bundle::seed_records(&loader::Disk, project, &built.schema, true)?;
     }
-    Ok(built)
+    Ok(())
 }
 
 fn migrations_dir(project: &Path) -> PathBuf {
@@ -512,7 +517,9 @@ fn remove_empty_dirs(dir: &Path) -> std::io::Result<bool> {
 pub(crate) fn check(project: &Path, frozen: bool) -> (serde_json::Value, Option<Built>) {
     let built = match loader::load_all(&project.join("typedpress.config.ts")) {
         Err(diagnostics) => Err(diagnostics),
-        Ok(program) => build_program(project, &program, frozen).map_err(|d| vec![d]),
+        Ok(program) => build_program(project, &program, frozen)
+            .and_then(|built| check_seed(project, &built).map(|()| built))
+            .map_err(|d| vec![d]),
     };
     let mut envelope = diag::envelope(built.as_ref().err().map_or(&[], Vec::as_slice), project);
     if let Ok(built) = &built {
@@ -550,7 +557,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         };
     }
     let started = std::time::Instant::now();
-    let built = match build(&project, frozen) {
+    let built = match build(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
         Ok(b) => b,
         Err(d) => {
             eprint!("{}", diag::render(&d, &project));

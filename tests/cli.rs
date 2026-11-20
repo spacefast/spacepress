@@ -2013,6 +2013,30 @@ fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
 }
 
 /// A copied note keeps its `uid` line: the error names both files and says what to delete.
+/// Only `build` and `check` check the seed files: a content typo doesn't stop a command that
+/// compiles for another reason, such as `typedpress add`.
+#[test]
+fn a_seed_file_typo_does_not_block_add() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let note = project.join("content/notes/first-walk.md");
+    let original = std::fs::read_to_string(&note).unwrap();
+    std::fs::write(
+        &note,
+        original.replace("title: A first walk", &format!("title: {}", "x".repeat(130))),
+    )
+    .unwrap();
+    let added = first().args(["add", "db"]).current_dir(&project).output().unwrap();
+    assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(!built.status.success(), "build accepted a note the seed refuses");
+    assert!(
+        text(&built.stderr).contains("title must be at most 120 characters"),
+        "{}",
+        text(&built.stderr)
+    );
+}
+
 #[test]
 fn two_seed_files_with_one_uid_are_both_named() {
     let tmp = tempfile::tempdir().unwrap();

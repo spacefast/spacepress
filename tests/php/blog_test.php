@@ -223,6 +223,50 @@ eq('without typedpress-identity, an "anyone" action runs anonymously', req('POST
 isProblem('without typedpress-identity, an "authenticated" action refuses anonymous', req('POST', '/actions/signedInCount'), 401, 'unauthenticated');
 eq('without typedpress-identity, a WordPress user is authenticated', req('POST', '/actions/signedInCount', as: 'sub')[0], 200);
 
+// "No post of this type is password-protected" is remembered between reads; whatever sets a
+// password is seen by the next read, and a rolled-back one leaves no trace. Anyone may update an
+// open note, so a signed-in reader may edit a protected one and reads it, as before; a visitor
+// has no user to hold that capability.
+$subscriber = new \TypedPress\Viewer($wp->user('sub'));
+$probes = static function () use ($db, $anonymous, $subscriber): array {
+    \TypedPress\Wp\CoreAccess::flush(); // what a new request starts with: nothing remembered in this process
+    $scans = 0;
+    \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$scans): void {
+        $scans += (int) (str_contains($sql, 'HEX(') && !str_contains($sql, 't0'));
+    };
+    try {
+        return [$db->store()->readGuards('openNotes', $anonymous) === [], $db->store()->readGuards('openNotes', $subscriber) === [], $scans];
+    } finally {
+        \TypedPress\Wp\Connection::$observer = null;
+    }
+};
+$probes();
+eq('an unprotected kind is found unprotected without reading its posts again', $probes(), [true, true, 0]);
+$locked = $db->insert('openNotes', ['title' => 'Soon locked'], true)[0];
+eq('… also after a write to the kind (one read, then remembered again)', [$probes()[0], $probes()], [true, [true, true, 0]]);
+wp_update_post(['ID' => $locked['id'], 'post_password' => 'open-notes-secret']);
+eq('a password set through WordPress is seen by the next read', $probes()[0], false);
+eq('… and hides the post from a visitor, not from someone who may edit it', [$db->findMany('openNotes', ['where' => ['id' => $locked['id']]], $anonymous), array_column($db->findMany('openNotes', ['where' => ['id' => $locked['id']]], $subscriber), 'id')], [[], [$locked['id']]]);
+eq('… while a protected kind reads its protected posts for every request, visitor and signed in', $probes()[2], 2);
+wp_update_post(['ID' => $locked['id'], 'post_password' => '']);
+eq('clearing it opens the kind again', array_slice($probes(), 0, 2), [true, true]);
+try {
+    $db->transaction(static function () use ($db, $locked, $probes, $anonymous): void {
+        wp_update_post(['ID' => $locked['id'], 'post_password' => 'never-committed']);
+        eq('inside the transaction that set it, the password already hides the post', [$probes()[0], $db->findMany('openNotes', ['where' => ['id' => $locked['id']]], $anonymous)], [false, []]);
+        throw new \RuntimeException('undo');
+    });
+} catch (\RuntimeException) {
+}
+clean_post_cache($locked['id']); // core wrote the post outside the store: its own cache entry is core's to drop
+eq('a password that was rolled back was never remembered', [array_slice($probes(), 0, 2), count($db->findMany('openNotes', ['where' => ['id' => $locked['id']]], $anonymous))], [[true, true], 1]);
+$db->transaction(static function () use ($locked): void {
+    wp_update_post(['ID' => $locked['id'], 'post_password' => 'committed']);
+});
+eq('one that committed is seen once the transaction has', [$probes()[0], $db->findMany('openNotes', ['where' => ['id' => $locked['id']]], $anonymous)], [false, []]);
+$db->delete('openNotes', ['id' => $locked['id']]);
+eq('deleting the protected post opens the kind again', array_slice($probes(), 0, 2), [true, true]);
+
 // Native post passwords constrain every viewer-bound read before selection, not just its rendered body.
 $protected = $db->insert('posts', ['title' => 'Protected native post', 'body' => '<p>native-password-secret</p>'], true)[0];
 $public = $db->insert('posts', ['title' => 'Public next page'], true)[0];

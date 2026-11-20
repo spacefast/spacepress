@@ -140,6 +140,18 @@ final class Db
     }
 
     /**
+     * {@see transaction()} for work that usually only reads: on WordPress the transaction starts at
+     * the first write ({@see Wp\Connection::reading()}), so work that writes nothing sends the
+     * database neither START TRANSACTION nor COMMIT.
+     */
+    public function reading(callable $fn): mixed
+    {
+        $store = $this->store;
+
+        return $this->current(static fn () => $store instanceof Wp\CompositeStore ? $store->db->reading($fn) : $store->transaction($fn));
+    }
+
+    /**
      * Lazy scheduled promotion (§6.3) for every drafts collection. No hooks, no revisions.
      *
      * @return array<string, list<int|string>> collection => promoted pks (only non-empty)

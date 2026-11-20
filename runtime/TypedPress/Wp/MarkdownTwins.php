@@ -321,7 +321,9 @@ final class MarkdownTwins
         if (headers_sent()) {
             return;
         }
-        if (self::kind() !== null || AppRouter::instance()?->serves(self::htmlUrl())) {
+        // The route table answers for a `tp/app/` page without a read; only a URL the theme renders
+        // asks whether its item has a twin, which reads the kind's rule for a signed-out visitor.
+        if (AppRouter::instance()?->serves(self::htmlUrl()) || self::kind() !== null) {
             header('Link: <' . self::twin(self::htmlUrl()) . '>; rel="alternate"; type="text/markdown"', false);
         }
         $signal = self::contentSignal();
@@ -423,7 +425,7 @@ final class MarkdownTwins
     /** wp_head: the `<link rel="alternate" type="text/markdown">` matching the `Link` header. */
     public static function linkTag(): void
     {
-        if (self::kind() === null && !AppRouter::instance()?->serves(self::htmlUrl())) {
+        if (!AppRouter::instance()?->serves(self::htmlUrl()) && self::kind() === null) {
             return;
         }
         printf('<link rel="alternate" type="text/markdown" href="%s" />' . "\n", esc_url(self::twin(self::htmlUrl())));

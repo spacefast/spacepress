@@ -9,7 +9,7 @@ builds its disposable app under `.tp/showcase/`, leaving its sources unchanged.
 | [`examples/showcase/`](../examples/showcase/README.md) | One-command seeded demo: native admin, structured fields, SQL relations, media and a compiled class/action |
 | [`examples/drive-store/`](../examples/drive-store/README.md) | A native WooCommerce shop with typed drive specs, live stock, reviews, checkout, and staff fulfilment in TypedPress Admin |
 | [`examples/reading-list/`](../examples/reading-list/README.md) | Each part of an app once: a collection, a table, owner-scoped access, hooks, an action, a job, a route and two npm packages compiled to PHP |
-| `examples/kitchen-sink/` | The playground default: native WordPress posts and users, settings, custom fields, media, hooks and jobs |
+| [`examples/kitchen-sink/`](../examples/kitchen-sink/README.md) | Community Kitchen, an app that uses every authoring feature, from custom fields, hooks and React Email to guarded pages, Woo checkout and MCP; a test fails when a feature is missing from it |
 | `examples/pantry/` | Plain tables, hooks and actions, plus a background job (`notifyLowStock`) |
 | [`examples/subscriptions/`](../examples/subscriptions/README.md) | Owner-scoped subscription tables, renewal actions, an Action Scheduler reminder, and a mobile React SPA; owner deletes of referenced rows wait on [#533](https://github.com/spacefast/zero/issues/533), not verified live. [Connect an agent](agents.md). |
 | [`examples/pet-food/`](../examples/pet-food/README.md) | Personal pet pantry using stock WordPress, SCF, Gutenberg, and TypedPress Admin; owner-scoped actions and an Action Scheduler shopping list; owner deletes of referenced rows wait on [#533](https://github.com/spacefast/zero/issues/533), not verified live |
@@ -26,15 +26,7 @@ builds its disposable app under `.tp/showcase/`, leaving its sources unchanged.
 
 ## The kitchen sink
 
-Open the website's `/playground` page to edit this config and browse its generated PHP, SQL and
-TypeScript. The “Inside WordPress” buttons show the shared runtime that registers post types and
-REST routes, writes posts and users, handles media, and connects custom fields.
-Runtime sources and plugin bootstrap templates are labeled separately from generated files.
-
-The example combines pages, events, member profiles, event registrations and an activity log.
-It includes options-backed site settings, image sizes, private PDF
-handouts, a queued activity job and a pinned Classic Editor dependency. Webhooks read
-`KITCHEN_WEBHOOK_URL` and `KITCHEN_WEBHOOK_SECRET` from the server environment.
+See the [Community Kitchen README](../examples/kitchen-sink/README.md) for routes, source files, and the WordPress test.
 
 Run a normal example without Docker using `typedpress dev examples/pantry` or the
 blog commands below. Node 22+ and npm are required; WordPress Studio supplies

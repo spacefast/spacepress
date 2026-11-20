@@ -309,6 +309,8 @@ const TP_TYPES: &[&str] = &[
     "AccessCtx",
     "ValidateCtx",
     "FieldUi",
+    "MediaRow",
+    "FileRow",
     "AccessRule",
     "AccessConfig",
     "CollectionOptions",
@@ -4986,8 +4988,8 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
             }
             c.default = Some(DefaultVal::Now);
         }
-        "$default" | "$defaultFn" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
-        "$onUpdate" | "$onUpdateFn" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
+        "$default" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
+        "$onUpdate" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
         "onDelete" => {
             let Some(r) = c.references.as_mut() else {
                 return err_help(
@@ -5056,9 +5058,7 @@ const MODIFIERS: &[&str] = &[
     "defaultNow",
     "many",
     "$default",
-    "$defaultFn",
     "$onUpdate",
-    "$onUpdateFn",
     "onDelete",
     "reverse",
     "min",
@@ -5078,6 +5078,14 @@ fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
         "references" => (
             "`.references()` is gone: a reference is a `ref()` field, which refers to the target's `id`",
             "write `locationId: ref(locations)`, with `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` for the delete action; a reference to another column isn't supported, so keep that value as a plain field",
+        ),
+        "$defaultFn" => (
+            "`.$defaultFn()` is gone: it was a second name for `.$default()`",
+            "write `.$default(() => ...)`",
+        ),
+        "$onUpdateFn" => (
+            "`.$onUpdateFn()` is gone: it was a second name for `.$onUpdate()`",
+            "write `.$onUpdate(() => ...)`",
         ),
         "notNull" => (
             "`.notNull()` is gone: fields are required by default",
@@ -5110,12 +5118,7 @@ pub fn kind_phrase(ty: ColType) -> String {
 fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
     use ColType as T;
     let ty = c.ty;
-    if ty == T::RefList
-        && matches!(
-            m,
-            "unique" | "default" | "$default" | "$defaultFn" | "defaultNow" | "$onUpdate" | "$onUpdateFn"
-        )
-    {
+    if ty == T::RefList && matches!(m, "unique" | "default" | "$default" | "defaultNow" | "$onUpdate") {
         return Some((
             format!("`.{m}()` isn't valid on a `ref().many()` field"),
             "a many-ref is a list of links TypedPress keeps in its own table; remove the modifier".into(),
@@ -5129,7 +5132,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         "pattern" => ty.is_stringy(),
         "unique" => matches!(ty, T::Integer | T::Real | T::Date | T::Timestamp) || ty.is_stringy(),
         "references" => matches!(ty, T::Integer | T::Real),
-        "default" | "$default" | "$defaultFn" => ty != T::Media,
+        "default" | "$default" => ty != T::Media,
         "defaultNow" => matches!(ty, T::Timestamp | T::Date),
         _ => true,
     };
@@ -5141,7 +5144,7 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         ("min" | "max" | "pattern" | "unique", _) | ("references", _) => {
             "use `.validate((value) => ... )` for custom checks".to_string()
         }
-        ("default" | "$default" | "$defaultFn", T::Media) => "media columns start empty; set them on write".into(),
+        ("default" | "$default", T::Media) => "media columns start empty; set them on write".into(),
         ("defaultNow", _) => "use `.default(value)` with a literal".into(),
         _ => "remove it".into(),
     };
@@ -6202,7 +6205,14 @@ mod legacy {
     use super::*;
 
     /// Modifiers this reading accepts besides the current ones.
-    pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type", "references"];
+    pub const MODIFIERS: &[&str] = &[
+        "notNull",
+        "primaryKey",
+        "$type",
+        "references",
+        "$defaultFn",
+        "$onUpdateFn",
+    ];
 
     /// `"zero"` exports this reading accepts besides the current ones (for `import * as z`).
     pub const EXPORTS: &[&str] = &["id", "real", "route", "defineRelations"];
@@ -6216,6 +6226,12 @@ mod legacy {
     }
 
     pub fn modifier(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<Value> {
+        // 0.3.0's second spellings of `$default` and `$onUpdate`.
+        match m {
+            "$defaultFn" => return column_method(c, "$default", args, span),
+            "$onUpdateFn" => return column_method(c, "$onUpdate", args, span),
+            _ => {}
+        }
         if !args.is_empty() && m != "references" {
             return err(span, format!("`.{m}()` takes no arguments"));
         }

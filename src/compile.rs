@@ -993,6 +993,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "wrap what it returns in an element, e.g. `<div>…</div>`; React's fragments and components can't carry the Interactivity directives",
                     );
                 }
+                if let Some(name) = ctx.analysis.unattached_ref() {
+                    return err_help(
+                        root.closure.func.span,
+                        format!("`{name}` is a `useRef()` no element has"),
+                        format!("attach it: `<div ref={{{name}}}>`, or remove it"),
+                    );
+                }
                 self.islands.push(ctx.analysis);
             }
             if let Slot::Component { name: component } = &root.slot
@@ -3061,7 +3068,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ExprKind::Ident(_) | ExprKind::Member { .. } | ExprKind::Chain(_) => {
                 if let Some((n, t)) = self.path_ty(test) {
-                    let (yes, no) = (t.non_null(), t.clone());
+                    // A truthy value is neither nullish nor `false`.
+                    let (yes, no) = (t.non_null().without_bool(false), t.clone());
                     out.push(if negate { (n, no, yes) } else { (n, yes, no) });
                 }
             }
@@ -3190,6 +3198,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         (Ty::union(miss), Ty::union(hit))
                     };
                     out.push((n, yes, no));
+                    return;
+                }
+                // `user === false` and `user !== false` split a union on its boolean literal, as
+                // WordPress's "or false" results need (`get_userdata`, `get_permalink`).
+                let literal = match (&l.kind, &r.kind) {
+                    (_, ExprKind::Bool(value)) => Some((l, *value)),
+                    (ExprKind::Bool(value), _) => Some((r, *value)),
+                    _ => None,
+                };
+                if let Some((subject, value)) = literal
+                    && let Some((n, t)) = self.path_ty(subject)
+                    && let Ty::Union(items) = &t
+                    && items.iter().any(|item| item.bool_literal() == Some(value))
+                {
+                    let hit = Ty::union(items.iter().filter(|item| item.bool_literal() == Some(value)).cloned());
+                    let miss = t.without_bool(value);
+                    out.push(if (*op == BinOp::Eq) != negate {
+                        (n, hit, miss)
+                    } else {
+                        (n, miss, hit)
+                    });
                     return;
                 }
                 let (subject, other) = match (&l.kind, &r.kind) {
@@ -4426,6 +4455,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             )
         };
         if (exact(&a.ty) && literal_php(a)) || (exact(&b.ty) && literal_php(b)) {
+            // WordPress's standard wants the literal first when the other side is a variable.
+            // A literal has no effect to order, and `===` is symmetric, so the swap changes nothing.
+            if is_php_variable(&a.php) && literal_php(b) && !literal_php(a) {
+                return format!("{} === {}", b.wrapped(), a.wrapped());
+            }
             return format!("{} === {}", a.wrapped(), b.wrapped());
         }
         // Two typed numbers, each a numeric literal or a plain variable (read twice without effect).
@@ -5024,7 +5058,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => "",
         };
         let mut body = format!(
-            "function {name}(): \\TypedPress\\{class} {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\{class}({arguments});\n"
+            "/**\n * Return a value the app's configuration captured.\n *\n * @return \\TypedPress\\{class}\n */\nfunction {name}(): \\TypedPress\\{class} {{\n\tstatic $value;\n\tif (null === $value) {{\n\t\t$value = new \\TypedPress\\{class}({arguments});\n"
         );
         for (key, value) in fields {
             let value = self.captured_data(&value)?;
@@ -7227,6 +7261,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // In a client component, handlers and refs exist only in the browser: the
                     // directives below carry them, and the server HTML has no attribute for them.
                     let folded = name.to_ascii_lowercase();
+                    if name == "ref" && self.client.is_none() {
+                        return err_help(
+                            *span,
+                            "`ref` in a server component",
+                            "move the element into a \"use client\" component",
+                        );
+                    }
                     if self.client.is_some()
                         && (name == "ref"
                             || (folded.starts_with("on")
@@ -10804,17 +10845,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err(e.span, "`with` keys must be relation names");
             };
             if let Some(col) = self.schema.collections[table].columns.get(rel)
-                && matches!(col.ty, ColType::Media | ColType::MediaList)
+                && matches!(col.ty, ColType::Media | ColType::MediaList | ColType::File)
             {
                 if !matches!(v.kind, ExprKind::Bool(true)) {
-                    return err(v.span, format!("`with.{rel}` loads the media row; use `true`"));
+                    return err(v.span, format!("`with.{rel}` loads the media or file row; use `true`"));
                 }
                 parts.push(format!("{} => true", php_str(rel)));
                 let m = types::media_row();
-                let t = if col.ty == ColType::MediaList {
-                    Ty::Array(Box::new(m))
-                } else {
-                    m
+                let t = match col.ty {
+                    ColType::MediaList => Ty::Array(Box::new(m)),
+                    // The id stays an id for a visitor the bucket's read rule refuses.
+                    ColType::File => Ty::union([types::file_row(), Ty::Num]),
+                    _ => m,
                 };
                 rels.push((format!("\u{0}{rel}"), if col.not_null { t } else { t.nullable() }));
                 continue;

@@ -281,9 +281,8 @@ pub fn build(
                     hosts.iter().map(|h| compile::php_str(h)).collect::<Vec<_>>().join(", ")
                 ),
             };
-            c.output.push_str(&format!(
-                "function {function}(): ?array\n{{\n    return {value};\n}}\n\n"
-            ));
+            c.output
+                .push_str(&format!("/**\n * Return the plugin's permitted outbound HTTP hosts.\n *\n * @return string[]|null\n */\nfunction {function}(): ?array {{\n\treturn {value};\n}}\n\n"));
         }
         (std::mem::take(&mut c.output), slots, settled)
     };

@@ -210,7 +210,7 @@ final class Loader
         if (!is_array($variables)) {
             throw new \InvalidArgumentException('Runtime variables must map names to strings');
         }
-        $preview = $options['preview'] ?? false;
+        $preview = array_key_exists('preview', $options) ? $options['preview'] : false;
         if (!is_bool($preview)) {
             throw new \InvalidArgumentException('preview must be true or false');
         }

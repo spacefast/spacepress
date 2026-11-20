@@ -413,6 +413,10 @@ fn the_loader_tells_the_runtime_about_a_preview_binding() {
         load("['preview' => 'yes']"),
         serde_json::json!({ "refused": "preview must be true or false" })
     );
+    assert_eq!(
+        load("['preview' => null]"),
+        serde_json::json!({ "refused": "preview must be true or false" })
+    );
 }
 
 /// The TypedPress plugin publishes an uploaded tree only under the name its contents hash to

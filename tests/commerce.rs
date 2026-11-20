@@ -266,4 +266,20 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
         .output()
         .unwrap();
     success(out);
+    // The same store behind an external frontend: that origin reads the Store API and nothing else.
+    let config = project.path().join("typedpress.config.ts");
+    let source = std::fs::read_to_string(&config).unwrap();
+    let external = source.replace("name:'shop'", "name:'shop', frontend:'https://front.example.test'");
+    assert_ne!(source, external);
+    std::fs::write(config, external).unwrap();
+    success(cli("build", project.path()));
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=1G"])
+        .env("TP_WP_THEMES", "1")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/commerce_frontend_test.php"))
+        .arg(project.path().join("tp/dist/wp-content"))
+        .arg("https://front.example.test")
+        .output()
+        .unwrap();
+    success(out);
 }

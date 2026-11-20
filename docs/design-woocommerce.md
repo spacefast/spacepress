@@ -371,12 +371,25 @@ API. TypedPress adds no cart routes, no session table and no shopper session.
   new cookie session for the Checkout Block. The Block itself has no token mode, so that
   page needs cookies. An expired token is ignored by Woo; the client starts a new cart
   for a write and refuses checkout.
+- **The handoff is made repeatable with Woo's own session code.** Woo copies a token's
+  cart once per cookie session and never empties the token's cart after a cookie-side
+  order. TypedPress drops the cookie before Woo reads a valid `?session=` token, so Woo
+  copies again into a new session; redirects to the address without the token; and, when
+  Woo empties a cookie cart for an order and the token's cart has the same lines, deletes
+  the token's session (`WC_Session::delete_session`). No cart data is stored or copied by
+  TypedPress.
+- **An external `frontend` reads the Store API without credentials.** Its origin is
+  answered on dispatched `/wc/store/` routes only, with `Access-Control-Allow-Credentials`
+  removed, and is not added to `allowed_http_origins`: that list also opens admin-ajax,
+  and `WC()->is_store_api_request()` is true for any address carrying
+  `?rest_route=/wc/store/`.
 
 Guest TypedPress pages eligible for shared caching start Woo without the cart cookies
 (`Commerce\Module::isolateSharedCart`). This keeps Woo's cart-dependent prefetch hints,
-saved cart items and notices out of shared HTML. The generated storefront reads its cart in
-the browser and prefetches the checkout script once the cart has an item. Cart and checkout
-Store API responses and shopper pages are private and no-store.
+saved cart items and notices out of shared HTML. The router checks the result, not the
+request: an answer is shared only when the session cookie did not reach Woo. The generated storefront reads its cart in
+the browser and prefetches the checkout script once the cart has an item. Every Store API
+response, every shopper page and every response Woo sets a cookie on is private and no-store.
 [Storefront setup](woocommerce.md#cart-checkout-and-agents)
 
 ### Categories and tags reuse taxonomies

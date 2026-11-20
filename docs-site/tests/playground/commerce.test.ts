@@ -235,6 +235,11 @@ test('a cross-origin storefront checks out its token cart without cookies', { ti
       const blockPage = await blockContext.newPage();
       const handoff = await blockPage.goto(link, { waitUntil: 'domcontentloaded', timeout: 45_000 });
       assert.match(handoff!.headers()['cache-control']!, /private.*no-store/);
+      // The token is a credential: the store redirects to the same address without it.
+      const redirected = handoff!.request().redirectedFrom();
+      assert.equal(new URL(redirected!.url()).searchParams.has('session'), true);
+      assert.equal((await redirected!.response())!.headers()['referrer-policy'], 'same-origin');
+      assert.equal(blockPage.url(), new URL('/checkout/', base).href);
       await expect(blockPage.locator('.wc-block-components-order-summary').getByText('Ceramic mug').first()).toBeVisible();
       assert.ok((await blockContext.cookies()).some(cookie => cookie.name.startsWith('wp_woocommerce_session_')));
     } finally {
@@ -263,7 +268,8 @@ test('a cross-origin storefront checks out its token cart without cookies', { ti
     }, { base: baseUrl, clientPath });
     assert.equal(placed.restored, 1);
     // The token found in storage after the reload is the whole session: no cookie, no nonce.
-    assert.deepEqual(placed.sent, Array(3).fill({ credentials: 'omit', nonce: false, token: true }));
+    // Four requests: the read, the order, the client's read of the emptied cart, and the read above.
+    assert.deepEqual(placed.sent, Array(4).fill({ credentials: 'omit', nonce: false, token: true }));
     assert.equal(placed.remaining, 0);
     assert.equal(placed.order.payment_result.payment_status, 'success');
     assert.equal((await context.cookies()).length, 0);
@@ -336,11 +342,23 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   await page.getByText('Total 63.00 EUR').waitFor();
   await page.evaluate(async () => { const { cart } = await import('@typedpress/client'); const data = await cart.get(); await cart.update(data.items[0].key, 9); });
   await expect(page.locator('shop-cart input[type=radio]')).toHaveCount(2);
-  const selectedRate = await page.locator('shop-cart input[type=radio]:checked').getAttribute('data-cart-control');
-  await page.route('**/cart/select-shipping-rate', route => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: 'shipping_failed', message: 'Try shipping again.' }) }));
-  await page.locator('shop-cart input[type=radio]:not(:checked)').check();
+  const checked = page.locator('shop-cart input[type=radio]:checked');
+  const unchecked = page.locator('shop-cart input[type=radio]:not(:checked)');
+  const selectedRate = await checked.getAttribute('data-cart-control');
+  const refusedRate = await unchecked.getAttribute('data-cart-control');
+  const refusal = Promise.withResolvers<void>();
+  await page.route('**/cart/select-shipping-rate', async route => {
+    await refusal.promise;
+    await route.fulfill({ status: 409, json: { code: 'shipping_failed', message: 'Try shipping again.' } });
+  });
+  try {
+    await unchecked.click();
+    assert.equal(await checked.getAttribute('data-cart-control'), refusedRate);
+  } finally {
+    refusal.resolve();
+  }
   await expect(page.getByRole('alert')).toHaveText('Try shipping again.');
-  assert.equal(await page.locator('shop-cart input[type=radio]:checked').getAttribute('data-cart-control'), selectedRate);
+  assert.equal(await checked.getAttribute('data-cart-control'), selectedRate);
   await page.unroute('**/cart/select-shipping-rate');
   await page.evaluate(async () => { const { cart } = await import('@typedpress/client'); const data = await cart.get(); await cart.update(data.items[0].key, 2); });
   await page.getByText('Total 63.00 EUR').waitFor();

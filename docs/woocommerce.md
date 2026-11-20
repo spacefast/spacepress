@@ -111,6 +111,93 @@ cart, setting the destination, selecting shipping, and subscribing to updates. C
 use exact decimal strings. The session is Woo's own in both modes: TypedPress adds no
 session store and no shopper session.
 
+Create the React hooks once in a client module. They use the React version your app
+already loads.
+
+```tsx
+import * as React from "react";
+import { createCartHooks } from "./tp/_generated/client/react.ts";
+
+export const { useCart, useCartCount } = createCartHooks(React);
+
+export function AddMug({ productId }: { productId: number }) {
+	const { add, loading, pending } = useCart();
+	// This button's own refusal. `useCart().error` is shared by every component on the page.
+	const [refusal, setRefusal] = React.useState<string>();
+
+	return (
+		<>
+			<button
+				disabled={loading || pending}
+				onClick={() => {
+					setRefusal(undefined);
+					add(productId).catch((error: Error) => setRefusal(error.message));
+				}}
+			>
+				Add to cart
+			</button>
+			{refusal && <p role="alert">{refusal}</p>}
+		</>
+	);
+}
+```
+
+The action's promise rejects for the component that called it, so the message appears
+under that button only. `useCart().error` is one value for the whole cart: render it
+once, next to the cart, not under every button.
+
+`useCart()` returns `cart`, `loading`, `pending`, `error`, and the actions below.
+`useCartCount()` returns the item count, or `undefined` before the cart loads. Both
+hooks observe the same store. Pass a `WooCartClient` as the second argument to
+`createCartHooks` to use a specific client.
+
+| Action | What it does |
+| --- | --- |
+| `add(productId, quantity?)` | Adds a product. The default quantity is one. |
+| `update(key, quantity)` | Sets the quantity of a line. Zero removes the line, because Woo refuses a quantity of zero. |
+| `remove(key)` | Removes a line. |
+| `selectShipping(packageId, rateId)` | Selects a rate for a shipping package. |
+| `updateCustomer({ billing, shipping })` | Updates either or both cart addresses. |
+| `refresh()` | Reads the current cart from Woo, after every write already queued. Callers share one read until the next write. |
+
+Writes preview changes to quantities, item count, selected rates, and addresses while Woo
+processes them in order. New lines appear when Woo returns their details. Prices and totals
+stay at the values Woo last confirmed while `pending` is true.
+
+If Woo refuses a write, the action rejects and `error` holds the failure. `error` stays
+until the next write starts: a write that was already queued and then succeeds does not
+clear it, and neither does `refresh()`. A failed read also sets `error`; that one clears
+when Woo next answers with a cart.
+
+Narrow the error with `instanceof WooStoreError` to read its `code`, HTTP `status`,
+plain-text `message` (Woo's HTML entities are decoded) and optional `cart`. `code` is the
+string Woo sent, unchanged. The `WooStoreErrorCode` type lists the codes Woo 11.3.0 sends
+for these requests, so they autocomplete; an extension's code is any other string. An
+answer that is not a Woo error, such as a maintenance page, has the code `http_error`.
+
+| Refusal | Status | `code` | `cart` |
+| --- | --- | --- | --- |
+| Out of stock, or fewer in stock than asked for, on `add` | 400 | `woocommerce_rest_product_out_of_stock`, `woocommerce_rest_product_partially_out_of_stock` | none |
+| Quantity below the minimum, above the maximum (on `update` the maximum includes the stock), or not a multiple, on `update` and on `add` to an existing line | 400 | `invalid_quantity` | none |
+| The line's quantity cannot be changed (sold individually) | 400 | `readonly_quantity` | none |
+| The product cannot be bought | 400 | `woocommerce_rest_product_not_purchasable` | none |
+| The line no longer exists, on `update` and `remove` | 409 | `woocommerce_rest_cart_invalid_key` | the current cart |
+| Too many requests, when the store enables Woo's rate limiting | 429 | `rate_limit_exceeded` | none |
+| Woo failed | 500 | `woocommerce_rest_unknown_server_error` | none |
+
+Woo sends the current cart with a 409 only, and the store then uses that cart. Every other
+refusal, stock included, rolls back to the cart Woo last confirmed. Later pending writes
+keep their previews in either case.
+
+While a component is subscribed, the store reads the cart again when the browser restores
+the page from its back/forward cache, and when a hidden tab is shown again at least five
+seconds after Woo last answered. It does not poll.
+
+TypedPress pages can use `createCartStore()` from `@typedpress/client` in a browser
+script, as the native shop does. It shares the hooks' actions and optimistic state.
+
+### Cookie and token sessions
+
 | | Cookie session (default on the store's origin) | Token session (default for another origin) |
 |---|---|---|
 | Names the cart | Woo's `wp_woocommerce_session_*` cookie | Woo's `Cart-Token` header, kept by the browser |
@@ -149,19 +236,60 @@ A token cart reaches checkout in one of two ways, both Woo's:
 - **`cart.checkout(input)`** posts the addresses, payment method and gateway fields to
   Woo's `POST /wc/store/v1/checkout` with the same token. No cookie is set at any step.
   Read `payment_result` for the gateway's status and the address to continue at. The
-  storefront draws its own checkout form.
+  storefront draws its own checkout form. The client reads the cart again once the order
+  is placed, so subscribers see the cart Woo emptied. This is the checkout that needs no
+  cookie anywhere.
 - **`cart.checkoutLink(checkoutUrl)`** returns the store's checkout address with Woo's
   `?session=<token>`. Opening it makes Woo copy the token's cart into a new cookie session
   (`WC_Session_Handler::init_session_from_request`), which the native Checkout Block
   reads. That page therefore needs cookies; the storefront before it does not. Woo copies
   the cart and leaves out the customer's address.
 
+`createCartHooks(React, tokenCart)` and `createCartStore(tokenCart)` add `checkout` to the
+actions of a token cart. `pending` is true while the order is placed, and `cart` is the
+cart Woo answers with afterwards.
+
+What `checkoutLink()` guarantees, beyond Woo's own behavior:
+
+- **The address is the store's.** `checkoutLink()` throws for an address on any origin
+  other than the Store API's: the token in it is a credential for that cart.
+- **The token leaves the address bar.** Once Woo has set its cookie, the store redirects
+  to the same address without `session`, with `Referrer-Policy: same-origin` on that
+  response. The token does not stay in the visible address or go out in a referrer to
+  another site. It is still in the request the browser sent, so it reaches the server's
+  access log like any query string; it expires with the cart, after 48 hours by default.
+- **Every link shows the cart as it is now.** Woo alone copies a token's cart into a
+  cookie session once and then keeps that copy. TypedPress starts a new cookie session
+  for each link, so a shopper who goes back, changes the cart and follows the link again
+  checks out the changed cart.
+- **An order ends the token's cart.** When the cookie session places an order and the
+  token's cart still holds the same lines, that token's session is deleted with it: the
+  storefront's next read is an empty cart, not the one just paid for. A token cart
+  changed after the link was followed is a different cart, and is kept.
+
 Woo answers another origin only when the request carries a valid token or WordPress allows
 the origin. The first read has no token yet. A site whose config sets `frontend` to its
-external address has that origin allowed for Store API requests, and only for those. Any
-other origin is added through WordPress's `allowed_http_origins` filter. With `frontend`
-set, WordPress redirects its own pages to that site, the checkout page included, so such a
-storefront places orders with `checkout()`.
+external address answers that exact origin on `/wc/store/` routes, and only there:
+
+- The origin is not added to WordPress's `allowed_http_origins`. That list also opens
+  `admin-ajax.php` to an origin, with credentials.
+- The answer carries no `Access-Control-Allow-Credentials`. A token cart sends no cookie,
+  and a script on the frontend can never read a visitor's cookie cart, address or
+  sign-in through the Store API. Use `session: "token"` there (the default for another
+  origin); a cookie cart from the frontend origin does not work.
+
+Any other origin is added through WordPress's `allowed_http_origins` filter, which grants
+it Woo's credentialed access.
+
+With `frontend` set, WordPress redirects its own front-end pages to that site with a 308
+and the same path and query, the checkout page included. So such a storefront places
+orders with `checkout()`, and the addresses Woo sends a shopper to afterwards arrive at
+the frontend: `payment_result.redirect_url`, and a gateway's return or cancel address,
+are `/checkout/order-received/<id>/?key=…` and `/checkout/order-pay/<id>/…` on the store,
+which answer with a 308 to the same path on the frontend. The frontend must serve
+`/checkout/order-received/…` (and `/checkout/order-pay/…` for a gateway that uses it).
+A gateway's server-to-server notification (`?wc-api=`, a REST webhook) is not a page and
+is not redirected.
 [Woo Cart Tokens](https://developer.woocommerce.com/docs/apis/store-api/cart-tokens/) and
 [Woo Checkout API](https://developer.woocommerce.com/docs/apis/store-api/resources-endpoints/checkout/)
 
@@ -185,6 +313,14 @@ Catalog and product pages are the same bytes for every guest, with or without a 
   an item.
 - These pages send the shared policy (`public`, `A8C-Edge-Cache: cache`) to a cart visitor
   as to anyone, set no cookie, and are served from prebuilt files when the page is prebuilt.
+- The rule has no exceptions by query string or path spelling (`?page_id=`, `?p=`,
+  `?preview=`, `//host/shop/`). The router shares an answer only when Woo's session
+  cookie did not reach Woo on that request, so no address puts a cart on a shared page.
+- Woo renews a cookie session only on a request where it reads the cookie, and an app
+  page is no longer one. A cookie cart therefore expires 48 hours
+  (`wc_session_expiration`) after the guest's last cart write or view of the cart or
+  checkout page, however many catalog pages they open in between. Before, any page view
+  near the end of that window renewed it.
 
 One page kind keeps cart-dependent output: a page the theme renders rather than `tp/app`
 (a WordPress Page with no app route, a post in a theme template). TypedPress does not
@@ -195,10 +331,12 @@ Woo's session cookie, and unchanged for everyone else.
 
 Cart, checkout, receipts, order-pay, my-account and Woo's cart actions (`?add-to-cart=`,
 `?wc-ajax=`, `?session=` and the like) are `private, no-store` with `A8C-Edge-Cache:
-no-cache`, call `batcache_cancel()`, are never prebuilt and have no Markdown twin. So are
-`/wp-json/wc/store/*` cart, checkout and batch answers. Only these responses set Woo's
-cookies. Native stock changes purge item and listing reads through TypedPress's usual
-purge hook.
+no-cache`, call `batcache_cancel()`, are never prebuilt and have no Markdown twin. So is
+every `/wp-json/wc/store/*` answer: carts, checkout, an order's addresses, and whatever
+an extension adds there. And so is any response Woo sets a cookie on, whichever endpoint
+or extension set it (Woo's `/checkout-link/` among them): the policy is applied where Woo
+sets the cookie (`woocommerce_set_cookie_enabled`), not from a list of addresses. Native
+stock changes purge item and listing reads through TypedPress's usual purge hook.
 
 **Host limit: Batcache.** Batcache decides in `advanced-cache.php`, before any plugin
 loads, and skips its cache for every request carrying a cookie whose name starts with

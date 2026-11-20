@@ -29,9 +29,9 @@ the database enforces. Both kinds share the field builders, access rules,
 `ref()`, hooks, the API and the typed client, so one app can use both and a
 table row can belong to a post.
 
-A new project from `npm create typedpress` is content only. `typedpress add
-db` adds the database half: an example `tp/tables.ts`, typed client calls
-for it and a note on migrations. It only creates files that are missing.
+A new project from `npm create typedpress` stores its notes as WordPress posts.
+`typedpress add db` adds example SQL tables in `tp/tables.ts`, typed client calls,
+and a note on migrations. It only creates files that are missing.
 
 A collection can't be stored in a table. The earlier `editor: false` option is
 gone and `collection()` refuses it at the option; write `table()` instead. A
@@ -65,6 +65,20 @@ resolve inside `tp/`. Anything else, such as `import { x } from "./lib/x"`
 at the root or `"../src/x"` from `tp/`, fails with `F1210` and names the
 file to move. Packages (`"typedpress"`, `"php/wordpress"`, npm packages) are always
 allowed, and an installed package's own relative imports are its business.
+
+Set `seed: true` in `defineConfig()` to include records from synced files in the
+standalone WordPress plugin. WordPress imports missing records when the plugin
+starts. It preserves edits to existing editorial records and skips records
+already in the trash. Use `typedpress sync` to merge edits from source files into
+an existing site.
+
+`typedpress build` and `typedpress check` read those files first. A file the import
+would refuse fails the build at its path and line: a field the kind doesn't have,
+a required field left out, a value over a `.max()`, an HTML block in a Markdown
+body, or a `uid` two files share. A record refused only on the site (a reference
+to a record that isn't there, a `validate` rule) is reported in wp-admin and the
+PHP error log with the file it came from. WordPress keeps that refusal and does
+not run the import again until a new build changes the content or the schema.
 
 ### Exports register by name
 
@@ -386,9 +400,8 @@ nullable with a default.
 
 Modifiers (each returns a new builder; builders are immutable so shared field
 sets are safe): `.optional()`, `.default(value)` (a literal), `.defaultNow()`
-(timestamp/date), `.$default(() => value)` / `.$defaultFn(...)` (runs in PHP on
-insert), `.$onUpdate(() => value)` / `.$onUpdateFn(...)` (runs in PHP on
-update; `() => new Date()` on a timestamp is recognized as "now"), `.many()`
+(timestamp/date), `.$default(() => value)` (runs in PHP on insert), `.$onUpdate(() => value)`
+(runs in PHP on update; `() => new Date()` on a timestamp is recognized as "now"), `.many()`
 (select, media and `ref()`), `.unique()`, `.onDelete("cascade" | "restrict" | "setNull")` and
 `.reverse("name")` (on `ref()`, see [Relations](#relations)),
 `.min(n)` / `.max(n)` (numbers: bounds; strings: length; lists: item count),
@@ -1343,7 +1356,10 @@ List columns (`select([...]).many()`, `media().many()`) take `has`,
 neither can be ordered by. On editor collections `group`/`repeater`/`blocks`
 can't be compared at all (their WordPress meta is spread over many rows).
 These are build errors with the same message the runtime returns.
-`with: { cover: true }` on a media column puts the media row in place of the id.
+`with: { cover: true }` on a media column puts the media row in place of the id
+(`url`, `alt`, `width`, `height`, `sizes.<name>.url`, ...). On a `file()` column
+it puts the file row there, with its signed `url`; the id stays an id for a
+visitor the bucket's read rule refuses.
 
 `await` on these calls compiles to plain blocking PHP calls.
 
@@ -1964,7 +1980,12 @@ export default defineConfig({});
 - The message has `to`, `subject` and `text` and/or `html`, plus optional
   `from`, `cc`, `bcc`, `replyTo` and `headers`. Addresses are strings or
   `{ email, name? }`; `to`, `cc` and `bcc` may be lists, 50 recipients in all.
-  `from` defaults to `noreply@` the site's host.
+  `from` defaults to `noreply@` the site's host, or `TP_MAIL_SENDER_DOMAIN`
+  when set. A host that is no mail domain (`127.0.0.1`, `localhost`) uses
+  `noreply@typedpress.localhost` on a local or development site and is refused
+  anywhere else, with what to set. An optional field holding `null` or
+  `undefined` is a field left out, so `replyTo: settings.replyTo` (an optional
+  column, `string | null`) sends without one when it is unset.
 - `send` validates the message, then queues it inside the handler's
   transaction. It is handed off after the request commits, so a rolled-back
   write sends nothing. A refused hand-off is retried by the job runner (5

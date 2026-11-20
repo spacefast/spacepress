@@ -382,7 +382,7 @@ Hosting on [Spacefast](https://spacefast.com) is in progress; the
 
 | Example | Shows |
 |---|---|
-| [`examples/kitchen-sink`](examples/kitchen-sink) | the playground default: WordPress pages, events, users, custom fields, settings, media, jobs and plugins |
+| [`examples/kitchen-sink`](examples/kitchen-sink) | Community Kitchen, a working app that exercises the public TypedPress API |
 | [`examples/pantry`](examples/pantry) | plain tables, hooks, actions, relations and a background job; the quick start |
 | [`examples/blog`](examples/blog) | the CMS tour: field access, sync, members and sign-in, image sizes and private files, jobs and webhooks, with a browser page |
 | [`examples/site`](examples/site) | the publication that the system suite drives end to end |

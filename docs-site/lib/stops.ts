@@ -36,7 +36,7 @@ export const tours: Tour[] = [
     example: "pantry",
     title: "The pantry: tables, hooks, actions and a job",
     intro: [
-      "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its first.config.ts next to what typedpress build turned it into.",
+      "The pantry example uses three tables, a hook, two actions, and a background job. The tour shows its typedpress.config.ts beside the generated code.",
       "Everything on the right was produced from the file on the left by the same compiler that runs in this browser; nothing here is pasted by hand.",
     ],
     stops: [

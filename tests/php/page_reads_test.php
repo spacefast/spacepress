@@ -173,8 +173,17 @@ foreach ([
     ['/notes/?page=2&utm_source=x', ['page'], false], ['/notes/?junk=1', [], false], ['/notes/?', [], false],
     ['/notes/?page=2&page=3', ['page'], true], ['/notes/?%70age=2', ['page'], true],
     ['/notes/?q=' . str_repeat('a', 600), ['q'], false],
+    ['/notes/?q=' . str_repeat('a', 200), ['q'], false],
+    ['/' . str_repeat('a', 200) . '/', [], false],
 ] as [$uri, $declared, $want]) {
     eq("shareable: $uri", \TypedPress\Render\Cache::shareable($uri, $declared), $want);
 }
 eq('an undeclared parameter records nothing', [\TypedPress\Render\Cache::record('/x/?junk=1', ['posts' => ['ids' => [1], 'listed' => false]]), $log('/x/?junk=1')], [false, []]);
+// A search page can render without reading any data. Its query variants still count.
+$limit = \TypedPress\Render\Cache::MAX_VARIANTS;
+$admitted = 0;
+for ($i = 0; $i <= $limit; $i++) {
+    $admitted += (int) \TypedPress\Render\Cache::record("/empty/?q=$i", [], [], ['q']);
+}
+eq('even empty reads admit at most MAX_VARIANTS query URLs', $admitted, $limit);
 finish('page_reads');

@@ -902,7 +902,7 @@ nothing is collected or announced.
     at most 20 recorded query variants (`Render\Cache::MAX_VARIANTS`); a further
     variant is answered privately until a recorded one has gone two cache windows
     without a render, and is then dropped from the index. A URL longer than the
-    index's 512 characters is private too. A host that wants shared pages for
+    index's 191-byte limit is private too. A host that wants shared pages for
     tracking parameters strips them before the request reaches PHP.
   A page answers at that one address only: the router 301s the other
   spelling of its path (with or without the trailing slash, as the

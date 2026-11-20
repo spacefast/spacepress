@@ -7,6 +7,7 @@ namespace TypedPress\Render;
 use TypedPress\Extensions;
 use TypedPress\SystemTables;
 use TypedPress\Wp\CompositeStore;
+use TypedPress\Wp\LockBusy;
 
 use function TypedPress\db;
 
@@ -52,8 +53,8 @@ final class Cache
      * `Wp\Purges::PURGE_LIMIT` paths one write may name before it purges the whole host.
      */
     public const MAX_VARIANTS = 20;
-    /** A recorded URL's longest form: the `url` column's width. A longer one can't be purged, so it isn't shared. */
-    private const MAX_URL = 512;
+    /** The unique index covers the first 191 characters. Longer keys can alias another URL. */
+    private const MAX_URL = 191;
     /** Rows per insert when recording reads (at most about 900 bytes each). */
     private const BATCH = 100;
 
@@ -145,7 +146,7 @@ final class Cache
         $query = (string) (wp_parse_url($uri, PHP_URL_QUERY) ?? '');
         if ($query === '') {
             // `/about/?` is another URL to a cache, and the index records it as `/about/`.
-            return !str_contains($uri, '?');
+            return !str_contains($uri, '?') && strlen(self::path($uri)) <= self::MAX_URL;
         }
         foreach (\TypedPress\QueryString::parse($query) as [$name]) {
             if (!in_array($name, $declared, true)) {
@@ -177,6 +178,25 @@ final class Cache
             return true;
         }
         $url = self::path($uri);
+        if (!str_contains($url, '?')) {
+            return self::recordUrl($url, $reads, $also, false);
+        }
+        $store = db()->store();
+        if (!$store instanceof CompositeStore) {
+            return false;
+        }
+        // The limit counts URLs across rows. Admit variants under the same lock even when two
+        // requests with different query strings arrive at the last free slot.
+        $lock = 'tp:page-variants:' . substr(hash('sha256', DB_NAME . ':' . $store->db->prefix()), 0, 40);
+        try {
+            return $store->db->locked($lock, 0, static fn (): bool => self::recordUrl($url, $reads, $also, true));
+        } catch (LockBusy) {
+            return false;
+        }
+    }
+
+    private static function recordUrl(string $url, array $reads, array $also, bool $variant): bool
+    {
         $rows = [];
         foreach ($reads as $kind => $read) {
             if ($read['listed'] || count($read['ids']) > self::MAX_IDS) {
@@ -191,12 +211,15 @@ final class Cache
         foreach ($also as $key) {
             $rows[] = [$key, '*'];
         }
+        if ($variant) {
+            // Count an admitted query URL even if this render read no data.
+            $rows[] = ['', '*'];
+        }
         $wanted = [];
         foreach ($rows as [$kind, $item]) {
             $wanted[$kind . "\0" . $item] = [$kind, $item];
         }
         $now = gmdate('Y-m-d\TH:i:s.000\Z');
-        $variant = str_contains($url, '?');
         // The same reads as the URL's last render (the usual case: a page re-rendered after its cache
         // window): nothing to write.
         $stored = [];

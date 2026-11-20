@@ -194,10 +194,11 @@ final class Db
      */
     private function fetch(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?array &$decoded = null): array
     {
-        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards, prune: true);
+        $publishedOnly = false;
+        $decoded = $this->selectDecoded($collection, $opts, $ptr, $viewer, $partition, $guards, prune: true, publishedOnly: $publishedOnly);
         // What a page render read (its purges): only a read that named its rows and found them all
         // depends on those rows alone.
-        $named = Render\Reads::recording() ? $this->named($collection, $opts, $partition, $viewer) : null;
+        $named = Render\Reads::recording() ? $this->named($collection, $opts, $partition, $publishedOnly) : null;
         $rows = Render\Reads::exact($collection, $named !== null && count($decoded) === $named, static fn (): array => Extensions::read($decoded, $collection, $viewer));
         if (isset($opts['with']) && $rows !== []) {
             $rows = $this->attach($collection, $rows, $opts['with'], $ptr . '/with', $viewer, $decoded);
@@ -220,7 +221,7 @@ final class Db
      *
      * @param ?array{string, list<mixed>} $partition
      */
-    private function named(string $collection, array $opts, ?array $partition, ?Viewer $viewer): ?int
+    private function named(string $collection, array $opts, ?array $partition, bool $publishedOnly): ?int
     {
         // A localized read may answer with another row of the named row's translation group.
         if ($this->localized($collection)) {
@@ -251,32 +252,12 @@ final class Db
                     && array_filter($value['in'], static fn (mixed $v): bool => !$one($v)) === [] => count(array_unique(array_map(self::key(...), $value['in']))),
                 default => null,
             };
-            if ($count !== null && ($column === $pk || !($spec['drafts'] ?? false) || $this->publishedOnly($spec, $collection, $where, $viewer))) {
+            if ($count !== null && ($column === $pk || !($spec['drafts'] ?? false) || $publishedOnly)) {
                 return $count;
             }
         }
 
         return null;
-    }
-
-    /**
-     * Whether a read of a kind with drafts can see published rows only: its `where` says so, or the
-     * viewer's read rule does (drafts hidden from them, or a rule that answers `{ status: "published" }`).
-     */
-    private function publishedOnly(array $spec, string $collection, array $where, ?Viewer $viewer): bool
-    {
-        $published = static fn (mixed $filter): bool => is_array($filter)
-            && in_array($filter['status'] ?? null, ['published', ['eq' => 'published']], true);
-        if ($published($where)) {
-            return true;
-        }
-        if ($viewer === null) {
-            return false;
-        }
-        $rule = Access::collectionRules($spec)['read'];
-
-        return $this->draftsHidden($spec, $rule, $viewer)
-            || (!Access::isShorthand($rule) && $published($this->current(static fn () => Access::evaluate($rule, $viewer, 'read', null, $spec['columns'], $collection))));
     }
 
     /**
@@ -293,12 +274,12 @@ final class Db
      * Select full storage rows without presentation transforms; write guards remain SQL filters.
      * $filterViewer confines a write selector's relation filters to rows that viewer may read.
      */
-    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false): array
+    private function selectDecoded(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?bool &$publishedOnly = null): array
     {
-        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune): array {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$publishedOnly): array {
             $spec = $this->schema->hasCollection($collection) ? $this->schema->collection($collection) : null;
             $only = null;
-            $q = $this->compileRead($collection, $opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, $only);
+            $q = $this->compileRead($collection, $opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, $only, $publishedOnly);
             if ($partition !== null && $partition[1] === []) {
                 return [];
             }
@@ -400,9 +381,9 @@ final class Db
     }
 
     /** One read compiled: query extensions, option checks, the viewer's read guards. */
-    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?array &$only = null): array
+    private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null, bool $prune = false, ?array &$only = null, ?bool &$publishedOnly = null): array
     {
-        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$only): array {
+        return $this->current(function () use ($collection, &$opts, $ptr, $viewer, $partition, $guards, $filterViewer, $prune, &$only, &$publishedOnly): array {
             if (!$this->schema->hasCollection($collection)) {
                 throw HttpError::invalidQuery("Unknown collection '$collection'", $ptr === '' ? null : $ptr);
             }
@@ -416,6 +397,16 @@ final class Db
             }
             if ($viewer !== null) {
                 array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true));
+            }
+            if ($publishedOnly !== null && Render\Reads::recording() && ($spec['drafts'] ?? false)) {
+                // Reuse the applied read guard. Calling an authored rule again could produce a
+                // different filter or repeat its side effects.
+                foreach ([$opts['where'] ?? null, ...$guards] as $filter) {
+                    if (is_array($filter) && in_array($filter['status'] ?? null, ['published', ['eq' => 'published']], true)) {
+                        $publishedOnly = true;
+                        break;
+                    }
+                }
             }
             $filterViewer ??= $viewer;
             // `search`: the rows whose searchable fields this reader may read hold every word, as one

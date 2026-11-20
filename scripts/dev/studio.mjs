@@ -780,7 +780,19 @@ async function main() {
       if (stopping) return;
       dirty = true; clearTimeout(timer); timer = setTimeout(rebuild, 200);
     }, (error) => { console.error(`File watcher: ${error.message}`); void stop(); });
-    stopTimer = setInterval(() => { exists(join(managed.state, 'stop')).then((requested) => { if (requested) void stop(); }); }, 250);
+    // The `typedpress dev` command this process runs under, when it stays attached (a --detach start
+    // has a channel to the command that started it, which returns). Ctrl+C reaches this process
+    // itself, but a `kill` of that command does not: when it is gone, stop as `dev stop` does.
+    const attached = process.send ? NaN : Number(process.env.TP_DEV_PARENT);
+    const abandoned = () => {
+      if (!Number.isSafeInteger(attached) || attached <= 0) return false;
+      try { process.kill(attached, 0); return false; }
+      catch (error) { return error.code === 'ESRCH'; }
+    };
+    stopTimer = setInterval(() => {
+      exists(join(managed.state, 'stop')).then((requested) => { if (requested) void stop(); });
+      if (abandoned()) void stop();
+    }, 250);
     console.log('Watching config, TypeScript, stylesheets, images and public files. Ctrl+C stops WordPress; content is retained.');
     void rebuild();
     await finished;

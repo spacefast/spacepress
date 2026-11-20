@@ -242,8 +242,17 @@ test('React Fast Refresh preserves state on a real Studio WordPress page', { tim
     assert.equal(await page.evaluate(() => window.refreshProof), 'same document');
     assert.deepEqual(asked.filter((url) => /^https?:/.test(url) && !url.startsWith(`${announced}/`)), []);
     await page.close();
-    await stop();
-    assert.equal(await online(), false);
+    // A `kill` of the command a person started, which is not the watcher's process: the watcher
+    // notices that the command is gone and stops WordPress.
+    const watcher = JSON.parse((await exec(compiler, ['dev', 'status', root, '--json'], { timeout: 60000 })).stdout).pid;
+    const ended = once(session, 'exit');
+    session.kill('SIGTERM');
+    await ended;
+    const deadline = Date.now() + 60000;
+    const alive = () => { try { process.kill(watcher, 0); return true; } catch { return false; } };
+    while (alive() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 200));
+    assert.equal(alive(), false, 'the watcher still runs after its command was killed');
+    assert.equal(await online(), false, 'WordPress still runs after the command was killed');
   } catch (error) {
     throw new Error(`${error.message}\nBrowser: ${errors.join('\n')}\n${output}`, { cause: error });
   }

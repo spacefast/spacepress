@@ -270,11 +270,23 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   await page.getByText('Total 63.00 EUR').waitFor();
   await page.evaluate(async () => { const { cart } = await import('@typedpress/client'); const data = await cart.get(); await cart.update(data.items[0].key, 9); });
   await expect(page.locator('shop-cart input[type=radio]')).toHaveCount(2);
-  const selectedRate = await page.locator('shop-cart input[type=radio]:checked').getAttribute('data-cart-control');
-  await page.route('**/cart/select-shipping-rate', route => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: 'shipping_failed', message: 'Try shipping again.' }) }));
-  await page.locator('shop-cart input[type=radio]:not(:checked)').check();
+  const checked = page.locator('shop-cart input[type=radio]:checked');
+  const unchecked = page.locator('shop-cart input[type=radio]:not(:checked)');
+  const selectedRate = await checked.getAttribute('data-cart-control');
+  const refusedRate = await unchecked.getAttribute('data-cart-control');
+  const refusal = Promise.withResolvers<void>();
+  await page.route('**/cart/select-shipping-rate', async route => {
+    await refusal.promise;
+    await route.fulfill({ status: 409, json: { code: 'shipping_failed', message: 'Try shipping again.' } });
+  });
+  try {
+    await unchecked.click();
+    assert.equal(await checked.getAttribute('data-cart-control'), refusedRate);
+  } finally {
+    refusal.resolve();
+  }
   await expect(page.getByRole('alert')).toHaveText('Try shipping again.');
-  assert.equal(await page.locator('shop-cart input[type=radio]:checked').getAttribute('data-cart-control'), selectedRate);
+  assert.equal(await checked.getAttribute('data-cart-control'), selectedRate);
   await page.unroute('**/cart/select-shipping-rate');
   await page.evaluate(async () => { const { cart } = await import('@typedpress/client'); const data = await cart.get(); await cart.update(data.items[0].key, 2); });
   await page.getByText('Total 63.00 EUR').waitFor();

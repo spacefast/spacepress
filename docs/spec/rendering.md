@@ -169,7 +169,7 @@ The TSX → directive mapping, which also defines what's supported:
 | `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">`, after the server's items marked `data-wp-each-child` |
 | `useEffect(fn, [deps])` | `data-wp-watch` (cleanup returned) |
 | `useMount(fn)` | `data-wp-init` |
-| `useRef()` | `getElement().ref` |
+| `const box = useRef()` with `<div ref={box}>` | `data-tp-ref="box"` on the element; `box.current` finds it inside the component's root (null while a conditional hides it) |
 | shared state across components: `export const cart = sharedState({ items: [] })` | the store's global `state` for that namespace |
 | `fetch` / server action calls | `fetch` to the action endpoint with the REST nonce from `getConfig()` |
 

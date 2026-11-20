@@ -86,6 +86,10 @@ try {
   const output = await page.textContent("output");
   const items = await page.textContent("u");
   const seen = await page.textContent("i");
+  // `ref={box}` on the <output>: a handler reads the element through the ref.
+  await page.click("button.measure");
+  await page.waitForFunction(() => document.querySelector("button.measure").textContent !== "unmeasured", null, { timeout: 15000 });
+  const ref = await page.textContent("button.measure");
   // A CSS module's renamed class, switched by state, styles the element from the linked stylesheet.
   const toggle = "[data-wp-interactive='clients/Toggle']";
   const look = () => page.$eval(toggle, (el) => [el.className, getComputedStyle(el).color, el.textContent]);
@@ -144,7 +148,7 @@ try {
     .catch((e) => { throw new Error(`${e.message}\nwarnings: ${JSON.stringify(warnings)}`); });
   const liveAfter = await guests();
   const liveRequests = requests.filter((r) => r.endsWith("/_live")).length;
-  process.stdout.write(JSON.stringify({ live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
+  process.stdout.write(JSON.stringify({ live: { before: liveBefore, loading: loadingAttr, write: write.status, after: liveAfter, polled: liveRequests > 0 }, client, before, after, hydration, output, items, seen, ref, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
 } finally {
   await browser.close();
 }

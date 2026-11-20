@@ -603,6 +603,8 @@ pub struct Schema {
     pub uploads: Option<Json>,
     pub locales: Option<Json>,
     pub store: Option<Json>,
+    /// Compile synced records into the standalone plugin for its WordPress install.
+    pub seed: bool,
     /// The build ships the `typedpress-admin` plugin (the default); `defineConfig({ admin: false })` leaves it out.
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `tp/app`.
@@ -644,6 +646,14 @@ pub struct RuntimeSchema {
     pub hash: String,
 }
 
+impl Schema {
+    /// The app plugin carries the project's synced files as its seed: `seed: true`, or a store,
+    /// whose products are seeded from their files.
+    pub fn ships_seed(&self) -> bool {
+        self.seed || self.store.is_some()
+    }
+}
+
 impl Default for Schema {
     fn default() -> Self {
         Schema {
@@ -666,6 +676,7 @@ impl Default for Schema {
             uploads: None,
             locales: None,
             store: None,
+            seed: false,
             admin: true,
             frontend: None,
             output: Output::Server,

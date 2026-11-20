@@ -1992,7 +1992,8 @@ fn client_components_compile_to_interactivity_stores() {
     let effects = drive("clients/Effects", "effects.mjs");
     assert_eq!(
         effects,
-        serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true } })
+        serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true },
+            "ref": { "tag": "OUTPUT", "asked": ["[data-tp-ref=\"box\"]"] }, "detached": "none" })
     );
     // The server HTML carries the directives the store answers to.
     let functions = std::fs::read_to_string(plugin.join("tp/app/functions.php")).unwrap();
@@ -2016,6 +2017,7 @@ fn client_components_compile_to_interactivity_stores() {
         "'data-wp-watch---effect1' => 'callbacks.effect1'",
         "'data-wp-init---mount2' => 'callbacks.mount2'",
         "'data-wp-on--submit' => 'actions.submit'",
+        "'data-tp-ref' => 'box'",
     ] {
         assert!(directives.contains(directive), "{directive}");
     }
@@ -2036,6 +2038,46 @@ fn refuses_client_code_outside_the_subset() {
         )],
         "a client component returns one element",
         "tp/components/A.tsx:3:",
+    );
+    let refs =
+        |body: &str| format!("\"use client\";\nimport {{ useRef, useState }} from \"typedpress/client\";\n{body}\n");
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            &refs("export function A() { const box = useRef(); const [n] = useState(0); return <b>{n}</b>; }"),
+        )],
+        "`box` is a `useRef()` no element has",
+        "tp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            &refs(
+                "export function A() { const box = useRef(); const [n] = useState(0); return <b ref={box}><i ref={box}>{n}</i></b>; }",
+            ),
+        )],
+        "`box` is already attached to an element",
+        "tp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            &refs("export function A() { const [n] = useState(0); return <b ref={n}>{n}</b>; }"),
+        )],
+        "`ref` takes a `useRef()` of this component",
+        "tp/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "tp/components/A.tsx",
+            "export function A() { return <b ref={null}>x</b>; }\n",
+        )],
+        "`ref` in a server component",
+        "tp/components/A.tsx:1:",
     );
     rejects(
         &dir,
@@ -3294,6 +3336,8 @@ fn client_components_hydrate_in_the_browser() {
             &serde_json::json!("40")
         )
     );
+    // `ref={box}` on the `<output>`: a handler reads that element through `box.current`.
+    assert_eq!(seen["ref"], "OUTPUT", "{seen}");
     // The CSS module's class is renamed on both sides, and the stylesheet the page links applies.
     assert_eq!(
         (&seen["toggleBefore"], &seen["toggleAfter"]),

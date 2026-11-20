@@ -336,6 +336,7 @@ final class Plugin
     public function activate(): void
     {
         InstallMarker::forget();
+        \TypedPress\Sync\Seed::retry($this);
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         try {
             $this->migrateLocked();
@@ -399,14 +400,18 @@ final class Plugin
             return;
         }
         try {
-            \TypedPress\Sync\Seed::install($this, $this->dir . '/tp/app/seed-version.php');
+            // A refusal an earlier request found for this build: reported, not run again.
+            $problem = \TypedPress\Sync\Seed::install($this, $this->dir . '/tp/app/seed-version.php');
+            if ($problem === null) {
+                return;
+            }
         } catch (\Throwable $error) {
             $problem = $error->getMessage();
-            $this->refuse($problem);
             InstallMarker::forget();
             error_log('[typedpress] ' . $problem);
-            $this->notice($problem);
         }
+        $this->refuse($problem);
+        $this->notice($problem);
     }
 
     /** Keeps a refusal for this build and ledger, with the command that confirms it; returns the report. */

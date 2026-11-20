@@ -21,6 +21,6 @@ export const site = global({
 }, { label: "Site settings" });
 
 export default defineConfig({
-  name: "__ZERO_APP_NAME__",
+  name: "__TP_APP_NAME__",
   seed: true,
 });

@@ -41,7 +41,7 @@ async function main() {
     await rename(join(destination, 'gitignore'), join(destination, '.gitignore'));
     for (const file of ['typedpress.config.ts', 'README.md']) {
       const path = join(destination, file);
-      await writeFile(path, (await readFile(path, 'utf8')).replaceAll('__ZERO_APP_NAME__', name));
+      await writeFile(path, (await readFile(path, 'utf8')).replaceAll('__TP_APP_NAME__', name));
     }
     await writeFile(join(destination, 'package.json'), JSON.stringify({
       name, version: '0.0.0', private: true, type: 'module', engines: { node: '>=22' },

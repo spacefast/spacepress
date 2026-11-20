@@ -646,6 +646,14 @@ pub struct RuntimeSchema {
     pub hash: String,
 }
 
+impl Schema {
+    /// The app plugin carries the project's synced files as its seed: `seed: true`, or a store,
+    /// whose products are seeded from their files.
+    pub fn ships_seed(&self) -> bool {
+        self.seed || self.store.is_some()
+    }
+}
+
 impl Default for Schema {
     fn default() -> Self {
         Schema {

@@ -1419,7 +1419,7 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         .unwrap();
     assert_eq!(started["title"], "Get started");
     assert_eq!(started["mimeType"], "text/markdown");
-    assert!(started["description"].as_str().unwrap().contains("TypedPress app"));
+    assert!(started["description"].as_str().unwrap().contains("TypedPress site"));
     let read = mcp.result(
         "resources/read",
         serde_json::json!({ "uri": "typedpress-docs:///docs/compiler-diagnostics.md" }),
@@ -1947,6 +1947,116 @@ fn scaffold(parent: &Path) -> PathBuf {
         .expect("node");
     assert!(created.status.success(), "{}", text(&created.stderr));
     project
+}
+
+/// A starter note the seed would refuse on the site fails the build at its file and field, in
+/// `typedpress check` too, and nothing is written for WordPress to run.
+#[test]
+fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let note = project.join("content/notes/first-walk.md");
+    let original = std::fs::read_to_string(&note).unwrap();
+    let refused = |command: &str| {
+        let out = first().arg(command).arg(&project).output().unwrap();
+        assert!(!out.status.success(), "{command} accepted a note the seed refuses");
+        text(&out.stderr)
+    };
+
+    // A title over the kind's `.max(120)`.
+    std::fs::write(
+        &note,
+        original.replace("title: A first walk", &format!("title: {}", "x".repeat(130))),
+    )
+    .unwrap();
+    for command in ["build", "check"] {
+        let said = refused(command);
+        assert!(said.contains("error: title must be at most 120 characters"), "{said}");
+        assert!(said.contains("--> content/notes/first-walk.md:3:1"), "{said}");
+        assert!(said.contains("it has 130 characters"), "{said}");
+    }
+    assert!(
+        !project.join("tp/dist").exists(),
+        "a refused build wrote a plugin WordPress would run"
+    );
+
+    // An HTML block: WordPress stores it as a Custom HTML block, which Markdown can't hold.
+    std::fs::write(
+        &note,
+        format!("{original}\n<iframe src=\"https://example.com\"></iframe>\n"),
+    )
+    .unwrap();
+    let said = refused("build");
+    assert!(
+        said.contains("`<iframe src=\"https://example.com\"></iframe>` is an HTML block"),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/first-walk.md:13:1"), "{said}");
+
+    // A field the kind doesn't have, with the one it was meant to be.
+    std::fs::write(&note, original.replace("summary:", "sumary:")).unwrap();
+    let said = refused("build");
+    assert!(said.contains("error: Unknown or generated field 'sumary'"), "{said}");
+    assert!(said.contains("--> content/notes/first-walk.md:5:1"), "{said}");
+    assert!(said.contains("did you mean `summary`?"), "{said}");
+
+    // A required field left out.
+    std::fs::write(&note, original.replace("title: A first walk\n", "")).unwrap();
+    let said = refused("build");
+    assert!(said.contains("error: title is required"), "{said}");
+    assert!(said.contains("--> content/notes/first-walk.md:"), "{said}");
+
+    // HTML inside a line of text is Markdown the site keeps, so the build takes it.
+    std::fs::write(&note, format!("{original}\nPress <kbd>Ctrl</kbd> to stop.\n")).unwrap();
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+}
+
+/// A copied note keeps its `uid` line: the error names both files and says what to delete.
+#[test]
+fn two_seed_files_with_one_uid_are_both_named() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let notes = project.join("content/notes");
+    std::fs::copy(notes.join("first-walk.md"), notes.join("second-walk.md")).unwrap();
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(!out.status.success());
+    let said = text(&out.stderr);
+    assert!(
+        said.contains(
+            "error: content/notes/second-walk.md and content/notes/first-walk.md have the same uid zr_d2c870c681684da0b234"
+        ),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/second-walk.md:2:1"), "{said}");
+    assert!(said.contains("delete that line from the copy"), "{said}");
+}
+
+/// `seed: true` ships the files of synced kinds; with none, the build says nothing is seeded.
+#[test]
+fn seed_without_a_synced_kind_warns_that_nothing_is_seeded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let seeded = first().arg("build").arg(&project).output().unwrap();
+    assert!(seeded.status.success(), "{}", text(&seeded.stderr));
+    assert!(
+        !text(&seeded.stderr).contains("nothing is seeded"),
+        "{}",
+        text(&seeded.stderr)
+    );
+    let config = project.join("typedpress.config.ts");
+    let source = std::fs::read_to_string(&config).unwrap();
+    assert!(source.contains("  sync: \"content/notes/*.md\",\n"));
+    std::fs::write(&config, source.replace("  sync: \"content/notes/*.md\",\n", "")).unwrap();
+    let out = first().arg("build").arg(&project).output().unwrap();
+    let said = text(&out.stderr);
+    assert!(out.status.success(), "{said}");
+    assert!(
+        said.contains(
+            "warning: `seed: true` imports the files of synced kinds, and no kind has `sync`: nothing is seeded."
+        ),
+        "{said}"
+    );
 }
 
 fn add(project: &Path, args: &[&str]) -> Output {

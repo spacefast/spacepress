@@ -4,7 +4,11 @@ import "./site.css";
 
 // Use a blank WordPress block template so this layout owns the header and footer.
 export const template = "blank";
-export const metadata = { title: { default: "Field Notes", template: "%s · Field Notes" } };
+// The browser title follows the site name an editor sets in Site settings, as the header does.
+export const metadata = async () => {
+  const site = await db.globals.site.get();
+  return { title: { default: site.name, template: `%s · ${site.name}` } };
+};
 
 export default async function Layout({ children }: LayoutProps) {
   const site = await db.globals.site.get();

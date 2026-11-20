@@ -7,40 +7,92 @@ namespace TypedPress\Sync;
 use TypedPress\App;
 use TypedPress\HttpError;
 use TypedPress\Js;
+use TypedPress\JsError;
 use TypedPress\Seam;
+use TypedPress\Wp\LockBusy;
 use TypedPress\Wp\Migrator;
 use TypedPress\Wp\Plugin;
 
 /** TypedPress-sync content from compiled sources, with one transaction per collection and no deletes. */
 final class Seed
 {
-    /** Install once per compiled seed version, after the app's kinds and storage are ready. */
-    public static function install(Plugin $plugin, string $versionFile): void
+    /**
+     * Install once per compiled seed version, after the app's kinds and storage are ready. Returns
+     * null once the seed is in, or the problem a previous request already found for this build.
+     *
+     * A record the seed refuses (a value the schema doesn't take, a body Markdown can't hold, a
+     * reference to nothing, an error one of the app's hooks throws) is refused the same way on
+     * every request, so the refusal is kept with the build that got it: the schema, the functions
+     * and the seed version, as a schema refusal is kept with its build. Requests after it report
+     * the problem without taking the lock or running the records again, until a build changes one
+     * of those or the plugin is activated again. Nothing else is kept: seed files that are missing
+     * or changed on disk (a plugin being copied in has them for a moment), a busy lock, a record
+     * edited mid-seed and a database error may all pass on the next request.
+     *
+     * $wait is how long to wait for a request that holds the seed lock, in seconds.
+     */
+    public static function install(Plugin $plugin, string $versionFile, int $wait = 30): ?string
     {
         $version = require $versionFile;
         if (!is_array($version)) {
             throw new \RuntimeException('Invalid seed version');
         }
-        $key = 'tp_' . $plugin->schema->name() . '_seed';
+        $key = self::option($plugin);
         if (get_option($key) === $version) {
-            return;
+            return null;
         }
-        Migrator::locked($plugin->connection(), 'seed', static function () use ($plugin, $key, $version): void {
-            // A request waiting for the first seed must see its committed marker.
-            wp_cache_delete($key, 'options');
-            wp_cache_delete('alloptions', 'options');
-            wp_cache_delete('notoptions', 'options');
-            if (get_option($key) === $version) {
-                return;
-            }
-            $seed = $plugin->dir . '/tp/app/seed';
-            if (is_dir($seed)) {
-                self::run($plugin, $seed, false, $version);
-            } elseif ($version !== []) {
-                throw new \RuntimeException('Missing seed directory for a nonempty seed version');
-            }
-            update_option($key, $version, false);
-        });
+        $state = hash('sha256', implode("\0", [
+            $plugin->buildHash(), (string) @hash_file('sha256', $plugin->dir . '/tp/app/functions.php'), (string) Js::jsonStringify($version),
+        ]));
+        $refused = get_option($key . '_refused');
+        if (is_array($refused) && ($refused['state'] ?? null) === $state) {
+            return (string) $refused['problem'];
+        }
+        try {
+            Migrator::locked($plugin->connection(), 'seed', static function () use ($plugin, $key, $version, $state): void {
+                // A request waiting for the first seed must see its committed marker.
+                wp_cache_delete($key, 'options');
+                wp_cache_delete('alloptions', 'options');
+                wp_cache_delete('notoptions', 'options');
+                if (get_option($key) === $version) {
+                    return;
+                }
+                $seed = $plugin->dir . '/tp/app/seed';
+                if (is_dir($seed)) {
+                    try {
+                        self::run($plugin, $seed, false, $version);
+                    } catch (HttpError|JsError $error) {
+                        if ($error instanceof HttpError && ($error->status >= 500 || $error->errorCode === 'sync_stale')) {
+                            throw $error;
+                        }
+                        $problem = 'Seed refused: ' . $error->getMessage() . '. Fix it and build again: the seed runs on the new build, or when the plugin is activated again.';
+                        update_option($key . '_refused', ['state' => $state, 'problem' => $problem], false);
+
+                        throw new \RuntimeException($problem, 0, $error);
+                    }
+                } elseif ($version !== []) {
+                    throw new \RuntimeException('Missing seed directory for a nonempty seed version');
+                }
+                update_option($key, $version, false);
+                delete_option($key . '_refused');
+            }, $wait);
+        } catch (LockBusy) {
+            // The lock's own message is about migrations; this one is held by a seed.
+            throw new LockBusy('another request is still importing the seed content; try again shortly');
+        }
+
+        return null;
+    }
+
+    /** Activating the plugin again tries a remembered seed refusal once more. */
+    public static function retry(Plugin $plugin): void
+    {
+        delete_option(self::option($plugin) . '_refused');
+    }
+
+    private static function option(Plugin $plugin): string
+    {
+        return 'tp_' . $plugin->schema->name() . '_seed';
     }
 
     public static function wpCli(Plugin $plugin, array $args, array $flags): int
@@ -139,7 +191,20 @@ final class Seed
                             throw HttpError::invalidInput('Seed records need unique valid uids.', '/records/' . $index . '/uid');
                         }
                         $seen[$uid] = true;
-                        $counts[Routes::seedRecord($collection, $spec, $record)]++;
+                        try {
+                            $counts[Routes::seedRecord($collection, $spec, $record)]++;
+                        } catch (HttpError|JsError $e) {
+                            // A compiled record carries the file it came from: the refusal names it.
+                            // (A subclass carries more than a message, and keeps its own.)
+                            $path = $row['path'] ?? null;
+                            if (!is_string($path) || $path === '' || !in_array($e::class, [HttpError::class, JsError::class], true)) {
+                                throw $e;
+                            }
+
+                            throw $e instanceof HttpError
+                                ? new HttpError($e->status, $e->errorCode, $path . ': ' . $e->getMessage(), $e->pointer)
+                                : new JsError($path . ': ' . $e->getMessage(), $e->jsName);
+                        }
                     }
                     return $counts;
                 });

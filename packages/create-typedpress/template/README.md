@@ -1,4 +1,4 @@
-# __ZERO_APP_NAME__
+# __TP_APP_NAME__
 
 ```sh
 npm run dev
@@ -11,10 +11,15 @@ Open the **Website** URL printed in the terminal. Edit the heading in `tp/app/pa
 | The homepage and greeting form | `tp/app/page.tsx` |
 | The header, navigation, and styles | `tp/app/layout.tsx` and `tp/app/site.css` |
 | Note fields and site settings | `typedpress.config.ts` |
-| The sample notes | `content/notes/` |
 | The server action that answers the form | `tp/actions.ts` |
 
-Open **Notes** to see the Markdown entries imported on first start. WordPress stores them as posts. Edit a note in the WordPress editor, or run `npx typedpress login <Website URL>` followed by `npx typedpress sync` to bring file edits into the running site. The seed keeps edits already saved in WordPress.
+## Notes
+
+Open **Notes** to see the two sample entries. They are the Markdown files in `content/notes/`, imported once, on the first start. From then on WordPress stores them as posts, and the site shows what WordPress has.
+
+- To change a note, edit it in the WordPress editor.
+- Saving a file in `content/notes/` does not change the running site: `npm run dev` does not watch that folder, and the first-start import never overwrites a note WordPress already has. To send file edits to the site, and bring editor changes back into the files, sign in once with `npx typedpress login <Website URL>`, then run `npx typedpress sync` each time.
+- To add a note, copy a file in `content/notes/`, delete its `uid` line, and run `npx typedpress sync`. The `uid` identifies one note; two files with the same `uid` fail the build.
 
 Open **Account** to try the signed-in page. Use the local WordPress login printed by `npm run dev`. WordPress returns you to the account page after sign-in.
 

@@ -61,7 +61,7 @@ test('a new project includes the starter sources and the README names an existin
     'tsconfig.json', 'typedpress.config.ts',
   ]);
   // The app's name reaches every file that carries it.
-  for (const file of files) assert.doesNotMatch(await readFile(join(app, file), 'utf8'), /__ZERO_APP_NAME__/, file);
+  for (const file of files) assert.doesNotMatch(await readFile(join(app, file), 'utf8'), /__TP_APP_NAME__/, file);
   // Every `typedpress add <module>` command the README shows is a module in the compiler's command table.
   const readme = await readFile(join(app, 'README.md'), 'utf8');
   const shown = [...readme.matchAll(/^npx typedpress add ([\w-]+)$|`(?:npx )?typedpress add ([\w-]+)`/gm)].map((match) => match[1] ?? match[2]);

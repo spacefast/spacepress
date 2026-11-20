@@ -30,6 +30,8 @@ function request(string $path, ?array $fields = null): array
 eq('homepage returns 200', $status, 200);
 check('homepage renders the starter and the global site name', str_contains($home, 'Make this site yours.') && str_contains($home, 'Field Notes'));
 check('homepage links to the latest seeded note', str_contains($home, 'What to pack'));
+$title = static fn (string $html): string => preg_match('#<title>(.*?)</title>#s', $html, $m) === 1 ? html_entity_decode(trim($m[1])) : '';
+eq('the home page is titled by the site name', $title($home), 'Field Notes');
 
 [$status, $notes] = request('/notes/');
 eq('notes list returns 200', $status, 200);
@@ -43,6 +45,16 @@ foreach ([
     eq("$path returns 200", $status, 200);
     check("$path renders the Markdown body", str_contains($html, $body));
 }
+
+[, $note] = request('/notes/first-walk/');
+eq('a note is titled by its own title and the site name', $title($note), 'A first walk · Field Notes');
+// The layout reads the title from the `site` global, as the header does: renaming the site in
+// Site settings renames every page's title.
+\TypedPress\db()->globalUpdate('site', ['name' => 'Trail Journal']);
+[, $renamed] = request('/notes/first-walk/');
+eq('a renamed site renames the browser title', $title($renamed), 'A first walk · Trail Journal');
+check('and the header', str_contains($renamed, '>Trail Journal</a>'));
+\TypedPress\db()->globalUpdate('site', ['name' => 'Field Notes']);
 
 foreach (['/missing/', '/notes/missing/'] as $path) {
     [$status, $html] = request($path);

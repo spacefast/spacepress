@@ -26,7 +26,7 @@ pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
 
 /// The in-memory pipeline over this project's last snapshot, migration numbering and plugin lock.
 fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Result<Built, Diag> {
-    pipeline::build(
+    let built = pipeline::build(
         project,
         program,
         || {
@@ -35,7 +35,13 @@ fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Res
             Ok(previous)
         },
         runtime_file,
-    )
+    )?;
+    // A build that ships its synced files as the seed checks them now, so a file the seed would
+    // refuse on the site is a diagnostic at that file (`typedpress check` reports it too).
+    if built.schema.ships_seed() {
+        crate::bundle::seed_records(&loader::Disk, project, &built.schema, true)?;
+    }
+    Ok(built)
 }
 
 fn migrations_dir(project: &Path) -> PathBuf {
@@ -556,6 +562,11 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     }
     for w in &built.unsupported_plugins {
         eprintln!("warning: {w}");
+    }
+    if built.schema.seed && built.schema.collections.values().all(|c| c.sync.is_none()) {
+        eprintln!(
+            "warning: `seed: true` imports the files of synced kinds, and no kind has `sync`: nothing is seeded. Add `sync: \"content/<kind>/*.md\"` to a kind, or remove `seed`."
+        );
     }
     // A project that ran `typedpress init`: its agent files follow the config and the compiler.
     let agent_files = (!args.quiet)

@@ -72,6 +72,14 @@ starts. It preserves edits to existing editorial records and skips records
 already in the trash. Use `typedpress sync` to merge edits from source files into
 an existing site.
 
+`typedpress build` and `typedpress check` read those files first. A file the import
+would refuse fails the build at its path and line: a field the kind doesn't have,
+a required field left out, a value over a `.max()`, an HTML block in a Markdown
+body, or a `uid` two files share. A record refused only on the site (a reference
+to a record that isn't there, a `validate` rule) is reported in wp-admin and the
+PHP error log with the file it came from. WordPress keeps that refusal and does
+not run the import again until a new build changes the content or the schema.
+
 ### Exports register by name
 
 TypedPress loads `typedpress.config.ts` and every `.ts` file under `tp/`, except

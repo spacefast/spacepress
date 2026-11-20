@@ -120,18 +120,30 @@ import { createCartHooks } from "./tp/_generated/client/react.ts";
 export const { useCart, useCartCount } = createCartHooks(React);
 
 export function AddMug({ productId }: { productId: number }) {
-	const { add, loading, pending, error } = useCart();
+	const { add, loading, pending } = useCart();
+	// This button's own refusal. `useCart().error` is shared by every component on the page.
+	const [refusal, setRefusal] = React.useState<string>();
 
 	return (
 		<>
-			<button disabled={loading || pending} onClick={() => add(productId).catch(() => {})}>
+			<button
+				disabled={loading || pending}
+				onClick={() => {
+					setRefusal(undefined);
+					add(productId).catch((error: Error) => setRefusal(error.message));
+				}}
+			>
 				Add to cart
 			</button>
-			{error && <p role="alert">{error.message}</p>}
+			{refusal && <p role="alert">{refusal}</p>}
 		</>
 	);
 }
 ```
+
+The action's promise rejects for the component that called it, so the message appears
+under that button only. `useCart().error` is one value for the whole cart: render it
+once, next to the cart, not under every button.
 
 `useCart()` returns `cart`, `loading`, `pending`, `error`, and the actions below.
 `useCartCount()` returns the item count, or `undefined` before the cart loads. Both
@@ -141,22 +153,44 @@ hooks observe the same store. Pass a `WooCartClient` as the second argument to
 | Action | What it does |
 | --- | --- |
 | `add(productId, quantity?)` | Adds a product. The default quantity is one. |
-| `update(key, quantity)` | Sets the quantity of a line. |
+| `update(key, quantity)` | Sets the quantity of a line. Zero removes the line, because Woo refuses a quantity of zero. |
 | `remove(key)` | Removes a line. |
 | `selectShipping(packageId, rateId)` | Selects a rate for a shipping package. |
 | `updateCustomer({ billing, shipping })` | Updates either or both cart addresses. |
-| `refresh()` | Reads the current cart from Woo. |
+| `refresh()` | Reads the current cart from Woo, after every write already queued. Callers share one read until the next write. |
 
 Writes preview changes to quantities, item count, selected rates, and addresses while Woo
 processes them in order. New lines appear when Woo returns their details. Prices and totals
 stay at the values Woo last confirmed while `pending` is true.
 
-If Woo refuses a write, the action rejects and `error` holds the failure. Narrow the
-error with `instanceof WooStoreError` to read its typed `code`, HTTP `status`, and
-optional `cart`. Extension codes that the client does not recognize use
-`woocommerce_error` as `code` and keep the original string in `rawCode`. When Woo
-sends an updated cart in the error, the store uses that cart. Otherwise it rolls back
-to the confirmed cart. Later pending writes keep their previews in either case.
+If Woo refuses a write, the action rejects and `error` holds the failure. `error` stays
+until the next write starts: a write that was already queued and then succeeds does not
+clear it, and neither does `refresh()`. A failed read also sets `error`; that one clears
+when Woo next answers with a cart.
+
+Narrow the error with `instanceof WooStoreError` to read its `code`, HTTP `status`,
+plain-text `message` (Woo's HTML entities are decoded) and optional `cart`. `code` is the
+string Woo sent, unchanged. The `WooStoreErrorCode` type lists the codes Woo 11.3.0 sends
+for these requests, so they autocomplete; an extension's code is any other string. An
+answer that is not a Woo error, such as a maintenance page, has the code `http_error`.
+
+| Refusal | Status | `code` | `cart` |
+| --- | --- | --- | --- |
+| Out of stock, or fewer in stock than asked for, on `add` | 400 | `woocommerce_rest_product_out_of_stock`, `woocommerce_rest_product_partially_out_of_stock` | none |
+| Quantity below the minimum, above the maximum (on `update` the maximum includes the stock), or not a multiple, on `update` and on `add` to an existing line | 400 | `invalid_quantity` | none |
+| The line's quantity cannot be changed (sold individually) | 400 | `readonly_quantity` | none |
+| The product cannot be bought | 400 | `woocommerce_rest_product_not_purchasable` | none |
+| The line no longer exists, on `update` and `remove` | 409 | `woocommerce_rest_cart_invalid_key` | the current cart |
+| Too many requests, when the store enables Woo's rate limiting | 429 | `rate_limit_exceeded` | none |
+| Woo failed | 500 | `woocommerce_rest_unknown_server_error` | none |
+
+Woo sends the current cart with a 409 only, and the store then uses that cart. Every other
+refusal, stock included, rolls back to the cart Woo last confirmed. Later pending writes
+keep their previews in either case.
+
+While a component is subscribed, the store reads the cart again when the browser restores
+the page from its back/forward cache, and when a hidden tab is shown again at least five
+seconds after Woo last answered. It does not poll.
 
 TypedPress pages can use `createCartStore()` from `@typedpress/client` in a browser
 script, as the native shop does. It shares the hooks' actions and optimistic state.

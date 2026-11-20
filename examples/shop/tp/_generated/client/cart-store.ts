@@ -1,13 +1,19 @@
 import { cart, WooStoreError, type WooCart, type WooCartClient } from "./commerce.ts";
 
 export interface WooCartState {
+  /** Woo's last confirmed cart with the pending writes' previews applied. Undefined until the first read answers. */
   cart: WooCart | undefined;
+  /** True until the first read answers or fails. */
   loading: boolean;
+  /** True while a write waits for Woo. */
   pending: boolean;
+  /** The last failure. A refused write stays until the next write starts, so a later write that was
+   * already queued and succeeds does not hide it. A failed read stays until Woo next answers with a cart. */
   error: Error | undefined;
 }
 
 export interface WooCartActions extends Pick<WooCartClient, "add" | "update" | "remove" | "selectShipping" | "updateCustomer"> {
+  /** Reads the cart from Woo, after every write already queued. */
   refresh(): Promise<WooCart>;
 }
 
@@ -19,6 +25,8 @@ export interface WooCartStore {
 }
 
 const wooCartStores = new WeakMap<WooCartClient, WooCartStore>();
+/** A tab shown again reads the cart only when Woo last answered at least this long ago. */
+const SHOWN_AGAIN_MS = 5000;
 
 /** One cart store per client, shared by React hooks and other browser subscribers. */
 export function createCartStore(client: WooCartClient = cart): WooCartStore {
@@ -35,6 +43,9 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
   let reading: Promise<WooCart> | undefined;
   let writing = false;
   let receivedDuringWrite: WooCart | undefined;
+  let failedRead: Error | undefined;
+  // When Woo last gave a cart or failed a read.
+  let answeredAt = 0;
 
   function publish(changes: Partial<WooCartState> = {}) {
     let cart = confirmed;
@@ -51,7 +62,13 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
       return;
     }
     confirmed = cart;
-    publish({ loading: false, error: undefined });
+    publish(answered());
+  }
+
+  /** Woo gave a cart. That answers a failed read; a refused write stays until the next write starts. */
+  function answered(): Partial<WooCartState> {
+    answeredAt = Date.now();
+    return state.error !== undefined && state.error === failedRead ? { loading: false, error: undefined } : { loading: false };
   }
 
   function describe(error: unknown): Error {
@@ -65,41 +82,53 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
   }
 
   function refresh(): Promise<WooCart> {
-    return reading ??= enqueue(async () => {
+    if (reading) return reading;
+    const next = enqueue(async () => {
       try {
         const cart = await client.get();
         if (cart !== confirmed) receive(cart);
         return cart;
       } catch (error) {
-        if (error instanceof WooStoreError && error.cart) confirmed = error.cart;
-        publish({ loading: false, error: describe(error) });
+        failedRead = describe(error);
+        answeredAt = Date.now();
+        publish({ loading: false, error: failedRead });
         throw error;
       } finally {
-        reading = undefined;
+        if (reading === next) reading = undefined;
       }
     });
+    reading = next;
+    return next;
   }
 
   function write(run: () => Promise<WooCart>, update: (current: WooCart) => WooCart): Promise<WooCart> {
     optimistic.add(update);
+    // A read queued or sent before this write answers with the cart from before it, so a later refresh() asks again.
+    reading = undefined;
     const result = enqueue(async () => {
       writing = true;
-      let refusal: Error | undefined;
+      let changes: Partial<WooCartState> = { loading: false };
       try {
         confirmed = await run();
+        changes = answered();
         return confirmed;
       } catch (error) {
-        refusal = describe(error);
-        const refreshed = error instanceof WooStoreError ? error.cart : undefined;
-        confirmed = refreshed ?? receivedDuringWrite ?? confirmed;
+        // Woo sends the current cart with a 409. Any other refusal rolls back to the confirmed cart.
+        const current = (error instanceof WooStoreError ? error.cart : undefined) ?? receivedDuringWrite;
+        if (current) {
+          confirmed = current;
+          answeredAt = Date.now();
+        }
+        changes = { loading: false, error: describe(error) };
         throw error;
       } finally {
         writing = false;
         receivedDuringWrite = undefined;
         optimistic.delete(update);
-        publish({ loading: false, error: refusal });
+        publish(changes);
       }
     });
+    // The shopper acted again: only now does the previous failure go away.
     publish({ error: undefined });
     return result;
   }
@@ -118,7 +147,8 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
     refresh,
     add: (id, count = 1) => write(() => client.add(id, count), (current) => {
       if (!Number.isSafeInteger(count) || count <= 0) return current;
-      const matches = current.items.filter((item) => item.id === id && item.variation.length === 0);
+      // A variation's line has the variation's id. Two lines with one id differ in data only Woo can compare.
+      const matches = current.items.filter((item) => item.id === id);
       const item = matches.length === 1 ? matches[0] : undefined;
       // Woo supplies the new line's key, product data and prices. Until then only the count changes.
       return item ? quantity(current, item.key, item.quantity + count) : { ...current, itemsCount: current.itemsCount + count };
@@ -138,6 +168,19 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
     })),
   };
 
+  // The cart can change while this page is not looked at: another tab, or an order placed before the
+  // browser restores this page from its back/forward cache. Ask again when the page is shown.
+  type Listens = { addEventListener?(type: string, run: (event: unknown) => void): void; removeEventListener?(type: string, run: (event: unknown) => void): void };
+  const page = () => (globalThis as { document?: Listens & { visibilityState?: string } }).document;
+  const reread = () => { refresh().catch(() => undefined); };
+  const shown = () => {
+    // Switching tabs back and forth asks once per SHOWN_AGAIN_MS at most; a cart Woo just confirmed is current.
+    if (page()?.visibilityState === "visible" && Date.now() - answeredAt >= SHOWN_AGAIN_MS) reread();
+  };
+  const restored = (event: unknown) => {
+    if ((event as { persisted?: boolean } | null)?.persisted === true) reread();
+  };
+
   const store: WooCartStore = {
     actions,
     snapshot: () => state,
@@ -146,13 +189,17 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
       listeners.add(changed);
       if (listeners.size === 1) {
         unsubscribe = client.subscribe(receive);
-        refresh().catch(() => undefined);
+        page()?.addEventListener?.("visibilitychange", shown);
+        (globalThis as Listens).addEventListener?.("pageshow", restored);
+        reread();
       }
       return () => {
         listeners.delete(changed);
         if (listeners.size === 0) {
           unsubscribe?.();
           unsubscribe = undefined;
+          page()?.removeEventListener?.("visibilitychange", shown);
+          (globalThis as Listens).removeEventListener?.("pageshow", restored);
         }
       };
     },

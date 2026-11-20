@@ -70,10 +70,10 @@ class Cart extends HTMLElement {
       for (const [label, quantity] of [['−', item.quantity - 1], ['+', item.quantity + 1]]) {
         const button = element('button', label); button.type = 'button'; button.setAttribute('aria-label', `${label === '+' ? 'Increase' : 'Decrease'} ${item.name} quantity`);
         button.dataset.cartControl = `${item.key}:${label}`;
-        button.onclick = () => this.change(() => quantity ? cart.update(item.key, quantity) : cart.remove(item.key));
+        button.onclick = () => this.change(() => cart.update(item.key, quantity));
         if (label === '−') controls.append(button, element('span', String(item.quantity))); else controls.append(button);
       }
-      const remove = element('button', 'Remove'); remove.type = 'button'; remove.dataset.cartControl = `${item.key}:remove`; remove.onclick = () => this.change(() => cart.remove(item.key), remove); controls.append(remove);
+      const remove = element('button', 'Remove'); remove.type = 'button'; remove.dataset.cartControl = `${item.key}:remove`; remove.onclick = () => this.change(() => cart.remove(item.key)); controls.append(remove);
       line.append(info, controls); list.append(line);
     }
     const parts = [list];

@@ -815,9 +815,7 @@ pub fn files(
     if schema.store.is_some() {
         out.push(("commerce.ts".into(), COMMERCE_RUNTIME.as_bytes().to_vec()));
         out.push(("cart-store.ts".into(), CART_STORE_RUNTIME.as_bytes().to_vec()));
-        if let Some(bytes) = runtime("client/cart-react.ts") {
-            out.push(("cart-react.ts".into(), bytes.to_vec()));
-        }
+        out.push(("cart-react.ts".into(), CART_REACT_RUNTIME.as_bytes().to_vec()));
     }
     out
 }
@@ -832,6 +830,7 @@ pub(crate) fn registry_value(c: &Column) -> String {
 const CLIENT_RUNTIME: &str = include_str!("../runtime/client/index.ts");
 const COMMERCE_RUNTIME: &str = include_str!("../runtime/client/commerce.ts");
 const CART_STORE_RUNTIME: &str = include_str!("../runtime/client/cart-store.ts");
+const CART_REACT_RUNTIME: &str = include_str!("../runtime/client/cart-react.ts");
 const COMMERCE_NOTICE: &str = "\nPortions are adapted from Spacefast's Woo Store SDK (@woo/storefront-core),\nhttps://github.com/spacefast/woo-store-sdk, under the MIT License above.\n";
 
 /// The canonical client as one TypeScript module: the app's types and schema, then the runtime

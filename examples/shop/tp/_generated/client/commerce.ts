@@ -30,47 +30,58 @@ export interface WooCart {
   fees: { id: string; name: string; total: string; totalTax: string }[];
 }
 
-const WOO_CART_ERROR_CODES = [
-  "woocommerce_error",
-  "woocommerce_rest_add_to_cart_error",
-  "woocommerce_rest_cart_error",
-  "woocommerce_rest_cart_invalid_key",
-  "woocommerce_rest_cart_invalid_parent_product",
-  "woocommerce_rest_cart_invalid_product",
-  "woocommerce_rest_cart_item_exists",
-  "woocommerce_rest_cart_missing_rate_id",
-  "woocommerce_rest_invalid_nonce",
-  "woocommerce_rest_invalid_variation_data",
-  "woocommerce_rest_missing_attributes",
-  "woocommerce_rest_missing_nonce",
-  "woocommerce_rest_missing_variation_data",
-  "woocommerce_rest_product_invalid_quantity",
-  "woocommerce_rest_product_not_enough_stock",
-  "woocommerce_rest_product_not_purchasable",
-  "woocommerce_rest_product_out_of_stock",
-  "woocommerce_rest_product_partially_out_of_stock",
-  "woocommerce_rest_product_too_many_in_cart",
-  "woocommerce_rest_shipping_disabled",
-  "woocommerce_rest_variation_id_from_variation_data",
-] as const;
-
-/** Core Woo cart refusal codes. Extension codes are available on `WooStoreError.rawCode`. */
-export type WooStoreErrorCode = (typeof WOO_CART_ERROR_CODES)[number];
+/** The codes Woo 11.3.0's cart routes send for the requests this client makes (`StoreApi/Routes/V1/Cart*.php`,
+ * `Utilities/CartController.php`, `Utilities/QuantityLimits.php`, `Authentication.php`), with their statuses. */
+export type WooStoreErrorCode =
+  | "invalid_quantity" // 400: below the minimum, above the maximum (which includes the stock), or not a multiple
+  | "rate_limit_exceeded" // 429
+  | "readonly_quantity" // 400: the line's quantity cannot be changed
+  | "rest_invalid_param" // 400: an argument or address WordPress or Woo rejects
+  | "woocommerce_rest_add_to_cart_error" // 400: an extension's `woocommerce_add_to_cart_validation` notice
+  | "woocommerce_rest_cart_error" // 500: Woo has no cart
+  | "woocommerce_rest_cart_invalid_key" // 409: the line no longer exists; the error carries the cart
+  | "woocommerce_rest_cart_invalid_parent_product" // 400
+  | "woocommerce_rest_cart_invalid_product" // 400 on add, 404 on update
+  | "woocommerce_rest_cart_item_exists" // 400: an add that names a line key
+  | "woocommerce_rest_cart_missing_rate_id" // 400
+  | "woocommerce_rest_invalid_nonce" // 403
+  | "woocommerce_rest_invalid_variation_data" // 400
+  | "woocommerce_rest_missing_attributes" // 400: a variable product needs its variation
+  | "woocommerce_rest_missing_nonce" // 401
+  | "woocommerce_rest_missing_variation_data" // 400
+  | "woocommerce_rest_product_invalid_quantity" // 400: zero or less
+  | "woocommerce_rest_product_not_purchasable" // 400
+  | "woocommerce_rest_product_out_of_stock" // 400
+  | "woocommerce_rest_product_partially_out_of_stock" // 400: fewer in stock than asked for
+  | "woocommerce_rest_shipping_disabled" // 404
+  | "woocommerce_rest_unknown_server_error" // 500
+  | "woocommerce_rest_variation_id_from_variation_data"; // 400: no variation matches
 
 export class WooStoreError extends Error {
-  readonly code: WooStoreErrorCode;
-  readonly rawCode: string;
+  /** The string Woo sent, unchanged. Extensions and other Woo versions send codes outside `WooStoreErrorCode`.
+   * `http_error` is this client's own: the answer was not a Woo error, such as a proxy's or a maintenance page. */
+  readonly code: WooStoreErrorCode | (string & {});
   readonly status: number;
+  /** The current cart. Woo sends it with a 409 only. */
   readonly cart: WooCart | undefined;
 
-  constructor(rawCode: string, message: string, status: number, cart?: WooCart) {
+  /** `message` is plain text: Woo's HTML entities are already decoded. */
+  constructor(code: WooStoreErrorCode | (string & {}), message: string, status: number, cart?: WooCart) {
     super(message);
     this.name = "WooStoreError";
-    this.code = WOO_CART_ERROR_CODES.find((code) => code === rawCode) ?? "woocommerce_error";
-    this.rawCode = rawCode;
+    this.code = code;
     this.status = status;
     this.cart = cart;
   }
+}
+/** Woo's messages are HTML text (`The quantity of &quot;Mug&quot; ...`). The result is plain text, never markup to insert. */
+function wooPlainText(html: string): string {
+  const named: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
+  return html.replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|(amp|lt|gt|quot|apos|nbsp));/gi, (entity, decimal, hex, name) => {
+    if (name) return named[name.toLowerCase()];
+    const point = decimal ? Number(decimal) : parseInt(hex, 16);
+    return point > 0 && point <= 0x10ffff && (point < 0xd800 || point > 0xdfff) ? String.fromCodePoint(point) : entity;
+  });
 }
 /** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
 export function wooDecimal(minor: string, precision: number): string {
@@ -110,18 +121,19 @@ function wooReadAddress(value: unknown): WooAddress | undefined {
   };
 }
 
+/** Woo adds the current cart to a 409 answer, and to no other (`AbstractCartRoute::get_route_error_response`). */
 function wooErrorCart(payload: Record<string, unknown>): WooCart | undefined {
-  const data = isWooRecord(payload.data) ? payload.data : {};
-  const candidate = data.cart ?? payload.cart ?? data.refreshed_cart ?? payload.refreshed_cart ?? (Array.isArray(data.items) ? data : payload);
-  if (!isWooRecord(candidate) || !Array.isArray(candidate.items) || typeof candidate.items_count !== "number" || typeof candidate.needs_shipping !== "boolean") return undefined;
+  const cart = isWooRecord(payload.data) ? payload.data.cart : undefined;
+  if (!isWooRecord(cart)) return undefined;
   // A broken error payload must not hide Woo's original refusal.
-  try { return wooCart(candidate); } catch { return undefined; }
+  try { return wooCart(cart); } catch { return undefined; }
 }
 
 /** One same-origin Woo cookie session, also consumed by the native Checkout Block. Browser only. */
 export interface WooCartClient {
   get(): Promise<WooCart>;
   add(id: number, quantity?: number): Promise<WooCart>;
+  /** Sets a line's quantity. Woo refuses a quantity of zero, so zero removes the line. */
   update(key: string, quantity: number): Promise<WooCart>;
   remove(key: string): Promise<WooCart>;
   updateCustomer(input: { billing?: WooAddress; shipping?: WooAddress }): Promise<WooCart>;
@@ -138,12 +150,13 @@ export function createCartClient(options: { base?: string; fetch?: typeof fetch 
     const response = await request(`${base}/cart${path}`, { method: body === undefined ? "GET" : "POST", credentials: "same-origin", cache: "no-store",
       headers: body === undefined ? {} : { "Content-Type": "application/json", ...(nonce ? { Nonce: nonce } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     nonce = response.headers.get("Nonce") ?? nonce;
-    const data = await response.json();
-    if (!response.ok) {
+    // An HTML maintenance or proxy page is not JSON: report the status, not the parse failure.
+    const data: unknown = await response.json().catch(() => undefined);
+    if (!response.ok || data === undefined) {
       const error = isWooRecord(data) ? data : {};
       throw new WooStoreError(
-        typeof error.code === "string" ? error.code : "woocommerce_error",
-        typeof error.message === "string" ? error.message : "The cart request failed",
+        typeof error.code === "string" ? error.code : "http_error",
+        typeof error.message === "string" ? wooPlainText(error.message) : "The cart request failed",
         response.status,
         wooErrorCart(error),
       );
@@ -164,7 +177,7 @@ export function createCartClient(options: { base?: string; fetch?: typeof fetch 
   return {
     get: () => queue(""),
     add: (id: number, quantity = 1) => queue("/add-item", { id, quantity }),
-    update: (key: string, quantity: number) => queue("/update-item", { key, quantity }),
+    update: (key: string, quantity: number) => quantity === 0 ? queue("/remove-item", { key }) : queue("/update-item", { key, quantity }),
     remove: (key: string) => queue("/remove-item", { key }),
     updateCustomer: (input: { billing?: WooAddress; shipping?: WooAddress }) => queue("/update-customer", { ...(input.billing ? { billing_address: address(input.billing) } : {}), ...(input.shipping ? { shipping_address: address(input.shipping) } : {}) }),
     selectShipping: (packageId: number, rateId: string) => queue("/select-shipping-rate", { package_id: packageId, rate_id: rateId }),

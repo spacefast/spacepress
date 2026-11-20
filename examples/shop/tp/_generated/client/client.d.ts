@@ -1842,7 +1842,7 @@ export declare class WooStoreError extends Error {
 }
 /** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
 export declare function wooDecimal(minor: string, precision: number): string;
-/** One same-origin Woo cookie session, also consumed by the native Checkout Block. Browser only. */
+/** Woo's Store API cart. Browser only. */
 export interface WooCartClient {
 	get(): Promise<WooCart>;
 	add(id: number, quantity?: number): Promise<WooCart>;
@@ -1855,9 +1855,58 @@ export interface WooCartClient {
 	selectShipping(packageId: number, rateId: string): Promise<WooCart>;
 	subscribe(listener: (cart: WooCart) => void): () => void;
 }
-export declare function createCartClient(options?: {
+interface CartTransportOptions {
+	/** Woo Store API root. An absolute URL on another origin selects a token session. */
 	base?: string;
 	fetch?: typeof fetch;
+}
+type WooCheckoutAddress = Omit<WooAddress, "firstName" | "lastName" | "address1" | "address2"> & {
+	first_name?: string;
+	last_name?: string;
+	address_1?: string;
+	address_2?: string;
+};
+export interface WooCheckoutInput {
+	billing_address: WooCheckoutAddress;
+	shipping_address?: WooCheckoutAddress;
+	payment_method: string;
+	payment_data?: {
+		key: string;
+		value: string | boolean;
+	}[];
+	expected_total?: string;
+	order_notes?: string;
+	additional_fields?: Record<string, unknown>;
+	extensions?: Record<string, unknown>;
+}
+export interface WooCheckoutResult {
+	order_id: number;
+	status: string;
+	payment_result: {
+		payment_status: string;
+		redirect_url: string;
+		payment_details: unknown;
+	};
+}
+export interface WooTokenCartClient extends WooCartClient {
+	/** Places the order through Woo's Store API with the same token: no cookie at any step. */
+	checkout(input: WooCheckoutInput): Promise<WooCheckoutResult>;
+	/**
+	* The store's checkout page address that hands this cart to Woo's Checkout Block. Woo copies the
+	* token's cart into a new cookie session there (`?session=`), so that page needs cookies.
+	*/
+	checkoutLink(checkoutUrl: string): string;
+}
+/**
+* `session: "cookie"` is Woo's session cookie and rotating nonce, the session the Checkout Block reads.
+* `session: "token"` sends no cookie: Woo's `Cart-Token` header names the session and replaces the nonce.
+* Left out, it is the cookie on the page's own origin and the token for a Store API on another one.
+*/
+export declare function createCartClient(options: CartTransportOptions & {
+	session: "token";
+}): WooTokenCartClient;
+export declare function createCartClient(options?: CartTransportOptions & {
+	session?: "cookie";
 }): WooCartClient;
 export declare const cart: WooCartClient;
 export {};

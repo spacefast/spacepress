@@ -4,7 +4,14 @@ const amount = (value, currency) => `${value} ${currency}`;
 class MiniCart extends HTMLElement {
   connectedCallback() {
     const link = this.querySelector('a') || this.appendChild(element('a')); link.href = '/cart';
-    const show = data => { link.textContent = `Cart (${data.itemsCount})`; };
+    const show = data => {
+      link.textContent = `Cart (${data.itemsCount})`;
+      const asset = document.querySelector('meta[name="tp-woo-checkout-script"]')?.content;
+      if (data.itemsCount && asset && !document.head.querySelector('[data-shop-checkout-prefetch]')) {
+        const hint = element('link'); hint.rel = 'prefetch'; hint.as = 'script'; hint.href = asset;
+        hint.setAttribute('data-shop-checkout-prefetch', ''); document.head.appendChild(hint);
+      }
+    };
     this.stop = cart.subscribe(show); cart.get().catch(() => {});
   }
   disconnectedCallback() { this.stop?.(); }

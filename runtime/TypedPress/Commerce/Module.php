@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace TypedPress\Commerce;
 
+use Automattic\WooCommerce\Blocks\Assets\Api as BlockAssets;
+use Automattic\WooCommerce\Blocks\Package as Blocks;
+use TypedPress\Render\Cache;
 use TypedPress\Vendor\WordPress\DataLiberation\BlockMarkup\BlockMarkupProcessor;
+use TypedPress\Wp\AppRouter;
+use TypedPress\Wp\ContentPages;
 use TypedPress\Wp\Plugin;
 use TypedPress\Wp\Runtime;
 
@@ -79,6 +84,36 @@ final class Module
         add_filter('woocommerce_create_pages', '__return_empty_array', PHP_INT_MAX);
         add_filter('woocommerce_get_cart_url', static fn () => home_url('/cart'));
         add_filter('woocommerce_get_checkout_page_id', static fn ($id) => self::checkoutPage($plugin) ?: $id);
+        add_action('before_woocommerce_init', self::isolateSharedCart(...), 0);
+        add_action('wp_loaded', static function (): void {
+            // Woo can handle and redirect a cart action before WordPress sends its page headers.
+            if (self::cartAction()) { Cache::send(Cache::PRIVATE); }
+        }, 0);
+        add_filter('wp_headers', static function (array $headers) use ($plugin): array {
+            // A page the theme renders keeps the visitor's cart session (isolateSharedCart() covers
+            // app pages only), so Woo prints its cart-dependent prefetch links there: that visitor's page.
+            if (self::privateRequest($plugin) || isset($_COOKIE[self::sessionCookie()])) {
+                $headers['Cache-Control'] = Cache::PRIVATE;
+                $headers[Cache::EDGE_HEADER] = 'no-cache';
+                if (function_exists('batcache_cancel')) { batcache_cancel(); }
+            }
+            return $headers;
+        }, PHP_INT_MAX);
+        add_action('wp_head', static fn () => self::checkoutPrefetchAsset($plugin));
+        add_filter('rest_post_dispatch', static function ($response, $server, $request) {
+            if (preg_match('~^/wc/store/(?:v[0-9]+/)?(?:cart|checkout|batch)(?:/|$)~i', $request->get_route())) {
+                $response->header('Cache-Control', Cache::PRIVATE);
+                $response->header(Cache::EDGE_HEADER, 'no-cache');
+                if (function_exists('batcache_cancel')) { batcache_cancel(); }
+            }
+            return $response;
+        }, 10, 3);
+        // A declared external frontend is this store's storefront. Its first Store API call carries no
+        // Cart-Token yet, and Woo answers another origin only with one or when WordPress allows the origin.
+        $frontend = $plugin->schema->frontend();
+        if (is_string($frontend)) {
+            add_filter('allowed_http_origins', static fn (array $origins): array => self::storefrontOrigins($origins, $frontend));
+        }
         if (isset($store['payments'])) {
             add_filter('woocommerce_available_payment_gateways', static function (array $gateways) use ($store): array {
                 $out = []; foreach ($store['payments'] as $id) { if (isset($gateways[$id])) { $out[$id] = $gateways[$id]; } } return $out;
@@ -108,9 +143,9 @@ final class Module
             }
             return $data;
         }, PHP_INT_MAX, 2);
-        add_filter('tp_markdown_twin', static fn ($has, $post) => (int) $post->ID === self::checkoutPage($plugin) ? false : $has, 10, 2);
-        add_filter('wp_sitemaps_posts_query_args', static function (array $args, string $type) use ($plugin): array {
-            if ($type === 'page' && ($id = self::checkoutPage($plugin)) > 0) { $args['post__not_in'] = [...($args['post__not_in'] ?? []), $id]; }
+        add_filter('tp_markdown_twin', static fn ($has, $post) => $has && ($post->post_type !== 'page' || !in_array((int) $post->ID, self::shopperPageIds(), true)), 10, 2);
+        add_filter('wp_sitemaps_posts_query_args', static function (array $args, string $type): array {
+            if ($type === 'page') { $args['post__not_in'] = [...($args['post__not_in'] ?? []), ...self::shopperPageIds()]; }
             return $args;
         }, 10, 2);
         // Woo handles checkout outside TypedPress REST, including Store API batch subrequests.
@@ -126,7 +161,7 @@ final class Module
         add_action('woocommerce_before_pay_action', static function () use ($plugin): void {
             if ($plugin->unavailable() !== null) { wp_die(esc_html(Plugin::UNAVAILABLE), '', ['response' => 503]); }
         }, 0);
-        add_filter('wp_robots', static function ($robots) use ($plugin) { if (self::privatePath($plugin, (string) wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH))) { $robots['noindex'] = true; } return $robots; });
+        add_filter('wp_robots', static function ($robots) use ($plugin) { if (self::privateRequest($plugin)) { $robots['noindex'] = true; } return $robots; });
         foreach (['woocommerce_new_product', 'woocommerce_update_product', 'woocommerce_delete_product'] as $hook) { add_action($hook, static fn ($id) => self::changed($plugin, 'product', (int) $id)); }
         foreach (['created_term', 'edited_term', 'delete_term'] as $hook) { add_action($hook, static function ($id, $tt, $taxonomy) use ($plugin): void { $kind = ['product_cat' => 'productCategory', 'product_tag' => 'productTag'][$taxonomy] ?? null; if ($kind) { self::changed($plugin, $kind, (int) $id); } }, 10, 3); }
         add_action('template_redirect', static function () use ($plugin): void {
@@ -360,8 +395,10 @@ final class Module
         $path = $plugin->schema->commerce()['checkout'] ?? '/checkout';
         foreach ($plugin->schema->app()['content'] ?? [] as $route => $page) {
             if (rtrim($page['path'], '/') === rtrim($path, '/')) {
-                $posts = get_posts(['post_type' => 'page', 'post_status' => 'any', 'meta_key' => \TypedPress\Wp\ContentPages::META, 'meta_value' => $route, 'numberposts' => 1]);
-                return (int) ($posts[0]->ID ?? 0);
+                // The id comes from the autoloaded page record and the post cache: no query of its own,
+                // on a filter Woo applies to every request (WC_Cache_Helper::prevent_caching).
+                $id = ContentPages::pageId((string) $route) ?? 0;
+                return $id > 0 && get_post_status($id) !== 'trash' ? $id : 0;
             }
         }
         return 0;
@@ -370,10 +407,97 @@ final class Module
     {
         if ($plugin->schema->commerce() === null) { return false; }
         $path = '/' . implode('/', array_map('rawurldecode', array_values(array_filter(explode('/', $path), static fn ($part) => $part !== ''))));
+        $private = ['/cart', rtrim($plugin->schema->commerce()['checkout'] ?? '/checkout', '/'), '/my-account'];
+        foreach (self::shopperPageIds() as $id) {
+            $page = get_page_uri($id);
+            if ($page) { $private[] = '/' . rawurldecode($page); }
+            if ($id === (int) get_option('page_on_front') && get_option('show_on_front') === 'page') { $private[] = '/'; }
+        }
+        foreach ($private as $root) {
+            if ($path === $root || str_starts_with($path, $root . '/')) { return true; }
+        }
+        return false;
+    }
+
+    public static function privateRequest(Plugin $plugin): bool
+    {
+        if ($plugin->schema->commerce() === null) { return false; }
+        $path = self::requestPath();
         $base = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
-        if ($base !== '' && str_starts_with($path, $base . '/')) { $path = substr($path, strlen($base)); }
-        $checkout = rtrim($plugin->schema->commerce()['checkout'] ?? '/checkout', '/');
-        return rtrim($path, '/') === '/cart' || rtrim($path, '/') === $checkout || str_starts_with($path, $checkout . '/');
+        if ($base !== '' && ($path === $base || str_starts_with($path, $base . '/'))) {
+            $path = substr($path, strlen($base)) ?: '/';
+        }
+        return self::cartAction() || self::privatePath($plugin, $path) || is_cart() || is_checkout() || is_account_page();
+    }
+
+    /**
+     * WordPress's allowed origins plus the external frontend's, for Store API requests only: the same
+     * list also lets an origin send credentialed admin-ajax requests.
+     *
+     * @param list<string> $origins
+     * @return list<string>
+     */
+    public static function storefrontOrigins(array $origins, string $frontend): array
+    {
+        $url = wp_parse_url($frontend);
+        if (!WC()->is_store_api_request() || !isset($url['scheme'], $url['host'])) { return $origins; }
+        $origins[] = $url['scheme'] . '://' . $url['host'] . (isset($url['port']) ? ':' . $url['port'] : '');
+        return $origins;
+    }
+
+    /** @return list<int> */
+    private static function shopperPageIds(): array
+    {
+        return array_values(array_filter(array_map('wc_get_page_id', ['cart', 'checkout', 'myaccount']), static fn (int $id) => $id > 0));
+    }
+
+    private static function requestPath(): string
+    {
+        $uri = '/' . ltrim((string) ($_SERVER['REQUEST_URI'] ?? '/'), '/');
+        return (string) wp_parse_url($uri, PHP_URL_PATH);
+    }
+
+    private static function cartAction(): bool
+    {
+        return array_intersect_key($_GET, array_flip([
+            'add-to-cart', 'wc-ajax', 'wc-api', 'session', 'remove_coupon', 'remove_item', 'undo_item',
+        ])) !== [];
+    }
+
+    /**
+     * The browser owns cart presentation on shared pages. Before Woo initializes its session,
+     * make a guest page render the empty cart, regardless of which cookies the browser sent.
+     */
+    private static function isolateSharedCart(): void
+    {
+        if (!in_array($_SERVER['REQUEST_METHOD'] ?? '', ['GET', 'HEAD'], true) || is_admin() || wp_doing_ajax()
+            || WC()->is_rest_api_request() || is_user_logged_in() || self::cartAction()
+            || !AppRouter::instance()?->serves(self::requestPath())) {
+            return;
+        }
+        $requestedId = (int) ($_GET['page_id'] ?? $_GET['p'] ?? 0);
+        if ($requestedId > 0 && in_array($requestedId, self::shopperPageIds(), true)) { return; }
+        unset($_COOKIE[self::sessionCookie()], $_COOKIE['woocommerce_cart_hash'], $_COOKIE['woocommerce_items_in_cart']);
+    }
+
+    /** Woo's session cookie name, as WC_Session_Handler builds it. */
+    private static function sessionCookie(): string
+    {
+        return (string) apply_filters('woocommerce_cookie', 'wp_woocommerce_session_' . COOKIEHASH);
+    }
+
+    /** Publish one static asset URL. The storefront decides whether to prefetch it after reading the cart. */
+    private static function checkoutPrefetchAsset(Plugin $plugin): void
+    {
+        if (self::privateRequest($plugin) || !AppRouter::instance()?->serves(self::requestPath())) { return; }
+        // Woo's block asset registry is internal to Woo: a page without the hint is still a whole page.
+        try {
+            $assets = Blocks::container()->get(BlockAssets::class);
+            $script = $assets->get_script_data($assets->get_block_asset_build_path('checkout-frontend'));
+        } catch (\Throwable) {
+            return;
+        }
+        printf('<meta name="tp-woo-checkout-script" content="%s">' . "\n", esc_url(add_query_arg('ver', $script['version'], $script['src'])));
     }
     /** Only native Woo endpoints may extend checkout's Page route. */
     public static function routePath(Plugin $plugin, string $path): string

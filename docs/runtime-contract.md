@@ -920,6 +920,21 @@ nothing is collected or announced.
   sets a cookie before its headers go out is private too, as Batcache refuses to
   keep one: a plugin that starts a PHP session on every request (`PHPSESSID`)
   turns page caching off for the site.
+- **WooCommerce carts:** Woo's cart cookies (`wp_woocommerce_session_*`,
+  `woocommerce_cart_hash`, `woocommerce_items_in_cart`) are not viewer cookies. A guest's
+  GET of an app page renders without them (`Commerce\Module::isolateSharedCart`), so the
+  page is the same bytes with or without a cart, sends the shared policy and sets no
+  cookie; the browser reads the cart from the Store API. Cart, checkout, receipt,
+  order-pay and account paths, Woo's cart actions in the query string, and Store API
+  cart, checkout and batch answers are `private, no-store` with `A8C-Edge-Cache:
+  no-cache`; those paths are never prebuilt. A page the theme renders keeps the cart
+  session, and Woo prints cart-dependent prefetch links there, so it is private for a
+  request carrying the session cookie. **Host limit:** Batcache skips every request
+  with a `wp*` cookie in `advanced-cache.php`, before plugins load, so a visitor holding
+  `wp_woocommerce_session_*` always misses Batcache and is rendered by PHP. A prebuilt
+  file is still served to that visitor, and the response still carries the shared
+  headers for an edge that does not bypass on the cookie. A `Cart-Token` cart has no
+  cookie and misses nothing.
 - **Batcache and signed-in requests:** Batcache keeps what any request without a
   `wp*` cookie printed, whatever its `Cache-Control`. A request that runs as a
   user (an application password, a bearer token) calls `batcache_cancel()` as

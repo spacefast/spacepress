@@ -5,7 +5,9 @@ declare(strict_types=1);
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
-$site = wpSite('commerce', ['wpContent' => $argv[1], 'users' => ['ed' => 'editor'], 'server' => true]);
+$site = wpSite('commerce', ['wpContent' => $argv[1], 'users' => ['ed' => 'editor'], 'server' => true, 'muPlugins' => [
+    'cache-probe' => '<?php function batcache_cancel(): void { if (!headers_sent()) { header("X-Test-Batcache-Cancel: yes"); } }',
+]]);
 $plugin = $site->plugin();
 $db = $site->app()->db;
 $admin = new \TypedPress\Viewer(['id' => $site->userId('admin'), 'name' => 'Admin', 'role' => 'admin']);
@@ -64,6 +66,155 @@ eq('custom Woo endpoint resolves to checkout', \TypedPress\Commerce\Module::rout
 eq('custom Woo endpoint populates the canonical query variable', get_query_var('order-pay'), '123');
 delete_option('woocommerce_checkout_pay_endpoint');
 check('Woo checkout is a real Page containing its native block', ($checkout = \TypedPress\Commerce\Module::checkoutPage($plugin)) > 0 && has_block('woocommerce/checkout', get_post($checkout)));
+$checkoutLookups = 0;
+wp_cache_delete($checkout, 'posts');
+$countLookup = static function (string $sql) use (&$checkoutLookups, $checkout, $wpdb): string {
+    if (str_contains($sql, "FROM $wpdb->posts WHERE ID = $checkout")
+        || (str_contains($sql, $wpdb->postmeta) && str_contains($sql, \TypedPress\Wp\ContentPages::META))) {
+        $checkoutLookups++;
+    }
+    return $sql;
+};
+add_filter('query', $countLookup);
+for ($i = 0; $i < 3; $i++) {
+    eq('Woo resolves the stored checkout Page', wc_get_page_id('checkout'), $checkout);
+}
+remove_filter('query', $countLookup);
+eq('repeated checkout Page reads make one cold post lookup', $checkoutLookups, 1);
+
+$account = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Customer account',
+    'post_name' => 'customer-account', 'post_content' => '[woocommerce_my_account]']);
+update_option('woocommerce_myaccount_page_id', $account);
+check('the native account permalink and its endpoints are private', \TypedPress\Commerce\Module::privatePath($plugin, '/customer-account/orders/'));
+$guestRequest = static function ($client, string $path, array $headers = [], ?array $data = null) use ($site): array {
+    $responseHeaders = [];
+    curl_setopt_array($client, [
+        CURLOPT_URL => $site->url() . $path,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_POST => $data !== null,
+        CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$responseHeaders): int {
+            $parts = explode(':', $line, 2);
+            if (count($parts) === 2) { $responseHeaders[strtolower($parts[0])] = trim($parts[1]); }
+            return strlen($line);
+        },
+    ]);
+    if ($data !== null) { curl_setopt($client, CURLOPT_POSTFIELDS, wp_json_encode($data)); }
+    $body = curl_exec($client);
+    return [(int) curl_getinfo($client, CURLINFO_RESPONSE_CODE), $responseHeaders, $body];
+};
+$anonymousHttp = curl_init();
+$cartHttp = curl_init();
+curl_setopt($cartHttp, CURLOPT_COOKIEFILE, '');
+$storeApi = '/wp-json/wc/store/v1/cart';
+[, $nonceHeaders] = $guestRequest($cartHttp, $storeApi);
+[$cartStatus, $storeHeaders, $cartBody] = $guestRequest($cartHttp, $storeApi . '/add-item',
+    ['Content-Type: application/json', 'Nonce: ' . ($nonceHeaders['nonce'] ?? '')], ['id' => $mug['id']]);
+eq('Woo adds the fixture product to an actual guest session', [$cartStatus, json_decode((string) $cartBody, true)['items_count'] ?? null], [201, 1]);
+check('the guest session returned a cookie on a private Store API response', isset($storeHeaders['set-cookie'])
+    && str_contains($storeHeaders['cache-control'] ?? '', 'no-store') && ($storeHeaders['a8c-edge-cache'] ?? '') === 'no-cache');
+[, , $persistedCart] = $guestRequest($cartHttp, $storeApi);
+eq('Woo restores the guest cart from the cookie jar', json_decode((string) $persistedCart, true)['items_count'] ?? null, 1);
+foreach (['/shop/', '/shop/home/', '/products/ceramic-mug/'] as $path) {
+    [$guestStatus, $guestHeaders, $guestHtml] = $guestRequest($anonymousHttp, $path);
+    [$cartStatus, $cartHeaders, $cartHtml] = $guestRequest($cartHttp, $path);
+    check("catalog HTML is byte-identical with a cart at $path", $guestStatus === 200 && $cartStatus === 200 && $guestHtml === $cartHtml);
+    check("there are no cart-dependent PHP prefetch links at $path", !str_contains((string) $cartHtml, "rel='prefetch'"));
+    $sharedHeaders = array_flip(['cache-control', 'a8c-edge-cache', 'x-test-batcache-cancel']);
+    check("edge and Batcache policy is shared with and without cart cookies at $path",
+        str_starts_with($guestHeaders['cache-control'] ?? '', 'public,')
+        && ($guestHeaders['cache-control'] ?? '') === ($cartHeaders['cache-control'] ?? null)
+        && ($guestHeaders['a8c-edge-cache'] ?? '') === 'cache' && ($cartHeaders['a8c-edge-cache'] ?? '') === 'cache'
+        && !isset($guestHeaders['x-test-batcache-cancel']) && !isset($cartHeaders['x-test-batcache-cancel']),
+        [array_intersect_key($guestHeaders, $sharedHeaders), array_intersect_key($cartHeaders, $sharedHeaders)]);
+    check("neither shared response sets a cookie at $path", !isset($guestHeaders['set-cookie']) && !isset($cartHeaders['set-cookie']));
+}
+// A page the theme renders is not an app page: Woo keeps the cart session there and prints its
+// cart-dependent prefetch links, so that answer is the cart visitor's alone.
+$themePage = '/' . get_page_uri(wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Returns', 'post_name' => 'returns', 'post_content' => 'Thirty days.'])) . '/';
+[$themeStatus, $themeHeaders, $themeHtml] = $guestRequest($anonymousHttp, $themePage);
+[$themeCartStatus, $themeCartHeaders, $themeCartHtml] = $guestRequest($cartHttp, $themePage);
+eq('Woo prints its cart prefetch links on a theme page only for a cart', [substr_count((string) $themeHtml, "rel='prefetch'") === 0, substr_count((string) $themeCartHtml, "rel='prefetch'") > 0], [true, true]);
+check('a theme page is not private for a visitor without a cart', $themeStatus === 200 && !str_contains($themeHeaders['cache-control'] ?? '', 'no-store'), $themeHeaders);
+check('a theme page is private for a cart cookie visitor', $themeCartStatus === 200 && str_contains($themeCartHeaders['cache-control'] ?? '', 'private, no-store')
+    && ($themeCartHeaders['a8c-edge-cache'] ?? '') === 'no-cache' && isset($themeCartHeaders['x-test-batcache-cancel']), $themeCartHeaders);
+// Woo turns `?wc_error=` into a session notice: whatever it does with it, a shared answer sets no cookie.
+foreach ([$anonymousHttp, $cartHttp] as $client) {
+    [, $noticeHeaders] = $guestRequest($client, '/shop/?wc_error=Sold+out');
+    check('a catalog address with a Woo notice sets no cookie on a shared answer',
+        !isset($noticeHeaders['set-cookie']) || str_contains($noticeHeaders['cache-control'] ?? '', 'private, no-store'), $noticeHeaders);
+}
+[, , $afterCart] = $guestRequest($cartHttp, $storeApi);
+eq('the cart is intact after shared pages rendered without it', json_decode((string) $afterCart, true)['items_count'] ?? null, 1);
+foreach (['/cart/', '/checkout/', '/checkout/order-received/9999/', '/customer-account/', '/customer-account/orders/'] as $path) {
+    [, $headers] = $guestRequest($cartHttp, $path);
+    check("Woo shopper route is private at $path", str_contains($headers['cache-control'] ?? '', 'private, no-store')
+        && ($headers['a8c-edge-cache'] ?? '') === 'no-cache' && isset($headers['x-test-batcache-cancel']));
+}
+eq('the native account page has no Markdown twin', $guestRequest($cartHttp, '/customer-account.md')[0], 404);
+$prebuilt = \TypedPress\Render\Prebuilt::dir();
+if (!is_dir($prebuilt . '/products')) { mkdir($prebuilt . '/products', 0777, true); }
+file_put_contents($prebuilt . '/products/ceramic-mug.html', 'prebuilt product');
+file_put_contents($prebuilt . '/cart.html', 'prebuilt cart should never be served');
+file_put_contents($prebuilt . '/customer-account.html', 'prebuilt account should never be served');
+[, $guestHeaders, $guestHtml] = $guestRequest($anonymousHttp, '/products/ceramic-mug/');
+[, $cartHeaders, $cartHtml] = $guestRequest($cartHttp, '/products/ceramic-mug/');
+check('prebuilt serves the same public file with and without a Woo session',
+    $guestHtml === 'prebuilt product' && $cartHtml === $guestHtml && ($guestHeaders['x-typedpress-prebuilt'] ?? '') === '1'
+    && ($cartHeaders['x-typedpress-prebuilt'] ?? '') === '1' && ($cartHeaders['a8c-edge-cache'] ?? '') === 'cache');
+foreach (['/cart/', '/customer-account/'] as $path) {
+    [, $headers] = $guestRequest($cartHttp, $path);
+    check("prebuilt falls through to the private response at $path", !isset($headers['x-typedpress-prebuilt'])
+        && str_contains($headers['cache-control'] ?? '', 'no-store'));
+}
+// A cart with no cookie at any step: Woo's Cart-Token names the session and replaces the nonce.
+$tokenHttp = curl_init();
+[, $tokenHeaders] = $guestRequest($tokenHttp, $storeApi);
+$cartToken = $tokenHeaders['cart-token'] ?? '';
+check('Woo hands a cookieless visitor a cart token and no cookie', $cartToken !== '' && !isset($tokenHeaders['set-cookie']));
+[$tokenStatus, $tokenHeaders, $tokenBody] = $guestRequest($tokenHttp, $storeApi . '/add-item',
+    ['Content-Type: application/json', 'Cart-Token: ' . $cartToken], ['id' => $mug['id']]);
+eq('a token cart write needs no nonce and no cookie', [$tokenStatus, json_decode((string) $tokenBody, true)['items_count'] ?? null], [201, 1]);
+check('a token cart answer is private and sets no session cookie', !str_contains($tokenHeaders['set-cookie'] ?? '', 'wp_woocommerce_session_')
+    && str_contains($tokenHeaders['cache-control'] ?? '', 'no-store') && ($tokenHeaders['a8c-edge-cache'] ?? '') === 'no-cache');
+$cartToken = $tokenHeaders['cart-token'] ?? '';
+[, , $tokenCart] = $guestRequest(curl_init(), $storeApi, ['Cart-Token: ' . $cartToken]);
+eq('the token alone restores the cart on a new connection', json_decode((string) $tokenCart, true)['items_count'] ?? null, 1);
+[, , $noToken] = $guestRequest(curl_init(), $storeApi);
+eq('a request with neither token nor cookie has an empty cart', json_decode((string) $noToken, true)['items_count'] ?? null, 0);
+// What the client reads as "this token is no longer accepted": Woo ignores it and asks the write for a nonce.
+$expired = \Automattic\WooCommerce\StoreApi\Utilities\JsonWebToken::create(['user_id' => 't_expired', 'exp' => time() - 60, 'iss' => 'store-api'], '@' . wp_salt());
+[$expiredStatus, , $expiredBody] = $guestRequest(curl_init(), $storeApi . '/add-item',
+    ['Content-Type: application/json', 'Cart-Token: ' . $expired], ['id' => $mug['id']]);
+eq('an expired cart token is refused as a missing nonce', [$expiredStatus, json_decode((string) $expiredBody, true)['code'] ?? null], [401, 'woocommerce_rest_missing_nonce']);
+foreach (['/shop/', '/products/ceramic-mug/'] as $path) {
+    [, $headers, $html] = $guestRequest(curl_init(), $path, ['Cart-Token: ' . $cartToken]);
+    check("a token cart visitor gets the shared page at $path", $html === $guestRequest($anonymousHttp, $path)[2]
+        && str_starts_with($headers['cache-control'] ?? '', 'public,') && !isset($headers['set-cookie']));
+}
+// A declared external frontend may call the Store API before it holds a token; nothing else is opened to it.
+$requestUri = $_SERVER['REQUEST_URI'];
+$_SERVER['REQUEST_URI'] = '/wp-json/wc/store/v1/cart';
+eq('an external frontend is an allowed Store API origin, with its port', [
+    \TypedPress\Commerce\Module::storefrontOrigins(['https://shop.example.test'], 'https://astro.example.test/store/'),
+    \TypedPress\Commerce\Module::storefrontOrigins([], 'http://localhost:4321'),
+], [['https://shop.example.test', 'https://astro.example.test'], ['http://localhost:4321']]);
+$_SERVER['REQUEST_URI'] = '/wp-admin/admin-ajax.php';
+eq('an external frontend is not an allowed origin outside the Store API', \TypedPress\Commerce\Module::storefrontOrigins([], 'https://astro.example.test'), []);
+$_SERVER['REQUEST_URI'] = $requestUri;
+// Woo's own handoff to the Checkout Block: `?session=` copies the token's cart into a new cookie session.
+$handoffHttp = curl_init();
+curl_setopt($handoffHttp, CURLOPT_COOKIEFILE, '');
+[$handoffStatus, $handoffHeaders] = $guestRequest($handoffHttp, '/checkout/?session=' . rawurlencode($cartToken));
+check('the checkout link starts a cookie session on a private response', $handoffStatus === 200
+    && str_contains($handoffHeaders['set-cookie'] ?? '', 'wp_woocommerce_session_')
+    && str_contains($handoffHeaders['cache-control'] ?? '', 'private, no-store') && ($handoffHeaders['a8c-edge-cache'] ?? '') === 'no-cache');
+[, , $handoffCart] = $guestRequest($handoffHttp, $storeApi);
+eq('the cookie session checkout reads holds the token cart', json_decode((string) $handoffCart, true)['items_count'] ?? null, 1);
+[, $sessionHeaders] = $guestRequest(curl_init(), '/shop/?session=' . rawurlencode($cartToken));
+check('a catalog address carrying a session token is never shared', str_contains($sessionHeaders['cache-control'] ?? '', 'private, no-store')
+    && ($sessionHeaders['a8c-edge-cache'] ?? '') === 'no-cache');
 $actionsOnly = '<!-- wp:woocommerce/checkout --><!-- wp:woocommerce/checkout-actions-block /--><!-- /wp:woocommerce/checkout -->';
 set_query_var('order-pay', ''); unset($GLOBALS['wp']->query_vars['order-pay']);
 eq('Woo renders no form for an actions-only checkout', trim(do_blocks($actionsOnly)), '');

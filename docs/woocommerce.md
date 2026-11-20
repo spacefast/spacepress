@@ -106,17 +106,109 @@ Historical order tax, coupon, item and refund snapshots remain readable.
 
 ## Cart, checkout and agents
 
-The generated client exports `cart` and `createCartClient`: get/add/update/remove,
-update the customer address, select shipping, and subscribe to updates. It calls Woo's
-same-origin Store API with the Woo session cookie and rotating nonce. It uses no Cart-Token
-or TypedPress shopper session. Money normalizes minor units to exact decimal strings.
+The generated client exports `cart` and `createCartClient` for reading and updating Woo's
+cart, setting the destination, selecting shipping, and subscribing to updates. Cart values
+use exact decimal strings. The session is Woo's own in both modes: TypedPress adds no
+session store and no shopper session.
 
-Checkout is a public `page.md` containing the native Woo Checkout Block. It remains a real
+| | Cookie session (default on the store's origin) | Token session (default for another origin) |
+|---|---|---|
+| Names the cart | Woo's `wp_woocommerce_session_*` cookie | Woo's `Cart-Token` header, kept by the browser |
+| Guards a write | Woo's rotating `Nonce` header | the token; Woo asks for no nonce |
+| Checkout | the native Checkout Block | `checkout()` through the Store API, or `checkoutLink()` to the Block |
+| Batcache | misses for the visitor (see below) | not affected |
+
+`createCartClient()` picks the mode from `base`: a Store API on the page's own origin gets
+the cookie session, so the Checkout Block shows the cart the page filled. An absolute `base`
+on another origin gets the token session, because a browser sends that origin no Woo cookie.
+`session: "token"` selects the token session on the same origin too, and `session: "cookie"`
+with another origin throws when the client is created.
+
+### Carts without cookies
+
+```ts
+import { createCartClient } from "./tp/_generated/client";
+
+const cart = createCartClient({ base: "https://shop.example.com/wp-json/wc/store/v1", session: "token" });
+await cart.add(productId);
+```
+
+Naming `session: "token"` also types the two checkout methods below, which a cookie cart
+does not have.
+
+Every request goes out with `credentials: "omit"`. The first read returns Woo's token; each
+later request sends it and stores the one Woo returns. The token lives in `localStorage`
+under a key naming the Store API root, so a reload and other tabs see the same cart. Where
+storage is blocked the token stays in the client, for as long as the page stays open. A
+token lasts as long as Woo's session (`wc_session_expiration`, 48 hours by default). Woo
+ignores an expired one: a write then starts a new, empty cart, and `checkout()` throws
+`cart_token_expired` instead of placing an order for nothing.
+
+A token cart reaches checkout in one of two ways, both Woo's:
+
+- **`cart.checkout(input)`** posts the addresses, payment method and gateway fields to
+  Woo's `POST /wc/store/v1/checkout` with the same token. No cookie is set at any step.
+  Read `payment_result` for the gateway's status and the address to continue at. The
+  storefront draws its own checkout form.
+- **`cart.checkoutLink(checkoutUrl)`** returns the store's checkout address with Woo's
+  `?session=<token>`. Opening it makes Woo copy the token's cart into a new cookie session
+  (`WC_Session_Handler::init_session_from_request`), which the native Checkout Block
+  reads. That page therefore needs cookies; the storefront before it does not. Woo copies
+  the cart and leaves out the customer's address.
+
+Woo answers another origin only when the request carries a valid token or WordPress allows
+the origin. The first read has no token yet. A site whose config sets `frontend` to its
+external address has that origin allowed for Store API requests, and only for those. Any
+other origin is added through WordPress's `allowed_http_origins` filter. With `frontend`
+set, WordPress redirects its own pages to that site, the checkout page included, so such a
+storefront places orders with `checkout()`.
+[Woo Cart Tokens](https://developer.woocommerce.com/docs/apis/store-api/cart-tokens/) and
+[Woo Checkout API](https://developer.woocommerce.com/docs/apis/store-api/resources-endpoints/checkout/)
+
+### Shared pages and private routes
+
+The checkout source is a `page.md` containing the native Woo Checkout Block. It remains a real
 WordPress Page inside the app layout. Receipt and order-pay endpoints use that same Page;
 full-page navigation initializes Woo's scripts. Removing the checkout block or trashing
-its Page is refused. Cart, checkout and receipts are private/no-store and noindex; catalog
-HTML stays public for a guest with a Woo cookie. Native stock changes purge item and listing
-reads through TypedPress's usual purge hook.
+its Page is refused.
+
+Catalog and product pages are the same bytes for every guest, with or without a cart:
+
+- A guest's GET of an app page starts Woo without the cart cookies, so nothing Woo prints
+  there depends on a cart. That removes the about 50 `<link rel="prefetch">` tags Woo's
+  block assets add when the cart has items, and any cart notice or saved-cart output.
+  Server code in such a page sees an empty `WC()->cart` for a guest; read the cart in the
+  browser. The stored cart is not touched.
+- The cart count and the mini cart are drawn by the browser from the Store API. The page
+  carries one `<meta name="tp-woo-checkout-script">` with the checkout script's address,
+  the same for everyone; the generated mini cart adds a prefetch for it once the cart has
+  an item.
+- These pages send the shared policy (`public`, `A8C-Edge-Cache: cache`) to a cart visitor
+  as to anyone, set no cookie, and are served from prebuilt files when the page is prebuilt.
+
+One page kind keeps cart-dependent output: a page the theme renders rather than `tp/app`
+(a WordPress Page with no app route, a post in a theme template). TypedPress does not
+start Woo without the cart there, because a theme or a Woo block on such a page may show
+the cart. Woo's `AssetsController::add_resource_hints` then prints its prefetch links for
+a visitor with items. Those responses are `private, no-store` for any request carrying
+Woo's session cookie, and unchanged for everyone else.
+
+Cart, checkout, receipts, order-pay, my-account and Woo's cart actions (`?add-to-cart=`,
+`?wc-ajax=`, `?session=` and the like) are `private, no-store` with `A8C-Edge-Cache:
+no-cache`, call `batcache_cancel()`, are never prebuilt and have no Markdown twin. So are
+`/wp-json/wc/store/*` cart, checkout and batch answers. Only these responses set Woo's
+cookies. Native stock changes purge item and listing reads through TypedPress's usual
+purge hook.
+
+**Host limit: Batcache.** Batcache decides in `advanced-cache.php`, before any plugin
+loads, and skips its cache for every request carrying a cookie whose name starts with
+`wp`. Woo's `wp_woocommerce_session_*` is one. A cookie-session visitor with a cart is
+therefore a Batcache miss on every page, and PHP renders the catalog for them. TypedPress
+keeps Woo's cookie name, because the Checkout Block and Woo's extensions read it. Two
+paths still give that visitor the shared copy. A prebuilt page is answered from its file
+by PHP, whatever Batcache decided. And the response carries the shared cache headers, so
+an edge in front of Batcache that does not bypass on that cookie serves its stored copy.
+A token cart has no cookie, so it misses nothing.
 
 Scoped agent credentials use app abilities. Product/term writes require `--write`; the
 entire order kind additionally requires `--personal`, and its tools are hidden without it.

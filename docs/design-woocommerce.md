@@ -354,22 +354,30 @@ they are simple products. Variation authoring and sync are deferred.
 
 ### Cart session
 
-**Decision:** the cart has one session, Woo's own. The storefront and Woo are the same origin,
-so the browser calls Woo's Store API (`/wp-json/wc/store/v1/cart/*`) directly with Woo's
-session cookie and Store API nonce. The Checkout Block reads the same cookie, so the cart a
-shopper fills on a TypedPress page is the cart checkout shows, with nothing to hand over.
+**Decision:** the cart has one session store, Woo's, reached two ways through the Store
+API. TypedPress adds no cart routes, no session table and no shopper session.
 
-- TypedPress adds a typed cart client over those routes, reusing the Woo Store SDK's cart
-  types. It adds no cart actions, no cart routes under `/__tp/api/v1` and no second session.
-- The Store API uses Woo's cookie session unless a request carries a `Cart-Token` header,
-  and a cart write needs a `Nonce` header. Every cart response returns a fresh one, so the
-  client reads the cart once before its first write and never needs a nonce in the page's
-  HTML. Cart responses are already `Cache-Control: no-store`.
-- The SDK's `woo-storefront` plugin solves the cross-origin case: a `Cart-Token` per visitor
-  and a signed checkout link that adopts that token's session into Woo's cookie. Same origin
-  needs neither, so v1 does not ship the token route, the signed link or its secret.
-- Cart state renders in the browser, in client components. A server-rendered page never
-  contains a shopper's cart, so anonymous page renders stay cacheable.
+- **Cookie session**, the default on the store's own origin: Woo's session cookie and
+  rotating nonce. The native Checkout Block reads the same cookie, so the cart a shopper
+  fills on a TypedPress page is the cart checkout shows.
+- **Token session**, the default for a Store API on another origin: no cookie. Woo's
+  `Cart-Token` header names the session (`StoreApi\SessionHandler`, the same
+  `woocommerce_sessions` table) and stands in for the nonce
+  (`AbstractCartRoute::requires_nonce`). The browser keeps the token in `localStorage`,
+  or in memory.
+- **A token cart reaches checkout** through `POST /wc/store/v1/checkout` with the token,
+  with no cookie at all, or through Woo 11.3's `?session=<token>` on the checkout page,
+  where `WC_Session_Handler::init_session_from_request` copies a guest token's cart into a
+  new cookie session for the Checkout Block. The Block itself has no token mode, so that
+  page needs cookies. An expired token is ignored by Woo; the client starts a new cart
+  for a write and refuses checkout.
+
+Guest TypedPress pages eligible for shared caching start Woo without the cart cookies
+(`Commerce\Module::isolateSharedCart`). This keeps Woo's cart-dependent prefetch hints,
+saved cart items and notices out of shared HTML. The generated storefront reads its cart in
+the browser and prefetches the checkout script once the cart has an item. Cart and checkout
+Store API responses and shopper pages are private and no-store.
+[Storefront setup](woocommerce.md#cart-checkout-and-agents)
 
 ### Categories and tags reuse taxonomies
 
@@ -672,10 +680,12 @@ them.
   product's page and the listings that show it, in the one announcement the request makes.
 - **Cart, checkout and order-received** answer `private, no-store`, like any page that is
   rendered for one visitor.
-- **Woo's session cookie is not a sign-in.** A guest with a cart is still served the cached
-  catalog page, which is correct because the cart is drawn in the browser. A host must not
-  bypass or vary its page cache on `wp_woocommerce_session_*`, and must never cache
-  `/wp-json/wc/store/*`.
+- **Woo's session cookie is not a sign-in.** A guest with a cart gets the same catalog page
+  as anyone, with the shared cache headers, because the cart is drawn in the browser. An
+  edge need not bypass or vary on `wp_woocommerce_session_*`, and must never cache
+  `/wp-json/wc/store/*`. Batcache is the exception a host cannot configure away from
+  TypedPress: it skips every request with a `wp*` cookie before plugins load, so a
+  cookie-session cart visitor is rendered by PHP each time. A token cart has no cookie.
 
 ### Checkout presentation
 

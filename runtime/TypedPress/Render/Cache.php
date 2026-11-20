@@ -100,7 +100,7 @@ final class Cache
 
     /** The WP Cloud edge's per-response cache switch. */
     public const EDGE_HEADER = 'A8C-Edge-Cache';
-    private const PRIVATE = 'private, no-store, max-age=0';
+    public const PRIVATE = 'private, no-store, max-age=0';
 
     /**
      * The request carries a cookie a render may answer differently for: a WordPress or Identity

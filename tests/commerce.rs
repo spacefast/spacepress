@@ -233,6 +233,9 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     let duplicate = source.replace(r#"countries: ["PL"]"#, r#"countries: ["PL", "PL"]"#);
     assert_ne!(source, duplicate);
     std::fs::write(shop, duplicate).unwrap();
+    let detail = project.path().join("tp/app/(shop)/products/[slug]/page.tsx");
+    let source = std::fs::read_to_string(&detail).unwrap();
+    std::fs::write(detail, format!("{source}\nexport const prerender = true;\n")).unwrap();
     success(cli("build", project.path()));
     let snapshot: serde_json::Value =
         serde_json::from_slice(&std::fs::read(project.path().join("tp/_generated/migrations/snapshot.json")).unwrap())
@@ -257,6 +260,7 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     );
     let out = Command::new("php")
         .args(["-d", "memory_limit=1G"])
+        .env("TP_WP_THEMES", "1")
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/commerce_test.php"))
         .arg(project.path().join("tp/dist/wp-content"))
         .output()

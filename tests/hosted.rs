@@ -220,7 +220,7 @@ fn hosted_bundles_enforce_the_import_fence() {
     write(&project, "tp/message.ts", "export const message = 'kept';");
     let bundle = work.path().join("bundle");
     typedpress::bundle::sources(&project, &bundle).unwrap();
-    // Rewrite the capture to the layout an older compiler took: the helper at the project root.
+    // Rewrite the capture so the helper sits at the project root, outside tp/.
     let app = bundle.join(typedpress::bundle::APP_FILE);
     let mut captured: serde_json::Value = serde_json::from_slice(&fs::read(&app).unwrap()).unwrap();
     let old = |s: &str| {

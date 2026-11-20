@@ -8,10 +8,9 @@ use TypedPress\Jobs\Jobs;
 
 /**
  * `mail.send(message)` from "typedpress": queue one email inside the caller's transaction and hand it to
- * WordPress after commit, as the original runtime's `ctx.email.send` did through its outbox. A
- * rollback sends nothing; a failed hand-off is retried by the job runner.
+ * WordPress after commit. A rollback sends nothing; a failed hand-off is retried by the job runner.
  *
- * The message is the original `EmailMessage`: `from`, `to`, `subject`, `text`/`html`, `cc`, `bcc`,
+ * The message has `from`, `to`, `subject`, `text`/`html`, `cc`, `bcc`,
  * `replyTo`, `headers`. It is normalized and checked here, before queueing, so a bad address fails
  * the request instead of a background attempt.
  *
@@ -231,7 +230,7 @@ final class Mail
         return array_map(fn (mixed $a, int $i): array => self::address($a, $pointer . '/' . $i), $list, array_keys($list));
     }
 
-    /** `noreply@` the site's own host, the original runtime's default sender. */
+    /** The default sender: `noreply@` the site's own host. */
     private static function defaultSender(): array
     {
         $domain = Env::get('TP_MAIL_SENDER_DOMAIN');

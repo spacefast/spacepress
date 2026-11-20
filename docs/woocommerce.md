@@ -131,7 +131,7 @@ settings, access scopes, MCP visibility, stock purges and historical order reads
 `docs-site/tests/playground/commerce.test.ts` clicks cart/shipping/COD checkout and a dummy
 paid gateway, verifies decline/retry and downloads, and drives the real sync CLI.
 
-Spacefast must complete its [host checklist](../migrate/docs/spacefast-host-checklist.md#commerce-host-qualification)
+Spacefast must complete its [host checklist](spacefast-host-checklist.md#commerce-host-qualification)
 before deployment: Woo provisioning, a maximum 20-character table prefix, isolated preview
 databases, mail/callbacks/jobs and the required cache exclusions. Playground proof does not
 qualify arbitrary payment gateways or the live host. The complete v1 decisions and deferred

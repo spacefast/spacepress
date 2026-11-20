@@ -107,7 +107,6 @@ Host contract version: **2** (`hostContract` in the manifest).
 | `/identity/*` | TypedPress Identity's issuer and pages, when the app mounts identity |
 | `/wp-json/typedpress-identity/v1/*` | TypedPress Identity's REST API |
 | `/wp-admin/new/*` | TypedPress Admin, unless the app sets `admin: false`: served by wp-admin's `admin.php?page=typedpress-admin`. Apache applies the plugin's `.htaccess` rule; any other server must send a path that is not a file to WordPress's `index.php`, which redirects it to `admin.php?page=typedpress-admin&p=<route>` |
-| `/typedpress-admin/*` | the admin's earlier address, redirected to `/wp-admin/new/*` |
 
 The app API is `/__tp/api/v1`; actions are `POST /__tp/api/v1/actions/<name>`. The generated client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.
 
@@ -131,7 +130,6 @@ The app API is `/__tp/api/v1`; actions are `POST /__tp/api/v1/actions/<name>`. T
 | `tp_prebuild_url` | filter | the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: "server"` with `prerender`) |
 | `tp_identity_providers` | filter | OpenID Connect sign-in providers TypedPress Identity offers |
 | `tp_identity_rest_cookie_auth` | filter | lets the identity session cookie authenticate the app's REST API (a host serving its own frontend) |
-| `tp_identity_session_cookie_aliases` | filter | other cookie names whose session a migrated site keeps |
 | `tp_fetch_allow_address` | filter | allows an outgoing `fetch` to an address TypedPress denies by default |
 | `tp_runtime_loaded` | action | the runtime has booted; register commands and seams after it |
 
@@ -158,7 +156,7 @@ A build with prebuilt pages writes their HTML and Markdown below `wp-content/cac
 
 ### Table prefix
 
-TypedPress puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}tp_<table>`, system tables `{prefix}tp__<name>`, identity tables `{prefix}tp_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads. An app's `existingTable` must be under that prefix (and not WordPress's, TypedPress's or Action Scheduler's own table, nor under another site's longer prefix, which need not end in `_`), or the Space's own Zero 0.8 table `sf_<space>_<table>_<10 hex>` with the converter's digest of that Space id and table name. The Space id comes from the host: `spacefast_content_space_id()` when it exists, else the `TP_SPACE_ID` constant defined before WordPress loads; on a `sfz_<24 hex>_` prefix it must also be the Space that prefix was made from. With neither, no 0.8 table binds. The longest name TypedPress adds after it is 29 characters, so a prefix may be at most 35 characters.
+TypedPress puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}tp_<table>`, system tables `{prefix}tp__<name>`, identity tables `{prefix}tp_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads. An app's `existingTable` must be under that prefix, and not WordPress's, TypedPress's, Action Scheduler's, identity's or WooCommerce's own table, nor under another site's longer prefix, which need not end in `_`. The longest name TypedPress adds after it is 29 characters, so a prefix may be at most 35 characters.
 
 ### Manifest `host` object
 
@@ -173,8 +171,7 @@ the ordinary 35-character limit shown below.
     "/__tp/*",
     "/identity/*",
     "/wp-json/typedpress-identity/v1/*",
-    "/wp-admin/new/*",
-    "/typedpress-admin/*"
+    "/wp-admin/new/*"
   ],
   "apiPrefix": "/__tp/api/v1",
   "actionPrefix": "/__tp/api/v1/actions/",
@@ -190,7 +187,6 @@ the ordinary 35-character limit shown below.
     "tp_prebuild_url",
     "tp_identity_providers",
     "tp_identity_rest_cookie_auth",
-    "tp_identity_session_cookie_aliases",
     "tp_fetch_allow_address",
     "tp_runtime_loaded"
   ],

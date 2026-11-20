@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Count `typedpress-migrate --from zero app` outcomes over a corpus of 0.8 projects.
 
-Usage: scripts/migrate-census.py [--zero target/debug/typedpress-migrate] [--json] [--flag <converter flag>]... [corpus-dir ...]
+Usage: migrate/zero/migrate-census.py [--zero target/debug/typedpress-migrate] [--json] [--flag <converter flag>]... [corpus-dir ...]
 
 An app is a 0.8 project directory, or a stored finalize payload: a directory with
 `finalize.json` (the `{ artifact, endpointSources }` a 0.8 publish kept) and, when the

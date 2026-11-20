@@ -347,11 +347,9 @@ at priority 0) commits without an action and gets one once Action Scheduler is
 ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
 hourly maintenance action, gives each waiting job that has no `tp_job` action
 of any status one, at most 1000 per run. That covers a request that died before
-Action Scheduler was ready, deleted actions, and the jobs that runtimes before
-this one left in `tp__outbox`. A job whose action an administrator cancelled
-in Tools > Scheduled Actions stays as it is; `wp typedpress jobs cancel` cancels a
-job. The `tp__outbox` table, where each job's ticket waited until after
-commit, is no longer written; its rows stay
+Action Scheduler was ready and deleted actions. A job whose action an
+administrator cancelled in Tools > Scheduled Actions stays as it is;
+`wp typedpress jobs cancel` cancels a job
 (`tests/php/jobs_transaction_cases.php`, run on SQLite and MariaDB).
 
 ## Validation and coercion (input → stored)
@@ -505,15 +503,14 @@ through `SystemTables` when needed. Registration itself performs no app I/O.
 - `schemaDescribe(fn)` transforms the public schema description.
 
 `SystemTables::register(name, statements)` assigns one owner per table. The
-list contains idempotent SQL strings (`{prefix}` is the WordPress table prefix)
-or guarded `callable(Store): void` upgrades (a column check against
-`information_schema` before `ADD COLUMN`). `apply(Store)` rejects request
-transactions before running SQL or guards; the runtime applies registrations
+list contains idempotent SQL strings (`{prefix}` is the WordPress table prefix).
+`apply(Store)` rejects request transactions before running SQL; the runtime
+applies registrations
 on activation and on the first request after an update, outside request
 transactions.
 
 On a plugin-installed site, the checks behind "the first request after an
-update" (the stored-name upgrade, the system tables, the app's migration ledger,
+update" (the system tables, the app's migration ledger,
 Action Scheduler groups and recurring actions, route and content Pages, Polylang
 languages, the search index shape, the runtime-schema capability) run until one
 request finds them all in place. That request records the autoloaded option

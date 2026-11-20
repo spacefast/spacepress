@@ -458,18 +458,6 @@ mod tests {
         assert_eq!(checked("/:path", false, true).unwrap(), [Path]);
     }
 
-    /// The runtime keeps a copy of this list for apps built before schema.php carried it
-    /// (runtime/TypedPress/Schema.php `RESERVED`): the two are the same, in order.
-    #[test]
-    fn the_runtime_copy_of_the_reserved_segments_is_this_list() {
-        let php = include_str!("../runtime/TypedPress/Schema.php");
-        let start =
-            php.find("private const RESERVED = [").expect("Schema::RESERVED") + "private const RESERVED = [".len();
-        let list = &php[start..start + php[start..].find("];").expect("end of the list")];
-        let copy: Vec<&str> = list.split(", ").map(|s| s.trim_matches('\'')).collect();
-        assert_eq!(copy, RESERVED_TP_SEGMENTS);
-    }
-
     #[test]
     fn malformed_patterns_are_refused_with_a_fix() {
         assert!(message("blog/:slug").contains("must start with `/`"));

@@ -46,8 +46,8 @@ final class Plugin
     }
 
     /**
-     * Everything identity writes to be ready on this site: the stored-name upgrade from before the
-     * rename, the schema, the signing key, the password-check material and its inventory schedule.
+     * Everything identity writes to be ready on this site: the schema, the signing key, the
+     * password-check material and its inventory schedule.
      * What a plugin-installed site does on activation and boot; a managed build runs it from
      * `Loader::initialize`.
      */

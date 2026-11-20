@@ -1,7 +1,7 @@
 # TypedPress Admin — design and provenance audit
 
 > Superseded in part (2026-11-13): TypedPress Admin now ships with every build, mounted at
-> `/wp-admin/new/` inside wp-admin; `admin: false` opts out and `/typedpress-admin/` redirects. See
+> `/wp-admin/new/` inside wp-admin; `admin: false` opts out. See
 > [decisions/2026-11-13-default-admin.md](decisions/2026-11-13-default-admin.md) and
 > [admin.md](admin.md). The mount, rewrite and harness sections below describe the earlier design.
 

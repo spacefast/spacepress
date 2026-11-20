@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-// Lane M: mapping an original Zero (0.8) release onto the new app's schema (TypedPress\Wp\Legacy\Model).
-// Pure logic; the data migration itself is proven against real WordPress in tests/wp/legacy.
+// Mapping a Zero 0.8 release onto the new app's schema (TypedPress\Wp\Legacy\Model).
+// Pure logic; the data import itself is proven against real WordPress in migrate/tests/wp/legacy.
 
 require __DIR__ . '/../../runtime/TypedPress/bootstrap.php';
 require __DIR__ . '/../../tests/php/harness.php';

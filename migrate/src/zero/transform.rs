@@ -313,8 +313,9 @@ fn physical(space: &str, name: &str) -> String {
 }
 
 /// Every v2 user projects as a member whose hidden `spacefastSubject` holds the 0.8 Space
-/// subject (`usr_<64 hex>` for Space Users) copied by `wp typedpress migrate-spacefast`. Users created
-/// after the migration answer `wp:<id>`, which no 0.8 subject can equal.
+/// subject (`usr_<64 hex>` for Space Users) copied by
+/// `typedpress-migrate --from zero wordpress spacefast`. Users created after the migration answer
+/// `wp:<id>`, which no 0.8 subject can equal.
 const IDENTITY: &str = r#"const __z08Members = __z08Users({email: __z08Email().unique().max(191), name: __z08Text(), spacefastSubject: __z08Text().max(191).optional().access({ read: false, create: false, update: false })});
 type __z08User = { id: number; name: string; role: "guest" | "subscriber" | "author" | "editor" | "admin" };
 async function __z08Subject(user: __z08User | null): Promise<string | null> {

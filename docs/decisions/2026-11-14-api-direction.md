@@ -163,7 +163,7 @@ three facts.
 17. **The transport is the host's.** First keeps `registerRealtimeTransport` in the browser and
     `First\Realtime\Publisher` in PHP. Without a transport, subscriptions poll `_live`. A Spacefast
     Space uses Cast. That is not wired for First builds yet: see
-    [the host checklist](../../migrate/docs/spacefast-host-checklist.md), item 7.
+    [the host checklist](../spacefast-host-checklist.md), item 7.
 
 18. **Co-editing.** First's collections are post types, so the Gutenberg plugin's real-time
     collaboration covers them, and it is what co-editing uses first. A transport that carries it over

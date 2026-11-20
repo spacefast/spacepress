@@ -45,7 +45,7 @@ final class Seed
         if ($entries === false) { throw new \RuntimeException('Cannot list seed records'); }
         $files = [];
         foreach ($entries as $entry) {
-            // Like the previous glob patterns, ignore hidden files and other extensions.
+            // Hidden files and other extensions are not seed input.
             if ($entry[0] !== '.' && (str_ends_with($entry, '.json') || str_ends_with($entry, '.php'))) {
                 $files[] = rtrim($directory, '/') . '/' . $entry;
             }

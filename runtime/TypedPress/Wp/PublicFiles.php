@@ -171,18 +171,9 @@ final class PublicFiles
         }
         // As Next.js orders them: a page at a literal path, then a file, then a dynamic route
         // (`[slug]`, `[...path]`), which would otherwise take every file below it.
-        if (isset($app['routeIndex'])) {
-            $literalOnly = ['literal' => $app['routeIndex']['literal'], 'dynamic' => []];
-            return AppRouter::match($app['routes'], $path, $literalOnly) !== null;
-        }
-        foreach ($app['routes'] ?? [] as $route) {
-            $pattern = (string) ($route['pattern'] ?? '');
-            if (!str_contains($pattern, ':') && !str_contains($pattern, '*') && AppRouter::match([$route], $path) !== null) {
-                return true;
-            }
-        }
+        $literalOnly = ['literal' => $app['routeIndex']['literal'], 'dynamic' => []];
 
-        return false;
+        return AppRouter::match($app['routes'], $path, $literalOnly) !== null;
     }
 
     /**

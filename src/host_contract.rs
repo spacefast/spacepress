@@ -28,10 +28,6 @@ pub const RESERVED_PATHS: &[(&str, &str)] = &[
         "/wp-admin/new/*",
         "TypedPress Admin, unless the app sets `admin: false`: served by wp-admin's `admin.php?page=typedpress-admin`. Apache applies the plugin's `.htaccess` rule; any other server must send a path that is not a file to WordPress's `index.php`, which redirects it to `admin.php?page=typedpress-admin&p=<route>`",
     ),
-    (
-        "/typedpress-admin/*",
-        "the admin's earlier address, redirected to `/wp-admin/new/*`",
-    ),
 ];
 
 /// The app API (`TypedPress\Wp\Facade::PREFIX`), and the path prefix of actions under it.
@@ -91,11 +87,6 @@ pub const HOOKS: &[(&str, &str, &str)] = &[
         "lets the identity session cookie authenticate the app's REST API (a host serving its own frontend)",
     ),
     (
-        "tp_identity_session_cookie_aliases",
-        "filter",
-        "other cookie names whose session a migrated site keeps",
-    ),
-    (
         "tp_fetch_allow_address",
         "filter",
         "allows an outgoing `fetch` to an address TypedPress denies by default",
@@ -143,7 +134,7 @@ pub const SEALED: &str = "When the app sets `sealed: true`, the hosted manifest 
 pub const PREBUILT: &str = "A build with prebuilt pages writes their HTML and Markdown below `wp-content/cache/typedpress-prebuilt/` (moved by the `tp_prebuilt_dir` filter), and PHP serves them: `TypedPress\\Render\\Prebuilt::serve()` answers at `plugins_loaded` when the request, its cookies, the site's visibility and the file's age allow it, and lets WordPress render otherwise. A host must not serve these files directly, from its web server or any cache of its own, and must not expose the folder over HTTP: deny requests to it as it does for other private paths. Whether a file may be served is decided per request, and only `serve()` decides it. A host's page cache stores and purges these answers as it does any other page. The rebuild runs as the `tp_prebuild` Action Scheduler action, on the host's jobs worker like any other.";
 
 /// The table-prefix rule.
-pub const TABLE_PREFIX: &str = "TypedPress puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}tp_<table>`, system tables `{prefix}tp__<name>`, identity tables `{prefix}tp_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads. An app's `existingTable` must be under that prefix (and not WordPress's, TypedPress's or Action Scheduler's own table, nor under another site's longer prefix, which need not end in `_`), or the Space's own Zero 0.8 table `sf_<space>_<table>_<10 hex>` with the converter's digest of that Space id and table name. The Space id comes from the host: `spacefast_content_space_id()` when it exists, else the `TP_SPACE_ID` constant defined before WordPress loads; on a `sfz_<24 hex>_` prefix it must also be the Space that prefix was made from. With neither, no 0.8 table binds.";
+pub const TABLE_PREFIX: &str = "TypedPress puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}tp_<table>`, system tables `{prefix}tp__<name>`, identity tables `{prefix}tp_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads. An app's `existingTable` must be under that prefix, and not WordPress's, TypedPress's, Action Scheduler's, identity's or WooCommerce's own table, nor under another site's longer prefix, which need not end in `_`.";
 
 /// The longest system name TypedPress adds after the prefix: `tp_identity_recovery_codes` (29) and
 /// `tp__services_submissions` (27). An app table adds `tp_` to a name the app chose, so a

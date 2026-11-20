@@ -360,7 +360,7 @@ final class Runtime
         Migrator::locked(new Connection($wpdb), 'tp_runtime_tables', [self::class, 'applySystemTables']);
     }
 
-    /** Shared system tables (jobs, outbox, receipts, …): idempotent DDL, recorded by tablesVersion(). */
+    /** Shared system tables (jobs, receipts, …): idempotent DDL, recorded by tablesVersion(). */
     public static function applySystemTables(): void
     {
         global $wpdb;

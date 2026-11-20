@@ -107,11 +107,6 @@ test("the facade denies what core denies", async () => {
   assert.deepEqual([write.status, write.json.pointer], [403, "/salary"]);
   // Application passwords and the cookie rules are core's: a cookie without a nonce is anonymous.
   assert.equal((await fetch(`${facade}/vault`, { headers: auth("admin") })).status, 200);
-  // 0.8's paths are never the facade's.
-  for (const path of ["/__zero/config", "/__zero/run", "/__zero/auth/session", "/__zero/realtime/events"]) {
-    const res = await fetch(harness.url + path);
-    assert.notEqual(res.headers.get("content-type"), "application/problem+json", path);
-  }
 });
 
 test("the users kind: rows as TypedPress reads them, writes through TypedPress's rules, creates and permanent deletes", async () => {

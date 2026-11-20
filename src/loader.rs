@@ -1860,7 +1860,7 @@ mod tests {
     /// `app_files` loads every module under `tp/` but the reserved folders, declaration files and
     /// colocated tests, which the test runner owns (they import `vitest` and the like).
     #[test]
-    fn app_modules_are_every_ts_file_under_zero_but_reserved_ones() {
+    fn app_modules_are_every_ts_file_under_tp_but_reserved_ones() {
         let fs = memory(&[
             ("/p/typedpress.config.ts", ""),
             ("/p/tp/index.ts", ""),
@@ -1912,7 +1912,7 @@ mod tests {
 
     /// App code loads only from `tp/` (`F1210`); installed packages keep their own relative imports.
     #[test]
-    fn app_imports_stay_inside_the_zero_root() {
+    fn app_imports_stay_inside_the_tp_root() {
         let load = |files: &[(&str, &str)]| load_from(Rc::new(memory(files)), Path::new("/p/typedpress.config.ts"));
         let refused = |files: &[(&str, &str)]| {
             let diagnostics = load(files).err().expect("refused");

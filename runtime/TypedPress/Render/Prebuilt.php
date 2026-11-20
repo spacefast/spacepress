@@ -821,7 +821,7 @@ final class Prebuilt
                 $path = substr($path, strlen($base)) ?: '/';
             }
             $path = $path === '/' ? '/' : rtrim($path, '/');
-            $match = AppRouter::match($app['routes'], $path, $app['routeIndex'] ?? null);
+            $match = AppRouter::match($app['routes'], $path, $app['routeIndex']);
             if ($match !== null && ($match['route']['prerender'] ?? false)) {
                 $hit[$path] = true;
             }

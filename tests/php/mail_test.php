@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * mail.send from "typedpress" on an in-process WordPress (tests/php/wp.php): the original EmailMessage
+ * mail.send from "typedpress" on an in-process WordPress (tests/php/wp.php): message
  * normalization, header and address safety, the transactional queue, wp_mail hand-off arguments,
  * the host transport filter and retries. Delivery is drained through Action Scheduler.
  */
@@ -44,7 +44,7 @@ $refusal = static function (mixed $message): string {
     }
 };
 
-// ---- normalization: the original runtime's emailPayload, field for field
+// ---- normalization, field for field
 eq('addresses coerce to { email, name? } lists and trim; text and html both travel',
     Mail::payload(['from' => ' app@example.test ', 'to' => 'a@example.test', 'subject' => 'S', 'text' => 't', 'html' => '<b>h</b>',
         'cc' => [['email' => 'c@example.test', 'name' => 'Cé']], 'replyTo' => 'r@example.test']),

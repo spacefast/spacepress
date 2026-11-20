@@ -999,7 +999,7 @@ user projection + client), E2 stacks on E1.
 |---|---|---|---|
 | `POST /auth/token` `{ grant_type: "password", name, password }` → `{ accessToken, refreshToken, expiresIn, user }` | yes | 404 (use `/identity/token`) | 404 |
 | `POST /auth/token` `{ grant_type: "refresh_token", refreshToken }` → same, rotated | yes | 404 (identity's endpoint) | 404 |
-| `POST /auth/guest` → `{ accessToken, refreshToken, expiresIn, user: { …, role: "guest" } }` | yes | yes (`Accounts::issueForUser` on a new `tp_guest` WP user, client `app_zero_guest` auto-registered by the runtime) | 404 |
+| `POST /auth/guest` → `{ accessToken, refreshToken, expiresIn, user: { …, role: "guest" } }` | yes | yes (`Accounts::issueForUser` on a new `tp_guest` WP user, client `app_typedpress_guest` auto-registered by the runtime) | 404 |
 | `POST /auth/guest/upgrade` `{ name, password }` (standalone) / identity email flow (WP, §3.5) | yes | via hosted screens | — |
 | `DELETE /auth/session` (current access token) → `{ data: true }` | yes | yes (delegates to identity's revoke) | 404 |
 | `GET /me` | user + `member` (the user projection row, when any) | same | same |

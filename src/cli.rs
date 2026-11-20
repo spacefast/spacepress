@@ -174,6 +174,19 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
     Ok(args)
 }
 
+/// The first argument of `typedpress migrate` that is not a flag or `--site`'s value.
+fn migrate_positional(rest: &[String]) -> Option<&str> {
+    let mut args = rest.iter();
+    while let Some(arg) = args.next() {
+        if arg == "--site" {
+            args.next();
+        } else if !arg.starts_with('-') {
+            return Some(arg);
+        }
+    }
+    None
+}
+
 fn exit(result: Result<ExitCode, String>) -> ExitCode {
     result.unwrap_or_else(|error| {
         eprintln!("{error}");
@@ -231,6 +244,21 @@ pub fn main() -> ExitCode {
                 usage_error(
                     "styles",
                     format!("no command styles {}", rest.first().map_or("", String::as_str))
+                )
+            );
+            ExitCode::from(2)
+        }
+        // `migrate` applies the app's own database migrations and takes flags only. A word after it
+        // is an import request, which the separate importer answers.
+        "migrate" if migrate_positional(&rest).is_some() => {
+            eprintln!(
+                "{}",
+                usage_error(
+                    "migrate",
+                    format!(
+                        "no command migrate {}: typedpress migrate applies this app's database migrations. To import a project, run typedpress-migrate --from <source> <operation>",
+                        migrate_positional(&rest).unwrap_or_default()
+                    )
                 )
             );
             ExitCode::from(2)

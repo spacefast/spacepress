@@ -1,6 +1,6 @@
-//! The diagnostic contract of `typedpress migrate app --json`: every refusal carries a stable `code`, the
-//! 0.8 source position (`file`, 1-based `line`, UTF-16 `column`), the 0.8 `feature` it names, its
-//! `v2` equivalent and a one-line `fix`. A publish response shows these to the agent that ports the
+//! The diagnostic contract of `typedpress-migrate --from zero app --json`: every refusal carries a
+//! stable `code`, the 0.8 source position (`file`, 1-based `line`, UTF-16 `column`), the 0.8
+//! `feature` it names, its `v2` equivalent and a one-line `fix`. A publish response shows these to the agent that ports the
 //! app, so codes never change meaning; a new refusal kind gets a new code. Every code is listed in
 //! `tests/registry.json` under `zero08`.
 use super::client;

@@ -1495,7 +1495,7 @@
       "sha256": "5f847d298bf0f63c44038b7865623b3b860d99ee145edd2fa865e975b0016a55",
       "path": "lib/classic-route.php",
       "adaptation": "TypedPress integration: renamed to the classic route (/classic/<slug>); review adapter patch",
-      "adaptedSha256": "e2a8b85f1cc823e1d3f45384475b9907dfe0a860507839c9c2a2cd296c6ccbc0",
+      "adaptedSha256": "d834c1a009151ef39c18d01f4efb076c094d0e0d41a6d1388b134f0ea27b24b9",
       "normalizedSha256": "27d81348a2c9482202a514f3dc2f34080b0bce722575b1a94d7ba49fef110630",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/legacy-route.php"
     },

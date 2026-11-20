@@ -227,6 +227,8 @@ pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std
             .map_err(|e| std::io::Error::other(e.message))?;
         use sha2::{Digest, Sha256};
         let mut hashes = serde_json::Map::new();
+        // Written as PHP. The web server serves the plugin directory, so a `.json` seed here could
+        // be downloaded, and a product's seed holds its paid download's file URL.
         for (name, records) in seeds {
             let php = format!("<?php\nreturn {};\n", crate::compile::php_json(&records));
             hashes.insert(format!("{name}.php"), crate::hex(Sha256::digest(php.as_bytes())).into());

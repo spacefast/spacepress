@@ -54,7 +54,7 @@ lets that one request read drafts. Each adapter ships the handler.
 ## Realtime
 
 The host's realtime transport owns live updates; on Spacefast that is Cast, not
-yet wired for TypedPress builds ([host checklist](../../migrate/docs/spacefast-host-checklist.md),
+yet wired for TypedPress builds ([host checklist](../spacefast-host-checklist.md),
 item 7). TypedPress writes a change feed in the same transaction as each write and
 the host fans it out. For external frontends this is exposed as a resumable SSE
 stream of tags, which the TanStack DB collection and a `useZeroQuery` hook

@@ -126,6 +126,56 @@ fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
 }
 
 #[test]
+fn migrate_takes_flags_only_and_points_an_import_at_the_importer() {
+    // `typedpress migrate` applies the app's database migrations on the site, with its flags.
+    let wp = fake_wp();
+    let mut command = first();
+    command.args([
+        "migrate",
+        "--site",
+        "@prod",
+        "--drop=likes=3",
+        "--mark-applied=0002_likes",
+    ]);
+    with_path(&mut command, wp.path());
+    let out = command.output().unwrap();
+    assert_eq!(out.status.code(), Some(7), "{}", text(&out.stderr));
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen["args"],
+        serde_json::json!([
+            "@prod",
+            "typedpress",
+            "migrate",
+            "--drop=likes=3",
+            "--mark-applied=0002_likes"
+        ])
+    );
+    // A word after it never reaches the site, wherever --site sits.
+    for args in [
+        vec!["migrate", "app", "--from", "zero-0.8", "x", "--out", "y"],
+        vec!["migrate", "config"],
+        vec!["migrate", "--site", "@prod", "app"],
+        vec!["migrate", "--site=@prod", "--drop=likes=3", "app"],
+    ] {
+        let mut command = first();
+        command.args(&args);
+        with_path(&mut command, wp.path());
+        let out = command.output().unwrap();
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(out.stdout.is_empty(), "{args:?} must not reach WP-CLI");
+        let word = if args.contains(&"config") { "config" } else { "app" };
+        assert_eq!(
+            text(&out.stderr),
+            format!(
+                "no command migrate {word}: typedpress migrate applies this app's database migrations. To import a project, run typedpress-migrate --from <source> <operation>\nusage: typedpress migrate [--drop=<kind>=<rows>,...] [--mark-applied=<id>]\n"
+            ),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
 fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
     // `abilities pull` reads a site over HTTP from this binary; `abilities` alone is `wp typedpress abilities`.
     let wp = fake_wp();

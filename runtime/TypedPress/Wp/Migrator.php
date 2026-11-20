@@ -114,8 +114,7 @@ final class Migrator
 
     /**
      * This app's migration files (id => statements, `{prefix}` replaced; id => hash of the file) and
-     * what the ledger records as done, read without changing anything: a ledger from before rows were
-     * keyed by app is read as this app's when this app is its one owner (as ledger() would convert it).
+     * what the ledger records as done, read without changing anything.
      *
      * @return array{migrations: array<string, list<string>>, hashes: array<string, string>, done: array<string, int>}
      */

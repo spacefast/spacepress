@@ -1,4 +1,4 @@
-// Bitwise operators, which live Zero 0.8 apps use (first#138 census). Every action runs
+// Bitwise operators. Every action runs
 // under Node and as compiled PHP; the JSON results must be byte-identical. Each construct is
 // exercised three ways where the compiler has three paths: typed TypeScript, checked JavaScript
 // (`bitwise-helpers.mjs`, untyped), and configuration-time evaluation (a module constant).

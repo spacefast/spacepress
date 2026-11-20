@@ -1,4 +1,4 @@
-// `this` outside classes, which live Zero 0.8 apps use (first#138 census): object-literal methods,
+// `this` outside classes: object-literal methods,
 // borrowed methods, call/apply and arrows inside methods. Every action runs under Node and as
 // compiled PHP; the JSON results must be byte-identical. `this-helpers.mjs` runs the untyped forms.
 import { action, defineConfig } from "typedpress";

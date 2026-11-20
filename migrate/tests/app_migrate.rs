@@ -1860,7 +1860,7 @@ fn the_global_fetch_needs_no_rewrite() {
 }
 
 /// ctx.crypto through node:crypto gives the original runtime's output on every recorded vector
-/// (tests/php/crypto-parity), with named keys trimmed and a missing one refused.
+/// (migrate/tests/crypto-parity), with named keys trimmed and a missing one refused.
 #[test]
 fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     let temp = tempfile::tempdir().unwrap();
@@ -1868,7 +1868,7 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     let (ok, report) = migrate(&fixture("crypto"), &out, &[]);
     assert!(ok, "{report:#}");
     build(&out);
-    let parity = repo().join("tests/php/crypto-parity");
+    let parity = repo().join("migrate/tests/crypto-parity");
     let read = |f: &str| -> Value { serde_json::from_str(&std::fs::read_to_string(parity.join(f)).unwrap()).unwrap() };
     let expected = read("expected.json");
     let trim = |k: &str| k.trim().to_string();

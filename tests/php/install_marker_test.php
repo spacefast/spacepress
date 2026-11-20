@@ -5,7 +5,7 @@ declare(strict_types=1);
 /*
  * The install marker (TypedPress\Wp\InstallMarker) on WordPress on SQLite, over HTTP through php -S: once
  * a request has found everything this build installs in place, the next requests run none of the
- * install checks (the ledger read, the system-tables, stored-name, search and Action Scheduler
+ * install checks (the ledger read, the system-tables, search and Action Scheduler
  * checks), and whatever changes what those checks cover makes the next request check again. A
  * failed install is never hidden by it.
  */

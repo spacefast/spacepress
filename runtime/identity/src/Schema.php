@@ -38,7 +38,15 @@ final class Schema
             "tp_identity_schema_version",
         );
         if ($installed !== null && (int) $installed["option_value"] !== self::VERSION) {
-            throw new Failure("storage_unavailable", "Unsupported TypedPress Identity schema version.", 503);
+            // There is no upgrade between schema versions: the operator picks one of the two ways out.
+            $stored = (int) $installed["option_value"];
+            throw new Failure(
+                "storage_unavailable",
+                "TypedPress Identity storage on this site is schema version $stored and this build reads only version "
+                    . self::VERSION
+                    . ". Nothing was changed. Either run the TypedPress build that wrote version $stored, or start identity again: back up and drop this site's tp_identity_* tables, delete the tp_identity_schema_version option, and load the site once. Starting again removes identity's accounts, sessions and sign-in methods; WordPress users stay.",
+                503,
+            );
         }
         $tables = [
             "accounts" =>

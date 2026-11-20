@@ -1971,7 +1971,12 @@ fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
     .unwrap();
     for command in ["build", "check"] {
         let said = refused(command);
-        assert!(said.contains("error: title must be at most 120 characters"), "{said}");
+        // `build` prints the diagnostic's code (`error[F0001]:`); `check` prints plain `error:`.
+        assert!(
+            said.contains("error: title must be at most 120 characters")
+                || said.contains("error[F0001]: title must be at most 120 characters"),
+            "{said}"
+        );
         assert!(said.contains("--> content/notes/first-walk.md:3:1"), "{said}");
         assert!(said.contains("it has 130 characters"), "{said}");
     }
@@ -1996,14 +2001,14 @@ fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
     // A field the kind doesn't have, with the one it was meant to be.
     std::fs::write(&note, original.replace("summary:", "sumary:")).unwrap();
     let said = refused("build");
-    assert!(said.contains("error: Unknown or generated field 'sumary'"), "{said}");
+    assert!(said.contains("error[F0001]: Unknown or generated field 'sumary'"), "{said}");
     assert!(said.contains("--> content/notes/first-walk.md:5:1"), "{said}");
     assert!(said.contains("did you mean `summary`?"), "{said}");
 
     // A required field left out.
     std::fs::write(&note, original.replace("title: A first walk\n", "")).unwrap();
     let said = refused("build");
-    assert!(said.contains("error: title is required"), "{said}");
+    assert!(said.contains("error[F0001]: title is required"), "{said}");
     assert!(said.contains("--> content/notes/first-walk.md:"), "{said}");
 
     // HTML inside a line of text is Markdown the site keeps, so the build takes it.
@@ -2048,7 +2053,7 @@ fn two_seed_files_with_one_uid_are_both_named() {
     let said = text(&out.stderr);
     assert!(
         said.contains(
-            "error: content/notes/second-walk.md and content/notes/first-walk.md have the same uid zr_d2c870c681684da0b234"
+            "error[F0001]: content/notes/second-walk.md and content/notes/first-walk.md have the same uid zr_d2c870c681684da0b234"
         ),
         "{said}"
     );

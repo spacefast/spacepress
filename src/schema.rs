@@ -520,6 +520,9 @@ pub struct Action {
     pub signature: Option<Json>,
     /// The handler's result as a JSON Schema, from its TypeScript return type (filled after compile).
     pub output: Option<Json>,
+    /// The handler reads WooCommerce orders or completes one (filled after compile). Those need a
+    /// credential's `personal` grant, so a credential without it is not offered the tool.
+    pub personal: bool,
 }
 
 /// One `wp-hooks/` handler, registered with `add_filter`/`add_action`.

@@ -1137,6 +1137,7 @@ fn actions(
                 destructive,
                 signature,
                 output: None,
+                personal: false,
             },
         );
     }
@@ -4304,8 +4305,28 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
                 .push(serde_json::json!({"url": url, "secret": secret, "events": normalized}));
         }
     }
+    // The store's own abilities are registered beside the app's, under the app's namespace. An app
+    // name that produced the same ability would replace the WooCommerce operation at runtime while
+    // `abilities.call` stayed typed as that operation.
+    let mut commerce: Vec<(String, &str)> = crate::wordpress::abilities::commerce_operations(&out.schema)
+        .into_iter()
+        .map(|(name, _)| (name, "product({ inventory: true })"))
+        .collect();
+    if out.schema.store.is_some() {
+        commerce.push(("store-get".into(), "store()"));
+    }
+    let app = kebab(&out.schema.name);
     let mut abilities = std::collections::HashSet::new();
     let mut add = |name: String| -> Result<()> {
+        if let Some((_, owner)) = commerce.iter().find(|(taken, _)| *taken == name) {
+            return Err(Diag::new(
+                span,
+                format!("the ability `{app}/{name}` is declared twice: {owner} adds it, and so does this app"),
+            )
+            .help(format!(
+                "rename the action, kind, global or job that becomes `{name}`; `{app}/{name}` stays the WooCommerce operation"
+            )));
+        }
         if !abilities.insert(name.clone()) {
             return Err(Diag::new(span, format!("ability kebab collision: {name}"))
                 .help("rename the colliding collection, action, global, or job"));

@@ -29,9 +29,12 @@ final class Operations
                     'input' => $shapes[$name]['input'], 'output' => $shapes[$name]['output'],
                     'annotations' => ['readonly' => false, 'idempotent' => false],
                     'rule' => [['role' => 'admin'], 'update', 'manage WooCommerce'],
-                    'run' => static function (array $input) use ($plugin, $run): int {
+                    'run' => static function (array $input) use ($plugin, $run, $shapes, $name): int {
                         if (!AgentScope::may('write')) { throw AgentScope::refusal('write'); }
-                        return $run($plugin, $input);
+                        // An action's abilities.call() reaches here without core's REST argument check.
+                        $valid = rest_validate_value_from_schema($input, $shapes[$name]['input'], 'input');
+                        if (is_wp_error($valid)) { throw HttpError::invalidInput($valid->get_error_message()); }
+                        return $run($plugin, rest_sanitize_value_from_schema($input, $shapes[$name]['input'], 'input'));
                     },
                 ];
             }
@@ -44,23 +47,31 @@ final class Operations
         add_action('woocommerce_restore_order_item_stock', static function ($item, $new, $old, \WC_Order $order): void {
             do_action('typedpress_woo_order_stock', $item->get_product_id(), $order->get_id(), $new - $old, 'return');
         }, 10, 4);
+        // A refund with "Restock refunded items" puts stock back without restoring the order's.
+        add_action('woocommerce_restock_refunded_item', static function ($id, $old, $new, \WC_Order $order): void {
+            do_action('typedpress_woo_order_stock', (int) $id, $order->get_id(), $new - $old, 'return');
+        }, 10, 4);
     }
 
     private static function increase(Plugin $plugin, array $input): int
     {
-        $product = wc_get_product($input['id']);
-        if (!$product || !$product->is_type('simple')) { throw HttpError::notFound('Drive not found'); }
+        $quantity = $input['quantity'] ?? null;
+        if (!is_int($quantity) || $quantity < 1) {
+            throw HttpError::invalidInput('quantity must be an integer of at least 1', '/quantity');
+        }
+        $product = wc_get_product($input['id'] ?? 0);
+        if (!$product || !$product->is_type('simple')) { throw HttpError::notFound('Product not found'); }
         if (!$product->managing_stock()) {
             throw new HttpError(409, 'stock_unmanaged', 'Enable inventory tracking in WooCommerce first.');
         }
 
-        return $plugin->connection()->transaction(static function () use ($plugin, $product, $input): int {
+        return $plugin->connection()->transaction(static function () use ($plugin, $product, $quantity): int {
             $plugin->connection()->touchPost($product->get_id());
-            $quantity = Functions::tracked(static fn () => wc_update_product_stock($product, $input['quantity'], 'increase'));
-            if (!is_int($quantity)) {
+            $stock = Functions::tracked(static fn () => wc_update_product_stock($product, $quantity, 'increase'));
+            if (!is_int($stock)) {
                 throw new HttpError(500, 'stock_update_failed', 'WooCommerce could not restock this product.');
             }
-            return $quantity;
+            return $stock;
         });
     }
 

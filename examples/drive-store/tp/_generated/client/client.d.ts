@@ -181,7 +181,10 @@ export interface Drive {
 	connector: "sata" | "sas" | "nvme" | "usb" | null;
 	condition: "like-new" | "good" | "fair" | "for-parts" | null;
 	powerOnHours: number | null;
+	testedOn: string | null;
 	serial?: string | null;
+	categories: number[];
+	tags: number[];
 }
 export interface DriveInsert {
 	uid?: string | null;
@@ -207,7 +210,10 @@ export interface DriveInsert {
 	connector?: "sata" | "sas" | "nvme" | "usb" | null;
 	condition?: "like-new" | "good" | "fair" | "for-parts" | null;
 	powerOnHours?: number | null;
+	testedOn?: string | null;
 	serial?: string | null;
+	categories?: number[];
+	tags?: number[];
 }
 export interface DrivePatch {
 	uid?: string | null;
@@ -233,9 +239,26 @@ export interface DrivePatch {
 	connector?: "sata" | "sas" | "nvme" | "usb" | null;
 	condition?: "like-new" | "good" | "fair" | "for-parts" | null;
 	powerOnHours?: number | null;
+	testedOn?: string | null;
 	serial?: string | null;
+	categories?: number[];
+	tags?: number[];
 }
 export interface DriveWith {
+	categories?: true | {
+		where?: CategoryFilter;
+		orderBy?: CategoryOrder;
+		limit?: number;
+		offset?: number;
+		with?: CategoryWith;
+	};
+	tags?: true | {
+		where?: TagFilter;
+		orderBy?: TagOrder;
+		limit?: number;
+		offset?: number;
+		with?: TagWith;
+	};
 	images?: true;
 }
 export interface DriveFilter {
@@ -603,6 +626,18 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	testedOn?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	serial?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -619,11 +654,322 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	categories?: [] | {
+		has?: number;
+		eq?: [];
+		NOT?: {
+			has?: number;
+		};
+	} | true | false | CategoryFilter;
+	tags?: [] | {
+		has?: number;
+		eq?: [];
+		NOT?: {
+			has?: number;
+		};
+	} | true | false | TagFilter;
 	AND?: DriveFilter[];
 	OR?: DriveFilter[];
 	NOT?: DriveFilter;
 }
-export type DriveOrder = Partial<Record<"id" | "uid" | "name" | "slug" | "description" | "sku" | "shortDescription" | "price" | "status" | "virtual" | "downloadable" | "type" | "purchasable" | "availability" | "stockQuantity" | "url" | "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "serial", "asc" | "desc">> | string;
+export type DriveOrder = Partial<Record<"id" | "uid" | "name" | "slug" | "description" | "sku" | "shortDescription" | "price" | "status" | "virtual" | "downloadable" | "type" | "purchasable" | "availability" | "stockQuantity" | "url" | "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "testedOn" | "serial", "asc" | "desc">> | string;
+export interface Category {
+	id: number;
+	uid: string | null;
+	name: string;
+	slug: string;
+	description: string;
+	parent: number | null;
+	count: number;
+	url: string | null;
+}
+export interface CategoryInsert {
+	uid?: string | null;
+	name: string;
+	slug?: string;
+	description?: string;
+	parent?: number | null;
+}
+export interface CategoryPatch {
+	uid?: string | null;
+	name?: string;
+	slug?: string;
+	description?: string;
+	parent?: number | null;
+}
+export interface CategoryWith {
+	drives?: true | {
+		where?: DriveFilter;
+		orderBy?: DriveOrder;
+		limit?: number;
+		offset?: number;
+		with?: DriveWith;
+	};
+}
+export interface CategoryFilter {
+	id?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	uid?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	name?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	slug?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	description?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	parent?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	count?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	url?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	drives?: true | DriveFilter;
+	AND?: CategoryFilter[];
+	OR?: CategoryFilter[];
+	NOT?: CategoryFilter;
+}
+export type CategoryOrder = Partial<Record<"id" | "uid" | "name" | "slug" | "description" | "parent" | "count" | "url", "asc" | "desc">> | string;
+export interface Tag {
+	id: number;
+	uid: string | null;
+	name: string;
+	slug: string;
+	description: string;
+	count: number;
+	url: string | null;
+}
+export interface TagInsert {
+	uid?: string | null;
+	name: string;
+	slug?: string;
+	description?: string;
+}
+export interface TagPatch {
+	uid?: string | null;
+	name?: string;
+	slug?: string;
+	description?: string;
+}
+export interface TagWith {
+	drives?: true | {
+		where?: DriveFilter;
+		orderBy?: DriveOrder;
+		limit?: number;
+		offset?: number;
+		with?: DriveWith;
+	};
+}
+export interface TagFilter {
+	id?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	uid?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	name?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	slug?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	description?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	count?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	url?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	drives?: true | DriveFilter;
+	AND?: TagFilter[];
+	OR?: TagFilter[];
+	NOT?: TagFilter;
+}
+export type TagOrder = Partial<Record<"id" | "uid" | "name" | "slug" | "description" | "count" | "url", "asc" | "desc">> | string;
 export interface Order {
 	id: number;
 	status: string;
@@ -1253,6 +1599,22 @@ export interface Collections {
 		filter: DriveFilter;
 		order: DriveOrder;
 	};
+	categories: {
+		row: Category;
+		insert: CategoryInsert;
+		patch: CategoryPatch;
+		with: CategoryWith;
+		filter: CategoryFilter;
+		order: CategoryOrder;
+	};
+	tags: {
+		row: Tag;
+		insert: TagInsert;
+		patch: TagPatch;
+		with: TagWith;
+		filter: TagFilter;
+		order: TagOrder;
+	};
 	orders: {
 		row: Order;
 		insert: OrderInsert;
@@ -1302,9 +1664,54 @@ export declare const SCHEMA: {
 			readonly drafts: false;
 			readonly revisions: false;
 			readonly localized: false;
-			readonly relations: {};
+			readonly relations: {
+				readonly categories: {
+					readonly kind: "many";
+					readonly collection: "categories";
+					readonly optional: false;
+				};
+				readonly tags: {
+					readonly kind: "many";
+					readonly collection: "tags";
+					readonly optional: false;
+				};
+			};
 			readonly media: readonly ["images"];
 			readonly mediaList: readonly ["images"];
+			readonly files: readonly [];
+		};
+		readonly categories: {
+			readonly path: "categories";
+			readonly primaryKey: "id";
+			readonly drafts: false;
+			readonly revisions: false;
+			readonly localized: false;
+			readonly relations: {
+				readonly drives: {
+					readonly kind: "many";
+					readonly collection: "drives";
+					readonly optional: false;
+				};
+			};
+			readonly media: readonly [];
+			readonly mediaList: readonly [];
+			readonly files: readonly [];
+		};
+		readonly tags: {
+			readonly path: "tags";
+			readonly primaryKey: "id";
+			readonly drafts: false;
+			readonly revisions: false;
+			readonly localized: false;
+			readonly relations: {
+				readonly drives: {
+					readonly kind: "many";
+					readonly collection: "drives";
+					readonly optional: false;
+				};
+			};
+			readonly media: readonly [];
+			readonly mediaList: readonly [];
 			readonly files: readonly [];
 		};
 		readonly orders: {

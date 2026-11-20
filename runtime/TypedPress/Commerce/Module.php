@@ -143,6 +143,8 @@ final class Module
         foreach (['woocommerce_new_product', 'woocommerce_update_product', 'woocommerce_delete_product'] as $hook) { add_action($hook, static fn ($id) => self::changed($plugin, 'product', (int) $id)); }
         foreach (['created_term', 'edited_term', 'delete_term'] as $hook) { add_action($hook, static function ($id, $tt, $taxonomy) use ($plugin): void { $kind = ['product_cat' => 'productCategory', 'product_tag' => 'productTag'][$taxonomy] ?? null; if ($kind) { self::changed($plugin, $kind, (int) $id); } }, 10, 3); }
         add_action('template_redirect', static function () use ($plugin): void {
+            // A feed of the product archive (`?feed=rss2&post_type=product`) is its own answer, not a storefront page.
+            if (is_feed()) { return; }
             $canonical = is_singular('product') ? get_permalink() : ((is_tax('product_cat') || is_tax('product_tag')) ? get_term_link(get_queried_object()) : (is_post_type_archive('product') ? home_url('/shop') : null));
             if ($canonical === null) { return; }
             if (!is_string($canonical) || !\TypedPress\Wp\AppRouter::instance()?->serves($canonical)) {

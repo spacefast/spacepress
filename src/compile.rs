@@ -477,6 +477,8 @@ pub struct Compiler<'a, 'p> {
     pub uses: Vec<crate::plugins::Use>,
     /// Which compiled functions each function calls, for the read→send report.
     pub calls: HashMap<String, HashSet<String>>,
+    /// The compiled functions that read WooCommerce orders or complete one ([`Action::personal`]).
+    pub personal: HashSet<String>,
     plugin_names: Vec<String>,
     /// Each plugin's PHP function answering its locked fetch hosts, written once the lock settles.
     pub host_functions: Vec<String>,
@@ -557,6 +559,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             current: String::new(),
             uses: Vec::new(),
             calls: HashMap::new(),
+            personal: HashSet::new(),
             host_functions: Vec::new(),
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
@@ -678,12 +681,31 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// Records a capability the plugin compiling now uses; app code is unrestricted.
     fn uses(&mut self, kind: &'static str, value: impl Into<String>, span: Span) {
+        let value = value.into();
+        let orders = match kind {
+            "read" => self
+                .schema
+                .collections
+                .values()
+                .any(|c| c.key == value && c.commerce.as_deref() == Some("order")),
+            "abilities" => {
+                value
+                    == format!(
+                        "{}/complete-order",
+                        crate::wordpress::abilities::kebab(&self.schema.name)
+                    )
+            }
+            _ => false,
+        };
+        if orders {
+            self.personal.insert(self.current.clone());
+        }
         if let Some((plugin, _)) = &self.plugin {
             self.uses.push(crate::plugins::Use {
                 plugin: *plugin,
                 function: self.current.clone(),
                 kind,
-                value: value.into(),
+                value,
                 span,
             });
         }
@@ -993,14 +1015,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             if let Slot::WpHook { index } = &root.slot {
                 let hook = &self.schema.wp_hooks[*index];
-                let returns = crate::wordpress::hook(&hook.hook).expect("catalog hook").returns;
+                let catalog = crate::wordpress::hook(&hook.hook).expect("catalog hook");
+                let returns = catalog.returns;
                 let ret = match self.helper_types.get(&key) {
                     Some(Ty::Fn(_, ret)) => (**ret).clone(),
                     _ => Ty::Unknown,
                 };
-                // Woo's stock notification invokes compiled PHP synchronously. Its app handler
-                // can await TypedPress database writes, which also execute synchronously in PHP.
-                if matches!(ret, Ty::Promise(_)) && hook.hook != "typedpress_woo_order_stock" {
+                if matches!(ret, Ty::Promise(_)) && !catalog.async_handler {
                     return err_help(
                         root.closure.func.span,
                         format!("a `{}` handler can't be async", hook.hook),

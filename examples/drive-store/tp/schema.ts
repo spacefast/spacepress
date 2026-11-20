@@ -1,4 +1,4 @@
-import { global, integer, number, order, product, select, store, table, text, timestamp } from "typedpress";
+import { date, global, integer, number, order, product, productCategory, productTag, select, store, table, text, timestamp } from "typedpress";
 
 export const MEDIA = ["hdd", "ssd", "nvme"] as const;
 export const CONDITIONS = ["like-new", "good", "fair", "for-parts"] as const;
@@ -28,9 +28,14 @@ export const drives = product({
     connector: select(["sata", "sas", "nvme", "usb"]).optional().ui({ label: "Interface", width: 33 }),
     condition: select(CONDITIONS).optional().ui({ label: "Condition", width: 50 }),
     powerOnHours: integer().min(0).optional().ui({ label: "SMART power-on hours", width: 50 }),
+    testedOn: date().optional().ui({ label: "Tested on", width: 50 }),
     serial: text().max(80).optional().access({ read: "admin" }).ui({ label: "Inventory serial", width: 50 }),
   },
 });
+
+// Woo's own product categories and tags, seeded from Markdown like the drives.
+export const categories = productCategory({ label: "Drive categories", sync: "content/drive-categories/*.md" });
+export const tags = productTag({ label: "Drive tags", sync: "content/drive-tags/*.md" });
 
 export const orders = order({ label: "WooCommerce orders" });
 

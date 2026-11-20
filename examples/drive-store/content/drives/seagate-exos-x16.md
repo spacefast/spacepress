@@ -10,10 +10,15 @@ media: hdd
 connector: sata
 condition: good
 powerOnHours: 21400
+testedOn: 2026-10-02
 price: "139.00"
 sku: SEAGATE-EXOS-X16
 serial: DEMO-SEAGATE-EXOS-X16
 status: published
+categories:
+  - zr_66736e1d454abbec125a
+tags:
+  - zr_93d8d8025dab1917c72b
 ---
 Pulled from a four-bay NAS that was upgraded to larger drives. Every unit passed a full surface scan and a SMART extended test before listing.
 

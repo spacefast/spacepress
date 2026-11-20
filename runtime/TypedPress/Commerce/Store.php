@@ -54,6 +54,9 @@ final class Store implements \TypedPress\Store
                     $expr = "CASE WHEN $managed THEN $expr END";
                 }
                 $compare = match (true) {
+                    // An authored date is stored as YYYY-MM-DD, the form a filter sends. A comparison
+                    // expression would have Sql::metaParam rewrite the filter to SCF's YYYYMMDD.
+                    $authored && $col['type'] === 'date' => '',
                     in_array($name, ['price', 'total'], true), $authored && $col['type'] === 'real' => "CAST($expr AS DECIMAL(30,10))",
                     $stock, $authored && in_array($col['type'], ['integer', 'boolean'], true) => "CAST($expr AS SIGNED)",
                     default => $expr,

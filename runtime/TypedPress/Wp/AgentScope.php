@@ -374,7 +374,8 @@ final class AgentScope
             return $scope['abilities'] !== null && $name !== 'mcp-adapter/execute-ability' ? self::error('abilities') : $pre;
         }
         if ($scope['abilities'] !== null && !self::listed($name, $scope['abilities'])) {
-            return self::error('abilities');
+            // An action's abilities.call() is judged here too, so the refusal names what to add.
+            return new \WP_Error('tp_scope', "This application password is limited to a set of abilities, and `$name` isn't one of them.", ['status' => 403]);
         }
         if (!$scope['write'] && empty(((array) $ability->get_meta_item('annotations', []))['readonly'])) {
             return self::error('write');
@@ -396,9 +397,12 @@ final class AgentScope
                 if (str_starts_with($name, 'woocommerce-')) { return false; }
                 if (!$scope['personal']) {
                     foreach (Abilities\Register::operations() as $op) {
+                        if (str_replace('/', '-', $op['name']) !== $name) { continue; }
+                        // An action whose handler reads orders or completes one is refused the same way when called.
+                        if ($op['typedpress']['personal'] ?? false) { return false; }
                         $kind = $op['typedpress']['collection'] ?? null;
                         $schema = Plugin::instance()?->schema;
-                        if (str_replace('/', '-', $op['name']) === $name && is_string($kind) && $schema?->hasCollection($kind) && ($schema->collection($kind)['commerce'] ?? '') === 'order') { return false; }
+                        if (is_string($kind) && $schema?->hasCollection($kind) && ($schema->collection($kind)['commerce'] ?? '') === 'order') { return false; }
                     }
                 }
                 return true;

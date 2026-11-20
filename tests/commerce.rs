@@ -99,6 +99,52 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
         );
     }
 }
+/// An app name that became a built-in commerce ability would replace the WooCommerce operation at
+/// runtime while `abilities.call` stayed typed as that operation.
+#[test]
+fn an_app_cannot_declare_an_ability_the_store_adds() {
+    let project = tempfile::tempdir().unwrap();
+    let config = |exports: &str| {
+        std::fs::write(project.path().join("typedpress.config.ts"), format!("import {{defineConfig,store,product,order,action}} from 'typedpress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        cli("check", project.path())
+    };
+    let hijack =
+        "export const completeOrder = action({input:{}, access:'anyone', handler: async () => ({done:true})});";
+    for (exports, ability, owner) in [
+        (
+            format!("export const products = product({{inventory:true}}); export const orders = order(); {hijack}"),
+            "commerce/complete-order",
+            "product({ inventory: true })",
+        ),
+        (
+            "export const products = product({inventory:true}); export const increaseProductStock = action({input:{}, handler: async () => 1});".to_string(),
+            "commerce/increase-product-stock",
+            "product({ inventory: true })",
+        ),
+        (
+            "export const storeGet = action({input:{}, handler: async () => 1});".to_string(),
+            "commerce/store-get",
+            "store()",
+        ),
+    ] {
+        let out = config(&exports);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "accepted {exports}");
+        assert!(
+            stderr.contains(&format!("the ability `{ability}` is declared twice: {owner} adds it, and so does this app")),
+            "{stderr}"
+        );
+        assert!(stderr.contains("stays the WooCommerce operation"), "{stderr}");
+    }
+    // The names are free where the store adds no such ability: no inventory, or no order().
+    for exports in [
+        hijack.to_string(),
+        format!("export const products = product(); export const orders = order(); {hijack}"),
+        format!("export const products = product({{inventory:true}}); {hijack}"),
+    ] {
+        success(config(&exports));
+    }
+}
 #[test]
 fn a_sql_table_cannot_become_a_commerce_kind_of_the_same_name() {
     let project = tempfile::tempdir().unwrap();

@@ -540,7 +540,8 @@ final class Register
             // A signature replaces the access check (§6.1); the action path verifies it, so nothing is judged early.
             'defer' => ($action['signature'] ?? null) !== null,
             'call' => static fn (array $in): array => ['POST', '/actions/' . rawurlencode($name), [], $in],
-            'typedpress' => ['action' => $name],
+            // `personal`: the handler reads orders or completes one (the compiler's Action::personal).
+            'typedpress' => ['action' => $name] + (($action['personal'] ?? false) ? ['personal' => true] : []),
         ];
     }
 

@@ -10,9 +10,14 @@ media: ssd
 connector: sata
 condition: like-new
 powerOnHours: 1900
+testedOn: 2026-10-19
 price: "54.50"
 sku: SAMSUNG-870-EVO-1TB
 serial: DEMO-SAMSUNG-870-EVO-1TB
 status: published
+categories:
+  - zr_caabdd68cbc8b2ebb0d5
+tags:
+  - zr_c5b1cafcafdb2856e34d
 ---
 Taken out of a laptop after an upgrade to NVMe. Wear level reads 4%, so most of its rated 600 TBW is still ahead of it.

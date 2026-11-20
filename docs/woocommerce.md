@@ -64,15 +64,33 @@ v1 writes accept simple products only. Schedule publication in WooCommerce, wher
 the future date. TypedPress reads that status as `scheduled` and preserves an existing schedule when editing the product.
 Stock is operational data managed by Woo. Set `product({ inventory: true })` to
 start new products with managed stock at zero and expose the read-only
-`stockQuantity` field. The app can call the administrator-only
-`<app>/increase-product-stock` and `<app>/complete-order` abilities from
-actions. Completing an order requires an exported `order()` and a processing
-order. The `typedpress_woo_order_stock` hook receives the product ID, order ID,
-signed quantity, and reason (`sale` or `return`) when Woo changes order stock.
+`stockQuantity` field. Everything in this paragraph and the next exists only
+with `inventory: true`; without it the app has no stock field, no stock or
+fulfilment ability and no stock hook.
+
+`inventory: true` adds two administrator-only abilities the app calls from its
+actions with `abilities.call`:
+
+| Ability | Input | Needs |
+| --- | --- | --- |
+| `<app>/increase-product-stock` | `{ id, quantity }`, `quantity` an integer of at least 1 | `inventory: true` |
+| `<app>/complete-order` | `{ id }` of a processing order | `inventory: true` and an exported `order()` |
+
+Both are refused with 422 for any other input. The app cannot declare an
+action, kind, global or job whose ability name would be one of these two, or
+`<app>/store-get`: `typedpress check` refuses it.
+
+The `typedpress_woo_order_stock` hook (`tp/wp-hooks/typedpress_woo_order_stock.ts`)
+receives the product ID, order ID, signed quantity and reason when Woo changes
+stock for an order. The reason is `sale` when an order reduces stock, and
+`return` when a cancelled, failed or pending order restores it or a refund is
+made with "Restock refunded items". Its handler may be `async`. A restock
+through `increase-product-stock` is not an order change and does not fire it.
 
 Use `product({ fields: { capacityGb: integer().min(1).optional() } })` to add
 typed scalar fields to Woo's product metadata. Optional fields allow the app
 to read products created in Woo admin before the fields were declared.
+A `date()` field is stored as `YYYY-MM-DD` and filters and sorts in that form.
 TypedPress Admin and Markdown sync use the same field definitions.
 Set `reviews: true` on `product()` to enable text reviews and render them
 with `<Comments for={item} />`.
@@ -133,6 +151,11 @@ reads through TypedPress's usual purge hook.
 
 Scoped agent credentials use app abilities. Product/term writes require `--write`; the
 entire order kind additionally requires `--personal`, and its tools are hidden without it.
+So is an action whose handler reads orders or calls `<app>/complete-order`: without
+`--personal` the action is left out of the MCP tool list, and calling it is refused.
+An action's `abilities.call` runs as the same credential. A credential limited with
+`--abilities` therefore needs the inner ability on its list as well as the action
+(`--abilities=shop/restock,shop/increase-product-stock`); the refusal names the missing one.
 The store has one read tool. Scoped credentials cannot call Woo's merchant REST namespaces,
 its core REST product/term aliases, or `woocommerce/*` abilities. Cart and checkout have no agent tools.
 

@@ -726,6 +726,9 @@ pub fn render(schema: &Schema) -> String {
         let _ = writeln!(out, "            'idempotent' => {},", a.idempotent);
         let _ = writeln!(out, "            'readonly' => {},", a.readonly);
         let _ = writeln!(out, "            'destructive' => {},", a.destructive);
+        if a.personal {
+            out.push_str("            'personal' => true,\n");
+        }
         let _ = writeln!(
             out,
             "            'output' => {},",

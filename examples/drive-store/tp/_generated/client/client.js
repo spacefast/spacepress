@@ -20,9 +20,50 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": {},
+			"relations": {
+				"categories": {
+					"kind": "many",
+					"collection": "categories",
+					"optional": false
+				},
+				"tags": {
+					"kind": "many",
+					"collection": "tags",
+					"optional": false
+				}
+			},
 			"media": ["images"],
 			"mediaList": ["images"],
+			"files": []
+		},
+		"categories": {
+			"path": "categories",
+			"primaryKey": "id",
+			"drafts": false,
+			"revisions": false,
+			"localized": false,
+			"relations": { "drives": {
+				"kind": "many",
+				"collection": "drives",
+				"optional": false
+			} },
+			"media": [],
+			"mediaList": [],
+			"files": []
+		},
+		"tags": {
+			"path": "tags",
+			"primaryKey": "id",
+			"drafts": false,
+			"revisions": false,
+			"localized": false,
+			"relations": { "drives": {
+				"kind": "many",
+				"collection": "drives",
+				"optional": false
+			} },
+			"media": [],
+			"mediaList": [],
 			"files": []
 		},
 		"orders": {

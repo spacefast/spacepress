@@ -72,6 +72,24 @@ async function checkout(page: Page, origin = base, country = 'PL') {
   await expect(page.getByRole('button', { name: 'Place Order', exact: true })).toBeEnabled();
 }
 
+// The Checkout Block sends an address edit 1.5 s after the last keystroke, or at once when an input
+// loses focus, and disables Place Order while the answer recalculates shipping. Pressing the button
+// with an unsent edit therefore starts the request on mousedown: the button is disabled before
+// mouseup, WooCommerce 11.3.0 drops the click, no order is placed and the button comes back enabled.
+// A test types faster than 1.5 s, so it sends the edits and waits for the answer before it clicks.
+async function placeOrder(page: Page) {
+  const settled = () => page.waitForFunction(() => {
+    const { select } = (window as any).wp.data;
+    return !select('wc/store/cart').isCustomerDataUpdating() && !select('wc/store/checkout').isCalculating();
+  });
+  await settled();
+  const email = page.getByLabel('Email address', { exact: true });
+  await email.focus();
+  await email.blur();
+  await settled();
+  await page.getByRole('button', { name: 'Place Order', exact: true }).click();
+}
+
 async function bootWoo(project: string, appName: string) {
   const content = path.join(project, 'tp/dist/wp-content');
   const manifest = JSON.parse(readFileSync(path.join(content, 'typedpress-manifest.json'), 'utf8'));
@@ -287,7 +305,7 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
   // Replace the test gateway with the stock gateway for this purchase.
   await php(`update_option('tp_test_stock_gateway',true);echo 'true';`);
   await wordpress.playground.writeFile('/wordpress/wp-content/mu-plugins/stock-gateway.php', `<?php add_filter('woocommerce_payment_gateways',static fn($all)=>array_map(static fn($c)=>$c==='TP_Commerce_Test_Gateway'?'WC_Gateway_COD':$c,$all),100);`);
-  await page.getByRole('button', { name: 'Place Order', exact: true }).click();
+  await placeOrder(page);
   await page.waitForURL('**/checkout/order-received/**');
   await expect(page.getByText('Thank you. Your order has been received.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Everyday objects' })).toBeVisible();
@@ -321,9 +339,9 @@ test('dummy gateway decline/retry, native paid download grants, receipt and emai
   await php(`update_option('tp_test_decline',true);echo 'true';`);
   const context = await browser.newContext(); const page = await context.newPage();
   await add(page, 'field-guide'); await checkout(page);
-  await page.getByRole('button', { name: 'Place Order', exact: true }).click();
+  await placeOrder(page);
   await page.getByText('Test payment declined. Retry this order.', { exact: true }).first().waitFor();
-  await page.getByRole('button', { name: 'Place Order', exact: true }).click();
+  await placeOrder(page);
   await page.waitForURL('**/checkout/order-received/**');
   await expect(page.getByText('Thank you. Your order has been received.')).toBeVisible();
   const download = page.locator('a[href*="download_file="]').first();
@@ -415,7 +433,7 @@ test('Drive Store carries the generated cart session into native checkout and lo
     await expect(page.getByText('278.00 USD', { exact: true })).toBeVisible();
     await checkout(page, site.base, 'US');
     await expect(page.locator('.wc-block-components-totals-footer-item')).toContainText('286.00');
-    await page.getByRole('button', { name: 'Place Order', exact: true }).click();
+    await placeOrder(page);
     await page.waitForURL('**/checkout/order-received/**');
     const result = await run(`
       $id=wc_get_product_id_by_sku('SEAGATE-EXOS-X16');

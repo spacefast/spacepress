@@ -526,32 +526,39 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
             ));
         }
     }
-    if schema
+    for (name, shape) in commerce_operations(schema) {
+        out.push((
+            format!("{app}/{name}"),
+            (
+                schema_ty(&shape["input"], &mut Vec::new(), ""),
+                schema_ty(&shape["output"], &mut Vec::new(), ""),
+            ),
+        ));
+    }
+    out
+}
+
+/// The stock and fulfilment operations `TypedPress\Commerce\Operations` registers for this schema,
+/// with their schemas: none without `product({ inventory: true })`, and `complete-order` only
+/// with an `order()` beside it.
+pub fn commerce_operations(schema: &Schema) -> Vec<(String, Value)> {
+    let has = |kind: &str| schema.collections.values().any(|c| c.commerce.as_deref() == Some(kind));
+    if !schema
         .collections
         .values()
         .any(|c| c.commerce.as_deref() == Some("product") && c.columns.contains_key("stockQuantity"))
     {
-        let shapes: Value = serde_json::from_str(include_str!("../../runtime/TypedPress/Commerce/operations.json"))
-            .expect("commerce operation schemas");
-        for (name, shape) in shapes.as_object().expect("commerce operations") {
-            if name == "complete-order"
-                && !schema
-                    .collections
-                    .values()
-                    .any(|c| c.commerce.as_deref() == Some("order"))
-            {
-                continue;
-            }
-            out.push((
-                format!("{app}/{name}"),
-                (
-                    schema_ty(&shape["input"], &mut Vec::new(), ""),
-                    schema_ty(&shape["output"], &mut Vec::new(), ""),
-                ),
-            ));
-        }
+        return Vec::new();
     }
-    out
+    let shapes: Value = serde_json::from_str(include_str!("../../runtime/TypedPress/Commerce/operations.json"))
+        .expect("commerce operation schemas");
+    shapes
+        .as_object()
+        .expect("commerce operations")
+        .iter()
+        .filter(|(name, _)| *name != "complete-order" || has("order"))
+        .map(|(name, shape)| (name.clone(), shape.clone()))
+        .collect()
 }
 
 /// `JsonSchema::isRequired`: a NOT NULL column without a default or auto-increment.

@@ -106,6 +106,13 @@ eq('the public product masks its serial', $drive['serial'] ?? null, null);
 eq('staff can read the typed inventory serial', $db->findFirst('drives', ['where' => ['id' => $id]], $admin)['serial'], 'DEMO-SEAGATE-EXOS-X16');
 eq('new products start at zero Woo stock', [$native->managing_stock(), $native->get_stock_quantity()], [true, 0]);
 eq('checkout is a real WordPress Page containing the native block', has_block('woocommerce/checkout', get_post(wc_get_page_id('checkout'))), true);
+eq('Markdown categories and tags are native Woo terms on the product', [get_term($drive['categories'][0], 'product_cat')->name, get_term($drive['tags'][0], 'product_tag')->name], ['NAS and server', 'Enterprise']);
+// A date() product field is stored as YYYY-MM-DD and compared in that form.
+$tested = static fn (array $where): array => array_column($db->findMany('drives', ['where' => ['testedOn' => $where], 'orderBy' => ['slug' => 'asc']], $guest), 'slug');
+eq('a date product field reads back as written', $drive['testedOn'], '2026-10-02');
+eq('a date product field filters by equality', $tested(['eq' => '2026-10-02']), ['seagate-exos-x16', 'wd-red-plus-4tb']);
+eq('a date product field filters by range', [$tested(['gte' => '2026-10-19']), $tested(['lt' => '2026-10-19']), $tested(['gt' => '2026-11-03'])], [['crucial-p3-2tb', 'samsung-870-evo-1tb'], ['seagate-exos-x16', 'wd-red-plus-4tb'], []]);
+eq('a date product field sorts', array_column($db->findMany('drives', ['orderBy' => ['testedOn' => 'desc'], 'limit' => 1], $guest), 'slug'), ['crucial-p3-2tb']);
 
 $catalogPage = fetch("$url/");
 eq('catalog renders', $catalogPage['status'], 200);
@@ -118,6 +125,8 @@ eq('an unknown product slug returns 404', $missing['status'], 404);
 eq('guest staff page redirects to sign-in', fetch("$url/staff/")['status'], 302);
 eq('editors cannot use the Woo fulfilment page', fetch("$url/staff/", headers: ['Cookie: ' . session($site, 'editor')])['status'], 403);
 check('catalog offers the WordPress product feed', str_contains($catalogPage['body'], 'post_type=product'));
+$feed = fetch("$url/?feed=rss2&post_type=product");
+eq('the product feed the catalog links is served', [$feed['status'], str_contains($feed['body'], '<rss'), str_contains($feed['body'], 'Seagate Exos X16')], [200, true, true]);
 foreach (['cart', 'checkout'] as $page) {
     $answer = fetch("$url/$page/");
     eq("the $page route renders", $answer['status'], 200);
@@ -136,6 +145,7 @@ eq('restock action increments Woo inventory', [$status, $restocked['stock'] ?? n
 $detail = fetch("$url$path");
 eq('native product URL renders', $detail['status'], 200);
 check('native product page shows specs and live stock', str_contains($detail['body'], 'SMART power-on hours') && str_contains($detail['body'], '2 in stock') && str_contains($detail['body'], 'data-tp-live'));
+check('native product page shows the test date, category and tag', str_contains($detail['body'], '2026-10-02') && str_contains($detail['body'], 'NAS and server, Enterprise'));
 check('an available drive offers add to cart', str_contains($detail['body'], 'Add to cart'));
 check('the storefront does not print the inventory serial', !str_contains($detail['body'], 'DEMO-SEAGATE-EXOS-X16'));
 
@@ -180,6 +190,74 @@ $order->update_status('cancelled');
 eq('Woo restores cancelled stock and the log records the return', [wc_get_product($id)->get_stock_quantity(), $moves()[2] ?? null], [2, ['return', 2.0, $orderId]]);
 eq('typed product updates leave operational stock intact', $db->update('drives', ['powerOnHours' => 22000], ['id' => $id], true, $admin)[0]['powerOnHours'], 22000);
 eq('a spec edit preserves the Woo stock count', wc_get_product($id)->get_stock_quantity(), 2);
+
+// A refund that restocks its items returns stock without restoring the order's, on Woo's own hook.
+$refunded = wc_create_order();
+$line = $refunded->add_product(wc_get_product($id), 1);
+$refunded->calculate_totals();
+$refunded->update_status('processing');
+$refund = wc_create_refund(['order_id' => $refunded->get_id(), 'amount' => $refunded->get_total(), 'restock_items' => true,
+    'line_items' => [$line => ['qty' => 1, 'refund_total' => $refunded->get_total(), 'refund_tax' => []]]]);
+check('Woo accepts the restocking refund', $refund instanceof WC_Order_Refund, $refund);
+eq('a restocking refund is logged as a return', [wc_get_product($id)->get_stock_quantity(), array_slice($moves(), 3)], [2, [['sale', -1.0, $refunded->get_id()], ['return', 1.0, $refunded->get_id()]]]);
+
+// The stock ability checks its own input: an action's abilities.call() skips core's REST argument check.
+$site->actAs('admin');
+$increase = static function (array $input): array {
+    $result = wp_get_ability('drive-store/increase-product-stock')->execute($input);
+    return $result instanceof WP_Error ? [$result->get_error_data()['status'] ?? null, $result->get_error_message()] : [200, $result];
+};
+foreach (['a negative quantity' => -3, 'a quantity with trailing text' => '2abc', 'a fractional quantity' => 1.9, 'zero' => 0, 'a null quantity' => null] as $label => $quantity) {
+    eq("increase-product-stock refuses $label", $increase(['id' => $id, 'quantity' => $quantity])[0], 422);
+}
+eq('increase-product-stock refuses a missing quantity', $increase(['id' => $id])[0], 422);
+eq('increase-product-stock refuses an unknown input', $increase(['id' => $id, 'quantity' => 1, 'operation' => 'set'])[0], 422);
+eq('refused quantities leave Woo stock unchanged', wc_get_product($id)->get_stock_quantity(), 2);
+eq('a missing product is named generically', $increase(['id' => 999999, 'quantity' => 1]), [404, 'Product not found']);
+eq('a valid quantity still restocks', [$increase(['id' => $id, 'quantity' => 3]), wc_get_product($id)->get_stock_quantity()], [[200, 5], 5]);
+eq('the restock action refuses a negative quantity before Woo sees it', $site->call('POST', '/actions/restock', ['drive' => $id, 'quantity' => -3], as: 'admin')[0], 422);
+
+// Scoped credentials over real HTTP: what an agent is offered matches what it may run.
+[$password, $item] = WP_Application_Passwords::create_new_application_password($site->userId('admin'), ['name' => 'Drive Store test agent']);
+$scope = static fn (array $scope) => \TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], $scope);
+$request = static function (string $path, ?array $body = null, array $headers = []) use ($url, $password): array {
+    $ch = curl_init($url . $path);
+    $answered = [];
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_CUSTOMREQUEST => $body === null ? 'GET' : 'POST',
+        CURLOPT_HTTPHEADER => ['Authorization: Basic ' . base64_encode('admin:' . $password), 'Content-Type: application/json', 'Accept: application/json, text/event-stream', ...$headers],
+        CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$answered): int { $parts = explode(':', $line, 2); if (count($parts) === 2) { $answered[strtolower(trim($parts[0]))] = trim($parts[1]); } return strlen($line); }]);
+    if ($body !== null) { curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body)); }
+    $text = curl_exec($ch);
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), json_decode((string) $text, true), $answered];
+};
+$tools = static function () use ($request): array {
+    $session = $request('/wp-json/mcp/typedpress-drive-store', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-11-25', 'capabilities' => new stdClass(), 'clientInfo' => ['name' => 'Drive Store test', 'version' => '1']]]);
+    $list = $request('/wp-json/mcp/typedpress-drive-store', ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list', 'params' => new stdClass()], ['Mcp-Session-Id: ' . ($session[2]['mcp-session-id'] ?? ''), 'Mcp-Protocol-Version: 2025-11-25']);
+    $names = array_values(array_intersect(['drive-store-restock', 'drive-store-mark-shipped', 'drive-store-pending-orders', 'drive-store-orders-list', 'drive-store-drives-list'], array_column($list[1]['result']['tools'] ?? [], 'name')));
+    sort($names);
+    return [$list[0], $names];
+};
+// A readonly action runs over GET and takes no input here; the others take theirs as JSON.
+$run = static fn (string $ability, ?array $input = null) => $request("/wp-json/wp-abilities/v1/abilities/drive-store/$ability/run", $input === null ? null : ['input' => $input]);
+// The server is another process: read Woo's stock past this one's object cache.
+$stock = static function () use ($id): ?int { clean_post_cache($id); return wc_get_product($id)->get_stock_quantity(); };
+$scope(['write' => true, 'personal' => false, 'abilities' => null]);
+eq('without the personal grant an agent is offered restocking, and no tool that reads or completes orders', $tools(), [200, ['drive-store-drives-list', 'drive-store-restock']]);
+eq('the order tools it is not offered are refused when called', [$run('pending-orders')[0], $run('mark-shipped', ['order' => $orderId])[0]], [403, 403]);
+$scope(['write' => true, 'personal' => true, 'abilities' => null]);
+eq('with the personal grant the order tools are offered', $tools(), [200, ['drive-store-drives-list', 'drive-store-mark-shipped', 'drive-store-orders-list', 'drive-store-pending-orders', 'drive-store-restock']]);
+eq('and run', $run('pending-orders')[0], 200);
+// An action's abilities.call() is judged as the credential: the inner ability belongs on its list too.
+$scope(['write' => true, 'personal' => false, 'abilities' => ['drive-store/restock']]);
+$refused = $run('restock', ['drive' => $id, 'quantity' => 1]);
+eq('a credential limited to the restock action is refused the ability the action calls', $refused[0], 403);
+check('and the refusal names that ability', str_contains((string) ($refused[1]['message'] ?? ''), '`drive-store/increase-product-stock`'), $refused[1]);
+eq('a refused restock changes no stock', $stock(), 5);
+$scope(['write' => true, 'personal' => false, 'abilities' => ['drive-store/restock', 'drive-store/increase-product-stock']]);
+$allowed = $run('restock', ['drive' => $id, 'quantity' => 1]);
+eq('listing both lets the action restock', [$allowed[0], $allowed[1]['stock'] ?? null, $stock()], [200, 6, 6]);
+$log = $site->debugLog();
+check('the Drive Store runs without PHP warnings or fatal errors', !preg_match('/PHP (Warning|Fatal error):/', $log), $log);
 
 $profile?->save();
 finish('drive_store');

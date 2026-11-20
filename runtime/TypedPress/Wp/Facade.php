@@ -109,6 +109,8 @@ final class Facade
             // The namespace's own path is the app's schema, in place of core's namespace index.
             rest_get_server()->register_route(self::NAMESPACE, '/' . self::NAMESPACE, [$handler], true);
         });
+        add_filter('request', [self::class, 'decoded']);
+        add_filter('rest_authentication_errors', [self::class, 'authenticate'], 1); // after AgentScope::booted()
         add_filter('rest_pre_serve_request', [self::class, 'served'], 100, 3);
         add_filter('rest_allowed_cors_headers', static fn (array $headers, mixed $request = null): array => $request instanceof \WP_REST_Request && self::below((string) $request->get_route()) !== null
             ? array_merge($headers, ['Idempotency-Key', 'TypedPress-Signature']) : $headers, 10, 2);
@@ -129,7 +131,7 @@ final class Facade
             if ($plugin->unavailable() !== null) {
                 throw new HttpError(503, 'unavailable', Plugin::UNAVAILABLE);
             }
-            // Core has decoded the route; route() takes the path as sent, one segment at a time.
+            // The route is decoded ({@see decoded()}); route() takes the path as sent, one segment at a time.
             $sent = implode('/', array_map('rawurlencode', explode('/', $path)));
             self::$answer = self::route($plugin, $request->get_method(), $sent, self::query(), $request->get_body());
         } catch (HttpError | \TypedPress\JsError $e) {
@@ -663,8 +665,9 @@ final class Facade
     // ================================================================ request parsing
 
     /**
-     * The API path of this request ('' for the schema), or null when it isn't the API's: the REST
-     * route WordPress parsed (`/wp-json/typedpress/v1/…` or `?rest_route=/typedpress/v1/…`).
+     * The API path of this request ('' for the schema), or null when it isn't the API's. WordPress
+     * decides that, not the URL: the request is REST (`REST_REQUEST`, which core defines once it has
+     * parsed a REST route) and the route it parsed is below the API's namespace. Null until then.
      */
     public static function path(): ?string
     {
@@ -672,37 +675,57 @@ final class Facade
             return self::$serving;
         }
         $route = $GLOBALS['wp']->query_vars['rest_route'] ?? null;
-        if (is_string($route) && defined('REST_REQUEST')) {
-            return self::below(untrailingslashit($route));
-        }
 
-        return did_action('parse_request') > 0 ? null : self::requested();
+        return is_string($route) && defined('REST_REQUEST') && REST_REQUEST ? self::below(untrailingslashit($route)) : null;
     }
 
     /**
-     * The API path this request names, read from the URL as WordPress will parse it, for code that
-     * runs before `parse_request` (accepting an application password at `init`, as core does only
-     * once the request is known to be REST): `/wp-json/typedpress/v1/…` or `?rest_route=/typedpress/v1/…`
-     * on the front controller.
+     * `request`: the API's route as the caller wrote it, decoded once however it was sent. WordPress
+     * keeps a route it took from the path (`/wp-json/typedpress/v1/…`) percent-encoded as sent, so
+     * that one is decoded here. PHP has decoded `?rest_route=/typedpress/v1/…`, and WordPress then
+     * added its slashes to it, which come off here. Core, the scope check and the API then all read
+     * the same route for both spellings.
+     *
+     * @param array<string, mixed> $vars
+     * @return array<string, mixed>
      */
-    private static function requested(): ?string
+    public static function decoded(array $vars): array
     {
-        $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
-        $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
-        if ($base !== '' && str_starts_with($path, $base . '/')) {
-            $path = substr($path, strlen($base));
+        $route = $vars['rest_route'] ?? null;
+        if (!is_string($route)) {
+            return $vars;
         }
-        if (str_starts_with($path, '/index.php/')) {
-            $path = substr($path, strlen('/index.php'));
+        if (isset($_GET['rest_route']) || isset($_POST['rest_route'])) {
+            $decoded = wp_unslash($route);
+        } elseif (str_ends_with((string) ($GLOBALS['wp']->request ?? ''), ltrim($route, '/'))) {
+            // WordPress matched its rewrite rule on the path as sent (it also tries the decoded path,
+            // whose route needs no decoding).
+            $decoded = rawurldecode($route);
+        } else {
+            return $vars;
         }
-        $prefix = '/' . rest_get_url_prefix() . '/';
-        $route = match (true) {
-            is_string($_GET['rest_route'] ?? null) && ($path === '/' || $path === '/index.php') => $_GET['rest_route'],
-            str_starts_with($path, $prefix) => '/' . substr($path, strlen($prefix)),
-            default => null,
-        };
+        if (self::below($decoded) !== null) {
+            $vars['rest_route'] = $decoded;
+        }
 
-        return $route === null ? null : self::below(untrailingslashit(rawurldecode($route)));
+        return $vars;
+    }
+
+    /**
+     * rest_authentication_errors, before core reads what an application password did (priority 90):
+     * resolve the API's user now. WordPress first resolves the user before it knows the request is
+     * REST (at `init`; while plugins load under Polylang), so without application passwords, and its
+     * REST server drops that visitor. Left alone, the next resolve is core's cookie check at priority
+     * 100, after the outcome was read, and a refused password (wrong, suspended, out of scope) would
+     * go on as a visitor instead of answering its error. Other REST routes keep core's order.
+     */
+    public static function authenticate(mixed $result): mixed
+    {
+        if (self::path() !== null && isset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'])) {
+            wp_get_current_user(); // a no-op when the request's user is already resolved
+        }
+
+        return $result;
     }
 
     /** The API path of a REST route ('' for the namespace itself), or null when the route isn't the API's. */

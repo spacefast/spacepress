@@ -215,6 +215,24 @@ final class AgentScope
     }
 
     /**
+     * rest_authentication_errors, first: the refusal above can be from before the app booted, when
+     * other code makes WordPress check application passwords while plugins are still loading. The
+     * app is active now and enforces the scope, so that refusal is dropped and core resolves the
+     * user again, this time as a REST request.
+     */
+    public static function booted(mixed $result): mixed
+    {
+        $user = $GLOBALS['current_user'] ?? null;
+        if (self::$unenforced !== null && defined('REST_REQUEST') && REST_REQUEST && Runtime::plugin() !== null && !($user instanceof \WP_User && $user->exists())) {
+            self::$unenforced = null;
+            $GLOBALS['current_user'] = null;
+            rest_application_password_collect_status(null);
+        }
+
+        return $result;
+    }
+
+    /**
      * rest_authentication_errors: the refusal above, as the request's answer. Core can resolve the user
      * more than once in a request and keeps only its last answer, so the refusal is kept here; without
      * this the request would go on as a visitor, which is narrower but says nothing about why.
@@ -244,7 +262,8 @@ final class AgentScope
      */
     private static function facade(array $scope, string $path, bool $read): ?string
     {
-        $segments = array_map('rawurldecode', array_values(array_filter(explode('/', $path), static fn (string $s): bool => $s !== '')));
+        // The route is already decoded (Facade::decoded()): decoding again would read a different path than the API does.
+        $segments = array_values(array_filter(explode('/', $path), static fn (string $s): bool => $s !== ''));
         $name = $segments[0] ?? '';
         // An action or a global is an ability: its own annotations say whether it writes.
         $ability = ($name === 'actions' && count($segments) === 2) || (count($segments) === 1 && isset(Plugin::instance()?->schema->globals()[$name]));

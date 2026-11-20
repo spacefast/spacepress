@@ -32,14 +32,13 @@ final class Runtime
         // A guarded upgrade step, not a table: staged revisions written before they had their own
         // status get it (WpPostStore::upgradeStagedStatus), once per site with the other steps.
         \TypedPress\SystemTables::register('__tp_staged_status', [\TypedPress\SystemTables::step(1, WpPostStore::upgradeStagedStatus(...))]);
-        // Core accepts application passwords on REST requests only, and knows a request is REST only at
-        // parse_request, after it first resolved the user at init: the API is one from the start, as the
-        // deploy plugin's routes are. Registered as the runtime loads, before any plugin resolves the user.
-        add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || Facade::path() !== null);
         RouteRequest::register();
         AgentScope::trackCookie();
+        // Application passwords sign in where core accepts them and nowhere else: on a request WordPress
+        // itself has made a REST request (`REST_REQUEST`), never one a URL only appears to name.
         // A scoped application password signs in only where an active app enforces its scope.
         add_action('wp_authenticate_application_password_errors', [AgentScope::class, 'authenticating'], 10, 3);
+        add_filter('rest_authentication_errors', [AgentScope::class, 'booted'], 0);
         add_filter('rest_authentication_errors', [AgentScope::class, 'unenforced'], 95);
         register_activation_hook($runtimeFile, [self::class, 'activate']);
         PageCaches::register();

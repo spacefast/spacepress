@@ -831,6 +831,47 @@ eq('_method turns a POST into the PATCH it names, as on every REST route', [$r['
 $r = http('GET', '/items', headers: ['Cookie: wordpress_logged_in_x=y', 'X-WP-Nonce: nope']);
 // Core's refusal (rest_cookie_invalid_nonce), mapped as every core refusal of a signed-out caller is.
 $isProblem('a bad nonce is core\'s refusal, as a problem document', $r, 401, 'unauthenticated');
+// Application passwords are core's too, under core's own rule: on a request WordPress serves from the
+// REST API, and on no other, whatever its URL starts with.
+$basic = static fn (string $user, ?string $password = null): array => ['Authorization: Basic ' . base64_encode($password === null ? $wp->appPassword($user) : "$user:$password")];
+$origin = "http://127.0.0.1:$port";
+/** One request to the site with its path sent exactly as written (dot segments kept). */
+$sent = static function (string $method, string $target, array $headers = [], ?string $body = null) use ($origin): array {
+    $ch = curl_init($origin . $target);
+    curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_PATH_AS_IS => true, CURLOPT_HTTPHEADER => $headers]);
+    if ($body !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+    }
+    $res = (string) curl_exec($ch);
+
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), $res];
+};
+eq('an application password signs in on the API', [http('GET', '/me', headers: $basic('fa_ed'))['status'], http('GET', '/me', headers: $basic('fa_ed'))['json']['data']['role'] ?? null], [200, 'editor']);
+eq('… and as ?rest_route=', json_decode($sent('GET', '/?rest_route=/typedpress/v1/me', $basic('fa_ed'))[1], true)['data']['role'] ?? null, 'editor');
+$isProblem('a wrong application password is refused, not a visitor', http('GET', '/me', headers: $basic('fa_ed', 'abcd efgh ijkl mnop qrst uvwx')), 401, 'incorrect_password');
+$isProblem('… on a public list too', http('GET', '/items', headers: $basic('fa_ed', 'abcd efgh ijkl mnop qrst uvwx')), 401, 'incorrect_password');
+// `rest_route` in the query or the body replaces the route in the path: emptied, the request is a page.
+$form = ['Content-Type: application/x-www-form-urlencoded'];
+$pages = [
+    'a page' => $sent('GET', '/', $basic('fa_admin')),
+    'the API path with ?rest_route= emptied' => $sent('GET', '/wp-json/typedpress/v1/me/?rest_route=', $basic('fa_admin')),
+    'the API path with rest_route= emptied in the body' => $sent('POST', '/wp-json/typedpress/v1/me', [...$basic('fa_admin'), ...$form], 'rest_route='),
+];
+foreach ($pages as $label => [$status, $page]) {
+    check("an application password signs nobody in on $label", !str_starts_with(ltrim($page), '{') && !str_contains($page, 'wpadminbar') && preg_match('/<body[^>]*\blogged-in\b/', $page) !== 1, [$status, substr($page, 0, 200)]);
+}
+// A path decoded once, however it was sent: WordPress keeps the pretty path as sent, PHP decodes ?rest_route=.
+foreach (['/%69tems/' . $widget['id'] => 200, '/items/%3' . substr((string) $widget['id'], 0, 1) . substr((string) $widget['id'], 1) => 200,
+    '/items/slug%3Anope' => 404, '/it%20ems' => 404, '/it%C3%A9ms' => 404, '/it%2520ems' => 404, '/%2569tems' => 404, '/it%27s%22a%5Cb' => 404] as $encoded => $expect) {
+    $pretty = http('GET', $encoded);
+    [$status, $body] = $sent('GET', '/?rest_route=/typedpress/v1' . $encoded);
+    eq("$encoded answers the same under /wp-json and as ?rest_route=", [$pretty['status'], $pretty['json']], [$status, json_decode($body, true)]);
+    eq("$encoded → $expect", $pretty['status'], $expect);
+}
+eq('an encoded space, a non-ASCII letter and a literal %20 reach the API as that text', [
+    http('GET', '/it%20ems')['json']['detail'] ?? null, http('GET', '/it%C3%A9ms')['json']['detail'] ?? null, http('GET', '/it%2520ems')['json']['detail'] ?? null, http('GET', '/%2569tems')['json']['detail'] ?? null,
+    http('GET', '/it%27s%22a%5Cb')['json']['detail'] ?? null,
+], ["Unknown kind 'it ems'", "Unknown kind 'itéms'", "Unknown kind 'it%20ems'", "Unknown kind '%69tems'", "Unknown kind 'it's\"a\\b'"]);
 $r = http('GET', '/items');
 eq('every answer is private', [$r['headers']['cache-control'] ?? null, str_contains($r['headers']['vary'] ?? '', 'Authorization')], ['private, no-store', true]);
 $plain = (function () use ($base): array {

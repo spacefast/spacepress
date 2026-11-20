@@ -397,10 +397,23 @@ PY
 "$harness" compose exec -T wordpress sh -c "! find /var/www/html/wp-content -name escaped.php | grep -q ." || fail "nothing was written outside the store"
 # The deployment's token only selects code on that deployment's own routes, for an administrator.
 [[ $(curl -s -H "X-TypedPress-Deployment: $id:$token" "$url/wp-json/typedpress/v1" | json data.name) == pluginlane && $(status -H "X-TypedPress-Deployment: $id:$token" "$url/wp-json/typedpress/v1/tasks") == 200 ]] || fail "a deployment token on another URL still gets the live build"
-# Naming the deployment's route in the query string of another URL is not being on that route.
-[[ $(status -H "X-TypedPress-Deployment: $id:$token" "$url/wp-json/typedpress/v1/tasks?rest_route=/typedpress-deploy/v1/deployments/$id/plan") == 200 ]] || fail "a deployment token with its route named in another URL's query still gets the live build"
+# A route named in the query string replaces the one in the path (WP::parse_request), so WordPress
+# serves the plan here. A request that names a route in two places is not taken as the deployment's:
+# the live build is mounted, and the plan answers as it does for anyone signed out.
+[[ $(status -H "X-TypedPress-Deployment: $id:$token" "$url/wp-json/typedpress/v1/tasks?rest_route=/typedpress-deploy/v1/deployments/$id/plan") == 401 ]] || fail "a deployment token with its route named in another URL's query is signed out on the plan"
 # Nor does it make an application password sign anyone in outside the REST API.
 [[ $(curl -s -u "$admin" -d 'action=heartbeat' "$url/wp-admin/admin-ajax.php?rest_route=/typedpress-deploy/v1/site") == *'"wp-auth-check":false'* ]] || fail "an application password signs nobody in on admin-ajax.php"
+# Nor does a path that starts as the receiver's and walks out of it with dot segments: WordPress decides
+# what a REST request is, and the plugin accepts an application password early only for the holder of a
+# deployment's token on that deployment's own route.
+for dots in '../../..' '%2e%2e/%2e%2e/%2e%2e'; do
+  [[ $(curl -s --path-as-is -u "$admin" "$api/$dots/wp-admin/admin-ajax.php?action=rest-nonce") == 0 ]] || fail "an application password gets no nonce from admin-ajax.php through $dots"
+  [[ $(curl -s --path-as-is -u "$admin" -H "X-TypedPress-Deployment: $id:$token" "$api/deployments/$id/plan/$dots/$dots/wp-admin/admin-ajax.php?action=rest-nonce") == 0 ]] || fail "nor with a deployment's token, through $dots"
+done
+[[ $(curl -s -u "$admin" "$url/wp-admin/admin-ajax.php?action=rest-nonce") == 0 ]] || fail "an application password gets no nonce from admin-ajax.php"
+[[ $(curl -s --path-as-is -u "$admin" -d 'a=1' "$url//x/wp-json/typedpress-deploy/v1/site") != *wpadminbar* ]] || fail "an application password signs nobody in on a page whose path ends like the receiver's"
+# Such a path is a page to WordPress, so a deployment's token selects nothing on it either: the live build answers.
+[[ $(curl -s --path-as-is -u "$admin" -H "X-TypedPress-Deployment: $id:$token" -d 'a=1' "$url//x/wp-json/typedpress-deploy/v1/deployments/$id/plan") != *wpadminbar* ]] || fail "a deployment's token on a page signs nobody in"
 [[ $(status -u "$editor" -H "X-TypedPress-Deployment: $id:$token" "$api/deployments/$id/plan") == 403 ]] || fail "the token alone does not open the plan"
 [[ $(status -u "$admin" -H "X-TypedPress-Deployment: $id:$(printf 'f%.0s' {1..64})" "$api/deployments/$id/plan") == 409 ]] || fail "a wrong token mounts nothing"
 [[ $(status -u "$admin" -X POST -H "X-TypedPress-Deployment: $id:$token" "$api/deployments/$id/activate") == 409 ]] || fail "a deployment whose trees never arrived can't go live"
@@ -451,6 +464,9 @@ mine=(-H "X-TypedPress-Deployment: $mid:$mtoken")
 # A request WordPress dispatches somewhere else is not this deployment's request: its path names the
 # plan and its `rest_route` or method override names something else.
 [[ $(status -u "$admin" "${mine[@]}" "$api/deployments/$mid/plan?rest_route=/wp/v2/types") == 200 ]] || fail "WordPress serves the route named in the query"
+# The other way round, the plan named in the query of another route's URL: WordPress serves the plan,
+# and the deployment's code is not mounted for it (409), administrator or not.
+[[ $(status -u "$admin" "${mine[@]}" "$url/wp-json/typedpress/v1/tasks?rest_route=/typedpress-deploy/v1/deployments/$mid/plan") == 409 ]] || fail "the plan named in another URL's query mounts nothing"
 [[ $(status -u "$admin" "${mine[@]}" -X POST "$api/deployments/$mid/activate?_method=DELETE") == 404 && $(status -u "$admin" "${mine[@]}" -H 'X-HTTP-Method-Override: DELETE' -X POST "$api/deployments/$mid/activate") == 404 ]] || fail "an overridden method is not the activation"
 # An administrator's browser session is not enough either: the cookie alone, the cookie with a wrong
 # nonce, and the cookie with the right one. Only an application password gets the build loaded.

@@ -614,7 +614,13 @@ where the app declares none of that name. A collection's `api` flags gate
 list/get/create/update/delete (disabled → 405 `method_not_allowed`).
 Authentication is core REST's (cookie and nonce, an application password,
 or a TypedPress Identity bearer); CORS headers and `OPTIONS` preflights are
-core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. Every
+core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. An
+application password is accepted under core's rule and no other: on a request
+WordPress itself serves from the REST API (`REST_REQUEST`), never because of
+how its URL starts, so it signs nobody in on a page or on `admin-ajax.php`.
+A wrong, suspended or out-of-scope one is refused with its error (401 or 403),
+not answered as a visitor. A path segment is percent-decoded once, the same
+under `/wp-json/typedpress/v1/…` and as `?rest_route=/typedpress/v1/…`. Every
 answer is `Cache-Control: private, no-store` with `Vary: Origin, Cookie,
 Authorization`, except file streams and `/openapi.json`, which is the same for
 every caller.

@@ -138,7 +138,7 @@ The app API is `/wp-json/typedpress/v1`; actions are `POST /wp-json/typedpress/v
 | Hook | Kind | What |
 |---|---|---|
 | `tp_mail_transport` | filter | delivers `mail.send` messages; without it, the app's mail is refused |
-| `tp_purge_urls` | action | the root-relative URLs a committed content write changed, for a host's page cache |
+| `tp_purge_urls` | action | the root-relative URLs a committed content write changed, for a host's page cache; `/*` after a new build goes live |
 | `tp_private_probe_url` | filter | the URL the private-files probe fetches, when the public URL is not reachable from the server |
 | `tp_prebuild_url` | filter | the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: "server"` with `prerender`) |
 | `tp_identity_providers` | filter | OpenID Connect sign-in providers TypedPress Identity offers |

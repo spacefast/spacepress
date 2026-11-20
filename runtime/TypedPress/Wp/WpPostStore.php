@@ -37,17 +37,15 @@ final class WpPostStore implements Store
 
     /** What follows the item's id in the name of its staged revision ({@see stagedName()}). */
     public const STAGED_SUFFIX = '-autosave-staged-v1';
-    /** The object-cache group of what this store keeps between requests. */
-    private const CACHE = 'typedpress';
-    /** Set for half a minute by a transaction that writes a post ({@see protectedKnown()}). */
-    private const WRITING = 'posts-writing';
 
     public function __construct(
         private readonly Connection $db,
         private readonly Schema $schema,
         private readonly Dialect $dialect,
     ) {
-        $this->watchWrites();
+        // Core moves the posts stamp before a transaction commits. Move it again on commit
+        // so a reader still seeing the old data cannot leave its hint under the current stamp.
+        add_action('clean_post_cache', fn () => $this->db->wrotePost());
     }
 
     public function afterCommit(callable $fn): void
@@ -108,19 +106,9 @@ final class WpPostStore implements Store
             $this->visibility = [];
             $this->visibilityGeneration = CoreAccess::generation();
         }
-        $key = serialize([$collection, $viewer->user, $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null, $this->readPassword]);
+        $key = serialize([$collection, $viewer->user, $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null, $this->readPassword, $forSelect]);
         if (array_key_exists($key, $this->visibility)) {
             return $this->visibility[$key];
-        }
-        // An ordinary SQL read can apply the password predicate directly. Callers that
-        // use an empty guard set to prove unrestricted access still get the exact scope.
-        $inlinePassword = $forSelect && $viewer->user === null && $this->readPassword === null
-            && !isset($_COOKIE['wp-postpass_' . COOKIEHASH]);
-        if ($inlinePassword) {
-            $key .= ':select';
-            if (array_key_exists($key, $this->visibility)) {
-                return $this->visibility[$key];
-            }
         }
         $spec = $this->schema->collection($collection);
         // WordPress's own posts: an unpublished post is read only by whom core lets read it (its author,
@@ -128,51 +116,52 @@ final class WpPostStore implements Store
         if ($spec['native'] ?? false) {
             $native = NativePosts::readGuard($this->db, $viewer);
             if ($native !== null) {
-                return $this->visibility[$key] = [$native, ...$this->passwordGuards($collection, $viewer, $spec, $inlinePassword)];
+                return $this->visibility[$key] = [$native, ...$this->passwordGuards($collection, $viewer, $spec, $forSelect)];
             }
         }
-        return $this->visibility[$key] = $this->passwordGuards($collection, $viewer, $spec, $inlinePassword);
+        return $this->visibility[$key] = $this->passwordGuards($collection, $viewer, $spec, $forSelect);
     }
 
     /** @return list<array|\TypedPress\SqlPredicate> the password-protection guards of a post kind for $viewer */
-    private function passwordGuards(string $collection, \TypedPress\Viewer $viewer, array $spec, bool $inlinePassword): array
+    private function passwordGuards(string $collection, \TypedPress\Viewer $viewer, array $spec, bool $forSelect): array
     {
         $type = (string) $spec['wp']['postType'];
         if ($viewer->user === null) {
-            if ($inlinePassword) {
-                return [$this->passwordGuard($collection, $viewer, $spec)];
-            }
-            // Empty guards also certify unrestricted visibility to unique-write checks
-            // and the native REST controller. A predicate that cannot hide a row must
-            // retain that meaning without materializing every readable primary key.
-            [$protected, $stamp] = $this->protectedKnown($type);
-            if ($protected === false) {
-                return [];
-            }
             $guard = $this->passwordGuard($collection, $viewer, $spec);
+            if ($forSelect) {
+                return [$guard];
+            }
+            // An empty scope certifies that even consumers which run their own query can see every row.
             $hidden = $this->db->run(
                 'SELECT 1 FROM `' . $this->db->wpdb()->posts . '` p WHERE p.post_type = ? AND NOT ('
                 . str_replace('{a}', 'p', $guard->sql) . ') LIMIT 1',
                 [$type, ...$guard->params],
             );
-            // A hidden row is a protected one. None hidden means none exists only when no password
-            // was accepted beside WordPress's two public ones.
-            if ($hidden !== [] || count($guard->params) === 2) {
-                $this->protectedFound($type, $stamp, $hidden !== []);
-            }
             return $hidden === [] ? [] : [$guard];
         }
-        [$protected, $stamp] = $this->protectedKnown($type);
-        if ($protected === false) {
-            return [];
+
+        $public = self::passwordPredicate(['', '30']);
+        $stamp = null;
+        $key = "typedpress-unprotected:$type";
+        if ($forSelect && !$this->db->inTransaction()) {
+            $cached = wp_cache_get_multiple(['last_changed', $key], 'posts');
+            $stamp = ($cached['last_changed'] ?? false) ?: wp_cache_get_last_changed('posts');
+            if (($cached[$key] ?? false) === $stamp) {
+                // A concurrent write can invalidate this hint after it is read. The row query still
+                // tests the actual password. A cached absence cannot make a protected row readable.
+                return [$public];
+            }
         }
         $hidden = [];
+        $editable = [];
         $acceptedPasswords = [];
         $posts = $this->db->run(
-            'SELECT ID FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND HEX(post_password) NOT IN (?, ?)',
-            [$type, '', '30'],
+            'SELECT ID, post_password FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND HEX(post_password) NOT IN (?, ?)',
+            [$type, ...$public->params],
         );
-        $this->protectedFound($type, $stamp, $posts !== []);
+        if ($posts === [] && $stamp !== null) {
+            wp_cache_set($key, $stamp, 'posts', 5 * MINUTE_IN_SECONDS);
+        }
         _prime_post_caches(array_map('intval', array_column($posts, 'ID')), false, false);
         foreach ($posts as $row) {
             $id = (int) $row['ID'];
@@ -180,66 +169,29 @@ final class WpPostStore implements Store
             if (!$post instanceof \WP_Post) {
                 throw new HttpError(503, 'storage_unavailable', 'Post storage is unavailable. Please retry.');
             }
-            if (!($acceptedPasswords[$post->post_password] ??= $this->passwordAccepted($post, $collection, $viewer))
-                && ($viewer->user === null || !user_can($viewer->user['id'], 'edit_post', $id))) {
+            $password = (string) $row['post_password'];
+            $hex = strtoupper(bin2hex($password));
+            if ($acceptedPasswords[$hex] ??= $this->passwordAccepted($password, $collection, $viewer)) {
+                continue;
+            }
+            if (user_can($viewer->user['id'], 'edit_post', $id)) {
+                $editable[] = $id;
+            } else {
                 $hidden[] = $id;
             }
         }
-
-        return $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
-    }
-
-    /**
-     * Whether a post of $type has a password WordPress would ask for, when a request already found
-     * out: true, false, or null when the database has to be asked. With null comes the stamp to
-     * record the database's answer under ({@see protectedFound()}), or null when it must not be kept.
-     *
-     * Nearly every kind has no such post, and finding that out reads every post of the type
-     * (`post_password` has no index). So the answer is kept in the object cache, together with core's
-     * `posts` change stamp as it was before the database was asked: every post write through
-     * WordPress moves that stamp (`clean_post_cache`), and an answer under another stamp is not used.
-     *
-     * A transaction makes that harder: the stamp moves when the post is written, before the write is
-     * committed, so a request reading meanwhile would record "none" from before the write under the
-     * new stamp. Three things keep that from lasting:
-     *  - inside a transaction nothing is recorded or trusted (what it sees is its own);
-     *  - a transaction that writes a post says so in the cache for half a minute ({@see WRITING}),
-     *    and while that is there every request asks the database and records nothing;
-     *  - when it commits, the stamp moves once more, straight after COMMIT (Connection::commit()).
-     * And the answer expires on its own after five minutes, which also bounds a password set with SQL
-     * that calls none of WordPress's functions (core's own cached copy of such a post never expires).
-     *
-     * @return array{?bool, ?string}
-     */
-    private function protectedKnown(string $type): array
-    {
-        $stamp = (string) wp_cache_get_last_changed('posts');
-        // One round trip for both keys.
-        $cached = wp_cache_get_multiple(["protected:$type", self::WRITING], self::CACHE);
-        if ($this->db->inTransaction() || ($cached[self::WRITING] ?? false) !== false) {
-            return [null, null];
+        if (!$forSelect) {
+            return $hidden === [] ? [] : [[$spec['primaryKey'] => ['notIn' => $hidden]]];
         }
-        $answer = $cached["protected:$type"] ?? false;
-
-        return is_array($answer) && ($answer[0] ?? null) === $stamp && is_bool($answer[1] ?? null) ? [$answer[1], null] : [null, $stamp];
-    }
-
-    /** Record what the database answered, under the stamp read before it was asked. */
-    private function protectedFound(string $type, ?string $stamp, bool $found): void
-    {
-        if ($stamp !== null) {
-            wp_cache_set("protected:$type", [$stamp, $found], self::CACHE, 5 * MINUTE_IN_SECONDS);
+        // A password proof still has to match the row when SQL reads it. Editors may read the
+        // rows they can edit independently of which password those rows hold.
+        $passwords = self::passwordPredicate([...$public->params, ...array_map('strval', array_keys(array_filter($acceptedPasswords)))]);
+        if ($editable === []) {
+            return [$passwords];
         }
-    }
+        $placeholders = implode(', ', array_fill(0, count($editable), '?'));
 
-    /** `clean_post_cache` inside a transaction: say so, for the requests reading meanwhile ({@see protectedKnown()}). */
-    private function watchWrites(): void
-    {
-        add_action('clean_post_cache', function (): void {
-            if ($this->db->wrotePost()) {
-                wp_cache_set(self::WRITING, 1, self::CACHE, 30);
-            }
-        });
+        return [new \TypedPress\SqlPredicate("({$passwords->sql} OR {a}.ID IN ($placeholders))", [...$passwords->params, ...$editable])];
     }
 
     private function passwordGuard(string $collection, \TypedPress\Viewer $viewer, array $spec): \TypedPress\SqlPredicate
@@ -265,7 +217,12 @@ final class WpPostStore implements Store
                 }
             }
         }
-        $accepted = array_values(array_unique($accepted));
+        return self::passwordPredicate(array_values(array_unique($accepted)));
+    }
+
+    /** @param list<string> $accepted */
+    private static function passwordPredicate(array $accepted): \TypedPress\SqlPredicate
+    {
         return new \TypedPress\SqlPredicate('HEX({a}.post_password) IN (' . implode(', ', array_fill(0, count($accepted), '?')) . ')', $accepted);
     }
 
@@ -283,11 +240,11 @@ final class WpPostStore implements Store
         }
     }
 
-    private function passwordAccepted(\WP_Post $post, string $collection, \TypedPress\Viewer $viewer): bool
+    private function passwordAccepted(string $password, string $collection, \TypedPress\Viewer $viewer): bool
     {
         $proof = $this->readPassword;
         if ($proof !== null && $proof['collection'] === $collection && $proof['viewer']->user === $viewer->user
-            && hash_equals($post->post_password, $proof['password'])) {
+            && hash_equals($password, $proof['password'])) {
             return true;
         }
         // Match WordPress's post-password cookie, without its REST filter borrowing the ambient user's edit authority.
@@ -297,7 +254,7 @@ final class WpPostStore implements Store
         }
         require_once ABSPATH . WPINC . '/class-phpass.php';
 
-        return (new \PasswordHash(8, true))->CheckPassword($post->post_password, $hash);
+        return (new \PasswordHash(8, true))->CheckPassword($password, $hash);
     }
 
     private function buildSource(string $collection): Source

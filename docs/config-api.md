@@ -1793,8 +1793,9 @@ export function POST(req: RouteRequest) {
 - The handler runs in one transaction. A throw rolls it back, and
   `throw new HttpError(status, code, message)` answers with a problem+json
   document. `db`, `jobs` and `once` work as they do in actions. A `GET` or
-  `HEAD` handler's transaction starts at its first write, so one that only
-  reads costs the database no `START TRANSACTION` and no `COMMIT`.
+  `HEAD` handler starts its transaction at the first write or locking read.
+  A handler that only runs ordinary reads sends neither `START TRANSACTION`
+  nor `COMMIT`.
 - Cookie sessions authenticate `GET` and `HEAD` routes. On other methods a
   signed-in visitor counts only with a valid `X-WP-Nonce` (`wp_rest`) header;
   otherwise the request runs anonymously, so another site cannot post as your

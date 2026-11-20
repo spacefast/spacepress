@@ -230,33 +230,31 @@ That proof is scoped to the collection and explicit viewer, accepts only rows
 with the matching password, and is suspended/restored across nested requests.
 It does not authorize a later First request or borrow the ambient user's rights.
 
-Whether a post type has any password-protected post is remembered in the object
-cache (group `typedpress`, key `protected:<post type>`), salted with core's
-`posts` change stamp, which every post write through WordPress moves; a
-transaction that wrote a post moves it once more after its commit, and the
-answer is never stored from inside a transaction. It expires after five
-minutes on its own, so a password set by SQL that bypasses WordPress is
-honoured within that time, or at once after an object-cache flush. A kind with
-no protected post then costs no statement for this check; a kind with one
-reads its protected posts for every request, as before.
+A signed-in SQL read can skip the scan for protected posts when the object cache
+holds a recent negative result for the post type. The row query still checks
+the stored password. The hint expires after five minutes and uses WordPress's
+`posts` change stamp. TypedPress advances the stamp after committing a post
+write. Reads inside a transaction use the database to check for protected posts.
+Scope checks that must establish unrestricted access also use the database.
 
 ## Read budgets
 
-`tests/read_budget.rs` builds `examples/drive-store`, `www/` and
-`examples/shop`, serves each on WordPress-on-SQLite, and holds every measured
-route to a number of SQL statements and object-cache round trips, for a
-visitor and for a signed-in subscriber, with a warm persistent object cache and
-with none. Statements are `$wpdb->num_queries` plus what TypedPress sends through
-`Wp\Connection::run`, which never reaches `$wpdb`. A change that makes a route
-read more fails there; one that reads less lowers the budget in the same
-commit. `TP_READ_BUDGET_TRACE=1 php tests/php/read_budget.php <app> <wp-content>
-[seed]` prints every statement and cache get of a route with its caller.
+`tests/read_budget.rs` builds drive-store, www, and the shop on WordPress with
+SQLite. It checks the largest count over five successful GETs per route and
+visitor, including anonymous requests and signed-in subscribers. Statements
+equal `$wpdb->num_queries` plus calls to `Wp\Connection::run`. The warm-cache
+run also counts single-key and multi-key object cache reads after two warmups.
+Both cache modes must produce identical response bytes.
 
-What the budgets hold: a kind's item page is one statement (the item); an API
-list of a post kind is six for any number of rows (the keys, the rows as the
-viewer reads them, the stored rows, and the page's `_rev` tokens in three, plus
-two when an item on the page has a staged version); a `content` navigation tree
-reads its posts in one pass.
+With a warm cache, the drive-store item page uses one statement. The docs
+page adds one statement for navigation. The API fixtures use six statements
+for the keys, viewer rows, stored rows, and revision state. A page
+with staged versions can take two more statements for staged data. The shop
+budget covers the seeded catalog and a full page of 24 products.
+
+Set `TP_READ_BUDGET_TRACE=1` to see the statements and cache reads. Set
+`TP_READ_BUDGET_BASELINE` to the path of an extracted `runtime/` directory to
+compare counts and response bytes against that revision on the same fixture.
 
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 

@@ -873,11 +873,6 @@ final class AppRouter
         }
         // The URL must be the item's own: other placeholders (`:year`, a field) have to agree.
         $id = (int) ($row->p[$spec['primaryKey']] ?? 0);
-        // The visitor read the item just now: what the page renders around it (its comments) need
-        // not ask the kind's read rule about it again.
-        if (($reader = Seam::viewer()) !== null && ($spec['wp']['postType'] ?? null) !== null) {
-            CoreAccess::readable($name, [$id], $reader);
-        }
         $urls = KindUrls::instance();
         if ($urls !== null) {
             // Both sides without the home path: under a subdirectory install the request path
@@ -894,6 +889,12 @@ final class AppRouter
             if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
                 return null;
             }
+        }
+        // The visitor read the item just now: what the page renders around it (its comments) need
+        // not ask the kind's read rule about it again.
+        if (($reader = Seam::viewer()) !== null && ($spec['wp']['postType'] ?? null) !== null
+            && \TypedPress\Extensions::constraintReadsSafe()) {
+            CoreAccess::readable($name, [$id], $reader);
         }
         return $row;
     }

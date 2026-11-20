@@ -527,12 +527,12 @@ final class Connection
         $this->depth = 1;
         $this->deferred = true;
         add_filter('query', $watch = function (mixed $sql): mixed {
-            if ($this->deferred && is_string($sql) && !self::plainRead($sql)) {
+            if ($this->deferred && is_string($sql) && trim($sql) !== '' && !self::plainRead($sql)) {
                 $this->start();
             }
 
             return $sql;
-        }, PHP_INT_MIN);
+        }, PHP_INT_MAX);
         try {
             try {
                 $result = $fn();
@@ -544,14 +544,14 @@ final class Connection
 
             return $result;
         } finally {
-            remove_filter('query', $watch, PHP_INT_MIN);
+            remove_filter('query', $watch, PHP_INT_MAX);
         }
     }
 
     /** A SELECT that takes no lock and writes nothing; anything else belongs inside the transaction. */
     private static function plainRead(string $sql): bool
     {
-        return preg_match('/^\s*SELECT\b/i', $sql) === 1 && preg_match('/\bFOR\s+(UPDATE|SHARE)\b|\bLOCK\s+IN\s+SHARE\s+MODE\b|\bINTO\s+(OUTFILE|DUMPFILE|@)|\b(GET_LOCK|RELEASE_LOCK|NEXTVAL|SETVAL|LAST_INSERT_ID)\s*\(/i', $sql) !== 1;
+        return preg_match('/^\s*SELECT\b/i', $sql) === 1 && preg_match('/\bFOR\s+(UPDATE|SHARE)\b|\bLOCK\s+IN\s+SHARE\s+MODE\b|\bINTO\s+(OUTFILE|DUMPFILE|@)|:=|\b(GET_LOCK|RELEASE_LOCK|NEXTVAL|SETVAL|LAST_INSERT_ID)\s*\(/i', $sql) !== 1;
     }
 
     /**
@@ -694,16 +694,13 @@ final class Connection
      * A post was written inside the open transaction, by the stores or by core (`clean_post_cache`).
      * WordPress moved its `posts` change stamp then, before the write was committed, so another
      * request may have cached something it read from before the write under the new stamp:
-     * commit() moves the stamp once more as soon as the write is visible. True the first time in a
-     * transaction, false without one.
+     * commit() moves the stamp once more as soon as the write is visible.
      */
-    public function wrotePost(): bool
+    public function wrotePost(): void
     {
-        if ($this->depth === 0 || $this->wrotePost) {
-            return false;
+        if ($this->depth > 0) {
+            $this->wrotePost = true;
         }
-
-        return $this->wrotePost = true;
     }
 
     /** Run a core write (wp_insert_post, update_field, ...) with the editor hooks muted. */

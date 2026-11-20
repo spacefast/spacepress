@@ -381,7 +381,7 @@ final class Db
     public function permits(string $collection, string $op, int|string $pk, Viewer $viewer, ?array $data = null): bool
     {
         try {
-            $guards = $op === 'read' ? $this->readGuards($collection, $viewer) : $this->writeGuards($collection, $op, $viewer, $data);
+            $guards = $op === 'read' ? $this->readGuards($collection, $viewer, forSelect: true) : $this->writeGuards($collection, $op, $viewer, $data);
         } catch (HttpError) {
             return false;
         }
@@ -412,7 +412,7 @@ final class Db
      */
     public function preparePermittedKeys(string $collection, string $op, Viewer $viewer, bool $validate = false): ?\Closure
     {
-        $guards = $op === 'read' ? $this->readGuards($collection, $viewer) : $this->writeGuards($collection, $op, $viewer, null);
+        $guards = $op === 'read' ? $this->readGuards($collection, $viewer, selectWhenRestricted: true) : $this->writeGuards($collection, $op, $viewer, null);
         if ($guards === []) {
             return null;
         }
@@ -458,7 +458,7 @@ final class Db
     }
 
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
-    private function readGuards(string $collection, Viewer $viewer, bool $forSelect = false): array
+    private function readGuards(string $collection, Viewer $viewer, bool $forSelect = false, bool $selectWhenRestricted = false): array
     {
         $spec = $this->schema->collection($collection);
         $rule = Access::collectionRules($spec)['read'];
@@ -473,7 +473,8 @@ final class Db
             $guards[] = ['status' => 'published'];
         }
 
-        return [...$guards, ...$this->store->readGuards($collection, $viewer, $forSelect)];
+        // If the app already restricts the scope, the keys must go through SQL anyway.
+        return [...$guards, ...$this->store->readGuards($collection, $viewer, $forSelect || ($selectWhenRestricted && $guards !== []))];
     }
 
     /**

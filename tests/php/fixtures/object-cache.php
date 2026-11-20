@@ -89,6 +89,9 @@ final class TP_Test_Object_Cache extends WP_Object_Cache
         if ($asked > 0) {
             $this->trips['multi']++;
             $this->trips['keys'] += $asked;
+            if (isset($_SERVER['HTTP_X_TP_READ_BUDGET_TRACE'])) {
+                $this->trips['log'][] = "$group:" . implode(',', $keys) . ' <- ' . substr(wp_debug_backtrace_summary(null, 2), -150);
+            }
         }
         $out = [];
         foreach ($keys as $key) {

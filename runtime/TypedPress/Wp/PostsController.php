@@ -90,9 +90,9 @@ final class PostsController extends \WP_REST_Posts_Controller
         } catch (\TypedPress\HttpError $e) {
             return CoreAccess::error($e);
         }
-        if ($query !== null) {
-            // The TypedPress query already ran as this viewer (read rule, draft visibility, field masks):
-            // its rows are the ones the rule covers, and core's own check of each item finds them so.
+        if ($query !== null && \TypedPress\Extensions::constraintReadsSafe()) {
+            // The TypedPress query already applied the read rule and draft visibility. Reuse that
+            // result when core checks each post.
             CoreAccess::readable($this->collection, $query, $viewer);
             $keys = $query;
         } else {
@@ -101,6 +101,9 @@ final class PostsController extends \WP_REST_Posts_Controller
                 return CoreAccess::error(\TypedPress\Access::deny($viewer->user, "read {$this->collection}"));
             }
             $keys = $keys === null ? null : array_map('intval', $keys);
+            if ($query !== null) {
+                $keys = $keys === null ? $query : array_values(array_intersect($query, $keys));
+            }
         }
         if ($keys === null) {
             return TypedPressQuery::attach($this->collection, $request, $viewer, parent::get_items($request));

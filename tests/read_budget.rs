@@ -79,7 +79,11 @@ fn measure(app: &str, content: &Path, seed: Option<&Path>) -> serde_json::Value 
         php.arg(seed);
     }
     let out = run(&mut php);
-    serde_json::from_slice(&out).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out)))
+    let report = serde_json::from_slice(&out).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out)));
+    if std::env::var_os("TP_READ_BUDGET_REPORT").is_some() {
+        println!("{app} {report}");
+    }
+    report
 }
 
 /// One route for one visitor: (route, the most statements with a warm persistent object cache,
@@ -91,7 +95,7 @@ fn hold(app: &str, report: &serde_json::Value, budgets: &[Budget]) {
     for (route, sql, cold, trips) in budgets {
         let seen = &report[*route];
         assert!(seen.is_object(), "{app}: no measurement for {route}: {report:#}");
-        for (what, max) in [("sql", sql), ("cold", cold), ("trips", trips)] {
+        for (what, max) in [("max_sql", sql), ("max_cold", cold), ("max_trips", trips)] {
             let got = seen[what].as_u64().unwrap();
             if got > *max {
                 over.push(format!("{app} {route} {what}: {got}, budget {max}"));
@@ -132,8 +136,8 @@ fn drive_store_reads_stay_within_budget() {
             ("catalog/signed-in", 1, 26, 34),
             ("product/anonymous", 1, 25, 33),
             ("product/signed-in", 1, 29, 38),
-            ("api-list/anonymous", 6, 33, 30),
-            ("api-list/signed-in", 6, 35, 33),
+            ("api-list/anonymous", 6, 32, 29),
+            ("api-list/signed-in", 6, 35, 32),
         ],
     );
     assert_eq!(report["api-list/anonymous"]["rows"], 4, "{report:#}");
@@ -158,8 +162,8 @@ fn website_reads_stay_within_budget() {
             ("doc/signed-in", 2, 30, 36),
             ("route-handler/anonymous", 1, 15, 18),
             ("route-handler/signed-in", 1, 17, 21),
-            ("api-list/anonymous", 6, 33, 30),
-            ("api-list/signed-in", 6, 35, 33),
+            ("api-list/anonymous", 6, 32, 29),
+            ("api-list/signed-in", 6, 35, 32),
         ],
     );
     assert_eq!(report["api-list/anonymous"]["rows"], 14, "{report:#}");
@@ -194,6 +198,11 @@ fn shop_reads_stay_within_budget() {
     hold(
         "shop (24 products)",
         &report,
-        &[("catalog/anonymous", 9, 102, 173), ("catalog/signed-in", 11, 107, 178)],
+        &[
+            ("catalog/anonymous", 9, 102, 173),
+            ("catalog/signed-in", 11, 107, 178),
+            ("product/anonymous", 7, 63, 66),
+            ("product/signed-in", 9, 68, 71),
+        ],
     );
 }

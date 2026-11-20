@@ -56,7 +56,7 @@ The app API is `/wp-json/typedpress/v1`; actions are `POST /wp-json/typedpress/v
 
 | Call | When |
 |---|---|
-| `TypedPress\Loader\Loader::load($root, $build, $options)` | before WordPress initializes, with the build the host selected for this request |
+| `TypedPress\Loader\Loader::load($root, $build, $options)` | before WordPress initializes, with the build the host selected for this request. `preview: true` marks a preview binding, one that runs on a database of its own and seeds it again for each version: the seed's writes queue no webhook deliveries and no `mail.send` mail (`mail.send` checks the message and resolves to `{ id: "" }`); after the seed a preview sends webhooks and mail like any site. Off by default, which is production |
 | `TypedPress\Loader\Loader::initialize($root, $build)` | once per build per site, before the host exposes it: storage upgrades, migrations, identity maintenance, the content seed |
 | `TypedPress\Loader\Loader::inspect($root, $build)` | after mounting with load(..., ['inspect' => true]) and WordPress init, without initialization: returns steps and refusals; a steps entry with id commerce-shipping means the build's declared shipping policy does not match the site's recorded source and current shipping rows |
 | `TypedPress\Loader\Loader::sealed($root, $build)` | a sealed build's plugin allow-list, or null; with `Loader::allowedPlugins` and `Loader::keepUnlisted` in the host's own early code, before WordPress reads its active plugins |

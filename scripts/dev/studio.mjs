@@ -390,7 +390,9 @@ export async function forward(host, port, upstream) {
 
 // Directory names never watched anywhere, and the project paths TypedPress writes itself.
 const IGNORED_NAMES = new Set(['.tp', '.git', 'node_modules']);
-const GENERATED = new Set(['tp/_generated', 'tp/dist', 'public/typedpress-styles']);
+// public/typedpress-assets is the compiler's output too: a build writes the browser entries' bundle
+// there again, which must not read as a source change and start the next build.
+const GENERATED = new Set(['tp/_generated', 'tp/dist', 'public/typedpress-styles', 'public/typedpress-assets']);
 const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENERATED.has(name);
 const isSource = (name) => /\.(?:[cm]?[jt]sx?|css|svg)$/.test(name) || name.split('/')[0] === 'public' || /^tp\/app\/(.*\/)?page\.md$/.test(name) || name === 'tp/theme.json' || name === 'package.json';
 // Tailwind can scan markup and Vite can read fonts and images referenced from CSS.
@@ -572,6 +574,8 @@ async function main() {
   const project = await realpath(directory);
   const managed = await ownedState(project, mode === 'start');
   const studio = await studioBinary();
+  // The environment this command was given. Vite's NODE_ENV (scripts/dev/frontend.mjs) is this
+  // process's alone and reaches neither Studio nor the compiler.
   const studioEnv = { ...process.env };
   const runStudio = (args, options) => execute(process.execPath, [studio, ...args, '--path', managed.owner.site], { env: studioEnv, ...options });
   if (mode === 'wp') {
@@ -648,7 +652,8 @@ async function main() {
       await atomicJson(snapshot, managed.owner.pending?.snapshot ?? managed.owner.snapshot);
       args.push('--preserve-data', snapshot);
     }
-    await execute(first, args, { timeout: 300000 });
+    // While Vite serves the browser entries, the compiler leaves their built bundle alone.
+    await execute(first, args, { timeout: 300000, env: frontend?.serving ? { ...studioEnv, TP_DEV_SERVES_FRONTEND: '1' } : studioEnv });
     managed.owner.pending = {
       migrations: await migrationHistory(project),
       snapshot: await json(join(project, 'tp/_generated/migrations/snapshot.json')),
@@ -703,7 +708,7 @@ async function main() {
       }
       await runStudio(['create', '--name', `TypedPress ${project.split(sep).at(-1)}`, '--wp', await wordpressVersion(), '--php', '8.4',
         '--admin-username', 'admin', '--admin-password', 'typedpress-test-admin', '--skip-browser', '--skip-log-details'],
-        { timeout: 600000, env: { ...process.env, STUDIO_BASE_PORT: requestedPort } });
+        { timeout: 600000, env: { ...studioEnv, STUDIO_BASE_PORT: requestedPort } });
       managed.owner.created = true;
       await atomicJson(managed.marker, managed.owner);
     } else {
@@ -722,7 +727,8 @@ async function main() {
     await announce(managed.owner.site, address.url, (code) => runStudio(['wp', 'eval', '--skip-wordpress', code], { capture: true }));
     const { startFrontend } = await import(pathToFileURL(join(here, 'frontend.mjs')));
     frontend = await startFrontend(project, managed, {
-      site: url, host: address.listen ? await listenAddress(address.listen) : 'localhost', watch: !noWatch, write: atomicJson,
+      site: url, local, host: address.listen ? await listenAddress(address.listen) : 'localhost', listen: Boolean(address.listen),
+      watch: !noWatch, write: atomicJson,
     });
     if (address.listen) relay = await forward(address.listen, port, port);
     const mu = join(managed.owner.site, 'wp-content/mu-plugins/typedpress-dev-runtime.php');
@@ -764,7 +770,7 @@ async function main() {
           if (next === digest) continue;
           digest = next;
           console.log('\nSources changed; rebuilding…');
-          try { await build(); await configure(); console.log('Updated. Refresh the page to see your changes.'); }
+          try { await build(); await frontend?.refresh(); await configure(); console.log('Updated. Refresh the page to see your changes.'); }
           catch (error) { console.error(error.message); console.error('Fix the error and save to retry.'); }
         } while (dirty && !stopping);
       } catch (error) { console.error(error.message); }

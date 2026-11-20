@@ -255,7 +255,7 @@ foreach (['old value', 'missing option'] as $cached) {
     wp_cache_delete($seedKey, 'options'); wp_cache_delete('alloptions', 'options');
     if ($cached === 'old value') { wp_cache_set($seedKey, 'stale-before-lock', 'options'); }
     else { wp_cache_set('notoptions', [$seedKey => true], 'options'); }
-    \TypedPress\Commerce\Module::onInit($plugin);
+    $plugin->installSeed();
     eq('a waiting standalone seed rechecks its committed version after cached ' . $cached, $db->findFirst('products', ['where' => ['uid' => $waitingUid]]), null);
 }
 file_put_contents($seedFile, $originalSeed);
@@ -267,28 +267,28 @@ rename($seedFile, $seedFile . '.held');
 try {
     delete_option($seedKey);
     $partial = clone $plugin;
-    \TypedPress\Commerce\Module::onInit($partial);
+    $partial->installSeed();
     check('a missing product seed among present terms prevents a receipt', str_contains($partial->unavailable() ?? '', 'products.php') && get_option($seedKey) === false);
     file_put_contents($seedFile, $originalSeed . "\n");
     file_put_contents($seedDir . '/extra.json', '{}');
     $modified = clone $plugin;
-    \TypedPress\Commerce\Module::onInit($modified);
+    $modified->installSeed();
     check('a changed seed file prevents a receipt', str_contains($modified->unavailable() ?? '', 'extra.json, products.php') && get_option($seedKey) === false);
 } finally {
     if (is_file($seedDir . '/extra.json')) { unlink($seedDir . '/extra.json'); }
     rename($seedFile . '.held', $seedFile);
 }
-\TypedPress\Commerce\Module::onInit($plugin);
+$plugin->installSeed();
 eq('restoring the product seed allows the same build to finish', get_option($seedKey), $originalMarker);
 rename($seedDir, $seedDir . '.held');
 try {
     delete_option($seedKey);
     $missingSeedPlugin = clone $plugin;
-    \TypedPress\Commerce\Module::onInit($missingSeedPlugin);
-    check('a missing nonempty seed bundle is refused without a receipt', str_contains($missingSeedPlugin->unavailable() ?? '', 'Missing commerce seed directory') && get_option($seedKey) === false);
+    $missingSeedPlugin->installSeed();
+    check('a missing nonempty seed bundle is refused without a receipt', str_contains($missingSeedPlugin->unavailable() ?? '', 'Missing seed directory') && get_option($seedKey) === false);
     $emptyVersion = [];
     file_put_contents($versionFile, '<?php return ' . var_export($emptyVersion, true) . ';');
-    \TypedPress\Commerce\Module::onInit($plugin);
+    $plugin->installSeed();
     eq('an intentionally empty seed bundle receives its receipt', get_option($seedKey), $emptyVersion);
 } finally {
     rename($seedDir . '.held', $seedDir);

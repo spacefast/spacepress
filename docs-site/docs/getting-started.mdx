@@ -1,154 +1,77 @@
 ---
 title: Get started
-description: Create a TypedPress app, run it on WordPress on your machine, and call its REST API.
+description: Create a TypedPress site, run it on local WordPress, and edit its pages and content fields.
 sidebar:
   order: 1
 ---
 
-In this guide we create a notes app, start it on a local WordPress site, add a note, and read it back through the REST API. It takes about five minutes.
+Create a notes site on local WordPress. You will change its home page, display a new field on a note, and add an About page.
 
-You need Node.js 22 or later and npm. You don't need Docker, PHP or a database. TypedPress downloads a local WordPress for you.
+You need Node.js 22 or later and npm. TypedPress downloads WordPress and its local database for you.
 
-:::note
-The npm packages `create-typedpress` and `typedpress` are not published yet. Until they are, clone the [repository](https://github.com/spacefast/zero) and run `cargo build --release` there. Then run `node <repo>/packages/create-typedpress/bin/create-typedpress.mjs my-app --no-install` in place of `npm create` (the install would fetch the unpublished `typedpress`), and run `<repo>/target/release/typedpress <command>` wherever this page says `npm run <command>` or `npx first`.
-:::
+## Create the site
 
-## Create the app
-
-Run the creator with a new directory name:
+Choose a directory name that does not exist yet.
 
 ```sh
 npm create typedpress my-app
 cd my-app
-```
-
-You should see:
-
-```text
-Created my-app.
-
-  cd "my-app"
-  npm run dev
-```
-
-The directory holds one config file, `typedpress.config.ts`:
-
-<RepoFile path="packages/create-typedpress/template/typedpress.config.ts" replace={{ "__ZERO_APP_NAME__": "my-app" }} />
-
-`notes` is a collection: WordPress stores each note as a post. Anyone can read notes. Only WordPress editors can change them.
-
-## Check the config
-
-```sh
-npm run check
-```
-
-You should see:
-
-```text
-ok: 1 collections, 0 tables, 0 user projections, 0 globals, 0 hooks, 0 actions (6ms)
-```
-
-`check` compiles the config and writes nothing. If the config has a problem, it prints the file, the line and a [diagnostic code](/reference/diagnostics) instead.
-
-## Start the site
-
-```sh
 npm run dev
 ```
 
-The first start downloads WordPress and takes about a minute. When it is ready, you should see lines like these:
+The first start downloads WordPress. When the terminal prints **Website**, open that URL. Click **Notes** to read the sample entries from `content/notes/`. Try the greeting form on the home page to see the result of a server action. **Account** takes you to WordPress sign-in and returns you to the page after you sign in.
 
-```text
-built 1 collections, 0 tables, 0 user projections, 0 globals, 0 hooks, 0 actions -> tp/dist/wp-content (new migrations tp/_generated/migrations/0001_init.sql) in 11s
-WordPress version: 7.1
-Plugin 'action-scheduler' activated.
-Plugin 'mcp-adapter' activated.
-Plugin 'secure-custom-fields' activated.
-Plugin 'two-factor' activated.
-Plugin 'typedpress-runtime' activated.
-Plugin 'typedpress-identity' activated.
-Plugin 'typedpress-app-my-app' activated.
-Plugin 'typedpress-admin' activated.
-Website:   http://localhost:9187/
-WordPress: http://localhost:9187/wp-admin/
-Plugins:   http://localhost:9187/wp-admin/plugins.php
-App:       http://localhost:9187/wp-content/plugins/typedpress-app-my-app/public/index.html
-TypedPress Admin: http://localhost:9187/typedpress-admin/
+:::note
+The npm packages are not published yet. To run this guide from a [repository checkout](https://github.com/spacefast/zero), run `cargo build --release` there. Create the project with `node <repo>/packages/create-typedpress/bin/create-typedpress.mjs my-app --no-install`. From `my-app`, run `<repo>/target/release/typedpress dev`.
+:::
+
+## Edit the home page
+
+Open `tp/app/page.tsx`. Change **Make this site yours.** inside the `<h1>` to **My walking journal**. Save the file. When the rebuild finishes, refresh the home page to see your heading.
+
+All the pages share the header in `tp/app/layout.tsx` and the styles in `tp/app/site.css`. The layout reads the site name from a `global()` in `typedpress.config.ts`.
+
+## Add a field to the notes
+
+In `typedpress.config.ts`, add `location` to the fields passed to `collection()`, next to `summary`.
+
+```ts
+location: text().max(80).optional(),
 ```
 
-Your port can differ. The next line prints a local admin login. Use it only on your machine. Keep this terminal open. `dev` rebuilds the app when you save `typedpress.config.ts`.
+Existing notes can keep this field empty. In `tp/app/notes/[slug]/page.tsx`, add this line below `<h1>{item.title}</h1>`.
 
-## Add a note
-
-Open a second terminal in `my-app`. Insert a note with the CLI:
-
-```sh
-npx typedpress insert notes '{"title":"Hello"}'
+```tsx
+{item.location && <p>{item.location}</p>}
 ```
 
-You should see the new row:
+After the rebuild, open **Account** and sign in with the local login from the terminal. Follow **Open WordPress admin**, find **A first walk** under **Notes**, and enter **Riverside Park** in **Location**. Save the note and open `/notes/first-walk/` on your site to see the location below the title.
 
-```json
-{"data":[{"id":5,"title":"Hello","body":null,"status":"published","publishedAt":"2026-11-09T04:26:14.000Z"}]}
+## Add an About page
+
+Create `tp/app/about/page.tsx`.
+
+```tsx
+export const metadata = { title: "About" };
+
+export default function About() {
+	return (
+		<>
+			<h1>About this journal</h1>
+			<p>A place to keep notes from walks around town.</p>
+		</>
+	);
+}
 ```
 
-You can also add notes in TypedPress Admin, the admin at `/wp-admin/new/`, or in classic wp-admin. Sign in with the login that `dev` printed, then open **Notes**.
-
-## Read it through the API
-
-```sh
-curl http://localhost:9187/__tp/api/v1/notes
-```
-
-You should see the same note in a list, with a `cursor` for the next page (`null`: there is none):
-
-```json
-{"data":[{"id":5,"title":"Hello","body":null,"status":"published","publishedAt":"2026-11-09T04:26:14.000Z"}],"cursor":null}
-```
-
-Now try to create a note without signing in:
-
-```sh
-curl -X POST http://localhost:9187/__tp/api/v1/notes \
-	-H 'Content-Type: application/json' \
-	--data '{"title":"From curl"}'
-```
-
-The access rule refuses it:
-
-```json
-{"type":"about:blank","title":"Unauthenticated","status":401,"code":"unauthenticated","detail":"Sorry, you are not allowed to create posts as this user."}
-```
+Open `/about/` to see the page in the shared layout. To put it in the navigation, add `<Link href="/about">About</Link>` in the layout's `<nav>`. The page's URL comes from its folder under `tp/app/`.
 
 ## Stop the site
 
-```sh
-npm run stop
-```
+Press Ctrl+C in the terminal running `dev`, or run `npm run stop` in another terminal. Your notes and settings stay in the local WordPress database.
 
-Your notes stay in the local database for the next `npm run dev`.
+## Keep building
 
-## What to commit
-
-Commit `typedpress.config.ts` and `tp/_generated/`, which holds the migrations, the typed client, the editor types and `openapi.json`, the app's API as an OpenAPI document. Keep `tp/dist/` and `.tp/` out of git. They hold the build output and the local site. The starter app's `.gitignore` already does this.
-
-## Add a database
-
-The notes are WordPress posts: that is the content half of TypedPress, and a new app starts with only that. When the app needs data of its own, such as orders, bookings or votes, add SQL tables:
-
-```sh
-npx typedpress add db
-```
-
-It writes `tp/tables.ts`, with two example tables joined by a reference and their access rules, typed client calls in `tables.client.ts`, and `tp/DATABASE.md`, which explains migrations and the deploy check. It only creates files that are missing, so you can run it again. The next `npm run build` writes the SQL for the tables to `tp/_generated/migrations/`.
-
-Use a collection for what people write and publish in the WordPress editor. Use a table for rows your app filters, sorts, counts and joins: post meta has no real column types or foreign keys, and filtering and sorting on it is slow.
-
-## Next steps
-
-- [Publish the app on Spacefast](/publishing/spacefast).
-- Open the [playground](/playground) to see the PHP and SQL your config compiles to.
-- Read the [config API](/reference/config) for tables, relations, hooks, actions and jobs.
-- Call the API from a frontend with the [JavaScript client](/reference/client), or read it from Astro with [`@typedpress/astro`](https://github.com/spacefast/zero/blob/main/docs/astro.md).
-- Work on the app with a coding agent, or let one use it: [Agents](/agents).
+- Read about layouts, forms, and access guards in the [pages guide](/pages).
+- Browse the files copied by the creator in the [starter template](https://github.com/spacefast/zero/tree/main/packages/create-typedpress/template).
+- See how to call your app from another frontend with the [generated client](/reference/client).

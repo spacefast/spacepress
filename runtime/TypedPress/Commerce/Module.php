@@ -148,38 +148,9 @@ final class Module
     {
         $type = get_post_type_object('product'); if ($type) { $type->show_in_abilities = false; }
         try {
-            // A plugin install checks order storage with its other install checks, not on every request:
-            // a change to either option drops the install marker, which is not recorded while the
-            // check fails (InstallMarker). A managed build checks in register().
-            if (Runtime::installs()) { self::checkOrderStorage(); self::initialize($plugin); }
-            if (!Runtime::managed() && is_file($plugin->dir . '/tp/app/seed-version.php') && $plugin->unavailable() === null) {
-                $version = require $plugin->dir . '/tp/app/seed-version.php';
-                if (!is_array($version) && !(is_string($version) && preg_match('/^[a-f0-9]{64}$/D', $version))) {
-                    throw new \RuntimeException('Invalid commerce seed version');
-                }
-                $key = 'tp_' . $plugin->schema->name() . '_seed';
-                if (get_option($key) !== $version) {
-                    \TypedPress\Wp\Migrator::locked($plugin->connection(), 'commerce_seed', static function () use ($plugin, $key, $version): void {
-                        // A request waiting for the first seed must see its committed marker.
-                        wp_cache_delete($key, 'options'); wp_cache_delete('alloptions', 'options'); wp_cache_delete('notoptions', 'options');
-                        if (get_option($key) === $version) { return; }
-                        $seed = $plugin->dir . '/tp/app/seed';
-                        if (is_dir($seed)) {
-                            // Older compiler versions emitted one digest and one PHP file per synced kind.
-                            if (is_string($version)) {
-                                foreach ($plugin->schema->kinds() as $kind => $spec) {
-                                    if (isset($spec['sync']) && !is_file("$seed/$kind.php")) {
-                                        throw new \RuntimeException("Missing commerce seed file for $kind");
-                                    }
-                                }
-                            }
-                            \TypedPress\Sync\Seed::run($plugin, $seed, false, is_array($version) ? $version : null);
-                        } elseif ($version !== [] && $version !== hash('sha256', '')) {
-                            throw new \RuntimeException('Missing commerce seed directory for a nonempty seed version');
-                        }
-                        update_option($key, $version, false);
-                    });
-                }
+            if (Runtime::installs()) {
+                self::checkOrderStorage();
+                self::initialize($plugin);
             }
         } catch (\Throwable $e) {
             $problem = $e->getMessage();

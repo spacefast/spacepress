@@ -88,7 +88,10 @@ $functions = <<<'PHP'
         return in_array($ctx->p['user']->p['role'] ?? null, ['editor', 'admin'], true);
     }
     // Normalisation the client didn't send: titles are trimmed.
-    function notes__beforeCreate($data) { return new \TypedPress\JsObject(['title' => trim($data->p['title'])] + $data->p); }
+    function notes__beforeCreate($data) {
+        if ($data->p['title'] === 'forbidden title') { throw new \TypedPress\JsError('this title is not allowed'); }
+        return new \TypedPress\JsObject(['title' => trim($data->p['title'])] + $data->p);
+    }
     // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
     // A compiled hook returning `{}` replaces the patch with nothing to change.
     function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \TypedPress\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \TypedPress\JsObject(), default => $patch }; }
@@ -424,6 +427,82 @@ try {
         check('unreadable seed contents throw instead of acknowledging an empty seed', $listingFailed);
     }
 } finally { chmod($seedDir, 0700); }
+// ---------------------------------------------------------------- the plugin's own seed (`seed: true`)
+// A record the seed refuses names the file it was compiled from, and the refusal is kept for the
+// build: later requests report it without the lock and without running the records again.
+$own = $wp->plugin();
+$ownDir = $own->dir . '/tp/app/seed';
+$ownVersion = $own->dir . '/tp/app/seed-version.php';
+mkdir($ownDir);
+$ownUid = \TypedPress\Sync\Uid::mint();
+$writeOwn = static function (string $body) use ($ownDir, $ownVersion, $ownUid): array {
+    $php = '<?php return ' . var_export(['collection' => 'notes', 'format' => 'md', 'records' => [
+        ['uid' => $ownUid, 'fields' => ['title' => 'Seeded from a file'], 'body' => $body, 'path' => 'content/notes/embed.md'],
+    ]], true) . ';';
+    file_put_contents($ownDir . '/notes.php', $php);
+    $version = ['notes.php' => hash('sha256', $php)];
+    file_put_contents($ownVersion, '<?php return ' . var_export($version, true) . ';');
+    if (function_exists('opcache_invalidate')) { opcache_invalidate($ownDir . '/notes.php', true); opcache_invalidate($ownVersion, true); }
+
+    return $version;
+};
+$writeOwn("Hello\n\n<iframe src=\"https://example.com\"></iframe>\n");
+$seedLock = static fn (callable $fn) => \TypedPress\Wp\Migrator::locked($own->connection(), 'seed', $fn);
+$first = clone $own;
+$first->installSeed();
+$refusal = (string) $first->unavailable();
+check('a refused seed record names the file it came from', str_starts_with($refusal, 'Seed refused: content/notes/embed.md: core/html can\'t be written as Markdown'), $refusal);
+eq('a refused seed leaves no receipt', get_option('tp_notes_seed'), false);
+eq('a refused seed is kept with its message', get_option('tp_notes_seed_refused')['problem'] ?? null, $refusal);
+// While this process holds the seed lock, a request that ran the seed again would wait for it.
+$started = microtime(true);
+$again = $seedLock(static function () use ($own): string {
+    $second = clone $own;
+    $second->installSeed();
+
+    return (string) $second->unavailable();
+});
+eq('the next request reports the kept refusal', $again, $refusal);
+check('and reports it without waiting for the seed lock', microtime(true) - $started < 5, microtime(true) - $started);
+// A seed another request is still importing says so, in its own words.
+$kept = get_option('tp_notes_seed_refused');
+delete_option('tp_notes_seed_refused');
+$busy = $seedLock(static function () use ($own, $ownVersion): string {
+    try {
+        \TypedPress\Sync\Seed::install($own, $ownVersion, 1);
+    } catch (\TypedPress\Wp\LockBusy $e) {
+        return $e->getMessage();
+    }
+
+    return 'not refused';
+});
+eq('a held seed lock is reported as a seed, not as migrations', $busy, 'another request is still importing the seed content; try again shortly');
+eq('a busy seed lock is not kept as a refusal', get_option('tp_notes_seed_refused'), false);
+update_option('tp_notes_seed_refused', $kept, false);
+// A new build (another seed version) runs the seed again, and its receipt clears the refusal.
+$fixedVersion = $writeOwn("Hello\n\nNo embed here.\n");
+$fixed = clone $own;
+$fixed->installSeed();
+eq('a changed seed version runs the seed again', [$fixed->unavailable(), get_option('tp_notes_seed')], [null, $fixedVersion]);
+eq('and its receipt clears the kept refusal', get_option('tp_notes_seed_refused'), false);
+eq('the fixed record is seeded', $db->findFirst('notes', ['where' => ['uid' => $ownUid]])['title'] ?? null, 'Seeded from a file');
+// An error the app's own hook throws for a record is a refusal too, with the record's file.
+$writeOwn("Hello\n");
+$hookSeed = require $ownDir . '/notes.php';
+$hookSeed['records'][0] = ['uid' => \TypedPress\Sync\Uid::mint(), 'fields' => ['title' => 'forbidden title'], 'path' => 'content/notes/forbidden.md'];
+$hookPhp = '<?php return ' . var_export($hookSeed, true) . ';';
+file_put_contents($ownDir . '/notes.php', $hookPhp);
+file_put_contents($ownVersion, '<?php return ' . var_export(['notes.php' => hash('sha256', $hookPhp)], true) . ';');
+if (function_exists('opcache_invalidate')) { opcache_invalidate($ownDir . '/notes.php', true); opcache_invalidate($ownVersion, true); }
+$hooked = clone $own;
+$hooked->installSeed();
+check('an error a hook throws for a seed record names its file and is kept', str_starts_with((string) $hooked->unavailable(), 'Seed refused: content/notes/forbidden.md: this title is not allowed')
+    && (get_option('tp_notes_seed_refused')['problem'] ?? null) === $hooked->unavailable(), $hooked->unavailable());
+// Activating the plugin again retries a kept refusal.
+update_option('tp_notes_seed_refused', $kept, false);
+\TypedPress\Sync\Seed::retry($own);
+eq('activation forgets a kept seed refusal', get_option('tp_notes_seed_refused'), false);
+unlink($ownDir . '/notes.php'); rmdir($ownDir); unlink($ownVersion); delete_option('tp_notes_seed');
 foreach (['seedAuthors', 'seedArticles', 'aSeedItems', 'seedNodes'] as $name) { unlink($seedDir . '/' . $name . '.json'); }
 unlink($seedDir . '/.ignored.json'); unlink($seedDir . '/README.txt'); rmdir($seedDir);
 finish('sync');

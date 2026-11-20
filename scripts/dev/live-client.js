@@ -1,18 +1,40 @@
+// typedpress dev's reload client. It reads live.json, which `typedpress dev` rewrites beside this script,
+// from the site's own origin: the page reloads when a build changed the site, and a failed build's
+// errors are shown over the page until a build succeeds.
 (() => {
-  const params = new URL(document.currentScript.src).searchParams;
-  const revision = Number(params.get('revision'));
-  const events = new EventSource(params.get('events'));
+  // A framed document follows its top window.
+  if (window.top !== window.self) return;
+  const source = new URL(document.currentScript.src);
+  // Beside this script, at the address the document itself was opened at: the same site whether
+  // that is Studio's own address or the one --url or --host announces, and never another origin.
+  const state = new URL(new URL('live.json', source).pathname, location.origin);
+  // The build this document was rendered from: `<session>.<revision>`, as live.json names them.
+  let loaded = source.searchParams.get('build');
+  // One small static file from Studio, a few times a second while the tab is shown; less often
+  // while the site does not answer or no `typedpress dev` is watching.
+  const QUICK = 250;
+  const SLOW = 3000;
+  const RELOADED = 'typedpress-dev-reloaded';
   let overlay;
+  let shown = '';
+  let dismissed = '';
+  let waiting = false;
 
-  events.onmessage = ({ data }) => {
-    const update = JSON.parse(data);
-    if (update.revision !== revision) {
-      events.close();
-      location.reload();
-      return;
-    }
+  const dismiss = () => {
+    dismissed = shown;
     overlay?.remove();
-    if (!update.diagnostics.length) return;
+    overlay = undefined;
+  };
+
+  function show(diagnostics) {
+    const key = diagnostics.length ? JSON.stringify(diagnostics) : '';
+    if (key === shown) return;
+    shown = key;
+    overlay?.remove();
+    overlay = undefined;
+    // A dismissed error stays away until the build fails differently.
+    if (!key || key === dismissed) return;
+    dismissed = '';
 
     overlay = document.createElement('typedpress-dev-error');
     const root = overlay.attachShadow({ mode: 'open' });
@@ -24,18 +46,28 @@
         margin: 8vh auto; padding: 1.5rem; border: 1px solid #69465a;
         border-top: .25rem solid #ff8c9b; border-radius: .5rem; background: #221b27;
         font: 1rem/1.5 system-ui, sans-serif; overflow-wrap: anywhere; }
-      h1 { margin: 0 0 1rem; font-size: 1.25rem; }
+      header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: 0 0 1rem; }
+      h1 { margin: 0; font-size: 1.25rem; }
+      button { padding: .25rem .75rem; border: 1px solid #69465a; border-radius: .25rem;
+        background: none; color: inherit; font: inherit; cursor: pointer; }
+      button:hover, button:focus-visible { border-color: #ffadb6; }
       a { color: #ffadb6; }
       code, pre { font-family: ui-monospace, monospace; }
       pre { white-space: pre-wrap; }
     `;
     const panel = document.createElement('section');
     panel.setAttribute('role', 'alert');
+    const top = document.createElement('header');
     const heading = document.createElement('h1');
     heading.textContent = 'TypedPress build failed';
-    panel.append(heading);
-    for (const diagnostic of update.diagnostics) {
-      const { code, location: source, message, help } = diagnostic;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Dismiss';
+    close.addEventListener('click', dismiss);
+    top.append(heading, close);
+    panel.append(top);
+    for (const diagnostic of diagnostics) {
+      const { code, location: place, message, help } = diagnostic;
       if (code) {
         const link = document.createElement('a');
         link.href = `https://github.com/spacefast/zero/blob/main/docs-site/docs/reference/diagnostics.mdx#codes:~:text=${encodeURIComponent(code)}`;
@@ -44,10 +76,10 @@
         link.textContent = `error[${code}]`;
         panel.append(link);
       }
-      if (source) {
+      if (place) {
         const file = document.createElement('p');
         const label = document.createElement('code');
-        label.textContent = `${source.file}:${source.line}:${source.column}`;
+        label.textContent = `${place.file}:${place.line}:${place.column}`;
         file.append(label);
         panel.append(file);
       }
@@ -57,5 +89,55 @@
     }
     root.append(style, panel);
     document.body.append(overlay);
-  };
+  }
+
+  // The reload this tab already made for `build`, kept across it. A page that still carries another
+  // build afterwards is a stored copy (a cache in front of the site): reloading again would loop.
+  function reloadedFor(build) {
+    try {
+      if (sessionStorage.getItem(RELOADED) === build) return true;
+      sessionStorage.setItem(RELOADED, build);
+    } catch {
+      // No storage (a sandboxed page): reload, as a page with storage does the first time.
+    }
+    return false;
+  }
+
+  async function check() {
+    // A tab nobody looks at asks nothing; it catches up the moment it is shown.
+    if (document.hidden) {
+      waiting = true;
+      return;
+    }
+    let live = null;
+    try {
+      const response = await fetch(state, { cache: 'no-store' });
+      if (response.ok) live = await response.json();
+    } catch {
+      // The site is restarting or stopped: ask again, less often.
+    }
+    if (live) {
+      const build = `${live.session}.${live.revision}`;
+      if (build !== loaded) {
+        if (!reloadedFor(build)) {
+          location.reload();
+          return;
+        }
+        loaded = build;
+      }
+      show(live.diagnostics ?? []);
+    }
+    setTimeout(check, live ? QUICK : SLOW);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && waiting) {
+      waiting = false;
+      void check();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && overlay) dismiss();
+  });
+  void check();
 })();

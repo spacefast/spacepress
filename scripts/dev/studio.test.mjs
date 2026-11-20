@@ -3,8 +3,9 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownedState, publishPlugins, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward, wordpressVersion } from './studio.mjs';
-import { execFileSync, spawn } from 'node:child_process';
+import { ownedState, publishPlugins, pluginPrints, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward, wordpressVersion, detachedReport, DEV_PLUGIN } from './studio.mjs';
+import { liveUpdates } from './live.mjs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { EventEmitter, once } from 'node:events';
 import { createServer } from 'node:http';
@@ -420,4 +421,160 @@ test('--host passes connections to the loopback listener untouched and lets go o
   await assert.rejects(fetch(`http://127.0.0.1:${relay.port}/`));
   // An address that is not this machine's is refused with the address in the message.
   await assert.rejects(forward('192.0.2.1', 0, upstream.address().port), /Cannot listen on 192\.0\.2\.1:0/);
+});
+
+test('a rebuild copies only the plugins whose files changed', async (t) => {
+  const project = await mkdtemp(join(tmpdir(), 'typedpress-dev-prints-'));
+  t.after(() => rm(project, { recursive: true, force: true }));
+  const managed = await ownedState(project, true);
+  const plugins = join(managed.owner.site, 'wp-content/plugins');
+  await mkdir(plugins, { recursive: true });
+  const content = join(project, 'artifact');
+  const manifest = {
+    app: 'test', plugins: { 'typedpress-app-test': '0.3', 'typedpress-runtime': '0.3', 'action-scheduler': '4.2.0' },
+    dependencies: [{ slug: 'action-scheduler', treeSha256: 'tree-1' }], locales: null,
+  };
+  for (const slug of Object.keys(manifest.plugins)) {
+    await mkdir(join(content, 'plugins', slug), { recursive: true });
+    await writeFile(join(content, 'plugins', slug, `${slug}.php`), 'first');
+  }
+  await writeFile(join(content, 'plugins/typedpress-app-test.zip'), 'app zip 1');
+  await writeFile(join(content, 'plugins/typedpress-runtime.zip'), 'runtime zip 1');
+  await writeFile(join(content, 'typedpress-manifest.json'), JSON.stringify(manifest));
+  // The print is the build's ZIP, a dependency's pinned tree hash, else the version.
+  const first = await pluginPrints(content, manifest);
+  assert.equal(first['action-scheduler'], 'tree-1');
+  assert.match(first['typedpress-app-test'], /^[0-9a-f]{64}$/);
+  await publishPlugins(content, managed);
+
+  // A page edit: the app plugin's files and ZIP change, nothing else does.
+  for (const slug of Object.keys(manifest.plugins)) await writeFile(join(content, 'plugins', slug, `${slug}.php`), 'second');
+  await writeFile(join(content, 'plugins/typedpress-app-test.zip'), 'app zip 2');
+  const second = await pluginPrints(content, manifest);
+  assert.deepEqual(Object.keys(second).filter((slug) => second[slug] !== first[slug]), ['typedpress-app-test']);
+  await publishPlugins(content, managed, (slug) => second[slug] !== first[slug]);
+  const published = (slug) => readFile(join(plugins, slug, `${slug}.php`), 'utf8');
+  assert.equal(await published('typedpress-app-test'), 'second');
+  assert.equal(await published('typedpress-runtime'), 'first');
+  assert.equal(await published('action-scheduler'), 'first');
+  // A plugin the site lost is copied again even when its print did not change.
+  await rm(join(plugins, 'typedpress-runtime'), { recursive: true });
+  await publishPlugins(content, managed, () => false);
+  assert.equal(await published('typedpress-runtime'), 'second');
+});
+
+test('the reload signal names a session and its builds, carries the build error, and is cleared on stop', async () => {
+  const published = [];
+  const live = await liveUpdates({ publish: async (state) => { published.push(state); } });
+  const { session } = published[0];
+  assert.match(session, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(published[0], { session, revision: 0, diagnostics: [] });
+  await live.updated(true);
+  assert.deepEqual(published.at(-1), { session, revision: 1, diagnostics: [] });
+  // A failed build keeps the revision: the page stays, with the error over it.
+  const diagnostics = [{ code: 'F1001', message: 'Unexpected token', location: { file: 'tp/app/page.tsx', line: 1, column: 44 } }];
+  await live.failed(Object.assign(new Error('build failed'), { diagnostics }));
+  assert.deepEqual(published.at(-1), { session, revision: 1, diagnostics });
+  // An error that is no compiler diagnostic (a refused migration) is shown by its message.
+  await live.failed(new Error('Schema change refused'));
+  assert.deepEqual(published.at(-1), { session, revision: 1, diagnostics: [{ message: 'Schema change refused' }] });
+  // A build that changed nothing clears the error without a reload.
+  await live.updated(false);
+  assert.deepEqual(published.at(-1), { session, revision: 1, diagnostics: [] });
+  await live.close();
+  assert.equal(published.at(-1), null);
+  // Another start is another session, so pages left open from this one reload.
+  let other;
+  await liveUpdates({ publish: async (state) => { other ??= state; } });
+  assert.notEqual(other.session, session);
+});
+
+test('--detach reports a failed first build on standard error and exits 1', () => {
+  const summary = '\nWebsite:   http://localhost:8787/';
+  const log = '/work/app/.tp/dev/dev.log';
+  assert.deepEqual(detachedReport({ summary, failed: null }, 41822, log), {
+    out: `${summary}\nRunning in the background (pid 41822), rebuilding on save.\nLog:  ${log}`, error: '', code: 0,
+  });
+  const failed = detachedReport({ summary, failed: 'Failed (1): build\nerror[F1001]: Unexpected token\n' }, 41822, log);
+  assert.equal(failed.code, 1);
+  // The site's address and the log are still printed: the process is running.
+  assert.equal(failed.out, `${summary}\nRunning in the background (pid 41822), rebuilding on save.\nLog:  ${log}`);
+  assert.match(failed.error, /^typedpress dev: the first build failed, so the site does not serve this source yet:\nFailed \(1\): build\nerror\[F1001\]: Unexpected token\nWordPress is running in the background \(pid 41822\)\./);
+  assert.match(failed.error, /typedpress dev status --json reports the error/);
+});
+
+test('the dev plugin adds the reload client only while dev watches, and never to a page rendered to be kept', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'typedpress-dev-plugin-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'typedpress-dev'));
+  await writeFile(join(root, 'typedpress-dev-runtime.php'), DEV_PLUGIN);
+  await writeFile(join(root, 'page.html'), '<html><body><h1>Public file</h1></body></html>');
+  // WordPress as far as the plugin uses it: hooks are recorded, and the public file's answer is replayed.
+  await writeFile(join(root, 'run.php'), `<?php
+namespace TypedPress\\Wp {
+    final class Plugin {
+        public string $dir = '/app';
+        public object $schema;
+        public function __construct() { $this->schema = new class { public function reserved(): array { return []; } }; }
+        public static function instance(): self { return new self(); }
+    }
+    final class PublicFiles {
+        public static function file(string $root, array $reserved): ?string { return getenv('TP_TEST_FILE') ?: null; }
+    }
+}
+namespace {
+    $GLOBALS['hooks'] = [];
+    function add_action(string $hook, callable $callback): void { $GLOBALS['hooks'][$hook] = $callback; }
+    function add_filter(string $hook, mixed $callback): void { $GLOBALS['hooks'][$hook] = $callback; }
+    function plugins_url(string $path, string $file): string { return 'https://box.example.ts.net:8443/wp-content/mu-plugins/' . $path; }
+    function add_query_arg(string $key, string $value, string $url): string { return $url . '?' . $key . '=' . $value; }
+    function esc_url(string $url): string { return $url; }
+    function doing_filter(string $hook): bool { return $hook === 'do_parse_request'; }
+    function wp_enqueue_script(string $handle, string $src): void { $GLOBALS['enqueued'] = $src; }
+    foreach (['PRERENDER', 'EXPORT'] as $name) {
+        if (getenv('TP_TEST_' . $name) !== false) $_SERVER['HTTP_X_TYPEDPRESS_' . $name] = getenv('TP_TEST_' . $name);
+    }
+    $_SERVER['REQUEST_METHOD'] = 'GET';
+    require __DIR__ . '/typedpress-dev-runtime.php';
+    $names = array_keys($GLOBALS['hooks']);
+    sort($names);
+    if (isset($GLOBALS['hooks']['wp_enqueue_scripts'])) ($GLOBALS['hooks']['wp_enqueue_scripts'])();
+    fwrite(STDERR, json_encode(['hooks' => $names, 'enqueued' => $GLOBALS['enqueued'] ?? null, 'http' => TP_IDENTITY_DEV_HTTP]));
+    if (isset($GLOBALS['hooks']['status_header'])) {
+        // PublicFiles::emit: every buffer dropped, the status, then the file.
+        while (ob_get_level() > 0) ob_end_clean();
+        ($GLOBALS['hooks']['status_header'])('HTTP/1.1 ' . getenv('TP_TEST_STATUS') . ' OK', (int) getenv('TP_TEST_STATUS'));
+        readfile(__DIR__ . '/page.html');
+    }
+}
+`);
+  const run = (env = {}) => {
+    const child = spawnSync('php', [join(root, 'run.php')], { encoding: 'utf8', env: { ...process.env, TP_TEST_STATUS: '200', ...env } });
+    assert.equal(child.status, 0, child.stderr + child.stdout);
+    return { ...JSON.parse(child.stderr), body: child.stdout };
+  };
+  const quiet = { hooks: [], enqueued: null, http: true, body: '' };
+  // Not watching: no live.json, or the one a stop or --no-watch leaves.
+  assert.deepEqual(run(), quiet);
+  await writeFile(join(root, 'typedpress-dev/live.json'), 'null\n');
+  assert.deepEqual(run(), quiet);
+  // Watching.
+  await writeFile(join(root, 'typedpress-dev/live.json'), JSON.stringify({ session: 'abc', revision: 7, diagnostics: [] }));
+  const client = 'https://box.example.ts.net:8443/wp-content/mu-plugins/typedpress-dev/live-client.js?build=abc.7';
+  const watching = run();
+  assert.deepEqual(watching.hooks, ['admin_enqueue_scripts', 'login_enqueue_scripts', 'status_header', 'tp_admin_init', 'tp_prebuilt_serve', 'wp_enqueue_scripts']);
+  // The client comes from the site's own address, whatever --url made it.
+  assert.equal(watching.enqueued, client);
+  // A 200 that is no file from public/ passes through untouched.
+  assert.equal(watching.body, '<html><body><h1>Public file</h1></body></html>');
+  // A prerender or an export request renders the page as a build stores it.
+  assert.deepEqual(run({ TP_TEST_PRERENDER: '1790000000.' + 'a'.repeat(64) }), quiet);
+  assert.deepEqual(run({ TP_TEST_EXPORT: '1' }), quiet);
+  // public/index.html: the answer carries the client; the file is read, never written.
+  const page = join(root, 'page.html');
+  assert.equal(run({ TP_TEST_FILE: page }).body, `<html><body><h1>Public file</h1><script src="${client}" defer></script></body></html>`);
+  assert.equal(await readFile(page, 'utf8'), '<html><body><h1>Public file</h1></body></html>');
+  // Not a 304, and not a file that is no HTML document.
+  assert.equal(run({ TP_TEST_FILE: page, TP_TEST_STATUS: '304' }).body, '<html><body><h1>Public file</h1></body></html>');
+  assert.equal(run({ TP_TEST_FILE: join(root, 'data.json') }).body, '<html><body><h1>Public file</h1></body></html>');
 });

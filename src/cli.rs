@@ -148,6 +148,9 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
                         .ok_or_else(|| fail("--preserve-data needs a snapshot path".into()))?,
                 ));
             }
+            // Internal to `typedpress dev` (scripts/dev/studio.mjs), so it is in no usage line and no
+            // reference page: the build writes the compile's `typedpress-diagnostics` envelope to this
+            // path, `ok` with none when it compiled, for the browser overlay and `dev status`.
             "--diagnostics-file" if command == "build" => {
                 args.diagnostics_file = Some(PathBuf::from(
                     it.next()

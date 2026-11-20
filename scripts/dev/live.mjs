@@ -1,58 +1,30 @@
 import { randomUUID } from 'node:crypto';
-import { once } from 'node:events';
-import { createServer } from 'node:http';
 
-export async function liveUpdates({ bind, site, publish }) {
-  const path = `/${randomUUID()}`;
-  const origin = new URL(site).origin;
-  const clients = new Set();
+// What open pages of the dev site follow: one small file, live.json, that Studio serves beside the
+// reload client (live-client.js). The client reads it from the site's own origin, so the signal
+// reaches a browser wherever the site is opened (`--url` behind a proxy, `--host`, https) and no
+// PHP worker is held open for it.
+//
+// `session` names this `typedpress dev` process and `revision` counts its builds that changed the
+// site: a page rendered at another pair reloads. `diagnostics` is the failed build's errors, shown
+// over the page until a build succeeds.
+export async function liveUpdates({ publish }) {
+  const session = randomUUID();
   let revision = 0;
   let diagnostics = [];
-  const send = (client) => {
-    if (client.writableLength > 1024 * 1024) client.destroy();
-    else client.write(`data: ${JSON.stringify({ revision, diagnostics })}\n\n`);
-  };
-  const server = createServer((request, response) => {
-    if (request.method !== 'GET' || request.url !== path || request.headers.origin !== origin) {
-      response.writeHead(404).end();
-      return;
-    }
-    response.writeHead(200, {
-      'access-control-allow-origin': origin,
-      'cache-control': 'no-store',
-      'content-type': 'text/event-stream',
-    });
-    clients.add(response);
-    response.once('close', () => clients.delete(response));
-    send(response);
-  });
-  server.listen(0, bind);
-  await once(server, 'listening');
-  const host = bind.includes(':') ? `[${bind}]` : bind;
-  const events = `http://${host}:${server.address().port}${path}`;
-  try {
-    await publish({ events, revision });
-  } catch (error) {
-    server.close();
-    throw error;
-  }
+  await publish({ session, revision, diagnostics });
   return {
     async updated(reload) {
-      if (reload) {
-        await publish({ events, revision: revision + 1 });
-        revision++;
-      }
+      await publish({ session, revision: revision + (reload ? 1 : 0), diagnostics: [] });
+      if (reload) revision++;
       diagnostics = [];
-      for (const client of clients) send(client);
     },
-    failed(error) {
-      diagnostics = error.diagnostics ?? [{ message: error.message }];
-      for (const client of clients) send(client);
+    async failed(error) {
+      const reported = error.diagnostics?.length ? error.diagnostics : [{ message: error.message }];
+      await publish({ session, revision, diagnostics: reported });
+      diagnostics = reported;
     },
-    close() {
-      const closed = new Promise((resolve) => server.close(resolve));
-      server.closeAllConnections();
-      return closed;
-    },
+    // No session: pages rendered from now on carry no client, and open ones wait for the next start.
+    close: () => publish(null),
   };
 }

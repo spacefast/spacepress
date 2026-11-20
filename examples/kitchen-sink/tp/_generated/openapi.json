@@ -67,6 +67,10 @@
       "name": "Live",
       "description": "Reads a page is subscribed to, kept current without a push transport."
     },
+    {
+      "name": "Services",
+      "description": "Forms, search and checkout from `services` in the app's config."
+    },
     { "name": "Search", "description": "One search over every kind with a searchable field." },
     { "name": "Schema", "description": "The app described to its clients." }
   ],
@@ -2528,7 +2532,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `content`, `excerpt`, `servings`, `topicIds`, `status`, `publishedAt`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `content`, `excerpt`, `servings`, `topicIds`, `status`, `publishedAt`, `uid`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -3397,6 +3401,326 @@
           "401": { "$ref": "#/components/responses/Problem" },
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/recipes": {
+      "get": {
+        "tags": ["Sync"],
+        "operationId": "sync.recipes.read",
+        "summary": "Read recipes for sync",
+        "x-typedpress-access": "editor",
+        "description": "Rows as sync records with their digests, in pages by id.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Only rows with an id above this one.",
+            "schema": { "type": "integer", "minimum": 0 }
+          },
+          {
+            "name": "first",
+            "in": "query",
+            "description": "How many records to return, at most 100.",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of records, and the id to pass as `after` for the next page, or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "records": {
+                          "type": "array",
+                          "items": { "type": "object" }
+                        },
+                        "next": { "type": ["integer", "null"] }
+                      },
+                      "required": ["records", "next"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.recipes.apply",
+        "summary": "Apply a recipes sync record",
+        "x-typedpress-access": "editor",
+        "description": "Creates or updates one row from a content file, when the row still matches `expect`. A row that changed since answers 409 `sync_stale`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The record and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "record": { "type": "object" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["record", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome: the row was updated, or was already as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The outcome: the record created a row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/recipes/trash": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.recipes.trash",
+        "summary": "Trash a synced recipes row",
+        "x-typedpress-access": "editor",
+        "description": "Moves the row of a deleted content file to the trash, when the row still matches `expect`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The row's uid and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": { "type": "string", "pattern": "^zr_[0-9a-f]{20}$" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["uid", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/recipes/convert": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.recipes.convert",
+        "summary": "Convert recipes content between formats",
+        "x-typedpress-access": "editor",
+        "description": "Converts a body between block markup, Markdown and HTML, as the site's own converters do. One item, or up to a batch under `records`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The text and the direction.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": { "type": "string" },
+                      "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                    },
+                    "required": ["text", "direction"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "text": { "type": "string" },
+                            "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                          },
+                          "required": ["text", "direction"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The converted text, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/recipes/merge": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.recipes.merge",
+        "summary": "Three-way merge recipes content",
+        "x-typedpress-access": "editor",
+        "description": "Merges two versions of a body over their common base. One item, or up to a batch under `records`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The base and the two versions.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "base": { "type": "string" },
+                      "ours": { "type": "string" },
+                      "theirs": { "type": "string" }
+                    },
+                    "required": ["base", "ours", "theirs"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "base": { "type": "string" },
+                            "ours": { "type": "string" },
+                            "theirs": { "type": "string" }
+                          },
+                          "required": ["base", "ours", "theirs"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The merged text and whether it has conflicts, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
           "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
@@ -4628,8 +4952,14 @@
         "tags": ["Registrations"],
         "operationId": "registrations.list",
         "summary": "List registrations",
-        "x-typedpress-access": "editor",
-        "description": "The registrations rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The registrations rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
         "parameters": [
           {
             "name": "where",
@@ -4741,8 +5071,14 @@
         "tags": ["Registrations"],
         "operationId": "registrations.get",
         "summary": "Get one of registrations",
-        "x-typedpress-access": "editor",
-        "description": "One registrations row.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One registrations row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
         "parameters": [
           {
             "name": "id",
@@ -4886,7 +5222,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `eventId`, `summary`, `reference`, `updatedAt`, `createdAt`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `eventId`, `summary`, `createdAt`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -5600,7 +5936,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `name`, `slug`, `description`, `count`, `url`, `color`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `name`, `slug`, `description`, `count`, `url`, `color`, `uid`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -5810,6 +6146,326 @@
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },
           "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/topics": {
+      "get": {
+        "tags": ["Sync"],
+        "operationId": "sync.topics.read",
+        "summary": "Read topics for sync",
+        "x-typedpress-access": "editor",
+        "description": "Rows as sync records with their digests, in pages by id.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Only rows with an id above this one.",
+            "schema": { "type": "integer", "minimum": 0 }
+          },
+          {
+            "name": "first",
+            "in": "query",
+            "description": "How many records to return, at most 100.",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of records, and the id to pass as `after` for the next page, or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "records": {
+                          "type": "array",
+                          "items": { "type": "object" }
+                        },
+                        "next": { "type": ["integer", "null"] }
+                      },
+                      "required": ["records", "next"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.topics.apply",
+        "summary": "Apply a topics sync record",
+        "x-typedpress-access": "editor",
+        "description": "Creates or updates one row from a content file, when the row still matches `expect`. A row that changed since answers 409 `sync_stale`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The record and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "record": { "type": "object" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["record", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome: the row was updated, or was already as sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The outcome: the record created a row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/topics/trash": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.topics.trash",
+        "summary": "Trash a synced topics row",
+        "x-typedpress-access": "editor",
+        "description": "Moves the row of a deleted content file to the trash, when the row still matches `expect`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The row's uid and the digest it expects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": { "type": "string", "pattern": "^zr_[0-9a-f]{20}$" },
+                  "expect": {
+                    "type": "string",
+                    "pattern": "^(absent|sha256:[0-9a-f]{64})$",
+                    "description": "The digest the caller last saw, or `absent` for a row it believes does not exist."
+                  }
+                },
+                "required": ["uid", "expect"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/topics/convert": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.topics.convert",
+        "summary": "Convert topics content between formats",
+        "x-typedpress-access": "editor",
+        "description": "Converts a body between block markup, Markdown and HTML, as the site's own converters do. One item, or up to a batch under `records`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The text and the direction.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": { "type": "string" },
+                      "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                    },
+                    "required": ["text", "direction"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "text": { "type": "string" },
+                            "direction": { "type": "string", "enum": ["toMarkdown", "toBlocks", "toHtml", "fromHtml"] }
+                          },
+                          "required": ["text", "direction"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The converted text, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/sync/topics/merge": {
+      "post": {
+        "tags": ["Sync"],
+        "operationId": "sync.topics.merge",
+        "summary": "Three-way merge topics content",
+        "x-typedpress-access": "editor",
+        "description": "Merges two versions of a body over their common base. One item, or up to a batch under `records`.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The base and the two versions.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "base": { "type": "string" },
+                      "ours": { "type": "string" },
+                      "theirs": { "type": "string" }
+                    },
+                    "required": ["base", "ours", "theirs"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "base": { "type": "string" },
+                            "ours": { "type": "string" },
+                            "theirs": { "type": "string" }
+                          },
+                          "required": ["base", "ours", "theirs"]
+                        }
+                      }
+                    },
+                    "required": ["records"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The merged text and whether it has conflicts, or one result per item under `records`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }
@@ -7050,9 +7706,9 @@
                 "properties": {
                   "eventId": { "type": "integer" },
                   "seats": { "type": "integer", "minimum": 1, "maximum": 4 },
-                  "email": { "type": "string" }
+                  "allergies": { "type": ["string", "null"], "maxLength": 200 }
                 },
-                "required": ["eventId", "seats", "email"]
+                "required": ["eventId", "seats"]
               }
             }
           }
@@ -7071,6 +7727,57 @@
                         "code": { "type": "string" }
                       },
                       "required": ["code"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/cancelSeats": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.cancelSeats",
+        "summary": "Call cancelSeats",
+        "x-typedpress-access": "authenticated",
+        "description": "Runs the `cancelSeats` action with the input sent and returns its result.\n\nAccess: Any signed-in user may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "eventId": { "type": "integer" }
+                },
+                "required": ["eventId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "seats": { "type": ["number", "null"] }
+                      },
+                      "required": ["seats"]
                     }
                   },
                   "required": ["data"]
@@ -7216,6 +7923,212 @@
         }
       }
     },
+    "/actions/scheduleAgain": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.scheduleAgain",
+        "summary": "Call scheduleAgain",
+        "x-typedpress-access": "editor",
+        "description": "Runs the `scheduleAgain` action with the input sent and returns its result.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer" }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": ["number", "null"] },
+                        "startsOn": { "type": "string" }
+                      },
+                      "required": ["id", "startsOn"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/cancelWorkshop": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.cancelWorkshop",
+        "summary": "Call cancelWorkshop",
+        "x-typedpress-access": "admin",
+        "description": "Runs the `cancelWorkshop` action with the input sent and returns its result.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer" }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": ["number", "null"] }
+                      },
+                      "required": ["id"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/postAnnouncement": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.postAnnouncement",
+        "summary": "Call postAnnouncement",
+        "x-typedpress-access": "editor",
+        "description": "Runs the `postAnnouncement` action with the input sent and returns its result.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "announcement": { "type": ["string", "null"], "maxLength": 280 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "announcement": { "type": ["string", "null"] }
+                      },
+                      "required": ["announcement"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/draftRecap": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.draftRecap",
+        "summary": "Call draftRecap",
+        "x-typedpress-access": "editor",
+        "description": "Runs the `draftRecap` action with the input sent and returns its result.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer" }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "postId": { "type": ["number", "null"] },
+                        "title": { "type": ["string"] },
+                        "status": { "type": ["string"] }
+                      },
+                      "required": ["postId", "title", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
     "/actions/checkSchedule": {
       "post": {
         "tags": ["Actions"],
@@ -7240,7 +8153,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": {}
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "workshops": { "type": ["number", "null"] },
+                        "timezone": { "type": "string" },
+                        "hasWorkshops": { "type": "boolean" }
+                      },
+                      "required": ["workshops", "timezone", "hasWorkshops"]
+                    }
                   },
                   "required": ["data"]
                 }
@@ -7280,7 +8201,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": {}
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "workshops": { "type": ["number", "null"] },
+                        "timezone": { "type": "string" },
+                        "hasWorkshops": { "type": "boolean" }
+                      },
+                      "required": ["workshops", "timezone", "hasWorkshops"]
+                    }
                   },
                   "required": ["data"]
                 }
@@ -9091,6 +10020,121 @@
         }
       }
     },
+    "/services/forms/contact": {
+      "post": {
+        "tags": ["Services"],
+        "operationId": "services.forms.contact",
+        "summary": "Submit the contact form",
+        "x-typedpress-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Stores one submission and queues its mail.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The form's fields under `data`. `website` is a trap for bots and must stay empty.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "email": { "type": "string", "maxLength": 191 },
+                      "message": { "type": "string", "minLength": 3, "maxLength": 2000 }
+                    },
+                    "required": ["email", "message"]
+                  },
+                  "website": { "type": "string", "maxLength": 0 }
+                },
+                "required": ["data"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored submission.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string" },
+                        "message": { "type": "string" },
+                        "delivery": { "type": "string" }
+                      },
+                      "required": ["id", "message", "delivery"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "413": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "429": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/services/submissions/{id}": {
+      "get": {
+        "tags": ["Services"],
+        "operationId": "services.submission",
+        "summary": "Get a form submission",
+        "x-typedpress-access": "editor",
+        "description": "One stored submission, with the state of its mail.\n\nAccess: Users with the `editor` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The submission's id.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The submission.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "object" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
     "/search": {
       "get": {
         "tags": ["Search"],
@@ -9927,6 +10971,7 @@
           },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "uid": { "type": ["string", "null"] },
           "_rev": {
             "type": "string",
             "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
@@ -9947,7 +10992,8 @@
             "uniqueItems": true
           },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
-          "publishedAt": { "type": ["string", "integer", "null"] }
+          "publishedAt": { "type": ["string", "integer", "null"] },
+          "uid": { "type": ["string", "null"] }
         },
         "required": ["title"]
       },
@@ -9988,6 +11034,7 @@
           "topicIds": { "$ref": "#/components/schemas/IntegerListFilter" },
           "status": { "$ref": "#/components/schemas/StringFilter" },
           "publishedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "uid": { "$ref": "#/components/schemas/StringFilter" },
           "AND": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/RecipeFilter" }
@@ -10179,7 +11226,7 @@
           "id": { "type": "integer" },
           "eventId": {
             "anyOf": [
-              { "type": "integer" },
+              { "type": ["integer", "null"] },
               {
                 "anyOf": [
                   { "$ref": "#/components/schemas/Event" },
@@ -10189,29 +11236,23 @@
             ]
           },
           "summary": { "type": "string" },
-          "reference": { "type": "string", "maxLength": 36 },
-          "updatedAt": { "type": "string", "format": "date-time" },
           "createdAt": { "type": "string", "format": "date-time" }
         }
       },
       "ActivityInsert": {
         "type": "object",
         "properties": {
-          "eventId": { "type": "integer" },
+          "eventId": { "type": ["integer", "null"] },
           "summary": { "type": "string" },
-          "reference": { "type": "string", "maxLength": 36 },
-          "updatedAt": { "type": ["string", "integer"] },
           "createdAt": { "type": ["string", "integer"] }
         },
-        "required": ["eventId", "summary"]
+        "required": ["summary"]
       },
       "ActivityPatch": {
         "type": "object",
         "properties": {
-          "eventId": { "type": "integer" },
+          "eventId": { "type": ["integer", "null"] },
           "summary": { "type": "string" },
-          "reference": { "type": "string", "maxLength": 36 },
-          "updatedAt": { "type": ["string", "integer"] },
           "createdAt": { "type": ["string", "integer"] }
         }
       },
@@ -10221,8 +11262,6 @@
           "id": { "$ref": "#/components/schemas/IntegerFilter" },
           "eventId": { "$ref": "#/components/schemas/IntegerFilter" },
           "summary": { "$ref": "#/components/schemas/StringFilter" },
-          "reference": { "$ref": "#/components/schemas/StringFilter" },
-          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
           "createdAt": { "$ref": "#/components/schemas/StringFilter" },
           "AND": {
             "type": "array",
@@ -10309,6 +11348,7 @@
           "count": { "type": "integer" },
           "url": { "type": ["string", "null"] },
           "color": { "type": ["string", "null"] },
+          "uid": { "type": ["string", "null"] },
           "recipes": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Recipe" },
@@ -10322,7 +11362,8 @@
           "name": { "type": "string" },
           "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 200 },
           "description": { "type": "string" },
-          "color": { "type": ["string", "null"] }
+          "color": { "type": ["string", "null"] },
+          "uid": { "type": ["string", "null"] }
         },
         "required": ["name"]
       },
@@ -10345,6 +11386,7 @@
           "count": { "$ref": "#/components/schemas/IntegerFilter" },
           "url": { "$ref": "#/components/schemas/StringFilter" },
           "color": { "$ref": "#/components/schemas/StringFilter" },
+          "uid": { "$ref": "#/components/schemas/StringFilter" },
           "recipes": { "type": "object", "description": "A filter on the related rows." },
           "AND": {
             "type": "array",
@@ -10829,6 +11871,7 @@
         "properties": {
           "siteTitle": { "type": "string" },
           "announcement": { "type": ["string", "null"] },
+          "mailFrom": { "type": ["string", "null"] },
           "replyTo": { "type": ["string", "null"] },
           "links": {
             "type": ["array", "null"],
@@ -10847,6 +11890,7 @@
         "properties": {
           "siteTitle": { "type": "string" },
           "announcement": { "type": ["string", "null"] },
+          "mailFrom": { "type": ["string", "null"] },
           "replyTo": { "type": ["string", "null"] },
           "links": {
             "type": ["array", "null"],

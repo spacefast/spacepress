@@ -434,8 +434,23 @@
           "enum": null,
           "default": null,
           "references": null
+        },
+        "uid": {
+          "type": "text",
+          "notNull": false,
+          "primaryKey": false,
+          "autoIncrement": false,
+          "unique": true,
+          "max": null,
+          "enum": null,
+          "default": null,
+          "references": null
         }
-      }
+      },
+      "queried": [
+        "status",
+        "title"
+      ]
     },
     "handbook": {
       "editor": true,
@@ -688,7 +703,7 @@
         },
         "eventId": {
           "type": "integer",
-          "notNull": true,
+          "notNull": false,
           "primaryKey": false,
           "autoIncrement": false,
           "unique": false,
@@ -698,7 +713,7 @@
           "references": {
             "table": "events",
             "column": "id",
-            "onDelete": "restrict",
+            "onDelete": "set null",
             "onUpdate": null,
             "unsigned": true
           }
@@ -715,28 +730,6 @@
           "references": null,
           "was": "message"
         },
-        "reference": {
-          "type": "text",
-          "notNull": true,
-          "primaryKey": false,
-          "autoIncrement": false,
-          "unique": false,
-          "max": 36.0,
-          "enum": null,
-          "default": null,
-          "references": null
-        },
-        "updatedAt": {
-          "type": "timestamp",
-          "notNull": true,
-          "primaryKey": false,
-          "autoIncrement": false,
-          "unique": false,
-          "max": null,
-          "enum": null,
-          "default": null,
-          "references": null
-        },
         "createdAt": {
           "type": "timestamp",
           "notNull": true,
@@ -748,7 +741,10 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "createdAt"
+      ]
     },
     "members": {
       "editor": false,

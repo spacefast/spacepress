@@ -629,6 +629,7 @@ export interface Recipe {
 	topicIds: number[];
 	status: "draft" | "published" | "scheduled";
 	publishedAt: string | null;
+	uid: string | null;
 }
 export interface RecipeInsert {
 	title: string;
@@ -639,6 +640,7 @@ export interface RecipeInsert {
 	topicIds?: number[];
 	status?: "draft" | "published" | "scheduled";
 	publishedAt?: string | null;
+	uid?: string | null;
 }
 export interface RecipePatch {
 	title?: string;
@@ -649,6 +651,7 @@ export interface RecipePatch {
 	topicIds?: number[];
 	status?: "draft" | "published" | "scheduled";
 	publishedAt?: string | null;
+	uid?: string | null;
 }
 export interface RecipeWith {
 	topicIds?: true | {
@@ -783,11 +786,27 @@ export interface RecipeFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	uid?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
 	AND?: RecipeFilter[];
 	OR?: RecipeFilter[];
 	NOT?: RecipeFilter;
 }
-export type RecipeOrder = Partial<Record<"id" | "title" | "slug" | "content" | "excerpt" | "servings" | "status" | "publishedAt", "asc" | "desc">> | string;
+export type RecipeOrder = Partial<Record<"id" | "title" | "slug" | "content" | "excerpt" | "servings" | "status" | "publishedAt" | "uid", "asc" | "desc">> | string;
 export interface Handbook {
 	id: number;
 	title: string;
@@ -1128,24 +1147,18 @@ export interface RegistrationFilter {
 export type RegistrationOrder = Partial<Record<"id" | "eventId" | "memberId" | "seats" | "code" | "bookedOn" | "updatedAt", "asc" | "desc">> | string;
 export interface Activity {
 	id: number;
-	eventId: number;
+	eventId: number | null;
 	summary: string;
-	reference: string;
-	updatedAt: string;
 	createdAt: string;
 }
 export interface ActivityInsert {
-	eventId: number;
+	eventId?: number | null;
 	summary: string;
-	reference?: string;
-	updatedAt?: string;
 	createdAt?: string;
 }
 export interface ActivityPatch {
-	eventId?: number;
+	eventId?: number | null;
 	summary?: string;
-	reference?: string;
-	updatedAt?: string;
 	createdAt?: string;
 }
 export interface ActivityWith {
@@ -1198,34 +1211,6 @@ export interface ActivityFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	reference?: string | null | {
-		eq?: string | null;
-		ne?: string | null;
-		gt?: string;
-		gte?: string;
-		lt?: string;
-		lte?: string;
-		in?: string[];
-		notIn?: string[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	updatedAt?: string | null | {
-		eq?: string | null;
-		ne?: string | null;
-		gt?: string;
-		gte?: string;
-		lt?: string;
-		lte?: string;
-		in?: string[];
-		notIn?: string[];
-		isNull?: true;
-		isNotNull?: true;
-	};
 	createdAt?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -1242,7 +1227,7 @@ export interface ActivityFilter {
 	OR?: ActivityFilter[];
 	NOT?: ActivityFilter;
 }
-export type ActivityOrder = Partial<Record<"id" | "eventId" | "summary" | "reference" | "updatedAt" | "createdAt", "asc" | "desc">> | string;
+export type ActivityOrder = Partial<Record<"id" | "eventId" | "summary" | "createdAt", "asc" | "desc">> | string;
 export interface Member {
 	id: number;
 	email: string;
@@ -1383,18 +1368,21 @@ export interface Topic {
 	count: number;
 	url: string | null;
 	color: string | null;
+	uid: string | null;
 }
 export interface TopicInsert {
 	name: string;
 	slug?: string;
 	description?: string;
 	color?: string | null;
+	uid?: string | null;
 }
 export interface TopicPatch {
 	name?: string;
 	slug?: string;
 	description?: string;
 	color?: string | null;
+	uid?: string | null;
 }
 export interface TopicWith {
 	recipes?: true | {
@@ -1510,12 +1498,28 @@ export interface TopicFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	uid?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
 	recipes?: true | RecipeFilter;
 	AND?: TopicFilter[];
 	OR?: TopicFilter[];
 	NOT?: TopicFilter;
 }
-export type TopicOrder = Partial<Record<"id" | "name" | "slug" | "description" | "count" | "url" | "color", "asc" | "desc">> | string;
+export type TopicOrder = Partial<Record<"id" | "name" | "slug" | "description" | "count" | "url" | "color" | "uid", "asc" | "desc">> | string;
 export interface Supply {
 	id: number;
 	uid: string | null;
@@ -2749,6 +2753,7 @@ export type OrderOrder = Partial<Record<"id" | "status" | "currency" | "precisio
 export interface Settings {
 	siteTitle: string;
 	announcement: string | null;
+	mailFrom: string | null;
 	replyTo: string | null;
 	links: {
 		label: string;
@@ -2758,6 +2763,7 @@ export interface Settings {
 export interface SettingsPatch {
 	siteTitle?: string;
 	announcement?: string | null;
+	mailFrom?: string | null;
 	replyTo?: string | null;
 	links?: {
 		label: string;
@@ -2767,10 +2773,16 @@ export interface SettingsPatch {
 export interface BookSeatsInput {
 	eventId: number;
 	seats: number;
-	email: string;
+	allergies?: string | null;
 }
 export type BookSeatsOutput = {
 	code: string;
+};
+export interface CancelSeatsInput {
+	eventId: number;
+}
+export type CancelSeatsOutput = {
+	seats: number;
 };
 export type UpcomingInput = Record<string, never>;
 export type UpcomingOutput = {
@@ -2782,11 +2794,38 @@ export interface CloseRegistrationInput {
 export type CloseRegistrationOutput = {
 	id: number;
 };
+export interface ScheduleAgainInput {
+	id: number;
+}
+export type ScheduleAgainOutput = {
+	id: number;
+	startsOn: string;
+};
+export interface CancelWorkshopInput {
+	id: number;
+}
+export type CancelWorkshopOutput = {
+	id: number;
+};
+export interface PostAnnouncementInput {
+	announcement?: string | null;
+}
+export type PostAnnouncementOutput = {
+	announcement: string | null;
+};
+export interface DraftRecapInput {
+	id: number;
+}
+export type DraftRecapOutput = {
+	postId: number;
+	title: string | "";
+	status: string | "";
+};
 export type CheckScheduleInput = Record<string, never>;
 export type CheckScheduleOutput = {
-	schedule?: unknown;
-	timezone?: unknown;
-	hasWorkshops?: unknown;
+	workshops: number;
+	timezone: string;
+	hasWorkshops: boolean;
 };
 export interface Collections {
 	events: {
@@ -2897,6 +2936,10 @@ export interface Actions {
 		input: BookSeatsInput;
 		output: BookSeatsOutput;
 	};
+	cancelSeats: {
+		input: CancelSeatsInput;
+		output: CancelSeatsOutput;
+	};
 	upcoming: {
 		input: UpcomingInput;
 		output: UpcomingOutput;
@@ -2904,6 +2947,22 @@ export interface Actions {
 	closeRegistration: {
 		input: CloseRegistrationInput;
 		output: CloseRegistrationOutput;
+	};
+	scheduleAgain: {
+		input: ScheduleAgainInput;
+		output: ScheduleAgainOutput;
+	};
+	cancelWorkshop: {
+		input: CancelWorkshopInput;
+		output: CancelWorkshopOutput;
+	};
+	postAnnouncement: {
+		input: PostAnnouncementInput;
+		output: PostAnnouncementOutput;
+	};
+	draftRecap: {
+		input: DraftRecapInput;
+		output: DraftRecapOutput;
 	};
 	checkSchedule: {
 		input: CheckScheduleInput;
@@ -3024,7 +3083,7 @@ export declare const SCHEMA: {
 				readonly eventId: {
 					readonly kind: "one";
 					readonly collection: "events";
-					readonly optional: false;
+					readonly optional: true;
 				};
 			};
 			readonly media: readonly [];
@@ -3134,7 +3193,7 @@ export declare const SCHEMA: {
 		};
 	};
 	readonly globals: readonly ["settings"];
-	readonly actions: readonly ["bookSeats", "upcoming", "closeRegistration", "checkSchedule"];
+	readonly actions: readonly ["bookSeats", "cancelSeats", "upcoming", "closeRegistration", "scheduleAgain", "cancelWorkshop", "postAnnouncement", "draftRecap", "checkSchedule"];
 	readonly buckets: readonly ["handouts"];
 };
 export type SchemaDescriptor = typeof SCHEMA;
@@ -3503,7 +3562,8 @@ export declare function createClient(options?: ClientOptions): Client;
 * an action's result, a global. Returns a function that stops watching.
 */
 export declare function watch<T>(client: Client, collections: readonly CollectionKey[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: TypedPressError) => void): () => void;
-/** Cart contracts adapted from @woo/storefront-core (MIT), packages/core/src/contracts.ts.
+/** Cart contracts and error-cart handling adapted from @woo/storefront-core (MIT),
+* packages/core/src/contracts.ts and packages/core/src/transport.ts.
 * Amounts here are exact decimal strings; the Store API's minor units are normalized on read.
 */
 export interface WooCartItem {
@@ -3572,6 +3632,8 @@ export interface WooCart {
 	totals: WooCartTotals;
 	needsShipping: boolean;
 	shippingRates: WooShippingPackage[];
+	billingAddress?: WooAddress;
+	shippingAddress?: WooAddress;
 	coupons: {
 		code: string;
 		totals: {
@@ -3585,10 +3647,18 @@ export interface WooCart {
 		totalTax: string;
 	}[];
 }
+/** The codes Woo 11.3.0's cart routes send for the requests this client makes (`StoreApi/Routes/V1/Cart*.php`,
+* `Utilities/CartController.php`, `Utilities/QuantityLimits.php`, `Authentication.php`), with their statuses. */
+export type WooStoreErrorCode = "invalid_quantity" | "rate_limit_exceeded" | "readonly_quantity" | "rest_invalid_param" | "woocommerce_rest_add_to_cart_error" | "woocommerce_rest_cart_error" | "woocommerce_rest_cart_invalid_key" | "woocommerce_rest_cart_invalid_parent_product" | "woocommerce_rest_cart_invalid_product" | "woocommerce_rest_cart_item_exists" | "woocommerce_rest_cart_missing_rate_id" | "woocommerce_rest_invalid_nonce" | "woocommerce_rest_invalid_variation_data" | "woocommerce_rest_missing_attributes" | "woocommerce_rest_missing_nonce" | "woocommerce_rest_missing_variation_data" | "woocommerce_rest_product_invalid_quantity" | "woocommerce_rest_product_not_purchasable" | "woocommerce_rest_product_out_of_stock" | "woocommerce_rest_product_partially_out_of_stock" | "woocommerce_rest_shipping_disabled" | "woocommerce_rest_unknown_server_error" | "woocommerce_rest_variation_id_from_variation_data";
 export declare class WooStoreError extends Error {
-	readonly code: string;
+	/** The string Woo sent, unchanged. Extensions and other Woo versions send codes outside `WooStoreErrorCode`.
+	* `http_error` is this client's own: the answer was not a Woo error, such as a proxy's or a maintenance page. */
+	readonly code: WooStoreErrorCode | (string & {});
 	readonly status: number;
-	constructor(code: string, message: string, status: number);
+	/** The current cart. Woo sends it with a 409 only. */
+	readonly cart: WooCart | undefined;
+	/** `message` is plain text: Woo's HTML entities are already decoded. */
+	constructor(code: WooStoreErrorCode | (string & {}), message: string, status: number, cart?: WooCart);
 }
 /** Exact conversion, including zero-decimal currencies. Never uses floating-point arithmetic. */
 export declare function wooDecimal(minor: string, precision: number): string;
@@ -3596,6 +3666,7 @@ export declare function wooDecimal(minor: string, precision: number): string;
 export interface WooCartClient {
 	get(): Promise<WooCart>;
 	add(id: number, quantity?: number): Promise<WooCart>;
+	/** Sets a line's quantity. Woo refuses a quantity of zero, so zero removes the line. */
 	update(key: string, quantity: number): Promise<WooCart>;
 	remove(key: string): Promise<WooCart>;
 	updateCustomer(input: {
@@ -3610,4 +3681,27 @@ export declare function createCartClient(options?: {
 	fetch?: typeof fetch;
 }): WooCartClient;
 export declare const cart: WooCartClient;
+export interface WooCartState {
+	/** Woo's last confirmed cart with the pending writes' previews applied. Undefined until the first read answers. */
+	cart: WooCart | undefined;
+	/** True until the first read answers or fails. */
+	loading: boolean;
+	/** True while a write waits for Woo. */
+	pending: boolean;
+	/** The last failure. A refused write stays until the next write starts, so a later write that was
+	* already queued and succeeds does not hide it. A failed read stays until Woo next answers with a cart. */
+	error: Error | undefined;
+}
+export interface WooCartActions extends Pick<WooCartClient, "add" | "update" | "remove" | "selectShipping" | "updateCustomer"> {
+	/** Reads the cart from Woo, after every write already queued. */
+	refresh(): Promise<WooCart>;
+}
+export interface WooCartStore {
+	subscribe(changed: () => void): () => void;
+	snapshot(): WooCartState;
+	serverSnapshot(): WooCartState;
+	actions: WooCartActions;
+}
+/** One cart store per client, shared by React hooks and other browser subscribers. */
+export declare function createCartStore(client?: WooCartClient): WooCartStore;
 export {};

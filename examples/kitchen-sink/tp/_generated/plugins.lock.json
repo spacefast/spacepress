@@ -4,12 +4,13 @@
     "policy": {
       "package": "typedpress-plugin-kitchen-policy",
       "version": "1.0.0",
-      "integrity": "sha256-95ee371f1404645be0c993c9abaca648fbfbfe5c8428607d0863fcb21fb56885",
+      "integrity": "sha256-5e63dc3c5b263434e0ca8b70bf315e508356412c5f0a136fe79b28e1a735daf6",
       "grant": {
         "read": [
           "recipes"
         ],
         "write": [
+          "recipes.excerpt",
           "recipes.title"
         ],
         "delete": [],

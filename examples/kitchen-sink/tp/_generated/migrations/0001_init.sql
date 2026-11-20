@@ -14,12 +14,11 @@ CREATE TABLE `{prefix}tp_registrations` (
 --> statement-breakpoint
 CREATE TABLE `{prefix}tp_activity` (
 	`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-	`eventId` BIGINT UNSIGNED NOT NULL,
-	`summary` LONGTEXT NOT NULL,
-	`reference` VARCHAR(36) NOT NULL,
-	`updatedAt` CHAR(24) NOT NULL,
+	`eventId` BIGINT UNSIGNED,
+	`message` LONGTEXT NOT NULL,
 	`createdAt` CHAR(24) NOT NULL,
-	PRIMARY KEY (`id`)
+	PRIMARY KEY (`id`),
+	KEY `createdAt_queried` (`createdAt`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 --> statement-breakpoint
 CREATE TABLE `{prefix}tp__revisions` (

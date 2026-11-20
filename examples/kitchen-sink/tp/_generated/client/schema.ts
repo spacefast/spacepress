@@ -122,7 +122,7 @@ export const SCHEMA = {
         "eventId": {
           "kind": "one",
           "collection": "events",
-          "optional": false
+          "optional": true
         }
       },
       "media": [],
@@ -240,8 +240,13 @@ export const SCHEMA = {
   ],
   "actions": [
     "bookSeats",
+    "cancelSeats",
     "upcoming",
     "closeRegistration",
+    "scheduleAgain",
+    "cancelWorkshop",
+    "postAnnouncement",
+    "draftRecap",
     "checkSchedule"
   ],
   "buckets": [

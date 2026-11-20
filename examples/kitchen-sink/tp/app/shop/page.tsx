@@ -1,5 +1,5 @@
 import { db } from "typedpress";
-import { Content, Link } from "typedpress/app";
+import { Link } from "typedpress/app";
 
 export const metadata = { title: "Kitchen supplies" };
 
@@ -10,8 +10,8 @@ export default async function Supplies() {
       <h1>Kitchen supplies</h1>
       {supplies.map((supply) => (
         <article>
-          <h2>{supply.name}</h2>
-          <Content value={supply.description} />
+          <h2><Link href={`/supplies/${supply.slug}`}>{supply.name}</Link></h2>
+          {supply.shortDescription && <p>{supply.shortDescription}</p>}
           {supply.purchasable && <a href={`/cart/?add-to-cart=${supply.id}`}>Add to cart · USD {supply.price}</a>}
         </article>
       ))}

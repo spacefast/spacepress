@@ -17,5 +17,5 @@
       "php/wordpress": ["../../types/typedpress/wordpress.d.ts"]
     }
   },
-  "include": ["typedpress.config.ts", "tp"]
+  "include": ["typedpress.config.ts", "tp", "emails"]
 }

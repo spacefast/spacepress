@@ -39,6 +39,10 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
+      # examples/kitchen-sink uses every authoring feature the type declarations offer. This half
+      # of tests/kitchen_sink.rs only parses files (well under a second); the half that builds the
+      # example and drives it on WordPress runs with the other test targets on main.
+      - run: cargo test --locked --test kitchen_sink -- --skip kitchen_sink_renders_every_route_on_wordpress
       - name: Install generated PHP layout tooling
         run: |
           sudo apt-get update
@@ -352,6 +356,7 @@ jobs:
           key: wordpress-catalog-${{ hashFiles('scripts/wordpress-catalog.py') }}
       - run: python3 scripts/wordpress-catalog.py --check
       - run: tsc -p examples/pantry
+      - run: tsc -p examples/kitchen-sink
       - run: tsc -p examples/blog
       - run: tsc -p examples/showcase
       - run: tsc -p examples/blog/client-tests

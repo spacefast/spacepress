@@ -400,9 +400,8 @@ nullable with a default.
 
 Modifiers (each returns a new builder; builders are immutable so shared field
 sets are safe): `.optional()`, `.default(value)` (a literal), `.defaultNow()`
-(timestamp/date), `.$default(() => value)` / `.$defaultFn(...)` (runs in PHP on
-insert), `.$onUpdate(() => value)` / `.$onUpdateFn(...)` (runs in PHP on
-update; `() => new Date()` on a timestamp is recognized as "now"), `.many()`
+(timestamp/date), `.$default(() => value)` (runs in PHP on insert), `.$onUpdate(() => value)`
+(runs in PHP on update; `() => new Date()` on a timestamp is recognized as "now"), `.many()`
 (select, media and `ref()`), `.unique()`, `.onDelete("cascade" | "restrict" | "setNull")` and
 `.reverse("name")` (on `ref()`, see [Relations](#relations)),
 `.min(n)` / `.max(n)` (numbers: bounds; strings: length; lists: item count),
@@ -1357,7 +1356,10 @@ List columns (`select([...]).many()`, `media().many()`) take `has`,
 neither can be ordered by. On editor collections `group`/`repeater`/`blocks`
 can't be compared at all (their WordPress meta is spread over many rows).
 These are build errors with the same message the runtime returns.
-`with: { cover: true }` on a media column puts the media row in place of the id.
+`with: { cover: true }` on a media column puts the media row in place of the id
+(`url`, `alt`, `width`, `height`, `sizes.<name>.url`, ...). On a `file()` column
+it puts the file row there, with its signed `url`; the id stays an id for a
+visitor the bucket's read rule refuses.
 
 `await` on these calls compiles to plain blocking PHP calls.
 
@@ -1978,7 +1980,12 @@ export default defineConfig({});
 - The message has `to`, `subject` and `text` and/or `html`, plus optional
   `from`, `cc`, `bcc`, `replyTo` and `headers`. Addresses are strings or
   `{ email, name? }`; `to`, `cc` and `bcc` may be lists, 50 recipients in all.
-  `from` defaults to `noreply@` the site's host.
+  `from` defaults to `noreply@` the site's host, or `TP_MAIL_SENDER_DOMAIN`
+  when set. A host that is no mail domain (`127.0.0.1`, `localhost`) uses
+  `noreply@typedpress.localhost` on a local or development site and is refused
+  anywhere else, with what to set. An optional field holding `null` or
+  `undefined` is a field left out, so `replyTo: settings.replyTo` (an optional
+  column, `string | null`) sends without one when it is unset.
 - `send` validates the message, then queues it inside the handler's
   transaction. It is handed off after the request commits, so a rolled-back
   write sends nothing. A refused hand-off is retried by the job runner (5

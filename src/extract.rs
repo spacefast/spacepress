@@ -1495,9 +1495,9 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
         };
         let o = object(&p.config, p.span, "definePlugin")?;
         let plugin_keys: &[&str] = if ev.legacy() {
-            &["name", "hooks", "actions", "jobs", "routes"]
+            &["name", "hooks", "actions", "jobs", "routes", "migrationProvider"]
         } else {
-            &["name", "hooks", "actions", "jobs"]
+            &["name", "hooks", "actions", "jobs", "migrationProvider"]
         };
         keys(&o, plugin_keys, p.span, "definePlugin")?;
         let name = string(o.get("name"), p.span, "plugin name")?;
@@ -1531,6 +1531,59 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
         }
         if let Some(r) = o.get("routes").filter(|v| !matches!(v, Value::Undef)) {
             legacy::routes(r, p.span, out, owner)?;
+        }
+        if let Some(mp) = o.get("migrationProvider").filter(|v| !matches!(v, Value::Undef)) {
+            let mp_span = ev.key_span(&p.config, "migrationProvider").unwrap_or(p.span);
+            let mpo = object(mp, mp_span, "migrationProvider")?;
+            keys(
+                &mpo,
+                &["id", "cliOnly", "requireArchive", "allowRawSql"],
+                mp_span,
+                "migrationProvider",
+            )?;
+            let id = string(mpo.get("id"), mp_span, "migrationProvider.id")?;
+            let cli_only = match mpo.get("cliOnly") {
+                Some(Value::Bool(b)) => *b,
+                None | Some(Value::Undef) => true,
+                Some(other) => {
+                    return Err(Diag::new(
+                        mp_span,
+                        format!("migrationProvider.cliOnly must be boolean, not {}", other.describe()),
+                    ));
+                }
+            };
+            let require_archive = match mpo.get("requireArchive") {
+                Some(Value::Bool(b)) => *b,
+                None | Some(Value::Undef) => false,
+                Some(other) => {
+                    return Err(Diag::new(
+                        mp_span,
+                        format!("migrationProvider.requireArchive must be boolean, not {}", other.describe()),
+                    ));
+                }
+            };
+            let allow_raw_sql = match mpo.get("allowRawSql") {
+                Some(Value::Bool(b)) => *b,
+                None | Some(Value::Undef) => false,
+                Some(other) => {
+                    return Err(Diag::new(
+                        mp_span,
+                        format!("migrationProvider.allowRawSql must be boolean, not {}", other.describe()),
+                    ));
+                }
+            };
+            if out.schema.migration_providers.iter().any(|existing| existing.id == id) {
+                return Err(Diag::new(
+                    mp_span,
+                    format!("migrationProvider \"{id}\" is already registered"),
+                ));
+            }
+            out.schema.migration_providers.push(crate::schema::MigrationProviderConfig {
+                id,
+                cli_only,
+                require_archive,
+                allow_raw_sql,
+            });
         }
         for root in &mut out.roots[first..] {
             root.plugin = Some(index);

@@ -50,6 +50,7 @@ final class Plugin
         self::$instance = $this;
         $this->mainFile = $mainFile;
         if ($this->schema->commerce() !== null) { \TypedPress\Commerce\Module::register($this); }
+        DestructiveMigrations::registerFor($this);
         Hardening::apply($schema);
         Sealed::apply($schema);
         if (!Runtime::managed()) {
@@ -207,7 +208,9 @@ final class Plugin
             $args[] = '--' . $name . ($value === true ? '' : '=' . ($value === false ? 'false' : (string) $value));
         }
         // (Runtime's `wp typedpress` dispatcher already refused everything but `migrate` while storage is behind.)
-        if (($args[0] ?? '') === 'migrate') {
+        if (($args[0] ?? '') === 'danger') {
+            [$code, $out] = DestructiveMigrations::wpCli($this, array_slice($args, 1), $assocArgs);
+        } elseif (($args[0] ?? '') === 'migrate') {
             try {
                 // `--drop=likes=1204,likes.note=12`: WP-CLI keeps the last of repeated flags, so values are comma-separated.
                 $this->drops = SchemaCheck::drops(array_key_exists('drop', $assocArgs) ? [$assocArgs['drop']] : []);

@@ -465,6 +465,21 @@ pub fn render(schema: &Schema) -> String {
     if let Some(r) = &schema.retention {
         let _ = writeln!(out, "    'retention' => {},", retention_php(r));
     }
+    if !schema.migration_providers.is_empty() {
+        out.push_str("    'migrationProviders' => [\n");
+        for mp in &schema.migration_providers {
+            let _ = writeln!(
+                out,
+                "        {} => ['id' => {}, 'cliOnly' => {}, 'requireArchive' => {}, 'allowRawSql' => {}],",
+                php_str(&mp.id),
+                php_str(&mp.id),
+                mp.cli_only,
+                mp.require_archive,
+                mp.allow_raw_sql,
+            );
+        }
+        out.push_str("    ],\n");
+    }
     match &schema.frontend {
         None => {}
         Some(crate::kind_url::Frontend::Off) => out.push_str("    'frontend' => false,\n"),

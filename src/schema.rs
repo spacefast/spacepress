@@ -726,6 +726,17 @@ pub struct Schema {
     /// `defineConfig({ retention })`: global retention policy for soft-deleted rows and revisions.
     /// `None` means `"forever"` (never automatically purge).
     pub retention: Option<Retention>,
+    /// Opt-in migration providers registered by plugins (`use: [destructiveMigrations()]`).
+    pub migration_providers: Vec<MigrationProviderConfig>,
+}
+
+/// Configuration for a CLI-only opt-in migration provider declared by a plugin package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrationProviderConfig {
+    pub id: String,
+    pub cli_only: bool,
+    pub require_archive: bool,
+    pub allow_raw_sql: bool,
 }
 
 /// `output` in `defineConfig`, Astro's word for it.
@@ -787,6 +798,7 @@ impl Default for Schema {
             sealed: None,
             runtime_schema: None,
             retention: None,
+            migration_providers: Vec::new(),
         }
     }
 }

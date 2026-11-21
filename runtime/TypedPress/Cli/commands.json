@@ -25,6 +25,7 @@
   "site": [
     { "name": "wp", "args": "<WP-CLI arguments>", "summary": "any WP-CLI command (typedpress wp plugin list)", "via": "wp" },
     { "name": "migrate", "args": "[--drop=<kind>=<rows>,...] [--mark-applied=<id>]", "summary": "apply pending database migrations, checked against live rows" },
+    { "name": "danger", "args": "status | plan | drop-column <table> <col> | drop-table <table> | purge-deleted <kind> | raw-sql (requires @typedpress/destructive-migrations)", "summary": "CLI-only destructive cleanup escape hatch (two-phase retired drops, purge, audit log)" },
     { "name": "seed", "args": "--records=<dir> [--dry-run]", "summary": "typedpress-sync content from compiled records" },
     { "name": "jobs", "args": "list [--state=s] | run <id> | retry <id> | cancel <id> | maintain | tick [--limit=n] [--budget-ms=ms]", "summary": "inspect and drive background jobs" },
     { "name": "abilities", "args": "", "summary": "list the app's abilities" },

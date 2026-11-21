@@ -1,0 +1,21 @@
+{
+  "name": "@typedpress/destructive-migrations",
+  "version": "0.1.0",
+  "description": "Opt-in CLI-only escape hatch for explicit destructive schema and data cleanup in TypedPress (DROP COLUMN/TABLE on retired items, purge soft-deleted rows, raw SQL).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.ts"
+    }
+  },
+  "files": [
+    "index.ts",
+    "index.d.ts",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "typedpress": ">=0.3.0"
+  }
+}

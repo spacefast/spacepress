@@ -1673,6 +1673,17 @@ export declare function adminDashboard(definition: AdminDashboardDefinition): Ad
 declare const pluginBrand: unique symbol;
 /** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */
 export interface Plugin { readonly [pluginBrand]: true }
+export interface MigrationProviderConfig {
+  /** Stable identifier of the opt-in migration provider (e.g. `"destructive-migrations"`). */
+  id: string;
+  /** When true (default), the provider only runs from CLI and never during HTTP requests. */
+  cliOnly?: boolean;
+  /** When true, every destructive operation requires `--archive-to=<path>`. */
+  requireArchive?: boolean;
+  /** When true, allows explicit raw destructive SQL via CLI. */
+  allowRawSql?: boolean;
+}
+
 /**
  * Defines a plugin in an installed package. Its hooks keep app-hook semantics; its queries,
  * mutations and jobs are registered as `<name>_<key>`, and `x.enqueue()` on one of its jobs queues it.
@@ -1685,6 +1696,8 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
   hooks?: Hooks<TSchema>;
   actions?: Record<string, AnyAction>;
   jobs?: Record<string, AnyJob>;
+  /** Optional CLI-only migration provider (e.g. `@typedpress/destructive-migrations`). */
+  migrationProvider?: MigrationProviderConfig;
 }): Plugin;
 
 // ---------------------------------------------------------------------------

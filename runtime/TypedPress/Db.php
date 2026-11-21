@@ -1170,6 +1170,15 @@ final class Db
             return;
         }
         $seen[$at] = true;
+        // WordPress reparents child terms on delete. The implicit parent column has no schema reference.
+        if (($parent['taxonomy'] ?? false) && ($parent['hierarchical'] ?? false) && isset($parent['columns']['parent'])) {
+            $pk = $parent['primaryKey'];
+            if (FieldAccess::mayHide($parent['columns'][$pk], $viewer) || FieldAccess::mayHide($parent['columns']['parent'], $viewer)
+                || !Extensions::constraintReadsSafe()) {
+                throw self::hiddenReference();
+            }
+            $this->hasReadableReferences($collection, ['parent' => $row[$pk]], $viewer);
+        }
         // Every relationship to this kind, before any is skipped for a null key: whether a hidden key
         // is null is itself what the viewer can't read.
         foreach ($this->relationships($collection) as [, , , $def]) {
@@ -1179,17 +1188,8 @@ final class Db
             }
         }
         foreach ($this->referencing($collection, $row) as [$child, $spec, $col, $def, $where]) {
-            $trusted = $this->countRows($child, $where, null);
-            if ($trusted === 0) {
+            if (!$this->hasReadableReferences($child, $where, $viewer)) {
                 continue;
-            }
-            try {
-                $visible = $this->countRows($child, $where, $viewer);
-            } catch (HttpError) {
-                throw self::hiddenReference();
-            }
-            if ($visible !== $trusted) {
-                throw self::hiddenReference();
             }
             if ($def['type'] !== 'refList' && strtolower($def['references']['onDelete'] ?? 'no action') === 'cascade') {
                 foreach ($this->referencingRows($child, $spec, $where, $viewer) as $dependent) {
@@ -1197,6 +1197,25 @@ final class Db
                 }
             }
         }
+    }
+
+    /** Whether any rows match. Refuses the delete if any matching row is hidden. */
+    private function hasReadableReferences(string $collection, array $where, Viewer $viewer): bool
+    {
+        $trusted = $this->countRows($collection, $where, null);
+        if ($trusted === 0) {
+            return false;
+        }
+        try {
+            $visible = $this->countRows($collection, $where, $viewer);
+        } catch (HttpError) {
+            throw self::hiddenReference();
+        }
+        if ($visible !== $trusted) {
+            throw self::hiddenReference();
+        }
+
+        return true;
     }
 
     /**

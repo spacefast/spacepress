@@ -54,7 +54,7 @@ Edit posts and pages in native WordPress. WordPress Settings controls the site t
 
 What differs from EmDash: a byline credit's role is stored on the credit term, not per post, so the last role the seed gives a byline shows on every post that credits it.
 
-`@typedpress/astro/emdash` maps WordPress's rendered HTML to the Portable Text view the templates read, keeping each block's HTML. Cursor strings carry query offsets; WordPress search replaces EmDash FTS. Original seed content, taxonomy labels, bylines and menus are retained. Fonts retain the original Inter/JetBrains Mono faces and are packaged through Fontsource during the Astro build.
+`@typedpress/astro/emdash` maps WordPress's rendered HTML to the Portable Text view the templates read, keeping each block's HTML. Cursor strings carry query offsets; WordPress search replaces EmDash FTS. Original seed content, taxonomy labels, bylines and menus are retained. Fonts retain the original Inter/JetBrains Mono faces, from the installed `@fontsource/inter` and `@fontsource/jetbrains-mono` packages ([`fonts.mjs`](fonts.mjs)): the Astro build fetches no font.
 
 Not covered: the blog's "admin" link in its header shows only for a signed-in user, and a page served by Astro doesn't know who is signed in to WordPress (core accepts the login cookie only with a REST nonce). It stays hidden.
 

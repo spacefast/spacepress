@@ -21,6 +21,7 @@ pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
         ));
     }
     let program = loader::load(&entry)?;
+    crate::assets::require_frontend_styles(&program, |file| project.join("public").join(file).is_file())?;
     build_program(project, &program, frozen)
 }
 
@@ -568,6 +569,18 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
                 eprintln!("error: couldn't write diagnostics: {error}");
             }
         }
+    };
+    let _frontend = if args.command == "build" {
+        match crate::frontend::prepare_styles(&project) {
+            Ok(guard) => guard,
+            Err(d) => {
+                report(std::slice::from_ref(&d));
+                eprint!("{}", diag::render(&d, &project));
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
     };
     let built = match build(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
         Ok(b) => b,

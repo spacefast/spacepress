@@ -41,6 +41,9 @@ fn num(n: f64) -> String {
 fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     let top = ctx == Ctx::Column;
     let mut parts = vec![format!("'type' => {}", php_str(c.ty.name()))];
+    if c.commerce_meta {
+        parts.push("'commerceMeta' => true".into());
+    }
     if c.primary_key && top {
         parts.push("'primaryKey' => true".into());
     }
@@ -729,6 +732,9 @@ pub fn render(schema: &Schema) -> String {
         let _ = writeln!(out, "            'idempotent' => {},", a.idempotent);
         let _ = writeln!(out, "            'readonly' => {},", a.readonly);
         let _ = writeln!(out, "            'destructive' => {},", a.destructive);
+        if a.personal {
+            out.push_str("            'personal' => true,\n");
+        }
         let _ = writeln!(
             out,
             "            'output' => {},",

@@ -1271,8 +1271,15 @@ final class AppRouter
                     continue;
                 }
                 if ($key === 'links' && is_array($value)) {
-                    // Each layout's links and the page's are all in the head, in that order.
-                    $out['links'] = [...($out['links'] ?? []), ...array_values($value)];
+                    // Compare stylesheet links with their default type omitted, keeping the first link as written.
+                    $links = [...($out['links'] ?? []), ...array_values($value)];
+                    $normalized = array_map(static function ($link) {
+                        if (is_array($link) && ($link['rel'] ?? null) === 'stylesheet' && ($link['type'] ?? null) === 'text/css') {
+                            unset($link['type']);
+                        }
+                        return $link;
+                    }, $links);
+                    $out['links'] = array_values(array_intersect_key($links, array_unique($normalized, SORT_REGULAR)));
                     continue;
                 }
                 if (($key === 'openGraph' || $key === 'twitter') && is_array($value)) {

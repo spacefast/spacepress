@@ -28,6 +28,10 @@ final class WpPostStore implements Store
     private array $sources = [];
     /** Trashed posts are read too ({@see withTrash()}). */
     private bool $trashVisible = false;
+    /** While set, password visibility is decided in SQL only ({@see withSqlVisibility()}). */
+    private bool $sqlVisibility = false;
+    /** @var array<string, array{sql: string, params: list<mixed>}> the posts a SQL-only check is about */
+    private array $sqlScope = [];
     /** @var array<string, array> Request-local SQL visibility guards. */
     private array $visibility = [];
     private int $visibilityGeneration = -1;
@@ -100,8 +104,37 @@ final class WpPostStore implements Store
         return false;
     }
 
+    /**
+     * Run $fn with password visibility decided in SQL only ({@see passwordGuard()}), loading no post:
+     * for a delete's check about the posts that reference a row. It fails closed: a protected post the
+     * viewer's password proof doesn't open counts as hidden, even for an editor. Nothing is cached.
+     * $scope is a query for the ids of the posts in question, per collection: a post-password cookie
+     * is checked only against the passwords those posts hold. A collection outside it opens no
+     * protected post by cookie.
+     *
+     * @param array<string, array{sql: string, params: list<mixed>}> $scope
+     */
+    public function withSqlVisibility(callable $fn, array $scope = []): mixed
+    {
+        $previous = [$this->sqlVisibility, $this->sqlScope];
+        $this->sqlVisibility = true;
+        $this->sqlScope = $scope;
+        try {
+            return $fn();
+        } finally {
+            [$this->sqlVisibility, $this->sqlScope] = $previous;
+        }
+    }
+
     public function readGuards(string $collection, \TypedPress\Viewer $viewer, bool $forSelect = false): array
     {
+        if ($this->sqlVisibility) {
+            $spec = $this->schema->collection($collection);
+            $native = ($spec['native'] ?? false) ? NativePosts::readGuard($this->db, $viewer) : null;
+            $guard = $this->passwordGuard($collection, $viewer, $spec, $this->sqlScope[$collection] ?? false);
+
+            return $native === null ? [$guard] : [$native, $guard];
+        }
         if ($this->visibilityGeneration !== CoreAccess::generation()) {
             $this->visibility = [];
             $this->visibilityGeneration = CoreAccess::generation();
@@ -194,7 +227,11 @@ final class WpPostStore implements Store
         return [new \TypedPress\SqlPredicate("({$passwords->sql} OR {a}.ID IN ($placeholders))", [...$passwords->params, ...$editable])];
     }
 
-    private function passwordGuard(string $collection, \TypedPress\Viewer $viewer, array $spec): \TypedPress\SqlPredicate
+    /**
+     * @param array{sql: string, params: list<mixed>}|false|null $scope the ids of the posts a cookie is
+     *   checked against: null for every post of the kind, false for none
+     */
+    private function passwordGuard(string $collection, \TypedPress\Viewer $viewer, array $spec, array|false|null $scope = null): \TypedPress\SqlPredicate
     {
         // HEX preserves byte equality, including case and trailing spaces, on both MySQL
         // and the SQLite translator. The site's text collation must not unlock a password.
@@ -204,12 +241,13 @@ final class WpPostStore implements Store
             $accepted[] = strtoupper(bin2hex($proof['password']));
         }
         $cookie = $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null;
-        if (is_string($cookie) && str_starts_with($hash = wp_unslash($cookie), '$P$B')) {
+        if ($scope !== false && is_string($cookie) && str_starts_with($hash = wp_unslash($cookie), '$P$B')) {
             require_once ABSPATH . WPINC . '/class-phpass.php';
             $hasher = new \PasswordHash(8, true);
             $passwords = $this->db->run(
-                'SELECT DISTINCT HEX(post_password) AS password FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND HEX(post_password) NOT IN (?, ?)',
-                [$spec['wp']['postType'], '', '30'],
+                'SELECT DISTINCT HEX(post_password) AS password FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND HEX(post_password) NOT IN (?, ?)'
+                . ($scope === null ? '' : ' AND ID IN (' . $scope['sql'] . ')'),
+                [$spec['wp']['postType'], '', '30', ...($scope['params'] ?? [])],
             );
             foreach ($passwords as $row) {
                 if ($hasher->CheckPassword(hex2bin($row['password']), $hash)) {

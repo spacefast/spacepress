@@ -490,7 +490,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
             })
             .flatten(),
     };
-    for asset in program.assets.values() {
+    for asset in program.assets.values().filter(|asset| !asset.file.starts_with('/')) {
         ext.schema.assets.insert(asset.file.clone(), asset.bytes.clone());
     }
     ext.schema.app = Some(crate::schema::App {

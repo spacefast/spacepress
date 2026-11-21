@@ -1,79 +1,42 @@
 # Drive Store
 
-A used hard-drive shop: a storefront that renders on WordPress, a custom backend of kinds, hooks
-and actions, and TypedPress Admin for the staff. It puts most of TypedPress in one app. Nothing is for sale:
-the Buy button places a fake order, takes no payment and ships nothing, and the pages say so.
+A used hard-drive shop with native WooCommerce products, inventory, cart, checkout, and orders. The example uses cash on delivery and one US shipping zone.
 
-| What | Where | How |
-| --- | --- | --- |
-| Inventory | [`tp/schema.ts`](tp/schema.ts) `drives` | A `collection()`: WordPress posts with drafts and revisions, a page at `/drives/:slug` (`url`) |
-| Orders and the stock log | `orders`, `stockMovements` | `table()` kinds with `ref()`s to drives and orders. An order's read rule is coded: staff read every order, a customer reads their own |
-| The shop's rules | `drives` and `orders` hooks | `beforeCreate` prices an order from the drive and refuses more than is in stock; `afterCreate` takes the stock down and logs it; a price has two decimals at most. They hold on every path: the storefront, the API, TypedPress Admin and wp-admin |
-| Shop settings | `shop` | A `global()`: shop name, currency, a notice banner and the low-stock threshold, edited in TypedPress Admin |
-| Actions | [`tp/server.ts`](tp/server.ts) | `buy` (anyone), `restock` and `markShipped` (editors and admins). Each is also a WordPress Ability and an MCP tool |
-| Storefront | [`tp/app/`](tp/app) | TSX pages compiled to PHP: the catalog with search and filters, a product page, My orders and a staff page |
-| Forms without JavaScript | product and staff pages | `<form action={buy}>` posts to the action and comes back with `useFormState`: the order code, or the refusal |
-| Reviews | product page | `comments: true` on `drives` and `<Comments for={item} />`: signed-in customers only, a first review is held for moderation |
-| Live stock | product page | `<Live id="stock">` updates the stock line in place when someone buys |
-| Guards | `tp/app/orders/layout.tsx`, `tp/app/staff/layout.tsx` | `guard = "authenticated"` and `guard = "editor"` |
-| RSS | layout | WordPress's own feed of the post type, `/?feed=rss2&post_type=tp_drives`, linked from every page and in `<head>` |
-| Starting stock | [`content/drives/`](content/drives) | Synced Markdown (`sync`): a publish seeds it, and `typedpress sync` loads it into a dev site |
-| Styles | [`tp/app/site.css`](tp/app/site.css) | An imported stylesheet with light and dark color tokens |
-| Admin | TypedPress Admin at `/wp-admin/new/` | Generated from the kinds: drives (with their reviews), orders, stock movements and the shop settings, each field labelled by its `.ui({ label })` |
+| Where | What to try |
+| --- | --- |
+| `/` | Browse the catalog and filter by media or condition |
+| `/drives/seagate-exos-x16` | Read the typed specs, test date, Woo category and tag, watch live stock, add a drive to the Woo cart, or leave a review after signing in |
+| `/cart`, `/checkout` | Edit quantities in the generated cart client and place an order in Woo's Checkout Block |
+| `/staff` | Restock products, view the stock-movement log, and mark processing orders shipped |
+| `/wp-admin/new/` | Edit product specs, review shipping orders, and change the storefront notice |
+| `/source` | Browse the project sources after building the source viewer |
 
-## Run it
+## Run the shop
 
-To include the highlighted source browser, build its assets from this directory:
+```sh
+typedpress dev examples/drive-store --port 8931
+```
+
+Woo seeds the catalog from [Markdown](content/drives), with its product categories and tags from [`content/drive-categories`](content/drive-categories) and [`content/drive-tags`](content/drive-tags). Sign in to the local site as an administrator and open `/staff/`. Restock a drive, then test checkout in a signed-out browser. Woo owns stock and orders. `typedpress sync examples/drive-store --site <url>` syncs product specs and catalog content.
+
+To build the optional source viewer, run the following from this directory with Bun 1.4 or later.
 
 ```sh
 bun install --frozen-lockfile
 bun run build:source
 ```
 
-Run `bun run build:source` again before publishing or after editing files shown on `/source`.
-The build highlights the files listed in `browser/build.mjs` and writes the previews to `public/drive-source`. Only `/source` loads them.
-
-From the repository root:
+## Verify the shop
 
 ```sh
-cargo build --release
-./target/release/typedpress dev examples/drive-store --port 8931
+cargo test --test app_router drive_store_example_sells_on_wordpress -- --nocapture
+cargo test --test commerce
+cd docs-site
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
+pnpm exec node --test tests/playground/commerce.test.ts
 ```
 
-Sign in at `http://localhost:8931/wp-admin/` with `admin` / `typedpress-test-admin` (local development
-only). A new dev site has no drives yet. Load the ones in `content/drives/` with `typedpress sync`:
+The Rust test builds Drive Store and serves it on WordPress with SQLite. The PHP assertions cover seeded product specs, categories and tags, date filters, the product feed, stock, review moderation, access rules, the native order lifecycle including a restocking refund, input checks on the stock ability, and what a scoped agent credential is offered and may run. The Playground suite also creates a fresh `typedpress add shop` scaffold to test the generator. Its Drive Store test uses the browser cart and completes Woo checkout.
 
-```sh
-PW=$(./target/release/typedpress wp --site examples/drive-store user application-password create admin sync --porcelain)
-TP_APP_PASSWORD="admin:$PW" ./target/release/typedpress sync examples/drive-store
-```
-
-Then open `http://localhost:8931/`:
-
-- `/` is the catalog, with search and filters.
-- `/drives/seagate-exos-x16` is a product page. Buy one as a guest; the order code comes back on
-  the page and the stock goes down. Ask for more than is left and the order is refused.
-- `/source` is a read-only browser for the project's hand-written files.
-- `/orders` lists a signed-in customer's own orders. Create a subscriber in wp-admin to try it.
-- `/staff` is for editors and admins: ship orders and restock drives that are running low.
-- Add and edit drives, moderate reviews and change the shop settings in TypedPress Admin.
-
-Stop it with `typedpress dev stop examples/drive-store`; the site's data is kept for the next start.
-
-## Tests
-
-`cargo test --test app_router drive_store_example_sells_on_wordpress` builds this example, seeds
-it from `content/drives/` as a publish does, and uses it on WordPress-on-SQLite the way a browser
-with scripts off would ([`tests/php/drive_store.php`](../../tests/php/drive_store.php)): search
-and filters, buying and the stock rule, My orders, the staff page and its actions, reviews, the RSS
-feed and the settings global.
-
-
-To compare changes on the same machine, run the integration test once per build with
-`TP_DRIVE_PROFILE=/absolute/path/to/report.json`. Each named state gets one warm-up
-and five timed GETs against the disposable WordPress site. The report records the
-median response time, response bytes, included PHP files, SQL statements
-(WordPress plus the separate TypedPress connection), and joins to the WordPress
-postmeta table in TypedPress statements. Purchases, reviews, shipping,
-and restocking run once in the surrounding functional test. Compare corresponding
-states to find where a change adds or removes work.
+Set `TP_DRIVE_PROFILE` to an absolute path when running the Drive Store Rust test to collect its profile. For each named request state, the script skips one warm-up GET and records the median of the following five GETs. The report includes time, bytes, included PHP files, WordPress and TypedPress SQL statements, and TypedPress joins to WordPress postmeta.

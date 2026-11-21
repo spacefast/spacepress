@@ -2206,10 +2206,13 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   `excerpt_length`, `excerpt_more`, `body_class`, `post_class`, `save_post`,
   `wp_insert_post`, `deleted_post`, `transition_post_status`, `user_register`,
   `wp_login`, `wp_logout`, `rest_api_init`, `wp_mail`, `pre_get_posts` and
-  `login_message`. Any other name is a build error with the closest one.
-  There is no untyped escape hatch.
+  `login_message`. The catalog also holds the hook TypedPress fires itself,
+  `typedpress_woo_order_stock` ([WooCommerce](woocommerce.md)). Any other
+  name is a build error with the closest one. There is no untyped escape hatch.
 - Arguments are typed from the catalog. A filter must return its first
-  argument's type. Handlers are synchronous: WordPress doesn't wait.
+  argument's type. Handlers of WordPress's hooks are synchronous: WordPress
+  doesn't wait. `typedpress_woo_order_stock` is the one hook whose handler may
+  be `async`.
 - `WP_Post` and `WP_User` arguments are read-only copies of their documented
   public properties (`post_title`, `post_status`, `user_login`, `roles`, ...).
   `WP_Query` (`pre_get_posts`) offers `get(var)`, `set(var, value)` and

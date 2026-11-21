@@ -3,9 +3,11 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { ownedState, publishPlugins, pluginPrints, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward, wordpressVersion, detachedReport, DEV_PLUGIN } from './studio.mjs';
 import { liveUpdates } from './live.mjs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { viteAddress, launcherMap, FRONTEND_PLUGIN } from './frontend.mjs';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { EventEmitter, once } from 'node:events';
 import { createServer } from 'node:http';
@@ -195,7 +197,7 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
     await rename(staged, generated);
     await rm(previous, { recursive: true });
   }
-  for (const ignored of ['.git', 'node_modules', 'tp/node_modules', 'tp/dist', 'tp/_generated/client']) {
+  for (const ignored of ['.git', 'node_modules', 'tp/node_modules', 'tp/dist', 'tp/_generated/client', 'public/typedpress-styles', 'public/typedpress-assets']) {
     const directory = join(project, ignored, 'nested/generated');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'output.ts'), 'generated');
@@ -253,6 +255,13 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
   await writeFile(join(project, 'README.md'), 'notes');
   await writeFile(join(project, 'tp/app/about/notes.md'), 'notes');
   assert.equal(await sourceDigest(project), styles);
+  await writeFile(join(project, 'package.json'), '{"devDependencies":{"@typedpress/frontend":"0.1.0"}}');
+  const frontend = await sourceDigest(project);
+  await waitForDigest(frontend);
+  await writeFile(join(project, 'tp/app/about/notes.md'), '<aside class="text-lg">Notes</aside>');
+  const tailwind = await sourceDigest(project);
+  assert.notEqual(tailwind, frontend);
+  await waitForDigest(tailwind);
 });
 
 test('--url and --host name one address for WordPress and one for TypedPress to listen on, and refuse what names none', () => {
@@ -423,6 +432,50 @@ test('--host passes connections to the loopback listener untouched and lets go o
   await assert.rejects(forward('192.0.2.1', 0, upstream.address().port), /Cannot listen on 192\.0\.2\.1:0/);
 });
 
+test('Vite is put where the browser that opens the site can reach it, or not used', async () => {
+  const vite = { host: 'localhost', listen: false, port: 5199, ping: '/__tp_vite/@typedpress/ping', token: 'tok' };
+  const local = 'http://localhost:8787';
+  const asked = [];
+  const answers = (body, ok = true) => async (url) => { asked.push(url); return { ok, text: async () => body }; };
+  const unreachable = async (url) => { asked.push(url); throw new Error('ECONNREFUSED'); };
+  // Opened on this machine: Vite's own address, and nothing is asked of the site.
+  assert.equal(await viteAddress({ ...vite, site: local, local, fetcher: unreachable }), 'http://localhost:5199');
+  assert.deepEqual(asked, []);
+  // A proxy that passes /__tp_vite/ on: the site's own address, http or https.
+  for (const site of ['https://box.example.ts.net:8443', 'http://box.example.ts.net:8080']) {
+    assert.equal(await viteAddress({ ...vite, site, local, fetcher: answers('tok\n') }), '');
+    assert.equal(asked.at(-1), `${site}/__tp_vite/@typedpress/ping`);
+  }
+  // A proxy that passes only WordPress on answers the ping with a page, a 404, or not at all:
+  // an https page may not load Vite over http, and another machine cannot reach localhost.
+  for (const fetcher of [answers('<html>WordPress</html>'), answers('tok', false), answers('other session'), unreachable]) {
+    assert.equal(await viteAddress({ ...vite, site: 'https://box.example.ts.net:8443', local, fetcher }), null);
+    assert.equal(await viteAddress({ ...vite, site: 'http://box.example.ts.net:8080', local, fetcher }), null);
+  }
+  // --url naming this machine by another loopback port (a local proxy): Vite's own address works.
+  assert.equal(await viteAddress({ ...vite, site: 'http://localhost:9000', local, fetcher: unreachable }), 'http://localhost:5199');
+  // --host: Vite listens on that address too, so an http page reaches it there, IPv6 in brackets.
+  assert.equal(await viteAddress({ ...vite, host: '10.0.0.24', listen: true, site: 'http://10.0.0.24:8787', local, fetcher: unreachable }), 'http://10.0.0.24:5199');
+  assert.equal(await viteAddress({ ...vite, host: 'fd00::24', listen: true, site: 'http://[fd00::24]:8787', local, fetcher: unreachable }), 'http://[fd00::24]:5199');
+  // --host with an https --url that passes nothing on: mixed content, so not used.
+  assert.equal(await viteAddress({ ...vite, host: '10.0.0.24', listen: true, site: 'https://box.example.ts.net', local, fetcher: unreachable }), null);
+});
+
+test('each built launcher of a served entry is replaced, and a stylesheet entry is left as built', () => {
+  const entries = {
+    main: { source: 'browser/index.ts', scripts: ['/typedpress-assets/entrypoints/main-abc.js'], links: ['/typedpress-assets/assets/main-abc.css'] },
+    style: { source: 'browser/site.css', scripts: [], links: ['/typedpress-assets/assets/style-def.css'] },
+  };
+  assert.deepEqual(launcherMap(entries, { main: '/__tp_vite/@typedpress/main.js' }), {
+    '/typedpress-assets/entrypoints/main-abc.js': '/__tp_vite/@typedpress/main.js',
+  });
+  // The filter only touches the app's own script modules on this site, and resolves a path against the site.
+  assert.match(FRONTEND_PLUGIN, /str_starts_with\(\$id, 'typedpress-app-script-'\)/);
+  assert.match(FRONTEND_PLUGIN, /str_starts_with\(\$vite, '\/'\) \? home_url\(\$vite\) : \$vite/);
+  const lint = execFileSync('php', ['-l'], { input: FRONTEND_PLUGIN, encoding: 'utf8' });
+  assert.match(lint, /No syntax errors/);
+});
+
 test('a rebuild copies only the plugins whose files changed', async (t) => {
   const project = await mkdtemp(join(tmpdir(), 'typedpress-dev-prints-'));
   t.after(() => rm(project, { recursive: true, force: true }));
@@ -534,7 +587,7 @@ namespace {
     foreach (['PRERENDER', 'EXPORT'] as $name) {
         if (getenv('TP_TEST_' . $name) !== false) $_SERVER['HTTP_X_TYPEDPRESS_' . $name] = getenv('TP_TEST_' . $name);
     }
-    $_SERVER['REQUEST_METHOD'] = 'GET';
+    $_SERVER['REQUEST_METHOD'] = getenv('TP_TEST_METHOD') ?: 'GET';
     require __DIR__ . '/typedpress-dev-runtime.php';
     $names = array_keys($GLOBALS['hooks']);
     sort($names);
@@ -570,6 +623,9 @@ namespace {
   // A prerender or an export request renders the page as a build stores it.
   assert.deepEqual(run({ TP_TEST_PRERENDER: '1790000000.' + 'a'.repeat(64) }), quiet);
   assert.deepEqual(run({ TP_TEST_EXPORT: '1' }), quiet);
+  // The answer to a form submission (wp-login.php after a failed login): a reload would send it
+  // again, so neither the enqueue hooks nor the public/ HTML filter are added.
+  assert.deepEqual(run({ TP_TEST_METHOD: 'POST' }), { ...quiet, hooks: ['tp_prebuilt_serve'] });
   // public/index.html: the answer carries the client; the file is read, never written.
   const page = join(root, 'page.html');
   assert.equal(run({ TP_TEST_FILE: page }).body, `<html><body><h1>Public file</h1><script src="${client}" defer></script></body></html>`);
@@ -577,4 +633,35 @@ namespace {
   // Not a 304, and not a file that is no HTML document.
   assert.equal(run({ TP_TEST_FILE: page, TP_TEST_STATUS: '304' }).body, '<html><body><h1>Public file</h1></body></html>');
   assert.equal(run({ TP_TEST_FILE: join(root, 'data.json') }).body, '<html><body><h1>Public file</h1></body></html>');
+});
+
+test('a reload the page cancels leaves the reload client polling', async () => {
+  const source = await readFile(new URL('./live-client.js', import.meta.url), 'utf8');
+  const timers = [];
+  let fetches = 0, reloads = 0;
+  const storage = new Map();
+  const window = {};
+  window.top = window; window.self = window;
+  runInNewContext(source, {
+    window, URL,
+    document: {
+      hidden: false, currentScript: { src: 'http://localhost:8881/wp-content/mu-plugins/typedpress-dev/live-client.js?build=abc.1' },
+      addEventListener() {},
+    },
+    location: { origin: 'http://localhost:8881', reload() { reloads += 1; } },
+    sessionStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
+    fetch: async () => { fetches += 1; return { ok: true, json: async () => ({ session: 'abc', revision: 2, diagnostics: [] }) }; },
+    setTimeout: (callback) => { timers.push(callback); },
+  });
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  await settle();
+  // Build 2 is live: the page reloads, and the editor's unsaved-changes prompt is answered Stay.
+  assert.equal(reloads, 1);
+  assert.equal(timers.length, 1);
+  // The next check still runs, and does not reload again for the same build.
+  timers.shift()();
+  await settle();
+  assert.equal(fetches, 2);
+  assert.equal(reloads, 1);
+  assert.equal(timers.length, 1);
 });

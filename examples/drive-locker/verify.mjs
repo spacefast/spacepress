@@ -91,7 +91,6 @@ try {
   await request("Place update", `tp/v1/places/${place.id}`, { authorization: first, method: "PATCH", body: { name: `${run} updated` } });
   await request("MCP initialize", "mcp/typedpress-drive-locker", { authorization: first, method: "POST", body: { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "drive-locker-verifier", version: "1" } } } });
   await request("Content delete", `tp/v1/contents/${content.id}`, { authorization: first, method: "DELETE" });
-  // Owner deletes of referenced rows, last: on main they answer 409 (#533).
   await request("Other owner deletes their own drive", `tp/v1/drives/${other.id}`, { authorization: second, method: "DELETE" });
   for (const [table, id] of created.reverse()) await request(`Delete ${table}`, `tp/v1/${table}/${id}`, { authorization: first, method: "DELETE" });
   created.length = 0;

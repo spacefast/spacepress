@@ -446,6 +446,9 @@ ini_set('opcache.revalidate_freq', '0');
     if (isset($_SERVER['HTTP_X_TYPEDPRESS_PRERENDER']) || isset($_SERVER['HTTP_X_TYPEDPRESS_EXPORT'])) return;
     // Pages render from the current build on each request, never from a prerendered file.
     add_filter('tp_prebuilt_serve', '__return_false');
+    // A reload sends the request again, so only a GET answer carries the client: never the page a
+    // form submission returns (wp-login.php after a failed login), which a reload would resubmit.
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') return;
     $client = static fn (): string => plugins_url('typedpress-dev/live-client.js', __FILE__);
     $enqueue = static function () use ($live, $client): void {
         wp_enqueue_script('typedpress-dev', add_query_arg('build', $live['session'] . '.' . (int) $live['revision'], $client()), [], null, ['strategy' => 'defer']);
@@ -459,7 +462,7 @@ ini_set('opcache.revalidate_freq', '0');
     // at that status, so the answer carries the client and the file on disk is never edited. The
     // browser keeps no copy: the next load is the file as it is then.
     add_filter('status_header', static function ($header, $code) use ($live, $client) {
-        if ((int) $code !== 200 || ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET' || !doing_filter('do_parse_request')
+        if ((int) $code !== 200 || !doing_filter('do_parse_request')
             || !class_exists(\\TypedPress\\Wp\\PublicFiles::class) || !class_exists(\\TypedPress\\Wp\\Plugin::class)) {
             return $header;
         }
@@ -818,7 +821,9 @@ async function main() {
     running = true;
     if (!await exists(join(project, 'typedpress.config.ts'))) throw new Error(`No typedpress.config.ts in ${project}`);
     let digest = await sourceDigest(project);
-    const allowDestructive = flags.includes('--allow-destructive');
+    // --allow-destructive applies to the first build that reaches the site: when the first build
+    // fails, the rebuild after the fix is that build, so the flag holds until a configure succeeds.
+    let allowDestructive = flags.includes('--allow-destructive');
     const report = async (error) => {
       console.error(error.message);
       console.error('Fix the error and save to retry.');
@@ -869,6 +874,7 @@ async function main() {
     await publish(null);
     if (!startupError) {
       await configure(allowDestructive);
+      allowDestructive = false;
       publishedRevision = initialRevision;
       const response = await fetch(`${local}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
       if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${local}`);
@@ -919,9 +925,12 @@ async function main() {
           digest = next;
           console.log('\nSources changed; rebuilding…');
           try {
-            const revision = await build();
+            const revision = await build(allowDestructive);
             const changed = revision !== publishedRevision || Boolean(managed.owner.pending);
-            if (changed) await configure();
+            if (changed) {
+              await configure(allowDestructive);
+              allowDestructive = false;
+            }
             await live.updated(changed);
             publishedRevision = revision;
             buildError = null;

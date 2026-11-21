@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { ownedState, publishPlugins, pluginPrints, sourceDigest, watchSources, lock, siteAddress, listenAddress, addressPhp, withAddressLine, settingsOffset, forward, wordpressVersion, detachedReport, DEV_PLUGIN } from './studio.mjs';
 import { liveUpdates } from './live.mjs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -534,7 +535,7 @@ namespace {
     foreach (['PRERENDER', 'EXPORT'] as $name) {
         if (getenv('TP_TEST_' . $name) !== false) $_SERVER['HTTP_X_TYPEDPRESS_' . $name] = getenv('TP_TEST_' . $name);
     }
-    $_SERVER['REQUEST_METHOD'] = 'GET';
+    $_SERVER['REQUEST_METHOD'] = getenv('TP_TEST_METHOD') ?: 'GET';
     require __DIR__ . '/typedpress-dev-runtime.php';
     $names = array_keys($GLOBALS['hooks']);
     sort($names);
@@ -570,6 +571,9 @@ namespace {
   // A prerender or an export request renders the page as a build stores it.
   assert.deepEqual(run({ TP_TEST_PRERENDER: '1790000000.' + 'a'.repeat(64) }), quiet);
   assert.deepEqual(run({ TP_TEST_EXPORT: '1' }), quiet);
+  // The answer to a form submission (wp-login.php after a failed login): a reload would send it
+  // again, so neither the enqueue hooks nor the public/ HTML filter are added.
+  assert.deepEqual(run({ TP_TEST_METHOD: 'POST' }), { ...quiet, hooks: ['tp_prebuilt_serve'] });
   // public/index.html: the answer carries the client; the file is read, never written.
   const page = join(root, 'page.html');
   assert.equal(run({ TP_TEST_FILE: page }).body, `<html><body><h1>Public file</h1><script src="${client}" defer></script></body></html>`);
@@ -577,4 +581,35 @@ namespace {
   // Not a 304, and not a file that is no HTML document.
   assert.equal(run({ TP_TEST_FILE: page, TP_TEST_STATUS: '304' }).body, '<html><body><h1>Public file</h1></body></html>');
   assert.equal(run({ TP_TEST_FILE: join(root, 'data.json') }).body, '<html><body><h1>Public file</h1></body></html>');
+});
+
+test('a reload the page cancels leaves the reload client polling', async () => {
+  const source = await readFile(new URL('./live-client.js', import.meta.url), 'utf8');
+  const timers = [];
+  let fetches = 0, reloads = 0;
+  const storage = new Map();
+  const window = {};
+  window.top = window; window.self = window;
+  runInNewContext(source, {
+    window, URL,
+    document: {
+      hidden: false, currentScript: { src: 'http://localhost:8881/wp-content/mu-plugins/typedpress-dev/live-client.js?build=abc.1' },
+      addEventListener() {},
+    },
+    location: { origin: 'http://localhost:8881', reload() { reloads += 1; } },
+    sessionStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
+    fetch: async () => { fetches += 1; return { ok: true, json: async () => ({ session: 'abc', revision: 2, diagnostics: [] }) }; },
+    setTimeout: (callback) => { timers.push(callback); },
+  });
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  await settle();
+  // Build 2 is live: the page reloads, and the editor's unsaved-changes prompt is answered Stay.
+  assert.equal(reloads, 1);
+  assert.equal(timers.length, 1);
+  // The next check still runs, and does not reload again for the same build.
+  timers.shift()();
+  await settle();
+  assert.equal(fetches, 2);
+  assert.equal(reloads, 1);
+  assert.equal(timers.length, 1);
 });

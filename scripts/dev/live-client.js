@@ -132,6 +132,9 @@
       if (build === rendered) settled();
       if (build !== loaded) {
         if (!reloadedFor(build)) {
+          // A reload can be cancelled (the block editor asks before it drops unsaved changes): the
+          // page stays, so it keeps asking. A reload that goes ahead drops this timer with the page.
+          setTimeout(check, QUICK);
           location.reload();
           return;
         }

@@ -1,5 +1,5 @@
 <?php
-// Sample data for WordPress Playground (docs-site/scripts/build-showcase.ts puts it in the blueprint).
+// Sample data for WordPress Playground (www/scripts/build-showcase.ts puts it in the blueprint).
 // Three published notes, one with desk notes (shown to staff only), a draft, and three cheers.
 require_once '/wordpress/wp-load.php';
 // Every write must succeed: a seed that half-ran would show a site that looks broken.

@@ -245,5 +245,5 @@ test('serves frontend assets only on the route that uses them', { skip: !process
   execFileSync(process.env.TP_BIN, ['compile-sources', nativeCapture, nativeOutput, nativeCapture]);
   const nativeAssets = path.join(nativeOutput, 'plugins/typedpress-app-frontend-test/tp/app/assets');
   const nativeStyle = (await readdir(nativeAssets)).find((file) => file.endsWith('.css'));
-  assert.match(await readFile(path.join(nativeAssets, nativeStyle), 'utf8'), /font-size: 31px/);
+  assert.match(await readFile(path.join(nativeAssets, nativeStyle), 'utf8'), /font-size: ?31px/);
 });

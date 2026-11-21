@@ -546,7 +546,21 @@ pub(crate) fn check(project: &Path, frozen: bool) -> (serde_json::Value, Option<
     {
         envelope["plugins"] = built.plugin_report.clone();
     }
+    if let Ok(built) = &built
+        && !built.lint_warnings.is_empty()
+    {
+        envelope["warnings"] = serde_json::to_value(&built.lint_warnings).expect("lint warnings serialize");
+    }
     (envelope, built.ok())
+}
+
+fn emit_lint_warnings(warnings: &[crate::lint::Warning]) {
+    for w in warnings {
+        eprintln!("warning[{}]: {}:{}:{}: {}", w.rule, w.file, w.line, w.column, w.message);
+    }
+    if !warnings.is_empty() {
+        eprintln!("  = help: run `typedpress check --fix` to auto-fix");
+    }
 }
 
 /// CI never approves a plugin grant: the committed lock is the only one.
@@ -596,7 +610,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         None
     };
     let compile = if args.command == "build" { build_site } else { build };
-    let built = match compile(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
+    let mut built = match compile(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
         Ok(b) => b,
         Err(d) => {
             report(std::slice::from_ref(&d));
@@ -610,6 +624,32 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
             return ExitCode::from(1);
         }
     };
+    if args.command == "check" && args.fix && !built.lint_warnings.is_empty() {
+        match crate::lint::apply_fixes(&built.lint_warnings) {
+            Ok((fixes, files)) if fixes > 0 => {
+                eprintln!(
+                    "fixed {fixes} lint warning{} in {files} file{}",
+                    if fixes == 1 { "" } else { "s" },
+                    if files == 1 { "" } else { "s" }
+                );
+                built = match diag::isolated(|| {
+                    build(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built))
+                }) {
+                    Ok(b) => b,
+                    Err(d) => {
+                        report(std::slice::from_ref(&d));
+                        eprint!("{}", diag::render(&d, &project));
+                        return ExitCode::from(1);
+                    }
+                };
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("error: couldn't apply lint fixes: {e}");
+                return ExitCode::from(1);
+            }
+        }
+    }
     report(&[]);
     for line in &built.plugin_changes {
         eprintln!("{line}");
@@ -617,6 +657,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     for w in &built.unsupported_plugins {
         eprintln!("warning: {w}");
     }
+    emit_lint_warnings(&built.lint_warnings);
     if built.schema.seed && built.schema.collections.values().all(|c| c.sync.is_none()) {
         eprintln!(
             "warning: `seed: true` imports the files of synced kinds, and no kind has `sync`: nothing is seeded. Add `sync: \"content/<kind>/*.md\"` to a kind, or remove `seed`."

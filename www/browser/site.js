@@ -1,3 +1,5 @@
-// The site's one script, loaded by the pages that name it in `metadata.scripts`.
+// The site's bundled browser script, loaded via metadata.scripts in layout.tsx.
 import "./code.js";
+import "./sandbox.js";
 import "./play.js";
+import "./ui.js";

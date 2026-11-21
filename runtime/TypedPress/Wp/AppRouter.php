@@ -100,6 +100,8 @@ final class AppRouter
     private ?\Closure $headTags = null;
     /** @var list<string> the stylesheets of the route being rendered, linked by document() */
     private array $styles = [];
+    /** @var list<array{file: string, type: string}> font preloads for the route being rendered */
+    private array $preloads = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
     private string $cacheControl = 'private, no-store, max-age=0';
 
@@ -720,6 +722,7 @@ final class AppRouter
             setcookie($reset, ' ', time() - YEAR_IN_SECONDS, $path, COOKIE_DOMAIN, is_ssl(), true);
         }
         $this->styles = is_array($route) ? ($route['styles'] ?? []) : [];
+        $this->preloads = is_array($route) ? ($route['preloads'] ?? []) : [];
         // What plugins load for the sign-in form's own fields (a captcha, Two Factor's scripts), as
         // login_header() fires it.
         do_action('login_enqueue_scripts');
@@ -750,6 +753,7 @@ final class AppRouter
     private function serve(array $route, array $params, Viewer $viewer, int $status, ?string $moved = null): never
     {
         $this->styles = $route['styles'] ?? [];
+        $this->preloads = $route['preloads'] ?? [];
         if ($status !== 404) {
             self::found();
         }
@@ -1504,7 +1508,7 @@ final class AppRouter
                 return $r;
             });
         }
-        \TypedPress\Assets::enqueue($this->styles);
+        \TypedPress\Assets::enqueue($this->styles, $this->preloads);
         \TypedPress\Render\Live::enqueue();
         Navigation::enqueue(plugins_url('tp/Render/client/router.js', Runtime::file()));
         \TypedPress\Islands::registerClient();

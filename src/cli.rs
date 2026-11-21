@@ -29,6 +29,8 @@ pub struct Args {
     pub(crate) diagnostics_file: Option<PathBuf>,
     /// Refuse plugin grants the committed lock doesn't hold (also on whenever `CI` is set).
     pub(crate) frozen: bool,
+    /// `typedpress check --fix`: apply auto-fixes for compile-time lint warnings.
+    pub(crate) fix: bool,
     /// `typedpress doctor --links`: follow every link and anchor the site's pages make.
     pub(crate) links: bool,
 }
@@ -118,6 +120,7 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
         preserve_data: None,
         diagnostics_file: None,
         frozen: false,
+        fix: false,
         links: false,
     };
     let command = args.command.clone();
@@ -161,6 +164,7 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
                 args.site = Some(it.next().ok_or_else(|| fail("--site needs a URL".into()))?)
             }
             "--json" if matches!(command.as_str(), "doctor" | "check") => args.json = true,
+            "--fix" if command == "check" => args.fix = true,
             "--links" if command == "doctor" => args.links = true,
             "--frozen" if matches!(command.as_str(), "build" | "check") => args.frozen = true,
             "--out" if command != "check" => {

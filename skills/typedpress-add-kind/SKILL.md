@@ -96,5 +96,4 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 - Never pass `--drop` or `--allow-destructive` to a site that is not a local dev site without
   the owner's explicit decision: it deletes rows.
 
-Reference: `docs/config-api.md`, sections "Columns", "Collections, tables and user projections",
-"Relations", "Access" and "Schema changes at deploy".
+Reference: `www/content/docs/core/schema-and-storage.md` and `www/content/docs/core/queries-and-access.md`.

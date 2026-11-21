@@ -1,4 +1,6 @@
-# Written by scripts/build.mjs.
+# Written by scripts/build.mjs, build-wasm.mjs, and build-showcase.ts.
+/.build/
+/.showcase/
 /public/
 /tp/data/sources.ts
 # typedpress dev's local WordPress, and typedpress build's output.

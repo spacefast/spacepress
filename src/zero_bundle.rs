@@ -338,6 +338,12 @@ impl Fs for Raw {
             None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "not in the project")),
         }
     }
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        match self.disk(path) {
+            Some(disk) => std::fs::read(disk),
+            None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "not in the project")),
+        }
+    }
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
         let missing = || std::io::Error::new(std::io::ErrorKind::NotFound, "not in the project");
         match self.place(path) {

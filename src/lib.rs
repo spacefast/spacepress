@@ -26,6 +26,7 @@ pub mod ir;
 pub mod json_schema;
 pub mod kind_url;
 pub mod layout;
+pub mod lint;
 pub mod loader;
 pub mod lower;
 pub mod migrate;

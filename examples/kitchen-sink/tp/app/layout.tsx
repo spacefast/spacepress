@@ -1,5 +1,5 @@
 import { db } from "typedpress";
-import { Link, TemplatePart, type LayoutProps } from "typedpress/app";
+import { Image, Link, TemplatePart, type LayoutProps } from "typedpress/app";
 import logo from "./whisk.svg";
 import "./site.css";
 
@@ -17,7 +17,7 @@ export default async function Layout({ children }: LayoutProps) {
       <TemplatePart slug="header" tagName="header" />
       <main className="kitchen">
         <nav aria-label="Kitchen">
-          <Link href="/" prefetch><img src={logo} alt="" width={24} height={24} /> {kitchen.siteTitle}</Link>
+          <Link href="/" prefetch><Image src={logo} alt="" width={24} height={24} priority /> {kitchen.siteTitle}</Link>
           <Link href="/recipes">Recipes</Link>
           <Link href="/handbook">Handbook</Link>
           <Link href="/visits/saturday">Visiting</Link>

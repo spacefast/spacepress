@@ -71,7 +71,7 @@
       const { code, location: place, message, help } = diagnostic;
       if (code) {
         const link = document.createElement('a');
-        link.href = `https://github.com/spacefast/zero/blob/main/docs-site/docs/reference/diagnostics.mdx#codes:~:text=${encodeURIComponent(code)}`;
+        link.href = `https://spacepress.dev/docs/reference/language-support#:~:text=${encodeURIComponent(code)}`;
         link.target = '_blank';
         link.rel = 'noopener';
         link.textContent = `error[${code}]`;

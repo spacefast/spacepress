@@ -1,7 +1,0 @@
-CREATE TABLE `{prefix}tp_cheers` (
-	`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-	`noteId` BIGINT UNSIGNED NOT NULL,
-	`count` BIGINT DEFAULT 0 NOT NULL,
-	PRIMARY KEY (`id`),
-	UNIQUE KEY `noteId_unique` (`noteId`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

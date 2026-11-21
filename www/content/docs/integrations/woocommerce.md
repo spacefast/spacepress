@@ -1,0 +1,49 @@
+---
+uid: zr_9ea0ec70d2a7500a544d
+title: WooCommerce Native Storefront
+description: Configure WooCommerce stores, products, shipping zones, orders, and optimistic cart hooks in TypeScript.
+order: 2
+status: published
+publishedAt: 2026-11-21T09:10:00.000Z
+---
+## Scaffolding a storefront
+
+Add a complete WooCommerce storefront to any project with:
+
+```bash
+npx typedpress add shop
+```
+
+## Declarative store & catalog builders
+
+Export `store()`, `product()`, `productCategory()`, `productTag()`, and `order()` from `tp/shop.ts` (re-exported in `typedpress.config.ts`):
+
+```ts
+import { store, product, productCategory, productTag, order } from "typedpress";
+
+export const shop = store({
+  currency: "EUR",
+  country: "PL",
+  sellTo: ["PL", "DE"],
+  shipping: [
+    {
+      name: "Poland",
+      countries: ["PL"],
+      methods: [
+        { type: "flatRate", title: "Courier", cost: "15.00" },
+        { type: "freeShipping", title: "Free over 200", minimum: "200.00" },
+      ],
+    },
+  ],
+  payments: ["cod"],
+});
+
+export const products = product({ sync: "content/products/*.md", url: "/products/:slug" });
+export const categories = productCategory({ url: "/shop/:path" });
+export const tags = productTag();
+export const orders = order();
+```
+
+## Optimistic cart client & React hooks
+
+Whenever a project exports `store()`, `typedpress build` emits `commerce.ts`, `cart-store.ts`, and `cart-react.ts` in `tp/_generated/client/`. Call `createCartHooks(React)` to obtain `useCart()` and `useCartCount()` with optimistic item quantity updates and automatic rollback on failure.

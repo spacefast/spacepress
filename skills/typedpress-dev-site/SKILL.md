@@ -80,4 +80,4 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
   `delete`, `action`) unless the owner named that site.
 - Never delete `.tp/dev/` to "reset" without asking: it holds the local database and uploads.
 
-Reference: `docs-site/docs/getting-started.mdx`, `docs-site/docs/reference/cli.mdx`.
+Reference: `www/content/docs/getting-started/installation.md`, `www/content/docs/operations/cli-and-deploy.md`.

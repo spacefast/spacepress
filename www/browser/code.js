@@ -1,20 +1,28 @@
-// Draws the guide's code, diffs, file trees and whole projects with @pierre/diffs and
-// @pierre/trees (https://diffs.com). The page holds each one as a custom element with its text
-// (tp/components/Guide.tsx); this replaces the text with the drawn version and marks the
-// element tp-drawn. Without this script the text stays, as plain monospace.
+// Draws code blocks, diffs, file trees and multi-file projects with @pierre/diffs and @pierre/trees.
+// Adds one-click copy buttons to rendered code blocks.
 import { File, FileDiff } from "@pierre/diffs";
 import { FileTree } from "@pierre/trees";
 
 const theme = { light: "pierre-light", dark: "pierre-dark" };
-const options = { theme, themeType: "system", overflow: "scroll" };
-// The grammars in this build (scripts/build.mjs `keep`). Any other file is shown as plain text.
-const known = new Set(["ts", "tsx", "js", "jsx", "mjs", "json", "css", "sql", "php", "html", "md", "sh"]);
-const extension = { typescript: "ts", shellscript: "sh", markdown: "md", text: "txt" };
+const options = { theme, themeType: "dark", overflow: "scroll" };
+const known = new Set(["ts", "tsx", "js", "jsx", "mjs", "json", "css", "sql", "php", "html", "xml", "md", "yaml", "yml", "sh"]);
+const extension = {
+  typescript: "ts",
+  javascript: "js",
+  shellscript: "sh",
+  shell: "sh",
+  bash: "sh",
+  zsh: "sh",
+  markdown: "md",
+  yaml: "yaml",
+  yml: "yaml",
+  text: "txt",
+};
 
 function fileOf(node) {
   const lang = node.getAttribute("lang");
   const name = node.getAttribute("file") ?? `snippet.${extension[lang] ?? lang ?? "ts"}`;
-  const file = { name, contents: node.textContent.replace(/\n+$/, "") };
+  const file = { name, contents: node.textContent.replace(/^\n+/, "").replace(/\n+$/, "") };
   if (!known.has(name.split(".").pop())) file.lang = "text";
   return file;
 }
@@ -30,6 +38,25 @@ function drawCode(node) {
     const meta = Object.assign(document.createElement("span"), { slot: "header-metadata", className: "tp-note", textContent: note });
     node.querySelector("diffs-container")?.append(meta);
   }
+  const copy = Object.assign(document.createElement("button"), {
+    type: "button",
+    className: "tp-copy-btn",
+    textContent: "Copy",
+  });
+  copy.setAttribute("aria-label", `Copy ${file.name}`);
+  copy.onclick = () => {
+    navigator.clipboard?.writeText(file.contents).then(() => {
+      copy.dataset.origLabel ??= copy.textContent;
+      clearTimeout(copy._copyTimer);
+      copy.textContent = "Copied";
+      copy.classList.add("is-copied");
+      copy._copyTimer = setTimeout(() => {
+        copy.textContent = copy.dataset.origLabel;
+        copy.classList.remove("is-copied");
+      }, 1400);
+    }, () => {});
+  };
+  node.append(copy);
   node.classList.add("tp-drawn");
 }
 
@@ -41,26 +68,34 @@ function drawDiff(node) {
   node.classList.add("tp-drawn");
 }
 
-// The tree draws only the rows that fit its height, so the box gets one row per file and folder,
-// corrected once the tree has merged folders that hold a single folder.
-function tree(host, paths, notes, selected, onSelect) {
-  const rows = new Set();
-  for (const p of paths) { const parts = p.replace(/\/$/, "").split("/"); for (let i = 1; i <= parts.length; i++) rows.add(parts.slice(0, i).join("/")); }
-  host.style.height = `${rows.size * 24 + 8}px`;
+function tree(host, paths, notes, selected, onSelect, fixedHeight = false) {
+  if (!fixedHeight) {
+    const rows = new Set();
+    for (const p of paths) {
+      const parts = p.replace(/\/$/, "").split("/");
+      for (let i = 1; i <= parts.length; i++) rows.add(parts.slice(0, i).join("/"));
+    }
+    host.style.height = `${rows.size * 24 + 8}px`;
+  }
   const model = new FileTree({
-    paths, initialExpansion: "open", flattenEmptyDirectories: true, density: "compact", icons: { set: "complete", colored: true },
+    paths,
+    initialExpansion: "open",
+    flattenEmptyDirectories: true,
+    density: "compact",
+    icons: { set: "complete", colored: true },
     ...(selected ? { initialSelectedPaths: [selected] } : {}),
     renderRowDecoration: ({ item }) => (notes[item.path] ? { text: notes[item.path] } : null),
     onSelectionChange: (picked) => { if (picked.length === 1) onSelect?.(picked[0]); },
   });
   model.render({ containerWrapper: host });
-  requestAnimationFrame(() => {
-    const drawn = host.querySelector("file-tree-container")?.shadowRoot?.querySelectorAll('[role="treeitem"]').length;
-    if (drawn) host.style.height = `${drawn * 24 + 8}px`;
-  });
+  if (!fixedHeight) {
+    requestAnimationFrame(() => {
+      const drawn = host.querySelector("file-tree-container")?.shadowRoot?.querySelectorAll('[role="treeitem"]').length;
+      if (drawn) host.style.height = `${drawn * 24 + 8}px`;
+    });
+  }
 }
 
-// "name   note" lines, two spaces per level, folders end with "/".
 function drawTree(node) {
   const paths = [], notes = {}, stack = [];
   for (const line of node.textContent.split("\n")) {
@@ -77,7 +112,6 @@ function drawTree(node) {
   node.classList.add("tp-drawn");
 }
 
-// A whole project: its files in a tree, and the one that is picked beside it.
 function drawExample(node) {
   const files = [...node.querySelectorAll(":scope > tp-code")];
   const byPath = new Map(files.map((f) => [f.getAttribute("file"), f]));
@@ -92,21 +126,123 @@ function drawExample(node) {
   const host = Object.assign(document.createElement("div"), { className: "tp-example-tree" });
   node.prepend(host);
   node.classList.add("tp-drawn");
-  tree(host, [...byPath.keys()], notes, first, show);
+  tree(host, [...byPath.keys()], notes, first, show, true);
   show(first);
 }
 
-// Everything is drawn a few at a time so the page stays responsive, top to bottom.
-const jobs = [
-  ...[...document.querySelectorAll("tp-example")].map((n) => () => drawExample(n)),
-  ...[...document.querySelectorAll("tp-diff")].map((n) => () => drawDiff(n)),
-  ...[...document.querySelectorAll("tp-tree")].map((n) => () => drawTree(n)),
-  ...[...document.querySelectorAll("tp-code")].filter((n) => !n.closest("tp-example, tp-diff")).map((n) => () => drawCode(n)),
-];
-const target = location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
-(function next() {
-  for (const job of jobs.splice(0, 8)) { try { job(); } catch (error) { console.error("could not draw a block", error); } }
-  if (jobs.length) setTimeout(next, 0);
-  // Drawn blocks are a little taller than their text, so a link to a section is followed again at the end.
-  else { document.documentElement.dataset.drawn = ""; if (target) requestAnimationFrame(() => target.scrollIntoView()); }
-})();
+function isAsciiTree(text) {
+  return /(?:^|\n)[│├└\s]*[├└]──\s+\S/.test(text);
+}
+
+function parseAsciiTree(text) {
+  const paths = [];
+  const notes = {};
+  const stack = [];
+  let rootPrefix = "";
+
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    if (!line.trim()) continue;
+    const branch = line.match(/^([│\s]*)(?:├──|└──)\s+(\S+)(?:\s+(?:#\s*)?(.*))?$/);
+    if (branch) {
+      const depth = Math.floor(branch[1].length / 4);
+      stack.length = depth;
+      const name = branch[2];
+      const path = rootPrefix + stack.join("") + name;
+      if (name.endsWith("/")) stack.push(name);
+      paths.push(path);
+      if (branch[3]?.trim()) notes[path] = branch[3].trim();
+      continue;
+    }
+    const root = line.match(/^(\S+\/)(?:\s+(?:#\s*)?(.*))?$/);
+    if (root && paths.length === 0) {
+      rootPrefix = root[1];
+      paths.push(rootPrefix);
+      if (root[2]?.trim()) notes[rootPrefix] = root[2].trim();
+    }
+  }
+  return { paths, notes };
+}
+
+function enhanceProsePre(pre) {
+  if (pre.classList.contains("tp-drawn")) return;
+  const codeEl = pre.querySelector("code");
+  const rawText = (codeEl ?? pre).textContent.replace(/^\n+/, "").replace(/\n+$/, "");
+  const classes = `${pre.className} ${codeEl?.className ?? ""}`;
+  const langMatch = classes.match(/\blanguage-([a-z0-9_-]+)\b/i);
+  const lang = langMatch ? langMatch[1].toLowerCase() : null;
+
+  if (lang === "tree" || isAsciiTree(rawText)) {
+    const { paths, notes } = parseAsciiTree(rawText);
+    if (paths.length > 0) {
+      const host = document.createElement("tp-tree");
+      pre.replaceWith(host);
+      tree(host, paths, notes);
+      host.classList.add("tp-drawn");
+      return;
+    }
+  }
+
+  const host = document.createElement("tp-code");
+  if (lang) host.setAttribute("lang", lang);
+  host.textContent = rawText;
+  pre.replaceWith(host);
+  drawCode(host);
+}
+
+let pendingTimer = null;
+
+function collectJobs(root = document) {
+  const prosePres = [...root.querySelectorAll(".sp-prose pre, pre.typedpress-code, pre.wp-block-code")]
+    .filter((n) => !n.classList.contains("tp-drawn") && !n.closest("tp-code, tp-diff, tp-tree, tp-example, tp-sandbox, tp-play"));
+
+  return [
+    ...[...root.querySelectorAll("tp-example:not(.tp-drawn)")].map((n) => () => drawExample(n)),
+    ...[...root.querySelectorAll("tp-diff:not(.tp-drawn)")].map((n) => () => drawDiff(n)),
+    ...[...root.querySelectorAll("tp-tree:not(.tp-drawn)")].map((n) => () => drawTree(n)),
+    ...[...root.querySelectorAll("tp-code:not(.tp-drawn)")].filter((n) => !n.closest("tp-example, tp-diff")).map((n) => () => drawCode(n)),
+    ...prosePres.map((n) => () => enhanceProsePre(n)),
+  ];
+}
+
+function runEnhance(initial = false) {
+  const jobs = collectJobs(document);
+  if (jobs.length === 0) {
+    document.documentElement.dataset.drawn = "";
+    return;
+  }
+  const target = initial && location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
+  (function next() {
+    for (const job of jobs.splice(0, 8)) {
+      try { job(); } catch (error) { console.error("could not draw a block", error); }
+    }
+    if (jobs.length) setTimeout(next, 0);
+    else {
+      document.documentElement.dataset.drawn = "";
+      if (target) requestAnimationFrame(() => target.scrollIntoView());
+    }
+  })();
+}
+
+function scheduleEnhance() {
+  if (pendingTimer) return;
+  pendingTimer = setTimeout(() => {
+    pendingTimer = null;
+    runEnhance(false);
+  }, 40);
+}
+
+runEnhance(true);
+
+// Re-enhance newly swapped blocks after Interactivity Router client-side navigations.
+if (typeof MutationObserver !== "undefined" && document.body) {
+  const mo = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.addedNodes.length > 0) {
+        scheduleEnhance();
+        return;
+      }
+    }
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
+}

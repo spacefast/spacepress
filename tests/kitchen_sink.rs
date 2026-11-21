@@ -512,7 +512,7 @@ fn scan(path: &Path, app: &Path, used: &mut Used) {
                 if let Expression::StaticMemberExpression(member) = callee {
                     // A method called on the result of a call: a link of a chain.
                     if matches!(unwrap(&member.object), Expression::CallExpression(_))
-                        && let Some((module, name)) = chain_root(&member.object).and_then(&resolve)
+                        && let Some((module, name)) = chain_root(&member.object).and_then(resolve)
                     {
                         used.chain_calls
                             .insert((module.clone(), name.clone(), member.property.name.to_string()));

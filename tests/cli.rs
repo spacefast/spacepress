@@ -1972,9 +1972,9 @@ fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
     for command in ["build", "check"] {
         let said = refused(command);
         // `build` prints the diagnostic's code (`error[F0001]:`); `check` prints plain `error:`.
+        let heading = if command == "build" { "error[F0001]" } else { "error" };
         assert!(
-            said.contains("error: title must be at most 120 characters")
-                || said.contains("error[F0001]: title must be at most 120 characters"),
+            said.contains(&format!("{heading}: title must be at most 120 characters")),
             "{said}"
         );
         assert!(said.contains("--> content/notes/first-walk.md:3:1"), "{said}");
@@ -2001,7 +2001,10 @@ fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
     // A field the kind doesn't have, with the one it was meant to be.
     std::fs::write(&note, original.replace("summary:", "sumary:")).unwrap();
     let said = refused("build");
-    assert!(said.contains("error[F0001]: Unknown or generated field 'sumary'"), "{said}");
+    assert!(
+        said.contains("error[F0001]: Unknown or generated field 'sumary'"),
+        "{said}"
+    );
     assert!(said.contains("--> content/notes/first-walk.md:5:1"), "{said}");
     assert!(said.contains("did you mean `summary`?"), "{said}");
 

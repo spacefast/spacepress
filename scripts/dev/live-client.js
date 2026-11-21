@@ -9,7 +9,8 @@
   // that is Studio's own address or the one --url or --host announces, and never another origin.
   const state = new URL(new URL('live.json', source).pathname, location.origin);
   // The build this document was rendered from: `<session>.<revision>`, as live.json names them.
-  let loaded = source.searchParams.get('build');
+  const rendered = source.searchParams.get('build');
+  let loaded = rendered;
   // One small static file from Studio, a few times a second while the tab is shown; less often
   // while the site does not answer or no `typedpress dev` is watching.
   const QUICK = 250;
@@ -93,6 +94,16 @@
 
   // The reload this tab already made for `build`, kept across it. A page that still carries another
   // build afterwards is a stored copy (a cache in front of the site): reloading again would loop.
+  // A document rendered from the live build forgets it, so a page this tab shows again from history
+  // (Back restores it with its old build) still reloads for that build.
+  function settled() {
+    try {
+      sessionStorage.removeItem(RELOADED);
+    } catch {
+      // No storage: nothing was kept.
+    }
+  }
+
   function reloadedFor(build) {
     try {
       if (sessionStorage.getItem(RELOADED) === build) return true;
@@ -118,6 +129,7 @@
     }
     if (live) {
       const build = `${live.session}.${live.revision}`;
+      if (build === rendered) settled();
       if (build !== loaded) {
         if (!reloadedFor(build)) {
           location.reload();

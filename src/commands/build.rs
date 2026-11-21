@@ -573,7 +573,13 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         Ok(b) => b,
         Err(d) => {
             report(std::slice::from_ref(&d));
-            eprint!("{}", diag::render_with_code(&d, &project));
+            // `build` names the code in the heading; `check` keeps the plain `error:` others match on.
+            let render = if args.command == "build" {
+                diag::render_with_code
+            } else {
+                diag::render
+            };
+            eprint!("{}", render(&d, &project));
             return ExitCode::from(1);
         }
     };

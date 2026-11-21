@@ -203,9 +203,19 @@ final class AppRouter
         return in_array($first, $this->app['reserved'] ?? [], true) || str_starts_with($first, 'wp-sitemap');
     }
 
+    /**
+     * The request's path, as WordPress and WooCommerce read it: `//host/shop/` is the path
+     * `/host/shop/`, not `/shop/` on another host. Every reader of the request path uses this one,
+     * so no two of them take the same request for different pages.
+     */
+    public static function requestPath(): string
+    {
+        return (string) (wp_parse_url('/' . ltrim((string) ($_SERVER['REQUEST_URI'] ?? '/'), '/'), PHP_URL_PATH) ?? '/');
+    }
+
     private function path(): ?string
     {
-        $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
+        $path = self::requestPath();
         $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
         if ($base !== '') {
             if ($path !== $base && !str_starts_with($path, $base . '/')) {
@@ -812,7 +822,7 @@ final class AppRouter
         // purge its URL.
         // A page a form came back to (`?_flash=`), or one that ran a search, shows that visitor's
         // result: never shared, never recorded for purges.
-        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Cache::viewerCookie() && !\TypedPress\Commerce\Module::privatePath($this->plugin, (string) wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)) && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
+        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Cache::viewerCookie() && !\TypedPress\Commerce\Module::privateRequest($this->plugin) && !\TypedPress\Commerce\Module::cartSession($this->plugin) && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
         if ($shared) {
             $shared = \TypedPress\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads, $also, array_keys($page['search'] ?? []));
         }
@@ -1460,7 +1470,7 @@ final class AppRouter
         remove_action('wp_head', '_block_template_render_title_tag', 1);
         remove_action('wp_head', 'rel_canonical');
         $robots = $head['robots'] ?? null;
-        if (\TypedPress\Render\SearchView::marked() || \TypedPress\Commerce\Module::privatePath($this->plugin, (string) wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH))) {
+        if (\TypedPress\Render\SearchView::marked() || \TypedPress\Commerce\Module::privateRequest($this->plugin)) {
             // A results page is no page to index: as the header and the meta tag.
             $robots = ['index' => false] + (is_array($robots) ? $robots : []);
             header('X-Robots-Tag: noindex');

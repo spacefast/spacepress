@@ -186,7 +186,7 @@ fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> R
             "env() values can't be stored inside captured data",
             "read it where it's used: `env(\"NAME\")` inside the hook, action or job",
         ),
-        Value::Null | Value::Undef | Value::Bool(_) | Value::Num(_) | Value::Str(_) => Ok(()),
+        Value::Null | Value::Undef | Value::Bool(_) | Value::Num(_) | Value::Str(_) | Value::Asset(_) => Ok(()),
         _ => err_help(
             span,
             format!("captured data contains {}, which can't be used in PHP", v.describe()),
@@ -5032,6 +5032,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Value::Bool(b) => b.to_string(),
                     Value::Num(n) => php_number(*n),
                     Value::Str(s) => php_str(s),
+                    Value::Asset(file) => format!("\\TypedPress\\Assets::url({})", php_str(file)),
                     _ => unreachable!("validated captured scalar"),
                 });
             }
@@ -7615,6 +7616,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if is_url_attribute(&folded)
             && let Some(url) = literal
             && !safe_url(url)
+            && !safe_data_media_url(tag, &folded, url)
         {
             return err_help(
                 value.span,
@@ -11704,6 +11706,7 @@ fn ty_of_data(value: &Value) -> Ty {
         Value::Bool(b) => Ty::FreshBoolLit(*b),
         Value::Num(n) => Ty::FreshNumLit(*n),
         Value::Str(s) => Ty::FreshStrLit(s.to_string()),
+        Value::Asset(_) => Ty::Str,
         Value::Array(a) => Ty::Array(Box::new(Ty::union(a.borrow().iter().map(ty_of_data)))),
         Value::Object(o) => Ty::Obj(
             o.borrow()
@@ -12668,6 +12671,67 @@ fn safe_url(url: &str) -> bool {
             matches!(url[..colon].to_ascii_lowercase().as_str(), "http" | "https" | "mailto")
         }
         _ => true,
+    }
+}
+
+/// `\TypedPress\Html::safeDataMediaUrl` at build time: allows base64 media `data:` URIs
+/// (such as `?inline` asset imports) strictly on `src` of `img`/`audio`/`video`/`source`.
+fn safe_data_media_url(tag: &str, attr: &str, url: &str) -> bool {
+    if attr != "src" {
+        return false;
+    }
+    let clean: String = url
+        .trim_matches(|c: char| c <= ' ')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    let rest = if clean
+        .as_bytes()
+        .get(..5)
+        .is_some_and(|p| p.eq_ignore_ascii_case(b"data:"))
+    {
+        &clean[5..]
+    } else {
+        return false;
+    };
+    let Some((header, payload)) = rest.split_once(',') else {
+        return false;
+    };
+    if payload.is_empty()
+        || !payload
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
+    {
+        return false;
+    }
+    let lower = header.to_ascii_lowercase();
+    let Some(mime) = lower.strip_suffix(";base64") else {
+        return false;
+    };
+    let is_image = matches!(
+        mime,
+        "image/png"
+            | "image/jpeg"
+            | "image/jpg"
+            | "image/gif"
+            | "image/webp"
+            | "image/avif"
+            | "image/svg+xml"
+            | "image/x-icon"
+            | "image/vnd.microsoft.icon"
+            | "image/bmp"
+    );
+    let is_audio = matches!(
+        mime,
+        "audio/mpeg" | "audio/ogg" | "audio/wav" | "audio/webm" | "audio/aac" | "audio/flac"
+    );
+    let is_video = matches!(mime, "video/mp4" | "video/webm" | "video/ogg");
+    match tag {
+        "img" => is_image,
+        "audio" => is_audio,
+        "video" => is_video,
+        "source" => is_image || is_audio || is_video,
+        _ => false,
     }
 }
 

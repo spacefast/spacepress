@@ -219,7 +219,13 @@ final class Loader
         if (!is_file($runtime . '/typedpress-runtime/tp/bootstrap.php') || !is_file($app . '/tp/app/schema.php')) {
             throw new \RuntimeException("TypedPress build $build is incomplete");
         }
-        self::$loaded = ['root' => $root, 'build' => $build, 'manifest' => $manifest, 'inspect' => !empty($options['inspect'])];
+        self::$loaded = [
+            'root' => $root,
+            'build' => $build,
+            'manifest' => $manifest,
+            'inspect' => !empty($options['inspect']),
+            'assetsDir' => is_string($options['assetsDir'] ?? null) && $options['assetsDir'] !== '' ? rtrim($options['assetsDir'], '/\\') : null,
+        ];
         // Restrict lookup before feature registration, schema loading, or app boot.
         require_once $runtime . '/typedpress-runtime/tp/Env.php';
         \TypedPress\Env::isolate($variables);

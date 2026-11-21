@@ -108,7 +108,7 @@ once per site, because each site keeps its own store.
 |---|---|---|
 | `wp-content/plugins/tp/` | the plugin | as any plugin |
 | `wp-content/typedpress-store-<random>/` | every deployed build: PHP, schema snapshots, migrations, seed content | never; `.htaccess` denies it and no URL names it |
-| `wp-content/typedpress-assets/` | a copy of each build's scripts, styles, images and fonts | yes |
+| `wp-content/typedpress-assets/` | a copy of each build's scripts, styles, images, fonts, and `public/` files | yes |
 
 Options: `tp_live_build` (the build every request runs), `tp_deployments` (every deployment
 and switch, never pruned), `tp_store_key`. Deactivating the plugin stops the app and deletes

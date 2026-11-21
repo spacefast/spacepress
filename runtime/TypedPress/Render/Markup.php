@@ -81,6 +81,87 @@ final class Markup
         return Html::element('a', $props, $children);
     }
 
+    /**
+     * `<Image src alt width? height? sizes? priority? loading? decoding? className? id? style? />`:
+     * renders an `<img>` with intrinsic dimensions from imported asset metadata or WordPress media
+     * objects, lazy loading and async decoding by default, responsive `srcset` from WordPress media
+     * sizes, and automatic `<link rel="preload" as="image">` + `fetchpriority="high"` when `priority` is true.
+     *
+     * @param array<string, mixed> $props
+     */
+    public static function image(array $props): Html
+    {
+        $priority = ($props['priority'] ?? false) === true;
+        unset($props['priority']);
+        $src = $props['src'] ?? null;
+        $width = $props['width'] ?? null;
+        $height = $props['height'] ?? null;
+        $srcSet = null;
+
+        if ($src instanceof \TypedPress\JsObject) {
+            $map = $src->p;
+            $url = is_string($map['src'] ?? null) ? $map['src'] : (is_string($map['url'] ?? null) ? $map['url'] : '');
+            if ($width === null && isset($map['width']) && is_numeric($map['width'])) {
+                $width = (int) $map['width'];
+            }
+            if ($height === null && isset($map['height']) && is_numeric($map['height'])) {
+                $height = (int) $map['height'];
+            }
+            // WordPress media objects carry responsive `sizes` variants ({ name => { url, width } }).
+            $variants = $map['sizes'] ?? null;
+            if ($variants instanceof \TypedPress\JsObject) {
+                $variants = $variants->p;
+            }
+            if (is_array($variants)) {
+                $candidates = [];
+                foreach ($variants as $variant) {
+                    $v = $variant instanceof \TypedPress\JsObject ? $variant->p : (is_array($variant) ? $variant : null);
+                    if (is_array($v) && is_string($v['url'] ?? null) && isset($v['width']) && is_numeric($v['width']) && (int) $v['width'] > 0) {
+                        $candidates[(int) $v['width']] = $v['url'] . ' ' . (int) $v['width'] . 'w';
+                    }
+                }
+                if ($url !== '' && is_numeric($width) && (int) $width > 0) {
+                    $candidates[(int) $width] = $url . ' ' . (int) $width . 'w';
+                }
+                if (count($candidates) > 1) {
+                    ksort($candidates);
+                    $srcSet = implode(', ', $candidates);
+                }
+            }
+            $src = $url;
+        }
+
+        if (is_string($src) && ($width === null || $height === null)) {
+            $meta = \TypedPress\Assets::metaForUrl($src);
+            if ($meta !== null) {
+                $width ??= $meta['width'];
+                $height ??= $meta['height'];
+            }
+        }
+
+        $props['src'] = is_string($src) ? $src : '';
+        if ($width !== null) {
+            $props['width'] = $width;
+        }
+        if ($height !== null) {
+            $props['height'] = $height;
+        }
+        if ($srcSet !== null) {
+            $props['srcSet'] = $srcSet;
+        }
+        if (!isset($props['decoding']) || self::nullish($props['decoding'])) {
+            $props['decoding'] = 'async';
+        }
+        if ($priority) {
+            $props['loading'] = 'eager';
+            $props['fetchpriority'] = 'high';
+        } elseif (!isset($props['loading']) || self::nullish($props['loading'])) {
+            $props['loading'] = 'lazy';
+        }
+
+        return Html::element('img', $props);
+    }
+
     /** A path below this site's home URL, including a same-site absolute URL's query and fragment. */
     private static function localHref(string $href): ?string
     {

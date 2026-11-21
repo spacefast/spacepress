@@ -1,36 +1,79 @@
-// The examples, each with a link to its code on GitHub and its repository's stars. The rows are
-// the `examples` table; the star counts are filled in by the `refreshStars` job. When they are
-// more than a day old this page asks for a refresh on the job queue and shows what it has.
-import { examples } from "typedpress:db";
 import { jobs } from "typedpress";
+import { examples } from "typedpress:db";
+import { Link } from "typedpress/app";
 
-export const metadata = { title: "Examples", description: "Whole apps to read, edit in the playground and copy." };
+export const metadata = {
+  title: "Examples",
+  description: "Explore real SpacePress applications — from SQL-backed task trackers and editorial sites to full websites — open them in the browser playground or browse their source on GitHub.",
+};
 
-const DAY = 24 * 60 * 60 * 1000;
+const ONE_DAY_MS = 86_400_000;
 
-export default async function Examples() {
-  const rows = await examples.list({ orderBy: { position: "asc" }, limit: 50 });
-  const stale = rows.some((row) => !row.starsAt || Date.now() - new Date(row.starsAt).getTime() > DAY);
-  if (stale) await jobs.refreshStars.enqueue({}, { key: "refresh-stars" });
+export default async function ExamplesPage() {
+  const rows = await examples.list({ orderBy: { position: "asc", id: "asc" }, limit: 100 });
+
+  const cutoff = new Date(Date.now() - ONE_DAY_MS).toISOString();
+  const stale = rows.some((row) => !row.starsAt || row.starsAt < cutoff);
+  if (rows.length > 0 && stale) {
+    await jobs.refreshStars.enqueue({}, { key: "refresh-stars" });
+  }
+
   return (
-    <main className="prose">
-      <h1>Examples</h1>
-      <p className="lede">Whole apps. Each one opens in the playground, where you can change it and run it in WordPress, and each links to its code.</p>
-      {rows.length === 0 && <p>No examples are listed yet. An admin adds them in the <code>examples</code> table.</p>}
-      <ul className="cards">
-        {rows.map((row) => (
-          <li key={row.id}>
-            <h2>{row.title}</h2>
-            <p>{row.summary}</p>
-            <p className="links">
-              <a href={`/play/?example=${row.name}`}>Open in the playground</a>
-              <a href={`https://github.com/${row.repo}/tree/main/${row.path}`}>Code on GitHub</a>
-              <span className="stars" title={row.starsAt ? `GitHub was asked on ${row.starsAt.slice(0, 10)}` : "GitHub has not been asked yet"}>{row.stars == null ? (row.starsAt ? "no public star count" : "stars not counted yet") : `★ ${row.stars}`}</span>
-            </p>
-          </li>
-        ))}
-      </ul>
-      <p className="cap">The same list as JSON: <a href="/api/examples.json">/api/examples.json</a>.</p>
-    </main>
+    <>
+      <section className="sp-page-banner">
+        <div className="sp-container">
+          <h1>SpacePress Examples</h1>
+          <p>
+            Every example below is a real SpacePress application compiled on every build. Open any of them in the interactive browser playground or inspect the source on GitHub.
+          </p>
+        </div>
+      </section>
+
+      <div className="sp-container" style={{ paddingTop: "36px", paddingBottom: "80px" }}>
+        {rows.length === 0 ? (
+          <div className="sp-callout is-info">
+            <strong>No examples seeded yet.</strong> Run <code>npm run seed</code> (with <code>TP_APP_PASSWORD</code>) to populate the <code>examples</code> SQL table, or jump straight into the <Link href="/play">interactive Playground</Link>.
+          </div>
+        ) : (
+          <div className="sp-card-grid" style={{ marginTop: 0 }}>
+            {rows.map((item) => {
+              const ghHref = `https://github.com/${item.repo}/tree/main/${item.path}`;
+              return (
+                <article key={item.id} className="sp-card">
+                  <div className="sp-meta-row" style={{ justifyContent: "space-between" }}>
+                    <span className="sp-mono-label">{item.name}</span>
+                    {item.stars != null && (
+                      <span className="sp-star-badge">★ {item.stars}</span>
+                    )}
+                  </div>
+                  <h3>{item.title}</h3>
+                  <p style={{ flex: 1 }}>{item.summary}</p>
+                  <div className="sp-meta-row" style={{ fontSize: "12.5px" }}>
+                    <code>{item.path || item.repo}</code>
+                  </div>
+                  <div style={{ display: "flex", gap: "10px", marginTop: "6px", flexWrap: "wrap" }}>
+                    <Link href={`/play?example=${item.name}`} className="sp-btn sp-btn-primary sp-btn-sm">
+                      Open in Playground →
+                    </Link>
+                    <a
+                      href={ghHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="sp-btn sp-btn-secondary sp-btn-sm"
+                    >
+                      Source ↗
+                    </a>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="sp-callout" style={{ marginTop: "32px" }}>
+          <strong>How this page works:</strong> These cards are stored in the <code>examples</code> SQL table defined in <code>www/tp/schema.ts</code>. GitHub star counts are refreshed asynchronously in the background via the <code>refreshStars</code> job on Action Scheduler, and the same data is exposed as JSON at <a href="/api/examples.json"><code>/api/examples.json</code></a>.
+        </div>
+      </div>
+    </>
   );
 }

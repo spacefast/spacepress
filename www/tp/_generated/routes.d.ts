@@ -10,7 +10,10 @@ declare module "typedpress/app" {
     "blog": { path: `/blog`; params: {  } };
     "docs": { path: `/docs`; params: {  } };
     "examples": { path: `/examples`; params: {  } };
+    "guide": { path: `/guide`; params: {  } };
+    "handbook": { path: `/handbook`; params: {  } };
     "play": { path: `/play`; params: {  } };
+    "quick-start": { path: `/quick-start`; params: {  } };
     "/": { path: `/`; params: {  } };
   }
 }

@@ -27,7 +27,7 @@ and every plugin that `typedpress build` and `typedpress plugin` emit from them.
 | `runtime/client/` | the typed TypeScript client |
 | `types/` | the `"typedpress"` type declarations |
 | `packages/` | the npm packages, except the bundled WordPress code in `@typedpress/blocks` (below) |
-| `examples/`, `docs/`, `docs-site/`, `www/`, `skills/`, `scripts/`, `tests/` | examples, documentation, the website, agent skills, tooling and tests |
+| `examples/`, `www/`, `skills/`, `scripts/`, `tests/` | examples, the website and documentation, agent skills, tooling and tests |
 
 and everything else not listed above.
 

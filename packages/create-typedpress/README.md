@@ -1,9 +1,38 @@
-# Create a TypedPress app
+# `create-typedpress`
 
-After publication, `npm create typedpress my-app` creates a notes site and installs the matching compiler package. Open the URL printed by `cd my-app && npm run dev`. Try the greeting form and browse the sample notes. Start editing in `tp/app/page.tsx`. Node.js 22+ and npm are required. [Starter source](https://github.com/spacefast/zero/tree/main/packages/create-typedpress/template)
+Scaffold a ready-to-run **SpacePress** (`spacepress.dev`) project with TypeScript schemas, sample Markdown content, server-rendered TSX pages, a progressive form action, and coding-agent setup — running on local WordPress with zero Docker or Rust setup.
 
-After installing, it runs `typedpress init` in the new project: `AGENTS.md`, `.mcp.json` and the agent skills, generated from the project's own config, so a coding agent can work in it from the first commit. With `--no-install` that step uses `TP_BIN` when it is set; otherwise run `npx typedpress init` after `npm install`.
+> **Pre-release naming note:** The scaffolder and CLI currently use the pre-release identifier `typedpress`.
 
-Use `-- --no-install` to write files without installing packages. Existing destinations, including empty directories and symbolic links, are refused. Failed dependency installation preserves the new project so you can fix the error and retry.
+## Requirements
 
-Maintainers testing an unpublished compiler tarball can set `TP_CLI_PACKAGE=/absolute/path/to/typedpress-0.3.0.tgz`. `TP_BIN` and the compiler's release mirror/cache settings flow through npm installation. These package names and the matching binary release must be published before the public command is usable.
+- **Node.js 22+** and npm
+
+## Usage
+
+```bash
+npm create typedpress@0.3.0 my-app
+cd my-app
+npm run dev
+```
+
+Pass `-- --no-install` to create the directory without running `npm install`:
+
+```bash
+npm create typedpress@0.3.0 my-app -- --no-install
+```
+
+Existing destination directories are never overwritten.
+
+## What Gets Created
+
+- `typedpress.config.ts` — defines a synced `notes` WordPress collection (`/notes/:slug`) and a `site` global
+- `tp/actions.ts` — a sample server action (`greet`) compiled to PHP
+- `tp/app/` — root `layout.tsx`, `page.tsx` with `<form action={greet}>` and `useFormState()`, dynamic `notes/[slug]/page.tsx`, `account/`, `not-found.tsx`, and `site.css`
+- `content/notes/` — sample Markdown notes synced into WordPress
+- `AGENTS.md`, `.mcp.json`, and skills — generated automatically by `typedpress init` for AI coding agents
+- `package.json` scripts: `dev`, `build`, `check`, `typecheck`, `stop`, `status`, and `wp`
+
+## License
+
+MIT

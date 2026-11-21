@@ -1,5 +1,5 @@
 <?php
-// Sample data for WordPress Playground (docs-site/scripts/build-showcase.ts puts it in the blueprint).
+// Sample data for WordPress Playground (www/scripts/build-showcase.ts puts it in the blueprint).
 // Three places and a few items, written through the app's own API as the admin. Milk drops to
 // its low-stock mark when consumed, so the hook puts it on the shopping list and queues the
 // notification job. Milk and Butter expire within three days, so expiringSoon lists both.

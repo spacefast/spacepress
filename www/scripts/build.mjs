@@ -7,8 +7,8 @@
 //   public/files/plugins/      TypedPress's shared plugins as zips, for "Run in WordPress"
 //
 // All of it is git-ignored. Run `bun scripts/build.mjs` after changing browser/ or examples/;
-// `typedpress dev` rebuilds the pages itself. The compiler and the zips come from docs-site/: run
-// `pnpm wasm && pnpm showcase` there first (docs-site/README.md).
+// `typedpress dev` rebuilds the pages itself. Build the compiler wasm and showcase zips first
+// with `npm run wasm && npm run showcase` in www/.
 import { readFileSync, writeFileSync, statSync, mkdirSync, copyFileSync, existsSync, rmSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,20 +17,20 @@ const here = dirname(fileURLToPath(import.meta.url));
 const site = join(here, "..");
 const out = join(site, "public");
 rmSync(out, { recursive: true, force: true });
-mkdirSync(join(out, "files", "plugins"), { recursive: true });
+mkdirSync(join(out, "playground-plugins"), { recursive: true });
 
 const sources = Bun.spawnSync(["node", join(here, "sources.mjs")]);
 if (sources.exitCode !== 0) throw new Error(`sources.mjs failed:\n${sources.stderr.toString()}`);
 
-const docs = join(site, "..", "docs-site");
-const wasm = join(docs, "public", "compiler.wasm");
-const zips = join(docs, "public", "files", "plugins");
-if (!existsSync(wasm) || !existsSync(zips)) throw new Error("docs-site/public has no compiler.wasm or files/plugins; run `pnpm wasm && pnpm showcase` in docs-site/");
-const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: docs });
+const buildDir = join(site, ".build");
+const wasm = join(buildDir, "compiler.wasm");
+const zips = join(buildDir, "files", "plugins");
+if (!existsSync(wasm) || !existsSync(zips)) throw new Error("www/.build has no compiler.wasm or files/plugins; run `npm run wasm && npm run showcase` in www/");
+const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: site });
 if (runData.exitCode !== 0) throw new Error(`run-data.ts failed:\n${runData.stderr.toString()}`);
 writeFileSync(join(out, "play-data.json"), runData.stdout);
 copyFileSync(wasm, join(out, "compiler.wasm"));
-for (const slug of ["typedpress-runtime", "typedpress-identity", "typedpress-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "files", "plugins", `${slug}.zip`));
+for (const slug of ["typedpress-runtime", "typedpress-identity", "typedpress-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "playground-plugins", `${slug}.zip`));
 
 // One script file. The highlighter ships 240 grammars and 70 themes, each behind its own
 // `import()`; under `typedpress dev` every file costs a WordPress request, and 28 of them delayed the
@@ -38,7 +38,7 @@ for (const slug of ["typedpress-runtime", "typedpress-identity", "typedpress-adm
 // kept, and without `splitting` Bun puts them in the same file. Any other language is shown as
 // plain text by the library.
 const keep = {
-  "@shikijs/langs": ["typescript", "tsx", "javascript", "jsx", "json", "css", "sql", "php", "html", "xml", "markdown", "shellscript"],
+  "@shikijs/langs": ["typescript", "tsx", "javascript", "jsx", "json", "css", "sql", "php", "html", "xml", "markdown", "yaml", "shellscript"],
   "@pierre/theme": ["pierre-dark", "pierre-light"],
   "@shikijs/themes": [],
   "@pierre/highlights/themes": [],

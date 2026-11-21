@@ -352,10 +352,8 @@ Still deferred: a policy decided per route at build time, and `typedpress check 
 
 ### 6.2 Purges by URL
 
-- At render time, a cacheable page records which kinds and ids it read. The
-  compiler knows the queries, so the runtime only collects ids. These are
-  stored as a URL → reads index in the object cache, with a database copy so
-  eviction can't lose it.
+- At render time, a cacheable page records which kinds and ids it read, in the
+  `tp__app_reads` table (URL → reads).
 - On every committed write, TypedPress computes the affected URLs:
   - the item's own `url` and its old URL if the slug changed;
   - every indexed page that read that id, or listed that kind;
@@ -364,9 +362,17 @@ Still deferred: a policy decided per route at build time, and `typedpress check 
   in the same transaction as the write. It is retried until the gateway accepts it.
 - Batcache entries for those URLs are deleted in the same step.
 - **Query variants:** TypedPress purges each URL plus every query variant its index
-  saw (`?page=2`, typed `search` params). Unknown variants fall back to the
-  `s-maxage` window. A purge that touches more than N URLs, or a kind-wide
+  saw (`?page=2`, typed `search` params). Only a page's declared `search`
+  parameters make a variant: a request with any other parameter is answered
+  privately and recorded nowhere, and one path keeps at most 20 recorded variants.
+  A purge that touches more than N URLs, or a kind-wide
   change such as a schema deploy or a settings change, becomes the existing whole-host purge.
+- **Lists stay lists:** a read is recorded as its rows alone only when its query
+  names them by a unique key. A filter, a rank or a count is a listing whatever
+  it returned, so a write that adds a second matching row purges a list that
+  showed one.
+- **Globals:** a render records the globals it read, and a write to one purges
+  the pages that read it.
 - Publishing a new version purges the whole host, as today.
 
 ### 6.3 Inside PHP

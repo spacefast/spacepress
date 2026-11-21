@@ -90,7 +90,8 @@ final class App
 
     /**
      * Run a matched route in one transaction. `$user` is the resolved caller (null: anonymous);
-     * a `signature` route verifies the raw body instead and always runs anonymously.
+     * a `signature` route verifies the raw body instead and always runs anonymously. A GET or HEAD
+     * route's transaction starts at its first write (Db::reading()): most only read.
      *
      * @return array{int, array<string, string>, string}
      */
@@ -98,7 +99,8 @@ final class App
     {
         $headers = array_change_key_case($headers, CASE_LOWER);
         try {
-            $response = $this->db->transaction(function () use ($match, $method, $path, $query, $body, $headers, $user, $url): array {
+            $run = in_array($method, ['GET', 'HEAD'], true) ? $this->db->reading(...) : $this->db->transaction(...);
+            $response = $run(function () use ($match, $method, $path, $query, $body, $headers, $user, $url): array {
                 $route = $match['route'];
                 $name = $match['name'];
                 $viewer = new Viewer($user);

@@ -3,12 +3,17 @@ import { test } from 'node:test';
 import { spawn, execFile } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { watch } from 'node:fs';
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { createServer } from 'node:net';
 import { get } from 'node:http';
+import { connect, createServer } from 'node:net';
+import { chromiumPath } from '../../tests/differential/client/chromium.mjs';
+
+const require = createRequire(new URL('../../tests/differential/client/package.json', import.meta.url));
+const { chromium } = require('playwright-core');
 
 const exec = promisify(execFile);
 const first = resolve(process.env.TP_BIN ?? 'target/debug/typedpress');
@@ -35,14 +40,6 @@ async function mcp(flags, env, calls) {
   const answers = (await running).stdout.trim().split('\n').map((line) => JSON.parse(line));
   assert.deepEqual(answers.map((answer) => answer.id), calls.map((_, id) => id));
   return answers.map((answer) => answer.result);
-}
-
-async function freePort() {
-  const server = createServer();
-  await new Promise((done) => server.listen(0, '127.0.0.1', done));
-  const port = server.address().port;
-  await new Promise((done) => server.close(done));
-  return port;
 }
 
 function foreground(args, env) {
@@ -81,9 +78,16 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   const env = { ...inherited, PATH: tools };
   await writeFile(join(project, 'typedpress.config.ts'), config('first'));
   await writeFile(join(project, 'public/index.html'), '<h1>Native TypedPress dev</h1>');
+  const pageFile = join(project, 'tp/app/page.tsx');
+  const pageSource = (title) => `export default function Page() { return <h1>${title}</h1>; }\n`;
+  await mkdir(join(project, 'tp/app'), { recursive: true });
+  await writeFile(pageFile, pageSource('Original dev page'));
+  const dbTypes = join(project, 'tp/_generated/db.d.ts');
   let session;
+  let browser;
   const site = join(project, '.tp/dev/wordpress');
   t.after(async () => {
+    await browser?.close();
     const failures = [];
     const studio = async (...args) => (await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', ...args], { timeout: 60000, maxBuffer: 4 * 1024 * 1024 })).stdout;
     const sites = async () => JSON.parse(await studio('list', '--format=json'));
@@ -107,10 +111,13 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
       if (!t.error) throw error;
     }
   });
-  const firstStart = await command(['dev', project, '--port', String(await freePort()), '--no-watch'], env);
+  const firstStart = await command(['dev', project, '--port', process.env.TP_DEV_TEST_PORT ?? '8813', '--no-watch'], env);
   const status = JSON.parse(await command(['dev', 'status', project], env));
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
+  const originalTypes = await readFile(dbTypes, 'utf8');
+  assert.match(originalTypes, /processed/);
+  assert.doesNotMatch(await (await fetch(base)).text(), /typedpress-dev\/live-client/);
   // The summary links TypedPress Admin where it is mounted. Studio's server reads no .htaccess, so the
   // address answers with the form every server serves, wp-admin's own page for TypedPress Admin.
   assert.match(firstStart, new RegExp(`TypedPress Admin: ${base}/wp-admin/new/\n`));
@@ -126,7 +133,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   // Started with --no-watch: the site runs, and no process is rebuilding it.
   const expected = {
     state: 'running', url: base, port: Number(new URL(base).port), admin: `${base}/wp-admin/`, site: await realpath(site),
-    watching: false, pid: null, log: null, wordpress: status.wpVersion, php: status.phpVersion,
+    watching: false, pid: null, log: null, error: null, wordpress: status.wpVersion, php: status.phpVersion,
   };
   assert.deepEqual(devStatus.structuredContent, expected);
   // `typedpress dev status --json` is the same report, from the state file `typedpress dev` wrote.
@@ -212,10 +219,122 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).isOnline, false);
   assert.equal((await mcp([project], env, [['dev_status', {}]]))[0].structuredContent.state, 'stopped');
   assert.deepEqual(JSON.parse(await command(['dev', 'status', project, '--json'], env)), { ...expected, state: 'stopped' });
-  session = foreground(['dev', project], env);
+  // A browser on another machine: the site is opened at an address Studio does not listen on, here
+  // a relay on another port of another loopback name. Every page must work from that address alone.
+  const relay = createServer((client) => {
+    const upstream = connect(Number(new URL(base).port), 'localhost');
+    for (const socket of [client, upstream]) socket.on('error', () => { client.destroy(); upstream.destroy(); });
+    client.pipe(upstream).pipe(client);
+  });
+  relay.listen(0, '127.0.0.1');
+  await once(relay, 'listening');
+  t.after(() => { relay.close(); relay.closeAllConnections?.(); });
+  const announced = `http://127.0.0.1:${relay.address().port}`;
+  session = foreground(['dev', project, '--url', announced], env);
   let cursor = await session.wait('Watching config');
+  assert.match(session.output(), new RegExp(`Website:   ${announced}/\n`));
+  const liveFile = join(site, 'wp-content/mu-plugins/typedpress-dev/live.json');
+  let followed;
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).siteUrl, status.siteUrl);
   assert.equal((await api('/items')).find((row) => row.id === item.id).name, 'Chickpeas');
+  await t.test('open pages reload after a page edit and recover from a compile error, from the announced address alone', async () => {
+    browser = await chromium.launch({ executablePath: chromiumPath() });
+    const context = await browser.newContext();
+    context.setDefaultTimeout(90000);
+    const client = 'script[src*="typedpress-dev/live-client.js"]';
+    // Two tabs on the home page, and one on the file public/index.html (the summary's "App:" link).
+    const tabs = await Promise.all([context.newPage(), context.newPage()]);
+    const publicFile = await context.newPage();
+    const requests = [];
+    for (const page of [...tabs, publicFile]) page.on('request', (request) => requests.push(request.url()));
+    await Promise.all(tabs.map((page) => page.goto(announced)));
+    await Promise.all(tabs.map((page) => page.getByRole('heading', { name: 'Original dev page' }).waitFor()));
+    await publicFile.goto(`${announced}/index.html`);
+    await publicFile.getByRole('heading', { name: 'Native TypedPress dev' }).waitFor();
+    await publicFile.locator(client).waitFor({ state: 'attached' });
+    // The file itself is served as written: the client is added to the answer, not to the project.
+    assert.equal(await readFile(join(project, 'public/index.html'), 'utf8'), '<h1>Native TypedPress dev</h1>');
+    await publicFile.evaluate(() => { window.tpDevLoaded = 'before the edit'; });
+
+    // The login page, wp-admin and TypedPress Admin carry the client too.
+    const admin = await context.newPage();
+    await admin.goto(`${announced}/wp-login.php`);
+    await admin.locator(client).waitFor({ state: 'attached' });
+    await admin.locator('#user_login').fill('admin');
+    await admin.locator('#user_pass').fill('typedpress-test-admin');
+    await Promise.all([admin.waitForURL(/\/wp-admin\//), admin.locator('#wp-submit').click()]);
+    await admin.goto(`${announced}/wp-admin/index.php`);
+    await admin.locator(client).waitFor({ state: 'attached' });
+    await admin.goto(`${announced}/wp-admin/new/`);
+    await admin.locator('#typedpress-admin-app').waitFor({ state: 'attached' });
+    await admin.locator(client).waitFor({ state: 'attached' });
+    await admin.evaluate(() => { window.tpDevLoaded = 'before the edit'; });
+
+    // A page rendered to be kept (typedpress export, a prerender) has no client in it.
+    assert.match(await (await fetch(base)).text(), /typedpress-dev\/live-client\.js\?build=/);
+    assert.doesNotMatch(await (await fetch(base, { headers: { 'x-typedpress-export': '1' } })).text(), /typedpress-dev/);
+    assert.doesNotMatch(await (await fetch(base, { headers: { 'x-typedpress-prerender': `1.${'a'.repeat(64)}` } })).text(), /typedpress-dev/);
+
+    const saved = performance.now();
+    await writeFile(pageFile, pageSource('Updated dev page'));
+    await Promise.all(tabs.map((page) => page.getByRole('heading', { name: 'Updated dev page' }).waitFor()));
+    console.log(`Save to reloaded page: ${Math.round(performance.now() - saved)} ms`);
+    cursor = await session.wait('Updated.', cursor);
+    // Every open document reloaded, whatever kind of page it is.
+    for (const page of [publicFile, admin]) await page.waitForFunction(() => window.tpDevLoaded === undefined);
+    await publicFile.getByRole('heading', { name: 'Native TypedPress dev' }).waitFor();
+
+    const generated = join(project, 'tp/_generated');
+    const files = async () => {
+      const entries = await readdir(generated, { recursive: true, withFileTypes: true });
+      const paths = entries.filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name)).sort();
+      return Promise.all(paths.map(async (path) => [path, await readFile(path)]));
+    };
+    const lastGood = await files();
+    await writeFile(pageFile, 'export default function Page() { return ; const broken = ; }\n');
+    cursor = await session.wait('error[F1001]', cursor);
+    cursor = await session.wait('Fix the error and save to retry.', cursor);
+    for (const page of [...tabs, publicFile]) {
+      const overlay = page.locator('typedpress-dev-error');
+      const code = overlay.getByRole('link', { name: 'error[F1001]' });
+      await code.waitFor();
+      assert.match(await code.getAttribute('href'), /\/reference\/diagnostics\.mdx#codes:~:text=F1001$/);
+      assert.match(await overlay.locator('code').innerText(), /tp\/app\/page\.tsx:1:\d+/);
+      assert.match(await overlay.locator('pre').textContent(), /\S/);
+    }
+    assert.deepEqual(await files(), lastGood);
+    // The running site says what is wrong with it, to `dev status --json` and to an agent.
+    const failing = JSON.parse(await command(['dev', 'status', project, '--json'], env));
+    assert.equal(failing.state, 'running');
+    assert.equal(failing.error.diagnostics[0].code, 'F1001');
+    assert.equal(failing.error.message, failing.error.diagnostics[0].message);
+    assert.deepEqual((await mcp([project], env, [['dev_status', {}]]))[0].structuredContent.error, failing.error);
+    // Dismissed, the error stays away while it is the same error; the other tab keeps its own.
+    await tabs[0].locator('typedpress-dev-error').getByRole('button', { name: 'Dismiss' }).click();
+    await tabs[0].locator('typedpress-dev-error').waitFor({ state: 'detached' });
+    await new Promise((done) => setTimeout(done, 1500));
+    assert.equal(await tabs[0].locator('typedpress-dev-error').count(), 0);
+    assert.equal(await tabs[1].locator('typedpress-dev-error').count(), 1);
+
+    await writeFile(pageFile, pageSource('Recovered dev page'));
+    cursor = await session.wait('Updated.', cursor);
+    await Promise.all(tabs.map(async (page) => {
+      await page.getByRole('heading', { name: 'Recovered dev page' }).waitFor();
+      await page.locator('typedpress-dev-error').waitFor({ state: 'detached' });
+    }));
+    await publicFile.locator('typedpress-dev-error').waitFor({ state: 'detached' });
+    assert.equal(JSON.parse(await command(['dev', 'status', project, '--json'], env)).error, null);
+    // Nothing these pages asked of this machine went anywhere but the announced address: no reload
+    // channel on another port or name, which a browser on another machine could not reach.
+    // (WordPress's own admin bar asks gravatar.com for the signed-in user's picture.)
+    assert.ok(requests.some((url) => url.startsWith(`${announced}/wp-content/mu-plugins/typedpress-dev/live.json`)));
+    const local = (url) => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname);
+    assert.deepEqual(requests.filter((url) => /^https?:/.test(url) && local(url) && !url.startsWith(`${announced}/`)), []);
+    // One tab stays open across the restart below.
+    followed = tabs[0];
+    await followed.evaluate(() => { window.tpDevLoaded = 'before the restart'; });
+    await Promise.all([tabs[1], publicFile, admin].map((page) => page.close()));
+  });
   await writeFile(join(project, 'typedpress.config.ts'), 'export default { broken: ;');
   cursor = await session.wait('Fix the error and save to retry.', cursor);
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'first');
@@ -230,13 +349,20 @@ if (defined('WP_CLI') && WP_CLI) {
   cursor = await session.wait('Fix the error and save to retry.', cursor);
   const interrupted = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8'));
   assert.notDeepEqual(interrupted.pending.migrations, interrupted.migrations);
+  assert.doesNotMatch(originalTypes, /shelf/);
+  assert.match(await readFile(dbTypes, 'utf8'), /shelf/);
   const interruptedExit = once(session.child, 'exit');
   await command(['dev', 'stop', project], env);
   assert.deepEqual(await interruptedExit, [0, null]);
+  // A stopped session leaves no reload signal: pages rendered without it carry no client.
+  assert.equal(await readFile(liveFile, 'utf8'), 'null\n');
   await rm(failurePlugin);
   // --foreground keeps the command attached even where it would go to the background by itself.
   session = foreground(['dev', project, '--foreground'], { ...env, CLAUDECODE: '1' });
   cursor = await session.wait('Watching config');
+  // The tab left open follows the new session: it stops asking the stopped one and reloads.
+  await followed.waitForFunction(() => window.tpDevLoaded === undefined);
+  await followed.close();
   const recovered = JSON.parse(await readFile(join(project, '.tp/dev/owner.json'), 'utf8'));
   assert.equal(recovered.pending, undefined);
   assert.deepEqual(recovered.migrations, interrupted.pending.migrations);
@@ -248,7 +374,7 @@ if (defined('WP_CLI') && WP_CLI) {
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');
   // Restoring the config must not replay a hidden DROP migration from the rejected save.
   await writeFile(join(project, 'typedpress.config.ts'), config('third', 'shelf: text().optional(),', false));
-  cursor = await session.wait('Updated. Refresh', cursor);
+  cursor = await session.wait('Updated.', cursor);
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');
   const plugins = JSON.parse(await wp('plugin', 'list', '--status=active', '--format=json'));
   assert.equal(plugins.some((plugin) => plugin.name === 'acceptance-extra'), true);
@@ -256,7 +382,7 @@ if (defined('WP_CLI') && WP_CLI) {
   const pluginPage = await fetch(`${base}/wp-content/plugins/typedpress-app-app/public/index.html`);
   assert.equal(await pluginPage.text(), '<h1>Native TypedPress dev</h1>');
   await writeFile(join(project, 'public/index.html'), '<h1>Updated public file</h1>');
-  await session.wait('Updated. Refresh', cursor);
+  await session.wait('Updated.', cursor);
   assert.equal(await (await fetch(`${base}/wp-content/plugins/typedpress-app-app/public/index.html`)).text(), '<h1>Updated public file</h1>');
   const exit = once(session.child, 'exit');
   await command(['dev', 'stop', project], env);
@@ -282,7 +408,7 @@ if (defined('WP_CLI') && WP_CLI) {
   await assert.rejects(command(['dev', project, '--detach'], env), /Another typedpress dev command owns this project/);
   assert.match(await readFile(log, 'utf8'), /Website:/);
   await writeFile(join(project, 'typedpress.config.ts'), config('background', 'shelf: text().optional(),', false));
-  await waitForLog('Updated. Refresh');
+  await waitForLog('Updated.');
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'background');
   // An agent's shell (no terminal, CLAUDECODE set) gets the same without the flag; here the
   // session above still owns the project, so the background start is what is refused.
@@ -299,10 +425,40 @@ if (defined('WP_CLI') && WP_CLI) {
   const recorded = JSON.parse(await readFile(join(project, '.tp/dev/state.json'), 'utf8'));
   assert.deepEqual([recorded.pid, recorded.log, recorded.url], [null, null, base]);
   assert.deepEqual(JSON.parse(await command(['dev', 'status', project, '--json'], env)), { ...expected, state: 'stopped' });
+  // --detach with a first build that fails: WordPress still starts and the process keeps watching,
+  // but the command exits 1 with the error, and the status carries it until a build succeeds.
+  await writeFile(pageFile, 'export default function Page() { return ; const broken = ; }\n');
+  const refused = await command(['dev', project, '--detach'], env).then(() => null, (error) => error);
+  assert.equal(refused?.code, 1, 'typedpress dev --detach exits 1 when the first build fails');
+  assert.match(refused.stdout, new RegExp(`Website:   ${base}/`));
+  assert.match(refused.stderr, /the first build failed, so the site does not serve this source yet:[^]*error\[F1001\]/);
+  const broken = JSON.parse(await command(['dev', 'status', project, '--json'], env));
+  assert.deepEqual([broken.state, broken.watching, broken.error.diagnostics[0].code], ['running', true, 'F1001']);
+  assert.match(refused.stderr, new RegExp(`WordPress is running in the background \\(pid ${broken.pid}\\)`));
+  assert.deepEqual((await mcp([project], env, [['dev_status', {}]]))[0].structuredContent.error, broken.error);
+  // The site still serves the last build, and saving a fix rebuilds it.
+  assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'background');
+  await writeFile(pageFile, pageSource('Fixed in the background'));
+  await waitForLog('Updated.');
+  assert.match(await (await fetch(base)).text(), /Fixed in the background/);
+  assert.equal(JSON.parse(await command(['dev', 'status', project, '--json'], env)).error, null);
+  await command(['dev', 'stop', project], env);
+  assert.deepEqual(JSON.parse(await command(['dev', 'status', project, '--json'], env)), { ...expected, state: 'stopped' });
   await writeFile(join(project, 'typedpress.config.ts'), config('deliberate', '', false));
   await command(['dev', project, '--no-watch', '--allow-destructive'], env);
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'deliberate');
   assert.equal((await api('/items')).find((row) => row.id === item.id).name, 'Chickpeas');
   assert.equal(await readFile(join(extra, 'acceptance-extra.php'), 'utf8'), '<?php /* Plugin Name: Acceptance extra */');
+  await t.test('production build excludes the dev client and its WordPress hook', async () => {
+    const production = join(root, 'production');
+    await command(['build', project, '--out', production], env);
+    const entries = await readdir(production, { recursive: true, withFileTypes: true });
+    for (const entry of entries) {
+      assert.doesNotMatch(entry.name, /typedpress-dev|live-client/);
+      if (entry.isFile() && /\.(?:js|php)$/.test(entry.name)) {
+        assert.doesNotMatch(await readFile(join(entry.parentPath, entry.name), 'utf8'), /typedpress-dev-error|typedpress-dev\/live-client/);
+      }
+    }
+  });
   console.log('Studio acceptance: native editor + SCF, identity, uploads, queued job, schema/public watching, invalid-build recovery, data/plugin persistence; no host PHP or Docker on PATH.');
 });

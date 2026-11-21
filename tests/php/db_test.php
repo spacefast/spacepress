@@ -588,6 +588,90 @@ eq('post-commit failure never undoes committed filesystem effects', is_file($wp-
 \TypedPress\Extensions::afterCommit(function () use (&$committed) { $committed[] = 'immediate'; });
 eq('rollback and post-commit failure leave no stale callbacks', [(int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn(), $committed], [5, ['outer:6', 'inner:6', 'immediate']]);
 
+// A reading transaction tells the database nothing until something writes. `open` is whether the
+// database itself has a transaction; `sent` is what ended it.
+$sent = [];
+$spy = static function (mixed $sql) use (&$sent): mixed {
+    if (is_string($sql) && preg_match('/^\s*(START TRANSACTION|COMMIT|ROLLBACK)\b/i', $sql, $m) === 1) {
+        $sent[] = strtoupper($m[1]);
+    }
+
+    return $sql;
+};
+add_filter('query', $spy);
+$open = static fn (): bool => $wp->connection()->wpdb()->dbh->inTransaction();
+$queries = static fn (): int => (int) $wp->connection()->wpdb()->num_queries;
+$during = [];
+$after = [];
+$counted = $queries();
+$found = $db->reading(function () use ($db, $wp, $open, &$during, &$after): array {
+    $during = [$wp->connection()->inTransaction(), $open()];
+    \TypedPress\Extensions::afterCommit(static function () use (&$after): void {
+        $after[] = 'ran';
+    });
+
+    return $db->findMany('items', ['where' => ['name' => 'Hammer']]);
+});
+eq('a reading transaction that only reads sends neither START TRANSACTION nor COMMIT', [names($found), $sent, $during, $after, $open(), $queries() - $counted],
+    [['Hammer'], [], [true, false], ['ran'], false, 0]);
+$counted = $queries();
+$db->reading(function () use ($db, $open, &$during): void {
+    $db->findMany('items', ['where' => ['name' => 'Hammer']]);
+    $during = [$open()];
+    $db->update('items', ['qty' => 7], ['name' => 'Hammer']);
+    $during[] = $open();
+});
+eq('its first write starts the transaction, and the end commits it', [$sent, $during, $open(), (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn()], [['COMMIT'], [false, true], false, 7]);
+check('… both counted as statements, as an ordinary transaction\'s are', $queries() - $counted >= 2, $queries() - $counted);
+$sent = [];
+problem('a throw after a write rolls the write back', fn () => $db->reading(function () use ($db): void {
+    $db->update('items', ['qty' => 9], ['name' => 'Hammer']);
+    throw new JsError('no');
+}), 422, 'rejected');
+eq('… with one ROLLBACK', [$sent, $open(), (int) $observer->query("SELECT qty FROM $items WHERE name = 'Hammer'")->fetchColumn()], [['ROLLBACK'], false, 7]);
+$sent = [];
+$ran = [];
+problem('a throw before any write', fn () => $db->reading(function () use (&$ran): void {
+    \TypedPress\Extensions::afterCommit(static function () use (&$ran): void {
+        $ran[] = 'after';
+    });
+    throw new JsError('no');
+}), 422, 'rejected');
+eq('… sends nothing and drops its afterCommit callbacks', [$sent, $ran, $wp->connection()->inTransaction()], [[], [], false]);
+$sent = [];
+$db->reading(static function () use ($open, &$during): void {
+    get_option('tp_reading_probe'); // core's read: still no transaction
+    $during = [$open()];
+    update_option('tp_reading_probe', 'core write', false);
+    $during[] = $open();
+});
+eq('a write through $wpdb (core\'s, another plugin\'s) starts it too', [$sent, $during, get_option('tp_reading_probe')], [['COMMIT'], [false, true], 'core write']);
+$sent = [];
+problem('… and rolls back with it', fn () => $db->reading(static function (): void {
+    update_option('tp_reading_probe', 'rolled back', false);
+    throw new JsError('no');
+}), 422, 'rejected');
+wp_cache_delete('tp_reading_probe', 'options');
+eq('… leaving what was committed', [$sent, get_option('tp_reading_probe')], [['ROLLBACK'], 'core write']);
+$sent = [];
+$db->reading(static function () use ($wp, $items, $open, &$during): void {
+    $wp->connection()->run("SELECT id FROM $items WHERE name = ? FOR UPDATE", ['Hammer']);
+    $during = [$open()];
+});
+eq('a locking read starts it, like a write', [$sent, $during], [['COMMIT'], [true]]);
+$sent = [];
+$db->transaction(fn () => $db->reading(fn () => $db->findMany('items', ['limit' => 1])));
+eq('inside an open transaction it joins that one', $sent, ['START TRANSACTION', 'COMMIT']);
+$sent = [];
+$db->reading(fn () => $db->transaction(fn () => $db->findMany('items', ['limit' => 1])));
+eq('a transaction opened inside it joins it, and stays unsent while it only reads', $sent, []);
+$sent = [];
+$db->transaction(fn () => $db->findMany('items', ['limit' => 1]));
+eq('an ordinary transaction starts at once, as before', $sent, ['START TRANSACTION', 'COMMIT']);
+remove_filter('query', $spy);
+delete_option('tp_reading_probe');
+$db->update('items', ['qty' => 5], ['name' => 'Hammer']);
+
 $before = $logCount();
 $db->transaction(fn () => $db->insert('logs', ['message' => 'loop:8']));
 eq('8 levels of nested hook writes are allowed', $logCount(), $before + 9);

@@ -103,6 +103,8 @@ pub struct Extracted {
     /// Each registered action's value (its allocation) → its registered name, so a page's
     /// `<form action={subscribe}>` and `useFormState(subscribe)` name the action they were given.
     pub action_values: HashMap<usize, String>,
+    /// Each registered `adminWidget()`'s value (its allocation) → its kebab-case widget id.
+    pub widget_values: HashMap<usize, String>,
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
     pub uses: Vec<crate::plugins::Plugin>,
@@ -145,10 +147,11 @@ const CONFIG_KEYS: &[&str] = &[
     "frontend",
     "output",
     "runtimeSchema",
+    "seed",
 ];
 /// `wp.posts.extend(fields, options)`: what may change about WordPress's own posts.
 const POST_OPTIONS: &[&str] = &[
-    "url", "comments", "access", "label", "sync", "uid", "agents", "api", "staged",
+    "url", "comments", "access", "label", "ui", "sync", "uid", "agents", "api", "staged",
 ];
 /// `wp.posts.clone(fields, options)`: the same, and its own stored name.
 const POST_CLONE_OPTIONS: &[&str] = &[
@@ -156,6 +159,7 @@ const POST_CLONE_OPTIONS: &[&str] = &[
     "comments",
     "access",
     "label",
+    "ui",
     "sync",
     "uid",
     "agents",
@@ -176,6 +180,7 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "existingTable",
     "was",
     "label",
+    "ui",
     "drafts",
     "revisions",
     "staged",
@@ -207,6 +212,8 @@ const REGISTRIES: &[&str] = &[
     "actions",
     "jobs",
     "screens",
+    "widgets",
+    "dashboards",
 ];
 /// Collection names that would shadow a built-in route (§4.8).
 const RESERVED_COLLECTIONS: &[&str] = &[
@@ -311,6 +318,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         collections: Vec::new(),
         hints: Vec::new(),
         action_values: HashMap::new(),
+        widget_values: HashMap::new(),
         refs: Vec::new(),
         plugins: None,
         uses: Vec::new(),
@@ -330,6 +338,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("it becomes the WordPress plugin slug `typedpress-<name>`"));
         }
     };
+    out.schema.seed = bool_option(&cfg_map, "seed", false, span_of(ev, config, "seed", config_span))?;
     out.schema.admin = bool_option(&cfg_map, "admin", true, span_of(ev, config, "admin", config_span))?;
     out.schema.public_authors = bool_option(
         &cfg_map,
@@ -562,6 +571,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     taxonomy: kind.term().then(|| Taxonomy { on: Vec::new() }),
                     commerce: kind.commerce().then(|| kind.builder().to_string()),
                     indexes: Vec::new(),
+                    ui: None,
                     api: Api {
                         list: true,
                         get: true,
@@ -685,6 +695,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.existing_table = opts.existing_table;
         coll.was = opts.was;
         coll.label = opts.label;
+        coll.ui = opts.ui;
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
@@ -874,9 +885,15 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     if let Some(v) = cfg_map.get("use").filter(|v| !matches!(v, Value::Undef)) {
         uses(v, span_of(ev, config, "use", config_span), ev, &mut out)?;
     }
-    // Screens name actions, the app's and its plugins', so they come after both.
+    // Screens, widgets and dashboards name actions, so they come after actions and plugins.
     if let Some(v) = cfg_map.get("screens").filter(|v| !matches!(v, Value::Undef)) {
         crate::admin_screen::screens(v, span_of(ev, config, "screens", config_span), ev, &mut out)?;
+    }
+    if let Some(v) = cfg_map.get("widgets").filter(|v| !matches!(v, Value::Undef)) {
+        crate::admin_dashboard::widgets(v, span_of(ev, config, "widgets", config_span), ev, &mut out)?;
+    }
+    if let Some(v) = cfg_map.get("dashboards").filter(|v| !matches!(v, Value::Undef)) {
+        crate::admin_dashboard::dashboards(v, span_of(ev, config, "dashboards", config_span), ev, &mut out)?;
     }
     validate_phase2(&cfg_map, ev, config_span, &mut out)?;
     Ok(out)
@@ -1251,6 +1268,7 @@ struct CollOpts {
     existing_table: Option<String>,
     was: Option<String>,
     label: String,
+    ui: Option<Json>,
     editor: bool,
     drafts: bool,
     revisions: bool,
@@ -1733,6 +1751,7 @@ fn collection_options(
             ));
         }
     };
+    let ui = extract_kind_ui(o.get("ui"), span("ui"), columns, ev)?;
     let existing_table = match o.get("existingTable") {
         None | Some(Value::Undef) => None,
         Some(Value::Str(name)) if c.kind == StorageKind::Table && valid_ident(name) && name.len() <= 64 => {
@@ -2096,6 +2115,7 @@ fn collection_options(
         existing_table,
         was,
         label,
+        ui,
         editor,
         drafts,
         revisions,
@@ -2228,6 +2248,7 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
         fields.insert(name.clone(), col);
     }
     let mut label = title_case(key);
+    let mut ui: Option<Json> = None;
     let mut agents = true;
     let mut access: IndexMap<String, Access> = [
         ("read".to_string(), Access::anyone()),
@@ -2241,6 +2262,8 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
             let sp = ev.key_span(opts, k).unwrap_or(g.span);
             match (k.as_str(), v) {
                 ("label", Value::Str(s)) => label = s.to_string(),
+                ("ui", Value::Undef) => {}
+                ("ui", _) => ui = extract_global_ui(Some(v), sp, ev)?,
                 ("agents", Value::Bool(b)) => agents = *b,
                 ("agents", Value::Undef) => {}
                 ("access", Value::Object(am)) => {
@@ -2258,7 +2281,9 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
                     return Err(Diag::new(sp, format!("`{k}` can't be {}", other.describe())));
                 }
                 _ => {
-                    return Err(Diag::new(sp, format!("global() has no option `{k}`")).help("use label, access"));
+                    return Err(
+                        Diag::new(sp, format!("global() has no option `{k}`")).help("use label, ui, access, agents")
+                    );
                 }
             }
         }
@@ -2271,9 +2296,109 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
             fields,
             access,
             agents,
+            ui,
         },
     );
     Ok(())
+}
+
+fn extract_kind_ui(
+    v: Option<&Value>,
+    span: Span,
+    columns: &IndexMap<String, Column>,
+    ev: &Evaluator<'_>,
+) -> Result<Option<Json>> {
+    let Some(v) = v.filter(|v| !matches!(v, Value::Undef)) else {
+        return Ok(None);
+    };
+    let Value::Object(o) = v else {
+        return Err(Diag::new(span, format!("`ui` must be an object, not {}", v.describe())));
+    };
+    const ALLOWED: &[&str] = &[
+        "icon",
+        "singularLabel",
+        "description",
+        "group",
+        "defaultColumns",
+        "hidden",
+    ];
+    let mut map = serde_json::Map::new();
+    for (k, val) in o.borrow().iter() {
+        if matches!(val, Value::Undef) {
+            continue;
+        }
+        let kspan = ev.key_span(v, k).unwrap_or(span);
+        if !ALLOWED.contains(&k.as_str()) {
+            return Err(
+                Diag::new(kspan, format!("`ui` has no option `{k}`")).help(format!("use {}", ALLOWED.join(", ")))
+            );
+        }
+        match (k.as_str(), val) {
+            ("icon" | "singularLabel" | "description" | "group", Value::Str(s)) => {
+                map.insert(k.clone(), serde_json::json!(s.as_ref()));
+            }
+            ("hidden", Value::Bool(b)) => {
+                map.insert(k.clone(), serde_json::json!(*b));
+            }
+            ("defaultColumns", Value::Array(items)) => {
+                let mut cols = Vec::new();
+                for item in items.borrow().iter() {
+                    let Value::Str(col) = item else {
+                        return Err(Diag::new(kspan, "`ui.defaultColumns` must be a list of column names"));
+                    };
+                    if !columns.contains_key(col.as_ref()) {
+                        return Err(no_column("collection", col, columns, kspan, "`ui.defaultColumns`"));
+                    }
+                    cols.push(serde_json::json!(col.as_ref()));
+                }
+                map.insert(k.clone(), Json::Array(cols));
+            }
+            _ => {
+                return Err(Diag::new(
+                    kspan,
+                    format!("`ui.{k}` has invalid value {}", val.describe()),
+                ));
+            }
+        }
+    }
+    Ok((!map.is_empty()).then_some(Json::Object(map)))
+}
+
+fn extract_global_ui(v: Option<&Value>, span: Span, ev: &Evaluator<'_>) -> Result<Option<Json>> {
+    let Some(v) = v.filter(|v| !matches!(v, Value::Undef)) else {
+        return Ok(None);
+    };
+    let Value::Object(o) = v else {
+        return Err(Diag::new(span, format!("`ui` must be an object, not {}", v.describe())));
+    };
+    const ALLOWED: &[&str] = &["icon", "description", "group", "hidden"];
+    let mut map = serde_json::Map::new();
+    for (k, val) in o.borrow().iter() {
+        if matches!(val, Value::Undef) {
+            continue;
+        }
+        let kspan = ev.key_span(v, k).unwrap_or(span);
+        if !ALLOWED.contains(&k.as_str()) {
+            return Err(
+                Diag::new(kspan, format!("`ui` has no option `{k}`")).help(format!("use {}", ALLOWED.join(", ")))
+            );
+        }
+        match (k.as_str(), val) {
+            ("icon" | "description" | "group", Value::Str(s)) => {
+                map.insert(k.clone(), serde_json::json!(s.as_ref()));
+            }
+            ("hidden", Value::Bool(b)) => {
+                map.insert(k.clone(), serde_json::json!(*b));
+            }
+            _ => {
+                return Err(Diag::new(
+                    kspan,
+                    format!("`ui.{k}` has invalid value {}", val.describe()),
+                ));
+            }
+        }
+    }
+    Ok((!map.is_empty()).then_some(Json::Object(map)))
 }
 
 /// §3.5.1: a hint per post-backed column that only postmeta can filter.

@@ -138,6 +138,26 @@ final class Schema
         return $this->raw['screens'] ?? [];
     }
 
+    /**
+     * `adminWidget()` exports by widget id.
+     *
+     * @return array<string, array>
+     */
+    public function widgets(): array
+    {
+        return $this->raw['widgets'] ?? [];
+    }
+
+    /**
+     * `adminDashboard()` exports by dashboard id.
+     *
+     * @return array<string, array>
+     */
+    public function dashboards(): array
+    {
+        return $this->raw['dashboards'] ?? [];
+    }
+
     public function site(): array
     {
         return $this->raw['site'] ?? ['uidPrefix' => 'zr_'];
@@ -323,7 +343,7 @@ final class Schema
                 'content' => $c['content'] ?? null,
                 'slug' => $c['slug'] ?? null,
                 'primaryKey' => $c['primaryKey'],
-            ] + (isset($c['excerpt']) ? ['excerpt' => $c['excerpt']] : []) + [
+            ] + (isset($c['excerpt']) ? ['excerpt' => $c['excerpt']] : []) + (isset($c['ui']) ? ['ui' => $c['ui']] : []) + [
                 'columns' => array_map(self::publicColumn(...), $c['columns']),
                 'relations' => $c['relations'] ?? [],
                 'access' => array_map(self::accessSummary(...), Access::collectionRules($c)),
@@ -337,7 +357,7 @@ final class Schema
                 'agents' => $g['agents'] ?? true,
                 'fields' => array_map(self::publicColumn(...), $g['fields']),
                 'access' => array_map(self::accessSummary(...), Access::globalRules($g)),
-            ];
+            ] + (isset($g['ui']) ? ['ui' => $g['ui']] : []);
         }
         $actions = [];
         foreach ($this->actions() as $name => $a) {

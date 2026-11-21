@@ -118,7 +118,9 @@ not move Spacefast's compiler pin or provision Woo there. Before accepting a com
   recovery through a newly initialized build that reapplies the intended policy, without restoring
   historical orders. Do not accept commerce builds until the host enforces this prerequisite.
 - Route `/wp-json/wc/store/*` uncached. Cart, checkout and receipt paths are private/no-store.
-  A guest's `wp_woocommerce_session_*` cookie does not invalidate shared catalog HTML.
+  A guest's `wp_woocommerce_session_*` cookie does not change catalog HTML or its cache headers,
+  so the edge may serve that guest the shared copy. Batcache skips any request with a `wp*`
+  cookie before plugins load, and so always misses for that guest.
 - Repeat `docs-site/tests/playground/commerce.test.ts` on the host, prove preview isolation,
   then qualify the pilot gateway with a payment and refund. Playground coverage establishes
   neither host readiness nor compatibility with an arbitrary external gateway.

@@ -1419,7 +1419,7 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         .unwrap();
     assert_eq!(started["title"], "Get started");
     assert_eq!(started["mimeType"], "text/markdown");
-    assert!(started["description"].as_str().unwrap().contains("TypedPress app"));
+    assert!(started["description"].as_str().unwrap().contains("TypedPress site"));
     let read = mcp.result(
         "resources/read",
         serde_json::json!({ "uri": "typedpress-docs:///docs/compiler-diagnostics.md" }),
@@ -1783,13 +1783,12 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
             "compilerOptions": {
-                "types": [], "jsx": "react-jsx", "jsxImportSource": "typedpress", "skipLibCheck": true,
+                "types": [], "skipLibCheck": true,
                 "paths": {
                     "typedpress": [root().join("types/typedpress/index.d.ts")],
-                    "typedpress/app": [root().join("types/typedpress/app.d.ts")],
-                    "typedpress/content": [root().join("types/typedpress/content.d.ts")],
-                    "typedpress/jsx-runtime": [root().join("types/typedpress/jsx-runtime.d.ts")],
-                    "typedpress/jsx-dev-runtime": [root().join("types/typedpress/jsx-dev-runtime.d.ts")]
+                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
+                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
+                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
                 }
             },
             "include": ["tp/**/*.ts", "tp/**/*.tsx"],
@@ -1819,12 +1818,15 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
 #[test]
 fn add_api_reference_exports_every_operation_in_a_static_site() {
     let tmp = tempfile::tempdir().unwrap();
-    let project = scaffold(tmp.path());
-    let config = project.join("typedpress.config.ts");
-    let source = std::fs::read_to_string(&config).unwrap();
-    let static_source = source.replacen("defineConfig({", "defineConfig({ output: \"static\",", 1);
-    assert_ne!(source, static_source, "the scaffold's config calls defineConfig({{");
-    std::fs::write(&config, static_source).unwrap();
+    let project = tmp.path().to_path_buf();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        r#"import { collection, defineConfig, text } from "typedpress";
+export const notes = collection({ title: text() }, { title: "title" });
+export default defineConfig({ name: "static-api", output: "static" });
+"#,
+    )
+    .unwrap();
     let added = add(&project, &["api-reference"]);
     assert_eq!(
         added.status.code(),
@@ -1833,8 +1835,7 @@ fn add_api_reference_exports_every_operation_in_a_static_site() {
         text(&added.stdout),
         text(&added.stderr)
     );
-    // The starter uses public/index.html. This static tp/app/ site also needs the home page
-    // its WordPress header links to; export correctly refuses links to pages it doesn't contain.
+    // Export requires a home page for the WordPress header's home link.
     std::fs::write(
         project.join("tp/app/page.tsx"),
         "export default function Home() { return <main>API documentation</main>; }\n",
@@ -1948,6 +1949,148 @@ fn scaffold(parent: &Path) -> PathBuf {
     project
 }
 
+/// A starter note the seed would refuse on the site fails the build at its file and field, in
+/// `typedpress check` too, and nothing is written for WordPress to run.
+#[test]
+fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let note = project.join("content/notes/first-walk.md");
+    let original = std::fs::read_to_string(&note).unwrap();
+    let refused = |command: &str| {
+        let out = first().arg(command).arg(&project).output().unwrap();
+        assert!(!out.status.success(), "{command} accepted a note the seed refuses");
+        text(&out.stderr)
+    };
+
+    // A title over the kind's `.max(120)`.
+    std::fs::write(
+        &note,
+        original.replace("title: A first walk", &format!("title: {}", "x".repeat(130))),
+    )
+    .unwrap();
+    for command in ["build", "check"] {
+        let said = refused(command);
+        // `build` prints the diagnostic's code (`error[F0001]:`); `check` prints plain `error:`.
+        let heading = if command == "build" { "error[F0001]" } else { "error" };
+        assert!(
+            said.contains(&format!("{heading}: title must be at most 120 characters")),
+            "{said}"
+        );
+        assert!(said.contains("--> content/notes/first-walk.md:3:1"), "{said}");
+        assert!(said.contains("it has 130 characters"), "{said}");
+    }
+    assert!(
+        !project.join("tp/dist").exists(),
+        "a refused build wrote a plugin WordPress would run"
+    );
+
+    // An HTML block: WordPress stores it as a Custom HTML block, which Markdown can't hold.
+    std::fs::write(
+        &note,
+        format!("{original}\n<iframe src=\"https://example.com\"></iframe>\n"),
+    )
+    .unwrap();
+    let said = refused("build");
+    assert!(
+        said.contains("`<iframe src=\"https://example.com\"></iframe>` is an HTML block"),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/first-walk.md:13:1"), "{said}");
+
+    // A field the kind doesn't have, with the one it was meant to be.
+    std::fs::write(&note, original.replace("summary:", "sumary:")).unwrap();
+    let said = refused("build");
+    assert!(
+        said.contains("error[F0001]: Unknown or generated field 'sumary'"),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/first-walk.md:5:1"), "{said}");
+    assert!(said.contains("did you mean `summary`?"), "{said}");
+
+    // A required field left out.
+    std::fs::write(&note, original.replace("title: A first walk\n", "")).unwrap();
+    let said = refused("build");
+    assert!(said.contains("error[F0001]: title is required"), "{said}");
+    assert!(said.contains("--> content/notes/first-walk.md:"), "{said}");
+
+    // HTML inside a line of text is Markdown the site keeps, so the build takes it.
+    std::fs::write(&note, format!("{original}\nPress <kbd>Ctrl</kbd> to stop.\n")).unwrap();
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+}
+
+/// A copied note keeps its `uid` line: the error names both files and says what to delete.
+/// Only `build` and `check` check the seed files: a content typo doesn't stop a command that
+/// compiles for another reason, such as `typedpress add`.
+#[test]
+fn a_seed_file_typo_does_not_block_add() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let note = project.join("content/notes/first-walk.md");
+    let original = std::fs::read_to_string(&note).unwrap();
+    std::fs::write(
+        &note,
+        original.replace("title: A first walk", &format!("title: {}", "x".repeat(130))),
+    )
+    .unwrap();
+    let added = first().args(["add", "db"]).current_dir(&project).output().unwrap();
+    assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert!(!built.status.success(), "build accepted a note the seed refuses");
+    assert!(
+        text(&built.stderr).contains("title must be at most 120 characters"),
+        "{}",
+        text(&built.stderr)
+    );
+}
+
+#[test]
+fn two_seed_files_with_one_uid_are_both_named() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let notes = project.join("content/notes");
+    std::fs::copy(notes.join("first-walk.md"), notes.join("second-walk.md")).unwrap();
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(!out.status.success());
+    let said = text(&out.stderr);
+    assert!(
+        said.contains(
+            "error[F0001]: content/notes/second-walk.md and content/notes/first-walk.md have the same uid zr_d2c870c681684da0b234"
+        ),
+        "{said}"
+    );
+    assert!(said.contains("--> content/notes/second-walk.md:2:1"), "{said}");
+    assert!(said.contains("delete that line from the copy"), "{said}");
+}
+
+/// `seed: true` ships the files of synced kinds; with none, the build says nothing is seeded.
+#[test]
+fn seed_without_a_synced_kind_warns_that_nothing_is_seeded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let seeded = first().arg("build").arg(&project).output().unwrap();
+    assert!(seeded.status.success(), "{}", text(&seeded.stderr));
+    assert!(
+        !text(&seeded.stderr).contains("nothing is seeded"),
+        "{}",
+        text(&seeded.stderr)
+    );
+    let config = project.join("typedpress.config.ts");
+    let source = std::fs::read_to_string(&config).unwrap();
+    assert!(source.contains("  sync: \"content/notes/*.md\",\n"));
+    std::fs::write(&config, source.replace("  sync: \"content/notes/*.md\",\n", "")).unwrap();
+    let out = first().arg("build").arg(&project).output().unwrap();
+    let said = text(&out.stderr);
+    assert!(out.status.success(), "{said}");
+    assert!(
+        said.contains(
+            "warning: `seed: true` imports the files of synced kinds, and no kind has `sync`: nothing is seeded."
+        ),
+        "{said}"
+    );
+}
+
 fn add(project: &Path, args: &[&str]) -> Output {
     first().arg("add").args(args).arg(project).output().unwrap()
 }
@@ -2041,7 +2184,15 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         project.join("tsconfig.test.json"),
         serde_json::to_vec(&serde_json::json!({
             "extends": "./tsconfig.json",
-            "compilerOptions": { "types": [], "paths": { "typedpress": [root().join("types/typedpress/index.d.ts")] } }
+            "compilerOptions": {
+                "types": [],
+                "paths": {
+                    "typedpress": [root().join("types/typedpress/index.d.ts")],
+                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
+                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
+                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
+                }
+            }
         }))
         .unwrap(),
     )
@@ -3402,4 +3553,117 @@ fn mcp_dev_status_is_bounded_by_the_servers_timeout() {
             .is_some()
     );
     mcp.finish();
+}
+
+/// `typedpress build --diagnostics-file <path>` is `typedpress dev`'s: it is in no usage line, belongs to
+/// `build` alone, and writes the compile's envelope whether the project compiled or not. The
+/// terminal names the diagnostic's code, as the dev overlay does.
+#[test]
+fn build_writes_the_diagnostics_envelope_for_dev_on_success_and_on_failure() {
+    let project = tempfile::tempdir().unwrap();
+    let config = project.path().join("typedpress.config.ts");
+    let report = project.path().join("report/diagnostics.json");
+    let build = || {
+        first()
+            .arg("build")
+            .arg(project.path())
+            .arg("--quiet")
+            .arg("--diagnostics-file")
+            .arg(&report)
+            .output()
+            .unwrap()
+    };
+    let envelope = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(&report).unwrap()).unwrap();
+
+    std::fs::write(&config, "export default { broken: ;").unwrap();
+    let failed = build();
+    assert_eq!(failed.status.code(), Some(1));
+    let said = text(&failed.stderr);
+    let written = envelope();
+    assert_eq!(written["schema"], "typedpress-diagnostics");
+    assert_eq!(written["ok"], false);
+    let diagnostic = &written["diagnostics"][0];
+    assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts");
+    let code = diagnostic["code"].as_str().unwrap();
+    assert!(
+        said.starts_with(&format!("error[{code}]: {}", diagnostic["message"].as_str().unwrap())),
+        "{said}"
+    );
+
+    // A build that compiles replaces it with an envelope that has no diagnostics.
+    std::fs::write(&config, CONFIG).unwrap();
+    let built = build();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+    let written = envelope();
+    assert_eq!(written["ok"], true);
+    assert_eq!(written["diagnostics"], serde_json::json!([]));
+
+    // And a later failure replaces that one.
+    std::fs::write(&config, "export default { broken: ;").unwrap();
+    assert_eq!(build().status.code(), Some(1));
+    assert_eq!(envelope()["ok"], false);
+
+    // Internal: not in the help, and not a flag of any other command.
+    for help in [&["help"][..], &["help", "build"]] {
+        let out = first().args(help).output().unwrap();
+        assert!(!text(&out.stdout).contains("diagnostics-file"), "{}", text(&out.stdout));
+    }
+    let table = std::fs::read_to_string(root().join("runtime/TypedPress/Cli/commands.json")).unwrap();
+    assert!(!table.contains("diagnostics-file"));
+    let misplaced = first()
+        .args(["check", "--diagnostics-file"])
+        .arg(&report)
+        .arg(project.path())
+        .output()
+        .unwrap();
+    assert_eq!(misplaced.status.code(), Some(2));
+    assert!(text(&misplaced.stderr).starts_with("unknown option --diagnostics-file"));
+    let missing = first().args(["build", "--diagnostics-file"]).output().unwrap();
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(text(&missing.stderr).starts_with("--diagnostics-file needs a path"));
+}
+
+/// `typedpress dev status --json` reports the watching process's failed build from the state file, and
+/// says nothing of a process that is gone.
+#[test]
+fn dev_status_reports_the_failed_build_of_the_process_that_is_watching() {
+    let project = tempfile::tempdir().unwrap();
+    let dev = project.path().join(".tp/dev");
+    std::fs::create_dir_all(&dev).unwrap();
+    std::fs::write(dev.join("owner.json"), r#"{"version":1,"created":true}"#).unwrap();
+    let error = serde_json::json!({
+        "message": "Unexpected token",
+        "diagnostics": [{ "code": "F1001", "message": "Unexpected token", "location": { "file": "tp/app/page.tsx", "line": 1, "column": 44 } }],
+    });
+    let state = |pid: u32| {
+        serde_json::json!({
+            "version": 1, "url": "http://localhost:1", "local": "http://localhost:1", "port": 1,
+            "pid": pid, "log": "/work/dev.log", "wordpress": "7.1", "php": "8.4", "error": error,
+        })
+    };
+    let status = || {
+        let out = first()
+            .args(["dev", "status", "--json"])
+            .arg(project.path())
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+
+    // This test's own process stands for the watcher: it exists.
+    std::fs::write(dev.join("state.json"), state(std::process::id()).to_string()).unwrap();
+    let watching = status();
+    assert_eq!(watching["pid"], std::process::id());
+    assert_eq!(watching["error"], error);
+    assert_eq!(watching["log"], "/work/dev.log");
+
+    // A process that has ended: its log and its error are not this site's any more.
+    let mut ended = Command::new("true").spawn().unwrap();
+    ended.wait().unwrap();
+    std::fs::write(dev.join("state.json"), state(ended.id()).to_string()).unwrap();
+    let stopped = status();
+    assert_eq!(stopped["pid"], serde_json::Value::Null);
+    assert_eq!(stopped["error"], serde_json::Value::Null);
+    assert_eq!(stopped["log"], serde_json::Value::Null);
 }

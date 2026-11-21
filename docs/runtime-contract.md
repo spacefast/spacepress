@@ -230,6 +230,32 @@ That proof is scoped to the collection and explicit viewer, accepts only rows
 with the matching password, and is suspended/restored across nested requests.
 It does not authorize a later First request or borrow the ambient user's rights.
 
+A signed-in SQL read can skip the scan for protected posts when the object cache
+holds a recent negative result for the post type. The row query still checks
+the stored password. The hint expires after five minutes and uses WordPress's
+`posts` change stamp. TypedPress advances the stamp after committing a post
+write. Reads inside a transaction use the database to check for protected posts.
+Scope checks that must establish unrestricted access also use the database.
+
+## Read budgets
+
+`tests/read_budget.rs` builds drive-store, www, and the shop on WordPress with
+SQLite. It checks the largest count over five successful GETs per route and
+visitor, including anonymous requests and signed-in subscribers. Statements
+equal `$wpdb->num_queries` plus calls to `Wp\Connection::run`. The warm-cache
+run also counts single-key and multi-key object cache reads after two warmups.
+Both cache modes must produce identical response bytes.
+
+With a warm cache, the drive-store item page uses one statement. The docs
+page adds one statement for navigation. The API fixtures use six statements
+for the keys, viewer rows, stored rows, and revision state. A page
+with staged versions can take two more statements for staged data. The shop
+budget covers the seeded catalog and a full page of 24 products.
+
+Set `TP_READ_BUDGET_TRACE=1` to see the statements and cache reads. Set
+`TP_READ_BUDGET_BASELINE` to the path of an extracted `runtime/` directory to
+compare counts and response bytes against that revision on the same fixture.
+
 ## Write pipeline (`Db::insert/update/delete`, REST and CLI all go through it)
 
 Viewer-bound writes must not answer existence questions about unreadable data.
@@ -317,7 +343,13 @@ Writes made by hooks or actions through `Db` run the same pipeline
 
 Every HTTP request and every CLI command runs in one transaction
 (`START TRANSACTION`, REPEATABLE READ). An exception before the commit rolls
-back every write of the request. Nested runtime transactions join without
+back every write of the request. A `GET` or `HEAD` route handler's transaction
+is opened lazily (`Db::reading()`, `Wp\Connection::reading()`): the database
+is told at the first statement that is not a plain `SELECT`, whether TypedPress,
+core or another plugin sends it, and a locking read (`FOR UPDATE`) counts as
+one. A handler that only reads sends neither `START TRANSACTION` nor `COMMIT`;
+its reads see committed data, as they would outside a transaction. From its
+first write on it is the same transaction as any other, rollback included. Nested runtime transactions join without
 savepoints. Any failed joined operation marks the outer transaction rollback-only,
 even if an application hook catches its exception. Attempting the outer commit
 rolls back all writes, discards after-commit callbacks, and throws. Hooks must let
@@ -515,7 +547,8 @@ transactions.
 On a plugin-installed site, the checks behind "the first request after an
 update" (the stored-name upgrade, the system tables, the app's migration ledger,
 Action Scheduler groups and recurring actions, route and content Pages, Polylang
-languages, the search index shape, the runtime-schema capability) run until one
+languages, the search index shape, the runtime-schema capability, a store's
+order storage) run until one
 request finds them all in place. That request records the autoloaded option
 `tp_installed` (`Wp\InstallMarker`): a digest of the app, the loaded
 `schema.php`, the system-tables version, the runtime version and hash, the UTC
@@ -887,6 +920,33 @@ nothing is collected or announced.
   with inserts of 100 rows each. A committed write to a kind adds every recorded path that read
   that row or listed the kind, with its `.md` twin, to the same announcement
   as the paths above: one `tp_purge_urls` call per committed transaction.
+  - **A read is a listing unless it names its rows.** Only a read whose `where`
+    (or the key a relation joins on) holds the primary key to a value or a list
+    of values, and that found every row it named, is recorded as those rows alone;
+    so is the item a kind URL names. A `unique()` column (a slug) names rows the
+    same way, except in a hierarchical kind (a slug is unique per parent) and, in
+    a kind with drafts, for a read that can see drafts (drafts may share a value
+    until one is published; a visitor's read sees published rows only). Every other read (a
+    filter, a search, a rank with `limit`, a count, a relation's children) records
+    `*` beside the rows it returned, whether it returned none, one or many: a
+    filtered list that showed one row is purged when a second row matches. A
+    localized kind's reads are always listings, since a read may answer with
+    another row of the translation group.
+  - **Globals.** A render that reads a global records `global:<name>` with `*`.
+    A write to the global's fields (`db.globals.<name>.update()`, the API, or
+    its options page in wp-admin, all of which save `tp_global_<name>_<field>`
+    options) adds every path that read it to the write's announcement.
+  - **Query strings.** A URL is shared and recorded only when every parameter in
+    its query is one the page declares (`export const search`). A request with
+    any other parameter (`?utm_source=`, `?fbclid=`, `?junk=1`) is answered with
+    the page, `private, no-store` and `A8C-Edge-Cache: no-cache`, calls
+    `batcache_cancel()`, and records nothing; a `.md` twin follows its page's
+    declaration. So a page with no `search` has one cacheable URL. One path keeps
+    at most 20 recorded query variants (`Render\Cache::MAX_VARIANTS`); a further
+    variant is answered privately until a recorded one has gone two cache windows
+    without a render, and is then dropped from the index. A URL longer than the
+    index's 191-byte limit is private too. A host that wants shared pages for
+    tracking parameters strips them before the request reaches PHP.
   A page answers at that one address only: the router 301s the other
   spelling of its path (with or without the trailing slash, as the
   permalink structure says) to it, so one spelling is purged. More than 200 paths in that call becomes `/*`, a
@@ -930,6 +990,26 @@ nothing is collected or announced.
   sets a cookie before its headers go out is private too, as Batcache refuses to
   keep one: a plugin that starts a PHP session on every request (`PHPSESSID`)
   turns page caching off for the site.
+- **WooCommerce carts:** Woo's cart cookies (`wp_woocommerce_session_*`,
+  `woocommerce_cart_hash`, `woocommerce_items_in_cart`) are not viewer cookies. A guest's
+  GET of an app page renders without them (`Commerce\Module::isolateSharedCart`), so the
+  page is the same bytes with or without a cart, sends the shared policy and sets no
+  cookie; the browser reads the cart from the Store API. The router shares an answer only
+  when the session cookie did not reach Woo on that request (`Commerce\Module::cartSession`),
+  whatever the query string or the spelling of the path. Cart, checkout, receipt,
+  order-pay and account paths, Woo's cart actions in the query string, every Store API
+  (`/wc/store/`) answer, and any response Woo sets a cookie on
+  (`woocommerce_set_cookie_enabled`) are `private, no-store` with `A8C-Edge-Cache:
+  no-cache`; those paths are never prebuilt. A page the theme renders keeps the cart
+  session, and Woo prints cart-dependent prefetch links there, so it is private for a
+  request carrying the session cookie. An external `frontend` origin is answered on
+  `/wc/store/` routes only, without `Access-Control-Allow-Credentials`, and is not added
+  to WordPress's allowed origins. **Host limit:** Batcache skips every request
+  with a `wp*` cookie in `advanced-cache.php`, before plugins load, so a visitor holding
+  `wp_woocommerce_session_*` always misses Batcache and is rendered by PHP. A prebuilt
+  file is still served to that visitor, and the response still carries the shared
+  headers for an edge that does not bypass on the cookie. A `Cart-Token` cart has no
+  cookie and misses nothing.
 - **Batcache and signed-in requests:** Batcache keeps what any request without a
   `wp*` cookie printed, whatever its `Cache-Control`. A request that runs as a
   user (an application password, a bearer token) calls `batcache_cancel()` as

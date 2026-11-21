@@ -317,3 +317,46 @@ test("a failed read stays in error until Woo answers with a cart, from a read or
   await added;
   assert.deepEqual([cart.read().error, cart.read().cart?.itemsCount, cart.read().pending], [undefined, 2, false]);
 });
+
+test("a token cart's order goes through the store: pending while it is placed, Woo's cart afterwards", async (t) => {
+  const order = Promise.withResolvers<Response>();
+  const tokens = { headers: { "Cart-Token": "token" } };
+  let ordered = false;
+  const calls: string[] = [];
+  const client = createCartClient({ session: "token", fetch: async (url, init) => {
+    calls.push(`${init?.method} ${String(url).replace("/wp-json/wc/store/v1", "")}`);
+    if (String(url).endsWith("/checkout")) {
+      const response = await order.promise;
+      ordered = response.ok;
+      return response;
+    }
+    return Response.json(wireCart(ordered ? 0 : 1), tokens);
+  } });
+  const cart = mount(client, (hooks) => hooks.useCart());
+  t.after(() => cart.unmount());
+  await cart.read().refresh();
+  assert.equal(cart.read().cart?.itemsCount, 1);
+
+  const input = { billing_address: { first_name: "Test", email: "buyer@example.test" }, payment_method: "cod" };
+  const placed = cart.read().checkout(input);
+  assert.deepEqual([cart.read().pending, cart.read().cart?.itemsCount], [true, 1]);
+  const result = { order_id: 7, status: "processing", payment_result: { payment_status: "success", redirect_url: "/checkout/order-received/7/", payment_details: [] } };
+  order.resolve(Response.json(result, tokens));
+  assert.deepEqual(await placed, result);
+  // The client read the cart Woo emptied; the store shows it without a refresh of its own.
+  assert.deepEqual(calls, ["GET /cart", "POST /checkout", "GET /cart"]);
+  assert.deepEqual([cart.read().pending, cart.read().cart?.itemsCount, cart.read().error], [false, 0, undefined]);
+});
+
+test("a refused token order keeps the cart and reports the refusal", async (t) => {
+  const tokens = { headers: { "Cart-Token": "token" } };
+  const client = createCartClient({ session: "token", fetch: async (url) => String(url).endsWith("/checkout")
+    ? Response.json({ code: "woocommerce_rest_invalid_email_address", message: "The provided email address is not valid", data: { status: 400 } }, { status: 400, ...tokens })
+    : Response.json(wireCart(1), tokens) });
+  const cart = mount(client, (hooks) => hooks.useCart());
+  t.after(() => cart.unmount());
+  await cart.read().refresh();
+  await assert.rejects(cart.read().checkout({ billing_address: { email: "nope" }, payment_method: "cod" }), { code: "woocommerce_rest_invalid_email_address" });
+  const state = cart.read();
+  assert.deepEqual([state.pending, state.cart?.itemsCount, (state.error as WooStoreError).status], [false, 1, 400]);
+});

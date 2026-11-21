@@ -23,12 +23,15 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    ```
 
    `state` is `none` (no site yet), `stopped` or `running`; `url` and `port` say where it is, and
-   `watching` whether a `typedpress dev` process is rebuilding it on save.
+   `watching` whether a `typedpress dev` process is rebuilding it on save. `error` is null, or the
+   watching process's last build when it failed (`message` and the compiler's `diagnostics`): the
+   site then serves the last build that succeeded, so fix the source before reading the site.
 
 2. Start the site.
    - `typedpress dev --detach` builds, starts WordPress and returns once the site is up. It keeps
      rebuilding on every save in the background and logs to `.tp/dev/dev.log`. Use this from
-     an agent. Plain `typedpress dev` does the same when an agent runs it without a terminal.
+     an agent. It exits 1 and prints the error when the first build fails; WordPress is running
+     and the next save that builds clears it. Plain `typedpress dev` does the same when an agent runs it without a terminal.
    - `typedpress dev` in a terminal stays in the foreground until Ctrl+C.
    - `typedpress dev --no-watch` builds, starts WordPress and returns, with nothing watching. Run it
      again after edits to rebuild.

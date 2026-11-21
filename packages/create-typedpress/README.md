@@ -1,6 +1,6 @@
 # Create a TypedPress app
 
-After publication, `npm create typedpress@0.3.0 my-app` creates a typed backend, a working public frontend and editor settings, then installs the matching compiler package. The app it creates is content only: one `collection()`, stored as WordPress posts. `typedpress add db` in the new project adds SQL tables when the app needs them. `cd my-app && npm run dev` starts WordPress and watches your sources. Node.js 22+ and npm are required; Rust and Docker are not.
+After publication, `npm create typedpress my-app` creates a notes site and installs the matching compiler package. Open the URL printed by `cd my-app && npm run dev`. Try the greeting form and browse the sample notes. Start editing in `tp/app/page.tsx`. Node.js 22+ and npm are required. [Starter source](https://github.com/spacefast/zero/tree/main/packages/create-typedpress/template)
 
 After installing, it runs `typedpress init` in the new project: `AGENTS.md`, `.mcp.json` and the agent skills, generated from the project's own config, so a coding agent can work in it from the first commit. With `--no-install` that step uses `TP_BIN` when it is set; otherwise run `npx typedpress init` after `npm install`.
 

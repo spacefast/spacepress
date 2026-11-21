@@ -82,53 +82,56 @@ try {
   // --foreground: this script reads the watcher's output, whatever environment runs it.
   session = spawn('npm', ['run', 'dev', '--', '--foreground', '--port', String(port)], { cwd: project, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
+  const redacted = () => output.replace(/^Initial login:.*$/gm, 'Initial login: [redacted]');
   const ready = new Promise((done, fail) => {
-    const deadline = setTimeout(() => finish(new Error(`Dev readiness timed out:\n${output}`)), 600000);
+    const deadline = setTimeout(() => finish(new Error(`Dev readiness timed out:\n${redacted()}`)), 600000);
     const finish = (error) => { clearTimeout(deadline); error ? fail(error) : done(); };
     for (const stream of [session.stdout, session.stderr]) stream.on('data', (chunk) => {
       output += chunk;
-      process.stdout.write(chunk);
       if (output.includes('Watching config, ')) finish();
     });
     session.once('error', finish);
-    session.once('exit', (code) => finish(new Error(`npm run dev exited ${code}:\n${output}`)));
+    session.once('exit', (code) => finish(new Error(`npm run dev exited ${code}:\n${redacted()}`)));
   });
   siteCreated = true;
   await ready;
   const status = JSON.parse(await run('npm', ['run', '--silent', 'status']));
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
-  const frontend = `${base}/wp-content/plugins/typedpress-app-my-app/public/`;
-  const response = await fetch(`${frontend}index.html`, { signal: AbortSignal.timeout(20000) });
-  assert.equal(response.status, 200);
-  assert.match(await response.text(), /Make something/);
-  for (const asset of ['app.js', 'style.css']) assert.equal((await fetch(`${frontend}${asset}`)).status, 200);
-  const schemaResponse = await fetch(`${base}/wp-json/typedpress/v1`);
-  assert.equal(schemaResponse.status, 200);
-  const { data: schema } = await schemaResponse.json();
+  const { createClient, TypedPressError } = await import(pathToFileURL(join(project, 'tp/_generated/client/index.ts')).href);
+  const client = createClient({ fetch: (path, options) => fetch(new URL(path, base), options) });
+  for (const [path, expected] of [
+    ['/', /Make this site yours/],
+    ['/notes/', /A first walk/],
+    ['/notes/first-walk/', /Take the long way to the corner shop/],
+  ]) {
+    const page = await fetch(new URL(path, base), { signal: AbortSignal.timeout(20000) });
+    assert.equal(page.status, 200, path);
+    assert.match(await page.text(), expected);
+  }
+  const schema = await client.schema();
   assert.equal(schema.runtime.wp.database.kind, 'sqlite');
   assert.deepEqual(schema.runtime.pendingMigrations, []);
-  assert.equal((await fetch(`${base}/wp-json/typedpress/v1/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Anonymous write', body: '' }) })).status, 401);
-  // The native WordPress REST seam creates the content read by the public app.
+  await assert.rejects(
+    client.notes.create({ title: 'Anonymous write' }),
+    (error) => error instanceof TypedPressError && error.status === 401,
+  );
+  // Create a post through native WordPress and read it through the generated client.
   const password = (await run('npm', ['run', '--silent', 'wp', '--', 'user', 'application-password', 'create', 'admin', 'setup-acceptance', '--porcelain'])).trim();
   const created = await fetch(`${base}/wp-json/wp/v2/tp_notes`, {
     method: 'POST', headers: { 'content-type': 'application/json', authorization: `Basic ${Buffer.from(`admin:${password}`).toString('base64')}` },
-    body: JSON.stringify({ title: 'From native WordPress', status: 'publish', acf: { tp_body: 'One server, real SQLite.' } }),
+    body: JSON.stringify({ title: 'From native WordPress', status: 'publish', content: 'One server, real SQLite.' }),
   });
   assert.equal(created.status, 201, await created.text());
-  const { data: notes } = await (await fetch(`${base}/wp-json/typedpress/v1/notes`)).json();
-  assert.equal(notes.length, 1);
-  assert.equal(notes[0].title, 'From native WordPress');
-  assert.equal(notes[0].body, 'One server, real SQLite.');
-  const { createClient } = await import(pathToFileURL(join(project, 'tp/_generated/client/index.ts')).href);
-  assert.equal((await createClient({ url: `${base}/wp-json/typedpress/v1` }).notes.list())[0].title, 'From native WordPress');
+  const notes = await client.notes.list();
+  assert.deepEqual(notes.map((note) => note.title).sort(), ['A first walk', 'From native WordPress', 'What to pack']);
   // Exercise the actual supplied-compiler escape hatch independently of the cache.
   await run(first, ['check'], { env: { ...env, TP_BIN: compiler, TP_OFFLINE: '1', TP_CACHE_DIR: join(work, 'unused-cache') } });
   await run('npm', ['run', 'stop']);
   await once(session, 'exit', { signal: AbortSignal.timeout(15000) }).catch((error) => { if (session.exitCode === null) throw error; });
   assert.equal(JSON.parse(await run('npm', ['run', '--silent', 'status'])).isOnline, false);
-  await writeFile(join(work, 'dev-output.txt'), output.replaceAll(password, '[redacted]'));
-  await writeFile(join(work, 'result.json'), JSON.stringify({ passed: true, sourceHead: head.trim(), target: releaseTarget(), node: process.version, checks: ['no cargo/rustc/docker/host PHP on PATH', 'npm pack/install', 'automatic scaffold install', 'offline cached compiler', 'typecheck generated client', 'npm run dev foreground', 'WordPress serves public assets', 'SQLite schema ready', 'anonymous write rejected', 'native WordPress write visible through typed client', 'TP_BIN override', 'site stopped'] }, null, 2) + '\n');
+  await writeFile(join(work, 'dev-output.txt'), redacted().replaceAll(password, '[redacted]'));
+  await writeFile(join(work, 'result.json'), JSON.stringify({ passed: true, sourceHead: head.trim(), target: releaseTarget(), node: process.version, checks: ['no cargo/rustc/docker/host PHP on PATH', 'npm pack/install', 'automatic scaffold install', 'offline cached compiler', 'typecheck generated client', 'npm run dev foreground', 'WordPress renders starter pages and seeded notes', 'SQLite schema ready', 'anonymous write rejected', 'native WordPress write visible through typed client', 'TP_BIN override', 'site stopped'] }, null, 2) + '\n');
 } catch (error) { primary = error; throw error; }
 finally {
   const cleanup = [];

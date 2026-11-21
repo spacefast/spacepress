@@ -927,7 +927,7 @@ fn load_query_asset(
             Some(crate::assets::Kind::Css | crate::assets::Kind::CssModule) => {
                 // Bundle & minify the stylesheet, then expose its hashed URL without auto-enqueuing it.
                 let mut stack = Vec::new();
-                let (file, rewritten, preloads) = bundle_css(fs, path, false, program, by_path, &mut stack, span)?;
+                let (file, rewritten, preloads, _) = bundle_css(fs, path, false, program, by_path, &mut stack, span)?;
                 let minified = crate::css::minify(&rewritten).into_bytes();
                 let mut asset = crate::assets::Asset::with_preloads(
                     &relative,
@@ -1038,7 +1038,7 @@ fn load_asset(
         }
         crate::assets::Kind::Css | crate::assets::Kind::CssModule => {
             let mut stack = Vec::new();
-            let (file, rewritten, preloads) = bundle_css(
+            let (file, rewritten, preloads, _) = bundle_css(
                 fs,
                 path,
                 kind == crate::assets::Kind::CssModule,
@@ -1083,7 +1083,7 @@ fn load_asset(
 }
 
 /// Recursively bundles local relative `@import` rules and relative `url(...)` references inside a
-/// stylesheet, returning `(diag_file_id, rewritten_css, font_preloads)`.
+/// stylesheet, returning `(diag_file_id, rewritten_css, font_preloads, has_external_import)`.
 fn bundle_css(
     fs: &dyn Fs,
     path: &Path,
@@ -1092,7 +1092,7 @@ fn bundle_css(
     by_path: &mut HashMap<PathBuf, usize>,
     css_stack: &mut Vec<PathBuf>,
     span: Span,
-) -> Result<(u32, String, Vec<crate::assets::FontPreload>)> {
+) -> Result<(u32, String, Vec<crate::assets::FontPreload>, bool)> {
     let relative = path
         .strip_prefix(&program.root)
         .unwrap_or(path)
@@ -1125,24 +1125,28 @@ fn bundle_css(
     let mut preloads: Vec<crate::assets::FontPreload> = Vec::new();
     let mut seen_preloads: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    // Find the last external `@import` (http/https/protocol-relative). Per CSS Cascade, `@import`
-    // rules must precede all style rules; if a local `@import` appears before an external `@import`,
-    // emit the bundled local sheet as a sibling hashed `.css` asset and keep it as `@import` so the
-    // later external `@import` stays valid while preserving cascade order.
-    let last_external_import_at = scanned
-        .imports
-        .iter()
-        .filter(|imp| {
-            let lower = imp.href.to_ascii_lowercase();
-            lower.starts_with("http://") || lower.starts_with("https://") || imp.href.starts_with("//")
-        })
-        .map(|imp| imp.at)
-        .max();
-
-    // Bundle local relative `@import` rules inline (preserving @layer / @supports / @media conditions).
-    for imp in &scanned.imports {
+    // First resolve all local `@import` targets so we know whether any nested stylesheet contains
+    // an external (`http(s)://`/`//`) `@import`. Per CSS Cascade, `@import` rules must precede all
+    // style rules; if any local `@import` precedes an external `@import` (direct or nested), emit
+    // the local sheet as a sibling hashed `.css` asset kept as `@import "./<hashed>.css"` so later
+    // external `@import` rules remain valid while preserving exact cascade order.
+    enum ResolvedImport<'a> {
+        External,
+        Local {
+            imp: &'a crate::css::CssImport,
+            target: PathBuf,
+            inner_file: u32,
+            inner: String,
+            has_external: bool,
+        },
+    }
+    let mut resolved_imports: Vec<ResolvedImport<'_>> = Vec::with_capacity(scanned.imports.len());
+    let mut last_external_idx: Option<usize> = None;
+    for (idx, imp) in scanned.imports.iter().enumerate() {
         let lower_href = imp.href.to_ascii_lowercase();
         if lower_href.starts_with("http://") || lower_href.starts_with("https://") || imp.href.starts_with("//") {
+            last_external_idx = Some(idx);
+            resolved_imports.push(ResolvedImport::External);
             continue;
         }
         let imp_span = Span {
@@ -1187,14 +1191,40 @@ fn bundle_css(
                     .code(diag::Code::Import),
             );
         }
-        let (inner_file, mut inner, inner_preloads) =
+        let (inner_file, inner, inner_preloads, child_has_external) =
             bundle_css(fs, &target, false, program, by_path, css_stack, imp_span)?;
         for p in inner_preloads {
             if seen_preloads.insert(p.file.clone()) {
                 preloads.push(p);
             }
         }
-        if last_external_import_at.is_some_and(|ext_at| imp.at < ext_at) {
+        if child_has_external {
+            last_external_idx = Some(idx);
+        }
+        resolved_imports.push(ResolvedImport::Local {
+            imp,
+            target,
+            inner_file,
+            inner,
+            has_external: child_has_external,
+        });
+    }
+
+    let mut has_external_import = last_external_idx.is_some();
+    for (idx, item) in resolved_imports.into_iter().enumerate() {
+        let ResolvedImport::Local {
+            imp,
+            target,
+            inner_file,
+            mut inner,
+            has_external: child_has_external,
+        } = item
+        else {
+            continue;
+        };
+        let keep_as_import = last_external_idx.is_some_and(|last| idx < last || (child_has_external && idx > 0));
+        if keep_as_import {
+            has_external_import = true;
             let target_rel = target
                 .strip_prefix(&program.root)
                 .unwrap_or(&target)
@@ -1338,7 +1368,7 @@ fn bundle_css(
     edits.sort_by_key(|(s, _, _)| *s);
     let rewritten = crate::css::rewrite_ranges(&text, &edits);
     css_stack.pop();
-    Ok((file, rewritten, preloads))
+    Ok((file, rewritten, preloads, has_external_import))
 }
 
 fn percent_decode_url(s: &str) -> Option<String> {

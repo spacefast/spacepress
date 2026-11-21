@@ -67,6 +67,9 @@ struct Output {
     hints: Vec<String>,
     /// The app plugin `typedpress build` writes, file by file, by path below the plugins directory.
     app_plugin: BTreeMap<String, String>,
+    /// Non-UTF-8 binary files of the app plugin (e.g. PNG/WebP/WOFF2), base64-encoded.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    app_plugin_binary: BTreeMap<String, String>,
     /// TypedPress's plugins for this app, in activation order.
     tp_plugins: Vec<String>,
     /// The WordPress.org plugins the app needs, dependencies first.
@@ -298,10 +301,18 @@ fn compile_request(request: Request) -> String {
                     .map(|(name, sql)| (name.clone(), sql.clone().into_bytes())),
             );
             let (schema_php, packaged) = crate::app_plugin::package(&built, migrations, public);
-            let app_plugin = packaged
-                .into_iter()
-                .map(|(path, bytes)| (path, String::from_utf8_lossy(&bytes).into_owned()))
-                .collect();
+            let mut app_plugin = BTreeMap::new();
+            let mut app_plugin_binary = BTreeMap::new();
+            for (path, bytes) in packaged {
+                match String::from_utf8(bytes) {
+                    Ok(text) => {
+                        app_plugin.insert(path, text);
+                    }
+                    Err(err) => {
+                        app_plugin_binary.insert(path, crate::assets::base64_encode(err.as_bytes()));
+                    }
+                }
+            }
             let empty = crate::wp_plugins::Config { plugins: Vec::new() };
             // The config's plugins resolved when it was extracted; this repeats that plan for its order.
             let wordpress_plugins = crate::wp_plugins::resolve(
@@ -324,6 +335,7 @@ fn compile_request(request: Request) -> String {
             let output = Output {
                 tp_plugins: crate::app_plugin::tp_plugins(&built.schema),
                 app_plugin,
+                app_plugin_binary,
                 wordpress_plugins,
                 schema_php,
                 functions_php: built.functions_php,

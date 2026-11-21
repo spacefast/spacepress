@@ -54,13 +54,37 @@ final class PublicFiles
             }, 0);
         }
         // Sync root symlinks whenever the public manifest, source, root, or literal routes change.
-        // Running on `init` keeps loose installs and non-Receiver managed hosts in sync without
-        // mutating live links during candidate initialization.
+        // Only live builds (never unactivated managed candidates or inspect runs) sync on `init`.
         if (!Runtime::inspecting()) {
             add_action('init', static function () use ($plugin): void {
-                self::maybeSyncSymlinks($plugin);
+                if (self::isLiveBuild()) {
+                    self::maybeSyncSymlinks($plugin);
+                }
             }, 1);
         }
+    }
+
+    /** Whether the currently loaded build is live (not an inspect run or an unactivated managed candidate). */
+    private static function isLiveBuild(): bool
+    {
+        if (Runtime::inspecting()) {
+            return false;
+        }
+        if (!Runtime::managed()) {
+            return true;
+        }
+        if (class_exists(\TypedPressPlugin\Mount::class, false)) {
+            $mounted = \TypedPressPlugin\Mount::mounted();
+            if (is_array($mounted)) {
+                return ($mounted['mode'] ?? null) === 'live';
+            }
+        }
+        $loaded = class_exists(\TypedPress\Loader\Loader::class, false) ? \TypedPress\Loader\Loader::loaded() : null;
+        if (is_array($loaded) && is_string($loaded['root'] ?? null) && is_string($loaded['build'] ?? null)) {
+            return is_file($loaded['root'] . '/ready/' . $loaded['build'] . '.json');
+        }
+
+        return false;
     }
 
     /** @return array<string, string> relative path below `public/` => 12-hex content version */
@@ -220,6 +244,7 @@ final class PublicFiles
         $prevRoot = is_array($stored) && is_string($stored['root'] ?? null) ? rtrim($stored['root'], '/\\') : $root;
         $prevLinks = is_array($stored) && is_array($stored['links'] ?? null) ? array_values(array_filter($stored['links'], 'is_string')) : [];
         $prevDirs = is_array($stored) && is_array($stored['dirs'] ?? null) ? array_values(array_filter($stored['dirs'], 'is_string')) : [];
+        $prevStale = is_array($stored) && is_array($stored['stale'] ?? null) ? $stored['stale'] : [];
         $prevLinkSet = array_fill_keys($prevLinks, true);
 
         $sourceTop = is_dir($publicDir) ? realpath($publicDir) : false;
@@ -264,15 +289,22 @@ final class PublicFiles
             }
         }
 
+        // Retry any previously failed removals from earlier roots first.
+        $stale = self::retryStale($prevStale);
+
         // Remove symlinks from previous builds that are no longer desired (or moved root).
-        // Keep any link whose removal fails so later syncs or deactivation can retry cleanup.
+        // Keep any link whose removal fails (with its original root) so later syncs or deactivation retry it.
         $pendingLinks = [];
         foreach ($prevLinks as $old) {
             if ($prevRoot !== $root || !isset($desired[$old])) {
                 $path = $prevRoot . '/' . $old;
                 if (is_link($path) && !@unlink($path) && is_link($path)) {
                     error_log("TypedPress: could not remove stale public symlink $path");
-                    $pendingLinks[] = $old;
+                    if ($prevRoot === $root) {
+                        $pendingLinks[] = $old;
+                    } else {
+                        $stale[] = ['root' => $prevRoot, 'path' => $old, 'dir' => false];
+                    }
                 }
             }
         }
@@ -344,6 +376,7 @@ final class PublicFiles
                 $dir = dirname($dir);
             }
         }
+        $pendingDirs = false;
         $pruneList = $prevRoot === $root ? array_keys($ownedDirs) : $prevDirs;
         usort($pruneList, static fn (string $a, string $b): int => substr_count($b, '/') <=> substr_count($a, '/') ?: strlen($b) <=> strlen($a));
         foreach ($pruneList as $dir) {
@@ -351,12 +384,19 @@ final class PublicFiles
                 $dirPath = $prevRoot . '/' . $dir;
                 if (!is_dir($dirPath) || @rmdir($dirPath) || !is_dir($dirPath)) {
                     unset($ownedDirs[$dir]);
+                } else {
+                    error_log("TypedPress: could not remove stale public directory $dirPath");
+                    $pendingDirs = true;
+                    if ($prevRoot !== $root) {
+                        $stale[] = ['root' => $prevRoot, 'path' => $dir, 'dir' => true];
+                    }
                 }
             }
         }
         $keptDirs = array_values(array_keys($ownedDirs));
+        $hasPending = $pendingLinks !== [] || $pendingDirs || $stale !== [];
 
-        if ($recordedLinks === [] && $keptDirs === [] && $hash === '' && $pendingLinks === []) {
+        if ($recordedLinks === [] && $keptDirs === [] && $hash === '' && !$hasPending) {
             delete_option(self::SYMLINKS_OPTION);
         } else {
             update_option(self::SYMLINKS_OPTION, [
@@ -366,7 +406,8 @@ final class PublicFiles
                 'routes' => $routes,
                 'links' => $recordedLinks,
                 'dirs' => $keptDirs,
-                'pending' => $pendingLinks !== [],
+                'stale' => $stale,
+                'pending' => $hasPending,
             ], true);
         }
     }
@@ -381,6 +422,7 @@ final class PublicFiles
             return;
         }
         $root = rtrim($stored['root'], '/\\');
+        $stale = self::retryStale(is_array($stored['stale'] ?? null) ? $stored['stale'] : []);
         $remainingLinks = [];
         foreach (is_array($stored['links'] ?? null) ? $stored['links'] : [] as $rel) {
             if (!is_string($rel) || $rel === '') {
@@ -401,10 +443,11 @@ final class PublicFiles
             }
             $dirPath = $root . '/' . $dir;
             if (is_dir($dirPath) && !@rmdir($dirPath) && is_dir($dirPath)) {
+                error_log("TypedPress: could not remove public directory $dirPath during cleanup");
                 $remainingDirs[] = $dir;
             }
         }
-        if ($remainingLinks === [] && $remainingDirs === []) {
+        if ($remainingLinks === [] && $remainingDirs === [] && $stale === []) {
             delete_option(self::SYMLINKS_OPTION);
         } else {
             update_option(self::SYMLINKS_OPTION, [
@@ -414,9 +457,51 @@ final class PublicFiles
                 'routes' => '',
                 'links' => $remainingLinks,
                 'dirs' => $remainingDirs,
+                'stale' => $stale,
                 'pending' => true,
             ], true);
         }
+    }
+
+    /**
+     * Retry removals that previously failed under an earlier document root, returning any still present.
+     *
+     * @param list<mixed> $entries
+     * @return list<array{root: string, path: string, dir: bool}>
+     */
+    private static function retryStale(array $entries): array
+    {
+        $links = [];
+        $dirs = [];
+        foreach ($entries as $entry) {
+            if (!is_array($entry) || !is_string($entry['root'] ?? null) || !is_string($entry['path'] ?? null) || $entry['root'] === '' || $entry['path'] === '') {
+                continue;
+            }
+            $item = ['root' => rtrim($entry['root'], '/\\'), 'path' => $entry['path'], 'dir' => !empty($entry['dir'])];
+            if ($item['dir']) {
+                $dirs[] = $item;
+            } else {
+                $links[] = $item;
+            }
+        }
+        $remaining = [];
+        foreach ($links as $item) {
+            $full = $item['root'] . '/' . $item['path'];
+            if (is_link($full) && !@unlink($full) && is_link($full)) {
+                error_log("TypedPress: could not remove stale public symlink $full");
+                $remaining[] = $item;
+            }
+        }
+        usort($dirs, static fn (array $a, array $b): int => substr_count($b['path'], '/') <=> substr_count($a['path'], '/') ?: strlen($b['path']) <=> strlen($a['path']));
+        foreach ($dirs as $item) {
+            $full = $item['root'] . '/' . $item['path'];
+            if (is_dir($full) && !@rmdir($full) && is_dir($full)) {
+                error_log("TypedPress: could not remove stale public directory $full");
+                $remaining[] = $item;
+            }
+        }
+
+        return $remaining;
     }
 
     /** Writable document root for root symlinks, or null on multisite / read-only hosts. */

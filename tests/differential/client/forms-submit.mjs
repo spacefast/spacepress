@@ -391,6 +391,61 @@ try {
     await page.close();
   }
 
+  // A stale answer in another block template arriving after a `<Link>` navigation is dropped, not
+  // navigated to (#537).
+  {
+    const { page } = await open(`${url}/?ref=nav`);
+    await page.evaluate(() => {
+      window.tpMarker = "same document";
+      window.tpSubmittedVote = document.querySelector("form.vote");
+      window.tpSubmittedVote.querySelector("[name=_tp_return]").value = "/bare/";
+    });
+    const releaseVote = await hold(page, "**/wp-json/typedpress/v1/actions/vote");
+    await page.click(".vote .yes");
+    await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
+    await page.click("a.other");
+    await page.waitForSelector(".other-page", { timeout: 15000 });
+    const flashed = page.waitForResponse((r) => r.url().includes("_flash="), { timeout: 15000 });
+    await releaseVote();
+    await flashed;
+    await page.waitForFunction(() => window.tpSubmittedVote?.getAttribute("aria-busy") === null);
+    out.otherTemplateStaleLink = {
+      url: path(page.url()),
+      other: await page.$(".other-page").then((el) => el !== null),
+      template: await page.evaluate(() => document.body.dataset.tpTemplate),
+      marker: await page.evaluate(() => window.tpMarker ?? null),
+    };
+    await page.close();
+  }
+
+  // A stale answer in another block template overtaken by a later submit stays on the newer submit's
+  // page and marks the older form overtaken (#537).
+  {
+    const { page } = await open(`${url}/?ref=nav`);
+    await page.evaluate(() => {
+      window.tpMarker = "same document";
+      window.tpSubmittedVote = document.querySelector("form.vote");
+      window.tpSubmittedVote.querySelector("[name=_tp_return]").value = "/bare/";
+    });
+    const releaseVote = await hold(page, "**/wp-json/typedpress/v1/actions/vote");
+    await page.click(".vote .yes");
+    await page.waitForFunction(() => document.querySelector("form.vote")?.getAttribute("aria-busy") === "true");
+    await page.fill("form.subscribe [name=email]", "three@example.test");
+    await page.fill("form.subscribe [name=seats]", "1");
+    await page.click("form.subscribe button");
+    await page.waitForSelector(".done", { timeout: 15000 });
+    await releaseVote();
+    await page.waitForFunction(() => window.tpSubmittedVote?.getAttribute("aria-busy") === null);
+    out.otherTemplateOvertaken = {
+      url: path(page.url()),
+      done: await page.textContent(".done"),
+      template: await page.evaluate(() => document.body.dataset.tpTemplate),
+      marker: await page.evaluate(() => window.tpMarker ?? null),
+      message: await page.$eval("form.vote", (f) => f.querySelectorAll("[data-tp-form-error]").length),
+    };
+    await page.close();
+  }
+
   // The router module can't load: nothing was sent, so the browser posts the form itself, and the
   // page it comes back to shows the result with `?_flash` taken out of the address bar.
   {

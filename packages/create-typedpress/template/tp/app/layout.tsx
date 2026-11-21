@@ -22,7 +22,7 @@ export default async function Layout({ children }: LayoutProps) {
         </nav>
       </header>
       <main>{children}</main>
-      <footer>Built with <a href="https://typedpress-docs.space.fast">TypedPress</a></footer>
+      <footer>Built with <a href="https://spacepress.dev">SpacePress</a></footer>
     </div>
   );
 }

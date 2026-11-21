@@ -18,6 +18,7 @@ indexmap = "2.14.2"
 oxc-css-parser = "0.0.22"
 oxc_allocator = "=0.158.0"
 oxc_ast = "=0.158.0"
+oxc_ast_visit = "=0.158.0"
 oxc_parser = "=0.158.0"
 oxc_span = "=0.158.0"
 oxc_syntax = "=0.158.0"
@@ -72,7 +73,7 @@ required-features = ["cli"]
 [profile.release]
 strip = true
 
-# The browser build of the compiler core (src/wasm.rs; docs-site/scripts/build-wasm.mjs runs this):
+# The browser build of the compiler core (src/wasm.rs; www/scripts/build-wasm.mjs runs this):
 # `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown`
 [profile.wasm]
 inherits = "release"

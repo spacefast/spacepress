@@ -122,6 +122,10 @@ final class Assets
         $plugin = Wp\Runtime::plugin();
         foreach ($files as $file) {
             $handle = 'typedpress-app-' . sanitize_key(str_replace('.', '-', $file));
+            if (str_starts_with($file, '/typedpress-styles/')) {
+                wp_enqueue_style($handle, home_url($file), [], null);
+                continue;
+            }
             $disk = $plugin !== null ? $plugin->dir . '/' . self::DIR . $file : null;
             if ($disk !== null && is_file($disk) && ($size = @filesize($disk)) !== false && $size <= self::INLINE_LIMIT) {
                 $css = (string) @file_get_contents($disk);

@@ -1,30 +1,29 @@
-// Only published drives can appear in the storefront. Apply filters before the price-ordered limit.
 import type { InferSelectModel } from "typedpress";
 import { drives } from "typedpress:db";
-import { CONDITIONS, MEDIA, drives as driveCollection } from "../schema";
+import { drives as driveKind } from "../schema";
 
-type Drive = InferSelectModel<typeof driveCollection>;
+type Drive = InferSelectModel<typeof driveKind>;
 
-export async function catalog(q: string, media: string, condition: string) {
-  const where: { status: "published"; media?: Drive["media"]; condition?: Drive["condition"] } = { status: "published" };
-  if (media !== "") {
-    const value = media as Drive["media"];
-    if (!MEDIA.includes(value)) return [];
-    where.media = value;
-  }
-  if (condition !== "") {
-    const value = condition as Drive["condition"];
-    if (!CONDITIONS.includes(value)) return [];
-    where.condition = value;
+export async function catalog(q: string, media: Drive["media"], condition: Drive["condition"]) {
+  const where: {
+    status: "published";
+    media?: NonNullable<Drive["media"]>;
+    condition?: NonNullable<Drive["condition"]>;
+    OR?: { name?: { like: string }; model?: { like: string }; brand?: { like: string }; description?: { like: string } }[];
+  } = { status: "published" };
+  if (media) where.media = media;
+  if (condition) where.condition = condition;
+  if (q) {
+    const term = { like: `%${q}%` };
+    where.OR = [{ name: term }, { model: term }, { brand: term }, { description: term }];
   }
   return await drives.list({
     where,
-    search: q,
     orderBy: { price: "asc" },
     limit: 100,
     columns: {
-      name: true, slug: true, summary: true, brand: true, model: true, capacityGb: true,
-      media: true, price: true, condition: true, stock: true,
+      name: true, slug: true, shortDescription: true, brand: true, model: true, capacityGb: true,
+      media: true, price: true, condition: true, availability: true, stockQuantity: true,
     },
   });
 }

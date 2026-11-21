@@ -522,6 +522,25 @@ pub fn dedupe(assets: &mut [&mut Asset]) {
     }
 }
 
+/// The route graph can refer to stylesheets that the frontend build put in public/.
+pub(crate) fn require_frontend_styles(program: &crate::loader::Program, present: impl Fn(&str) -> bool) -> Result<()> {
+    let missing = program
+        .assets
+        .values()
+        .filter(|asset| asset.file.starts_with('/') && !present(&asset.file[1..]))
+        .map(|asset| &asset.file)
+        .min();
+    if let Some(file) = missing {
+        return Err(Diag::new(
+            Span::NONE,
+            format!("frontend stylesheet {file} is missing from public/"),
+        )
+        .help("Build and capture the project with its installed frontend dependency before publishing.")
+        .code(crate::diag::Code::Import));
+    }
+    Ok(())
+}
+
 /// The stylesheets a route links: every CSS and CSS-module asset its layouts and page reach
 /// through imports, each once, dependencies before the module that imports them and in import
 /// order (as a bundler orders them), the root layout's first.

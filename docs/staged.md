@@ -36,7 +36,7 @@ export const logs = collection({ title: text() }, { staged: false });
 All of these need the item's `update` rule. A caller it doesn't cover gets the `404` a missing item
 gets, whether or not anything is staged.
 
-| Operation | API (`/__tp/api/v1`) | Client | Ability `<app>/<kind>-…` | `wp typedpress staged …` |
+| Operation | API (`/wp-json/typedpress/v1`) | Client | Ability `<app>/<kind>-…` | `wp typedpress staged …` |
 |---|---|---|---|---|
 | Stage | `PATCH /<kind>/<id>/staged` with the fields | `client.posts.stage(id, patch)` | `stage` | `stage <kind> <id> <json>` |
 | Read | `GET /<kind>/<id>/staged` | `client.posts.staged(id)` | `staged-get` | `show <kind> <id>` |
@@ -119,7 +119,7 @@ revisions and is recorded as discarded and by whom; nothing is deleted.
 ### Preview links
 
 ```json
-{ "token": "…", "expiresAt": "…", "api": "https://example.com/__tp/api/v1/posts/7/staged?preview=…", "url": "https://example.com/blog/hello/?tp_preview=…" }
+{ "token": "…", "expiresAt": "…", "api": "https://example.com/wp-json/typedpress/v1/posts/7/staged?preview=…", "url": "https://example.com/blog/hello/?tp_preview=…" }
 ```
 
 - `api` returns the staged version without signing in, through an anonymous visitor's field masks

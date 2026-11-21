@@ -37,10 +37,30 @@ final class Store implements \TypedPress\Store
             $name = (string) $name;
             $core = match ($name) { 'id' => '{a}.ID', 'name' => '{a}.post_title', 'slug' => '{a}.post_name', 'description' => '{a}.post_content', 'shortDescription' => '{a}.post_excerpt', 'status' => $order ? "REPLACE({a}.post_status, 'wc-', '')" : "CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE {a}.post_status END", 'createdAt' => $this->dialect()->isoTimestamp('{a}.post_date_gmt'), 'updatedAt' => $this->dialect()->isoTimestamp('{a}.post_modified_gmt'), default => null };
             if ($core !== null) { $refs[$name] = new ColumnRef($core, '', '', 'scalar'); continue; }
+            $authored = !$order && ($col['commerceMeta'] ?? false);
+            $stock = !$order && $name === 'stockQuantity';
+            if ($authored) {
+                $meta[$name] = '_tp_field_' . $name;
+            }
+            if ($stock) {
+                $meta[$name] = '_stock';
+            }
             if (isset($meta[$name])) {
                 $join = "LEFT JOIN `{$wpdb->postmeta}` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . $meta[$name] . "'";
                 $expr = match ($name) { 'virtual', 'downloadable' => "CASE {j}.meta_value WHEN 'yes' THEN 1 ELSE 0 END", 'availability' => "CASE {j}.meta_value WHEN 'onbackorder' THEN 'outofstock' ELSE {j}.meta_value END", 'customer' => "NULLIF(NULLIF({j}.meta_value, ''), '0')", default => "NULLIF({j}.meta_value, '')" };
-                $compare = in_array($name, ['price', 'total'], true) ? "CAST($expr AS DECIMAL(30,10))" : $expr;
+                if ($authored) { $expr = '{j}.meta_value'; }
+                if ($stock) {
+                    $managed = "EXISTS (SELECT 1 FROM `{$wpdb->postmeta}` stock_meta WHERE stock_meta.post_id = {a}.ID AND stock_meta.meta_key = '_manage_stock' AND stock_meta.meta_value = 'yes')";
+                    $expr = "CASE WHEN $managed THEN $expr END";
+                }
+                $compare = match (true) {
+                    // An authored date is stored as YYYY-MM-DD, the form a filter sends. A comparison
+                    // expression would have Sql::metaParam rewrite the filter to SCF's YYYYMMDD.
+                    $authored && $col['type'] === 'date' => '',
+                    in_array($name, ['price', 'total'], true), $authored && $col['type'] === 'real' => "CAST($expr AS DECIMAL(30,10))",
+                    $stock, $authored && in_array($col['type'], ['integer', 'boolean'], true) => "CAST($expr AS SIGNED)",
+                    default => $expr,
+                };
                 $refs[$name] = new ColumnRef($expr, $join, $compare, ColumnRef::kindFor($col['type']));
             } else { $refs[$name] = new ColumnRef('NULL', '', '', ColumnRef::kindFor($col['type'])); }
         }
@@ -53,6 +73,10 @@ final class Store implements \TypedPress\Store
     {
         $spec = $this->schema->collection($collection);
         $rows = $this->db->run($q['sql'], $q['params']);
+        if ($spec['commerce'] === 'product' && count($rows) > 1) {
+            // wc_get_product() primes one product at a time (posts, terms, meta: three reads each).
+            _prime_post_caches(array_map('intval', array_column($rows, 'id')));
+        }
         foreach ($rows as &$row) {
             if (!isset($row['id'])) { continue; }
             $object = $spec['commerce'] === 'order' ? wc_get_order((int) $row['id']) : wc_get_product((int) $row['id']);
@@ -60,7 +84,15 @@ final class Store implements \TypedPress\Store
             $values = $object instanceof \WC_Order ? self::order($object) : self::product($object);
             if ($spec['commerce'] === 'product' && !isset($spec['url'])) { $values['url'] = null; }
             foreach ($row as $name => $_) {
-                if (array_key_exists($name, $values)) { $row[$name] = Schema::store($spec['columns'][$name], $values[$name]); }
+                $column = $spec['columns'][$name];
+                if ($object instanceof \WC_Product && ($column['commerceMeta'] ?? false)) {
+                    $key = '_tp_field_' . $name;
+                    $values[$name] = $object->meta_exists($key) ? $object->get_meta($key, true, 'edit') : null;
+                }
+                if ($object instanceof \WC_Product && $name === 'stockQuantity') {
+                    $values[$name] = $object->managing_stock() ? $object->get_stock_quantity() : null;
+                }
+                if (array_key_exists($name, $values)) { $row[$name] = Schema::store($column, $values[$name]); }
             }
         }
         unset($row);
@@ -105,7 +137,15 @@ final class Store implements \TypedPress\Store
     {
         $this->writable($collection);
         $p = new \WC_Product_Simple();
-        try { $this->write($p, $values); }
+        $spec = $this->schema->collection($collection);
+        if (isset($spec['columns']['stockQuantity'])) {
+            $p->set_manage_stock(true);
+            $p->set_stock_quantity(0);
+        }
+        if ($spec['comments'] ?? false) {
+            $p->set_reviews_allowed(true);
+        }
+        try { $this->write($p, $values, $spec['columns']); }
         finally { if ($p->get_id() > 0) { $this->db->touchPost($p->get_id()); } }
         if ($p->get_id() <= 0) {
             throw new \RuntimeException('WooCommerce did not create the product');
@@ -118,13 +158,13 @@ final class Store implements \TypedPress\Store
         $p = wc_get_product((int) $pk);
         if (!$p || !$p->is_type('simple')) { throw HttpError::invalidInput('Only simple products can be edited in v1', '/type'); }
         $this->db->touchPost((int) $pk);
-        $this->write($p, $values);
+        $this->write($p, $values, $this->schema->collection($collection)['columns']);
     }
     private function writable(string $collection): void
     {
         if ($this->schema->collection($collection)['commerce'] !== 'product') { throw new HttpError(405, 'method_not_allowed', 'Orders are read-only'); }
     }
-    private function write(\WC_Product $p, array $values): void
+    private function write(\WC_Product $p, array $values, array $columns): void
     {
         if (($values['status'] ?? null) === 'scheduled' && $p->get_status('edit') !== 'future') {
             throw HttpError::invalidInput('Set a future publication date in WooCommerce to schedule this product', '/status');
@@ -143,6 +183,11 @@ final class Store implements \TypedPress\Store
             $downloads = null;
             foreach ($values as $key => $value) {
                 if (isset($setters[$key])) { $p->{'set_' . $setters[$key]}(in_array($key, ['virtual', 'downloadable'], true) ? (bool) $value : ($value ?? '')); }
+                elseif ($columns[$key]['commerceMeta'] ?? false) {
+                    $metaKey = '_tp_field_' . $key;
+                    if ($value === null) { $p->delete_meta_data($metaKey); }
+                    else { $p->update_meta_data($metaKey, $value); }
+                }
                 elseif ($key === 'uid') { $p->update_meta_data('_tp_uid', $value); }
                 elseif ($key === 'status') { $p->set_status(['published' => 'publish', 'scheduled' => 'future'][$value] ?? $value); }
                 elseif ($key === 'images') { $ids = json_decode((string) $value, true) ?? []; $p->set_image_id($ids[0] ?? 0); $p->set_gallery_image_ids(array_slice($ids, 1)); }

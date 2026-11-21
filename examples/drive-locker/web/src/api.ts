@@ -1,7 +1,7 @@
 import { createClient, TypedPressError, type Collections, type Actions } from "../../tp/_generated/client/index.ts";
 
 export const first = createClient({
-  url: "/__tp/api/v1",
+  url: "/wp-json/typedpress/v1",
   auth: {
     clientId: "app_drive_locker",
     redirectUri: location.origin + location.pathname,

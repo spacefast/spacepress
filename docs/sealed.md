@@ -86,7 +86,7 @@ TypedPress is an active plugin there. While it is active, sealed mode:
   - `muPlugins`, `dropins`, `theme`: every must-use plugin, every drop-in
     present, and the active theme's PHP (see below). No config can list these,
     and a host's own are among them, so they are shown, not judged.
-  - where: `GET /__tp/api/v1` under `runtime.wp.sealed` (`{enforced}` only for
+  - where: `GET /wp-json/typedpress/v1` under `runtime.wp.sealed` (`{enforced}` only for
     anyone who isn't an administrator); `typedpress doctor --site <url>`, whose
     `sealed` check fails when an unlisted plugin is active and which lists the
     rest for information (sign in with `typedpress login`, or `TP_APP_PASSWORD` / `TP_TOKEN`);

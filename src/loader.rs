@@ -196,6 +196,8 @@ pub struct Program {
     /// Files components and pages import that are not code (`.css`, `.module.css`, images), by
     /// module id: the evaluator binds their import to a URL or a class map (`crate::assets`).
     pub assets: HashMap<usize, crate::assets::Asset>,
+    frontend_styles: HashMap<String, String>,
+    discover_styles: bool,
 }
 
 /// One `tp/wp-hooks/` file: `tp/wp-hooks/<hook>.ts`, or `tp/wp-hooks/<hook>/<file>.ts`.
@@ -216,11 +218,72 @@ pub fn load_all(entry: &Path) -> std::result::Result<Program, Vec<Diag>> {
 }
 
 pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, Vec<Diag>> {
+    load_with_styles(fs, entry, false)
+}
+
+#[cfg(feature = "cli")]
+pub(crate) fn stylesheet_inputs(project: &Path) -> Result<Vec<String>> {
+    let program = load_with_styles(Rc::new(Disk), &project.join("typedpress.config.ts"), true)
+        .map_err(|diagnostics| diagnostics.into_iter().next().expect("failed load has diagnostics"))?;
+    let mut styles: Vec<_> = program
+        .assets
+        .into_values()
+        .filter(|asset| asset.kind == crate::assets::Kind::Css && authored_stylesheet(&asset.source))
+        .map(|asset| asset.source)
+        .collect();
+    styles.sort_unstable();
+    Ok(styles)
+}
+
+fn authored_stylesheet(source: &str) -> bool {
+    source.starts_with("tp/") && !source.split('/').any(|part| part == "node_modules")
+}
+
+pub(crate) const FRONTEND_STYLES: &str = "tp/_generated/frontend-styles.json";
+
+pub(crate) fn frontend_enabled(fs: &dyn Fs, root: &Path) -> Result<bool> {
+    let package = match fs.read_to_string(&root.join("package.json")) {
+        Ok(text) => serde_json::from_str::<serde_json::Value>(&text).map_err(std::io::Error::other),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => Err(error),
+    }
+    .map_err(|error| Diag::new(Span::NONE, format!("can't read package.json: {error}")).code(diag::Code::Import))?;
+    Ok(["dependencies", "devDependencies"]
+        .iter()
+        .any(|key| package[*key]["@typedpress/frontend"].is_string()))
+}
+
+#[derive(serde::Deserialize)]
+struct StylesManifest {
+    styles: HashMap<String, String>,
+}
+
+fn load_with_styles(fs: Rc<dyn Fs>, entry: &Path, discover_styles: bool) -> std::result::Result<Program, Vec<Diag>> {
     let entry = fs
         .canonicalize(entry)
         .map_err(|e| vec![Diag::new(Span::NONE, format!("{}: {e}", entry.display())).code(diag::Code::Import)])?;
+    let root = entry.parent().expect("entry has a directory").to_path_buf();
+    let manifest = root.join(FRONTEND_STYLES);
+    let frontend_styles = if !discover_styles
+        && fs.is_file(&manifest)
+        && (fs.frozen_capture() || frontend_enabled(&*fs, &root).map_err(|diag| vec![diag])?)
+    {
+        fs.read_to_string(&manifest)
+            .and_then(|text| {
+                serde_json::from_str::<StylesManifest>(&text)
+                    .map(|manifest| manifest.styles)
+                    .map_err(std::io::Error::other)
+            })
+            .map_err(|error| {
+                vec![Diag::new(Span::NONE, format!("can't read {FRONTEND_STYLES}: {error}")).code(diag::Code::Import)]
+            })?
+    } else {
+        HashMap::new()
+    };
     let mut program = Program {
-        root: entry.parent().expect("entry has a directory").to_path_buf(),
+        root,
+        frontend_styles,
+        discover_styles,
         modules: Vec::new(),
         resolved: HashMap::new(),
         entry: 0,
@@ -941,12 +1004,22 @@ fn load_asset(
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/");
+    let authored_css = kind == crate::assets::Kind::Css && authored_stylesheet(&relative);
+    let bundled_url = authored_css
+        .then(|| program.frontend_styles.get(&relative).cloned())
+        .flatten();
     let (file, bytes, preloads) = match kind {
         crate::assets::Kind::File => {
             let bytes = fs
                 .read(path)
                 .map_err(|e| Diag::new(span, format!("can't import {relative}: {e}")).code(diag::Code::Import))?;
             (diag::register_file(path, ""), bytes, Vec::new())
+        }
+        crate::assets::Kind::Css if authored_css && (program.discover_styles || bundled_url.is_some()) => {
+            let text = fs
+                .read_to_string(path)
+                .map_err(|e| Diag::new(span, format!("can't import {relative}: {e}")).code(diag::Code::Import))?;
+            (diag::register_file(path, &text), Vec::new(), Vec::new())
         }
         crate::assets::Kind::Css | crate::assets::Kind::CssModule => {
             let mut stack = Vec::new();
@@ -963,7 +1036,20 @@ fn load_asset(
         }
         crate::assets::Kind::Raw | crate::assets::Kind::Inline | crate::assets::Kind::Meta => unreachable!(),
     };
-    let asset = crate::assets::Asset::with_preloads(&relative, kind, bytes, file, preloads)?;
+    let mut asset = crate::assets::Asset::with_preloads(&relative, kind, bytes, file, preloads)?;
+    if let Some(url) = bundled_url {
+        if !url.strip_prefix("/typedpress-styles/assets/").is_some_and(|file| {
+            file.ends_with(".css")
+                && file
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
+        }) {
+            return Err(
+                Diag::new(span, format!("invalid bundled stylesheet URL for {relative}")).code(diag::Code::Import),
+            );
+        }
+        asset.file = url;
+    }
     let id = program.modules.len();
     by_path.insert(path.to_path_buf(), id);
     program.modules.push(Rc::new(Module {
@@ -2088,7 +2174,10 @@ fn resolve_with(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions: Co
 
 fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<PathBuf> {
     // An explicit asset never names same-stem TypeScript (shop.css beside shop.ts).
-    if crate::assets::kind(base).is_some() && fs.is_file(base) {
+    if crate::assets::kind(base).is_some() {
+        if !fs.is_file(base) {
+            return Err(Diag::new(span, format!("can't find \"{spec}\"")));
+        }
         return fs.canonicalize(base).map_err(|e| Diag::new(span, e.to_string()));
     }
     let stripped = base.with_extension("");
@@ -2125,9 +2214,6 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
         }
     }
     if fs.is_file(base) {
-        if crate::assets::kind(base).is_some() {
-            return fs.canonicalize(base).map_err(|e| Diag::new(span, e.to_string()));
-        }
         return Err(Diag::new(
             span,
             format!("can't import \"{spec}\": expected TypeScript or JavaScript source"),

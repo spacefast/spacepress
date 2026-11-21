@@ -18,7 +18,7 @@ use TypedPress\Wp\Plugin;
 /**
  * Reactive queries without a push transport (docs/decisions/2026-11-13-reactive-queries.md).
  *
- * `POST /__tp/api/v1/_live` takes the reads a page is subscribed to, each with the token of
+ * `POST /wp-json/typedpress/v1/_live` takes the reads a page is subscribed to, each with the token of
  * the answer the page last got, and answers every one with "not modified" or the fresh result:
  *
  *   { "queries": [{ "kind": "todos", "op": "list", "args": { "where": { "done": false } }, "token": "…" }] }
@@ -37,7 +37,7 @@ use TypedPress\Wp\Plugin;
  */
 final class Module
 {
-    /** The facade path segment: `/__tp/api/v1/_live`. Kind names start with a letter, so it is free. */
+    /** The facade path segment: `/wp-json/typedpress/v1/_live`. Kind names start with a letter, so it is free. */
     public const ROUTE = '_live';
     /** Reads one request may carry. */
     public const MAX_QUERIES = 20;

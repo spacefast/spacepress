@@ -493,7 +493,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         }
     };
     for asset in program.assets.values() {
-        if asset.emits_file() {
+        if asset.emits_file() && !asset.file.starts_with('/') {
             ext.schema.assets.insert(asset.file.clone(), asset.bytes.clone());
             if let Some(meta) = &asset.meta {
                 ext.schema.assets_meta.insert(asset.file.clone(), meta.clone());

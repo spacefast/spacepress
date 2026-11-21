@@ -72,9 +72,9 @@ const exampleChecks: Record<string, { title: string; run: (base: string, admin: 
 		title: "the tally jobs filled in minutes read, the draft is the admin's only, and the shelf route lists the books",
 		async run(base, admin) {
 			const visitor = browser(base, { signedOut: true });
-			const books = (await rest(visitor, "/__tp/api/v1/books")).data;
+			const books = (await rest(visitor, "/wp-json/typedpress/v1/books")).data;
 			assert.deepEqual(books.map((b) => [b.title, b.minutesRead]).sort(), [["A Wizard of Earthsea", 45], ["The Dispossessed", 65], ["The Left Hand of Darkness", 25]]);
-			const all = (await rest(admin, "/__tp/api/v1/books?status=draft", {}, await adminNonce(admin))).data;
+			const all = (await rest(admin, "/wp-json/typedpress/v1/books?status=draft", {}, await adminNonce(admin))).data;
 			assert.deepEqual(all.map((b) => b.title), ["The Lathe of Heaven"]);
 			const shelf = await visitor("/shelf.html");
 			assert.equal(shelf.status, 200);
@@ -85,25 +85,25 @@ const exampleChecks: Record<string, { title: string; run: (base: string, admin: 
 		title: "milk is on the shopping list and notified, and milk and butter expire soon",
 		async run(_base, admin) {
 			const nonce = await adminNonce(admin);
-			const list = (await rest(admin, "/__tp/api/v1/shopping_list", {}, nonce)).data;
+			const list = (await rest(admin, "/wp-json/typedpress/v1/shopping_list", {}, nonce)).data;
 			assert.deepEqual(list.map((row) => row.name), ["Milk"]);
 			assert.ok(list[0]!.notifiedAt, "the notifyLowStock job did not run");
-			const soon = (await rest(admin, "/__tp/api/v1/actions/expiringSoon", { method: "POST", body: {} }, nonce)).data;
+			const soon = (await rest(admin, "/wp-json/typedpress/v1/actions/expiringSoon", { method: "POST", body: {} }, nonce)).data;
 			assert.deepEqual(soon.map((item) => [item.name, item.where]), [["Butter", "Fridge"], ["Milk", "Fridge"]]);
 		},
 	},
 	blog: {
-		title: "/__tp/api/v1/posts lists the published posts, and a reader's comment waits for an editor",
+		title: "/wp-json/typedpress/v1/posts lists the published posts, and a reader's comment waits for an editor",
 		async run(base, admin) {
 			const visitor = browser(base, { signedOut: true });
-			const published = (await rest(visitor, "/__tp/api/v1/posts")).data;
+			const published = (await rest(visitor, "/wp-json/typedpress/v1/posts")).data;
 			assert.deepEqual(published.map((p) => p.title).sort(), ["Comments are moderated", "Hello, TypedPress"]);
 			const nonce = await adminNonce(admin);
-			const drafts = (await rest(admin, "/__tp/api/v1/posts?status=draft", {}, nonce)).data;
+			const drafts = (await rest(admin, "/wp-json/typedpress/v1/posts?status=draft", {}, nonce)).data;
 			assert.deepEqual(drafts.map((p) => p.title), ["Typed content, plain files"]);
-			const shown = (await rest(visitor, "/__tp/api/v1/comments")).data;
+			const shown = (await rest(visitor, "/wp-json/typedpress/v1/comments")).data;
 			assert.equal(shown.length, 2, "a signed-out reader should see the two approved comments");
-			const waiting = (await rest(admin, "/__tp/api/v1/comments", {}, nonce)).data.filter((c) => c.approved === false);
+			const waiting = (await rest(admin, "/wp-json/typedpress/v1/comments", {}, nonce)).data.filter((c) => c.approved === false);
 			assert.equal(waiting.length, 1);
 			assert.ok(waiting[0]!.notifiedAt, "the notifyEditors job did not stamp the reader's comment");
 		},

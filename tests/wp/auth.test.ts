@@ -1,5 +1,5 @@
 // Feature 4 on real WordPress (§6.2): a browser-less PKCE sign-in against typedpress-identity, its Bearer
-// on /__tp/api/v1, refresh rotation and reuse, guests created on first write and upgraded in
+// on /wp-json/typedpress/v1, refresh rotation and reuse, guests created on first write and upgraded in
 // place, suspension on every channel, and the `members` auth collection living in wp_users with
 // its hidden columns never leaving the runtime. Application passwords keep working.
 import { test } from "node:test";
@@ -9,7 +9,9 @@ import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 // The test app's own typed client (run.sh builds tests/wp/app before the suites).
 import { createClient } from "./app/tp/_generated/client/index.ts";
+import { request as rawRequest } from "node:http";
 import { api, auth, harness, http, run, sql, wp, wpTry, first } from "./env.ts";
+import { loginCookie } from "./login.ts";
 
 const site = harness.url;
 const app = { id: "app_zero_dev", redirect: `${site}/auth/callback` };
@@ -63,7 +65,7 @@ async function token(body: Record<string, string>) {
   return { status: res.status, json: await res.json() };
 }
 
-test("PKCE sign-in yields a Bearer that works on /__tp/api/v1; refresh rotates and reuse fails", async () => {
+test("PKCE sign-in yields a Bearer that works on /wp-json/typedpress/v1; refresh rotates and reuse fails", async () => {
   const ana = await member("ana");
   const tokens = await signIn(ana.email, ana.password);
   assert.equal(tokens.status, 200, JSON.stringify(tokens.json));
@@ -81,17 +83,17 @@ test("PKCE sign-in yields a Bearer that works on /__tp/api/v1; refresh rotates a
   const reuse = await token({ grant_type: "refresh_token", client_id: app.id, refresh_token: tokens.json.refresh_token });
   assert.deepEqual([reuse.status, reuse.json.error], [400, "invalid_grant"]);
   const after = await call("GET", "/me", { token: rotated.json.access_token });
-  assert.deepEqual([after.status, after.json.code], [401, "unauthenticated"], "reuse revoked the family on /__tp/api/v1 too");
+  assert.deepEqual([after.status, after.json.code], [401, "unauthenticated"], "reuse revoked the family on /wp-json/typedpress/v1 too");
 });
 
-test("an opted-in host's identity cookie works on /__tp/api/v1 from its own pages only", async () => {
+test("an opted-in host's identity cookie works on /wp-json/typedpress/v1 from its own pages only", async () => {
   const host = await member("host-cookie");
   const signin = await fetch(`${site}/wp-json/typedpress-identity/v1/sign-in/password`, {
     method: "POST", headers: { "content-type": "application/json", origin: site }, body: JSON.stringify({ login: host.email, password: host.password }),
   });
   const cookie = signin.headers.getSetCookie().find((c) => c.startsWith("zi_session="))!.split(";")[0];
   const me = (headers: Record<string, string> = {}) => fetch(`${api}/me`, { headers: { cookie, ...headers } });
-  assert.equal((await (await me()).json()).data, null, "cookies are off on /__tp/api/v1 unless the host opts in");
+  assert.equal((await (await me()).json()).data, null, "cookies are off on /wp-json/typedpress/v1 unless the host opts in");
   wp("option", "update", "tp_test_rest_cookie_auth", "1");
   try {
     const own = await me({ origin: site });
@@ -819,9 +821,124 @@ test("deleting a member keeps the posts they authored", async () => {
   assert.deepEqual(sql(`SELECT post_status, post_author FROM wp_posts WHERE ID = ${post}`), [{ post_status: "publish", post_author: "0" }]);
 });
 
-test("application passwords still authenticate /__tp/api/v1 as before", async () => {
+test("application passwords still authenticate /wp-json/typedpress/v1 as before", async () => {
   const me = await fetch(`${api}/me`, { headers: auth("editor") });
   assert.equal((await me.json()).data.role, "editor");
+});
+
+/** One request with its path sent exactly as written: fetch() resolves `..` and refuses a body on GET. */
+function raw(method: string, path: string, headers: Record<string, string> = {}, body?: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const target = new URL(site);
+    const req = rawRequest({ host: target.hostname, port: target.port, method, path, headers: { ...headers, ...(body === undefined ? {} : { "content-length": String(Buffer.byteLength(body)) }) } }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+/** A scoped application password for the editor (`typedpress identity agent add`), as a Basic header. */
+function agent(...flags: string[]): Record<string, string> {
+  const out = JSON.parse(wp("typedpress", "identity", "agent", "add", "editor", `--name=auth-${run}-${Math.random().toString(36).slice(2)}`, ...flags)).data;
+  return { Authorization: "Basic " + btoa(`editor:${out.password}`) };
+}
+const apiPath = "/wp-json/typedpress/v1";
+const form = { "content-type": "application/x-www-form-urlencoded" };
+
+// Core's rule, with nothing added: an application password signs in on a request WordPress itself
+// serves from the REST API (REST_REQUEST), never on one whose URL only starts like the API's.
+test("an application password signs nobody in on a page, whatever the URL starts with", async () => {
+  // A search page repeats the term searched for, so the private post is recognized by another word of its own.
+  const [secret, hidden] = [`needle${run}`, `hidden${run}`];
+  wp("post", "create", "--post_status=private", `--post_title=${secret} ${hidden}`, `--post_content=${secret} ${hidden}`, "--porcelain");
+  const signedIn = (page: string) => page.includes(hidden) || page.includes("wpadminbar") || /<body[^>]*\blogged-in\b/.test(page);
+  // The probe sees a signed-in page when there is one: the editor's cookie reads the private post.
+  const cookie = await loginCookie(site, "editor", `${site}/`);
+  const asEditor = await raw("GET", `/?s=${secret}`, { cookie });
+  assert.deepEqual([asEditor.status, asEditor.body.includes(hidden), asEditor.body.includes("wpadminbar")], [200, true, true], "the cookie's page shows the private post");
+  const abilitiesOnly = agent("--abilities=blog/guestbook-create");
+  for (const [who, header] of [["unscoped", auth("editor")], ["read-only", agent()], ["ability-limited", abilitiesOnly]] as const) {
+    // WordPress lets `rest_route` in the query or the body replace the route in the path: an empty one makes this a page.
+    const pages = [
+      await raw("GET", `/?s=${secret}`, header),
+      await raw("GET", `${apiPath}/x/?rest_route=&s=${secret}`, header),
+      await raw("POST", `${apiPath}/x?s=${secret}`, { ...header, ...form }, "rest_route="),
+      await raw("POST", `${apiPath}/me?s=${secret}`, { ...header, ...form }, "rest_route="),
+      await raw("POST", `//x${apiPath}/me?s=${secret}`, { ...header, ...form }, "a=1"),
+      await raw("GET", `/index.php${apiPath}/x/?rest_route=&s=${secret}`, header),
+    ];
+    pages.forEach((page, i) => assert.equal(signedIn(page.body), false, `${who} credential, page ${i}: rendered signed out (${page.status})`));
+  }
+});
+
+test("an application password signs nobody in on admin-ajax.php, reached by dot segments or directly", async () => {
+  const nonce = "/wp-admin/admin-ajax.php?action=rest-nonce";
+  // With a cookie the same URL answers a nonce, so a refusal below is the credential's, not the URL's.
+  const cookie = await loginCookie(site, "editor", `${site}/wp-admin/`);
+  const asEditor = await raw("GET", `${apiPath}/../../..${nonce}`, { cookie });
+  assert.deepEqual([asEditor.status, /^[0-9a-f]{10}$/.test(asEditor.body)], [200, true], "the dot-segment path reaches admin-ajax.php");
+  for (const [who, header] of [["unscoped", auth("editor")], ["admin", auth("admin")], ["read-only", agent()], ["read-write", agent("--write", "--personal")]] as const) {
+    for (const path of [`${apiPath}/../../..${nonce}`, `${apiPath}/%2e%2e/%2e%2e/%2e%2e${nonce}`, `/wp-json/wp/v2/../../..${nonce}`, nonce, `${nonce}&rest_route=/typedpress/v1/me`]) {
+      const res = await raw("GET", path, header);
+      assert.deepEqual([res.status, res.body], [400, "0"], `${who} credential on ${path}: no nonce`);
+    }
+    const heartbeat = await raw("POST", `${apiPath}/../../../wp-admin/admin-ajax.php`, { ...header, ...form }, "action=heartbeat");
+    assert.match(heartbeat.body, /"wp-auth-check":false/, `${who} credential: heartbeat sees a visitor`);
+  }
+});
+
+test("on the API a wrong application password is 401, and a scoped one works with Polylang active", async () => {
+  assert.ok(wp("plugin", "list", "--status=active", "--field=name").split("\n").includes("polylang"), "Polylang is active: it resolves the user while plugins load");
+  const wrong = { Authorization: "Basic " + btoa("editor:abcd efgh ijkl mnop qrst uvwx") };
+  for (const url of [`${api}/me`, `${site}/?rest_route=/typedpress/v1/me`, `${api}/posts`]) {
+    const res = await fetch(url, { headers: wrong });
+    assert.deepEqual([res.status, (await res.json()).code], [401, "incorrect_password"], url);
+  }
+  // Read-only: reads answer, writes are refused for the scope, on the API and on core's own routes.
+  const readOnly = agent();
+  // As when other code has WordPress check application passwords while plugins load, before the app
+  // has booted to enforce a scope (mu-plugins/early-application-password.php): what was decided then is decided again.
+  for (const extra of [{}, { "x-test-early-application-password": "1" }]) {
+    const headers = { ...readOnly, ...extra };
+    for (const url of [`${api}/posts?limit=1`, `${site}/?rest_route=/typedpress/v1/posts&limit=1`, `${site}/wp-json/wp/v2/posts?per_page=1`, `${api}`]) {
+      const res = await fetch(url, { headers });
+      assert.equal(res.status, 200, `${url}: ${(await res.text()).slice(0, 200)}`);
+    }
+    const me = await fetch(`${api}/me`, { headers });
+    assert.equal((await me.json()).data.id, harness.users.editor.id, "the scoped credential is its user");
+    const write = await fetch(`${api}/posts`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ title: "refused" }) });
+    assert.deepEqual([write.status, (await write.json()).code], [403, "scope"]);
+    const coreWrite = await fetch(`${site}/wp-json/wp/v2/posts`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ title: "refused" }) });
+    assert.equal(coreWrite.status, 403);
+    const unscoped = await fetch(`${api}/me`, { headers: { ...auth("editor"), ...extra } });
+    assert.equal((await unscoped.json()).data.id, harness.users.editor.id);
+    assert.equal((await fetch(`${api}/me`, { headers: { ...wrong, ...extra } })).status, 401);
+  }
+  const limited = await fetch(`${api}/posts?limit=1`, { headers: agent("--abilities=blog/guestbook-create") });
+  assert.deepEqual([limited.status, (await limited.json()).code], [403, "scope"], "an ability-limited credential reads no kind");
+});
+
+test("the cookie and its nonce work as on every REST route", async () => {
+  const cookie = await loginCookie(site, "editor", `${site}/wp-admin/`);
+  const nonce = (await raw("GET", "/wp-admin/admin-ajax.php?action=rest-nonce", { cookie })).body;
+  assert.match(nonce, /^[0-9a-f]{10}$/);
+  const withNonce = await fetch(`${api}/me`, { headers: { cookie, "x-wp-nonce": nonce } });
+  assert.deepEqual([withNonce.status, (await withNonce.json()).data.id], [200, harness.users.editor.id]);
+  assert.ok(withNonce.headers.get("x-wp-nonce"), "core sends a refreshed nonce");
+  const without = await fetch(`${api}/me`, { headers: { cookie } });
+  assert.deepEqual([without.status, await without.json()], [200, { data: null }], "a cookie without a nonce is a visitor");
+  // A valid cookie with a wrong nonce is core's 403 (rest_cookie_invalid_nonce); with no valid cookie the caller is signed out, 401.
+  const badNonce = await fetch(`${api}/me`, { headers: { cookie, "x-wp-nonce": "nope" } });
+  assert.deepEqual([badNonce.status, (await badNonce.json()).code], [403, "forbidden"]);
+  const noCookie = await fetch(`${api}/events`, { headers: { cookie: "wordpress_logged_in_x=y", "x-wp-nonce": "nope" } });
+  assert.deepEqual([noCookie.status, (await noCookie.json()).code], [401, "unauthenticated"]);
+  // The cookie's write needs the nonce; an application password sent beside the cookie doesn't replace it.
+  const write = (headers: Record<string, string>) => fetch(`${api}/events`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ title: `Cookie ${run}`, seats: 1 }) });
+  assert.equal((await write({ cookie })).status, 401, "no nonce: signed out");
+  assert.equal((await write({ cookie, ...auth("editor") })).status, 401, "the cookie's user needs its nonce, whatever else is sent");
+  assert.equal((await write({ cookie, "x-wp-nonce": nonce })).status, 201);
 });
 
 test("identity storage failures refuse every authentication path in the runtime", () => {

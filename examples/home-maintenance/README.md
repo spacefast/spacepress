@@ -110,7 +110,7 @@ Upload through TypedPress's authenticated file endpoint, then paste that ID into
 ```sh
 curl --fail-with-body --user "$TP_APP_PASSWORD" \
   -F 'file=@heat-pump-manual.pdf;type=application/pdf' \
-  http://localhost:8896/__tp/api/v1/files/manuals
+  http://localhost:8896/wp-json/typedpress/v1/files/manuals
 ```
 
 The host must block direct access to `/wp-content/uploads/typedpress-private/`.
@@ -149,7 +149,7 @@ For a direct action call, set `TP_APP_PASSWORD` in your shell to
 curl --fail-with-body --user "$TP_APP_PASSWORD" \
   -H 'Content-Type: application/json' \
   --data '{"days":30}' \
-  http://localhost:8896/__tp/api/v1/actions/dueNext
+  http://localhost:8896/wp-json/typedpress/v1/actions/dueNext
 ```
 
 ## Customize it
@@ -206,7 +206,6 @@ No compiler or runtime code is changed by this example.
 Exact runtime and CLI responses:
 
 ```json
-{"type":"about:blank","title":"Reference violation","status":409,"code":"reference_violation","detail":"Rows in tasks may reference this row"}
 {"type":"about:blank","title":"Service unavailable","status":503,"code":"files_unavailable","detail":"private files are reachable at http://localhost:8896/wp-content/uploads/typedpress-private/; deny /wp-content/uploads/typedpress-private/ in your web server config"}
 ```
 

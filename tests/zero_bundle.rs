@@ -65,6 +65,19 @@ fn ported(work: &Path) -> PathBuf {
     app
 }
 
+/// `functions.php` with each "callback at `<file>:<line>`" doc comment reduced to "callback".
+fn without_source_positions(php: &[u8]) -> String {
+    String::from_utf8(php.to_vec())
+        .unwrap()
+        .lines()
+        .map(|line| match line.split_once(" callback at `") {
+            Some((head, rest)) if rest.ends_with("`.") => format!("{head} callback."),
+            _ => line.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn manifest(dir: &Path) -> serde_json::Value {
     serde_json::from_slice(&fs::read(dir.join("manifest.json")).unwrap()).unwrap()
 }
@@ -89,8 +102,12 @@ fn a_zero_source_bundle_compiles_like_the_same_app_captured_as_first() {
     }
     let (mut a, mut b) = (tree(&compiled_legacy), tree(&compiled_first));
     // The manifests name their own source hashes; the archive keeps each capture's ledger as sent.
+    // Each compiled function's doc comment names its own source position, and the port moved
+    // `lib/` to `tp/lib/` and the actions to top-level exports.
     for t in [&mut a, &mut b] {
         t.remove("manifest.json");
+        let functions = t.get_mut("plugins/typedpress-app-notes/tp/app/functions.php").unwrap();
+        *functions = without_source_positions(functions).into_bytes();
     }
     let differing: Vec<_> = a
         .keys()
@@ -274,7 +291,7 @@ fn a_zero_capture_keeps_its_references_and_relations() {
 
 /// What a deployed 0.3.0 Space's next version serves its pages: recompiled from its stored
 /// `zero.source-bundle.v1`, its generated client, run under Node, calls TypedPress's API at
-/// `/__tp/api/v1` (tests/wp/zero-upgrade proves what the site answers there and on the old paths).
+/// `/wp-json/typedpress/v1` (tests/wp/zero-upgrade proves what the site answers there and on the old paths).
 #[test]
 fn a_recompiled_zero_bundle_client_calls_the_first_api() {
     let work = tempfile::tempdir().unwrap();
@@ -299,10 +316,10 @@ fn a_recompiled_zero_bundle_client_calls_the_first_api() {
     let calls: Vec<(String, String)> = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(calls.len(), 2, "{calls:?}");
     for (_, url) in &calls {
-        assert!(url.starts_with("/__tp/api/v1/"), "{calls:?}");
+        assert!(url.starts_with("/wp-json/typedpress/v1/"), "{calls:?}");
     }
-    assert_eq!(calls[0], ("GET".into(), "/__tp/api/v1/notes".into()));
-    assert_eq!(calls[1].1, "/__tp/api/v1/actions/count");
+    assert_eq!(calls[0], ("GET".into(), "/wp-json/typedpress/v1/notes".into()));
+    assert_eq!(calls[1].1, "/wp-json/typedpress/v1/actions/count");
 }
 
 /// The 0.3.0 fixtures beside the first one: `forms` (every form 0.3.0 accepted) and `routes`.
@@ -381,9 +398,21 @@ fn every_0_3_authoring_form_recompiles_to_the_schema_0_3_served() {
     assert_eq!(
         differences,
         [
+            // schema.php was reset to version 5, the only version the runtime loads
+            // (runtime/TypedPress/Schema.php); a 0.3.0 build is recompiled, never served as built.
+            "/version: 3 became 5",
             // `routes` moved onto the first/app/ route table (`app`, asserted below and served in
             // a_recompiled_zero_bundle_serves_its_routes_as_0_3_did).
             "/routes is gone",
+            // Compiled PHP functions are snake_case. The schema names the function the same build's
+            // functions.php defines, so each hook and `$onUpdate` runs the same code.
+            "/collections/posts/hooks/beforeCreate: \"posts__beforeCreate__chain\" became \"posts__before_create__chain\"",
+            "/collections/posts/hooks/afterCreate: \"posts__afterCreate\" became \"posts__after_create\"",
+            "/collections/posts/hooks/beforeUpdate: \"posts__beforeUpdate\" became \"posts__before_update\"",
+            "/collections/posts/hooks/afterUpdate: \"posts__afterUpdate\" became \"posts__after_update\"",
+            "/collections/posts/hooks/beforeDelete: \"posts__beforeDelete\" became \"posts__before_delete\"",
+            "/collections/posts/hooks/afterDelete: \"posts__afterDelete\" became \"posts__after_delete\"",
+            "/collections/things/columns/touched/onUpdate/fn: \"things__onUpdate__touched\" became \"things__on_update__touched\"",
             // The timestamped scheme was renamed with the product; it verifies the same header.
             "/actions/hook/signature/scheme: \"zero\" became \"typedpress\"",
         ],

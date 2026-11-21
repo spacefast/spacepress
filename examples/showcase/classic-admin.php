@@ -18,7 +18,7 @@ function tp_showcase_classic_pantry_screen($section) {
     $titles = ['items' => 'Pantry items', 'locations' => 'Pantry locations', 'shopping' => 'Shopping list'];
     ?>
     <div class="wrap" id="typedpress-classic-pantry"
-        data-api-url="<?php echo esc_url(home_url('/__tp/api/v1')); ?>"
+        data-api-url="<?php echo esc_url(home_url('/wp-json/typedpress/v1')); ?>"
         data-nonce="<?php echo esc_attr(wp_create_nonce('wp_rest')); ?>"
         data-section="<?php echo esc_attr($section); ?>">
         <h1><?php echo esc_html($titles[$section]); ?></h1>

@@ -20,7 +20,7 @@ compatibility: "Targets TypedPress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 ## Procedure
 
 1. Export the action or job from any file under `tp/` (by convention `tp/server/*.ts`). The
-   export name is its name: the action `rate` is `POST /__tp/api/v1/actions/rate`.
+   export name is its name: the action `rate` is `POST /wp-json/typedpress/v1/actions/rate`.
 
    ```ts
    // tp/server/ratings.ts

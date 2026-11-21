@@ -105,8 +105,8 @@ built 2 collections, 0 globals, 1 hooks, 1 actions -> tp/dist/wp-content in 6s
 | MySQL migrations, diffed against the last build | `tp/_generated/migrations/0001_init.sql` |
 | A typed client: `client.posts.list({ with: { writer: true } })` and friends | `tp/_generated/client/` |
 | Editor types, so `db` in your hooks knows your schema | `tp/_generated/db.d.ts` |
-| The API as an OpenAPI 3.1 document, also served by the site | `tp/_generated/openapi.json`, `/__tp/api/v1/openapi.json` |
-| An HTTP API for every collection, global and action, with relations loaded through `with`, over WordPress's REST routes | `/__tp/api/v1/...` |
+| The API as an OpenAPI 3.1 document, also served by the site | `tp/_generated/openapi.json`, `/wp-json/typedpress/v1/openapi.json` |
+| An HTTP API for every collection, global and action, with relations loaded through `with`, over WordPress's REST routes | `/wp-json/typedpress/v1/...` |
 | Sign-in, sessions, roles, guests, passkeys and MFA | the `typedpress-identity` plugin |
 | A dashboard: WordPress admin, with a post type and a field group generated for each collection that has an editor | Posts and Authors menus in `wp-admin` |
 | Three WordPress plugins plus the pinned platform plugins, as folders and ZIPs | `tp/dist/wp-content/plugins/` |
@@ -154,9 +154,15 @@ the database, uploads and other installed plugins remain in
 `examples/pantry/.tp/dev/wordpress` for the next start. The login above is
 for disposable local development only, never production.
 
+Open pages reload when a rebuild changes the app, and a compile error is
+shown over the page until a save builds. That covers app pages, HTML files
+from `public/`, the login page and wp-admin, at whatever address the site is
+opened (`--url`, `--host`).
+
 `typedpress dev --detach` does the same in the background: it returns once the site
 is up, keeps rebuilding on save, and writes its output to
-`.tp/dev/dev.log`. A coding agent's shell gets that without the flag (the
+`.tp/dev/dev.log`. If the first build fails it prints the error and exits 1,
+with WordPress running and the watcher waiting for a fix. A coding agent's shell gets that without the flag (the
 output is not a terminal and `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or
 `AGENT` is set, outside CI); `--foreground` keeps the command attached.
 `typedpress dev status --json` reports the URL, the port and that process.
@@ -183,7 +189,7 @@ history also requires this explicit apply.
 
 ```sh
 export AUTH="admin:<the application password>"
-BASE=http://localhost:8787/__tp/api/v1
+BASE=http://localhost:8787/wp-json/typedpress/v1
 
 curl -u "$AUTH" -X POST $BASE/locations -d '{"name":"Fridge","kind":"fridge"}'
 curl -u "$AUTH" -X POST $BASE/items -d '{"name":" Eggs ","quantity":1,"locationId":1}'
@@ -234,7 +240,7 @@ application password from that command:
 import { createClient } from "./tp/_generated/client/index.ts";
 
 const client = createClient({
-  url: "http://localhost:8787/__tp/api/v1",
+  url: "http://localhost:8787/wp-json/typedpress/v1",
   headers: { Authorization: "Basic " + btoa("admin:<application password>") },
 });
 
@@ -399,7 +405,7 @@ Hosting on [Spacefast](https://spacefast.com) is in progress; the
 - [`docs/config-migration.md`](docs/config-migration.md): importing EmDash, Payload and Sanity schemas
 - [`docs/migrating-from-zero.md`](docs/migrating-from-zero.md): moving a site from the original Zero
 - [`docs/runtime-contract.md`](docs/runtime-contract.md): the seam between compiler output and the PHP runtime
-- [`docs/api-cutover-0.3.md`](docs/api-cutover-0.3.md): what a host and its clients see change moving from the 0.3.0 API to `/__tp/api/v1`
+- [`docs/api-cutover-0.3.md`](docs/api-cutover-0.3.md): what a host and its clients see change moving from the 0.3.0 API to `/wp-json/typedpress/v1`
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how the compiler works, the test suites, the layout
 
 ## Status

@@ -299,7 +299,7 @@ final class MarkdownTwins
         }
         if (self::$twin !== null) {
             // A `tp/app/` page renders its own twin, from its compiled output (rendering.md §5).
-            $app = AppRouter::instance()?->twin(self::htmlUrl(), $reads);
+            $app = AppRouter::instance()?->twin(self::htmlUrl(), $reads, $also, $search);
             [$status, $body] = $app ?? self::document();
             $headers = self::headers();
             if ($status === 200) {
@@ -313,15 +313,23 @@ final class MarkdownTwins
             // A `.md` URL's twin is shared like an anonymous page (it is rendered as one): what it
             // read decides which writes purge it, as for the page (rendering.md §6.2). Recorded under
             // the twin's own URL: the page's layouts read more than the twin, and keep their record.
-            if ($app !== null && $status === 200) {
-                \TypedPress\Render\Cache::record(self::$twin, $reads);
+            // A twin URL that can't be recorded (a query parameter its page doesn't declare) can't be
+            // purged: Batcache, which keeps a response whatever its headers, is told to drop it.
+            if ($app !== null && $status === 200 && !\TypedPress\Render\Cache::record(self::$twin, $reads, $also, $search)) {
+                $headers['Cache-Control'] = \TypedPress\Render\Cache::PRIVATE;
+                $headers[\TypedPress\Render\Cache::EDGE_HEADER] = 'no-cache';
+                if (function_exists('batcache_cancel')) {
+                    batcache_cancel();
+                }
             }
             self::emit($status, $headers, $body);
         }
         if (headers_sent()) {
             return;
         }
-        if (self::kind() !== null || AppRouter::instance()?->serves(self::htmlUrl())) {
+        // The route table answers for a `tp/app/` page without a read; only a URL the theme renders
+        // asks whether its item has a twin, which reads the kind's rule for a signed-out visitor.
+        if (AppRouter::instance()?->serves(self::htmlUrl()) || self::kind() !== null) {
             header('Link: <' . self::twin(self::htmlUrl()) . '>; rel="alternate"; type="text/markdown"', false);
         }
         $signal = self::contentSignal();
@@ -423,7 +431,7 @@ final class MarkdownTwins
     /** wp_head: the `<link rel="alternate" type="text/markdown">` matching the `Link` header. */
     public static function linkTag(): void
     {
-        if (self::kind() === null && !AppRouter::instance()?->serves(self::htmlUrl())) {
+        if (!AppRouter::instance()?->serves(self::htmlUrl()) && self::kind() === null) {
             return;
         }
         printf('<link rel="alternate" type="text/markdown" href="%s" />' . "\n", esc_url(self::twin(self::htmlUrl())));

@@ -4,21 +4,70 @@
 export const SCHEMA = {
   "name": "drive-store",
   "collections": {
+    "stockMovements": {
+      "path": "stock_movements",
+      "primaryKey": "id",
+      "drafts": false,
+      "revisions": false,
+      "localized": false,
+      "relations": {},
+      "media": [],
+      "mediaList": [],
+      "files": []
+    },
     "drives": {
       "path": "drives",
       "primaryKey": "id",
-      "drafts": true,
-      "revisions": true,
+      "drafts": false,
+      "revisions": false,
       "localized": false,
       "relations": {
-        "orders": {
+        "categories": {
           "kind": "many",
-          "collection": "orders",
+          "collection": "categories",
           "optional": false
         },
-        "stockMovements": {
+        "tags": {
           "kind": "many",
-          "collection": "stockMovements",
+          "collection": "tags",
+          "optional": false
+        }
+      },
+      "media": [
+        "images"
+      ],
+      "mediaList": [
+        "images"
+      ],
+      "files": []
+    },
+    "categories": {
+      "path": "categories",
+      "primaryKey": "id",
+      "drafts": false,
+      "revisions": false,
+      "localized": false,
+      "relations": {
+        "drives": {
+          "kind": "many",
+          "collection": "drives",
+          "optional": false
+        }
+      },
+      "media": [],
+      "mediaList": [],
+      "files": []
+    },
+    "tags": {
+      "path": "tags",
+      "primaryKey": "id",
+      "drafts": false,
+      "revisions": false,
+      "localized": false,
+      "relations": {
+        "drives": {
+          "kind": "many",
+          "collection": "drives",
           "optional": false
         }
       },
@@ -32,50 +81,16 @@ export const SCHEMA = {
       "drafts": false,
       "revisions": false,
       "localized": false,
-      "relations": {
-        "drive": {
-          "kind": "one",
-          "collection": "drives",
-          "optional": false
-        },
-        "stockMovements": {
-          "kind": "many",
-          "collection": "stockMovements",
-          "optional": false
-        }
-      },
-      "media": [],
-      "mediaList": [],
-      "files": []
-    },
-    "stockMovements": {
-      "path": "stock_movements",
-      "primaryKey": "id",
-      "drafts": false,
-      "revisions": false,
-      "localized": false,
-      "relations": {
-        "drive": {
-          "kind": "one",
-          "collection": "drives",
-          "optional": false
-        },
-        "order": {
-          "kind": "one",
-          "collection": "orders",
-          "optional": true
-        }
-      },
+      "relations": {},
       "media": [],
       "mediaList": [],
       "files": []
     }
   },
   "globals": [
-    "shop"
+    "settings"
   ],
   "actions": [
-    "buy",
     "restock",
     "markShipped",
     "pendingOrders"

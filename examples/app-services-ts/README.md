@@ -6,9 +6,9 @@ Set `APP_SERVICES_RECIPIENT`, `APP_SERVICES_SENDER` and `TP_SERVICES_RATE_SECRET
 
 The authored collection key is `articles`; its stored name is `service_posts`. Requests use:
 
-- `POST /__tp/api/v1/services/forms/contact`, with `Idempotency-Key` and `{ "data": { "email": "visitor@example.test", "message": "Hello there" }, "website": "" }`.
-- `GET /__tp/api/v1/services/search?collection=service_posts&q=workshop`.
-- `POST /__tp/api/v1/services/checkout`, with `Idempotency-Key` and `{ "product": "workshop" }`.
+- `POST /wp-json/typedpress/v1/services/forms/contact`, with `Idempotency-Key` and `{ "data": { "email": "visitor@example.test", "message": "Hello there" }, "website": "" }`.
+- `GET /wp-json/typedpress/v1/services/search?collection=service_posts&q=workshop`.
+- `POST /wp-json/typedpress/v1/services/checkout`, with `Idempotency-Key` and `{ "product": "workshop" }`.
 
 Run the focused authoring owner from the repository root:
 

@@ -34,8 +34,6 @@ spl_autoload_register(static function (string $class): void {
 
 Site::register();
 Mount::run();
-// Core must recognize the deploy API even if a plugin resolves the user before REST init.
-add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || Site::route() !== null);
 add_action('admin_init', [Receiver::class, 'authorizeCli'], PHP_INT_MAX);
 add_action('wp_create_application_password', [Receiver::class, 'createdPassword'], PHP_INT_MAX, 4);
 add_action('rest_api_init', [Receiver::class, 'routes']);

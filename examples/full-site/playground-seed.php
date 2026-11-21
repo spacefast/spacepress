@@ -4,7 +4,7 @@
 require_once '/wordpress/wp-load.php';
 // Every write must succeed: a seed that half-ran would show a site that looks broken.
 $call = static function (string $method, string $route, array $body): void {
-	// The app's API (/__tp/api/v1), in process: each call dispatches to the core route as the
+	// The app's API (/wp-json/typedpress/v1), in process: each call dispatches to the core route as the
 	// current user, exactly as an HTTP request to the facade would.
 	[$status] = \TypedPress\Wp\Facade::route(\TypedPress\Wp\Runtime::plugin(), $method, $route, [], (string) wp_json_encode($body));
 	if ($status >= 300) {

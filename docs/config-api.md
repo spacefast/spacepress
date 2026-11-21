@@ -41,7 +41,7 @@ site that deployed such a collection keeps its rows where they are: see
 | Read about | In |
 |---|---|
 | fields, options and access rules both halves share | [Columns](#columns), [Collections, tables and user projections](#collections-tables-and-user-projections) |
-| the HTTP API, locales and sync, which work on both | [The `/__tp/api/v1` API](#the-__tpapiv1-api), [Locales](#locales), [Sync](#sync) |
+| the HTTP API, locales and sync, which work on both | [The `/wp-json/typedpress/v1` API](#the-__tpapiv1-api), [Locales](#locales), [Sync](#sync) |
 | globals, media and files, sign-in | [Content](#content) |
 | relations, tables TypedPress didn't create, schema changes at deploy, transactions, queries | [Database](#database) |
 
@@ -207,7 +207,7 @@ from wp-admin or REST, and unlisted active plugins are reported. See
 [sealed mode](sealed.md) for what that guarantees on a plain WordPress host and
 on a host that mounts the build store.
 
-`GET /__tp/api/v1` lists the switches the app applies in `runtime.wp.hardening`
+`GET /wp-json/typedpress/v1` lists the switches the app applies in `runtime.wp.hardening`
 (`xmlrpc` and `pings` only when the config turns them off). The object cache
 is whatever the host's `object-cache.php` drop-in provides. A plugin can't
 install a drop-in, so the host supplies it (on Spacefast, the box image does).
@@ -290,8 +290,8 @@ app is active they are closed to visitors who aren't signed in:
 | `?author=<id>` (core redirects it to `/author/<login>/`), `?author_name=`, `/author/<login>/`, its feed and its `.md` twin | 404, no redirect |
 | the users sitemap (`/wp-sitemap-users-1.xml`), and its entry in `/wp-sitemap.xml` | gone (with a users kind: only the users below) |
 | a post's oEmbed `author_name` and `author_url` | the site's name and address, as core answers for a post with no author |
-| `/__tp/api/v1/users`, in an app without a users kind | follows the core route (401) |
-| the app's own users kind on TypedPress's API (`GET /__tp/api/v1/<kind>`, also at `/users`) | its read rule decides, as for every viewer: a rule that needs a signed-in user (`self`, a role) answers the list with TypedPress's 401, a rule that filters answers with the rows it gives a signed-out visitor (often none). One user is a 401 unless the rule gives that row to anyone, whether or not the id exists; core's own rule still applies after that, so a visible user with no published post is in the list and a 401 on their own |
+| `/wp-json/typedpress/v1/users`, in an app without a users kind | follows the core route (401) |
+| the app's own users kind on TypedPress's API (`GET /wp-json/typedpress/v1/<kind>`, also at `/users`) | its read rule decides, as for every viewer: a rule that needs a signed-in user (`self`, a role) answers the list with TypedPress's 401, a rule that filters answers with the rows it gives a signed-out visitor (often none). One user is a 401 unless the rule gives that row to anyone, whether or not the id exists; core's own rule still applies after that, so a visible user with no published post is in the list and a 401 on their own |
 | a registered commenter's `comment-author-<nicename>` class, and a byline's link to the archive | the class is left out; the link points at the home page unless that user is a public author |
 
 With a users kind, its read rule also says who is a public author, user by
@@ -322,7 +322,7 @@ export default defineConfig({ publicAuthors: true });
 ```
 
 or give the users kind the read rule `"anyone"`
-(`access: { read: "anyone" }`). `GET /__tp/api/v1` reports whether either
+(`access: { read: "anyone" }`). `GET /wp-json/typedpress/v1` reports whether either
 applies, as one boolean, under `runtime.wp.publicAuthors`. A coded rule that
 happens to return `true` for every user opens the archives, the sitemap and
 oEmbed user by user, but not core's `/wp/v2/users`, and is not reported as
@@ -683,7 +683,7 @@ Core `/wp/v2/<post type>` speaks TypedPress's fields and queries too:
   `OPTIONS`, and `where`/`orderBy`/`with`. Every call is TypedPress's pipeline as
   the viewer, so it answers what TypedPress's API answers.
 
-## The `/__tp/api/v1` API
+## The `/wp-json/typedpress/v1` API
 
 One clean HTTP shape for clients and agents, over the core routes above. Each
 request is dispatched to the core route as the caller and only mapped, so it
@@ -691,14 +691,14 @@ answers exactly what core answers under TypedPress's rules.
 
 | Request | Core route | Answer |
 |---|---|---|
-| `GET /__tp/api/v1/<kind>?where=…&orderBy=…&with=…&search=…&limit=…&cursor=…` | `GET /wp/v2/<route>` | `{ data: rows, cursor }`; `cursor` is `null` on the last page |
-| `GET /__tp/api/v1/<kind>/<id>` (`/posts/slug:hello`) | `GET /wp/v2/<route>/<id>` | `{ data: row }`; `?format=md` answers `text/markdown` |
-| `POST /__tp/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
-| `GET /__tp/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
-| `POST /__tp/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
-| `GET /__tp/api/v1/search?q=…[&kinds=a,b][&limit=n]` | `GET /wp/v2/search?search=…` (kinds with a `url`, as subtypes of `post`) | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
-| `GET /__tp/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
-| `GET /__tp/api/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
+| `GET /wp-json/typedpress/v1/<kind>?where=…&orderBy=…&with=…&search=…&limit=…&cursor=…` | `GET /wp/v2/<route>` | `{ data: rows, cursor }`; `cursor` is `null` on the last page |
+| `GET /wp-json/typedpress/v1/<kind>/<id>` (`/posts/slug:hello`) | `GET /wp/v2/<route>/<id>` | `{ data: row }`; `?format=md` answers `text/markdown` |
+| `POST /wp-json/typedpress/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
+| `GET /wp-json/typedpress/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
+| `POST /wp-json/typedpress/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `GET /wp-json/typedpress/v1/search?q=…[&kinds=a,b][&limit=n]` | `GET /wp/v2/search?search=…` (kinds with a `url`, as subtypes of `post`) | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
+| `GET /wp-json/typedpress/v1` | | the app's kinds (with their core routes), fields, globals and actions |
+| `GET /wp-json/typedpress/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
 
 Rows are TypedPress rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
 `published` or `private`. Errors are RFC 9457 problem documents (`code`,
@@ -723,7 +723,7 @@ one way:
   sync, services, and WordPress's own `posts`, `pages`, `comments`, `media`,
   `categories`, `tags`, `menus` and `settings` where the app declares none of
   that name. An action with a `signature` is left out: it is a webhook for the
-  one service that holds its secret, and `GET /__tp/api/v1` leaves it out too.
+  one service that holds its secret, and `GET /wp-json/typedpress/v1` leaves it out too.
 - An operation's `operationId` names it by kind and operation (`posts.list`,
   `actions.greet`, `sync.notes.read`); where the typed client has a call for
   the request, it is that call's name. Its description says who may call it, and
@@ -735,13 +735,13 @@ one way:
   `securitySchemes` lists the three ways to sign in.
 
 The running site serves the same document at
-`GET /__tp/api/v1/openapi.json`, with the site's own address in `servers`.
+`GET /wp-json/typedpress/v1/openapi.json`, with the site's own address in `servers`.
 It needs no sign-in and is the same for everyone: it describes the app's kinds,
-fields, globals and actions, as `GET /__tp/api/v1` does, and never says who
+fields, globals and actions, as `GET /wp-json/typedpress/v1` does, and never says who
 may see which row.
 
 ```sh
-curl https://example.test/__tp/api/v1/openapi.json
+curl https://example.test/wp-json/typedpress/v1/openapi.json
 ```
 
 ### An API reference on the site
@@ -1006,7 +1006,7 @@ backend.
 `export const settings = global(fields, { label?, access?: { read?, update? } })`:
 the export names it. One record per global; fields use the
 sub-field rules, and a required field needs a default. `GET`/`PATCH
-/__tp/api/v1/<name>`.
+/wp-json/typedpress/v1/<name>`.
 
 ### Media and files
 
@@ -1440,7 +1440,7 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   parent's hash, and the option names the newest version and its hash, so a row changed, inserted
   or removed outside TypedPress (the newest ones included) breaks the chain. A broken chain refuses
   further changes (409 `schema_chain_broken`) and `typedpress pull`; the site keeps serving the last
-  state that checked out; `GET /__tp/api/v1` and `typedpress doctor` report the problem from the
+  state that checked out; `GET /wp-json/typedpress/v1` and `typedpress doctor` report the problem from the
   next request on, and the wp-admin screen shows it. A deploy is refused with the same error and
   writes nothing. The option is sealed by apply with an HMAC keyed by the site's own salts
   (wp-config's keys), so only code running on the site can seal one; an option written any other
@@ -1457,12 +1457,12 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   A kind, field or relation the build declares itself is never replaced; only a label and a
   field's `ui` are. A new field is post meta `tp_<field>` (an option, on a global); a new
   collection is post type `tp_<name>` with no SQL table. Both are registered like compiled
-  ones, from the request after the change. `GET /__tp/api/v1` reports `runtimeSchema: {
+  ones, from the request after the change. `GET /wp-json/typedpress/v1` reports `runtimeSchema: {
   version, hash, build }`.
 - **In the project.** `typedpress pull [dir] [--site url] [--check]` writes the site's newest version to
   `tp/_generated/runtime-schema.json`: `collections` and `globals` (fields added to declared
   kinds), `added` (new kinds) and `overrides` (labels and presentation), with the version number
-  and hash. It reads `GET /__tp/api/v1/schema-versions/lock`, which answers administrators only
+  and hash. It reads `GET /wp-json/typedpress/v1/schema-versions/lock`, which answers administrators only
   (signed in as any remote command is: `typedpress login`, or `TP_APP_PASSWORD` / `TP_TOKEN`). Before it keeps the new lock it compiles the project
   with it; a lock the project can't compile (it declares one of the names differently, say) is
   not written, and the error says why. Then it refreshes `tp/_generated/` (types, client).
@@ -1673,7 +1673,7 @@ Throwing anything aborts the request and rolls back every write in it.
 
 ## Actions
 
-`action({ input: { ...columns }, access?, handler(input, ctx) { ... } })` → `POST /__tp/api/v1/actions/<name>`.
+`action({ input: { ...columns }, access?, handler(input, ctx) { ... } })` → `POST /wp-json/typedpress/v1/actions/<name>`.
 `input` uses column builders for validation; the return value is the response `data`.
 
 - `idempotent: true`: a request with an `Idempotency-Key` header runs once per
@@ -1792,7 +1792,10 @@ export function POST(req: RouteRequest) {
   sets its own. Any other return type is a compile error.
 - The handler runs in one transaction. A throw rolls it back, and
   `throw new HttpError(status, code, message)` answers with a problem+json
-  document. `db`, `jobs` and `once` work as they do in actions.
+  document. `db`, `jobs` and `once` work as they do in actions. A `GET` or
+  `HEAD` handler starts its transaction at the first write or locking read.
+  A handler that only runs ordinary reads sends neither `START TRANSACTION`
+  nor `COMMIT`.
 - Cookie sessions authenticate `GET` and `HEAD` routes. On other methods a
   signed-in visitor counts only with a valid `X-WP-Nonce` (`wp_rest`) header;
   otherwise the request runs anonymously, so another site cannot post as your
@@ -2203,10 +2206,13 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   `excerpt_length`, `excerpt_more`, `body_class`, `post_class`, `save_post`,
   `wp_insert_post`, `deleted_post`, `transition_post_status`, `user_register`,
   `wp_login`, `wp_logout`, `rest_api_init`, `wp_mail`, `pre_get_posts` and
-  `login_message`. Any other name is a build error with the closest one.
-  There is no untyped escape hatch.
+  `login_message`. The catalog also holds the hook TypedPress fires itself,
+  `typedpress_woo_order_stock` ([WooCommerce](woocommerce.md)). Any other
+  name is a build error with the closest one. There is no untyped escape hatch.
 - Arguments are typed from the catalog. A filter must return its first
-  argument's type. Handlers are synchronous: WordPress doesn't wait.
+  argument's type. Handlers of WordPress's hooks are synchronous: WordPress
+  doesn't wait. `typedpress_woo_order_stock` is the one hook whose handler may
+  be `async`.
 - `WP_Post` and `WP_User` arguments are read-only copies of their documented
   public properties (`post_title`, `post_status`, `user_login`, `roles`, ...).
   `WP_Query` (`pre_get_posts`) offers `get(var)`, `set(var, value)` and

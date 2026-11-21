@@ -57,7 +57,7 @@ You publish your app's source, Spacefast compiles it on its own WordPress, and y
 6. Open the address. Check that a page loads, then call one route:
 
    ```sh
-   curl https://my-app.space.fast/__tp/api/v1/notes
+   curl https://my-app.space.fast/wp-json/typedpress/v1/notes
    ```
 
 To publish a new version, run `sf publish` again from the same directory. The CLI remembers the Space in `.spacefast/`.
@@ -66,7 +66,7 @@ To publish a new version, run `sf publish` again from the same directory. The CL
 
 Each version runs the code it was compiled from. These work with no extra setup:
 
-- The API under `/__tp/api/v1`, over WordPress's own REST routes. See the [API reference](/rest).
+- The API under `/wp-json/typedpress/v1`, over WordPress's own REST routes. See the [API reference](/rest).
 - Pages and HTTP handlers under `tp/app/` (`page.tsx`, `route.ts`), on their own paths, with the stylesheets and SVGs they import. See [Pages](/pages).
 - `public/`, served as static files.
 - The typed client at `/__tp/client.js`, with its types at `/__tp/client.d.ts`.

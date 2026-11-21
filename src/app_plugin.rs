@@ -93,7 +93,7 @@ fn build_files(
         );
         files.push((at("tp/app/references.php"), php.into_bytes()));
     }
-    // The API's description, which the site serves at /__tp/api/v1/openapi.json (TypedPress\OpenApi).
+    // The API's description, which the site serves at /wp-json/typedpress/v1/openapi.json (TypedPress\OpenApi).
     files.push((
         at("tp/app/openapi.json"),
         crate::openapi::render(&built.openapi).into_bytes(),

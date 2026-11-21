@@ -22,16 +22,16 @@ The site's URL is the only configuration: `TP_URL`. To read as a user, `TP_APP_P
 
 ## What the loaders read
 
-The loaders call the same API as the typed client, `/__tp/api/v1`:
+The loaders call the same API as the typed client, `/wp-json/typedpress/v1`:
 
-- `GET /__tp/api/v1` once per build, for the kinds and their fields. It gives each collection its
+- `GET /wp-json/typedpress/v1` once per build, for the kinds and their fields. It gives each collection its
   Zod schema and the TypeScript type of `entry.data`.
-- `POST /__tp/api/v1/_live` for build-time pages ([reactive queries](decisions/2026-11-13-reactive-queries.md)):
+- `POST /wp-json/typedpress/v1/_live` for build-time pages ([reactive queries](decisions/2026-11-13-reactive-queries.md)):
   each primary-key range of up to 100 rows is a subscribed read whose token the content layer keeps
   between builds, so an unchanged range sends no rows. The answer is the visitor's own
   access-checked read either way; whether the site skips running it depends on what the reader may
   see.
-- `GET /__tp/api/v1/<kind>` for live collections and for WordPress's own kinds.
+- `GET /wp-json/typedpress/v1/<kind>` for live collections and for WordPress's own kinds.
 - Core's `/wp/v2/<type>` route, `_fields=id,content`, for the HTML WordPress renders from an entry's
   content field (`render(entry)` in Astro).
 
@@ -64,4 +64,4 @@ Checked against Spacefast's source on 2026-11-14. Nothing here was published.
 | Static Astro | Spacefast detects Astro (`astro` in `package.json` or an `astro.config.*` file), runs `astro build` and publishes `dist/` as files. `TP_URL` is a Space variable (`sf env set`), read at build time. |
 | On-demand Astro | Spacefast's own adapter, `@spacefast/astro/adapter`, builds the on-demand routes into a Functions worker; variables reach a page as `Astro.locals.runtime.env`. `@typedpress/astro` uses only `fetch` and Web Crypto, which a worker has. Not run on Spacefast yet. |
 | Rebuild on write | Spacefast has a build trigger for a Space built from a connected repository (`POST /v1/spaces/{id}/builds`, an API key with `builds:trigger`). Calling it from `onEvent` is the way to rebuild a static Astro Space after an edit. Not tried yet. |
-| `/__tp/api/v1` | Spacefast reserves `/__tp` and marks `/__tp/api/v1` as an API other frontends call. |
+| `/wp-json/typedpress/v1` | A route under `/wp-json`, which Spacefast sends to WordPress like every REST route. |

@@ -28,7 +28,7 @@ $wp = wpSite('native-posts', [
 ]);
 $db = \TypedPress\db();
 
-/** A request to the facade (`/__tp/api/v1`), where the staged-version routes live: [status, data or problem]. */
+/** A request to the facade (`/wp-json/typedpress/v1`), where the staged-version routes live: [status, data or problem]. */
 function facade(string $method, string $path, mixed $body = null, ?string $as = null): array
 {
     global $wp;

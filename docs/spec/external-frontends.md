@@ -21,7 +21,7 @@ or a static Space built by Spacefast's build pipeline).
 ## One spec, one tag vocabulary
 
 - The deployed site serves its spec (collections, fields, actions, access summary)
-  at `GET /__tp/api/v1` (mapped from core's REST index and the Abilities
+  at `GET /wp-json/typedpress/v1` (mapped from core's REST index and the Abilities
   list). `typedpress pull` turns it into `tp/api.d.ts`,
   `openapi.json` and Zod schemas.
 - Every read result carries cache tags `<kind>` and `<kind>:<id>`. The same

@@ -6,7 +6,7 @@ declare(strict_types=1);
  * `<Comments for={item} />` and the comment policy on every path (docs/decisions/2026-11-14-comments.md):
  * tests/fixtures/comments, built by `typedpress build`, on WordPress with php -S. Comments arrive the
  * three ways they can: the component's form (form-encoded, as a browser with scripts off sends it),
- * the facade's `POST /__tp/api/v1/comments`, and core's `wp-comments-post.php`. Prints one JSON
+ * the facade's `POST /wp-json/typedpress/v1/comments`, and core's `wp-comments-post.php`. Prints one JSON
  * object of what each step saw.
  *
  *   TP_WP_THEMES=1 php tests/php/comments.php <wp-content dir>
@@ -146,8 +146,8 @@ $out['signed out'] = ['status' => $anon['status'], 'thread' => thread($anon['bod
 
 // Signed out, each path refused, and nothing saved.
 $before = $count();
-$facade = fetch("$url/__tp/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $note, 'content' => 'anon json']));
-$form = post(['action' => '/__tp/api/v1/comments', 'fields' => ['on' => (string) $note, '_tp_return' => '/notes/open-note/']], 'anon form', []);
+$facade = fetch("$url/wp-json/typedpress/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $note, 'content' => 'anon json']));
+$form = post(['action' => '/wp-json/typedpress/v1/comments', 'fields' => ['on' => (string) $note, '_tp_return' => '/notes/open-note/']], 'anon form', []);
 $core = fetch("$url/wp-comments-post.php", 'POST', ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['comment_post_ID' => $note, 'comment' => 'anon core', 'author' => 'Anon', 'email' => 'anon@example.test']));
 $out['signed out posts'] = [
     'facade' => $facade['status'],
@@ -176,7 +176,7 @@ $out['first comment'] = [
 // Once a moderator approves it, her next comment is approved at once; through the facade too.
 wp_set_comment_status($annFirst, 'approve');
 [$nonce, $cookie] = explode("\n", $nonceFor('ann'));
-$second = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $note, 'content' => 'Ann again']));
+$second = fetch("$url/wp-json/typedpress/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $note, 'content' => 'Ann again']));
 $out['second comment'] = [$second['status'], json_decode($second['body'], true)['data']['status'] ?? $second['body']];
 // Bo, first time, through core's wp-comments-post.php: held, as on every other path.
 $bo = $session('bo');
@@ -188,13 +188,13 @@ $out['core path'] = [$boPost['status'], $boId > 0 ? $status($boId) : null];
 // page offers no reply form there.
 $page = fetch("$url/notes/open-note/", headers: $ann);
 $pageNonce = forms($page['body'])[0]['fields']['_wpnonce'];
-$reply = static fn (int $parent): array => ['action' => '/__tp/api/v1/comments', 'fields' => ['on' => (string) $note, 'parent' => (string) $parent, '_tp_return' => '/notes/open-note/', '_wpnonce' => $pageNonce]];
+$reply = static fn (int $parent): array => ['action' => '/wp-json/typedpress/v1/comments', 'fields' => ['on' => (string) $note, 'parent' => (string) $parent, '_tp_return' => '/notes/open-note/', '_wpnonce' => $pageNonce]];
 post($reply($seeded), 'depth two', $ann);
 $two = (int) get_comments(['post_id' => $note, 'search' => 'depth two', 'fields' => 'ids', 'status' => 'all'])[0];
 post($reply($two), 'depth three', $ann);
 $three = (int) get_comments(['post_id' => $note, 'search' => 'depth three', 'fields' => 'ids', 'status' => 'all'])[0];
 $deep = post($reply($three), 'depth four', $ann);
-$deepJson = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $note, 'parent' => $three, 'content' => 'depth four json']));
+$deepJson = fetch("$url/wp-json/typedpress/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $note, 'parent' => $three, 'content' => 'depth four json']));
 $deepCore = fetch("$url/wp-comments-post.php", 'POST', [...$ann, 'Content-Type: application/x-www-form-urlencoded'], http_build_query(['comment_post_ID' => $note, 'comment_parent' => $three, 'comment' => 'depth four core']));
 $view = fetch("$url/notes/open-note/", headers: $ann)['body'];
 $out['depth'] = [
@@ -210,8 +210,8 @@ $out['depth'] = [
 // A draft note: no thread for a visitor who can't read it, and no comment on it either.
 wp_insert_comment(['comment_post_ID' => $draft, 'comment_content' => 'Draft talk', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
 $draftPage = fetch("$url/notes/draft-note/", headers: $ann);
-$draftList = fetch("$url/__tp/api/v1/comments?post=$draft", headers: [$cookie, "X-WP-Nonce: $nonce"]);
-$draftPost = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $draft, 'content' => 'on a draft']));
+$draftList = fetch("$url/wp-json/typedpress/v1/comments?post=$draft", headers: [$cookie, "X-WP-Nonce: $nonce"]);
+$draftPost = fetch("$url/wp-json/typedpress/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $draft, 'content' => 'on a draft']));
 $out['draft'] = [
     'page' => $draftPage['status'],
     'page shows' => str_contains($draftPage['body'], 'Draft talk'),
@@ -223,17 +223,17 @@ $out['draft'] = [
 \TypedPress\db()->insert('notices', ['title' => 'Old notice', 'status' => 'published', 'publishedAt' => gmdate('Y-m-d\\TH:i:s\\Z', time() - 40 * DAY_IN_SECONDS)]);
 $notice = (int) \TypedPress\db()->findFirst('notices', ['where' => ['title' => 'Open notice']])['id'];
 $old = (int) \TypedPress\db()->findFirst('notices', ['where' => ['title' => 'Old notice']])['id'];
-$guestJson = fetch("$url/__tp/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $notice, 'content' => 'guest json', 'authorName' => 'Guest', 'authorEmail' => 'guest@example.test']));
+$guestJson = fetch("$url/wp-json/typedpress/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $notice, 'content' => 'guest json', 'authorName' => 'Guest', 'authorEmail' => 'guest@example.test']));
 $guestCore = fetch("$url/wp-comments-post.php", 'POST', ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['comment_post_ID' => $notice, 'comment' => 'guest core', 'author' => 'Guest', 'email' => 'guest2@example.test']));
 $guestCoreId = (int) (get_comments(['post_id' => $notice, 'search' => 'guest core', 'fields' => 'ids', 'status' => 'all'])[0] ?? 0);
 $firstOnNotice = (int) (get_comments(['post_id' => $notice, 'search' => 'guest', 'fields' => 'ids', 'status' => 'all', 'orderby' => 'comment_ID', 'order' => 'ASC'])[0] ?? 0);
-$flatReply = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $notice, 'parent' => $firstOnNotice, 'content' => 'a reply']));
-$closed = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $old, 'content' => 'too late']));
+$flatReply = fetch("$url/wp-json/typedpress/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $notice, 'parent' => $firstOnNotice, 'content' => 'a reply']));
+$closed = fetch("$url/wp-json/typedpress/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $old, 'content' => 'too late']));
 // A guest gives a name and a valid email on every path, whatever the Discussion setting says.
 update_option('require_name_email', 0);
-$noName = fetch("$url/__tp/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $notice, 'content' => 'no name json']));
+$noName = fetch("$url/wp-json/typedpress/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $notice, 'content' => 'no name json']));
 $badEmailCore = fetch("$url/wp-comments-post.php", 'POST', ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['comment_post_ID' => $notice, 'comment' => 'no name core', 'author' => 'Guest', 'email' => 'not-an-email']));
-$noNameForm = post(['action' => '/__tp/api/v1/comments', 'fields' => ['on' => (string) $notice, '_tp_return' => '/notes/open-note/']], 'no name form', []);
+$noNameForm = post(['action' => '/wp-json/typedpress/v1/comments', 'fields' => ['on' => (string) $notice, '_tp_return' => '/notes/open-note/']], 'no name form', []);
 $out['guest identity'] = [
     'facade' => $noName['status'],
     'core' => $badEmailCore['status'],
@@ -248,7 +248,7 @@ $out['authored policy'] = [
 ];
 
 // A kind without comments refuses every path.
-$memoPost = fetch("$url/__tp/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $memo, 'content' => 'on a memo']));
+$memoPost = fetch("$url/wp-json/typedpress/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $memo, 'content' => 'on a memo']));
 $out['memo'] = $memoPost['status'];
 
 // The page cache: what changes the approved thread purges the item's URL; what doesn't, doesn't.

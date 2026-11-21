@@ -5,8 +5,8 @@ declare(strict_types=1);
 /*
  * `php -S` router for a WpSite (tests/php/wp.php): what the production web server does for TypedPress.
  * Static files are served from the site; `/wp-content/uploads/typedpress-private/` is denied (the
- * private-files probe checks exactly that); `/wp-json/...` becomes a `rest_route` request; and
- * everything else runs WordPress's index.php. TP_TEST_SITE names the site directory.
+ * private-files probe checks exactly that); and everything else runs WordPress's index.php, which
+ * parses `/wp-json/...` itself, as behind a real web server. TP_TEST_SITE names the site directory.
  */
 
 $dir = getenv('TP_TEST_SITE') ?: throw new RuntimeException('TP_TEST_SITE is not set');
@@ -132,9 +132,6 @@ if (preg_match('#^/(wp-login\.php|wp-admin/(?:[a-z0-9-]+\.php)?)$#', $path, $m) 
     chdir(dirname("$root/$file"));
     require "$root/$file";
     exit;
-}
-if (preg_match('#^/wp-json(/.*)?$#', $path, $m) === 1) {
-    $_GET['rest_route'] = ($m[1] ?? '') === '' ? '/' : $m[1];
 }
 // Core's comment form handler is a script of its own, as on any web server. The shared core has no
 // wp-config.php for its wp-load.php to find, so the site's settings load first and the script runs

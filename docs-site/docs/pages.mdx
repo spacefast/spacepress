@@ -77,7 +77,7 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 
 - `<Comments for={item} />` shows the thread as the visitor may read it (approved comments, plus their own held ones) and a form that works without JavaScript.
 - The item's kind turns `comments` on; on a kind without it the build stops at the prop.
-- Who may comment, moderation and reply depth are the kind's, enforced wherever a comment is created: this form, `POST /__tp/api/v1/comments` and WordPress's own comment form all get the same answer. With `comments: true`: signed-in users only, a first comment waits for approval, replies go three levels deep; the kind's `comments` options change any of them.
+- Who may comment, moderation and reply depth are the kind's, enforced wherever a comment is created: this form, `POST /wp-json/typedpress/v1/comments` and WordPress's own comment form all get the same answer. With `comments: true`: signed-in users only, a first comment waits for approval, replies go three levels deep; the kind's `comments` options change any of them.
 
 ### Search
 

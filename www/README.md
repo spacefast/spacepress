@@ -104,7 +104,7 @@ list saved edits: the table's access is `admin`, and the page reads one row as t
 ## Examples and stars
 
 `examples` is a table: name, title, summary, the GitHub repository and the folder inside it, and
-`stars` with `starsAt`. An admin adds rows (TypedPress Admin, or `POST /__tp/api/v1/examples`).
+`stars` with `starsAt`. An admin adds rows (TypedPress Admin, or `POST /wp-json/typedpress/v1/examples`).
 
 `refreshStars` is a `job`: it runs on WordPress's job queue (Action Scheduler), asks
 `https://api.github.com/repos/<owner>/<name>` once per repository and stores the count. Nothing

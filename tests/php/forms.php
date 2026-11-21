@@ -112,7 +112,9 @@ $out['form'] = [
     'method' => $subscribe['method'],
     'action' => parse_url($subscribe['action'], PHP_URL_PATH),
     'hidden' => array_values(array_filter($subscribe['fields'], static fn ($f) => $f[1] === 'hidden')),
-    'page cache' => $page['headers']['cache-control'][0] ?? null,
+    'page cache' => fetch("$url/")['headers']['cache-control'][0] ?? null,
+    // `ref` is not a parameter the page declares (`export const search`): that URL is not shared.
+    'undeclared query' => $page['headers']['cache-control'][0] ?? null,
 ];
 
 // Success: the action's result comes back on the page; the redirect goes to the page it came from.

@@ -1,4 +1,4 @@
-// /__tp/api/v1 (spec §3a): a thin facade over core routes. Every request is dispatched to the core
+// /wp-json/typedpress/v1 (spec §3a): a thin facade over core routes. Every request is dispatched to the core
 // route and only mapped, so it answers what TypedPress's rules answer: the same rows, the same denials,
 // problem documents for errors. Each check compares with TypedPress's own pipeline (`wp typedpress find`), core
 // directly, or the values themselves.
@@ -6,7 +6,7 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { auth, core, harness, http, ok, qs, run, sql, wp, first, type Role } from "./env.ts";
 
-const facade = `${harness.url}/__tp/api/v1`;
+const facade = `${harness.url}/wp-json/typedpress/v1`;
 const f = (method: string, path: string, opts: { as?: Role; body?: unknown } = {}) => http(method, facade + path, opts);
 // The pipeline's row without what differs by design: timestamps, and the API's `_rev` (docs/staged.md).
 const strip = (row: any) => { const { createdAt, updatedAt, _rev, ...rest } = row; return rest; };
@@ -218,6 +218,37 @@ test("menus: a menu in a theme location is public; its items are a tree", async 
   assert.deepEqual(primary.json.data, { location: "primary", items: [{ label, url: "/", item: null, children: [{ label: "Child", url: "/c/", item: null, children: [] }] }] });
   assert.equal((await f("GET", "/menus/nowhere")).status, 404);
   assert.equal((await http("GET", `${core}/menu-locations`)).status, 401, "core's own menu routes stay closed to anonymous visitors");
+});
+
+// WordPress keeps a route it took from the path as sent, and PHP decodes one sent as `?rest_route=`:
+// the API decodes the first, so a segment means the same however it was sent, decoded exactly once.
+test("a percent-encoded path segment is decoded once, the same under /wp-json and as ?rest_route=", async () => {
+  const both = async (path: string) => {
+    const pretty = await http("GET", facade + path, { as: "editor" });
+    const query = await http("GET", `${harness.url}/?rest_route=/typedpress/v1${path}`, { as: "editor" });
+    assert.deepEqual([query.status, query.json], [pretty.status, pretty.json], `${path} answers the same in both forms`);
+    return pretty;
+  };
+  const me = await both("/%6de");
+  assert.deepEqual([me.status, me.json.data.id], [200, harness.users.editor.id], "an encoded letter in the kind");
+  const id = String(eventIds[0]);
+  const item = await both(`/events/%3${id[0]}${id.slice(1)}`);
+  assert.deepEqual([item.status, item.json.data.id], [200, eventIds[0]], "an encoded digit in the id");
+  // Menu locations named with a space, a non-ASCII letter, a percent sign and a literal `%20` (mu-plugins/menu-location.php).
+  for (const [sent, location] of [["prim%61ry", "primary"], ["side%20menu", "side menu"], ["%C3%A9t%C3%A9", "été"], ["50%25", "50%"], ["a%2520b", "a%20b"]]) {
+    const menu = await both(`/menus/${sent}`);
+    assert.deepEqual([menu.status, menu.json.data?.location], [200, location], `/menus/${sent} is the location '${location}'`);
+  }
+  assert.equal((await both("/menus/a%20b")).status, 404, "`a b` is no location: `a%2520b` above was decoded once, not twice");
+  // A scoped credential is judged on the same decoded path the API answers.
+  const agent = JSON.parse(wp("typedpress", "identity", "agent", "add", "editor", `--name=encoded-${run}`, "--abilities=blog/nothing")).data;
+  const header = { Authorization: "Basic " + btoa(`editor:${agent.password}`) };
+  for (const path of ["/events", "/%65vents", "/%2565vents"]) {
+    for (const url of [facade + path, `${harness.url}/?rest_route=/typedpress/v1${path}`]) {
+      const res = await fetch(url, { headers: header });
+      assert.deepEqual([res.status, (await res.json()).code], [403, "scope"], `${url}: an ability-limited credential reads no kind, however it is spelled`);
+    }
+  }
 });
 
 test("globals run through their Abilities on core's run route: the global's own rules, { data }", async () => {

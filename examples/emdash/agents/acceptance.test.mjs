@@ -103,7 +103,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
     catch { throw new Error(`${method} ${path}: ${response.status}, non-JSON ${text.slice(0, 250)}`); }
     return { status: response.status, type: response.headers.get('content-type'), json, headers: response.headers };
   };
-  const api = (path, options) => request('/__tp/api/v1' + path, options);
+  const api = (path, options) => request('/wp-json/typedpress/v1' + path, options);
   const ok = (response) => { assert.equal(response.status, 200, JSON.stringify(response.json)); return response.json.data; };
   const ability = (name, input, who, method = 'POST') => {
     const path = `/wp-json/wp-abilities/v1/abilities/agents/${name}/run`;

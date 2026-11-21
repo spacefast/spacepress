@@ -78,7 +78,9 @@ function form(string $html, string $button): ?array
 /** Posts a page's form as a browser without JavaScript does, and returns the page it comes back to. */
 function submit(string $page, string $button, array $values, string $as): array
 {
-    $jar = tempnam(sys_get_temp_dir(), 'ksjar');
+    global $site;
+    // Cookie jars, like the upload files below, live in the site's directory and go with it.
+    $jar = tempnam($site->dir, 'ksjar');
     $form = form(visit($page, as: $as, jar: $jar)[1], $button);
     if ($form === null) {
         return [0, "no form with a \"$button\" button on $page", []];
@@ -209,7 +211,7 @@ eq('the schedule feed gives plain text and an absolute link', [$listed['title'] 
 [, $shop] = visit('/shop/');
 check('the shop links each product to its page', str_contains($shop, '/supplies/bench-scraper/'));
 preg_match('~href="([^"]*add-to-cart=\d+)"~', $shop, $add);
-$basket = tempnam(sys_get_temp_dir(), 'kscart');
+$basket = tempnam($site->dir, 'kscart');
 visit(html_entity_decode($add[1] ?? '/cart/', ENT_QUOTES), jar: $basket);
 [$status, $cart] = visit('/cart/', jar: $basket);
 check('the cart holds a line for the product', $status === 200 && str_contains($cart, 'woocommerce-cart-form__cart-item') && str_contains($cart, 'Bench scraper'), substr(strip_tags($cart), 0, 400));
@@ -260,18 +262,18 @@ check('a member cancels their reservation', $status === 200 && notices($cancelle
 eq('the cancelled reservation is gone', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations'), 1);
 
 // ---- media and the private handout on the workshop page
-$png = tempnam(sys_get_temp_dir(), 'kspng');
+$png = tempnam($site->dir, 'kspng');
 $image = imagecreatetruecolor(900, 600);
 imagepng($image, $png);
 $picture = static function (string $name) use ($site, $png): array {
     // An upload moves its file, so each one gets its own copy.
-    copy($png, $copy = tempnam(sys_get_temp_dir(), 'ksup'));
+    copy($png, $copy = tempnam($site->dir, 'ksup'));
 
     return $site->call('POST', '/media', as: 'host', files: ['file' => ['name' => $name, 'tmp_name' => $copy, 'error' => UPLOAD_ERR_OK, 'size' => filesize($copy)]], form: ['alt' => 'A loaf'])[1];
 };
 $poster = $picture('poster.png');
 $shot = $picture('crumb.png');
-$pdf = tempnam(sys_get_temp_dir(), 'kspdf');
+$pdf = tempnam($site->dir, 'kspdf');
 file_put_contents($pdf, "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
 [$status, $handout] = $site->call('POST', '/files/handouts', as: 'host', files: ['file' => ['name' => 'bread-basics.pdf', 'tmp_name' => $pdf, 'error' => UPLOAD_ERR_OK, 'size' => filesize($pdf)]]);
 eq('an editor uploads a handout to the private bucket', [$status, $handout['filename'] ?? null], [201, 'bread-basics.pdf']);

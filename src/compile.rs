@@ -12685,13 +12685,13 @@ fn safe_data_media_url(tag: &str, attr: &str, url: &str) -> bool {
         .chars()
         .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
         .collect();
-    let Some(rest) = clean.strip_prefix("data:").or_else(|| {
-        if clean.len() >= 5 && clean[..5].eq_ignore_ascii_case("data:") {
-            Some(&clean[5..])
-        } else {
-            None
-        }
-    }) else {
+    let rest = if clean
+        .as_bytes()
+        .get(..5)
+        .is_some_and(|p| p.eq_ignore_ascii_case(b"data:"))
+    {
+        &clean[5..]
+    } else {
         return false;
     };
     let Some((header, payload)) = rest.split_once(',') else {

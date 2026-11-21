@@ -211,7 +211,6 @@ final class Runtime
         \TypedPress\Commerce\Module::initialize(self::$plugin);
         ContentPages::install();
         RoutePages::install();
-        PublicFiles::syncSymlinks(self::$plugin);
         \TypedPress\Search\Index::reindexChanged();
         self::installRewrites();
         // The Pages log and swallow a failure on a request (the next one retries); initialize's

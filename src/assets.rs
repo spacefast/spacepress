@@ -154,8 +154,7 @@ pub(crate) fn shippable_public_path(rel: &str) -> bool {
         }
     }
     let name = segments.last().unwrap().to_ascii_lowercase();
-    let ext = name.rsplit_once('.').map_or("", |(_, e)| e);
-    !REFUSED_PUBLIC.contains(&ext) && !REFUSED_PUBLIC.contains(&name.as_str())
+    !name.split('.').any(|part| REFUSED_PUBLIC.contains(&part)) && !REFUSED_PUBLIC.contains(&name.as_str())
 }
 
 /// Whether a path below `public/` belongs in `public-files.json` (symlinked into the document root
@@ -262,6 +261,41 @@ pub fn font_mime(file: &str) -> Option<&'static str> {
 /// Encodes `bytes` as a `data:<mime>;base64,...` URI.
 pub fn data_uri(ext: &str, bytes: &[u8]) -> String {
     format!("data:{};base64,{}", mime_type(ext), base64_encode(bytes))
+}
+
+/// Decodes standard padded base64 into raw bytes, returning `None` on invalid input.
+pub(crate) fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let val = |b: u8| -> Option<u8> {
+        match b {
+            b'A'..=b'Z' => Some(b - b'A'),
+            b'a'..=b'z' => Some(b - b'a' + 26),
+            b'0'..=b'9' => Some(b - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    };
+    let bytes = text.as_bytes();
+    if !bytes.len().is_multiple_of(4) {
+        return None;
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    for chunk in bytes.chunks_exact(4) {
+        let a = val(chunk[0])?;
+        let b = val(chunk[1])?;
+        out.push((a << 2) | (b >> 4));
+        if chunk[2] != b'=' {
+            let c = val(chunk[2])?;
+            out.push((b << 4) | (c >> 2));
+            if chunk[3] != b'=' {
+                let d = val(chunk[3])?;
+                out.push((c << 6) | d);
+            }
+        } else if chunk[3] != b'=' {
+            return None;
+        }
+    }
+    Some(out)
 }
 
 fn base64_encode(bytes: &[u8]) -> String {

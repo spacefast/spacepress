@@ -129,13 +129,15 @@ final class Assets
             $disk = $plugin !== null ? $plugin->dir . '/' . self::DIR . $file : null;
             if ($disk !== null && is_file($disk) && ($size = @filesize($disk)) !== false && $size <= self::INLINE_LIMIT) {
                 $css = (string) @file_get_contents($disk);
-                $css = self::resolveInlineUrls($css);
-                wp_register_style($handle, false, [], null);
-                wp_enqueue_style($handle);
-                wp_add_inline_style($handle, $css);
-            } else {
-                wp_enqueue_style($handle, self::url($file), [], null);
+                if (stripos($css, '@import') === false) {
+                    $css = self::resolveInlineUrls($css);
+                    wp_register_style($handle, false, [], null);
+                    wp_enqueue_style($handle);
+                    wp_add_inline_style($handle, $css);
+                    continue;
+                }
             }
+            wp_enqueue_style($handle, self::url($file), [], null);
         }
     }
 

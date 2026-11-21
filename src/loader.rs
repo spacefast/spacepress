@@ -1125,6 +1125,20 @@ fn bundle_css(
     let mut preloads: Vec<crate::assets::FontPreload> = Vec::new();
     let mut seen_preloads: std::collections::HashSet<String> = std::collections::HashSet::new();
 
+    // Find the last external `@import` (http/https/protocol-relative). Per CSS Cascade, `@import`
+    // rules must precede all style rules; if a local `@import` appears before an external `@import`,
+    // emit the bundled local sheet as a sibling hashed `.css` asset and keep it as `@import` so the
+    // later external `@import` stays valid while preserving cascade order.
+    let last_external_import_at = scanned
+        .imports
+        .iter()
+        .filter(|imp| {
+            let lower = imp.href.to_ascii_lowercase();
+            lower.starts_with("http://") || lower.starts_with("https://") || imp.href.starts_with("//")
+        })
+        .map(|imp| imp.at)
+        .max();
+
     // Bundle local relative `@import` rules inline (preserving @layer / @supports / @media conditions).
     for imp in &scanned.imports {
         let lower_href = imp.href.to_ascii_lowercase();
@@ -1173,7 +1187,59 @@ fn bundle_css(
                     .code(diag::Code::Import),
             );
         }
-        let (_, mut inner, inner_preloads) = bundle_css(fs, &target, false, program, by_path, css_stack, imp_span)?;
+        let (inner_file, mut inner, inner_preloads) =
+            bundle_css(fs, &target, false, program, by_path, css_stack, imp_span)?;
+        for p in inner_preloads {
+            if seen_preloads.insert(p.file.clone()) {
+                preloads.push(p);
+            }
+        }
+        if last_external_import_at.is_some_and(|ext_at| imp.at < ext_at) {
+            let target_rel = target
+                .strip_prefix(&program.root)
+                .unwrap_or(&target)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let child = crate::assets::Asset::with_preloads(
+                &target_rel,
+                crate::assets::Kind::File,
+                inner.into_bytes(),
+                inner_file,
+                Vec::new(),
+            )?;
+            let child_file = child.file.clone();
+            let child_id = program.modules.len();
+            program.modules.push(Rc::new(Module {
+                id: child_id,
+                file: inner_file,
+                path: target,
+                body: Vec::new(),
+                commonjs: None,
+                dynamic: false,
+                type_names: Default::default(),
+                jsx: false,
+                use_client: false,
+            }));
+            program.assets.insert(child_id, child);
+            let mut rule = format!("@import \"./{child_file}\"");
+            if let Some(layer) = &imp.layer {
+                if layer.is_empty() {
+                    rule.push_str(" layer");
+                } else {
+                    rule.push_str(&format!(" layer({layer})"));
+                }
+            }
+            if let Some(supports) = &imp.supports {
+                rule.push_str(&format!(" supports({supports})"));
+            }
+            if let Some(media) = &imp.media {
+                rule.push(' ');
+                rule.push_str(media);
+            }
+            rule.push(';');
+            edits.push((imp.start, imp.end, rule));
+            continue;
+        }
         if let Some(media) = &imp.media {
             inner = format!("@media {media} {{\n{inner}\n}}");
         }
@@ -1191,11 +1257,6 @@ fn bundle_css(
             } else {
                 format!("@layer {layer} {{\n{inner}\n}}")
             };
-        }
-        for p in inner_preloads {
-            if seen_preloads.insert(p.file.clone()) {
-                preloads.push(p);
-            }
         }
         edits.push((imp.start, imp.end, inner));
     }

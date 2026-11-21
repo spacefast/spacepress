@@ -348,7 +348,7 @@ pub fn rewrite_ranges(text: &str, replacements: &[(usize, usize, String)]) -> St
 /// custom properties, drops redundant semicolons before `}`, and shortens 6-digit hex colors.
 pub fn minify(text: &str) -> String {
     let b = text.as_bytes();
-    let mut out = String::with_capacity(text.len());
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
     let mut i = 0;
     let mut paren_depth: usize = 0;
     let mut calc_depths: Vec<usize> = Vec::new();
@@ -381,36 +381,35 @@ pub fn minify(text: &str) -> String {
         // Preserve strings verbatim.
         if c == b'"' || c == b'\'' {
             if pending_space {
-                if let Some(prev) = out.as_bytes().last().copied()
+                if let Some(prev) = out.last().copied()
                     && !trim_space_after(prev, !calc_depths.is_empty())
                 {
-                    out.push(' ');
+                    out.push(b' ');
                 }
                 pending_space = false;
             }
             let end = string_end(b, i);
-            out.push_str(&text[i..end]);
+            out.extend_from_slice(&b[i..end]);
             i = end;
             continue;
         }
         // Preserve url(...) bodies (trimming outer whitespace around the target).
         if (c == b'u' || c == b'U')
-            && text[i..].len() >= 4
-            && text[i..i + 4].eq_ignore_ascii_case("url(")
+            && b.get(i..i + 4).is_some_and(|s| s.eq_ignore_ascii_case(b"url("))
             && (i == 0 || !is_ident_char(b[i - 1]))
         {
             if pending_space {
-                if let Some(prev) = out.as_bytes().last().copied()
+                if let Some(prev) = out.last().copied()
                     && !trim_space_after(prev, !calc_depths.is_empty())
                 {
-                    out.push(' ');
+                    out.push(b' ');
                 }
                 pending_space = false;
             }
             let (end, body) = raw_url_body(text, i + 4);
-            out.push_str("url(");
-            out.push_str(body.trim());
-            out.push(')');
+            out.extend_from_slice(b"url(");
+            out.extend_from_slice(body.trim().as_bytes());
+            out.push(b')');
             i = end;
             continue;
         }
@@ -425,7 +424,7 @@ pub fn minify(text: &str) -> String {
             continue;
         }
         // Track custom property declarations (`--foo: ...;`) so spaces after `:` aren't stripped if needed.
-        if c == b'-' && b.get(i + 1) == Some(&b'-') && matches!(out.as_bytes().last(), None | Some(b'{') | Some(b';')) {
+        if c == b'-' && b.get(i + 1) == Some(&b'-') && matches!(out.last(), None | Some(b'{') | Some(b';')) {
             in_custom_prop = true;
         } else if c == b';' || c == b'}' {
             in_custom_prop = false;
@@ -433,8 +432,13 @@ pub fn minify(text: &str) -> String {
         // Track calc(...) / min(...) / max(...) / clamp(...) so spaces around `+` / `-` survive.
         if c == b'(' {
             paren_depth += 1;
-            let lower = out.to_ascii_lowercase();
-            if lower.ends_with("calc") || lower.ends_with("min") || lower.ends_with("max") || lower.ends_with("clamp") {
+            let tail_start = out.len().saturating_sub(5);
+            let tail = &out[tail_start..];
+            if ends_with_ascii_ci(tail, b"calc")
+                || ends_with_ascii_ci(tail, b"min")
+                || ends_with_ascii_ci(tail, b"max")
+                || ends_with_ascii_ci(tail, b"clamp")
+            {
                 calc_depths.push(paren_depth);
             }
         } else if c == b')' {
@@ -444,14 +448,14 @@ pub fn minify(text: &str) -> String {
             paren_depth = paren_depth.saturating_sub(1);
         }
         // Drop redundant `;` right before `}`.
-        if c == b'}' && out.ends_with(';') {
+        if c == b'}' && out.last() == Some(&b';') {
             out.pop();
         }
         let in_calc = !calc_depths.is_empty();
         // Flush pending space unless safely removable.
         if pending_space {
             pending_space = false;
-            let prev = out.as_bytes().last().copied();
+            let prev = out.last().copied();
             let keep = match prev {
                 None => false,
                 Some(b':') if in_custom_prop => false,
@@ -461,10 +465,10 @@ pub fn minify(text: &str) -> String {
                 Some(_) => true,
             };
             if keep {
-                out.push(' ');
+                out.push(b' ');
             }
         }
-        // Shorten 6-digit hex colors `#rrggbb` -> `#rgb` in declaration values.
+        // Shorten 6-digit hex colors `#rrggbb` -> `#rgb` in declaration values only (never in ID selectors).
         if c == b'#'
             && i + 7 <= b.len()
             && b[i + 1..i + 7].iter().all(|x| x.is_ascii_hexdigit())
@@ -472,25 +476,59 @@ pub fn minify(text: &str) -> String {
             && b[i + 1].eq_ignore_ascii_case(&b[i + 2])
             && b[i + 3].eq_ignore_ascii_case(&b[i + 4])
             && b[i + 5].eq_ignore_ascii_case(&b[i + 6])
+            && in_decl_value(b, i + 7)
         {
-            out.push('#');
-            out.push(b[i + 1].to_ascii_lowercase() as char);
-            out.push(b[i + 3].to_ascii_lowercase() as char);
-            out.push(b[i + 5].to_ascii_lowercase() as char);
+            out.push(b'#');
+            out.push(b[i + 1].to_ascii_lowercase());
+            out.push(b[i + 3].to_ascii_lowercase());
+            out.push(b[i + 5].to_ascii_lowercase());
             i += 7;
             continue;
         }
-        // Preserve backslash escapes as a 2-byte unit.
+        // Preserve backslash escapes as a complete UTF-8 sequence.
         if c == b'\\' && i + 1 < b.len() {
-            out.push('\\');
-            out.push(b[i + 1] as char);
-            i += 2;
+            let ch_len = text[i + 1..].chars().next().map_or(0, char::len_utf8);
+            out.extend_from_slice(&b[i..i + 1 + ch_len]);
+            i += 1 + ch_len;
             continue;
         }
-        out.push(c as char);
+        // Copy multi-byte UTF-8 characters intact.
+        if c >= 0x80 {
+            let ch_len = text[i..].chars().next().map_or(1, char::len_utf8);
+            out.extend_from_slice(&b[i..i + ch_len]);
+            i += ch_len;
+            continue;
+        }
+        out.push(c);
         i += 1;
     }
-    out
+    String::from_utf8(out).expect("minifier preserves UTF-8 boundaries")
+}
+
+fn ends_with_ascii_ci(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack.len() >= needle.len() && haystack[haystack.len() - needle.len()..].eq_ignore_ascii_case(needle)
+}
+
+/// Whether byte position `pos` sits inside a declaration value rather than a selector: scanning
+/// forward past strings and comments, a declaration value ends at `;` or `}` before any `{`.
+fn in_decl_value(b: &[u8], mut i: usize) -> bool {
+    while i < b.len() {
+        match b[i] {
+            b'"' | b'\'' => i = string_end(b, i),
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                i += 2;
+                while i + 1 < b.len() && !(b[i] == b'*' && b[i + 1] == b'/') {
+                    i += 1;
+                }
+                i = (i + 2).min(b.len());
+            }
+            b'\\' => i = (i + 2).min(b.len()),
+            b'{' => return false,
+            b';' | b'}' => return true,
+            _ => i += 1,
+        }
+    }
+    false
 }
 
 fn is_ident_char(c: u8) -> bool {
@@ -614,10 +652,10 @@ mod tests {
 
     #[test]
     fn minifier_strips_comments_and_whitespace_safely() {
-        let css = "/* header */\n:root { --ink: #112233; }\nbody { margin: 0; width: calc(100% - 2rem); color: #ffffff; }\n.a > .b, .c .d { content: \"a  b\"; background: url( ./hero.png ); }\n.parent :hover { color: red; }\n";
+        let css = "/* header */\n:root { --ink: #112233; }\nbody { margin: 0; width: calc(100% - 2rem); color: #ffffff; }\n.a > .b, .c .d { content: \"a  b\"; background: url( ./hero.png ); }\n.parent :hover { color: red; }\n#aabbcc { color: #aabbcc; }\n.café, .ux界 { color: red; }\n";
         assert_eq!(
             minify(css),
-            ":root{--ink:#123}body{margin:0;width:calc(100% - 2rem);color:#fff}.a>.b,.c .d{content:\"a  b\";background:url(./hero.png)}.parent :hover{color:red}"
+            ":root{--ink:#123}body{margin:0;width:calc(100% - 2rem);color:#fff}.a>.b,.c .d{content:\"a  b\";background:url(./hero.png)}.parent :hover{color:red}#aabbcc{color:#abc}.café,.ux界{color:red}"
         );
     }
 }

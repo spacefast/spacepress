@@ -117,8 +117,16 @@ final class Trees
                 }
             }
             $base = strtolower(basename($sub));
+            if (in_array($base, self::REFUSED, true)) {
+                return false;
+            }
+            foreach (explode('.', $base) as $part) {
+                if (in_array($part, self::REFUSED, true)) {
+                    return false;
+                }
+            }
 
-            return !in_array($ext, self::REFUSED, true) && !in_array($base, self::REFUSED, true);
+            return true;
         }
 
         return in_array($ext, self::PUBLIC, true);

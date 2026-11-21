@@ -41,21 +41,22 @@ final class PublicFiles
 
     public static function register(Plugin $plugin): void
     {
-        if (is_dir($plugin->dir . '/public/.well-known')) {
+        if (is_dir($plugin->dir . '/public/.well-known') || self::manifest($plugin) !== []) {
             // After the facade (0) and the app router's handlers (0), before the Markdown twins (1):
-            // only `/.well-known/*` is served through PHP.
+            // serves `/.well-known/*` and any `public/` child whose parent directory would shadow a
+            // literal app route (kept out of the document root so Apache/nginx still routes the page).
             add_filter('do_parse_request', static function (bool $parse) use ($plugin): bool {
                 if ($parse) {
-                    self::serveWellKnown($plugin);
+                    self::serveFallback($plugin);
                 }
 
                 return $parse;
             }, 0);
         }
-        // Loose plugin installs (copied into wp-content/plugins without activation): sync root
-        // symlinks whenever the public manifest changes. Managed builds sync in Runtime::install()
-        // and Receiver::rollback().
-        if (!Runtime::managed() && !Runtime::inspecting()) {
+        // Sync root symlinks whenever the public manifest, source, root, or literal routes change.
+        // Running on `init` keeps loose installs and non-Receiver managed hosts in sync without
+        // mutating live links during candidate initialization.
+        if (!Runtime::inspecting()) {
             add_action('init', static function () use ($plugin): void {
                 self::maybeSyncSymlinks($plugin);
             }, 1);
@@ -146,7 +147,7 @@ final class PublicFiles
         return $plugin->dir . '/public';
     }
 
-    /** Sync root symlinks for a loose plugin when its manifest, source, or root changed. */
+    /** Sync root symlinks when the manifest, source, root, or literal routes changed (or removals are pending). */
     private static function maybeSyncSymlinks(Plugin $plugin): void
     {
         $root = self::documentRoot();
@@ -156,9 +157,14 @@ final class PublicFiles
         $publicDir = self::publicDir($plugin);
         $source = $publicDir !== null ? (realpath($publicDir) ?: '') : '';
         $hash = self::manifestHash($plugin) ?? '';
+        $routes = self::routesFingerprint($plugin->schema);
         $stored = get_option(self::SYMLINKS_OPTION);
         if (is_array($stored)) {
-            if (($stored['root'] ?? null) === $root && ($stored['source'] ?? null) === $source && ($stored['hash'] ?? null) === $hash) {
+            if (($stored['root'] ?? null) === $root
+                && ($stored['source'] ?? null) === $source
+                && ($stored['hash'] ?? null) === $hash
+                && ($stored['routes'] ?? null) === $routes
+                && empty($stored['pending'])) {
                 return;
             }
         } elseif ($hash === '') {
@@ -167,12 +173,33 @@ final class PublicFiles
         self::syncSymlinks($plugin);
     }
 
+    /** Fingerprint of reserved paths and literal app routes that affect symlink eligibility. */
+    private static function routesFingerprint(\TypedPress\Schema $schema): string
+    {
+        $reserved = $schema->reserved();
+        sort($reserved);
+        $literals = [];
+        $app = $schema->app();
+        if (is_array($app)) {
+            foreach ($app['routes'] ?? [] as $route) {
+                $pattern = (string) ($route['pattern'] ?? '');
+                if ($pattern !== '' && !str_contains($pattern, ':') && !str_contains($pattern, '*')) {
+                    $literals[] = $pattern;
+                }
+            }
+        }
+        sort($literals);
+
+        return hash('sha256', json_encode(['reserved' => $reserved, 'literals' => $literals], JSON_UNESCAPED_SLASHES) ?: '');
+    }
+
     /**
      * Sync symlinks in the document root (`tp_public_root`, default `ABSPATH`) pointing to the app's
      * `public/` files under `wp-content/`, so direct requests like `/logo.svg` or `/files/blog.json`
      * are served directly by the web server without booting PHP. Skipped on multisite or when the
      * document root is not writable. Never overwrites existing non-symlink files, never links
-     * top-level `index.html`, and cleans up stale symlinks from previous builds.
+     * top-level `index.html`, never creates directories that shadow literal app routes, and cleans
+     * up stale symlinks from previous builds.
      */
     public static function syncSymlinks(Plugin $plugin): void
     {
@@ -199,6 +226,7 @@ final class PublicFiles
         $manifest = self::manifestForDir($appDir);
         $raw = self::manifestRaw($appDir);
         $hash = $raw === '' ? '' : hash('sha256', $raw);
+        $routes = self::routesFingerprint($schema);
         $reserved = $schema->reserved();
 
         $desired = [];
@@ -213,15 +241,14 @@ final class PublicFiles
                     continue;
                 }
                 $pagePath = '/' . (str_ends_with($lower, '/index.html') ? substr($rel, 0, -strlen('/index.html')) : $rel);
-                if (self::literalPage($schema, $pagePath)) {
+                if (self::literalPage($schema, $pagePath) || self::parentShadowsLiteralPage($schema, $rel)) {
                     continue;
                 }
                 $real = realpath($sourceTop . '/' . $rel);
                 if ($real === false || !str_starts_with($real, $sourceTop . DIRECTORY_SEPARATOR) || !is_file($real)) {
                     continue;
                 }
-                $resolved = strtolower(basename($real));
-                if (in_array(strtolower(pathinfo($resolved, PATHINFO_EXTENSION)), self::REFUSED, true) || in_array($resolved, self::REFUSED, true)) {
+                if (self::isRefusedName(basename($real))) {
                     continue;
                 }
                 $dot = false;
@@ -238,11 +265,14 @@ final class PublicFiles
         }
 
         // Remove symlinks from previous builds that are no longer desired (or moved root).
+        // Keep any link whose removal fails so later syncs or deactivation can retry cleanup.
+        $pendingLinks = [];
         foreach ($prevLinks as $old) {
             if ($prevRoot !== $root || !isset($desired[$old])) {
                 $path = $prevRoot . '/' . $old;
-                if (is_link($path)) {
-                    @unlink($path);
+                if (is_link($path) && !@unlink($path) && is_link($path)) {
+                    error_log("TypedPress: could not remove stale public symlink $path");
+                    $pendingLinks[] = $old;
                 }
             }
         }
@@ -279,9 +309,13 @@ final class PublicFiles
                     continue;
                 }
                 if ($prevRoot === $root && isset($prevLinkSet[$rel])) {
-                    @unlink($dest);
-                    if (@symlink($target, $dest)) {
-                        $createdLinks[] = $rel;
+                    if (@unlink($dest) || !is_link($dest)) {
+                        if (@symlink($target, $dest)) {
+                            $createdLinks[] = $rel;
+                        }
+                    } else {
+                        error_log("TypedPress: could not replace public symlink $dest");
+                        $pendingLinks[] = $rel;
                     }
                 }
                 continue;
@@ -295,9 +329,15 @@ final class PublicFiles
             }
         }
 
+        // Retain ownership of any failed removals under the current root so they are retried.
+        $recordedLinks = $createdLinks;
+        if ($prevRoot === $root && $pendingLinks !== []) {
+            $recordedLinks = array_values(array_unique(array_merge($recordedLinks, $pendingLinks)));
+        }
+
         // Prune empty directories TypedPress previously created that no remaining symlink uses.
         $neededDirs = [];
-        foreach ($createdLinks as $rel) {
+        foreach ($recordedLinks as $rel) {
             $dir = dirname($rel);
             while ($dir !== '.' && $dir !== '') {
                 $neededDirs[$dir] = true;
@@ -308,21 +348,25 @@ final class PublicFiles
         usort($pruneList, static fn (string $a, string $b): int => substr_count($b, '/') <=> substr_count($a, '/') ?: strlen($b) <=> strlen($a));
         foreach ($pruneList as $dir) {
             if ($prevRoot !== $root || !isset($neededDirs[$dir])) {
-                @rmdir($prevRoot . '/' . $dir);
-                unset($ownedDirs[$dir]);
+                $dirPath = $prevRoot . '/' . $dir;
+                if (!is_dir($dirPath) || @rmdir($dirPath) || !is_dir($dirPath)) {
+                    unset($ownedDirs[$dir]);
+                }
             }
         }
-        $keptDirs = array_values(array_intersect(array_keys($ownedDirs), array_keys($neededDirs)));
+        $keptDirs = array_values(array_keys($ownedDirs));
 
-        if ($createdLinks === [] && $keptDirs === [] && $hash === '') {
+        if ($recordedLinks === [] && $keptDirs === [] && $hash === '' && $pendingLinks === []) {
             delete_option(self::SYMLINKS_OPTION);
         } else {
             update_option(self::SYMLINKS_OPTION, [
                 'root' => $root,
                 'source' => $sourceTop ?: '',
                 'hash' => $hash,
-                'links' => $createdLinks,
+                'routes' => $routes,
+                'links' => $recordedLinks,
                 'dirs' => $keptDirs,
+                'pending' => $pendingLinks !== [],
             ], true);
         }
     }
@@ -337,19 +381,42 @@ final class PublicFiles
             return;
         }
         $root = rtrim($stored['root'], '/\\');
+        $remainingLinks = [];
         foreach (is_array($stored['links'] ?? null) ? $stored['links'] : [] as $rel) {
-            if (is_string($rel) && $rel !== '' && is_link($root . '/' . $rel)) {
-                @unlink($root . '/' . $rel);
+            if (!is_string($rel) || $rel === '') {
+                continue;
+            }
+            $path = $root . '/' . $rel;
+            if (is_link($path) && !@unlink($path) && is_link($path)) {
+                error_log("TypedPress: could not remove public symlink $path during cleanup");
+                $remainingLinks[] = $rel;
             }
         }
         $dirs = is_array($stored['dirs'] ?? null) ? array_values(array_filter($stored['dirs'], 'is_string')) : [];
         usort($dirs, static fn (string $a, string $b): int => substr_count($b, '/') <=> substr_count($a, '/') ?: strlen($b) <=> strlen($a));
+        $remainingDirs = [];
         foreach ($dirs as $dir) {
-            if ($dir !== '') {
-                @rmdir($root . '/' . $dir);
+            if ($dir === '') {
+                continue;
+            }
+            $dirPath = $root . '/' . $dir;
+            if (is_dir($dirPath) && !@rmdir($dirPath) && is_dir($dirPath)) {
+                $remainingDirs[] = $dir;
             }
         }
-        delete_option(self::SYMLINKS_OPTION);
+        if ($remainingLinks === [] && $remainingDirs === []) {
+            delete_option(self::SYMLINKS_OPTION);
+        } else {
+            update_option(self::SYMLINKS_OPTION, [
+                'root' => $root,
+                'source' => '',
+                'hash' => '',
+                'routes' => '',
+                'links' => $remainingLinks,
+                'dirs' => $remainingDirs,
+                'pending' => true,
+            ], true);
+        }
     }
 
     /** Writable document root for root symlinks, or null on multisite / read-only hosts. */
@@ -371,15 +438,22 @@ final class PublicFiles
         return is_dir($root) && is_writable($root) ? $root : null;
     }
 
-    /** Serve `/.well-known/*` files from `public/.well-known/` at the site root. */
-    private static function serveWellKnown(Plugin $plugin): void
+    /** Serve `/.well-known/*` and route-shadowed `public/` children via PHP when not symlinked. */
+    private static function serveFallback(Plugin $plugin): void
     {
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         if ($method !== 'GET' && $method !== 'HEAD' || MarkdownTwins::negotiating()) {
             return;
         }
-        $file = self::wellKnownFile($plugin->dir . '/public');
-        if ($file === null || self::literalPage($plugin->schema, self::requestPath())) {
+        $reqPath = self::requestPath();
+        if ($reqPath === null || self::literalPage($plugin->schema, $reqPath)) {
+            return;
+        }
+        $file = self::wellKnownFile($plugin->dir . '/public', $reqPath);
+        if ($file === null) {
+            $file = self::shadowedPublicFile($plugin, $reqPath);
+        }
+        if ($file === null) {
             return;
         }
         $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
@@ -400,6 +474,63 @@ final class PublicFiles
         }
         $headers['Content-Length'] = (string) $size;
         self::emit(200, $headers, $method === 'HEAD' ? null : $file);
+    }
+
+    /** Resolves a `public/` file whose parent directory shadows a literal app route (so it wasn't symlinked). */
+    private static function shadowedPublicFile(Plugin $plugin, string $path): ?string
+    {
+        $rel = self::relativePath($path, $plugin->schema->reserved());
+        if ($rel === null || !isset(self::manifest($plugin)[$rel]) || !self::parentShadowsLiteralPage($plugin->schema, $rel)) {
+            return null;
+        }
+        $publicDir = self::publicDir($plugin) ?? ($plugin->dir . '/public');
+        $top = is_dir($publicDir) ? realpath($publicDir) : false;
+        if ($top === false) {
+            return null;
+        }
+        $real = realpath($top . '/' . $rel);
+        if ($real === false || !str_starts_with($real, $top . DIRECTORY_SEPARATOR) || !is_file($real) || self::isRefusedName(basename($real))) {
+            return null;
+        }
+        foreach (explode(DIRECTORY_SEPARATOR, substr($real, strlen($top) + 1)) as $part) {
+            if (str_starts_with($part, '.')) {
+                return null;
+            }
+        }
+
+        return $real;
+    }
+
+    /** Whether any parent directory prefix of `$rel` (e.g. `docs` for `docs/guide.pdf`) matches a literal app route. */
+    private static function parentShadowsLiteralPage(\TypedPress\Schema $schema, string $rel): bool
+    {
+        $segments = explode('/', $rel);
+        array_pop($segments);
+        $cur = '';
+        foreach ($segments as $seg) {
+            $cur = $cur === '' ? $seg : $cur . '/' . $seg;
+            if (self::literalPage($schema, '/' . $cur)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether any dot-separated part (or full basename) of `$name` is a refused executable/config extension. */
+    private static function isRefusedName(string $name): bool
+    {
+        $lower = strtolower($name);
+        if (in_array($lower, self::REFUSED, true)) {
+            return true;
+        }
+        foreach (explode('.', $lower) as $part) {
+            if (in_array($part, self::REFUSED, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -424,8 +555,8 @@ final class PublicFiles
         if ($index) {
             $segments[] = 'index.html';
         }
-        $name = strtolower((string) end($segments));
-        if (in_array(strtolower(pathinfo($name, PATHINFO_EXTENSION)), self::REFUSED, true) || in_array($name, self::REFUSED, true)) {
+        $name = (string) end($segments);
+        if (self::isRefusedName($name)) {
             return null;
         }
         $top = realpath($root . '/.well-known');
@@ -433,8 +564,7 @@ final class PublicFiles
         if ($real === false || $top === false || !str_starts_with($real, $top . DIRECTORY_SEPARATOR) || !is_file($real)) {
             return null;
         }
-        $resolved = strtolower(basename($real));
-        if (in_array(strtolower(pathinfo($resolved, PATHINFO_EXTENSION)), self::REFUSED, true) || in_array($resolved, self::REFUSED, true)) {
+        if (self::isRefusedName(basename($real))) {
             return null;
         }
         foreach (explode(DIRECTORY_SEPARATOR, substr($real, strlen($top) + 1)) as $part) {
@@ -481,8 +611,8 @@ final class PublicFiles
         if ($index) {
             $segments[] = 'index.html';
         }
-        $name = strtolower((string) end($segments));
-        if (in_array(strtolower(pathinfo($name, PATHINFO_EXTENSION)), self::REFUSED, true) || in_array($name, self::REFUSED, true)) {
+        $name = (string) end($segments);
+        if (self::isRefusedName($name)) {
             return null;
         }
 

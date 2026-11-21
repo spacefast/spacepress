@@ -510,8 +510,10 @@ impl Fs for CapturedFs {
         Ok(self.root.join(canonical))
     }
     fn is_file(&self, path: &Path) -> bool {
-        self.key(path)
-            .is_some_and(|p| self.sources.files.contains_key(&p) || self.sources.binary.contains_key(&p))
+        self.key(path).is_some_and(|p| {
+            let target = self.sources.canonical.get(&p).unwrap_or(&p);
+            self.sources.files.contains_key(target) || self.sources.binary.contains_key(target)
+        })
     }
     fn is_dir(&self, path: &Path) -> bool {
         self.key(path).is_some_and(|p| {

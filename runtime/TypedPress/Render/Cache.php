@@ -53,6 +53,8 @@ final class Cache
      * `Wp\Purges::PURGE_LIMIT` paths one write may name before it purges the whole host.
      */
     public const MAX_VARIANTS = 20;
+    /** Named locks that admit query variants; a path always takes the same one. */
+    private const LOCK_BUCKETS = 16;
     /** The unique index covers the first 191 characters. Longer keys can alias another URL. */
     private const MAX_URL = 191;
     /** Rows per insert when recording reads (at most about 900 bytes each). */
@@ -186,8 +188,11 @@ final class Cache
             return false;
         }
         // The limit counts URLs across rows. Admit variants under the same lock even when two
-        // requests with different query strings arrive at the last free slot.
-        $lock = 'tp:page-variants:' . substr(hash('sha256', DB_NAME . ':' . $store->db->prefix()), 0, 40);
+        // requests with different query strings arrive at the last free slot. The limit is per
+        // path, so the lock is too: a variant of one page never waits on another page's. Paths
+        // share LOCK_BUCKETS locks, which bounds the lock files beside a SQLite database.
+        $bucket = crc32(substr($url, 0, (int) strpos($url, '?'))) % self::LOCK_BUCKETS;
+        $lock = 'tp:page-variants:' . substr(hash('sha256', DB_NAME . ':' . $store->db->prefix() . ':' . $bucket), 0, 40);
         try {
             return $store->db->locked($lock, 0, static fn (): bool => self::recordUrl($url, $reads, $also, true));
         } catch (LockBusy) {

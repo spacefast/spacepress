@@ -1,4 +1,4 @@
-import { cart, WooStoreError, type WooCart, type WooCartClient } from "./commerce.ts";
+import { cart, WooStoreError, type WooCart, type WooCartClient, type WooTokenCartClient } from "./commerce.ts";
 
 export interface WooCartState {
   /** Woo's last confirmed cart with the pending writes' previews applied. Undefined until the first read answers. */
@@ -17,11 +17,14 @@ export interface WooCartActions extends Pick<WooCartClient, "add" | "update" | "
   refresh(): Promise<WooCart>;
 }
 
-export interface WooCartStore {
+/** A token cart's actions. `pending` is true while the order is placed, and the cart is Woo's afterwards. */
+export interface WooTokenCartActions extends WooCartActions, Pick<WooTokenCartClient, "checkout"> {}
+
+export interface WooCartStore<Actions extends WooCartActions = WooCartActions> {
   subscribe(changed: () => void): () => void;
   snapshot(): WooCartState;
   serverSnapshot(): WooCartState;
-  actions: WooCartActions;
+  actions: Actions;
 }
 
 const wooCartStores = new WeakMap<WooCartClient, WooCartStore>();
@@ -29,7 +32,9 @@ const wooCartStores = new WeakMap<WooCartClient, WooCartStore>();
 const SHOWN_AGAIN_MS = 5000;
 
 /** One cart store per client, shared by React hooks and other browser subscribers. */
-export function createCartStore(client: WooCartClient = cart): WooCartStore {
+export function createCartStore(client: WooTokenCartClient): WooCartStore<WooTokenCartActions>;
+export function createCartStore(client?: WooCartClient): WooCartStore;
+export function createCartStore(client: WooCartClient | WooTokenCartClient = cart): WooCartStore {
   const shared = wooCartStores.get(client);
   if (shared) return shared;
 
@@ -75,7 +80,7 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
     return error instanceof Error ? error : new Error(String(error));
   }
 
-  function enqueue(run: () => Promise<WooCart>): Promise<WooCart> {
+  function enqueue<T>(run: () => Promise<T>): Promise<T> {
     const next = tail.then(run);
     tail = next.catch(() => undefined);
     return next;
@@ -101,7 +106,8 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
     return next;
   }
 
-  function write(run: () => Promise<WooCart>, update: (current: WooCart) => WooCart): Promise<WooCart> {
+  /** `cartOf` gives the cart in Woo's answer. An answer with none (an order) uses the cart the client read after it. */
+  function write<T>(run: () => Promise<T>, update: (current: WooCart) => WooCart, cartOf: (answer: T) => WooCart | undefined): Promise<T> {
     optimistic.add(update);
     // A read queued or sent before this write answers with the cart from before it, so a later refresh() asks again.
     reading = undefined;
@@ -109,9 +115,10 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
       writing = true;
       let changes: Partial<WooCartState> = { loading: false };
       try {
-        confirmed = await run();
+        const answer = await run();
+        confirmed = cartOf(answer) ?? receivedDuringWrite ?? confirmed;
         changes = answered();
-        return confirmed;
+        return answer;
       } catch (error) {
         // Woo sends the current cart with a 409. Any other refusal rolls back to the confirmed cart.
         const current = (error instanceof WooStoreError ? error.cart : undefined) ?? receivedDuringWrite;
@@ -143,9 +150,10 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
     return { ...current, items, itemsCount: current.itemsCount + next - item.quantity };
   }
 
+  const cartWrite = (run: () => Promise<WooCart>, update: (current: WooCart) => WooCart) => write(run, update, (cart) => cart);
   const actions: WooCartActions = {
     refresh,
-    add: (id, count = 1) => write(() => client.add(id, count), (current) => {
+    add: (id, count = 1) => cartWrite(() => client.add(id, count), (current) => {
       if (!Number.isSafeInteger(count) || count <= 0) return current;
       // A variation's line has the variation's id. Two lines with one id differ in data only Woo can compare.
       const matches = current.items.filter((item) => item.id === id);
@@ -153,20 +161,26 @@ export function createCartStore(client: WooCartClient = cart): WooCartStore {
       // Woo supplies the new line's key, product data and prices. Until then only the count changes.
       return item ? quantity(current, item.key, item.quantity + count) : { ...current, itemsCount: current.itemsCount + count };
     }),
-    update: (key, count) => write(() => client.update(key, count), (current) => quantity(current, key, count)),
-    remove: (key) => write(() => client.remove(key), (current) => quantity(current, key, 0)),
-    selectShipping: (packageId, rateId) => write(() => client.selectShipping(packageId, rateId), (current) => ({
+    update: (key, count) => cartWrite(() => client.update(key, count), (current) => quantity(current, key, count)),
+    remove: (key) => cartWrite(() => client.remove(key), (current) => quantity(current, key, 0)),
+    selectShipping: (packageId, rateId) => cartWrite(() => client.selectShipping(packageId, rateId), (current) => ({
       ...current,
       shippingRates: current.shippingRates.map((pack) => pack.packageId === packageId && pack.rates.some((rate) => rate.id === rateId)
         ? { ...pack, rates: pack.rates.map((rate) => ({ ...rate, selected: rate.id === rateId })) }
         : pack),
     })),
-    updateCustomer: (input) => write(() => client.updateCustomer(input), (current) => ({
+    updateCustomer: (input) => cartWrite(() => client.updateCustomer(input), (current) => ({
       ...current,
       ...(input.billing ? { billingAddress: { ...current.billingAddress, ...input.billing } } : {}),
       ...(input.shipping ? { shippingAddress: { ...current.shippingAddress, ...input.shipping } } : {}),
     })),
   };
+
+  // The order is queued behind the cart's writes and holds `pending`. The cart shown stays as it is
+  // until the read the client makes after the order answers.
+  if ("checkout" in client) {
+    (actions as WooTokenCartActions).checkout = (input) => write(() => client.checkout(input), (current) => current, () => undefined);
+  }
 
   // The cart can change while this page is not looked at: another tab, or an order placed before the
   // browser restores this page from its back/forward cache. Ask again when the page is shown.

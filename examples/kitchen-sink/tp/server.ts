@@ -1,4 +1,4 @@
-import { action, adminScreen, db, HttpError, integer, item, job, mail, once, text } from "typedpress";
+import { action, adminDashboard, adminScreen, adminWidget, db, HttpError, integer, item, job, mail, once, text } from "typedpress";
 import {
   abilities, get_current_user_id, get_option, get_permalink, get_post, get_userdata, sanitize_text_field,
   update_option, wp_insert_post,
@@ -172,5 +172,32 @@ export const schedule = adminScreen({
       id: "cancel", label: "Cancel workshop", action: cancelWorkshop, input: { id: item("id") },
       confirm: "Cancel this workshop? It is deleted for good, unless it has reservations.",
     },
+  ],
+});
+
+export const scheduleSummary = adminWidget({
+  title: "Open workshops",
+  description: "Live count of workshops currently accepting registrations.",
+  access: "editor",
+  action: checkSchedule,
+  display: "metrics",
+  metrics: [
+    { id: "workshops", label: "Open workshops", path: "workshops" },
+    { id: "timezone", label: "Timezone", path: "timezone" },
+  ],
+  width: 2,
+  height: 1,
+  link: { label: "Manage schedule", to: "/screens/schedule" },
+});
+
+export const studioOverview = adminDashboard({
+  title: "Studio overview",
+  description: "Workshops, open seats, and recent updates.",
+  access: "editor",
+  menu: { icon: "chartBar" },
+  widgets: [
+    { widget: scheduleSummary, width: 2, height: 1 },
+    { widget: "tp/content-overview", width: 2, height: 2 },
+    { widget: "tp/recent-activity", width: 2, height: 2 },
   ],
 });

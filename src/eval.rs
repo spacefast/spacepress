@@ -294,6 +294,8 @@ pub const TP_EXPORTS: &[&str] = &[
     "mail",
     "definePlugin",
     "adminScreen",
+    "adminWidget",
+    "adminDashboard",
     "item",
     "wp",
 ];
@@ -309,6 +311,8 @@ const TP_TYPES: &[&str] = &[
     "AccessCtx",
     "ValidateCtx",
     "FieldUi",
+    "KindUi",
+    "GlobalUi",
     "MediaRow",
     "FileRow",
     "AccessRule",
@@ -326,6 +330,14 @@ const TP_TYPES: &[&str] = &[
     "AnyJob",
     "AdminScreen",
     "AdminScreenDefinition",
+    "AdminWidget",
+    "AdminWidgetDefinition",
+    "AdminDashboard",
+    "AdminDashboardDefinition",
+    "BuiltinWidgetId",
+    "WidgetMetric",
+    "WidgetField",
+    "DashboardWidgetPlacement",
     "ScreenField",
     "ScreenAction",
     "ItemRef",
@@ -2917,6 +2929,8 @@ impl<'p> Evaluator<'p> {
             Builtin::Job => Some("job"),
             Builtin::Route => Some("route"),
             Builtin::AdminScreen => Some("adminScreen"),
+            Builtin::AdminWidget => Some("adminWidget"),
+            Builtin::AdminDashboard => Some("adminDashboard"),
             Builtin::Item => Some("item"),
             Builtin::RelFn(..) => Some("relation"),
             _ => None,
@@ -3146,6 +3160,30 @@ impl<'p> Evaluator<'p> {
                     span,
                     "adminScreen() needs `{ title, view | form, ... }`",
                     "pass the screen as an object literal: `export const orders = adminScreen({ title: \"Orders\", view: { ... } })`",
+                ),
+            },
+            Builtin::AdminWidget => match arg(0) {
+                config @ Value::Object(_) => {
+                    let value = Value::Widget(Rc::new(ActionVal { config, span }));
+                    self.built.push(value.clone());
+                    Ok(value)
+                }
+                _ => err_help(
+                    span,
+                    "adminWidget() needs `{ title, action, ... }`",
+                    "pass the widget as an object literal: `export const sales = adminWidget({ title: \"Sales\", action: salesSummary })`",
+                ),
+            },
+            Builtin::AdminDashboard => match arg(0) {
+                config @ Value::Object(_) => {
+                    let value = Value::Dashboard(Rc::new(ActionVal { config, span }));
+                    self.built.push(value.clone());
+                    Ok(value)
+                }
+                _ => err_help(
+                    span,
+                    "adminDashboard() needs `{ title, widgets, ... }`",
+                    "pass the dashboard as an object literal: `export const ops = adminDashboard({ title: \"Operations\", widgets: [...] })`",
                 ),
             },
             // The placeholder TypedPress Admin fills from the item (runtime/admin/apps/packages/screens).
@@ -4450,6 +4488,8 @@ fn tp_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "defineConfig" => Builtin::DefineConfig,
         "definePlugin" => Builtin::DefinePlugin,
         "adminScreen" => Builtin::AdminScreen,
+        "adminWidget" => Builtin::AdminWidget,
+        "adminDashboard" => Builtin::AdminDashboard,
         "item" => Builtin::Item,
         "wp" => Builtin::Wp,
         "action" => Builtin::Action,

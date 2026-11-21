@@ -551,6 +551,86 @@ eq('every reader gets the same live _rev, whoever asks', [api('GET', "/posts/$re
 eq('a list row carries it too', array_column(array_filter(api('GET', '/posts', as: 'ed', query: ['where' => json_encode(['id' => $rev])])[1], static fn ($r) => $r['id'] === $rev), '_rev'), [$token]);
 eq('a table row carries none', array_key_exists('_rev', api('GET', '/comments', as: 'ed')[1][0] ?? []), false);
 
+// A list reads its page's tokens together: each one is the token the item's own read gives, with
+// something staged or not, for every reader, and the statements a list runs don't grow with it.
+$batch = [];
+foreach (['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'] as $n => $title) {
+    $batch[] = $db->insert('posts', ['title' => "Page $title", 'slug' => 'page-' . strtolower($title), 'excerpt' => "page $n", 'status' => 'published'], true)[0]['id'];
+}
+$db->update('posts', ['excerpt' => 'edited'], ['id' => $batch[1]]); // a newer revision
+api('PATCH', "/posts/{$batch[2]}/staged", ['excerpt' => 'staged'], 'ed'); // a staged version
+api('PATCH', "/posts/{$batch[3]}/staged", ['title' => 'Page Fourth staged'], 'ed');
+add_post_meta($batch[4], 'tp_kicker', 'first');
+add_post_meta($batch[4], 'tp_kicker', 'second'); // the same key twice: the order of both rows is part of the token
+$listed = static fn (?string $as, array $ids): array => array_column(api('GET', '/posts', as: $as, query: ['where' => json_encode(['id' => ['in' => $ids]]), 'limit' => '100'])[1], '_rev', 'id');
+$single = static fn (?string $as, array $ids): array => array_combine($ids, array_map(static fn (int $id): ?string => api('GET', "/posts/$id", as: $as)[1]['_rev'] ?? null, $ids));
+foreach (['ed', 'admin', null] as $as) {
+    $tokens = $listed($as, $batch);
+    ksort($tokens);
+    eq('each row of a list carries the token its own read gives (' . ($as ?? 'anonymous') . ')', $tokens, $single($as, $batch));
+}
+eq('… six different tokens', count(array_unique($listed('ed', $batch))), 6);
+$staging = static fn (int $id): ?string => api('GET', "/posts/$id/staged", as: 'ed')[1]['_rev'] ?? null;
+check('a staged token differs from the item\'s, and from another item\'s staged token', $staging($batch[2]) !== $listed('ed', $batch)[$batch[2]] && $staging($batch[2]) !== $staging($batch[3]));
+// The token itself, worked out here one item at a time from what the database holds: reading a
+// page's tokens together must not change one byte of any of them.
+$tokenOf = static function (int $id, bool $staged) use ($site, $schema): string {
+    $prefix = (string) $schema['collections']['posts']['wp']['metaPrefix'];
+    $post = $site->sql('SELECT ID, post_modified_gmt, post_status, post_name, post_title, post_content, post_excerpt, post_date_gmt, post_password, post_author FROM {prefix}posts WHERE ID = ?', [$id])[0];
+    $meta = $site->sql('SELECT meta_key, meta_value FROM {prefix}postmeta WHERE post_id = ? AND (meta_key LIKE ? OR meta_key LIKE ?) ORDER BY meta_key, meta_id', [$id, $prefix . '%', '\\_' . $prefix . '%']);
+    $revision = (int) ($site->sql("SELECT MAX(ID) AS id FROM {prefix}posts WHERE post_parent = ? AND post_type = 'revision' AND post_name = ?", [$id, "$id-revision-v1"])[0]['id'] ?? 0);
+    $held = $site->sql("SELECT r.ID, r.post_modified_gmt, r.post_title, r.post_content, m.meta_value FROM {prefix}posts r LEFT JOIN {prefix}postmeta m ON m.post_id = r.ID AND m.meta_key = ?"
+        . " WHERE r.post_parent = ? AND r.post_type = 'revision' AND r.post_name = ? ORDER BY r.ID", [Staged::META, $id, "$id-autosave-staged-v1"]);
+    $heldMeta = $held === [] ? [] : $site->sql('SELECT meta_key, meta_value FROM {prefix}postmeta WHERE post_id = ? ORDER BY meta_key, meta_id', [(int) $held[0]['ID']]);
+    $digest = static fn (mixed $value): string => substr(hash_hmac('sha256', (string) \TypedPress\Js::jsonStringify($value), wp_salt('nonce')), 0, 22);
+    $claim = [$staged ? 's' : 'i', $id, $revision, $digest([$post, $meta])];
+    if ($staged) {
+        $claim[] = $held === [] ? '-' : $digest([$held, $heldMeta]);
+    }
+
+    return rtrim(strtr(base64_encode((string) json_encode($claim)), '+/', '-_'), '=');
+};
+$tokens = $listed('ed', $batch);
+ksort($tokens);
+eq('each token is the item\'s post row, its fields and its newest revision, as before', $tokens, array_combine($batch, array_map(static fn (int $id): string => $tokenOf($id, false), $batch)));
+eq('… and a staged token adds the staged revision and its fields', [$staging($batch[2]), $staging($batch[3])], [$tokenOf($batch[2], true), $tokenOf($batch[3], true)]);
+check('… the newest revision is in it', json_decode((string) base64_decode(strtr($listed('ed', $batch)[$batch[1]], '-_', '+/')), true)[2] > 0);
+$site->actAs('ed');
+$viaAbility = wp_get_ability('blog/posts-list')->execute(['where' => ['id' => ['in' => $batch]], 'limit' => 100]);
+wp_set_current_user(0);
+$viaAbility = is_wp_error($viaAbility) ? [$viaAbility->get_error_message()] : array_column($viaAbility['rows'], '_rev', 'id');
+ksort($viaAbility);
+eq('… and so does each row an agent lists through the ability', $viaAbility, $single('ed', $batch));
+// A list's token writes; once someone else commits, the same token is refused.
+$mine = $listed('ed', $batch)[$batch[0]];
+eq('the token a list gave writes the item', api('PATCH', "/posts/{$batch[0]}", ['excerpt' => 'from the list', '_rev' => $mine], 'ed')[0], 200);
+$mine = $listed('ed', $batch)[$batch[5]];
+api('PATCH', "/posts/{$batch[5]}", ['excerpt' => 'someone else'], 'admin');
+[$code, $stale] = api('PATCH', "/posts/{$batch[5]}", ['excerpt' => 'mine', '_rev' => $mine], 'ed');
+eq('a list\'s token is refused once another editor has committed', [$code, $stale['code'] ?? null, $stale['changed']['fields'] ?? null, $stale['_rev'] ?? null],
+    [409, 'stale_revision', ['excerpt'], $listed('ed', $batch)[$batch[5]]]);
+eq('… and nothing of the refused write was stored', $db->findFirst('posts', ['where' => ['id' => $batch[5]]])['excerpt'], 'someone else');
+$statements = static function (array $ids) use ($listed): int {
+    $n = 0;
+    \TypedPress\Wp\Connection::$observer = static function () use (&$n): void {
+        $n++;
+    };
+    try {
+        $listed(null, $ids);
+    } finally {
+        \TypedPress\Wp\Connection::$observer = null;
+    }
+
+    return $n;
+};
+// The item with one meta key stored twice is left out: its stored row is read on its own
+// (Db::editorRows), as before.
+$unstaged = [$batch[0], $batch[1], $batch[5]];
+eq('a list of three items runs as many statements as a list of two', $statements($unstaged), $statements(array_slice($unstaged, 0, 2)));
+check('… at most six', $statements($unstaged) <= 6, $statements($unstaged));
+$withStaged = [...$unstaged, $batch[2], $batch[3]];
+check('staged versions on the page cost two statements, not two for each', $statements($withStaged) <= $statements($unstaged) + 2, [$statements($withStaged), $statements($unstaged)]);
+
 // The item's own write with a stale token: refused, and the problem says what changed and carries the new token.
 $db->update('posts', ['excerpt' => 'two'], ['id' => $rev]); // someone else's edit after the read
 [$code, $stale] = api('PATCH', "/posts/$rev", ['title' => 'Mine', '_rev' => $token], 'ed');

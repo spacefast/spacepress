@@ -5,12 +5,15 @@ import { runCLI, type RunCLIServer } from '@wp-playground/cli';
 import { chromium, expect as baseExpect, type Browser, type Page } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import ts from 'typescript';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const expect = baseExpect.configure({ timeout: 20_000 });
@@ -48,7 +51,7 @@ async function add(page: Page, slug: string) {
   await page.getByText('Added to your cart.').waitFor();
 }
 async function checkout(page: Page) {
-  const response = await page.goto(new URL('/checkout', base).href);
+  const response = await page.goto(new URL('/checkout', base).href, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   assert.match(response!.headers()['cache-control']!, /private.*no-store/);
   await page.getByLabel('Email address', { exact: true }).fill('buyer@example.test');
   const sameBilling = page.getByRole('checkbox', { name: 'Use same address for billing', exact: true });
@@ -92,6 +95,7 @@ before(async () => {
       { step: 'writeFile', path: '/wordpress/wp-content/mu-plugins/commerce-proof.php', data: `<?php
 add_filter('pre_wp_mail', static function($pre,$mail){$all=get_option('tp_test_mail',[]);$all[]=$mail;update_option('tp_test_mail',$all);return true;},10,2);
 add_filter('woocommerce_allow_tracking','__return_false');
+add_filter('allowed_http_origins', static fn ($origins) => [...$origins, get_option('tp_test_frontend_origin', '')]);
 add_action('plugins_loaded',static function(){if(!class_exists('WC_Gateway_COD'))return;
  class TP_Commerce_Test_Gateway extends WC_Gateway_COD {
   public function process_payment($id) {
@@ -190,6 +194,96 @@ test('storefront offers direct purchase only for simple products', { timeout: 90
   }
 });
 
+test('a cross-origin storefront checks out its token cart without cookies', { timeout: 90_000 }, async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const generated = readFileSync(path.join(project, 'tp/_generated/client/commerce.ts'), 'utf8');
+  const clientScript = ts.transpile(generated, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 });
+  const clientPath = '/commerce.js';
+  const frontend = createServer((request, response) => {
+    const script = request.url === clientPath;
+    response.setHeader('Content-Type', script ? 'text/javascript' : 'text/html');
+    response.end(script ? clientScript : '<!doctype html><title>External storefront</title>');
+  });
+  frontend.listen(0, '127.0.0.1');
+  await once(frontend, 'listening');
+  const address = frontend.address();
+  assert.ok(address && typeof address !== 'string');
+  const astroOrigin = `http://127.0.0.1:${address.port}`;
+  const baseUrl = new URL('/wp-json/wc/store/v1', base).href;
+  try {
+    await php(`update_option('tp_test_frontend_origin', ${JSON.stringify(astroOrigin)}); echo 'true';`);
+    const products = await api('products');
+    const mug = products.data.find((product: { sku: string }) => product.sku === 'MUG-BLUE');
+    await page.goto(astroOrigin);
+    const added = await page.evaluate(async ({ base, id, clientPath }) => {
+      const { createCartClient } = await import(clientPath);
+      const cart = createCartClient({ base, session: 'token' });
+      const added = await cart.add(id);
+      return { count: added.itemsCount, product: added.items[0]?.name };
+    }, { base: baseUrl, id: mug.id, clientPath });
+    assert.deepEqual(added, { count: 1, product: 'Ceramic mug' });
+
+    // Woo's handoff to the native Checkout Block, in a browser of its own: the link copies the token
+    // cart into a new cookie session there, and this one stays without cookies.
+    const link = await page.evaluate(async ({ base, clientPath, checkout }) => {
+      const { createCartClient } = await import(clientPath);
+      return createCartClient({ base }).checkoutLink(checkout);
+    }, { base: baseUrl, clientPath, checkout: new URL('/checkout/', base).href });
+    const blockContext = await browser.newContext();
+    try {
+      const blockPage = await blockContext.newPage();
+      const handoff = await blockPage.goto(link, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      assert.match(handoff!.headers()['cache-control']!, /private.*no-store/);
+      // The token is a credential: the store redirects to the same address without it.
+      const redirected = handoff!.request().redirectedFrom();
+      assert.equal(new URL(redirected!.url()).searchParams.has('session'), true);
+      assert.equal((await redirected!.response())!.headers()['referrer-policy'], 'same-origin');
+      assert.equal(blockPage.url(), new URL('/checkout/', base).href);
+      await expect(blockPage.locator('.wc-block-components-order-summary').getByText('Ceramic mug').first()).toBeVisible();
+      assert.ok((await blockContext.cookies()).some(cookie => cookie.name.startsWith('wp_woocommerce_session_')));
+    } finally {
+      await blockContext.close();
+    }
+
+    await page.reload();
+    const placed = await page.evaluate(async ({ base, clientPath }) => {
+      const { createCartClient } = await import(clientPath);
+      const sent: { credentials?: string; nonce: boolean; token: boolean }[] = [];
+      // No `session`: a Store API on another origin is a token cart by default.
+      const cart = createCartClient({ base, fetch: (url: RequestInfo, init: RequestInit) => {
+        const headers = new Headers(init.headers);
+        sent.push({ credentials: init.credentials, nonce: headers.has('Nonce'), token: headers.has('Cart-Token') });
+        return fetch(url, init);
+      } });
+      const restored = await cart.get();
+      const address = { first_name: 'Test', last_name: 'Buyer', address_1: 'Rynek 2', city: 'Kraków', postcode: '31-042', country: 'PL' };
+      const order = await cart.checkout({
+        billing_address: { ...address, email: 'buyer@example.test', phone: '123456789' },
+        shipping_address: address,
+        payment_method: 'cod',
+        expected_total: '3900',
+      });
+      return { restored: restored.itemsCount, remaining: (await cart.get()).itemsCount, order, sent };
+    }, { base: baseUrl, clientPath });
+    assert.equal(placed.restored, 1);
+    // The token found in storage after the reload is the whole session: no cookie, no nonce.
+    // Four requests: the read, the order, the client's read of the emptied cart, and the read above.
+    assert.deepEqual(placed.sent, Array(4).fill({ credentials: 'omit', nonce: false, token: true }));
+    assert.equal(placed.remaining, 0);
+    assert.equal(placed.order.payment_result.payment_status, 'success');
+    assert.equal((await context.cookies()).length, 0);
+    const order = await php(`$order=wc_get_order(${placed.order.order_id});echo wp_json_encode([$order->get_total(),array_values(array_map(static fn ($item) => $item->get_product_id(), $order->get_items()))]);`);
+    assert.deepEqual(order, ['39.00', [mug.id]]);
+    const receipt = await page.goto(placed.order.payment_result.redirect_url);
+    assert.match(receipt!.headers()['cache-control']!, /private.*no-store/);
+    await expect(page.getByText('Thank you. Your order has been received.')).toBeVisible();
+  } finally {
+    await context.close();
+    await promisify(frontend.close.bind(frontend))();
+  }
+});
+
 // These long journeys issue many PHP-WASM requests; shared CI runners can take over two minutes.
 // Keep individual browser/assertion deadlines short so missing UI still fails promptly.
 test('fresh storefront, cart, shipping, stock rejection and native stock gateway checkout', { timeout: 240_000 }, async () => {
@@ -209,8 +303,12 @@ test('fresh storefront, cart, shipping, stock rejection and native stock gateway
     assert.equal(new URL(alias.headers().location!).pathname.replace(/\/$/, ''), canonical);
   }
   await expect(page.getByRole('link', { name: 'Ceramic mug', exact: true })).toBeVisible();
+  await expect(page.locator('shop-mini-cart a')).toHaveText('Cart (0)');
+  await expect(page.locator('link[data-shop-checkout-prefetch]')).toHaveCount(0);
   await page.screenshot({ path: path.join(tmpdir(), 'typedpress-commerce-catalog.png'), fullPage: true });
   await add(page, 'ceramic-mug');
+  await expect(page.locator('shop-mini-cart a')).toHaveText('Cart (1)');
+  await expect(page.locator('link[data-shop-checkout-prefetch]')).toHaveCount(1);
   const cartPage = await page.goto(new URL('/cart', base).href);
   assert.match(cartPage!.headers()['cache-control']!, /private.*no-store/);
   assert.equal(cartPage!.headers()['x-robots-tag'], 'noindex');

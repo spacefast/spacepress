@@ -18,14 +18,13 @@ async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
 	await expect(page.locator('#user_login')).toBeVisible();
 	await submitSignIn(page, role, `typedpress-test-${role}`);
 	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
-	// The upstream home route: the dashboard.
+	// The home route: the SpacePress composable dashboard.
 	await expect(
-		page.getByRole('heading', { name: 'Dashboard', exact: true })
+		page.getByRole('heading', { name: 'Home', exact: true })
 	).toBeVisible();
-	// Collections opens the app's collections in the sidebar.
-	await page.locator('.typedpress-admin-sidebar__content').getByRole('button', { name: 'Collections', exact: true }).click();
+	// Collections appear directly as flat top-level items in the sidebar.
 	await expect(
-		page.getByRole('link', { name: 'Posts', exact: true }).last()
+		page.locator('.typedpress-admin-sidebar__content').getByRole('link', { name: 'Posts', exact: true }).last()
 	).toBeVisible();
 }
 test('normal WordPress login reaches the shipped admin and root navigation', async ({
@@ -43,9 +42,8 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	expect(cookies.some((c) => /^wordpress_logged_in_/.test(c.name))).toBe(true);
 	expect(cookies.some((c) => /^wordpress_(?:sec_)?[a-f0-9]+$/.test(c.name))).toBe(true);
 	const sidebar = page.locator('.typedpress-admin-sidebar__content');
-	await expect(sidebar.getByRole('link', { name: 'All collections', exact: true })).toBeVisible();
 	// wp-admin's menu (which this page reads, as a wp-admin page) lists TypedPress's post types too; the
-	// sidebar shows each collection once, under Collections.
+	// sidebar shows each collection once as a flat top-level item.
 	await expect(sidebar.getByRole('link', { name: 'Events', exact: true })).toHaveCount(1);
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/collections/posts`);
@@ -53,7 +51,7 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 		page.getByRole('heading', { name: 'Posts', exact: true })
 	).toBeVisible();
 	await expect(
-		page.getByRole('button', { name: 'New Posts', exact: true })
+		page.getByRole('button', { name: 'New Post', exact: true })
 	).toBeEnabled();
 
 	await page.getByRole('link', { name: 'Media', exact: true }).click();
@@ -93,11 +91,10 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await page.screenshot({ path: test.info().outputPath('classic-admin.png'), animations: 'disabled' });
 	await wordpressMenu.getByRole('link', { name: 'TypedPress', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
-	await sidebar.getByRole('button', { name: 'Collections', exact: true }).click();
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/collections/posts`);
 	await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toBeVisible();
-	await sidebar.getByRole('link', { name: 'All collections', exact: true }).click();
+	await page.goto(`${site}/wp-admin/new/collections`);
 	await expect(page).toHaveURL(`${site}/wp-admin/new/collections`);
 	await expect(page.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
 	await page.screenshot({ path: test.info().outputPath('collections.png'), animations: 'disabled' });
@@ -142,14 +139,14 @@ if (!subdir) {
 		const authorId = (await author.json()).data.id;
 		await login(page, 'editor');
 		await page.getByRole('link', { name: 'Posts', exact: true }).last().click();
-		await page.getByRole('button', { name: 'New Posts', exact: true }).click();
+		await page.getByRole('button', { name: 'New Post', exact: true }).click();
 		const title = `Browser journey ${Date.now()}`;
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill(title);
 		await page
 			.getByRole('textbox', { name: 'Excerpt', exact: true })
 			.fill('Created in TypedPress Admin');
 		await page
-			.getByRole('button', { name: 'Create record', exact: true })
+			.getByRole('button', { name: 'Create Post', exact: true })
 			.click();
 		await expect(page).toHaveURL(/\/collections\/posts\/\d+$/);
 		const id = new URL(page.url()).pathname.split('/').pop();
@@ -250,7 +247,7 @@ if (!subdir) {
 		// The table uses the TypedPress endpoint and a readable cross-kind relation picker.
 		await page.goto(`${site}/wp-admin/new/collections/comments`);
 		await page
-			.getByRole('button', { name: 'New comments', exact: false })
+			.getByRole('button', { name: 'New Comment', exact: false })
 			.click();
 		await page
 			.getByRole('combobox', { name: 'Post Id', exact: true })
@@ -265,11 +262,11 @@ if (!subdir) {
 			.getByRole('textbox', { name: 'Body', exact: true })
 			.fill('A table record from the browser');
 		await page
-			.getByRole('button', { name: 'Create record', exact: true })
+			.getByRole('button', { name: 'Create Comment', exact: true })
 			.click();
 		await expect(page).toHaveURL(/\/collections\/comments\/\d+$/);
 		await expect(
-			page.getByRole('heading', { name: 'Edit Comments', exact: true })
+			page.getByRole('heading', { name: 'Edit Comment', exact: true })
 		).toBeVisible();
 		const commentId = new URL(page.url()).pathname.split('/').pop();
 		await page
@@ -739,9 +736,9 @@ test('restored native WordPress routes persist settings and published content an
     // The dashboard's earlier address, /dashboard, goes to the home route.
     await page.goto(`${site}/wp-admin/new/dashboard`);
     await expect(page).toHaveURL(`${site}/wp-admin/new/`);
-    await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Add widgets', exact: true }).click();
-    await expect(page.getByRole('dialog').getByText('Quick Stats (example data)', { exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog').getByText('Content Overview', { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-dashboard-widgets.png') });
     await page.keyboard.press('Escape');
     await page.goto(`${site}/wp-admin/new/settings/general`);

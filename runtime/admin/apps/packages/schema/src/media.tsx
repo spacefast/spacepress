@@ -1,21 +1,66 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiFetch from '@wordpress/api-fetch';
+import { decodeEntities } from '@wordpress/html-entities';
+import { image as imageIcon, pencil, trash } from '@wordpress/icons';
 import { useParams, useNavigate, useSearch } from '@wordpress/route';
 import {
 	Button,
+	DropZone,
 	FocalPointPicker,
 	FormFileUpload,
 	Notice,
 	TextControl,
 	TextareaControl,
 } from '@wordpress/components';
-import { Page, RouterLink, useDocumentChanges } from '@typedpress-admin/admin-toolkit';
-import type { View, Field } from '@typedpress-admin/dataviews';
+import {
+	Page,
+	RouterLink,
+	createConfirmModal,
+	useDocumentChanges,
+} from '@typedpress-admin/admin-toolkit';
+import type { Action, View, Field } from '@typedpress-admin/dataviews';
 import { DataViews, useView } from '@typedpress-admin/views';
 import { uploadAttachment } from '@typedpress-admin/attachment-importer';
 import { allowed, object, text, type Row } from './model';
 import { api, bootstrap, message, unwrap, useLoad } from './api';
 import { Loading } from './screens';
+
+function thumbnailUrl(item: Row): string | undefined {
+	if (text(item.media_type) !== 'image') return undefined;
+	const details =
+		item.media_details && typeof item.media_details === 'object'
+			? object(item.media_details)
+			: undefined;
+	const sizes =
+		details?.sizes && typeof details.sizes === 'object'
+			? object(details.sizes)
+			: undefined;
+	for (const size of ['medium', 'thumbnail', 'medium_large', 'full']) {
+		const entry = sizes?.[size];
+		if (entry && typeof entry === 'object') {
+			const url = text(object(entry).source_url);
+			if (url) return url;
+		}
+	}
+	return text(item.source_url);
+}
+
+function mediaTitle(item: Row): string {
+	const titleObj = item.title && typeof item.title === 'object' ? object(item.title) : {};
+	const rendered = text(titleObj.rendered) ?? text(titleObj.raw);
+	return rendered ? decodeEntities(rendered) : `#${String(item.id)}`;
+}
+
+function formatMediaDate(value: unknown): string {
+	if (typeof value !== 'string' || !value) return '—';
+	const parsed = new Date(value);
+	if (Number.isNaN(parsed.getTime())) return value;
+	return new Intl.DateTimeFormat(undefined, {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+	}).format(parsed);
+}
 
 export function MediaLibrary() {
 	const search = object(useSearch({ from: '/media' })),
@@ -23,13 +68,14 @@ export function MediaLibrary() {
 	const page = Math.max(1, Number(search.page) || 1),
 		query = text(search.search) ?? '';
 	const defaultView = useMemo<View>(() => ({
-		type: 'table',
+		type: 'grid',
+		mediaField: 'thumbnail',
 		titleField: 'title',
-		fields: ['mime_type', 'alt_text'],
-		perPage: 20,
+		fields: ['mime_type', 'date'],
+		perPage: 24,
 		sort: { field: 'date', direction: 'desc' },
 	}), []);
-	const defaultLayouts = useMemo(() => ({ table: {} }), []);
+	const defaultLayouts = useMemo(() => ({ grid: {}, table: {} }), []);
 	const onChangeQueryParams = useCallback((params: { page?: number; search?: string }) => {
 		void navigate({
 			to: '/media',
@@ -37,7 +83,7 @@ export function MediaLibrary() {
 		});
 	}, [navigate]);
 	const { view, updateView, isModified, resetToDefault } = useView({
-		kind: 'firstMedia',
+		kind: 'tpMedia',
 		name: 'attachment',
 		slug: 'all',
 		defaultView,
@@ -45,10 +91,31 @@ export function MediaLibrary() {
 		queryParams: { page, search: query },
 		onChangeQueryParams,
 	});
-	const perPage = view.perPage ?? 20;
+	const perPage = view.perPage ?? 24;
 	const [revision, setRevision] = useState(0),
 		[busy, setBusy] = useState(false),
 		[error, setError] = useState('');
+	const canUpload = allowed('author', bootstrap().role);
+	const canEdit = allowed('editor', bootstrap().role);
+
+	const uploadFiles = useCallback((files: File[]) => {
+		if (!files.length) return;
+		setBusy(true);
+		setError('');
+		void Promise.allSettled(files.map(uploadAttachment))
+			.then((results) => {
+				setError(
+					results
+						.flatMap((result) =>
+							result.status === 'rejected' ? [message(result.reason)] : []
+						)
+						.join(' ')
+				);
+				setRevision((v) => v + 1);
+			})
+			.finally(() => setBusy(false));
+	}, []);
+
 	const state = useLoad(async () => {
 		const response: Response = await apiFetch({
 			path: `/wp/v2/media?context=view&per_page=${perPage}&page=${page}&search=${encodeURIComponent(query)}`,
@@ -61,42 +128,179 @@ export function MediaLibrary() {
 			total: Number(response.headers.get('X-WP-Total')),
 		};
 	}, [page, perPage, query, revision]);
-	const fields: Field<Row>[] = [
-		{
-			id: 'title',
-			label: 'Title',
-			enableSorting: false,
-			filterBy: false,
-			render: ({ item }) => (
-				<RouterLink to={`/media/${String(item.id)}`}>
-					{text(object(item.title).rendered) || `#${String(item.id)}`}
-				</RouterLink>
-			),
-		},
-		{ id: 'mime_type', label: 'Type', enableSorting: false, filterBy: false },
-		{ id: 'alt_text', label: 'Alt text', enableSorting: false, filterBy: false },
-	];
+
+	const deleteModal = useMemo(
+		() =>
+			createConfirmModal<Row>({
+				modalHeader: (items) =>
+					items.length === 1 ? 'Delete media file' : `Delete ${items.length} media files`,
+				intent: 'delete-permanently',
+				message: (items) =>
+					items.length === 1
+						? `Delete "${mediaTitle(items[0])}" permanently? References to it will be cleared.`
+						: `Delete ${items.length} files permanently? References to them will be cleared.`,
+				onSubmit: async (items, setIsLoading) => {
+					setIsLoading(true);
+					setError('');
+					try {
+						await Promise.all(
+							items.map((item) =>
+								apiFetch({
+									...api(`/media/${encodeURIComponent(String(item.id))}`),
+									method: 'DELETE',
+								})
+							)
+						);
+						setRevision((v) => v + 1);
+					} catch (e: unknown) {
+						setError(message(e));
+					}
+				},
+			}),
+		[]
+	);
+
+	const actions = useMemo<Action<Row>[]>(() => {
+		const listActions: Action<Row>[] = [
+			{
+				id: 'edit-details',
+				label: 'Edit details',
+				isPrimary: true,
+				icon: pencil,
+				supportsBulk: false,
+				callback: (items) => {
+					const item = items[0];
+					if (!item) return;
+					void navigate({ to: `/media/${encodeURIComponent(String(item.id))}` });
+				},
+			},
+			{
+				id: 'edit-image',
+				label: 'Edit image',
+				isPrimary: false,
+				icon: imageIcon,
+				supportsBulk: false,
+				isEligible: (item) => canEdit && text(item.media_type) === 'image',
+				callback: (items) => {
+					const item = items[0];
+					if (!item) return;
+					void navigate({
+						to: `/types/attachment/edit/${encodeURIComponent(String(item.id))}`,
+					});
+				},
+			},
+		];
+		if (canEdit) {
+			listActions.push({
+				id: 'delete-media',
+				label: 'Delete',
+				isPrimary: false,
+				icon: trash,
+				supportsBulk: true,
+				...deleteModal,
+			});
+		}
+		return listActions;
+	}, [canEdit, navigate, deleteModal]);
+
+	const fields: Field<Row>[] = useMemo(
+		() => [
+			{
+				id: 'thumbnail',
+				label: 'Preview',
+				enableSorting: false,
+				filterBy: false,
+				render: ({ item }) => {
+					const url = thumbnailUrl(item);
+					const title = mediaTitle(item);
+					if (url) {
+						return (
+							<RouterLink
+								className="typedpress-schema-media-thumb"
+								to={`/media/${String(item.id)}`}
+							>
+								<img
+									src={url}
+									alt={text(item.alt_text) || title}
+									loading="lazy"
+								/>
+							</RouterLink>
+						);
+					}
+					const mime = text(item.mime_type) ?? 'file';
+					const ext = mime.includes('/') ? mime.split('/')[1].toUpperCase() : mime.toUpperCase();
+					return (
+						<RouterLink
+							className="typedpress-schema-media-thumb is-file"
+							to={`/media/${String(item.id)}`}
+						>
+							<span>{ext}</span>
+						</RouterLink>
+					);
+				},
+			},
+			{
+				id: 'title',
+				label: 'Title',
+				enableSorting: false,
+				filterBy: false,
+				render: ({ item }) => (
+					<RouterLink
+						className="typedpress-schema-title-link"
+						to={`/media/${String(item.id)}`}
+					>
+						{mediaTitle(item)}
+					</RouterLink>
+				),
+			},
+			{
+				id: 'mime_type',
+				label: 'Type',
+				enableSorting: false,
+				filterBy: false,
+				render: ({ item }) => (
+					<span className="typedpress-schema-badge is-neutral">
+						{text(item.mime_type) ?? '—'}
+					</span>
+				),
+			},
+			{
+				id: 'date',
+				label: 'Uploaded',
+				enableSorting: false,
+				filterBy: false,
+				render: ({ item }) => (
+					<span className="typedpress-schema-cell-muted">
+						{formatMediaDate(item.date_gmt ?? item.date)}
+					</span>
+				),
+			},
+			{
+				id: 'alt_text',
+				label: 'Alt text',
+				enableSorting: false,
+				filterBy: false,
+				render: ({ item }) => (
+					<span className="typedpress-schema-cell-truncate">
+						{text(item.alt_text) || '—'}
+					</span>
+				),
+			},
+		],
+		[]
+	);
+
 	return (
 		<Page
 			title="Media"
 			hasPadding={false}
 			actions={
-				allowed('author', bootstrap().role) && (
+				canUpload && (
 					<FormFileUpload
 						accept="image/*,video/*,audio/*,application/pdf"
 						multiple
 						onChange={(event) => {
-							const files = Array.from(event.target.files ?? []);
-							setBusy(true);
-							setError('');
-							Promise.allSettled(files.map(uploadAttachment))
-								.then((results) => {
-									setError(results.flatMap((result) =>
-										result.status === 'rejected' ? [message(result.reason)] : []
-									).join(' '));
-									setRevision((v) => v + 1);
-								})
-								.finally(() => setBusy(false));
+							uploadFiles(Array.from(event.target.files ?? []));
 						}}
 						render={({ openFileDialog }) => (
 							<Button
@@ -112,37 +316,56 @@ export function MediaLibrary() {
 				)
 			}
 		>
-			{error && (
-				<Notice status="error" isDismissible={false}>
-					{error}
-				</Notice>
-			)}
-			{state.kind !== 'ready' ? (
-				<Loading state={state} />
-			) : (
-				<DataViews<Row>
-					data={state.value.rows}
-					fields={fields}
-					view={view}
-					onChangeView={(next) => updateView({
-						...next,
-						page: next.search !== query || next.perPage !== perPage ? 1 : next.page,
-					})}
-					onReset={isModified ? () => {
-						resetToDefault();
-						onChangeQueryParams({ page: 1, search: query });
-					} : false}
-					getItemId={(r) => String(r.id)}
-					defaultLayouts={defaultLayouts}
-					paginationInfo={{
-						totalItems: state.value.total,
-						totalPages: Math.max(1, Math.ceil(state.value.total / perPage)),
-					}}
-				/>
-			)}
+			<div className="typedpress-schema-media-surface">
+				{canUpload && (
+					<DropZone
+						label="Drop files to upload"
+						onFilesDrop={(files) => uploadFiles(files)}
+					/>
+				)}
+				{error && (
+					<Notice status="error" isDismissible onRemove={() => setError('')}>
+						{error}
+					</Notice>
+				)}
+				{state.kind !== 'ready' ? (
+					<Loading state={state} />
+				) : (
+					<DataViews<Row>
+						data={state.value.rows}
+						fields={fields}
+						view={view}
+						actions={actions}
+						onChangeView={(next) =>
+							updateView({
+								...next,
+								page:
+									next.search !== query || next.perPage !== perPage
+										? 1
+										: next.page,
+							})
+						}
+						onReset={
+							isModified
+								? () => {
+										resetToDefault();
+										onChangeQueryParams({ page: 1, search: query });
+									}
+								: false
+						}
+						getItemId={(r) => String(r.id)}
+						defaultLayouts={defaultLayouts}
+						paginationInfo={{
+							totalItems: state.value.total,
+							totalPages: Math.max(1, Math.ceil(state.value.total / perPage)),
+						}}
+					/>
+				)}
+			</div>
 		</Page>
 	);
 }
+
 function focal(value: unknown): { x: number; y: number } {
 	if (
 		value &&
@@ -155,6 +378,7 @@ function focal(value: unknown): { x: number; y: number } {
 		return { x: value.x, y: value.y };
 	return { x: 0.5, y: 0.5 };
 }
+
 export function MediaDocument() {
 	const { id } = useParams({ from: '/media/$id' });
 	const state = useLoad(async () => {
@@ -193,16 +417,17 @@ export function MediaDocument() {
 		</Page>
 	);
 }
+
 function MediaForms({ id, core, tp }: { id: string; core: Row; tp: Row }) {
 	const [alt, setAlt] = useState(text(tp.alt) ?? ''),
 		[point, setPoint] = useState(focal(tp.focal));
 	const [title, setTitle] = useState(
-			text(object(core.title).raw) ?? text(object(core.title).rendered) ?? ''
+			text(object(core.title).raw) ??
+				decodeEntities(text(object(core.title).rendered) ?? '')
 		),
 		[caption, setCaption] = useState(
 			text(object(core.caption).raw) ??
-				text(object(core.caption).rendered) ??
-				''
+				decodeEntities(text(object(core.caption).rendered) ?? '')
 		);
 	const [busy, setBusy] = useState(false),
 		[error, setError] = useState(''),
@@ -287,12 +512,12 @@ function MediaForms({ id, core, tp }: { id: string; core: Row; tp: Row }) {
 				/>
 			)}
 			{canCaption && text(core.media_type) === 'image' && (
-                <RouterLink to={`/types/attachment/edit/${encodeURIComponent(id)}`}>
-                    Edit image
-                </RouterLink>
-            )}
-            <form
-                onSubmit={(e) => {
+				<RouterLink to={`/types/attachment/edit/${encodeURIComponent(id)}`}>
+					Edit image
+				</RouterLink>
+			)}
+			<form
+				onSubmit={(e) => {
 					e.preventDefault();
 					void mutate(saveMedia, 'Media saved.').catch(() => undefined);
 				}}

@@ -17,16 +17,6 @@ type MockStoresProps = {
 	defaultLayout?: DashboardWidget< unknown >[];
 };
 
-/**
- * Helper to mock useSelect for both preferences and boot store.
- *
- * The hook calls useSelect twice:
- * 1. preferences store → select().get( 'core/admin', 'dashboardLayout' )
- * 2. boot store → select().getDashboardDefaultLayout()
- *
- * We return an object with both methods so each call resolves correctly.
- * @param {MockStoresProps} props - The object to mock
- */
 function mockStores( { layout, defaultLayout = [] }: MockStoresProps ) {
 	( useSelect as jest.Mock ).mockImplementation( ( selector ) => {
 		return selector( () => ( {
@@ -44,18 +34,19 @@ describe( 'useDashboardLayout', () => {
 		( useDispatch as jest.Mock ).mockReturnValue( { set: mockSet } );
 	} );
 
-	it( 'returns empty array when preference is undefined', () => {
-		mockStores( { layout: undefined } );
+	it( 'falls back to default layout when preference is undefined', () => {
+		const defaults = [ { uid: 'w-1', type: 'tp/content-overview' } ];
+		mockStores( { layout: undefined, defaultLayout: defaults } );
 
 		const { result } = renderHook( () => useDashboardLayout() );
 
-		expect( result.current[ 0 ] ).toEqual( [] );
+		expect( result.current[ 0 ] ).toEqual( defaults );
 	} );
 
 	it( 'returns stored layout when preference exists', () => {
 		const storedLayout = [
-			{ uid: 'widget-1', type: 'core/test-widget' },
-			{ uid: 'widget-2', type: 'core/test-widget' },
+			{ uid: 'widget-1', type: 'tp/content-overview' },
+			{ uid: 'widget-2', type: 'tp/recent-activity' },
 		];
 
 		mockStores( { layout: storedLayout } );
@@ -79,25 +70,25 @@ describe( 'useDashboardLayout', () => {
 
 		const { result } = renderHook( () => useDashboardLayout() );
 
-		const newLayout = [ { uid: 'widget-3', type: 'core/test-widget' } ];
+		const newLayout = [ { uid: 'widget-3', type: 'tp/app-status' } ];
 
 		result.current[ 1 ]( newLayout );
 
 		expect( mockSet ).toHaveBeenCalledWith(
 			'core/admin',
-			'dashboardLayout',
+			'tpDashboardLayout',
 			newLayout
 		);
 	} );
 
 	it( 'resets layout to default widgets from boot store', () => {
 		const defaultWidgets = [
-			{ uid: 'default-1', type: 'core/default-widget' },
-			{ uid: 'default-2', type: 'core/default-widget' },
+			{ uid: 'default-1', type: 'tp/content-overview' },
+			{ uid: 'default-2', type: 'tp/recent-activity' },
 		];
 
 		mockStores( {
-			layout: [ { uid: 'custom-1', type: 'core/custom' } ],
+			layout: [ { uid: 'custom-1', type: 'tp/app-status' } ],
 			defaultLayout: defaultWidgets,
 		} );
 
@@ -107,22 +98,25 @@ describe( 'useDashboardLayout', () => {
 
 		expect( mockSet ).toHaveBeenCalledWith(
 			'core/admin',
-			'dashboardLayout',
+			'tpDashboardLayout',
 			defaultWidgets
 		);
 	} );
 
-	it( 'resets to empty array when no defaults are registered', () => {
-		mockStores( { layout: [ { uid: 'widget-1', type: 'core/test' } ] } );
+	it( 'supports custom preference key and fallback layout for custom dashboards', () => {
+		const customDefaults = [ { uid: 'ops-1', type: 'tp-widget/revenue' } ];
+		mockStores( { layout: undefined, defaultLayout: [] } );
 
-		const { result } = renderHook( () => useDashboardLayout() );
+		const { result } = renderHook( () =>
+			useDashboardLayout( 'tpDashboardLayout:ops', customDefaults )
+		);
 
+		expect( result.current[ 0 ] ).toEqual( customDefaults );
 		result.current[ 2 ]();
-
 		expect( mockSet ).toHaveBeenCalledWith(
 			'core/admin',
-			'dashboardLayout',
-			[]
+			'tpDashboardLayout:ops',
+			customDefaults
 		);
 	} );
 } );

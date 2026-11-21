@@ -1032,6 +1032,8 @@
 				"defineconfig",
 				"item",
 				"adminscreen",
+				"adminwidget",
+				"admindashboard",
 				"defineplugin",
 				"errors",
 				"job",

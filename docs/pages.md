@@ -80,6 +80,8 @@ export async function POST(req: RouteRequest) {
   `title: { default, template: "%s · Site" }` wraps its pages' titles.
 - `export const search = { page: integer().default(1), q: text().optional() }`
   types the query string. A value a field refuses (`?page=abc`) reads as absent.
+  These are also the only query parameters a page cache keeps the page under: a
+  request with any other parameter (`?utm_source=…`) gets the page, uncached.
 - Declare page access once. For example, `export const guard = "admin"` on
   `page.tsx` protects that page. On `layout.tsx` it protects the whole section.
   A page inherits every enclosing layout's rule. A signed-out visitor who opens

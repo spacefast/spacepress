@@ -45,7 +45,7 @@ final class WpPostStore implements Store
     ) {
         // Core moves the posts stamp before a transaction commits. Move it again on commit
         // so a reader still seeing the old data cannot leave its hint under the current stamp.
-        add_action('clean_post_cache', fn () => $this->db->wrotePost());
+        $this->db->watchPostWrites();
     }
 
     public function afterCommit(callable $fn): void

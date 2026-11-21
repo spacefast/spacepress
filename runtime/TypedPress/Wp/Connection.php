@@ -38,6 +38,8 @@ final class Connection
     private array $touchedOptions = [];
     /** A post's caches were cleaned inside the open transaction ({@see wrotePost()}). */
     private bool $wrotePost = false;
+    /** The `clean_post_cache` listener is registered ({@see watchPostWrites()}). */
+    private bool $watchingPosts = false;
     /** @var list<callable> */
     private array $beforeCommit = [];
     /** @var list<callable> */
@@ -700,6 +702,18 @@ final class Connection
     {
         if ($this->depth > 0) {
             $this->wrotePost = true;
+        }
+    }
+
+    /**
+     * Calls wrotePost() on core's `clean_post_cache`, registered once per connection: stores are
+     * built per editor save (Plugin::fillEditorDefaults), and each must not add another listener.
+     */
+    public function watchPostWrites(): void
+    {
+        if (!$this->watchingPosts) {
+            $this->watchingPosts = true;
+            add_action('clean_post_cache', fn () => $this->wrotePost());
         }
     }
 

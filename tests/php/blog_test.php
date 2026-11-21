@@ -264,6 +264,13 @@ $db->transaction(static function () use ($locked): void {
     wp_update_post(['ID' => $locked['id'], 'post_password' => 'committed']);
 });
 eq('a committed password hides the row from visitors', $visible($anonymous), []);
+// Each editor save builds a store (Plugin::fillEditorDefaults); the stamp listener is the connection's, added once.
+$listeners = static fn (): int => count($GLOBALS['wp_filter']['clean_post_cache']->callbacks[10] ?? []);
+$heard = $listeners();
+foreach (['one', 'two', 'three'] as $title) {
+    wp_update_post(['ID' => $locked['id'], 'post_title' => $title]);
+}
+eq('editor saves add no clean_post_cache listener', $listeners(), $heard);
 $db->delete('openNotes', ['id' => $locked['id']]);
 
 // Native post passwords constrain every viewer-bound read before selection, not just its rendered body.

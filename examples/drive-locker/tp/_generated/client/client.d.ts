@@ -1,3 +1,6 @@
+export type Id<Kind extends string = string> = number & {
+	readonly __tp_kind?: Kind;
+};
 export type Role = "guest" | "subscriber" | "author" | "editor" | "admin";
 export interface User {
 	id: number;
@@ -39,19 +42,37 @@ export interface PrivateFile {
 }
 export interface RevisionSummary {
 	id: number;
+	version: number;
+	op: "create" | "update" | "delete" | "restore" | "purge";
 	at: string;
 	user: {
 		id: number;
 		name: string;
 	} | null;
+	schemaMigration: string | null;
+	changed: string[] | null;
+}
+export interface RevisionDiff<T = Record<string, unknown>> {
+	from: number;
+	to: number;
+	changes: {
+		field: keyof T & string;
+		from: unknown;
+		to: unknown;
+	}[];
 }
 export type Status = "draft" | "published" | "scheduled";
 export type Locale = never;
 export interface Place {
-	id: number;
+	id: Id<"places">;
 	ownerId: number;
 	name: string;
 	kind: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface PlaceInsert {
 	ownerId?: number;
@@ -129,14 +150,74 @@ export interface PlaceFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	drives?: true | DriveFilter;
 	AND?: PlaceFilter[];
 	OR?: PlaceFilter[];
 	NOT?: PlaceFilter;
 }
-export type PlaceOrder = Partial<Record<"id" | "ownerId" | "name" | "kind", "asc" | "desc">> | string;
+export type PlaceOrder = Partial<Record<"id" | "ownerId" | "name" | "kind" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface Drive {
-	id: number;
+	id: Id<"drives">;
 	ownerId: number;
 	label: string;
 	model: string;
@@ -146,11 +227,16 @@ export interface Drive {
 	interface: string;
 	purchasedOn: string | null;
 	warrantyUntil: string | null;
-	placeId: number | null;
+	placeId: Id<"places"> | null;
 	status: "in-use" | "spare" | "failed" | "retired";
 	notes: string | null;
 	tags: string[];
 	replacementNeededAt: string | null;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface DriveInsert {
 	ownerId?: number;
@@ -162,7 +248,7 @@ export interface DriveInsert {
 	interface: string;
 	purchasedOn?: string | null;
 	warrantyUntil?: string | null;
-	placeId?: number | null;
+	placeId?: Id<"places"> | null;
 	status?: "in-use" | "spare" | "failed" | "retired";
 	notes?: string | null;
 	tags?: string[];
@@ -410,26 +496,91 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	healthReadings?: true | HealthReadingFilter;
 	contents?: true | ContentFilter;
 	AND?: DriveFilter[];
 	OR?: DriveFilter[];
 	NOT?: DriveFilter;
 }
-export type DriveOrder = Partial<Record<"id" | "ownerId" | "label" | "model" | "serial" | "kind" | "capacityGb" | "interface" | "purchasedOn" | "warrantyUntil" | "placeId" | "status" | "notes" | "replacementNeededAt", "asc" | "desc">> | string;
+export type DriveOrder = Partial<Record<"id" | "ownerId" | "label" | "model" | "serial" | "kind" | "capacityGb" | "interface" | "purchasedOn" | "warrantyUntil" | "placeId" | "status" | "notes" | "replacementNeededAt" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface HealthReading {
-	id: number;
+	id: Id<"healthReadings">;
 	ownerId: number;
-	driveId: number;
+	driveId: Id<"drives">;
 	readOn: string;
 	powerOnHours: number;
 	wearPercent: number;
 	reallocatedSectors: number;
 	tempC: number;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface HealthReadingInsert {
 	ownerId?: number;
-	driveId: number;
+	driveId: Id<"drives">;
 	readOn: string;
 	powerOnHours: number;
 	wearPercent: number;
@@ -551,22 +702,87 @@ export interface HealthReadingFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	AND?: HealthReadingFilter[];
 	OR?: HealthReadingFilter[];
 	NOT?: HealthReadingFilter;
 }
-export type HealthReadingOrder = Partial<Record<"id" | "ownerId" | "driveId" | "readOn" | "powerOnHours" | "wearPercent" | "reallocatedSectors" | "tempC", "asc" | "desc">> | string;
+export type HealthReadingOrder = Partial<Record<"id" | "ownerId" | "driveId" | "readOn" | "powerOnHours" | "wearPercent" | "reallocatedSectors" | "tempC" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface Content {
-	id: number;
+	id: Id<"contents">;
 	ownerId: number;
-	driveId: number;
+	driveId: Id<"drives">;
 	description: string;
 	usedGb: number;
 	lastBackupOn: string | null;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface ContentInsert {
 	ownerId?: number;
-	driveId: number;
+	driveId: Id<"drives">;
 	description: string;
 	usedGb: number;
 	lastBackupOn?: string | null;
@@ -664,13 +880,73 @@ export interface ContentFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	AND?: ContentFilter[];
 	OR?: ContentFilter[];
 	NOT?: ContentFilter;
 }
-export type ContentOrder = Partial<Record<"id" | "ownerId" | "driveId" | "description" | "usedGb" | "lastBackupOn", "asc" | "desc">> | string;
+export type ContentOrder = Partial<Record<"id" | "ownerId" | "driveId" | "description" | "usedGb" | "lastBackupOn" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface Member {
-	id: number;
+	id: Id<"members">;
 	email: string;
 	name: string;
 	role: "guest" | "subscriber" | "author" | "editor" | "admin";
@@ -786,6 +1062,11 @@ export type WhereIsOutput = ({
 		notes: string | null;
 		tags: string[];
 		replacementNeededAt: string | null;
+		author: number | null;
+		createdAt: string;
+		updatedAt: string;
+		deletedAt: string | null;
+		deletedBy: number | null;
 		contents: Content[];
 	};
 	place: Place | null;
@@ -834,6 +1115,11 @@ export type WarrantyExpiringOutput = ({
 	notes: string | null;
 	tags: string[];
 	replacementNeededAt: string | null;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 })[];
 export interface RetireInput {
 	driveId: number;
@@ -911,7 +1197,8 @@ export declare const SCHEMA: {
 			readonly path: "places";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly drives: {
@@ -928,7 +1215,8 @@ export declare const SCHEMA: {
 			readonly path: "drives";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly placeId: {
@@ -955,7 +1243,8 @@ export declare const SCHEMA: {
 			readonly path: "health_readings";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly driveId: {
@@ -972,7 +1261,8 @@ export declare const SCHEMA: {
 			readonly path: "contents";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly driveId: {
@@ -990,6 +1280,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: false;
 			readonly revisions: false;
+			readonly softDelete: false;
 			readonly localized: false;
 			readonly relations: {};
 			readonly media: readonly [];
@@ -1061,6 +1352,8 @@ export type ListQuery<
 	limit?: number;
 	offset?: number;
 	with?: W;
+	/** Soft-delete filter: `"exclude"` (default), `"include"`, or `"only"`. Non-default modes require `restore` or `delete` access. */
+	deleted?: "exclude" | "include" | "only";
 } & StatusQuery<K> & LocaleQuery<K>;
 /**
 * A read. Await it for one answer, or `subscribe` to keep it current: the callback gets the result
@@ -1118,12 +1411,18 @@ export interface CollectionClient<K extends CollectionKey> {
 	*/
 	update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
 	delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
+	/** Restores a soft-deleted row (and any cascade-deleted children sharing its deletion group). */
+	restore(id: IdOf<K>): Promise<Row<K>>;
+	/** Permanently removes the row from storage (default access `"system"`). */
+	purge(id: IdOf<K>): Promise<Row<K>>;
 	/** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
 	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q: ListQuery<K, ExactWith<K, W>> | undefined, onRows: (rows: RowWith<K, W>[]) => void, onError?: (error: TypedPressError) => void): () => void;
 	revisions: {
 		/** Newest first. Needs `update` access on the row. */
 		list(id: IdOf<K>): Promise<RevisionSummary[]>;
 		get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+		/** Diffs two revisions (by version or revision id) as this viewer may read them. */
+		diff(id: IdOf<K>, fromVersion: number, toVersion: number): Promise<RevisionDiff<Row<K>>>;
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};

@@ -9,6 +9,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "tasks": {
@@ -33,6 +34,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "systemId": {
@@ -55,6 +57,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "taskId": {

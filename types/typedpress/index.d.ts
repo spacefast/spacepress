@@ -799,8 +799,11 @@ export interface FieldOperators<T> {
   AND?: FieldFilter<T>[];
 }
 
+/** Unwrap branded Id<Kind> in filters so plain numbers (e.g. `Number(params.id)`) match. */
+type FilterValue<T> = T extends Id<any> ? number : T;
+
 /** A field condition: a bare (non-object) value or an operator object. */
-export type FieldFilter<T> = FieldOperators<T> | (T extends object ? never : T);
+export type FieldFilter<T> = FieldOperators<FilterValue<T>> | (FilterValue<T> extends object ? never : FilterValue<T>);
 
 /** List columns (`mediaList`, `select({ multiple })`): membership, emptiness, null. No `in`/`like`/ordering. */
 export interface ListOperators<TItem> {

@@ -197,6 +197,7 @@
             "editor": true,
             "drafts": true,
             "revisions": true,
+            "softDelete": true,
             "comments": false,
             "uid": true,
             "sync": null,
@@ -258,6 +259,51 @@
                     "type": "timestamp",
                     "system": true
                 },
+                "author": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "createdAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "updatedAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "onUpdate": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedAt": {
+                    "type": "timestamp",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedBy": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedGroup": {
+                    "type": "text",
+                    "rules": {
+                        "max": 36
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
+                },
                 "uid": {
                     "type": "text",
                     "unique": true,
@@ -316,6 +362,7 @@
             "editor": true,
             "drafts": true,
             "revisions": true,
+            "softDelete": true,
             "comments": false,
             "uid": true,
             "sync": {
@@ -472,6 +519,51 @@
                     "type": "timestamp",
                     "system": true
                 },
+                "author": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "createdAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "updatedAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "onUpdate": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedAt": {
+                    "type": "timestamp",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedBy": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedGroup": {
+                    "type": "text",
+                    "rules": {
+                        "max": 36
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
+                },
                 "uid": {
                     "type": "text",
                     "unique": true,
@@ -546,7 +638,8 @@
             "label": "Audit",
             "editor": false,
             "drafts": false,
-            "revisions": false,
+            "revisions": true,
+            "softDelete": true,
             "comments": false,
             "uid": false,
             "sync": null,
@@ -567,6 +660,60 @@
                 "note": {
                     "type": "text",
                     "notNull": true
+                },
+                "author": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "createdAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "updatedAt": {
+                    "type": "timestamp",
+                    "notNull": true,
+                    "default": {
+                        "now": true
+                    },
+                    "onUpdate": {
+                        "now": true
+                    },
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedAt": {
+                    "type": "timestamp",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedBy": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "system": true
+                },
+                "deletedGroup": {
+                    "type": "text",
+                    "rules": {
+                        "max": 36
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
+                },
+                "_live": {
+                    "type": "boolean",
+                    "default": {
+                        "value": true
+                    },
+                    "hidden": true,
+                    "readOnly": true,
+                    "system": true
                 }
             },
             "relations": [],

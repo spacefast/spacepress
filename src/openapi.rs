@@ -658,14 +658,17 @@ impl Builder<'_> {
         let (insert, patch, filter_name) = (format!("{name}Insert"), format!("{name}Patch"), format!("{name}Filter"));
         let mut row_component = self.row_component(c);
         let mut patch_component = js::patch(c);
-        // A kind with staged versions: every row carries `_rev`, and its writes take `_rev` and
-        // `takeover` (docs/staged.md).
-        let conditions = c.editor && c.revisions && c.staged;
-        if conditions {
+        // Post kinds with staged versions carry `_rev` and `takeover`; SQL tables with revisions carry `_rev`.
+        let staged = c.editor && c.revisions && c.staged;
+        let has_table = !c.editor && !c.auth && c.taxonomy.is_none();
+        let has_rev = staged || (has_table && c.revisions);
+        if has_rev {
             row_component["properties"]["_rev"]["description"] = json!(
                 "A token of the row as read: send it back with a write to refuse the write if the row changed since."
             );
             patch_component["properties"]["_rev"] = json!({ "type": "string", "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since." });
+        }
+        if staged {
             patch_component["properties"]["takeover"] = json!({ "type": "boolean", "description": "Take over another user's edit lock instead of being refused with `409 locked`." });
         }
         self.components.insert(name.clone(), row_component);
@@ -781,6 +784,13 @@ impl Builder<'_> {
                     json!({ "type": "string", "enum": statuses }),
                 )]);
             }
+            if c.soft_delete {
+                op = op.params([query(
+                    "deleted",
+                    "Soft-deleted rows filter: `exclude` (default), `include`, or `only`.",
+                    json!({ "type": "string", "enum": ["exclude", "include", "only"] }),
+                )]);
+            }
             op = op.params(with.clone()).params(locale.clone());
             if let Some(note) = drafts {
                 op = op.note(note);
@@ -869,10 +879,14 @@ impl Builder<'_> {
                 )
                 .rule(&delete)
                 .params([id.clone()])
-                .params(if c.editor && c.revisions && c.staged {
+                .params(if staged {
                     vec![
                         query("_rev", "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.", json!({ "type": "string" })),
                         query("takeover", "`1` takes over another user's edit lock.", json!({ "type": "string", "enum": ["1"] })),
+                    ]
+                } else if has_rev {
+                    vec![
+                        query("_rev", "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.", json!({ "type": "string" })),
                     ]
                 } else {
                     vec![]
@@ -880,10 +894,43 @@ impl Builder<'_> {
                 .ok(200, envelope("The deleted row.", row.clone()))
                 .errors(&[404, 409]),
             );
+            if c.soft_delete {
+                let restore = Self::rule(&c.access, "restore", &delete).clone();
+                self.paths.add(
+                    &format!("{item}/restore"),
+                    "post",
+                    Op::new(
+                        &tag,
+                        format!("{key}.restore"),
+                        format!("Restore a soft-deleted {table}"),
+                        format!("Restores a soft-deleted {table} row and returns it."),
+                    )
+                    .rule(&restore)
+                    .params([id.clone()])
+                    .ok(200, envelope("The restored row.", row.clone()))
+                    .errors(&[404, 409]),
+                );
+                if let Some(purge) = c.access.get("purge").filter(|r| !matches!(r, Access::Allow(false))) {
+                    self.paths.add(
+                        &format!("{item}/purge"),
+                        "delete",
+                        Op::new(
+                            &tag,
+                            format!("{key}.purge"),
+                            format!("Purge a {table} row"),
+                            format!("Permanently deletes one {table} row (bypasses soft delete) and returns it as it was."),
+                        )
+                        .rule(purge)
+                        .params([id.clone()])
+                        .ok(200, envelope("The purged row.", row.clone()))
+                        .errors(&[404, 409]),
+                    );
+                }
+            }
         }
         // Revisions need the update rule, and the API serves them only while updates are on.
-        if c.revisions && c.editor && c.api.update {
-            let revision = path_param("revision", "The revision's id.", json!({ "type": "integer" }));
+        if c.revisions && c.api.update {
+            let revision = path_param("revision", "The revision's id or version.", json!({ "type": "integer" }));
             let needs = "Needs the kind's update rule on the row; a row outside it is a 404.";
             self.paths.add(
                 &format!("{item}/revisions"),
@@ -892,12 +939,31 @@ impl Builder<'_> {
                     &tag,
                     format!("{key}.revisions.list"),
                     format!("Revisions of {table}"),
-                    format!("Each saved version of the row, newest first, with its time and who saved it, one page at a time. `limit` is {LIMIT} unless given, and at most {MAX_LIMIT}; `cursor` is null on the last page."),
+                    format!("Each saved version of the row, newest first, with its version, op, time, author, schemaMigration, and changed fields, one page at a time. `limit` is {LIMIT} unless given, and at most {MAX_LIMIT}; `cursor` is null on the last page."),
                 )
                 .rule(&update)
                 .note(needs)
                 .params([id.clone(), paging("limit"), paging("offset"), paging("cursor")])
                 .ok(200, page(self.own_ref("RevisionSummary")))
+                .errors(&[400, 404]),
+            );
+            self.paths.add(
+                &format!("{item}/revisions/diff"),
+                "get",
+                Op::new(
+                    &tag,
+                    format!("{key}.revisions.diff"),
+                    format!("Diff two revisions of {table}"),
+                    "Field-by-field before/after diff between two revision ids or versions.",
+                )
+                .rule(&update)
+                .note(needs)
+                .params([
+                    id.clone(),
+                    query("from", "The starting revision id or version (optional).", json!({ "type": "integer" })),
+                    query("to", "The target revision id or version.", json!({ "type": "integer" })),
+                ])
+                .ok(200, envelope("The changed fields.", self.own_ref("RevisionDiff")))
                 .errors(&[400, 404]),
             );
             self.paths.add(
@@ -1825,9 +1891,23 @@ pub fn document(schema: &Schema, services: Option<&Value>) -> Value {
         "required": ["type", "title", "status", "code", "detail"],
     }));
     b.define("RevisionSummary", json!({ "type": "object", "properties": {
-        "id": { "type": "integer" }, "at": { "type": "string", "format": "date-time" },
+        "id": { "type": "integer" },
+        "version": { "type": "integer" },
+        "op": { "type": "string", "enum": ["create", "update", "delete", "restore", "purge"] },
+        "at": { "type": "string", "format": "date-time" },
         "user": { "type": ["object", "null"], "properties": { "id": { "type": "integer" }, "name": { "type": "string" } } },
-    }, "required": ["id", "at", "user"] }));
+        "schemaMigration": { "type": ["string", "null"] },
+        "changed": { "type": ["array", "null"], "items": { "type": "string" } },
+    }, "required": ["id", "version", "op", "at", "user", "schemaMigration", "changed"] }));
+    b.define("RevisionDiff", json!({ "type": "object", "properties": {
+        "from": { "type": ["integer", "null"] },
+        "to": { "type": "integer" },
+        "changes": { "type": "array", "items": {
+            "type": "object",
+            "properties": { "field": { "type": "string" }, "from": {}, "to": {} },
+            "required": ["field", "from", "to"],
+        } },
+    }, "required": ["from", "to", "changes"] }));
     let size = json!({ "type": "object", "properties": {
         "url": { "type": "string" }, "width": { "type": "integer" }, "height": { "type": "integer" },
     } });

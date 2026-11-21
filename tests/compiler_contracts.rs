@@ -212,13 +212,18 @@ fn a_declared_index_is_created_and_listed() {
     let (out, report) = checked(tmp.path());
     assert!(out.status.success(), "{report}");
     assert!(
-        report["indexes"].as_array().unwrap().contains(&json!({ "table": "likes", "name": "idx_post_author", "unique": true, "columns": ["post", "author"], "reason": "declared with .index([\"post\", \"author\"], { unique: true })" })),
+        report["indexes"].as_array().unwrap().contains(&json!({ "table": "likes", "name": "idx_post_author", "unique": true, "columns": ["post", "author", "_live"], "reason": "declared with .index([\"post\", \"author\"], { unique: true })" })),
         "{report}"
     );
     let built = first().args(["build", "--quiet"]).arg(tmp.path()).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let sql = std::fs::read_to_string(tmp.path().join("tp/_generated/migrations/0001_init.sql")).unwrap();
-    assert!(sql.contains("UNIQUE KEY `idx_post_author` (`post`, `author`)"), "{sql}");
+    let init_dir = std::fs::read_dir(tmp.path().join("tp/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.is_dir())
+        .expect("init migration folder");
+    let sql = std::fs::read_to_string(init_dir.join("migration.sql")).unwrap();
+    assert!(sql.contains("UNIQUE KEY `idx_post_author` (`post`, `author`, `_live`)"), "{sql}");
 
     write_app(
         tmp.path().join("tp/schema.ts"),
@@ -261,7 +266,7 @@ fn json_check_lists_each_index_with_its_reason() {
     assert_eq!(find("items", "PRIMARY")["reason"], "primary key");
     assert_eq!(
         find("items", "slug_unique"),
-        json!({ "table": "items", "name": "slug_unique", "unique": true, "columns": ["slug"], "reason": "`slug` is .unique()" })
+        json!({ "table": "items", "name": "slug_unique", "unique": true, "columns": ["slug", "_live"], "reason": "`slug` is .unique()" })
     );
     assert_eq!(
         find("items", "tp_items_locationId_fk")["reason"],
@@ -335,8 +340,19 @@ export { notes }; export default defineConfig({ name: "presentation" });"#;
     assert_eq!(field["placeholder"], "Jane");
     assert_eq!(field["wrapper"]["width"], 50);
     assert_eq!(got["json"]["instructions"], "Enter valid JSON.");
-    let snapshot = tmp.path().join("tp/_generated/migrations/snapshot.json");
-    let before = std::fs::read(&snapshot).unwrap();
+    let ledger = || -> Vec<(String, Vec<u8>)> {
+        let mut out = Vec::new();
+        for e in std::fs::read_dir(tmp.path().join("tp/_generated/migrations")).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                let name = p.file_name().unwrap().to_string_lossy().into_owned();
+                out.push((name, std::fs::read(p.join("ops.json")).unwrap()));
+            }
+        }
+        out.sort();
+        out
+    };
+    let before = ledger();
     std::fs::write(
         tmp.path().join("typedpress.config.ts"),
         config.replace("width: 50", "width: 100"),
@@ -344,15 +360,12 @@ export { notes }; export default defineConfig({ name: "presentation" });"#;
     .unwrap();
     build_wp(tmp.path());
     assert_eq!(
-        std::fs::read(snapshot).unwrap(),
+        ledger(),
         before,
         "presentation changes cannot change storage"
     );
     assert_eq!(
-        std::fs::read_dir(tmp.path().join("tp/_generated/migrations"))
-            .unwrap()
-            .filter(|entry| entry.as_ref().unwrap().path().extension().is_some_and(|e| e == "sql"))
-            .count(),
+        ledger().len(),
         1,
         "a presentation change planned a migration"
     );
@@ -4755,76 +4768,83 @@ fn language_refusals_carry_a_location_and_a_fix() {
     }
 }
 
-/// `.was()` renames a stored column, so it is refused where there's none to rename, and a `was`
-/// rename can't move a kind onto or off a table TypedPress didn't create (spec §2.5, §2.6, §2.9).
+/// `.was()` and `was:` are removed in favor of forward-only `.column()` / `storageName`, and
+/// an `existingTable` binding cannot change once adopted.
 #[test]
 fn was_renames_only_what_a_table_stores() {
     let tmp = tempfile::tempdir().unwrap();
-    let build = |config: &str, previous: Option<Value>| -> Result<typedpress::pipeline::Built, String> {
+    let build = |config: &str, entries: Vec<(String, Value)>| -> Result<typedpress::pipeline::Built, String> {
         std::fs::write(tmp.path().join("typedpress.config.ts"), config).unwrap();
         let program = typedpress::loader::load(&tmp.path().join("typedpress.config.ts")).map_err(|d| d.message)?;
         typedpress::pipeline::build(
             tmp.path(),
             &program,
-            || typedpress::pipeline::Previous::from_project(previous, []),
+            || typedpress::pipeline::Previous::from_entries(entries.clone()),
             |_| None,
         )
         .map_err(|d| d.message)
     };
-    let refused = |config: &str| build(config, None).err().unwrap_or_default();
+    let refused = |config: &str| build(config, vec![]).err().unwrap_or_default();
     let head = "import { defineConfig, collection, table, text, group } from 'typedpress';";
     assert!(
         refused(&format!("{head} const posts = collection({{ title: text(), body: text().was('copy').optional() }}, {{ title: 'title' }}); export {{ posts }}; export default defineConfig({{}});"))
-            .contains("`.was()` renames a column of a table()"),
+            .contains("`.was()`"),
     );
     assert!(
         refused(&format!("{head} const notes = table({{ meta: group({{ tag: text().was('label').optional() }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"))
-            .contains("`.was()` renames a stored column"),
+            .contains("`.was()`"),
     );
-    // A TypedPress-created table renamed onto an adopted one (or back) would alter a table TypedPress didn't create.
+    // `was` on table() is refused: forward-only migrations keep physical table names via `storageName`.
     let first = build(
         &format!("{head} const notes = table({{}}); export {{ notes }}; export default defineConfig({{}});"),
-        None,
+        vec![],
     )
     .unwrap();
+    let entries: Vec<(String, Value)> = first.migrations.iter().map(|m| (m.id.clone(), m.ops.clone())).collect();
+    let was_table = build(
+        &format!(
+            "{head} const memos = table({{}}, {{ was: 'notes' }}); export {{ memos }}; export default defineConfig({{}});"
+        ),
+        entries.clone(),
+    );
+    assert!(
+        was_table.err().unwrap_or_default().contains("`was` is gone"),
+    );
+    // Changing storageName onto an existingTable binding is refused.
     let onto = build(
         &format!(
-            "{head} const memos = table({{}}, {{ was: 'notes', existingTable: 'sf_space_memos' }}); export {{ memos }}; export default defineConfig({{}});"
+            "{head} const memos = table({{}}, {{ storageName: 'notes', existingTable: 'sf_space_memos' }}); export {{ memos }}; export default defineConfig({{}});"
         ),
-        Some(first.snapshot.clone()),
+        entries.clone(),
     );
     assert!(
         onto.err()
             .unwrap_or_default()
-            .contains("including through a `was` rename")
+            .contains("existingTable binding"),
     );
-    // The same rename between two TypedPress-created tables plans a RENAME, not a drop and a create.
-    let renamed = build(
-        &format!("{head} const memos = table({{}}, {{ was: 'notes' }}); export {{ memos }}; export default defineConfig({{}});"),
-        Some(first.snapshot),
+    // Keeping the same physical table under a new TS export via `storageName` needs no DDL rename or drop.
+    let kept = build(
+        &format!("{head} const memos = table({{}}, {{ storageName: 'notes' }}); export {{ memos }}; export default defineConfig({{}});"),
+        entries,
     )
     .unwrap();
-    let sql = &renamed.migrations[0].1;
-    assert!(
-        sql.contains("RENAME TABLE `{prefix}tp_notes` TO `{prefix}tp_memos`;") && !sql.contains("DROP TABLE"),
-        "{sql}"
-    );
+    assert!(kept.migrations.is_empty(), "expected no DDL migration when keeping storageName: {:?}", kept.migrations);
 }
 
 /// A Zero 0.8 table's name ends in a digest over the 0.8 table name, which the converter gives the
 /// binding collection's key. The runtime checks it (`TypedPress\Wp\Guard`), so the key the binding was
-/// first built under travels as `adoptedAs` in the snapshot, the adoption record and schema.php,
-/// and survives a `was` rename of the collection.
+/// first built under travels as `adoptedAs` in the folded ops state, the adoption record and schema.php,
+/// and survives renaming the TS export while keeping `storageName`.
 #[test]
 fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
     let tmp = tempfile::tempdir().unwrap();
-    let build = |config: &str, previous: Option<Value>| -> typedpress::pipeline::Built {
+    let build = |config: &str, entries: Vec<(String, Value)>| -> typedpress::pipeline::Built {
         std::fs::write(tmp.path().join("typedpress.config.ts"), config).unwrap();
         let program = typedpress::loader::load(&tmp.path().join("typedpress.config.ts")).unwrap();
         typedpress::pipeline::build(
             tmp.path(),
             &program,
-            || typedpress::pipeline::Previous::from_project(previous, ["0001_init.sql"]),
+            || typedpress::pipeline::Previous::from_entries(entries.clone()),
             |_| None,
         )
         .unwrap_or_else(|d| panic!("{}", d.message))
@@ -4835,10 +4855,10 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
         &format!(
             "{head} export const myTasks = table({{ title: text() }}, {{ existingTable: '{legacy}' }}); export default defineConfig({{}});"
         ),
-        None,
+        vec![],
     );
     assert_eq!(adopted.snapshot["tables"]["my_tasks"]["adoptedAs"], "myTasks");
-    let sql = &adopted.migrations[0].1;
+    let sql = &adopted.migrations[0].sql;
     let record: Value = serde_json::from_str(
         sql.lines()
             .find_map(|l| l.strip_prefix("-- typedpress-adopt "))
@@ -4848,82 +4868,51 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
     assert_eq!((&record["table"], &record["name"]), (&json!(legacy), &json!("myTasks")));
     assert!(typedpress::schema_php::render(&adopted.schema).contains("'adoptedAs' => 'myTasks',"));
 
-    // Renamed with `was`: the table and the name it was adopted under stay.
+    let mut entries: Vec<(String, Value)> = adopted
+        .migrations
+        .iter()
+        .map(|m| (m.id.clone(), m.ops.clone()))
+        .collect();
+
+    // Renamed TS export with `storageName: 'my_tasks'`: the table and the name it was adopted under stay.
     let renamed = build(
         &format!(
-            "{head} export const items = table({{ title: text() }}, {{ was: 'my_tasks', existingTable: '{legacy}' }}); export default defineConfig({{}});"
+            "{head} export const items = table({{ title: text() }}, {{ storageName: 'my_tasks', existingTable: '{legacy}' }}); export default defineConfig({{}});"
         ),
-        Some(adopted.snapshot.clone()),
+        entries.clone(),
     );
-    assert_eq!(renamed.snapshot["tables"]["items"]["adoptedAs"], "myTasks");
+    assert_eq!(renamed.snapshot["tables"]["my_tasks"]["adoptedAs"], "myTasks");
     assert!(typedpress::schema_php::render(&renamed.schema).contains("'adoptedAs' => 'myTasks',"));
-    // Renamed again, and on a snapshot from before `adoptedAs` (the stored name stands for it).
-    let again = build(
-        &format!(
-            "{head} export const things = table({{ title: text() }}, {{ was: 'items', existingTable: '{legacy}' }}); export default defineConfig({{}});"
-        ),
-        Some(renamed.snapshot.clone()),
-    );
-    assert_eq!(again.snapshot["tables"]["things"]["adoptedAs"], "myTasks");
-    let mut old = adopted.snapshot.clone();
-    old["tables"]["my_tasks"].as_object_mut().unwrap().remove("adoptedAs");
-    let from_old = build(
-        &format!(
-            "{head} export const items = table({{ title: text() }}, {{ was: 'my_tasks', existingTable: '{legacy}' }}); export default defineConfig({{}});"
-        ),
-        Some(old),
-    );
-    assert_eq!(from_old.snapshot["tables"]["items"]["adoptedAs"], "my_tasks");
+    entries.extend(renamed.migrations.iter().map(|m| (m.id.clone(), m.ops.clone())));
 
-    // A key that is its own stored name writes nothing new: earlier snapshots stay as they are.
+    // A key that is its own stored name writes nothing new.
     let plain = build(
         &format!(
             "{head} export const tasks = table({{ title: text() }}, {{ existingTable: 'sf_spc_x_tasks_0123456789' }}); export default defineConfig({{}});"
         ),
-        None,
+        vec![],
     );
     assert!(plain.snapshot["tables"]["tasks"].get("adoptedAs").is_none());
     assert!(!typedpress::schema_php::render(&plain.schema).contains("adoptedAs"));
-    // A table stored before `adoptedAs` keeps its stored name, even under a new key: the key may be
-    // a later alias (`storageName` keeps the storage), not the name the 0.8 table was made from.
-    let mut old = plain.snapshot.clone();
-    old["tables"]["tasks"].as_object_mut().unwrap().remove("adoptedAs");
-    let aliased = build(
-        &format!(
-            "{head} export const chores = table({{ title: text() }}, {{ storageName: 'tasks', existingTable: 'sf_spc_x_tasks_0123456789' }}); export default defineConfig({{}});"
-        ),
-        Some(old),
-    );
-    assert!(
-        aliased.snapshot["tables"]["tasks"].get("adoptedAs").is_none(),
-        "{:#}",
-        aliased.snapshot
-    );
 
-    // Removing a renamed binding: the drop's check names the table it was adopted under, so the
-    // runtime can check that adoption again even with no collection left to give the name.
+    // Removing a renamed binding retires the table instead of emitting DROP TABLE.
     let with_notes = build(
         &format!(
-            "{head} export const items = table({{ title: text() }}, {{ was: 'my_tasks', existingTable: '{legacy}' }}); export const notes = table({{ title: text() }}); export default defineConfig({{}});"
+            "{head} export const items = table({{ title: text() }}, {{ storageName: 'my_tasks', existingTable: '{legacy}' }}); export const notes = table({{ title: text() }}); export default defineConfig({{}});"
         ),
-        Some(renamed.snapshot.clone()),
+        entries.clone(),
     );
+    entries.extend(with_notes.migrations.iter().map(|m| (m.id.clone(), m.ops.clone())));
     let removed = build(
         &format!("{head} export const notes = table({{ title: text() }}); export default defineConfig({{}});"),
-        Some(with_notes.snapshot.clone()),
+        entries,
     );
-    let sql = &removed.migrations[0].1;
-    let drop: Value = serde_json::from_str(
-        sql.lines()
-            .filter_map(|l| l.strip_prefix("-- typedpress-check "))
-            .find(|c| c.contains("\"drop\""))
-            .expect("a drop check"),
-    )
-    .unwrap();
-    assert_eq!(
-        (&drop["name"], &drop["table"], &drop["adoptedAs"]),
-        (&json!("items"), &json!(legacy), &json!("myTasks")),
-        "{sql}"
+    let sql = &removed.migrations[0].sql;
+    assert!(!sql.contains("DROP TABLE"), "{sql}");
+    let ops = removed.migrations[0].ops["ops"].as_array().expect("ops array");
+    assert!(
+        ops.iter().any(|op| op["op"] == "retireTable" && op["table"] == "my_tasks"),
+        "expected retireTable op for my_tasks: {ops:?}"
     );
 }
 

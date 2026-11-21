@@ -566,6 +566,7 @@ fn page_md_is_a_wordpress_page() {
     build(&project);
     // A later build of the same app: one file changed in each of three ways, one removed, one added.
     let second = fixture("app-router", "content-second");
+    copy(&project.join("tp/_generated/migrations"), &second.join("tp/_generated/migrations"));
     let app = second.join("tp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::create_dir_all(app.join("news")).unwrap();
@@ -582,6 +583,7 @@ fn page_md_is_a_wordpress_page() {
     build(&second);
     // A third build takes two pages away from visitors: one becomes a draft, one moves under a guard.
     let third = fixture("app-router", "content-third");
+    copy(&second.join("tp/_generated/migrations"), &third.join("tp/_generated/migrations"));
     let app = third.join("tp/app");
     std::fs::remove_dir_all(app.join("hidden")).unwrap();
     std::fs::remove_dir_all(app.join("colophon")).unwrap();
@@ -603,6 +605,7 @@ fn page_md_is_a_wordpress_page() {
     // A fourth: the guide, still `status: draft`, moves to another route group (same URL) and
     // gets a typo fixed; /colophon is now a page.tsx route.
     let fourth = fixture("app-router", "content-fourth");
+    copy(&third.join("tp/_generated/migrations"), &fourth.join("tp/_generated/migrations"));
     std::fs::remove_dir_all(fourth.join("tp/app")).unwrap();
     copy(&third.join("tp/app"), &fourth.join("tp/app"));
     let app = fourth.join("tp/app");
@@ -5524,6 +5527,7 @@ fn drive_store_example_sells_on_wordpress() {
             "id": "id", "code": "Order code", "drive": "Drive", "quantity": "Quantity", "unitPrice": "Unit price",
             "total": "Total", "buyerName": "Buyer", "buyerEmail": "Email", "buyerId": "Buyer user ID",
             "status": "Status", "placedAt": "Placed", "shippedAt": "Shipped",
+            "author": "author", "createdAt": "createdAt", "updatedAt": "updatedAt", "deletedAt": "deletedAt", "deletedBy": "deletedBy",
         }]),
         "{seen}"
     );
@@ -6388,6 +6392,7 @@ fn pages_render_in_block_templates() {
     // The same app without login.tsx, installed over the first after the owner saved a sign-in
     // template that only holds the Page content block.
     let without_login = fixture("block-templates", "no-login");
+    copy(&project.join("tp/_generated/migrations"), &without_login.join("tp/_generated/migrations"));
     std::fs::remove_file(without_login.join("tp/app/login.tsx")).unwrap();
     build(&without_login);
     let out = Command::new("php")

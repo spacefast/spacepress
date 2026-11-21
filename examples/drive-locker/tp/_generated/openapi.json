@@ -64,7 +64,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `name`, `kind`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `name`, `kind`, `author`, `createdAt`, `updatedAt`, `deletedAt`, `deletedBy`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -75,6 +75,12 @@
             "in": "query",
             "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
             "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "deleted",
+            "in": "query",
+            "description": "Soft-deleted rows filter: `exclude` (default), `include`, or `only`.",
+            "schema": { "type": "string", "enum": ["exclude", "include", "only"] }
           },
           {
             "name": "with",
@@ -284,6 +290,12 @@
             "required": true,
             "description": "The row's id.",
             "schema": { "type": "integer" }
+          },
+          {
+            "name": "_rev",
+            "in": "query",
+            "description": "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.",
+            "schema": { "type": "string" }
           }
         ],
         "responses": {
@@ -305,6 +317,309 @@
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },
           "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/places/{id}/restore": {
+      "post": {
+        "tags": ["Places"],
+        "operationId": "places.restore",
+        "summary": "Restore a soft-deleted places",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Restores a soft-deleted places row and returns it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The restored row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Place" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/places/{id}/purge": {
+      "delete": {
+        "tags": ["Places"],
+        "operationId": "places.purge",
+        "summary": "Purge a places row",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Permanently deletes one places row (bypasses soft delete) and returns it as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The purged row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Place" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/places/{id}/revisions": {
+      "get": {
+        "tags": ["Places"],
+        "operationId": "places.revisions.list",
+        "summary": "Revisions of places",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Each saved version of the row, newest first, with its version, op, time, author, schemaMigration, and changed fields, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/RevisionSummary" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/places/{id}/revisions/diff": {
+      "get": {
+        "tags": ["Places"],
+        "operationId": "places.revisions.diff",
+        "summary": "Diff two revisions of places",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Field-by-field before/after diff between two revision ids or versions.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The starting revision id or version (optional).",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The target revision id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The changed fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/RevisionDiff" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/places/{id}/revisions/{revision}": {
+      "get": {
+        "tags": ["Places"],
+        "operationId": "places.revisions.get",
+        "summary": "Get a revision of places",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The row as this revision saved it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Place" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/places/{id}/revisions/{revision}/restore": {
+      "post": {
+        "tags": ["Places"],
+        "operationId": "places.revisions.restore",
+        "summary": "Restore a revision of places",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Makes the revision the current row, as an update of the row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row after the restore.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Place" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }
@@ -336,7 +651,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `label`, `model`, `serial`, `kind`, `capacityGb`, `interface`, `purchasedOn`, `warrantyUntil`, `placeId`, `status`, `notes`, `tags`, `replacementNeededAt`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `label`, `model`, `serial`, `kind`, `capacityGb`, `interface`, `purchasedOn`, `warrantyUntil`, `placeId`, `status`, `notes`, `tags`, `replacementNeededAt`, `author`, `createdAt`, `updatedAt`, `deletedAt`, `deletedBy`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -347,6 +662,12 @@
             "in": "query",
             "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
             "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "deleted",
+            "in": "query",
+            "description": "Soft-deleted rows filter: `exclude` (default), `include`, or `only`.",
+            "schema": { "type": "string", "enum": ["exclude", "include", "only"] }
           },
           {
             "name": "with",
@@ -556,6 +877,12 @@
             "required": true,
             "description": "The row's id.",
             "schema": { "type": "integer" }
+          },
+          {
+            "name": "_rev",
+            "in": "query",
+            "description": "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.",
+            "schema": { "type": "string" }
           }
         ],
         "responses": {
@@ -577,6 +904,309 @@
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },
           "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/drives/{id}/restore": {
+      "post": {
+        "tags": ["Drives"],
+        "operationId": "drives.restore",
+        "summary": "Restore a soft-deleted drives",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Restores a soft-deleted drives row and returns it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The restored row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Drive" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/drives/{id}/purge": {
+      "delete": {
+        "tags": ["Drives"],
+        "operationId": "drives.purge",
+        "summary": "Purge a drives row",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Permanently deletes one drives row (bypasses soft delete) and returns it as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The purged row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Drive" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/drives/{id}/revisions": {
+      "get": {
+        "tags": ["Drives"],
+        "operationId": "drives.revisions.list",
+        "summary": "Revisions of drives",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Each saved version of the row, newest first, with its version, op, time, author, schemaMigration, and changed fields, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/RevisionSummary" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/drives/{id}/revisions/diff": {
+      "get": {
+        "tags": ["Drives"],
+        "operationId": "drives.revisions.diff",
+        "summary": "Diff two revisions of drives",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Field-by-field before/after diff between two revision ids or versions.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The starting revision id or version (optional).",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The target revision id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The changed fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/RevisionDiff" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/drives/{id}/revisions/{revision}": {
+      "get": {
+        "tags": ["Drives"],
+        "operationId": "drives.revisions.get",
+        "summary": "Get a revision of drives",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The row as this revision saved it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Drive" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/drives/{id}/revisions/{revision}/restore": {
+      "post": {
+        "tags": ["Drives"],
+        "operationId": "drives.revisions.restore",
+        "summary": "Restore a revision of drives",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Makes the revision the current row, as an update of the row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row after the restore.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Drive" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }
@@ -608,12 +1238,18 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `driveId`, `readOn`, `powerOnHours`, `wearPercent`, `reallocatedSectors`, `tempC`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `driveId`, `readOn`, `powerOnHours`, `wearPercent`, `reallocatedSectors`, `tempC`, `author`, `createdAt`, `updatedAt`, `deletedAt`, `deletedBy`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
           { "$ref": "#/components/parameters/offset" },
           { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "deleted",
+            "in": "query",
+            "description": "Soft-deleted rows filter: `exclude` (default), `include`, or `only`.",
+            "schema": { "type": "string", "enum": ["exclude", "include", "only"] }
+          },
           {
             "name": "with",
             "in": "query",
@@ -822,6 +1458,12 @@
             "required": true,
             "description": "The row's id.",
             "schema": { "type": "integer" }
+          },
+          {
+            "name": "_rev",
+            "in": "query",
+            "description": "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.",
+            "schema": { "type": "string" }
           }
         ],
         "responses": {
@@ -843,6 +1485,309 @@
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },
           "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/health_readings/{id}/restore": {
+      "post": {
+        "tags": ["Health Readings"],
+        "operationId": "healthReadings.restore",
+        "summary": "Restore a soft-deleted health_readings",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Restores a soft-deleted health_readings row and returns it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The restored row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/HealthReading" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/health_readings/{id}/purge": {
+      "delete": {
+        "tags": ["Health Readings"],
+        "operationId": "healthReadings.purge",
+        "summary": "Purge a health_readings row",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Permanently deletes one health_readings row (bypasses soft delete) and returns it as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The purged row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/HealthReading" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/health_readings/{id}/revisions": {
+      "get": {
+        "tags": ["Health Readings"],
+        "operationId": "healthReadings.revisions.list",
+        "summary": "Revisions of health_readings",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Each saved version of the row, newest first, with its version, op, time, author, schemaMigration, and changed fields, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/RevisionSummary" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/health_readings/{id}/revisions/diff": {
+      "get": {
+        "tags": ["Health Readings"],
+        "operationId": "healthReadings.revisions.diff",
+        "summary": "Diff two revisions of health_readings",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Field-by-field before/after diff between two revision ids or versions.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The starting revision id or version (optional).",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The target revision id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The changed fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/RevisionDiff" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/health_readings/{id}/revisions/{revision}": {
+      "get": {
+        "tags": ["Health Readings"],
+        "operationId": "healthReadings.revisions.get",
+        "summary": "Get a revision of health_readings",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The row as this revision saved it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/HealthReading" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/health_readings/{id}/revisions/{revision}/restore": {
+      "post": {
+        "tags": ["Health Readings"],
+        "operationId": "healthReadings.revisions.restore",
+        "summary": "Restore a revision of health_readings",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Makes the revision the current row, as an update of the row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row after the restore.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/HealthReading" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }
@@ -874,7 +1819,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `driveId`, `description`, `usedGb`, `lastBackupOn`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `driveId`, `description`, `usedGb`, `lastBackupOn`, `author`, `createdAt`, `updatedAt`, `deletedAt`, `deletedBy`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -885,6 +1830,12 @@
             "in": "query",
             "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
             "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "deleted",
+            "in": "query",
+            "description": "Soft-deleted rows filter: `exclude` (default), `include`, or `only`.",
+            "schema": { "type": "string", "enum": ["exclude", "include", "only"] }
           },
           {
             "name": "with",
@@ -1094,6 +2045,12 @@
             "required": true,
             "description": "The row's id.",
             "schema": { "type": "integer" }
+          },
+          {
+            "name": "_rev",
+            "in": "query",
+            "description": "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.",
+            "schema": { "type": "string" }
           }
         ],
         "responses": {
@@ -1115,6 +2072,309 @@
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },
           "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/contents/{id}/restore": {
+      "post": {
+        "tags": ["Contents"],
+        "operationId": "contents.restore",
+        "summary": "Restore a soft-deleted contents",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Restores a soft-deleted contents row and returns it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The restored row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Content" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/contents/{id}/purge": {
+      "delete": {
+        "tags": ["Contents"],
+        "operationId": "contents.purge",
+        "summary": "Purge a contents row",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Permanently deletes one contents row (bypasses soft delete) and returns it as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The purged row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Content" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/contents/{id}/revisions": {
+      "get": {
+        "tags": ["Contents"],
+        "operationId": "contents.revisions.list",
+        "summary": "Revisions of contents",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Each saved version of the row, newest first, with its version, op, time, author, schemaMigration, and changed fields, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/RevisionSummary" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/contents/{id}/revisions/diff": {
+      "get": {
+        "tags": ["Contents"],
+        "operationId": "contents.revisions.diff",
+        "summary": "Diff two revisions of contents",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Field-by-field before/after diff between two revision ids or versions.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The starting revision id or version (optional).",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The target revision id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The changed fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/RevisionDiff" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/contents/{id}/revisions/{revision}": {
+      "get": {
+        "tags": ["Contents"],
+        "operationId": "contents.revisions.get",
+        "summary": "Get a revision of contents",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The row as this revision saved it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row as it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Content" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/contents/{id}/revisions/{revision}/restore": {
+      "post": {
+        "tags": ["Contents"],
+        "operationId": "contents.revisions.restore",
+        "summary": "Restore a revision of contents",
+        "x-typedpress-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Makes the revision the current row, as an update of the row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "description": "The revision's id or version.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row after the restore.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Content" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }
@@ -1609,9 +2869,28 @@
                             "powerOnHours": { "type": ["number", "null"] },
                             "wearPercent": { "type": ["number", "null"] },
                             "reallocatedSectors": { "type": ["number", "null"] },
-                            "tempC": { "type": ["number", "null"] }
+                            "tempC": { "type": ["number", "null"] },
+                            "author": { "type": ["number", "null"] },
+                            "createdAt": { "type": "string" },
+                            "updatedAt": { "type": "string" },
+                            "deletedAt": { "type": ["string", "null"] },
+                            "deletedBy": { "type": ["number", "null"] }
                           },
-                          "required": ["id", "ownerId", "driveId", "readOn", "powerOnHours", "wearPercent", "reallocatedSectors", "tempC"]
+                          "required": [
+                            "id",
+                            "ownerId",
+                            "driveId",
+                            "readOn",
+                            "powerOnHours",
+                            "wearPercent",
+                            "reallocatedSectors",
+                            "tempC",
+                            "author",
+                            "createdAt",
+                            "updatedAt",
+                            "deletedAt",
+                            "deletedBy"
+                          ]
                         },
                         "verdict": { "type": "string" }
                       },
@@ -2010,7 +3289,12 @@
                           "type": "array",
                           "items": { "type": "string" }
                         },
-                        "replacementNeededAt": { "type": ["string", "null"] }
+                        "replacementNeededAt": { "type": ["string", "null"] },
+                        "author": { "type": ["number", "null"] },
+                        "createdAt": { "type": "string" },
+                        "updatedAt": { "type": "string" },
+                        "deletedAt": { "type": ["string", "null"] },
+                        "deletedBy": { "type": ["number", "null"] }
                       },
                       "required": [
                         "id",
@@ -2027,7 +3311,12 @@
                         "status",
                         "notes",
                         "tags",
-                        "replacementNeededAt"
+                        "replacementNeededAt",
+                        "author",
+                        "createdAt",
+                        "updatedAt",
+                        "deletedAt",
+                        "deletedBy"
                       ]
                     }
                   },
@@ -4251,6 +5540,8 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer" },
+          "version": { "type": "integer" },
+          "op": { "type": "string", "enum": ["create", "update", "delete", "restore", "purge"] },
           "at": { "type": "string", "format": "date-time" },
           "user": {
             "type": ["object", "null"],
@@ -4258,9 +5549,33 @@
               "id": { "type": "integer" },
               "name": { "type": "string" }
             }
+          },
+          "schemaMigration": { "type": ["string", "null"] },
+          "changed": {
+            "type": ["array", "null"],
+            "items": { "type": "string" }
           }
         },
-        "required": ["id", "at", "user"]
+        "required": ["id", "version", "op", "at", "user", "schemaMigration", "changed"]
+      },
+      "RevisionDiff": {
+        "type": "object",
+        "properties": {
+          "from": { "type": ["integer", "null"] },
+          "to": { "type": "integer" },
+          "changes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "before": {},
+                "after": {}
+              },
+              "required": ["before", "after"]
+            }
+          }
+        },
+        "required": ["from", "to", "changes"]
       },
       "Media": {
         "type": "object",
@@ -4307,6 +5622,15 @@
           },
           "name": { "type": "string", "minLength": 1, "maxLength": 120 },
           "kind": { "type": "string", "enum": ["nas-bay", "desktop", "laptop", "drawer", "offsite"] },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
+          },
           "drives": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Drive" },
@@ -4328,7 +5652,11 @@
         "properties": {
           "ownerId": { "type": "integer" },
           "name": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "kind": { "type": "string", "enum": ["nas-bay", "desktop", "laptop", "drawer", "offsite"] }
+          "kind": { "type": "string", "enum": ["nas-bay", "desktop", "laptop", "drawer", "offsite"] },
+          "_rev": {
+            "type": "string",
+            "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since."
+          }
         }
       },
       "IntegerFilter": {
@@ -4402,6 +5730,11 @@
           "ownerId": { "$ref": "#/components/schemas/IntegerFilter" },
           "name": { "$ref": "#/components/schemas/StringFilter" },
           "kind": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "drives": { "type": "object", "description": "A filter on the related rows." },
           "AND": {
             "type": "array",
@@ -4448,6 +5781,15 @@
             "type": ["string", "null"],
             "format": "date-time",
             "x-typedpress-access": { "create": false, "update": false }
+          },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
           },
           "healthReadings": {
             "type": "array",
@@ -4497,7 +5839,11 @@
           "status": { "type": "string", "enum": ["in-use", "spare", "failed", "retired"] },
           "notes": { "type": ["string", "null"] },
           "tags": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] },
-          "replacementNeededAt": { "type": ["string", "integer", "null"] }
+          "replacementNeededAt": { "type": ["string", "integer", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since."
+          }
         }
       },
       "NumberFilter": {
@@ -4547,6 +5893,11 @@
           "status": { "$ref": "#/components/schemas/StringFilter" },
           "notes": { "$ref": "#/components/schemas/StringFilter" },
           "replacementNeededAt": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "healthReadings": { "type": "object", "description": "A filter on the related rows." },
           "contents": { "type": "object", "description": "A filter on the related rows." },
           "AND": {
@@ -4583,7 +5934,16 @@
           "powerOnHours": { "type": "integer", "minimum": 0 },
           "wearPercent": { "type": "number", "minimum": 0, "maximum": 100 },
           "reallocatedSectors": { "type": "integer", "minimum": 0 },
-          "tempC": { "type": "number", "minimum": -40, "maximum": 150 }
+          "tempC": { "type": "number", "minimum": -40, "maximum": 150 },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
+          }
         }
       },
       "HealthReadingInsert": {
@@ -4608,7 +5968,11 @@
           "powerOnHours": { "type": "integer", "minimum": 0 },
           "wearPercent": { "type": "number", "minimum": 0, "maximum": 100 },
           "reallocatedSectors": { "type": "integer", "minimum": 0 },
-          "tempC": { "type": "number", "minimum": -40, "maximum": 150 }
+          "tempC": { "type": "number", "minimum": -40, "maximum": 150 },
+          "_rev": {
+            "type": "string",
+            "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since."
+          }
         }
       },
       "HealthReadingFilter": {
@@ -4622,6 +5986,11 @@
           "wearPercent": { "$ref": "#/components/schemas/NumberFilter" },
           "reallocatedSectors": { "$ref": "#/components/schemas/IntegerFilter" },
           "tempC": { "$ref": "#/components/schemas/NumberFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "AND": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/HealthReadingFilter" }
@@ -4654,7 +6023,16 @@
           },
           "description": { "type": "string", "minLength": 1, "maxLength": 500 },
           "usedGb": { "type": "number", "minimum": 0 },
-          "lastBackupOn": { "type": ["string", "null"], "format": "date" }
+          "lastBackupOn": { "type": ["string", "null"], "format": "date" },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
+          }
         }
       },
       "ContentInsert": {
@@ -4675,7 +6053,11 @@
           "driveId": { "type": "integer" },
           "description": { "type": "string", "minLength": 1, "maxLength": 500 },
           "usedGb": { "type": "number", "minimum": 0 },
-          "lastBackupOn": { "type": ["string", "null"] }
+          "lastBackupOn": { "type": ["string", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since."
+          }
         }
       },
       "ContentFilter": {
@@ -4687,6 +6069,11 @@
           "description": { "$ref": "#/components/schemas/StringFilter" },
           "usedGb": { "$ref": "#/components/schemas/NumberFilter" },
           "lastBackupOn": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "AND": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/ContentFilter" }

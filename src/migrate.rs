@@ -610,16 +610,17 @@ pub fn index_report(snapshot: &Json) -> Json {
             );
         }
         for (name, unique, ix_cols) in indexes(t, def) {
+            let declared_cols: Vec<&str> = ix_cols.iter().map(String::as_str).filter(|c| *c != "_live").collect();
             let declared = def["indexes"].as_array().into_iter().flatten().any(|ix| {
                 ix["columns"]
                     .as_array()
-                    .is_some_and(|c| c.iter().filter_map(Json::as_str).eq(ix_cols.iter().map(String::as_str)))
+                    .is_some_and(|c| c.iter().filter_map(Json::as_str).eq(declared_cols.iter().copied()))
                     && (ix["unique"].as_bool() == Some(true)) == unique
             });
             let reason = if declared {
                 format!(
                     "declared with .index([{}]{})",
-                    ix_cols
+                    declared_cols
                         .iter()
                         .map(|c| format!("\"{c}\""))
                         .collect::<Vec<_>>()

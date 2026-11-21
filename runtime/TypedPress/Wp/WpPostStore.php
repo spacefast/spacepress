@@ -71,7 +71,8 @@ final class WpPostStore implements Store
 
     public function source(string $collection): Source
     {
-        $source = $this->sources[$collection] ??= $this->buildSource($collection);
+        $key = $collection . ($this->trashVisible ? ':trash' : '');
+        $source = $this->sources[$key] ??= $this->buildSource($collection, $this->trashVisible);
         if (!$this->trashVisible) {
             return $source;
         }
@@ -105,7 +106,7 @@ final class WpPostStore implements Store
             $this->visibility = [];
             $this->visibilityGeneration = CoreAccess::generation();
         }
-        $key = serialize([$collection, $viewer->user, $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null, $this->readPassword]);
+        $key = serialize([$collection, $viewer->user, $_COOKIE['wp-postpass_' . COOKIEHASH] ?? null, $this->readPassword, $this->trashVisible]);
         if (array_key_exists($key, $this->visibility)) {
             return $this->visibility[$key];
         }
@@ -134,6 +135,9 @@ final class WpPostStore implements Store
     /** @return list<array|\TypedPress\SqlPredicate> the password-protection guards of a post kind for $viewer */
     private function passwordGuards(string $collection, \TypedPress\Viewer $viewer, array $spec, bool $inlinePassword): array
     {
+        $statusFilter = $this->trashVisible
+            ? "post_status NOT IN ('auto-draft', 'inherit')"
+            : "post_status NOT IN ('trash', 'auto-draft', 'inherit')";
         if ($viewer->user === null) {
             $guard = $this->passwordGuard($collection, $viewer, $spec);
             if ($inlinePassword) {
@@ -143,7 +147,7 @@ final class WpPostStore implements Store
             // and the native REST controller. A predicate that cannot hide a row must
             // retain that meaning without materializing every readable primary key.
             $hidden = $this->db->run(
-                'SELECT 1 FROM `' . $this->db->wpdb()->posts . '` p WHERE p.post_type = ? AND NOT ('
+                'SELECT 1 FROM `' . $this->db->wpdb()->posts . '` p WHERE p.post_type = ? AND p.' . $statusFilter . ' AND NOT ('
                 . str_replace('{a}', 'p', $guard->sql) . ') LIMIT 1',
                 [$spec['wp']['postType'], ...$guard->params],
             );
@@ -152,7 +156,7 @@ final class WpPostStore implements Store
         $hidden = [];
         $acceptedPasswords = [];
         $posts = $this->db->run(
-            'SELECT ID FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND HEX(post_password) NOT IN (?, ?)',
+            'SELECT ID FROM `' . $this->db->wpdb()->posts . '` WHERE post_type = ? AND ' . $statusFilter . ' AND HEX(post_password) NOT IN (?, ?)',
             [$spec['wp']['postType'], '', '30'],
         );
         _prime_post_caches(array_map('intval', array_column($posts, 'ID')), false, false);
@@ -229,7 +233,7 @@ final class WpPostStore implements Store
         return (new \PasswordHash(8, true))->CheckPassword($post->post_password, $hash);
     }
 
-    private function buildSource(string $collection): Source
+    private function buildSource(string $collection, bool $includeDeleted = false): Source
     {
         $spec = $this->schema->collection($collection);
         $postmeta = $this->db->wpdb()->postmeta;
@@ -254,35 +258,41 @@ final class WpPostStore implements Store
                 $system && $col === 'uid' => new ColumnRef($v, "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::UID_META . "'", $v, 'scalar'),
                 $system && $col === 'author' => new ColumnRef('NULLIF({a}.post_author, 0)', '', 'NULLIF({a}.post_author, 0)', 'scalar'),
                 $system && $col === 'createdAt' => new ColumnRef(
-                    "COALESCE(NULLIF({j}.meta_value, ''), CASE WHEN {a}.post_date_gmt <> '0000-00-00 00:00:00' THEN " . $this->dialect->isoTimestamp('{a}.post_date_gmt') . ' ELSE ' . $this->dialect->isoTimestamp('{a}.post_date') . ' END)',
-                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::CREATED_AT_META . "'",
+                    "CASE WHEN {a}.post_date_gmt <> '0000-00-00 00:00:00' THEN " . $this->dialect->isoTimestamp('{a}.post_date_gmt') . ' ELSE ' . $this->dialect->isoTimestamp('{a}.post_date') . ' END',
                     '',
+                    "CASE WHEN {a}.post_date_gmt <> '0000-00-00 00:00:00' THEN {a}.post_date_gmt ELSE {a}.post_date END",
                     'scalar',
                 ),
                 $system && $col === 'updatedAt' => new ColumnRef(
-                    "COALESCE(NULLIF({j}.meta_value, ''), CASE WHEN {a}.post_modified_gmt <> '0000-00-00 00:00:00' THEN " . $this->dialect->isoTimestamp('{a}.post_modified_gmt') . ' ELSE ' . $this->dialect->isoTimestamp('{a}.post_modified') . ' END)',
-                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::UPDATED_AT_META . "'",
+                    "CASE WHEN {a}.post_modified_gmt <> '0000-00-00 00:00:00' THEN " . $this->dialect->isoTimestamp('{a}.post_modified_gmt') . ' ELSE ' . $this->dialect->isoTimestamp('{a}.post_modified') . ' END',
                     '',
+                    "CASE WHEN {a}.post_modified_gmt <> '0000-00-00 00:00:00' THEN {a}.post_modified_gmt ELSE {a}.post_modified END",
                     'scalar',
                 ),
-                $system && $col === 'deletedAt' => new ColumnRef(
-                    $v,
-                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_AT_META . "'",
-                    '',
-                    'scalar',
-                ),
-                $system && $col === 'deletedBy' => new ColumnRef(
-                    $v,
-                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_BY_META . "'",
-                    "CAST($v AS SIGNED)",
-                    'scalar',
-                ),
-                $system && $col === 'deletedGroup' => new ColumnRef(
-                    $v,
-                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_GROUP_META . "'",
-                    '',
-                    'scalar',
-                ),
+                $system && $col === 'deletedAt' => $includeDeleted
+                    ? new ColumnRef(
+                        $v,
+                        "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_AT_META . "'",
+                        '',
+                        'scalar',
+                    )
+                    : new ColumnRef('NULL', '', '', 'scalar'),
+                $system && $col === 'deletedBy' => $includeDeleted
+                    ? new ColumnRef(
+                        $v,
+                        "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_BY_META . "'",
+                        "CAST($v AS SIGNED)",
+                        'scalar',
+                    )
+                    : new ColumnRef('NULL', '', '', 'scalar'),
+                $system && $col === 'deletedGroup' => $includeDeleted
+                    ? new ColumnRef(
+                        $v,
+                        "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_GROUP_META . "'",
+                        '',
+                        'scalar',
+                    )
+                    : new ColumnRef('NULL', '', '', 'scalar'),
                 $system && $col === 'publishedAt' => new ColumnRef(
                     "CASE WHEN {a}.post_date_gmt = '0000-00-00 00:00:00' THEN NULL ELSE " . $this->dialect->isoTimestamp('{a}.post_date_gmt') . ' END',
                     '',
@@ -857,7 +867,7 @@ final class WpPostStore implements Store
     private function snapshotKeys(array $spec): array
     {
         $keys = [];
-        foreach (['status', 'publishedAt'] as $col) {
+        foreach (['status', 'publishedAt', 'author', 'createdAt', 'updatedAt', 'deletedAt', 'deletedBy', 'deletedGroup'] as $col) {
             if ($spec['columns'][$col]['system'] ?? false) {
                 $keys[$col] = true;
             }

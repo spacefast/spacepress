@@ -9,6 +9,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "orders": {
@@ -30,7 +31,8 @@ export const SCHEMA = {
       "path": "orders",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "drive": {
@@ -52,7 +54,8 @@ export const SCHEMA = {
       "path": "stock_movements",
       "primaryKey": "id",
       "drafts": false,
-      "revisions": false,
+      "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "drive": {

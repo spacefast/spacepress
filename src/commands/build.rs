@@ -83,7 +83,19 @@ pub(crate) fn read_migrations_dir(dir: &Path) -> Result<pipeline::Previous, Diag
             ));
         };
         let path = entry.path();
+        if path.is_dir() && matches!(name, "wp" | "sqlite") {
+            return Err(Diag::new(
+                Span::NONE,
+                format!("{ledger}/{name}/ is from an earlier layout; remove or migrate it to sortable migration folders"),
+            ));
+        }
         if !path.is_dir() {
+            if name == "snapshot.json" || name.ends_with(".sql") {
+                return Err(Diag::new(
+                    Span::NONE,
+                    format!("{ledger}/{name} is from a legacy numbered-migration layout; use folder-based migrations (<id>/{{ops.json,migration.sql}})"),
+                ));
+            }
             continue;
         }
         let ops_path = path.join("ops.json");

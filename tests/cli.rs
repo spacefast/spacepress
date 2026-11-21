@@ -2160,8 +2160,11 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     ledger.sort();
-    assert_eq!(ledger, ["0001_init.sql", "snapshot.json"]);
-    let sql = std::fs::read_to_string(project.join("tp/_generated/migrations/0001_init.sql")).unwrap();
+    assert_eq!(ledger.len(), 1, "expected 1 sortable migration folder: {ledger:?}");
+    assert!(ledger[0].ends_with("_init"), "expected *_init folder: {ledger:?}");
+    let init_dir = project.join("tp/_generated/migrations").join(&ledger[0]);
+    assert!(init_dir.join("ops.json").is_file(), "expected ops.json in {init_dir:?}");
+    let sql = std::fs::read_to_string(init_dir.join("migration.sql")).unwrap();
     assert_eq!(sql.matches("CREATE TABLE `{prefix}tp_projects`").count(), 1, "{sql}");
     assert!(
         sql.contains("FOREIGN KEY (`project`) REFERENCES `{prefix}tp_projects` (`id`) ON DELETE CASCADE"),

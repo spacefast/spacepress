@@ -116,9 +116,10 @@ pub fn row(c: &Collection) -> Value {
         .map(|col| (col.name.clone(), column(col, true)))
         .collect();
     let mut row = json!({ "type": "object", "properties": props });
-    // A kind with staged versions: every row the API and abilities give out carries its `_rev`
-    // (docs/staged.md), as `Wp\Abilities\Register` declares it.
-    if c.editor && c.revisions && c.staged {
+    // A kind with `_rev` optimistic concurrency (post kinds with staged versions, or SQL tables with
+    // revisions): every row the API and abilities give out carries its `_rev`, matching `Wp\Abilities\Register`.
+    let has_table = !c.editor && !c.auth && c.taxonomy.is_none();
+    if (c.editor && c.revisions && c.staged) || (has_table && c.revisions) {
         row["properties"]["_rev"] = json!({ "type": "string" });
     }
     row

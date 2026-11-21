@@ -1,3 +1,6 @@
+export type Id<Kind extends string = string> = number & {
+	readonly __tp_kind?: Kind;
+};
 export type Role = "guest" | "subscriber" | "author" | "editor" | "admin";
 export interface User {
 	id: number;
@@ -38,16 +41,29 @@ export interface PrivateFile {
 }
 export interface RevisionSummary {
 	id: number;
+	version: number;
+	op: "create" | "update" | "delete" | "restore" | "purge";
 	at: string;
 	user: {
 		id: number;
 		name: string;
 	} | null;
+	schemaMigration: string | null;
+	changed: string[] | null;
+}
+export interface RevisionDiff<T = Record<string, unknown>> {
+	from: number;
+	to: number;
+	changes: {
+		field: keyof T & string;
+		from: unknown;
+		to: unknown;
+	}[];
 }
 export type Status = "draft" | "published" | "scheduled";
 export type Locale = never;
 export interface Drive {
-	id: number;
+	id: Id<"drives">;
 	name: string;
 	slug: string | null;
 	summary: string | null;
@@ -63,6 +79,11 @@ export interface Drive {
 	stock: number;
 	status: "draft" | "published" | "scheduled";
 	publishedAt: string | null;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 	uid: string | null;
 }
 export interface DriveInsert {
@@ -350,6 +371,66 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	uid?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -372,11 +453,11 @@ export interface DriveFilter {
 	OR?: DriveFilter[];
 	NOT?: DriveFilter;
 }
-export type DriveOrder = Partial<Record<"id" | "name" | "slug" | "summary" | "description" | "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "price" | "stock" | "status" | "publishedAt" | "uid", "asc" | "desc">> | string;
+export type DriveOrder = Partial<Record<"id" | "name" | "slug" | "summary" | "description" | "brand" | "model" | "capacityGb" | "media" | "connector" | "condition" | "powerOnHours" | "price" | "stock" | "status" | "publishedAt" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy" | "uid", "asc" | "desc">> | string;
 export interface Order {
-	id: number;
+	id: Id<"orders">;
 	code: string;
-	drive: number;
+	drive: Id<"drives">;
 	quantity: number;
 	unitPrice: number;
 	total: number;
@@ -386,10 +467,15 @@ export interface Order {
 	status: "placed" | "shipped" | "cancelled";
 	placedAt: string;
 	shippedAt: string | null;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface OrderInsert {
 	code: string;
-	drive: number;
+	drive: Id<"drives">;
 	quantity?: number;
 	unitPrice?: number;
 	total?: number;
@@ -590,26 +676,91 @@ export interface OrderFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	stockMovements?: true | StockMovementFilter;
 	AND?: OrderFilter[];
 	OR?: OrderFilter[];
 	NOT?: OrderFilter;
 }
-export type OrderOrder = Partial<Record<"id" | "code" | "drive" | "quantity" | "unitPrice" | "total" | "buyerName" | "buyerEmail" | "buyerId" | "status" | "placedAt" | "shippedAt", "asc" | "desc">> | string;
+export type OrderOrder = Partial<Record<"id" | "code" | "drive" | "quantity" | "unitPrice" | "total" | "buyerName" | "buyerEmail" | "buyerId" | "status" | "placedAt" | "shippedAt" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface StockMovement {
-	id: number;
-	drive: number;
+	id: Id<"stockMovements">;
+	drive: Id<"drives">;
 	change: number;
 	reason: "sale" | "restock" | "return";
-	order: number | null;
+	order: Id<"orders"> | null;
 	note: string | null;
 	at: string;
+	author: number | null;
+	createdAt: string;
+	updatedAt: string;
+	deletedAt: string | null;
+	deletedBy: number | null;
 }
 export interface StockMovementInsert {
-	drive: number;
+	drive: Id<"drives">;
 	change: number;
 	reason: "sale" | "restock" | "return";
-	order?: number | null;
+	order?: Id<"orders"> | null;
 	note?: string | null;
 	at?: string;
 }
@@ -730,11 +881,71 @@ export interface StockMovementFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
+	author?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	createdAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	updatedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedAt?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	deletedBy?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
 	AND?: StockMovementFilter[];
 	OR?: StockMovementFilter[];
 	NOT?: StockMovementFilter;
 }
-export type StockMovementOrder = Partial<Record<"id" | "drive" | "change" | "reason" | "order" | "note" | "at", "asc" | "desc">> | string;
+export type StockMovementOrder = Partial<Record<"id" | "drive" | "change" | "reason" | "order" | "note" | "at" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy", "asc" | "desc">> | string;
 export interface Shop {
 	shopName: string;
 	currency: "USD" | "EUR" | "TRY";
@@ -843,6 +1054,7 @@ export declare const SCHEMA: {
 			readonly primaryKey: "id";
 			readonly drafts: true;
 			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly orders: {
@@ -864,7 +1076,8 @@ export declare const SCHEMA: {
 			readonly path: "orders";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly drive: {
@@ -886,7 +1099,8 @@ export declare const SCHEMA: {
 			readonly path: "stock_movements";
 			readonly primaryKey: "id";
 			readonly drafts: false;
-			readonly revisions: false;
+			readonly revisions: true;
+			readonly softDelete: true;
 			readonly localized: false;
 			readonly relations: {
 				readonly drive: {
@@ -969,6 +1183,8 @@ export type ListQuery<
 	limit?: number;
 	offset?: number;
 	with?: W;
+	/** Soft-delete filter: `"exclude"` (default), `"include"`, or `"only"`. Non-default modes require `restore` or `delete` access. */
+	deleted?: "exclude" | "include" | "only";
 } & StatusQuery<K> & LocaleQuery<K>;
 /**
 * A read. Await it for one answer, or `subscribe` to keep it current: the callback gets the result
@@ -1026,12 +1242,18 @@ export interface CollectionClient<K extends CollectionKey> {
 	*/
 	update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
 	delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
+	/** Restores a soft-deleted row (and any cascade-deleted children sharing its deletion group). */
+	restore(id: IdOf<K>): Promise<Row<K>>;
+	/** Permanently removes the row from storage (default access `"system"`). */
+	purge(id: IdOf<K>): Promise<Row<K>>;
 	/** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
 	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q: ListQuery<K, ExactWith<K, W>> | undefined, onRows: (rows: RowWith<K, W>[]) => void, onError?: (error: TypedPressError) => void): () => void;
 	revisions: {
 		/** Newest first. Needs `update` access on the row. */
 		list(id: IdOf<K>): Promise<RevisionSummary[]>;
 		get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
+		/** Diffs two revisions (by version or revision id) as this viewer may read them. */
+		diff(id: IdOf<K>, fromVersion: number, toVersion: number): Promise<RevisionDiff<Row<K>>>;
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};

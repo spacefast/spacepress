@@ -34,5 +34,13 @@ const numericOf: CodeInsert = { code: "01-de", locale: "de", translationOf: "01"
 const moved: GuidePatch = { locale: "de" };
 // @ts-expect-error the group id is hidden
 guide.translationGroup;
-const localeRow: LocaleRow = { id: 1, name: "German" };
+const localeRow: LocaleRow = {
+  id: 1,
+  name: "German",
+  author: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  deletedAt: null,
+  deletedBy: null,
+};
 void [localeRow, locale, other, guideIds, codeIds, wrongIds, translation, fresh, codeTranslation, numericOf, moved];

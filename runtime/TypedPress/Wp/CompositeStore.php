@@ -18,6 +18,7 @@ use TypedPress\Store;
  */
 final class CompositeStore implements Store, Links
 {
+    private ?\TypedPress\Commerce\Store $commerce = null;
     public function __construct(
         private readonly Schema $schema,
         public readonly Connection $db,
@@ -52,6 +53,9 @@ final class CompositeStore implements Store, Links
         if ($this->users !== null && $collection === ($this->schema->auth()['collection'] ?? null)) {
             return $this->users;
         }
+        if (isset($this->schema->collection($collection)['commerce']) && !isset($this->schema->taxonomies()[$collection])) {
+            return $this->commerce ??= new \TypedPress\Commerce\Store($this->db, $this->schema, $this->tables);
+        }
         if (isset($this->schema->taxonomies()[$collection])) {
             return $this->terms ?? throw new \LogicException('No term store');
         }
@@ -77,6 +81,13 @@ final class CompositeStore implements Store, Links
     public function select(string $collection, array $q): array
     {
         return $this->for($collection)->select($collection, $q);
+    }
+
+    /** The post or native Woo store reads its just-trashed row for the update lifecycle. */
+    public function withTrash(string $collection, callable $fn): mixed
+    {
+        $store = $this->for($collection);
+        return method_exists($store, 'withTrash') ? $store->withTrash($fn) : $fn();
     }
 
     public function insert(string $collection, array $values): int|string

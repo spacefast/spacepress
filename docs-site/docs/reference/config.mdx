@@ -14,6 +14,7 @@ A TypedPress app starts at `typedpress.config.ts`. It imports its building block
 | `name` | Project name: plugin slug (`typedpress-<name>`), wp-admin menu, client docs. Default: the project directory name. |
 | `webhooks` | Signed HTTP calls the app sends when rows change. |
 | `services` | Private native forms, queued mail, publication search and server-priced checkout. |
+| `seed` | Import synced content when the standalone plugin starts. Existing editorial content is preserved. |
 | `uploads` | Limits for uploaded media. |
 | `media` | Image sizes WordPress makes for uploaded images. |
 | `locales` | Turned off for now: setting it fails the build. |
@@ -225,10 +226,10 @@ export declare function userProjection<TCols extends ColumnsConfig, TUid extends
 A taxonomy: terms in WordPress's term tables, with term meta fields, attached to collections.
 
 ```ts
-export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false>(
+export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false, TSync extends string | undefined = undefined>(
   fields?: TFields,
-  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">>> & { hierarchical?: THierarchical },
-): Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">;
+  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">>> & { hierarchical?: THierarchical; sync?: TSync },
+): Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">;
 ```
 
 ### `terms`
@@ -352,6 +353,60 @@ export declare function files(options: {
   maxBytes: number;
   access?: { read?: FileRule; create?: FileRule; delete?: FileRule };
 }): FileBucket;
+```
+
+### `store`
+
+```ts
+export declare function store(options: StoreOptions): CommerceStore;
+```
+
+### `product`
+
+```ts
+export declare function product(options?: CommerceOptions): Collection<string, WithId<ProductColumns>, false, "product">;
+```
+
+### `productCategory`
+
+```ts
+export declare function productCategory(options?: CommerceOptions): Collection<string, WithId<TermColumns<true> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
+```
+
+### `productTag`
+
+```ts
+export declare function productTag(options?: CommerceOptions): Collection<string, WithId<TermColumns<false> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
+```
+
+### `order`
+
+```ts
+export declare function order(options?: Pick<CommerceOptions, "agents" | "label"> & { api?: false | { list?: boolean; get?: boolean } }): Collection<string, WithId<{
+  status: ColumnBuilder<"text", string, true, true>;
+  currency: ColumnBuilder<"text", string, true, true>;
+  total: ColumnBuilder<"text", string, true, true>;
+  subtotal: ColumnBuilder<"text", string, true, true>;
+  discountTotal: ColumnBuilder<"text", string, true, true>;
+  shippingTotal: ColumnBuilder<"text", string, true, true>;
+  taxTotal: ColumnBuilder<"text", string, true, true>;
+  precision: ColumnBuilder<"integer", number, true, true>;
+  createdAt: ColumnBuilder<"timestamp", string, true, true>;
+  updatedAt: ColumnBuilder<"timestamp", string, true, true>;
+  paidAt: ColumnBuilder<"timestamp", string, false, true>;
+  completedAt: ColumnBuilder<"timestamp", string, false, true>;
+  customer: ColumnBuilder<"integer", number, false, true>;
+  paymentMethod: ColumnBuilder<"text", string, true, true>;
+  paymentTitle: ColumnBuilder<"text", string, true, true>;
+  billing: ColumnBuilder<"json", OrderAddress, true, true>;
+  shipping: ColumnBuilder<"json", OrderAddress, true, true>;
+  lines: ColumnBuilder<"json", OrderLine[], true, true>;
+  shippingLines: ColumnBuilder<"json", { id: number; name: string; method_id: string; instance_id: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
+  taxLines: ColumnBuilder<"json", { id: number; name: string; rate_id: number; label: string; compound: boolean; tax_total: string; shipping_tax_total: string }[], true, true>;
+  feeLines: ColumnBuilder<"json", { id: number; name: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
+  couponLines: ColumnBuilder<"json", { id: number; name: string; code: string; discount: string; discount_tax: string }[], true, true>;
+  refunds: ColumnBuilder<"json", { id: number; amount: string; reason: string; createdAt: string }[], true, true>;
+}>, false, "order">;
 ```
 
 ## Reusable fields

@@ -67,3 +67,8 @@ export function TemplateSlots({ text }: { text: string }) {
   const pair = <>{++n}<i>{text}</i>{++n}</>;
   return <article><>{pair}{pair}</><p>{n}</p></article>;
 }
+
+export function TemplateStrings({ text, value }: { text: string; value: string | number | null }) {
+  let n = 0;
+  return <p>{`<${text}>`}{`[${value}]`}{`${++n}`}{`${n}:${++n}`}</p>;
+}

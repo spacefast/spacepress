@@ -450,6 +450,7 @@ final class Receiver
     {
         $deployment = self::deployment($request['id']);
         self::mounted($request['id'], $deployment, 'activate');
+        Site::checkCommerce($deployment['manifest']);
         if (function_exists('set_time_limit')) {
             @set_time_limit(300);
         }
@@ -504,6 +505,7 @@ final class Receiver
             if ($manifest === null || !Site::complete($manifest) || !Site::ready($build)) {
                 throw new \RuntimeException('Only a build that was live on this site before can be made live again.');
             }
+            Site::checkCommerce($manifest);
             Site::makeLive($build, $manifest, 'rollback');
         });
     }

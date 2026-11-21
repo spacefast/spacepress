@@ -214,6 +214,7 @@ final class Runtime
             Jobs\ActionSchedulerQueue::install();
             Guests::install();
         }
+        \TypedPress\Commerce\Module::initialize(self::$plugin);
         ContentPages::install();
         RoutePages::install();
         \TypedPress\Search\Index::reindexChanged();
@@ -311,6 +312,7 @@ final class Runtime
     public static function installPlan(): array
     {
         $steps = [...ContentPages::plan(), ...RoutePages::plan()];
+        if (self::$plugin !== null) { $steps = [...$steps, ...\TypedPress\Commerce\Module::plan(self::$plugin)]; }
         if (class_exists(\TypedPress\Search\Index::class, false) && \TypedPress\Search\Index::shapeChanged()) {
             $steps[] = self::step('search-shape', 'search-shape');
         }
@@ -495,6 +497,6 @@ final class Runtime
 
     private static function notice(string $problem): void
     {
-        add_action('admin_notices', static fn () => printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('TypedPress: ' . $problem . '. Rebuild with first ' . self::SERIES . '.x.')));
+        add_action('admin_notices', static fn () => printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('TypedPress: ' . $problem . '. Rebuild with typedpress ' . self::SERIES . '.x.')));
     }
 }

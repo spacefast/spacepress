@@ -100,6 +100,11 @@ final class WpSite
         ));
         $activate = [];
         if (isset($fixture['wpContent'])) {
+            if (is_dir($fixture['wpContent'] . '/mu-plugins')) {
+                foreach (glob($fixture['wpContent'] . '/mu-plugins/*.php') ?: [] as $file) {
+                    copy($file, "$dir/content/mu-plugins/" . basename($file));
+                }
+            }
             // A `typedpress build` artifact: its plugins as built, activated in the manifest's order.
             $manifest = json_decode((string) file_get_contents($fixture['wpContent'] . '/typedpress-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
             foreach (array_keys($manifest['plugins']) as $slug) {
@@ -250,7 +255,9 @@ final class WpSite
             putenv("TP_TEST_SERVER_PORT=$port");
             $server = proc_open(
                 // A suite that rewrites schema.php (an app update) is served the new file by the next request.
-                [PHP_BINARY, '-d', 'opcache.revalidate_freq=0', '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
+                // macOS counts lock-wait sleeps toward PHP's execution limit; each test client
+                // already has its own timeout, and must be allowed to observe the 30s lock timeout.
+                [PHP_BINARY, '-d', 'opcache.revalidate_freq=0', '-d', 'max_execution_time=0', '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
                 [1 => ['file', "$this->dir/server.log", 'a'], 2 => ['file', "$this->dir/server.log", 'a']],
                 $pipes,
                 $this->dir,
@@ -931,7 +938,7 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
     }
     foreach ($site['activate'] as $slug) {
         $main = $slug === 'sqlite-database-integration' ? 'load.php' : "$slug.php";
-        $error = activate_plugin("$slug/$main", '', false, true);
+        $error = activate_plugin("$slug/$main", '', false, $slug !== 'woocommerce');
         if ($error instanceof WP_Error) {
             fwrite(STDERR, "activating $slug: " . $error->get_error_message() . "\n");
             exit(1);

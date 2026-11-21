@@ -225,6 +225,9 @@ final class Loader
         \TypedPress\Env::isolate($variables);
         require_once $runtime . '/typedpress-runtime/tp/bootstrap.php';
         self::$schema = \TypedPress\Schema::load($app . '/tp/app/schema.php');
+        if (self::$schema->commerce() !== null) {
+            require_once $runtime . '/typedpress-commerce.php';
+        }
         $identity = !empty($options['users']) || (self::$schema->auth()['collection'] ?? null) !== null;
         self::$loaded['identity'] = $identity;
         $url = $options['url'] ?? null;

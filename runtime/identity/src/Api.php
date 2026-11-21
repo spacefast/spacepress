@@ -27,6 +27,9 @@ final class Api
     }
     public function dispatch(\WP_REST_Request $request): \WP_REST_Response
     {
+        // Every answer is the browser's own session's, found from its cookie without WordPress
+        // signing anyone in, so nothing tells a page cache keyed on the URL (Batcache) to skip it.
+        Plugin::uncached();
         try {
             $method = $request->get_method();
             $op = $request["operation"];

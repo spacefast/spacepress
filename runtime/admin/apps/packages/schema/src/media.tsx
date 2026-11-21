@@ -332,6 +332,7 @@ export function MediaLibrary() {
 					<Loading state={state} />
 				) : (
 					<DataViews<Row>
+						showLayoutSwitcher
 						data={state.value.rows}
 						fields={fields}
 						view={view}

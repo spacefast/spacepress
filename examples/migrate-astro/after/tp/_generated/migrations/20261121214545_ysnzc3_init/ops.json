@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "id": "20261121182315_8p12k1_init",
+  "id": "20261121214545_ysnzc3_init",
   "ops": [
     {
       "op": "createTable",
       "table": "tp__revisions",
+      "physicalTable": "{prefix}tp__revisions",
       "def": {
         "editor": false,
         "drafts": false,
@@ -36,8 +37,28 @@
             "primaryKey": false,
             "autoIncrement": false,
             "unique": false,
-            "max": 64,
+            "max": 191,
             "default": null,
+            "references": null
+          },
+          "version": {
+            "type": "integer",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "default": 1,
+            "references": null
+          },
+          "op": {
+            "type": "text",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": 16,
+            "default": "update",
             "references": null
           },
           "at": {
@@ -60,9 +81,29 @@
             "default": null,
             "references": null
           },
+          "schemaMigration": {
+            "type": "text",
+            "notNull": false,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": 191,
+            "default": null,
+            "references": null
+          },
           "row": {
             "type": "json",
             "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "default": null,
+            "references": null
+          },
+          "changed": {
+            "type": "json",
+            "notNull": false,
             "primaryKey": false,
             "autoIncrement": false,
             "unique": false,

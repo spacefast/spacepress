@@ -58,8 +58,24 @@ function formatMetricValue(value: unknown, format?: string): string {
 	return String(value);
 }
 
+function fieldKey(f: DeclarativeWidgetField): string {
+	return f.id ?? f.key ?? '';
+}
+
+function fieldLabel(f: DeclarativeWidgetField): string {
+	return f.label ?? f.id ?? f.key ?? '';
+}
+
+function fieldFormat(f: DeclarativeWidgetField): string | undefined {
+	if (f.format) return f.format;
+	if (f.type === 'datetime') return 'date';
+	if (f.type === 'number' || f.type === 'integer') return 'number';
+	return undefined;
+}
+
 function formatFieldValue(value: unknown, format?: string): string {
 	if (value === null || value === undefined || value === '') return '—';
+	if (typeof value === 'boolean') return value ? 'Yes' : 'No';
 	if (format === 'date' && typeof value === 'string') {
 		const d = new Date(value);
 		if (!Number.isNaN(d.getTime())) {
@@ -87,7 +103,7 @@ function DeclarativeWidgetBody({
 	const [loading, setLoading] = useState(true);
 	const [tick, setTick] = useState(0);
 
-	const ability = definition.ability || definition.action;
+	const ability = definition.ability || definition.action || '';
 
 	const reload = useCallback(() => {
 		setTick((n) => n + 1);
@@ -142,11 +158,14 @@ function DeclarativeWidgetBody({
 				: {};
 		const entries =
 			metrics.length > 0
-				? metrics.map((m) => ({
-						key: m.key,
-						label: m.label,
-						value: formatMetricValue(atPath(record, m.key), m.format),
-					}))
+				? metrics.map((m, idx) => {
+						const path = m.path ?? m.key ?? m.id ?? '';
+						return {
+							key: m.id ?? m.key ?? m.path ?? `m${idx}`,
+							label: m.label,
+							value: formatMetricValue(atPath(record, path), m.format),
+						};
+					})
 				: Object.entries(record).map(([key, val]) => ({
 						key,
 						label: key,
@@ -177,7 +196,7 @@ function DeclarativeWidgetBody({
 				: rows[0]
 					? Object.keys(rows[0])
 							.slice(0, 4)
-							.map((key) => ({ key, label: key }))
+							.map((id) => ({ id, label: id }))
 					: [];
 
 		if (rows.length === 0) {
@@ -189,7 +208,7 @@ function DeclarativeWidgetBody({
 						<thead>
 							<tr>
 								{fields.map((f) => (
-									<th key={f.key}>{f.label}</th>
+									<th key={fieldKey(f)}>{fieldLabel(f)}</th>
 								))}
 							</tr>
 						</thead>
@@ -197,13 +216,16 @@ function DeclarativeWidgetBody({
 							{rows.slice(0, 10).map((row, idx) => (
 								<tr key={String(row.id ?? idx)}>
 									{fields.map((f) => (
-										<td key={f.key}>
+										<td key={fieldKey(f)}>
 											{f.format === 'badge' ? (
 												<span className="tp-widget__pill">
-													{formatFieldValue(atPath(row, f.key))}
+													{formatFieldValue(atPath(row, fieldKey(f)))}
 												</span>
 											) : (
-												formatFieldValue(atPath(row, f.key), f.format)
+												formatFieldValue(
+													atPath(row, fieldKey(f)),
+													fieldFormat(f)
+												)
 											)}
 										</td>
 									))}
@@ -222,7 +244,10 @@ function DeclarativeWidgetBody({
 							<div className="tp-widget__row-main">
 								<span className="tp-widget__row-title">
 									{primary
-										? formatFieldValue(atPath(row, primary.key), primary.format)
+										? formatFieldValue(
+												atPath(row, fieldKey(primary)),
+												fieldFormat(primary)
+											)
 										: `#${idx + 1}`}
 								</span>
 								{secondary.length > 0 && (
@@ -230,7 +255,10 @@ function DeclarativeWidgetBody({
 										{secondary
 											.slice(0, 2)
 											.map((f) =>
-												formatFieldValue(atPath(row, f.key), f.format)
+												formatFieldValue(
+													atPath(row, fieldKey(f)),
+													fieldFormat(f)
+												)
 											)
 											.join(' · ')}
 									</span>
@@ -249,9 +277,9 @@ function DeclarativeWidgetBody({
 		const fields =
 			definition.fields && definition.fields.length > 0
 				? definition.fields.map((f) => ({
-						key: f.key,
-						label: f.label,
-						value: formatFieldValue(atPath(record, f.key), f.format),
+						key: fieldKey(f),
+						label: fieldLabel(f),
+						value: formatFieldValue(atPath(record, fieldKey(f)), fieldFormat(f)),
 					}))
 				: Object.entries(record)
 						.slice(0, 8)

@@ -241,15 +241,20 @@ export interface DashboardNoticeConfig
  * Declarative admin widget declared via `adminWidget()` in the app schema.
  */
 export interface DeclarativeWidgetMetric {
-	key: string;
+	id?: string;
+	key?: string;
+	path?: string;
 	label: string;
 	format?: 'number' | 'currency' | 'percent' | 'text';
 }
 
 export interface DeclarativeWidgetField {
-	key: string;
-	label: string;
+	id?: string;
+	key?: string;
+	label?: string;
+	type?: 'text' | 'integer' | 'number' | 'boolean' | 'datetime';
 	format?: 'text' | 'number' | 'date' | 'badge';
+	description?: string;
 }
 
 export interface DeclarativeWidgetDefinition {
@@ -259,7 +264,7 @@ export interface DeclarativeWidgetDefinition {
 	description?: string;
 	info?: string;
 	capability?: string;
-	action: string;
+	action?: string;
 	ability?: string;
 	input?: Record< string, unknown >;
 	display?: 'metrics' | 'list' | 'table' | 'summary';

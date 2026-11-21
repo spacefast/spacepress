@@ -2791,7 +2791,7 @@
       "sha256": "e56b447d1ee3f0013c35fdccf11eb5e2e0af7292e1f6ff0e7b8ea793330ff3bc",
       "path": "apps/packages/boot/src/store/types.ts",
       "adaptation": "TypedPress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "9216c2393aa872a83058d2034f63e2b9170096d393684f7c7aba8f9b05fa9559",
+      "adaptedSha256": "0c01eba941471f0a798a135156bcef7019424a7a8ecc2fa14fb4447c7af6a72a",
       "normalizedSha256": "026610000af56884d18fad14c5d823d6333a465e071e21fa707cb17877a5c155",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/store/types.ts"
     },

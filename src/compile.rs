@@ -12697,7 +12697,11 @@ fn safe_data_media_url(tag: &str, attr: &str, url: &str) -> bool {
     let Some((header, payload)) = rest.split_once(',') else {
         return false;
     };
-    if payload.is_empty() || !payload.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'=')) {
+    if payload.is_empty()
+        || !payload
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
+    {
         return false;
     }
     let lower = header.to_ascii_lowercase();

@@ -38,10 +38,7 @@ pub(crate) fn package(
         if !crate::assets::root_public_path(path) {
             continue;
         }
-        let page_key = path
-            .strip_suffix("/index.html")
-            .unwrap_or(path)
-            .trim_matches('/');
+        let page_key = path.strip_suffix("/index.html").unwrap_or(path).trim_matches('/');
         if literal_pages.contains(page_key) {
             continue;
         }

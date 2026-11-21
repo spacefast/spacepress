@@ -41,8 +41,16 @@ fn base64_encode(bytes: &[u8]) -> String {
         let n = (u32::from(a) << 16) | (u32::from(b) << 8) | u32::from(c);
         out.push(TABLE[((n >> 18) & 63) as usize] as char);
         out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            TABLE[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -482,8 +490,9 @@ impl Fs for CapturedFs {
             return Ok(text.as_bytes().to_vec());
         }
         if let Some(encoded) = self.sources.binary.get(&key) {
-            return base64_decode(encoded)
-                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid base64 in source bundle"));
+            return base64_decode(encoded).ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid base64 in source bundle")
+            });
         }
         Err(std::io::Error::new(std::io::ErrorKind::NotFound, "module not captured"))
     }

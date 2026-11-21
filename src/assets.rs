@@ -32,13 +32,47 @@ pub const EXTENSIONS: &[&str] = &[
 /// Never code (`.ts`, `.js`, `.php`), JSON, or server config.
 const FILE_EXTENSIONS: &[&str] = &[
     // Images
-    "svg", "png", "jpg", "jpeg", "gif", "webp", "avif", "ico", "bmp", "tif", "tiff", "apng",
+    "svg",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+    "avif",
+    "ico",
+    "bmp",
+    "tif",
+    "tiff",
+    "apng",
     // Fonts
-    "woff", "woff2", "ttf", "otf", "eot",
+    "woff",
+    "woff2",
+    "ttf",
+    "otf",
+    "eot",
     // Video & audio
-    "mp4", "webm", "ogv", "ogg", "mp3", "wav", "flac", "aac", "m4a", "opus", "mov",
+    "mp4",
+    "webm",
+    "ogv",
+    "ogg",
+    "mp3",
+    "wav",
+    "flac",
+    "aac",
+    "m4a",
+    "opus",
+    "mov",
     // Documents & web assets
-    "pdf", "wasm", "txt", "csv", "xml", "webmanifest", "glb", "gltf", "zip", "vtt",
+    "pdf",
+    "wasm",
+    "txt",
+    "csv",
+    "xml",
+    "webmanifest",
+    "glb",
+    "gltf",
+    "zip",
+    "vtt",
 ];
 
 /// Where the app plugin keeps them, below its root.
@@ -240,8 +274,16 @@ fn base64_encode(bytes: &[u8]) -> String {
         let n = (u32::from(a) << 16) | (u32::from(b) << 8) | u32::from(c);
         out.push(TABLE[((n >> 18) & 63) as usize] as char);
         out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            TABLE[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -402,9 +444,12 @@ impl Asset {
         };
         if kind == Kind::Raw {
             let text = String::from_utf8(bytes).map_err(|_| {
-                Diag::new(Span { file, start: 0, end: 0 }, format!("{source}?raw isn't UTF-8 text"))
-                    .help("use `?inline` for a base64 data URI, or import the file directly for its URL")
-                    .code(crate::diag::Code::Import)
+                Diag::new(
+                    Span { file, start: 0, end: 0 },
+                    format!("{source}?raw isn't UTF-8 text"),
+                )
+                .help("use `?inline` for a base64 data URI, or import the file directly for its URL")
+                .code(crate::diag::Code::Import)
             })?;
             return Ok(Asset {
                 kind,
@@ -648,10 +693,7 @@ mod tests {
         dedupe(&mut [&mut a, &mut b]);
         assert_eq!(b.classes["title"], "note_title", "a/ sorts first and keeps the name");
         assert_eq!(a.classes["title"], "note_title2");
-        assert_eq!(
-            String::from_utf8(a.bytes.clone()).unwrap(),
-            ".note_title2{color:blue}"
-        );
+        assert_eq!(String::from_utf8(a.bytes.clone()).unwrap(), ".note_title2{color:blue}");
         assert_eq!(b.file, before);
     }
 
@@ -661,7 +703,13 @@ mod tests {
         let b = asset("tp/app/site.css", "body { margin: 1px }");
         assert_ne!(a.file, b.file);
         assert!(a.file.starts_with("site-"));
-        let svg = Asset::new("tp/app/about/compass.svg", Kind::File, b"<svg viewBox=\"0 0 64 48\"/>".to_vec(), 0).unwrap();
+        let svg = Asset::new(
+            "tp/app/about/compass.svg",
+            Kind::File,
+            b"<svg viewBox=\"0 0 64 48\"/>".to_vec(),
+            0,
+        )
+        .unwrap();
         assert!(svg.file.starts_with("compass-") && svg.file.ends_with(".svg"));
         assert_eq!(
             svg.meta,
@@ -673,8 +721,8 @@ mod tests {
         );
         // Minimal 1x2 PNG header (IHDR width=1, height=2).
         let png_bytes = vec![
-            0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H', b'D', b'R',
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x08, 0x02, 0x00, 0x00, 0x00,
+            0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H', b'D', b'R', 0x00, 0x00,
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x08, 0x02, 0x00, 0x00, 0x00,
         ];
         let png = Asset::new("tp/app/about/hero.png", Kind::File, png_bytes.clone(), 0).unwrap();
         assert!(png.file.starts_with("hero-") && png.file.ends_with(".png"));

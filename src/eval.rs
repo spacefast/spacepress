@@ -862,9 +862,7 @@ impl<'p> Evaluator<'p> {
                     asset.classes.iter().map(|(k, v)| (k.clone(), Value::str(v))).collect(),
                 )),
                 crate::assets::Kind::File => Some(Value::Asset(Rc::from(asset.file.as_str()))),
-                crate::assets::Kind::Raw | crate::assets::Kind::Inline => {
-                    asset.text.as_deref().map(Value::str)
-                }
+                crate::assets::Kind::Raw | crate::assets::Kind::Inline => asset.text.as_deref().map(Value::str),
                 crate::assets::Kind::Meta => asset.meta.as_ref().map(|meta| {
                     let mut fields = IndexMap::new();
                     fields.insert("src".to_string(), Value::Asset(Rc::from(asset.file.as_str())));

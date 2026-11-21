@@ -434,11 +434,7 @@ pub fn minify(text: &str) -> String {
         if c == b'(' {
             paren_depth += 1;
             let lower = out.to_ascii_lowercase();
-            if lower.ends_with("calc")
-                || lower.ends_with("min")
-                || lower.ends_with("max")
-                || lower.ends_with("clamp")
-            {
+            if lower.ends_with("calc") || lower.ends_with("min") || lower.ends_with("max") || lower.ends_with("clamp") {
                 calc_depths.push(paren_depth);
             }
         } else if c == b')' {
@@ -557,7 +553,10 @@ mod tests {
         // At-rule preludes are not selectors; rules inside @media and :is()/:not() are.
         assert_eq!(classes("@media (min-width: .5em) { .a { x: 1 } }"), ["a"]);
         assert_eq!(classes("@font-face { src: url(/f.woff2); } .b {}"), ["b"]);
-        assert_eq!(classes(".card:is(.active, :not(.muted)) { &.inner {} }"), ["card", "active", "muted", "inner"]);
+        assert_eq!(
+            classes(".card:is(.active, :not(.muted)) { &.inner {} }"),
+            ["card", "active", "muted", "inner"]
+        );
     }
 
     #[test]
@@ -600,11 +599,8 @@ mod tests {
 .e { background: url(https://cdn.example/hero.png); }
 "#;
         let scanned = scan(css, false).unwrap();
-        let targets: Vec<(&str, Option<usize>)> = scanned
-            .urls
-            .iter()
-            .map(|u| (u.target.as_str(), u.font_face))
-            .collect();
+        let targets: Vec<(&str, Option<usize>)> =
+            scanned.urls.iter().map(|u| (u.target.as_str(), u.font_face)).collect();
         assert_eq!(
             targets,
             [

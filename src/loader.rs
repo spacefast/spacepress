@@ -877,7 +877,18 @@ fn resolve_query_asset(fs: &dyn Fs, from: &Path, bare: &str, span: Span) -> Resu
     if name.starts_with('.')
         || matches!(
             ext,
-            "php" | "phtml" | "phar" | "php3" | "php4" | "php5" | "php7" | "php8" | "phps" | "htaccess" | "htpasswd" | "ini"
+            "php"
+                | "phtml"
+                | "phar"
+                | "php3"
+                | "php4"
+                | "php5"
+                | "php7"
+                | "php8"
+                | "phps"
+                | "htaccess"
+                | "htpasswd"
+                | "ini"
         )
     {
         return Err(Diag::new(span, format!("can't import \"{bare}\" as an asset")).code(diag::Code::Import));
@@ -910,7 +921,9 @@ fn load_query_asset(
             crate::assets::Kind::Inline
         }
         crate::assets::Query::Url => match crate::assets::kind(path) {
-            Some(crate::assets::Kind::File) => return load_asset(fs, path, crate::assets::Kind::File, program, by_path, span),
+            Some(crate::assets::Kind::File) => {
+                return load_asset(fs, path, crate::assets::Kind::File, program, by_path, span);
+            }
             Some(crate::assets::Kind::Css | crate::assets::Kind::CssModule) => {
                 // Bundle & minify the stylesheet, then expose its hashed URL without auto-enqueuing it.
                 let mut stack = Vec::new();
@@ -948,9 +961,11 @@ fn load_query_asset(
         },
         crate::assets::Query::Meta => {
             if crate::assets::kind(path) != Some(crate::assets::Kind::File) {
-                return Err(Diag::new(span, format!("can't read image metadata for \"{relative}?meta\""))
-                    .help("`?meta` supports image files (.png, .jpg, .webp, .avif, .gif, .svg, etc.)")
-                    .code(diag::Code::Import));
+                return Err(
+                    Diag::new(span, format!("can't read image metadata for \"{relative}?meta\""))
+                        .help("`?meta` supports image files (.png, .jpg, .webp, .avif, .gif, .svg, etc.)")
+                        .code(diag::Code::Import),
+                );
             }
             crate::assets::Kind::Meta
         }
@@ -1153,8 +1168,10 @@ fn bundle_css(
             Some(crate::assets::Kind::Css | crate::assets::Kind::CssModule)
         ) {
             css_stack.pop();
-            return Err(Diag::new(imp_span, format!("`@import \"{}\"` must name a .css file", imp.href))
-                .code(diag::Code::Import));
+            return Err(
+                Diag::new(imp_span, format!("`@import \"{}\"` must name a .css file", imp.href))
+                    .code(diag::Code::Import),
+            );
         }
         let (_, mut inner, inner_preloads) = bundle_css(fs, &target, false, program, by_path, css_stack, imp_span)?;
         if let Some(media) = &imp.media {

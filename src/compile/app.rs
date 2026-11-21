@@ -625,11 +625,7 @@ impl Compiler<'_, '_> {
             }
             "Image" => {
                 let Some(src) = get("src") else {
-                    return err_help(
-                        span,
-                        "`<Image>` needs `src`",
-                        "write `<Image src={hero} alt=\"…\" />`",
-                    );
+                    return err_help(span, "`<Image>` needs `src`", "write `<Image src={hero} alt=\"…\" />`");
                 };
                 if get("alt").is_none() {
                     return err_help(
@@ -668,10 +664,7 @@ impl Compiler<'_, '_> {
                     if matches!(*k, "alt" | "sizes" | "loading" | "decoding" | "className" | "id")
                         && !assignable(&out.ty, &Ty::union([Ty::Str, Ty::Null, Ty::Undefined]))
                     {
-                        return err(
-                            v.span,
-                            format!("`<Image {k}>` takes string, not {}", out.ty.describe()),
-                        );
+                        return err(v.span, format!("`<Image {k}>` takes string, not {}", out.ty.describe()));
                     }
                     attrs.push(format!("{} => {}", php_str(k), out.php));
                 }

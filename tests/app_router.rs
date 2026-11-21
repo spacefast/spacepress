@@ -3920,7 +3920,12 @@ fn imported_binary_assets_and_css_urls_bundle_into_app_assets() {
         .unwrap()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_name() != ".htaccess")
-        .map(|e| (e.file_name().to_string_lossy().into_owned(), std::fs::read(e.path()).unwrap()))
+        .map(|e| {
+            (
+                e.file_name().to_string_lossy().into_owned(),
+                std::fs::read(e.path()).unwrap(),
+            )
+        })
         .collect();
     let find = |prefix: &str, ext: &str| -> (String, Vec<u8>) {
         entries
@@ -3940,7 +3945,10 @@ fn imported_binary_assets_and_css_urls_bundle_into_app_assets() {
     // Deduplicated: only 5 asset files total (hero, tile, inter, theme, card).
     assert_eq!(entries.len(), 5, "{:?}", entries.keys().collect::<Vec<_>>());
     let theme_css = String::from_utf8(theme_out).unwrap();
-    assert!(theme_css.contains(&format!("url(\"./{font_file}?v=1#f\")")), "{theme_css}");
+    assert!(
+        theme_css.contains(&format!("url(\"./{font_file}?v=1#f\")")),
+        "{theme_css}"
+    );
     assert!(theme_css.contains(&format!("url(./{hero_file})")), "{theme_css}");
     assert!(theme_css.contains("url(/public-root.png)"), "{theme_css}");
     let card_css = String::from_utf8(card_out).unwrap();
@@ -3949,8 +3957,14 @@ fn imported_binary_assets_and_css_urls_bundle_into_app_assets() {
         project.join("tp/dist/wp-content/plugins/typedpress-app-binassets/tp/app/functions.php"),
     )
     .unwrap();
-    assert!(functions.contains(&format!("\\TypedPress\\Assets::url( '{hero_file}' )")), "{functions}");
-    assert!(functions.contains(&format!("\\TypedPress\\Assets::url( '{font_file}' )")), "{functions}");
+    assert!(
+        functions.contains(&format!("\\TypedPress\\Assets::url( '{hero_file}' )")),
+        "{functions}"
+    );
+    assert!(
+        functions.contains(&format!("\\TypedPress\\Assets::url( '{font_file}' )")),
+        "{functions}"
+    );
 
     // Hosted capture + compile round-trips binary assets byte-for-byte identically.
     let work = tempfile::tempdir().unwrap();
@@ -3965,7 +3979,11 @@ fn imported_binary_assets_and_css_urls_bundle_into_app_assets() {
         manifest["app"].as_str().unwrap()
     ));
     for (name, bytes) in &entries {
-        assert_eq!(&std::fs::read(hosted_assets.join(name)).unwrap(), bytes, "hosted asset {name}");
+        assert_eq!(
+            &std::fs::read(hosted_assets.join(name)).unwrap(),
+            bytes,
+            "hosted asset {name}"
+        );
     }
 }
 
@@ -3986,8 +4004,8 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     .unwrap();
     // Valid 40x20 PNG (IHDR header) + WOFF2/TTF font bytes + SVG.
     let png_bytes: Vec<u8> = vec![
-        0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H', b'D', b'R',
-        0x00, 0x00, 0x00, 40, 0x00, 0x00, 0x00, 20, 0x08, 0x02, 0x00, 0x00, 0x00,
+        0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H', b'D', b'R', 0x00, 0x00,
+        0x00, 40, 0x00, 0x00, 0x00, 20, 0x08, 0x02, 0x00, 0x00, 0x00,
     ];
     let woff2_bytes: Vec<u8> = vec![b'w', b'O', b'F', b'2', 0x00, 0xff, 0x01, 0x02];
     let ttf_bytes: Vec<u8> = vec![0x00, 0x01, 0x00, 0x00, 0xaa, 0xbb];
@@ -4049,8 +4067,14 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     assert_eq!(inlines.len(), 1, "{seen}");
     let inline_css = inlines[0].as_str().unwrap();
     assert!(inline_css.contains("--accent:#fff"), "{inline_css}");
-    assert!(inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/hero-"), "{inline_css}");
-    assert!(inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/inter-"), "{inline_css}");
+    assert!(
+        inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/hero-"),
+        "{inline_css}"
+    );
+    assert!(
+        inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/inter-"),
+        "{inline_css}"
+    );
     // Large CSS (> 4 KB) is linked externally.
     let externals = seen["externalStyles"].as_array().unwrap();
     assert_eq!(externals.len(), 1, "{seen}");
@@ -4062,11 +4086,17 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     let font_preload = preloads.iter().find(|p| p["as"] == "font").unwrap();
     assert_eq!(font_preload["type"], "font/woff2");
     assert_eq!(font_preload["crossorigin"], "anonymous");
-    assert!(font_preload["file"].as_str().unwrap().ends_with(".woff2"), "{font_preload}");
+    assert!(
+        font_preload["file"].as_str().unwrap().ends_with(".woff2"),
+        "{font_preload}"
+    );
     assert_eq!(font_preload["status"], 200);
     let img_preload = preloads.iter().find(|p| p["as"] == "image").unwrap();
     assert_eq!(img_preload["fetchpriority"], "high");
-    assert!(img_preload["file"].as_str().unwrap().starts_with("hero-"), "{img_preload}");
+    assert!(
+        img_preload["file"].as_str().unwrap().starts_with("hero-"),
+        "{img_preload}"
+    );
     assert_eq!(img_preload["status"], 200);
     // <Image priority>, <Image lazy>, plain <img> auto-dimensions, ?inline data URI, and client component asset!
     let imgs = &seen["imgs"];
@@ -4081,7 +4111,12 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     assert_eq!(imgs["lazy-img"]["loading"], "lazy");
     assert_eq!(imgs["plain-img"]["width"], "40");
     assert_eq!(imgs["plain-img"]["height"], "20");
-    assert!(imgs["inline-img"]["src"].as_str().unwrap().starts_with("data:image/png;base64,"));
+    assert!(
+        imgs["inline-img"]["src"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,")
+    );
     assert_eq!(imgs["client-img"]["width"], "16");
     assert_eq!(imgs["client-img"]["height"], "16");
     assert_eq!(imgs["client-img"]["status"], 200);
@@ -4091,7 +4126,10 @@ fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
     assert!(seen["cssUrlFile"].as_str().unwrap().starts_with("standalone-"));
     // Client component Interactivity config carries its imported asset URL.
     let client_icon = seen["clientConfigAssets"]["icon"].as_str().unwrap();
-    assert!(client_icon.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/icon-"), "{client_icon}");
+    assert!(
+        client_icon.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/icon-"),
+        "{client_icon}"
+    );
 }
 
 /// `typedpress doctor --site <url> --links` on a served TypedPress site: every link and `#anchor` the docs
@@ -4445,7 +4483,10 @@ fn public_files_serve_at_the_site_root() {
             "/it's.txt": [200, "text/plain; charset=utf-8", 1]
         })
     );
-    assert_eq!(seen["wpIndex"], serde_json::json!([200, "text/html; charset=utf-8", 21]));
+    assert_eq!(
+        seen["wpIndex"],
+        serde_json::json!([200, "text/html; charset=utf-8", 21])
+    );
     // robots.txt, llms.txt, feeds and TypedPress Identity's discovery document stay WordPress's.
     for (path, kept) in seen["wordpress"].as_object().unwrap() {
         assert_eq!(kept, true, "{path}");

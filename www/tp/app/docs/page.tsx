@@ -1,18 +1,56 @@
-// /docs opens the first doc.
 import { docs } from "typedpress:db";
-import { redirect } from "typedpress/app";
+import { Link } from "typedpress/app";
 import { nav } from "typedpress/content";
 
-export const metadata = { title: "Docs" };
+export const metadata = {
+  title: "Reference",
+  description: "Technical reference for SpacePress — schema, queries, TSX pages, actions, jobs, Markdown sync, WooCommerce, React Email, and CLI.",
+};
 
-export default async function DocsHome() {
+export default async function DocsIndexPage() {
   const tree = await nav(docs);
-  const first = tree[0];
-  if (first) redirect(first.href);
+
   return (
-    <main className="prose">
-      <h1>Docs</h1>
-      <p>No docs are on this site yet. They are the Markdown files in <code>content/docs/</code>; <code>typedpress sync</code> sends them here.</p>
-    </main>
+    <>
+      <section className="sp-page-banner">
+        <div className="sp-container">
+          <h1>SpacePress Reference</h1>
+          <p>
+            Focused, topic-by-topic technical references synced directly from Markdown files in <code>content/docs/</code>. Looking for an interactive end-to-end walkthrough? Jump into the <Link href="/handbook">Interactive Handbook</Link>.
+          </p>
+        </div>
+      </section>
+
+      <div className="sp-container" style={{ paddingTop: "36px", paddingBottom: "80px" }}>
+        {tree.length === 0 ? (
+          <div className="sp-callout is-info">
+            <strong>Reference not synced yet.</strong> Run <code>typedpress sync</code> in <code>www/</code> to load <code>content/docs/**/*.md</code> into the <code>docs</code> collection.
+          </div>
+        ) : (
+          <div className="sp-card-grid" style={{ marginTop: 0 }}>
+            {tree.map((section) => (
+              <div key={section.id} className="sp-card">
+                <h3 style={{ marginBottom: "4px" }}>
+                  <Link href={section.href} className="sp-link-ink">{section.title}</Link>
+                </h3>
+                {section.children.length > 0 ? (
+                  <ul style={{ listStyle: "none", padding: 0, margin: "4px 0 0", display: "grid", gap: "6px" }}>
+                    {section.children.map((child) => (
+                      <li key={child.id}>
+                        <Link href={child.href}>{child.title} →</Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>
+                    <Link href={section.href}>Read reference →</Link>
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }

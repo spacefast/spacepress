@@ -1,12 +1,9 @@
 ---
-uid: zr_fca1429f1885429db9e4
 title: Reference
-description: Rules and lists to look things up in.
-order: 4
+description: Generated compiler compatibility inventory and host contract specifications.
+order: 5
 status: published
-publishedAt: 2026-11-15T21:51:52.000Z
+publishedAt: 2026-11-21T09:20:00.000Z
 ---
-- [WordPress plugin dependencies](/docs/reference/wordpress-plugins)
-- [App services](/docs/reference/services)
-- [Sealed mode](/docs/reference/sealed-mode)
-- [npm compatibility](/docs/reference/npm-compatibility)
+- **[Host Contract](/docs/reference/host-contract)** — what a hosting platform may rely on when compiling and mounting SpacePress apps.
+- **[Tested Compiler Compatibility](/docs/reference/language-support)** — fixture-backed inventory of supported TypeScript constructs, intentional divergences, and compiler refusals.

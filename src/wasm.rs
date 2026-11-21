@@ -59,6 +59,7 @@ struct Output {
     client: BTreeMap<String, String>,
     gen_ts: String,
     warnings: Vec<String>,
+    lint_warnings: Vec<crate::lint::Warning>,
     unsupported_plugins: Vec<String>,
     hints: Vec<String>,
     /// The app plugin `typedpress build` writes, file by file, by path below the plugins directory.
@@ -366,6 +367,7 @@ fn compile_request(request: Request) -> String {
                 client,
                 gen_ts: built.gen_ts,
                 warnings: built.warnings,
+                lint_warnings: built.lint_warnings,
                 unsupported_plugins: built.unsupported_plugins,
                 hints: built.hints,
             };

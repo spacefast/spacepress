@@ -280,7 +280,7 @@ pub(crate) fn base64_decode(text: &str) -> Option<Vec<u8>> {
         return None;
     }
     let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
-    for chunk in bytes.chunks_exact(4) {
+    for chunk in bytes.as_chunks::<4>().0 {
         let a = val(chunk[0])?;
         let b = val(chunk[1])?;
         out.push((a << 2) | (b >> 4));

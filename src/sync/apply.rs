@@ -462,7 +462,7 @@ fn pull(client: &Client, c: &Collection) -> Result<IndexMap<String, Remote>, Pro
             return Err(invalid("a page with more to come is empty".into()));
         }
         for item in records {
-            let (uid, remote) = entry(item).map_err(&invalid)?;
+            let (uid, remote) = entry(item).map_err(invalid)?;
             if out.insert(uid.clone(), remote).is_some() {
                 return Err(invalid(format!("{uid} is listed twice")));
             }

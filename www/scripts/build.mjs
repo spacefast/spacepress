@@ -7,30 +7,31 @@
 //   public/files/plugins/      TypedPress's shared plugins as zips, for "Run in WordPress"
 //
 // All of it is git-ignored. Run `bun scripts/build.mjs` after changing browser/ or examples/;
-// `typedpress dev` rebuilds the pages itself. The compiler and the zips come from docs-site/: run
-// `pnpm wasm && pnpm showcase` there first (docs-site/README.md).
+// `typedpress dev` rebuilds the pages itself. Build the compiler wasm and showcase zips first
+// with `npm run wasm && npm run showcase` in www/.
 import { readFileSync, writeFileSync, statSync, mkdirSync, copyFileSync, existsSync, rmSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { generateAiAssets } from "./generate-ai-assets.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = join(here, "..");
 const out = join(site, "public");
 rmSync(out, { recursive: true, force: true });
-mkdirSync(join(out, "files", "plugins"), { recursive: true });
+mkdirSync(join(out, "playground-plugins"), { recursive: true });
 
 const sources = Bun.spawnSync(["node", join(here, "sources.mjs")]);
 if (sources.exitCode !== 0) throw new Error(`sources.mjs failed:\n${sources.stderr.toString()}`);
 
-const docs = join(site, "..", "docs-site");
-const wasm = join(docs, "public", "compiler.wasm");
-const zips = join(docs, "public", "files", "plugins");
-if (!existsSync(wasm) || !existsSync(zips)) throw new Error("docs-site/public has no compiler.wasm or files/plugins; run `pnpm wasm && pnpm showcase` in docs-site/");
-const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: docs });
+const buildDir = join(site, ".build");
+const wasm = join(buildDir, "compiler.wasm");
+const zips = join(buildDir, "files", "plugins");
+if (!existsSync(wasm) || !existsSync(zips)) throw new Error("www/.build has no compiler.wasm or files/plugins; run `npm run wasm && npm run showcase` in www/");
+const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: site });
 if (runData.exitCode !== 0) throw new Error(`run-data.ts failed:\n${runData.stderr.toString()}`);
 writeFileSync(join(out, "play-data.json"), runData.stdout);
 copyFileSync(wasm, join(out, "compiler.wasm"));
-for (const slug of ["typedpress-runtime", "typedpress-identity", "typedpress-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "files", "plugins", `${slug}.zip`));
+for (const slug of ["typedpress-runtime", "typedpress-identity", "typedpress-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "playground-plugins", `${slug}.zip`));
 
 // One script file. The highlighter ships 240 grammars and 70 themes, each behind its own
 // `import()`; under `typedpress dev` every file costs a WordPress request, and 28 of them delayed the
@@ -38,7 +39,7 @@ for (const slug of ["typedpress-runtime", "typedpress-identity", "typedpress-adm
 // kept, and without `splitting` Bun puts them in the same file. Any other language is shown as
 // plain text by the library.
 const keep = {
-  "@shikijs/langs": ["typescript", "tsx", "javascript", "jsx", "json", "css", "sql", "php", "html", "xml", "markdown", "shellscript"],
+  "@shikijs/langs": ["typescript", "tsx", "javascript", "jsx", "json", "css", "sql", "php", "html", "xml", "markdown", "yaml", "shellscript"],
   "@pierre/theme": ["pierre-dark", "pierre-light"],
   "@shikijs/themes": [],
   "@pierre/highlights/themes": [],
@@ -69,5 +70,21 @@ const notice = ["@pierre/diffs", "@pierre/trees"].map((pkg) => {
 }).join("\n\n----------------------------------------\n\n");
 writeFileSync(join(out, "third-party-licenses.txt"), `This site renders code, file trees and diffs with these libraries.\nsite.js contains parts of them.\n\n${notice}\n`);
 
+const aiStats = generateAiAssets();
+let ghStars = { repo: "spacefast/spacepress", public: false, stars: null };
+try {
+  const gh = Bun.spawnSync(["gh", "api", "repos/spacefast/spacepress", "--jq", "{public:(.visibility==\"public\"),stars:.stargazers_count}"]);
+  if (gh.exitCode === 0) {
+    const parsed = JSON.parse(gh.stdout.toString().trim());
+    ghStars = {
+      repo: "spacefast/spacepress",
+      public: Boolean(parsed.public),
+      stars: parsed.public && typeof parsed.stars === "number" ? parsed.stars : null,
+    };
+  }
+} catch {}
+writeFileSync(join(out, "gh-stars.json"), JSON.stringify(ghStars));
+console.log(`   generated llms.txt, llms-full.txt, search-index.json (${aiStats.searchItems} items), and ${aiStats.docs + aiStats.posts + 3} markdown twins`);
+
 const kb = (f) => `${String(Math.round(statSync(f).size / 1024)).padStart(7)} KB  ${relative(site, f)}`;
-for (const f of [join(site, "tp", "data", "sources.ts"), join(out, "site.js"), join(out, "play-data.json"), join(out, "compiler.wasm")]) console.log(kb(f));
+for (const f of [join(site, "tp", "data", "sources.ts"), join(out, "site.js"), join(out, "play-data.json"), join(out, "compiler.wasm"), join(out, "llms.txt"), join(out, "search-index.json")]) console.log(kb(f));

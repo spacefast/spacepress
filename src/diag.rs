@@ -432,3 +432,8 @@ pub fn sources(keep: impl Fn(&Path) -> bool) -> Vec<String> {
             .collect()
     })
 }
+
+/// Every `(path, source)` registered in this run, in load order.
+pub fn registered_files() -> Vec<(PathBuf, String)> {
+    FILES.with(|files| files.borrow().clone())
+}

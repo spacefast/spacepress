@@ -1,5 +1,5 @@
 <?php
-// Sample data for WordPress Playground (docs-site/scripts/build-showcase.ts puts it in the blueprint).
+// Sample data for WordPress Playground (www/scripts/build-showcase.ts puts it in the blueprint).
 // Written through the app's own API as the admin, so access rules, hooks and jobs run as they
 // would for a real request.
 require_once '/wordpress/wp-load.php';

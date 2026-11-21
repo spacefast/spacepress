@@ -95,4 +95,4 @@ the answer carried and send `MCP-Protocol-Version` with the negotiated version.
   chat transcript. Revoke a leaked application password in the user's profile.
 - A production site: confirm the user and its role with the owner before connecting.
 
-Reference: `docs/agents.md`.
+Reference: `www/content/docs/operations/mcp-and-agents.md`.

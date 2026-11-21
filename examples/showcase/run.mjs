@@ -934,12 +934,12 @@ async function main() {
       sourceFiles.map((name) => [name, readFileSync(join(example, name), "utf8")]),
     );
   cpSync(join(example, "public"), join(app, "public"), { recursive: true });
-  run("node", [join(repo, "docs-site/scripts/build-wasm.mjs")]);
+  run("node", [join(repo, "www/scripts/build-wasm.mjs")]);
   run("npm", ["ci", "--no-audit", "--no-fund"], {
     cwd: join(example, "code-tools"),
   });
   run("node", [join(example, "code-tools/build.mjs"), join(app, "public")]);
-  copyFileSync(join(repo, "docs-site/public/compiler.wasm"), join(app, "public/typedpress.wasm"));
+  copyFileSync(join(repo, "www/.build/compiler.wasm"), join(app, "public/typedpress.wasm"));
   await buildApp({
     app,
     first,

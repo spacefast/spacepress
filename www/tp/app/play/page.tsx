@@ -1,28 +1,52 @@
-// The playground. /play?example=pantry&file=typedpress.config.ts opens an example at a file;
-// /play?s=<key> opens an edit someone saved with Share (the `shares` table, tp/server.ts).
 import { text } from "typedpress";
-import type { PageProps } from "typedpress/app";
 import { shares } from "typedpress:db";
-
-export const search = { s: text().max(12).optional() };
+import type { PageProps } from "typedpress/app";
 
 export const metadata = {
   title: "Playground",
-  description: "Edit a TypedPress app and build it in your browser. See the PHP, SQL and types the build writes, then run the app in WordPress.",
-  scripts: ["/site.js"],
+  description: "Edit real SpacePress TypeScript apps, compile them to PHP & SQL in your browser via WebAssembly, share edits, and boot them in WordPress Playground.",
 };
 
-export default async function Playground({ search }: PageProps<"play">) {
-  // Read as the system: visitors may not list saved edits, only open one by its key.
-  const found = search.s ? await shares.system.list({ where: { key: search.s }, limit: 1 }) : [];
-  const shared = found[0];
+export const search = {
+  s: text().max(12).optional(),
+  example: text().max(40).optional(),
+  file: text().max(200).optional(),
+};
+
+export default async function PlayPage({ search }: PageProps<"play", { s?: string | null; example?: string | null; file?: string | null }>) {
+  const saved = search.s ? await shares.system.get({ key: search.s }) : null;
+  const example = saved?.example ?? search.example ?? "tasks";
+  const sharedJson = saved ? JSON.stringify(saved.files) : undefined;
+
   return (
-    <main className="playpage">
-      <h1>Playground</h1>
-      <p className="lede">Pick an app, change its code and it is built in your browser by the same compiler the command line uses. Then run your version in WordPress, also in your browser. Share saves your edit on this site and gives you a link to it.</p>
-      <div className="note">These are the example apps as they are in the code today, so they use the current names: <code>typedpress.config.ts</code>, <code>tp/</code>, <code>query()</code> and <code>mutation()</code>. The guide describes the names they are moving to.</div>
-      {search.s && !shared && <p className="note">No saved edit has the key <code>{search.s}</code>. This is the app as it ships.</p>}
-      <tp-play example={shared ? shared.example : "full-site"} shared={shared ? JSON.stringify(shared.files) : undefined} picker="" share="" open="" />
-    </main>
+    <>
+      <section className="sp-page-banner" style={{ padding: "36px 0 24px" }}>
+        <div className="sp-container-wide">
+          <h1>SpacePress Playground</h1>
+          <p>
+            Edit any file on the left — the Rust/OXC compiler compiles it in WebAssembly right in your browser. Inspect generated PHP, SQL migrations, TypeScript types, and OpenAPI, share your edits via a permanent link, or click <strong>Run in WordPress</strong> to boot the compiled plugin in-tab.
+          </p>
+          {search.s && !saved && (
+            <div className="sp-callout" style={{ marginTop: "16px", marginBottom: 0 }}>
+              <strong>Share link not found:</strong> No saved edit matched key <code>{search.s}</code>. Loaded the default example instead.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="sp-container-wide" style={{ paddingTop: "16px", paddingBottom: "64px" }}>
+        <tp-play
+          data-picker="1"
+          data-share="1"
+          data-open="1"
+          example={example}
+          file={search.file ?? undefined}
+          shared={sharedJson}
+        />
+        <p className="sp-sandbox-hint">
+          Tip: drag the center divider to resize panes (double-click to reset), toggle <strong>Diff previous build</strong> to inspect exact PHP/SQL changes, or type <code>&quot;Word{"p"}ress&quot;</code> in a string/JSX to test inline <code>capital_P_dangit</code> Auto-fix.
+        </p>
+      </div>
+    </>
   );
 }

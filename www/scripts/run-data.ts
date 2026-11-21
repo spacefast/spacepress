@@ -1,13 +1,13 @@
 // Prints what the playground component needs for each app it can load: the sources, and what
-// "Run in WordPress" needs (docs-site/lib/blueprint.ts `ExampleRun`). The four examples the docs
-// site features come through docs-site/lib; the hero's small app lives in examples/_hero.
-// Run with the working directory set to docs-site/, after `pnpm wasm` and `pnpm showcase` there.
+// "Run in WordPress" needs (lib/blueprint.ts `ExampleRun`). The four featured examples come
+// through www/lib; the hero's small app lives in examples/_hero.
+// Run after `npm run wasm && npm run showcase` in www/.
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { compileFiles, example, sources } from "../../docs-site/lib/examples.ts";
-import { platformVersions } from "../../docs-site/lib/platform.ts";
-import { exampleRun, isWritten, ledger } from "../../docs-site/lib/showcase.ts";
-import { siteExamples } from "../../docs-site/lib/site-examples.ts";
+import { compileFiles, example, sources } from "../lib/examples.ts";
+import { platformVersions } from "../lib/platform.ts";
+import { exampleRun, isWritten, ledger } from "../lib/showcase.ts";
+import { siteExamples } from "../lib/site-examples.ts";
 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const examples: Record<string, unknown> = {};
@@ -30,7 +30,7 @@ const examples: Record<string, unknown> = {};
   };
 }
 
-// The committed migrations of a project. (`ledger()` in docs-site/lib also reads public/ as text,
+// The committed migrations of a project. (`ledger()` in www/lib also reads public/ as text,
 // which this site's public/ is not: it holds the compiler and the plugin zips.)
 const migrations = (dir: string) => {
   const folder = path.join(dir, "tp/_generated/migrations");
@@ -51,8 +51,8 @@ const migrations = (dir: string) => {
   const lock = JSON.parse(readFileSync(path.join(dir, "tp/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
   const shown = Object.keys(files).filter((file) => isWritten(file) && file !== "tp/data/sources.ts" && file !== "tsconfig.json");
   examples.website = {
-    title: "This website",
-    summary: "The site you are on: its schema, its server functions and its pages.",
+    title: "spacepress.dev (This website)",
+    summary: "The official SpacePress site: its schema, server actions, background jobs, Markdown-synced docs & blog, and TSX pages.",
     files,
     shown,
     run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/examples", seed: "", syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: migrations(dir) },
@@ -66,6 +66,6 @@ for (const { name, title, summary } of siteExamples) {
   examples[name] = { title, summary, files, shown, run: await exampleRun(name) };
 }
 const { php, sqlite } = platformVersions();
-// Where WordPress Playground fetches TypedPress's shared plugin zips (files/plugins/<slug>.zip).
-const plugins = process.env.PLUGINS_URL ?? "https://typedpress-guide.space.fast";
+// Where WordPress Playground fetches SpacePress's shared plugin zips (playground-plugins/<slug>.zip).
+const plugins = process.env.PLUGINS_URL ?? "https://spacepress.dev";
 process.stdout.write(JSON.stringify({ platform: { php, sqlite }, plugins, examples }));

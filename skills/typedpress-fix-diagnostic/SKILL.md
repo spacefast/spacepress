@@ -40,10 +40,10 @@ editor can still be refused. The diagnostic says what was refused and usually ho
 
 3. Open the file at the location and fix the cause, not the symptom:
    - A refused construct (`F1002`, or a more specific code): rewrite it in the supported subset. Look
-     the code or the construct up with `docs_search`, or read `docs/language-support.md`.
+     the code or the construct up with `docs_search`, or read `www/content/docs/reference/language-support.md`.
    - An unknown builder or modifier (`F2001`, "\"typedpress\" has no export named …" or no method of
      that name) or an invalid kind option (`F3001`): TypedPress has no such API. Read
-     `docs/config-api.md` for the builders and their modifiers.
+     `www/content/docs/core/schema-and-storage.md` for the builders and their modifiers.
    - `F1210`: a file under `tp/` imports from outside `tp/`. Move the imported file in.
    - `F1221`: two exports share a name, or a kind, action or job is a default export. Rename one.
 
@@ -76,5 +76,5 @@ It prints `ok:` with a count of what the project declares, and exits 0.
   internal error, stop and report the code, the message and the smallest source that reproduces it.
 - Do not work around a refusal by moving code into `tp/_generated/` or by disabling a check.
 
-Reference: `docs/compiler-diagnostics.md` (the envelope and the codes), `docs/language-support.md`
+Reference: `www/content/docs/reference/language-support.md`
 (what the compiler accepts, with a fixture for each refusal).

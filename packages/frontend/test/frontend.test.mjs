@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { buildFrontend } from '../src/index.mjs';
+import { buildFrontend, rebuildFrontend } from '../src/index.mjs';
 
 async function fixture(t) {
   const project = await mkdtemp(fileURLToPath(new URL('../test/.frontend-', import.meta.url)));
@@ -51,6 +51,71 @@ test('builds browser entries and native Tailwind utilities with route-level asse
   assert.notEqual(second.main.scripts[0], first.main.scripts[0]);
   await assert.rejects(readFile(asset(first.main.scripts[0])), { code: 'ENOENT' });
   assert.equal(second.other.scripts[0], first.other.scripts[0]);
+});
+
+test('a build stopped before it cleaned up does not block the next one', async (t) => {
+  const root = await fixture(t);
+  await writeFile(path.join(root, 'browser/index.ts'), 'document.title = "after";');
+  const generated = path.join(root, 'tp/_generated');
+  await mkdir(generated);
+  // What Ctrl+C left: the lock directory 0.1.0 made, and its staging directories.
+  const lock = path.join(generated, '.typedpress-assets-lock');
+  await mkdir(lock);
+  await mkdir(path.join(generated, '.frontend-abc123/assets'), { recursive: true });
+  await mkdir(path.join(generated, '.typedpress-assets-build-def456/assets'), { recursive: true });
+  // A staging directory that holds the previous build it could not put back is kept.
+  await mkdir(path.join(generated, '.typedpress-assets-build-ghi789/previous'), { recursive: true });
+  assert.equal((await buildFrontend({ root })).main.scripts.length, 1);
+  assert.deepEqual((await readdir(generated)).sort(), ['.typedpress-assets-build-ghi789', 'frontend.ts']);
+
+  // A lock naming a process that has exited, and the file such a process wrote before linking it.
+  const exited = spawn(process.execPath, ['-e', '']);
+  await once(exited, 'exit');
+  await writeFile(lock, `${exited.pid}\n`);
+  const scratch = `.typedpress-assets-lock-${exited.pid}-0000`;
+  await writeFile(path.join(generated, scratch), `${exited.pid}\n`);
+  await buildFrontend({ root });
+  await assert.rejects(readFile(lock), { code: 'ENOENT' });
+  assert.ok(!(await readdir(generated)).includes(scratch));
+
+  // A lock a running process holds still refuses a second build, and is left in place.
+  await writeFile(lock, `${process.pid}\n`);
+  await assert.rejects(buildFrontend({ root }), /Frontend build already running \(process \d+\)/);
+  assert.equal(await readFile(lock, 'utf8'), `${process.pid}\n`);
+  await rm(lock);
+
+  // Builds that start together over one stale lock: one runs at a time, and every build either
+  // finishes or is refused while another runs. None removes a lock another one holds.
+  await writeFile(lock, `${exited.pid}\n`);
+  const command = fileURLToPath(new URL('../bin/typedpress-frontend.mjs', import.meta.url));
+  const results = await Promise.all(Array.from({ length: 4 }, async () => {
+    const child = spawn(process.execPath, [command, root], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    const [code] = await once(child, 'exit');
+    return { code, stderr };
+  }));
+  assert.ok(results.some(({ code }) => code === 0), JSON.stringify(results));
+  for (const { code, stderr } of results) {
+    assert.ok(code === 0 || /Frontend build already running/.test(stderr), stderr);
+  }
+  await assert.rejects(readFile(lock), { code: 'ENOENT' });
+  assert.deepEqual((await readdir(generated)).sort(), ['.typedpress-assets-build-ghi789', 'frontend.ts']);
+});
+
+test('a recorded entry whose source is gone is not built again', async (t) => {
+  const root = await fixture(t);
+  await writeFile(path.join(root, 'browser/index.ts'), 'document.title = "kept";');
+  await writeFile(path.join(root, 'browser/old.ts'), 'document.title = "removed";');
+  await buildFrontend({ root, entries: { main: 'browser/index.ts', old: 'browser/old.ts' } });
+  await rm(path.join(root, 'browser/old.ts'));
+  assert.equal(await rebuildFrontend({ root }), true);
+  const record = path.join(root, '.tp/frontend-dev.json');
+  assert.deepEqual(Object.keys(JSON.parse(await readFile(record, 'utf8')).entries), ['main']);
+
+  await rm(path.join(root, 'browser/index.ts'));
+  assert.equal(await rebuildFrontend({ root }), false);
+  await assert.rejects(readFile(record), { code: 'ENOENT' });
 });
 
 test('preserves an authored directory using the generated output name', async (t) => {
@@ -180,5 +245,5 @@ test('serves frontend assets only on the route that uses them', { skip: !process
   execFileSync(process.env.TP_BIN, ['compile-sources', nativeCapture, nativeOutput, nativeCapture]);
   const nativeAssets = path.join(nativeOutput, 'plugins/typedpress-app-frontend-test/tp/app/assets');
   const nativeStyle = (await readdir(nativeAssets)).find((file) => file.endsWith('.css'));
-  assert.match(await readFile(path.join(nativeAssets, nativeStyle), 'utf8'), /font-size: 31px/);
+  assert.match(await readFile(path.join(nativeAssets, nativeStyle), 'utf8'), /font-size: ?31px/);
 });

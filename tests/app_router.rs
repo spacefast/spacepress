@@ -248,20 +248,13 @@ fn app_router_serves_pages_on_wordpress() {
         ]),
         "{social}"
     );
-    assert!(
-        social["links"].as_array().unwrap().contains(&serde_json::json!([
-            "describedby",
-            format!("{base}/llms.txt"),
-            "text/plain"
-        ])),
-        "{social}"
-    );
-    assert!(
-        social["links"].as_array().unwrap().contains(&serde_json::json!([
-            "alternate",
-            format!("{base}/notes/hello.md"),
-            "text/markdown"
-        ])),
+    // The page repeats the layout's link with its keys in another order: it is in the head once.
+    assert_eq!(
+        social["links"],
+        serde_json::json!([
+            ["describedby", format!("{base}/llms.txt"), "text/plain"],
+            ["alternate", format!("{base}/notes/hello.md"), "text/markdown"]
+        ]),
         "{social}"
     );
     // `metadata.scripts`: script modules, a path made absolute.
@@ -964,6 +957,42 @@ fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
         "unsupported import query \"?bogus\"",
         "tp/app/page.tsx:1:1",
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A fresh clone of a project that builds its stylesheets with `@typedpress/frontend` has no
+/// `tp/_generated/frontend-styles.json` (it stays out of Git). `check` and `check --json` compile it
+/// without reading `@import "tailwindcss"` as a copied stylesheet; `build` needs the built file.
+#[test]
+fn checks_a_fresh_clone_before_its_first_frontend_build() {
+    let dir = std::env::temp_dir().join(format!("typedpress-app-fresh-styles-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for (path, source) in [
+        (
+            "typedpress.config.ts",
+            "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"fresh\" });\n",
+        ),
+        (
+            "package.json",
+            r#"{"devDependencies":{"@typedpress/frontend":"0.1.0"}}"#,
+        ),
+        (
+            "tp/app/page.tsx",
+            "import \"./site.css\";\nexport default function P() { return <h1 className=\"text-4xl\">Hi</h1>; }\n",
+        ),
+        ("tp/app/site.css", "@import \"tailwindcss\" source(\"../\");\n"),
+    ] {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    let check = first().arg("check").arg(&dir).output().unwrap();
+    assert!(check.status.success(), "{}", String::from_utf8_lossy(&check.stderr));
+    let json = first().arg("check").arg(&dir).arg("--json").output().unwrap();
+    assert!(json.status.success(), "{}", String::from_utf8_lossy(&json.stdout));
+    // No frontend build ran: `check` writes nothing.
+    assert!(!dir.join("tp/_generated/frontend-styles.json").exists());
+    assert!(!dir.join("public/typedpress-styles").exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
 

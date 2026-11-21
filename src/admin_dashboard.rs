@@ -38,7 +38,15 @@ const METRIC_KEYS: &[&str] = &["id", "label", "path", "format"];
 const METRIC_FORMATS: &[&str] = &["number", "currency", "percent", "text"];
 const LINK_KEYS: &[&str] = &["label", "to"];
 
-const DASHBOARD_KEYS: &[&str] = &["title", "description", "access", "capability", "home", "menu", "widgets"];
+const DASHBOARD_KEYS: &[&str] = &[
+    "title",
+    "description",
+    "access",
+    "capability",
+    "home",
+    "menu",
+    "widgets",
+];
 const DASHBOARD_WIDGET_ITEM_KEYS: &[&str] = &["widget", "width", "height", "fullWidth"];
 
 /// Built-in SpacePress / TypedPress dashboard widget types an `adminDashboard()` may reference by id.
@@ -106,20 +114,18 @@ pub fn dashboards(v: &Value, span: Span, ev: &Evaluator<'_>, out: &mut Extracted
         };
         let id = kebab(name);
         if out.schema.dashboards.contains_key(&id) {
-            return Err(Diag::new(
-                dashboard.span,
-                format!("two dashboards are both registered as `{id}`"),
-            )
-            .help("a dashboard's id is its export name in kebab case; rename one export"));
+            return Err(
+                Diag::new(dashboard.span, format!("two dashboards are both registered as `{id}`"))
+                    .help("a dashboard's id is its export name in kebab case; rename one export"),
+            );
         }
         let declaration = DashboardExtractor { ev, out }.declaration(dashboard)?;
         if declaration.get("home").and_then(Json::as_bool) == Some(true) {
             if let Some(prev) = &home_owner {
-                return Err(Diag::new(
-                    dashboard.span,
-                    format!("both `{prev}` and `{id}` set `home: true`"),
-                )
-                .help("at most one adminDashboard() may customize the default Home dashboard"));
+                return Err(
+                    Diag::new(dashboard.span, format!("both `{prev}` and `{id}` set `home: true`"))
+                        .help("at most one adminDashboard() may customize the default Home dashboard"),
+                );
             }
             home_owner = Some(id.clone());
         }
@@ -135,10 +141,7 @@ fn options(v: &Value, span: Span, what: &str, allowed: &[&str], ev: &Evaluator<'
     let o = o.borrow().clone();
     for k in o.keys() {
         if !allowed.contains(&k.as_str()) {
-            let mut d = Diag::new(
-                ev.key_span(v, k).unwrap_or(span),
-                format!("{what} has no option `{k}`"),
-            );
+            let mut d = Diag::new(ev.key_span(v, k).unwrap_or(span), format!("{what} has no option `{k}`"));
             d = match suggest(k, allowed.iter().copied()) {
                 Some(s) => d.help(format!("did you mean `{s}`?")),
                 None => d.help(format!("use {}", allowed.join(", "))),
@@ -185,10 +188,7 @@ fn capability(ev: &Evaluator<'_>, cfg: &Value, o: &IndexMap<String, Value>, span
             .find(|(r, _)| *r == role.as_ref())
             .map(|(_, cap)| cap.to_string())
             .ok_or_else(|| {
-                let mut d = Diag::new(
-                    at("access"),
-                    format!("`access: \"{role}\"` isn't a role {what} takes"),
-                );
+                let mut d = Diag::new(at("access"), format!("`access: \"{role}\"` isn't a role {what} takes"));
                 d = match suggest(role, ROLES.iter().map(|(r, _)| *r)) {
                     Some(s) => d.help(format!("did you mean `\"{s}\"`?")),
                     None => d.help("use \"admin\", \"editor\", \"author\", \"subscriber\" or \"authenticated\""),
@@ -197,7 +197,11 @@ fn capability(ev: &Evaluator<'_>, cfg: &Value, o: &IndexMap<String, Value>, span
             }),
         (None, Some(Value::Str(cap))) if !cap.is_empty() => Ok(cap.to_string()),
         (Some(other), None) | (None, Some(other)) => Err(Diag::new(
-            at(if o.contains_key("access") { "access" } else { "capability" }),
+            at(if o.contains_key("access") {
+                "access"
+            } else {
+                "capability"
+            }),
             format!("{what}'s access is a string, not {}", other.describe()),
         )
         .help("write `access: \"editor\"` or `capability: \"edit_others_posts\"`")),
@@ -223,8 +227,10 @@ impl WidgetExtractor<'_, '_, '_> {
         };
         let Some(name) = name else {
             let got = v.map_or_else(|| "missing".to_string(), |v| v.describe());
-            return Err(Diag::new(span, format!("adminWidget() `action` names an action, but it is {got}"))
-                .help("pass an exported readonly action: `action: salesSummary`"));
+            return Err(
+                Diag::new(span, format!("adminWidget() `action` names an action, but it is {got}"))
+                    .help("pass an exported readonly action: `action: salesSummary`"),
+            );
         };
         let action = &self.out.schema.actions[name];
         if !action.agents {
@@ -259,8 +265,7 @@ impl WidgetExtractor<'_, '_, '_> {
         decl.insert("id".into(), json!(id));
         decl.insert("type".into(), json!(format!("tp-widget/{id}")));
         let Some(title) = text(&o, "title", self.at(cfg, "title", span), "the widget's")? else {
-            return Err(Diag::new(span, "adminWidget() needs a `title`")
-                .help("add `title: \"Sales this week\"`"));
+            return Err(Diag::new(span, "adminWidget() needs a `title`").help("add `title: \"Sales this week\"`"));
         };
         decl.insert("title".into(), json!(title));
         if let Some(d) = text(&o, "description", self.at(cfg, "description", span), "the widget's")? {
@@ -269,7 +274,10 @@ impl WidgetExtractor<'_, '_, '_> {
         if let Some(info) = text(&o, "info", self.at(cfg, "info", span), "the widget's")? {
             decl.insert("info".into(), json!(info));
         }
-        decl.insert("capability".into(), json!(capability(self.ev, cfg, &o, span, "a widget")?));
+        decl.insert(
+            "capability".into(),
+            json!(capability(self.ev, cfg, &o, span, "a widget")?),
+        );
 
         let (action, ability) = self.action_ref(o.get("action"), self.at(cfg, "action", span))?;
         decl.insert("ability".into(), json!(ability));
@@ -336,7 +344,12 @@ impl WidgetExtractor<'_, '_, '_> {
                         }
                     }
                 }
-                if let Some(d) = text(&map, "description", self.at(f, "description", idspan), &format!("field `{fid}`"))? {
+                if let Some(d) = text(
+                    &map,
+                    "description",
+                    self.at(f, "description", idspan),
+                    &format!("field `{fid}`"),
+                )? {
                     field.insert("description".into(), json!(d));
                 }
                 fields.push(Json::Object(field));
@@ -347,7 +360,10 @@ impl WidgetExtractor<'_, '_, '_> {
         if let Some(mv) = o.get("metrics") {
             let mspan = self.at(cfg, "metrics", span);
             let Value::Array(items) = mv else {
-                return Err(Diag::new(mspan, "`metrics` must be an array of `{ label, path, format? }`"));
+                return Err(Diag::new(
+                    mspan,
+                    "`metrics` must be an array of `{ label, path, format? }`",
+                ));
             };
             let mut metrics = Vec::new();
             for (idx, item) in items.borrow().iter().enumerate() {
@@ -359,8 +375,8 @@ impl WidgetExtractor<'_, '_, '_> {
                 let Some(path) = text(&mo, "path", self.at(item, "path", mspan), "a metric's")? else {
                     return Err(Diag::new(mspan, format!("metric `{label}` needs a `path`")));
                 };
-                let mid = text(&mo, "id", self.at(item, "id", mspan), "a metric's")?
-                    .unwrap_or_else(|| format!("m{idx}"));
+                let mid =
+                    text(&mo, "id", self.at(item, "id", mspan), "a metric's")?.unwrap_or_else(|| format!("m{idx}"));
                 m.insert("id".into(), json!(mid));
                 m.insert("label".into(), json!(label));
                 m.insert("path".into(), json!(path));
@@ -405,10 +421,16 @@ impl WidgetExtractor<'_, '_, '_> {
         decl.insert("display".into(), json!(display));
 
         if let Some(w) = o.get("width") {
-            decl.insert("width".into(), json!(span_int(w, self.at(cfg, "width", span), "width")?));
+            decl.insert(
+                "width".into(),
+                json!(span_int(w, self.at(cfg, "width", span), "width")?),
+            );
         }
         if let Some(h) = o.get("height") {
-            decl.insert("height".into(), json!(span_int(h, self.at(cfg, "height", span), "height")?));
+            decl.insert(
+                "height".into(),
+                json!(span_int(h, self.at(cfg, "height", span), "height")?),
+            );
         }
         if let Some(lv) = o.get("link") {
             let lspan = self.at(cfg, "link", span);
@@ -461,7 +483,10 @@ impl DashboardExtractor<'_, '_> {
             }
             other => Err(Diag::new(
                 span,
-                format!("dashboard `widgets` entry must be a widget or widget id, not {}", other.describe()),
+                format!(
+                    "dashboard `widgets` entry must be a widget or widget id, not {}",
+                    other.describe()
+                ),
             )),
         }
     }
@@ -472,14 +497,16 @@ impl DashboardExtractor<'_, '_> {
         let o = options(cfg, span, "adminDashboard()", DASHBOARD_KEYS, self.ev)?;
         let mut decl = Map::new();
         let Some(title) = text(&o, "title", self.at(cfg, "title", span), "the dashboard's")? else {
-            return Err(Diag::new(span, "adminDashboard() needs a `title`")
-                .help("add `title: \"Operations\"`"));
+            return Err(Diag::new(span, "adminDashboard() needs a `title`").help("add `title: \"Operations\"`"));
         };
         decl.insert("title".into(), json!(title));
         if let Some(d) = text(&o, "description", self.at(cfg, "description", span), "the dashboard's")? {
             decl.insert("description".into(), json!(d));
         }
-        decl.insert("capability".into(), json!(capability(self.ev, cfg, &o, span, "a dashboard")?));
+        decl.insert(
+            "capability".into(),
+            json!(capability(self.ev, cfg, &o, span, "a dashboard")?),
+        );
 
         if let Some(home) = o.get("home") {
             let Value::Bool(b) = home else {
@@ -528,7 +555,13 @@ impl DashboardExtractor<'_, '_> {
             let mut placement = Map::new();
             match item {
                 Value::Object(_) => {
-                    let po = options(item, wspan, "a dashboard widget placement", DASHBOARD_WIDGET_ITEM_KEYS, self.ev)?;
+                    let po = options(
+                        item,
+                        wspan,
+                        "a dashboard widget placement",
+                        DASHBOARD_WIDGET_ITEM_KEYS,
+                        self.ev,
+                    )?;
                     let Some(wval) = po.get("widget") else {
                         return Err(Diag::new(wspan, "a widget placement object needs `widget`"));
                     };
@@ -536,14 +569,23 @@ impl DashboardExtractor<'_, '_> {
                     placement.insert("uid".into(), json!(format!("w-{idx}-{wtype}")));
                     placement.insert("type".into(), json!(wtype));
                     if let Some(w) = po.get("width") {
-                        placement.insert("width".into(), json!(span_int(w, self.at(item, "width", wspan), "width")?));
+                        placement.insert(
+                            "width".into(),
+                            json!(span_int(w, self.at(item, "width", wspan), "width")?),
+                        );
                     }
                     if let Some(h) = po.get("height") {
-                        placement.insert("height".into(), json!(span_int(h, self.at(item, "height", wspan), "height")?));
+                        placement.insert(
+                            "height".into(),
+                            json!(span_int(h, self.at(item, "height", wspan), "height")?),
+                        );
                     }
                     if let Some(fw) = po.get("fullWidth") {
                         let Value::Bool(b) = fw else {
-                            return Err(Diag::new(self.at(item, "fullWidth", wspan), "`fullWidth` must be true or false"));
+                            return Err(Diag::new(
+                                self.at(item, "fullWidth", wspan),
+                                "`fullWidth` must be true or false",
+                            ));
                         };
                         if *b {
                             placement.insert("fullWidth".into(), json!(true));
@@ -560,7 +602,10 @@ impl DashboardExtractor<'_, '_> {
             placements.push(Json::Object(placement));
         }
         if placements.is_empty() {
-            return Err(Diag::new(wspan, "adminDashboard() `widgets` must list at least one widget"));
+            return Err(Diag::new(
+                wspan,
+                "adminDashboard() `widgets` must list at least one widget",
+            ));
         }
         decl.insert("widgets".into(), Json::Array(placements));
         Ok(Json::Object(decl))

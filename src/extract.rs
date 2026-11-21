@@ -2281,7 +2281,9 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
                     return Err(Diag::new(sp, format!("`{k}` can't be {}", other.describe())));
                 }
                 _ => {
-                    return Err(Diag::new(sp, format!("global() has no option `{k}`")).help("use label, ui, access, agents"));
+                    return Err(
+                        Diag::new(sp, format!("global() has no option `{k}`")).help("use label, ui, access, agents")
+                    );
                 }
             }
         }
@@ -2312,7 +2314,14 @@ fn extract_kind_ui(
     let Value::Object(o) = v else {
         return Err(Diag::new(span, format!("`ui` must be an object, not {}", v.describe())));
     };
-    const ALLOWED: &[&str] = &["icon", "singularLabel", "description", "group", "defaultColumns", "hidden"];
+    const ALLOWED: &[&str] = &[
+        "icon",
+        "singularLabel",
+        "description",
+        "group",
+        "defaultColumns",
+        "hidden",
+    ];
     let mut map = serde_json::Map::new();
     for (k, val) in o.borrow().iter() {
         if matches!(val, Value::Undef) {
@@ -2320,8 +2329,9 @@ fn extract_kind_ui(
         }
         let kspan = ev.key_span(v, k).unwrap_or(span);
         if !ALLOWED.contains(&k.as_str()) {
-            return Err(Diag::new(kspan, format!("`ui` has no option `{k}`"))
-                .help(format!("use {}", ALLOWED.join(", "))));
+            return Err(
+                Diag::new(kspan, format!("`ui` has no option `{k}`")).help(format!("use {}", ALLOWED.join(", ")))
+            );
         }
         match (k.as_str(), val) {
             ("icon" | "singularLabel" | "description" | "group", Value::Str(s)) => {
@@ -2369,8 +2379,9 @@ fn extract_global_ui(v: Option<&Value>, span: Span, ev: &Evaluator<'_>) -> Resul
         }
         let kspan = ev.key_span(v, k).unwrap_or(span);
         if !ALLOWED.contains(&k.as_str()) {
-            return Err(Diag::new(kspan, format!("`ui` has no option `{k}`"))
-                .help(format!("use {}", ALLOWED.join(", "))));
+            return Err(
+                Diag::new(kspan, format!("`ui` has no option `{k}`")).help(format!("use {}", ALLOWED.join(", ")))
+            );
         }
         match (k.as_str(), val) {
             ("icon" | "description" | "group", Value::Str(s)) => {

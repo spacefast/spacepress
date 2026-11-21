@@ -260,8 +260,13 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
                     "dashboards" => ("a dashboard", "export const opsDashboard = adminDashboard({ ... })"),
                     _ => ("a screen", "export const pendingOrders = adminScreen({ ... })"),
                 };
-                return Err(Diag::new(span, format!("defineConfig() has no option `{key}`: {noun} registers by its export"))
-                    .help(format!("write `{example}` in typedpress.config.ts or any file under tp/; the export name is its id")));
+                return Err(Diag::new(
+                    span,
+                    format!("defineConfig() has no option `{key}`: {noun} registers by its export"),
+                )
+                .help(format!(
+                    "write `{example}` in typedpress.config.ts or any file under tp/; the export name is its id"
+                )));
             }
         }
     }

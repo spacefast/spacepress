@@ -10592,21 +10592,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
         span: Span,
         m_span: Span,
     ) -> Result<Out> {
-        const METHODS: [&str; 7] = ["list", "paginate", "get", "count", "create", "update", "delete"];
+        const METHODS: [&str; 9] = [
+            "list", "paginate", "get", "count", "create", "update", "delete", "restore", "purge",
+        ];
         if !METHODS.contains(&m) {
             let mut d = Diag::new(m_span, format!("kinds have no method `{m}`"));
             if let Some(s) = suggest(m, METHODS) {
                 d = d.help(format!("did you mean `{s}`?"));
             } else {
-                d = d.help("use list, paginate, get, count, create, update or delete");
+                d = d.help("use list, paginate, get, count, create, update, delete, restore or purge");
             }
             return Err(d);
         }
         let key = self.schema.collections[table].key.clone();
         self.uses(
-            if matches!(m, "create" | "update") {
+            if matches!(m, "create" | "update" | "restore") {
                 "write"
-            } else if m == "delete" {
+            } else if matches!(m, "delete" | "purge") {
                 "delete"
             } else {
                 "read"
@@ -10618,6 +10620,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "create" => self.writes(m_span, "creates a row"),
             "update" => self.writes(m_span, "updates a row"),
             "delete" => self.writes(m_span, "deletes a row"),
+            "restore" => self.writes(m_span, "restores a row"),
+            "purge" => self.writes(m_span, "permanently deletes a row"),
             _ => {}
         }
         let mut plain = Vec::new();
@@ -10732,6 +10736,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     row,
                 )
             }
+            "restore" => {
+                let target = id(self, plain[0])?;
+                (
+                    format!(
+                        "\\TypedPress\\Seam::kindRestore({}, {target}, {trusted})",
+                        php_str(table)
+                    ),
+                    row,
+                )
+            }
+            "purge" => {
+                let target = id(self, plain[0])?;
+                (
+                    format!(
+                        "\\TypedPress\\Seam::kindPurge({}, {target}, {trusted})",
+                        php_str(table)
+                    ),
+                    row,
+                )
+            }
             _ => {
                 let target = id(self, plain[0])?;
                 (
@@ -10759,19 +10783,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let allowed: &[&str] = if paginate {
             &[
-                "where", "orderBy", "with", "search", "limit", "cursor", "columns", "locale",
+                "where", "orderBy", "with", "search", "limit", "cursor", "columns", "locale", "deleted",
             ]
         } else if list {
             &[
-                "where", "orderBy", "with", "search", "limit", "offset", "columns", "locale",
+                "where", "orderBy", "with", "search", "limit", "offset", "columns", "locale", "deleted",
             ]
         } else if props
             .iter()
             .any(|p| matches!(p, Prop::KV(PropKey::Static(k), _) if k == "with" || k == "columns"))
         {
-            &["with", "columns", "locale"]
+            &["with", "columns", "locale", "deleted"]
         } else {
-            &["where", "search", "locale", "with", "columns"]
+            &["where", "search", "locale", "with", "columns", "deleted"]
         };
         let mut rest = Vec::new();
         let mut extra = Vec::new();
@@ -10873,11 +10897,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     l.wrapped()
                 }
+                "deleted" => {
+                    let d = self.expr(v)?;
+                    if !assignable(&d.ty, &Ty::Str) {
+                        return err(v.span, "`deleted` must be \"exclude\", \"include\" or \"only\"");
+                    }
+                    d.wrapped()
+                }
                 other => {
                     let mut d = Diag::new(v.span, format!("query options have no `{other}`"));
                     if let Some(s) = suggest(
                         other,
-                        ["where", "orderBy", "limit", "offset", "columns", "with", "locale"],
+                        ["where", "orderBy", "limit", "offset", "columns", "with", "locale", "deleted"],
                     ) {
                         d = d.help(format!("did you mean `{s}`?"));
                     }

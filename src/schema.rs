@@ -335,19 +335,27 @@ pub enum HookKind {
     AfterUpdate,
     BeforeDelete,
     AfterDelete,
+    BeforeRestore,
+    AfterRestore,
+    BeforePurge,
+    AfterPurge,
     /// A post kind's item became published (created published, updated into it, or a scheduled
     /// item reached its time). Spec §2.8.
     AfterPublish,
 }
 
 impl HookKind {
-    pub const ALL: [HookKind; 7] = [
+    pub const ALL: [HookKind; 11] = [
         HookKind::BeforeCreate,
         HookKind::AfterCreate,
         HookKind::BeforeUpdate,
         HookKind::AfterUpdate,
         HookKind::BeforeDelete,
         HookKind::AfterDelete,
+        HookKind::BeforeRestore,
+        HookKind::AfterRestore,
+        HookKind::BeforePurge,
+        HookKind::AfterPurge,
         HookKind::AfterPublish,
     ];
 
@@ -359,6 +367,10 @@ impl HookKind {
             HookKind::AfterUpdate => "afterUpdate",
             HookKind::BeforeDelete => "beforeDelete",
             HookKind::AfterDelete => "afterDelete",
+            HookKind::BeforeRestore => "beforeRestore",
+            HookKind::AfterRestore => "afterRestore",
+            HookKind::BeforePurge => "beforePurge",
+            HookKind::AfterPurge => "afterPurge",
             HookKind::AfterPublish => "afterPublish",
         }
     }
@@ -401,7 +413,24 @@ impl Access {
 }
 
 /// Operations a collection's access config covers, in schema.php order.
-pub const ACCESS_OPS: [&str; 4] = ["read", "create", "update", "delete"];
+pub const ACCESS_OPS: [&str; 6] = ["read", "create", "update", "delete", "restore", "purge"];
+
+/// Retention policy for revisions (`keepLast` and/or `maxAge`). `None` = `"forever"`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RevisionRetention {
+    pub keep_last: Option<u32>,
+    pub max_age_seconds: Option<u64>,
+}
+
+/// Config-driven retention policy for soft-deleted rows and revisions.
+/// When absent (or `"forever"`), TypedPress never automatically purges deleted rows or revisions.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Retention {
+    /// Seconds before soft-deleted rows / trashed posts are auto-purged. `None` = `"forever"`.
+    pub deleted_seconds: Option<u64>,
+    /// Revision retention limits. `None` = `"forever"`.
+    pub revisions: Option<RevisionRetention>,
+}
 
 /// How comments behave on a kind (spec §2.3). `comments: true` is these defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -448,6 +477,10 @@ pub struct Collection {
     pub editor: bool,
     pub drafts: bool,
     pub revisions: bool,
+    /// Native soft delete: default `true` on `collection()` and `table()` (without `existingTable`).
+    pub soft_delete: bool,
+    /// Per-kind retention override; inherits `Schema::retention` (default `"forever"`).
+    pub retention: Option<Retention>,
     /// `staged: false` turns staged versions off for a collection (they need its revisions).
     pub staged: bool,
     /// `comments: true`: the post type supports WordPress comments; every other kind has them off.
@@ -690,6 +723,9 @@ pub struct Schema {
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
     /// while it runs. Holds what the build read from the lock `typedpress pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
+    /// `defineConfig({ retention })`: global retention policy for soft-deleted rows and revisions.
+    /// `None` means `"forever"` (never automatically purge).
+    pub retention: Option<Retention>,
 }
 
 /// `output` in `defineConfig`, Astro's word for it.
@@ -750,6 +786,7 @@ impl Default for Schema {
             pings: true,
             sealed: None,
             runtime_schema: None,
+            retention: None,
         }
     }
 }

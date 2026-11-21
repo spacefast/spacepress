@@ -312,6 +312,17 @@ final class App
             };
         }
 
+        if ($n === 3 && in_array($segments[2], ['restore', 'purge'], true)) {
+            $op = $segments[2];
+            self::allow($method, $op === 'restore' ? ['POST'] : ['DELETE']);
+            $this->gate($spec, 'delete');
+            $row = $op === 'restore'
+                ? ($this->db->restore($name, $where, true, $viewer)[0] ?? throw $missing())
+                : ($this->db->purge($name, $where, true, $viewer)[0] ?? throw $missing());
+
+            return [200, $row];
+        }
+
         if ($segments[2] !== 'revisions') {
             throw $notFound();
         }

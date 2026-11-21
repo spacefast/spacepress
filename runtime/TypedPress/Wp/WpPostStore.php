@@ -23,6 +23,11 @@ final class WpPostStore implements Store
 {
     /** The sync uid (§5.3): hidden meta, not an SCF field. */
     public const UID_META = '_tp_uid';
+    public const CREATED_AT_META = '_tp_created_at';
+    public const UPDATED_AT_META = '_tp_updated_at';
+    public const DELETED_AT_META = '_tp_deleted_at';
+    public const DELETED_BY_META = '_tp_deleted_by';
+    public const DELETED_GROUP_META = '_tp_deleted_group';
 
     /** @var array<string, Source> */
     private array $sources = [];
@@ -247,6 +252,37 @@ final class WpPostStore implements Store
                 $system && $col === 'order' && ($spec['hierarchical'] ?? false) => new ColumnRef('{a}.menu_order', '', '{a}.menu_order', 'scalar'),
                 $system && $col === 'status' => new ColumnRef("CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END", '', '', 'scalar'),
                 $system && $col === 'uid' => new ColumnRef($v, "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::UID_META . "'", $v, 'scalar'),
+                $system && $col === 'author' => new ColumnRef('NULLIF({a}.post_author, 0)', '', 'NULLIF({a}.post_author, 0)', 'scalar'),
+                $system && $col === 'createdAt' => new ColumnRef(
+                    "COALESCE(NULLIF({j}.meta_value, ''), CASE WHEN {a}.post_date_gmt <> '0000-00-00 00:00:00' THEN " . $this->dialect->isoTimestamp('{a}.post_date_gmt') . ' ELSE ' . $this->dialect->isoTimestamp('{a}.post_date') . ' END)',
+                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::CREATED_AT_META . "'",
+                    '',
+                    'scalar',
+                ),
+                $system && $col === 'updatedAt' => new ColumnRef(
+                    "COALESCE(NULLIF({j}.meta_value, ''), CASE WHEN {a}.post_modified_gmt <> '0000-00-00 00:00:00' THEN " . $this->dialect->isoTimestamp('{a}.post_modified_gmt') . ' ELSE ' . $this->dialect->isoTimestamp('{a}.post_modified') . ' END)',
+                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::UPDATED_AT_META . "'",
+                    '',
+                    'scalar',
+                ),
+                $system && $col === 'deletedAt' => new ColumnRef(
+                    $v,
+                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_AT_META . "'",
+                    '',
+                    'scalar',
+                ),
+                $system && $col === 'deletedBy' => new ColumnRef(
+                    $v,
+                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_BY_META . "'",
+                    "CAST($v AS SIGNED)",
+                    'scalar',
+                ),
+                $system && $col === 'deletedGroup' => new ColumnRef(
+                    $v,
+                    "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::DELETED_GROUP_META . "'",
+                    '',
+                    'scalar',
+                ),
                 $system && $col === 'publishedAt' => new ColumnRef(
                     "CASE WHEN {a}.post_date_gmt = '0000-00-00 00:00:00' THEN NULL ELSE " . $this->dialect->isoTimestamp('{a}.post_date_gmt') . ' END',
                     '',
@@ -438,6 +474,76 @@ final class WpPostStore implements Store
         $this->db->core(static fn () => wp_delete_post((int) $pk, true));
     }
 
+    public function softDelete(string $collection, int|string $pk, string $at, ?int $userId, ?string $group): void
+    {
+        $id = (int) $pk;
+        $this->db->touchPost($id);
+        $this->db->core(static function () use ($id, $at, $userId, $group): void {
+            wp_trash_post($id);
+            update_post_meta($id, self::DELETED_AT_META, $at);
+            if ($userId !== null) {
+                update_post_meta($id, self::DELETED_BY_META, (string) $userId);
+            } else {
+                delete_post_meta($id, self::DELETED_BY_META);
+            }
+            if ($group !== null) {
+                update_post_meta($id, self::DELETED_GROUP_META, $group);
+            } else {
+                delete_post_meta($id, self::DELETED_GROUP_META);
+            }
+        });
+        clean_post_cache($id);
+    }
+
+    public function restore(string $collection, int|string $pk): void
+    {
+        $spec = $this->schema->collection($collection);
+        $id = (int) $pk;
+        $post = get_post($id);
+        if (!$post instanceof \WP_Post) {
+            throw HttpError::notFound("No $collection row with id $id");
+        }
+        // Check active-row uniqueness before untrashing (restoring desired slug if WordPress suffixed `__trashed`).
+        $check = [];
+        $slugCol = $spec['slug'] ?? null;
+        if ($slugCol !== null) {
+            $desired = get_post_meta($id, '_wp_desired_post_slug', true);
+            $check[$slugCol] = is_string($desired) && $desired !== ''
+                ? $desired
+                : (string) preg_replace('/__trashed$/', '', (string) $post->post_name);
+        }
+        $titleCol = $spec['title'] ?? null;
+        if ($titleCol !== null && ($spec['columns'][$titleCol]['unique'] ?? false)) {
+            $check[$titleCol] = (string) $post->post_title;
+        }
+        foreach ($spec['columns'] as $col => $def) {
+            if (($def['unique'] ?? false) && $this->isMeta($spec, (string) $col)) {
+                $val = get_post_meta($id, $spec['wp']['metaPrefix'] . $col, true);
+                if ($val !== '' && $val !== false && $val !== null) {
+                    $check[(string) $col] = $val;
+                }
+            }
+        }
+        $this->checkUnique($collection, $check, $id);
+        $this->db->touchPost($id);
+        $prevStatus = get_post_meta($id, '_wp_trash_meta_status', true);
+        $this->db->core(static function () use ($id, $prevStatus): void {
+            $filter = static fn (string $newStatus, int $postId, string $previous): string => $postId === $id && is_string($prevStatus) && $prevStatus !== ''
+                ? $prevStatus
+                : ($postId === $id && $previous !== '' ? $previous : $newStatus);
+            add_filter('wp_untrash_post_status', $filter, PHP_INT_MAX, 3);
+            try {
+                wp_untrash_post($id);
+            } finally {
+                remove_filter('wp_untrash_post_status', $filter, PHP_INT_MAX);
+            }
+            delete_post_meta($id, self::DELETED_AT_META);
+            delete_post_meta($id, self::DELETED_BY_META);
+            delete_post_meta($id, self::DELETED_GROUP_META);
+        });
+        clean_post_cache($id);
+    }
+
     /** Core wp_posts fields for the columns present in $values (§4.4). */
     private function corePost(array $spec, array $values): array
     {
@@ -460,6 +566,9 @@ final class WpPostStore implements Store
             if (array_key_exists('order', $values)) {
                 $post['menu_order'] = (int) ($values['order'] ?? 0);
             }
+        }
+        if (array_key_exists('author', $values) && ($spec['columns']['author']['system'] ?? false) && $values['author'] !== null) {
+            $post['post_author'] = (int) $values['author'];
         }
         if (array_key_exists('status', $values) && ($spec['columns']['status']['system'] ?? false)) {
             $post['post_status'] = ['draft' => 'draft', 'published' => 'publish', 'scheduled' => 'future'][$values['status']] ?? 'draft';
@@ -548,6 +657,12 @@ final class WpPostStore implements Store
     {
         if (isset($values['uid']) && ($spec['columns']['uid']['system'] ?? false)) {
             $this->db->core(static fn () => update_post_meta($id, self::UID_META, $values['uid']));
+        }
+        if (isset($values['createdAt']) && ($spec['columns']['createdAt']['system'] ?? false)) {
+            $this->db->core(static fn () => update_post_meta($id, self::CREATED_AT_META, (string) $values['createdAt']));
+        }
+        if (isset($values['updatedAt']) && ($spec['columns']['updatedAt']['system'] ?? false)) {
+            $this->db->core(static fn () => update_post_meta($id, self::UPDATED_AT_META, (string) $values['updatedAt']));
         }
         Scf::$io++;
         try {

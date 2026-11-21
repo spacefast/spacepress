@@ -15,7 +15,7 @@ namespace TypedPress;
 final class Db
 {
     private const MAX_HOOK_DEPTH = 8;
-    private const QUERY_OPTS = ['where', 'orderBy', 'limit', 'offset', 'columns', 'with', 'search', 'searchFields'];
+    private const QUERY_OPTS = ['where', 'orderBy', 'limit', 'offset', 'columns', 'with', 'search', 'searchFields', 'deleted'];
 
     private static ?self $instance = null;
     private static ?self $current = null;
@@ -328,8 +328,22 @@ final class Db
                     throw HttpError::invalidQuery("Unknown query option '$k'", $ptr . HttpError::seg($k));
                 }
             }
+            $deleted = $opts['deleted'] ?? 'exclude';
+            if (!in_array($deleted, ['exclude', 'include', 'only'], true)) {
+                throw HttpError::invalidQuery("deleted must be 'exclude', 'include', or 'only'", $ptr . '/deleted');
+            }
+            if ($deleted !== 'exclude' && $viewer !== null) {
+                $restoreRule = Access::collectionRules($spec)['restore'];
+                $allowed = $this->current(fn () => Access::evaluate($restoreRule, $viewer, 'restore', null, $spec['columns'], $collection));
+                if ($allowed === false) {
+                    throw Access::deny($viewer->user, "read deleted $collection rows");
+                }
+                if (is_array($allowed)) {
+                    $guards[] = $allowed;
+                }
+            }
             if ($viewer !== null) {
-                array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true));
+                array_push($guards, ...$this->readGuards($collection, $viewer, forSelect: true, deleted: $deleted));
             }
             $filterViewer ??= $viewer;
             // `search`: the rows whose searchable fields this reader may read hold every word, as one
@@ -446,7 +460,7 @@ final class Db
     }
 
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
-    private function readGuards(string $collection, Viewer $viewer, bool $forSelect = false): array
+    private function readGuards(string $collection, Viewer $viewer, bool $forSelect = false, string $deleted = 'exclude'): array
     {
         $spec = $this->schema->collection($collection);
         $rule = Access::collectionRules($spec)['read'];
@@ -458,7 +472,11 @@ final class Db
         // WordPress's own posts: who reads a draft is core's answer, applied by the store's guards.
         if (($spec['drafts'] ?? false) && Access::isShorthand($rule) && !($spec['native'] ?? false)
             && ($viewer->user === null || Schema::roleRank($viewer->user['role']) < Schema::roleRank('editor'))) {
-            $guards[] = ['status' => 'published'];
+            if ($deleted === 'exclude') {
+                $guards[] = ['status' => 'published'];
+            } elseif ($deleted === 'include' && ($spec['softDelete'] ?? false)) {
+                $guards[] = ['OR' => [['status' => 'published'], ['deletedAt' => ['isNotNull' => true]]]];
+            }
         }
 
         return [...$guards, ...$this->store->readGuards($collection, $viewer, $forSelect)];
@@ -718,6 +736,7 @@ final class Db
                 if (!is_array($data) || ($data !== [] && array_is_list($data))) {
                     throw HttpError::invalidInput('Each row must be an object', '');
                 }
+                $data = array_filter($data, static fn (mixed $v): bool => $v !== JsUndefined::Value);
                 $data = Schema::resolveAliases($spec, $data);
                 // One instant per row: every `now` default, nested ones and publishedAt included.
                 $out[] = Js::atInstant(fn () => $this->createOne($collection, $spec, $data, $viewer, $around));
@@ -732,7 +751,11 @@ final class Db
     {
         [$set, $where] = [Seam::container($set), Seam::filter($collection, $where, $this->schema)];
         // Flattened before the access rule sees the patch: rules get plain arrays outside json() values.
+        // In update(), `undefined` means untouched (omitted) while `null` clears nullable fields.
         $set = Seam::toPhp($set, $this->schema->collection($collection)['columns']);
+        if (is_array($set)) {
+            $set = array_filter($set, static fn (mixed $v): bool => $v !== JsUndefined::Value);
+        }
         $set = Schema::resolveAliases($this->schema->collection($collection), $set);
         return $this->nested(function () use ($collection, $set, $where, $returning, $viewer, $errorViewer) {
             $spec = $this->schema->collection($collection);
@@ -770,8 +793,55 @@ final class Db
             $guards = $viewer === null ? [] : $this->writeGuards($collection, 'delete', $viewer, null);
             $opts = ['where' => $where];
             $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
+            $out = [];
             foreach ($rows as $row) {
-                $this->deleteOne($collection, $row, $viewer);
+                $out[] = $this->deleteOne($collection, $row, $viewer);
+            }
+
+            return $returning ? $this->present($out, $collection, $viewer) : null;
+        });
+    }
+
+    /**
+     * Restore soft-deleted rows matching $where (and any cascade-deleted children sharing their deletedGroup).
+     * Requires `restore` access (which defaults to `delete` access).
+     *
+     * @return ?list<array>
+     */
+    public function restore(string $collection, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
+    {
+        $where = Seam::filter($collection, $where, $this->schema);
+        return $this->nested(function () use ($collection, $where, $returning, $viewer) {
+            $spec = $this->schema->collection($collection);
+            if (!($spec['softDelete'] ?? false)) {
+                throw HttpError::invalidQuery("`$collection` does not use softDelete");
+            }
+            $guards = $viewer === null ? [] : $this->writeGuards($collection, 'restore', $viewer, null);
+            $opts = ['where' => $where, 'deleted' => 'only'];
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
+            $out = [];
+            foreach ($rows as $row) {
+                $out[] = $this->restoreOne($collection, $row, $viewer);
+            }
+
+            return $returning ? $this->present($out, $collection, $viewer) : null;
+        });
+    }
+
+    /**
+     * Permanently delete rows matching $where (active or soft-deleted). Default access is `"system"` (denied to untrusted callers).
+     *
+     * @return ?list<array>
+     */
+    public function purge(string $collection, array|JsObject $where, bool $returning = false, ?Viewer $viewer = null): ?array
+    {
+        $where = Seam::filter($collection, $where, $this->schema);
+        return $this->nested(function () use ($collection, $where, $returning, $viewer) {
+            $guards = $viewer === null ? [] : $this->writeGuards($collection, 'purge', $viewer, null);
+            $opts = ['where' => $where, 'deleted' => 'include'];
+            $rows = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer);
+            foreach ($rows as $row) {
+                $this->purgeOne($collection, $row, $viewer);
             }
 
             return $returning ? $this->present($rows, $collection, $viewer) : null;
@@ -817,11 +887,14 @@ final class Db
         $this->rejectUnknown($columns, $data);
         $statusGiven = array_key_exists('status', $data);
         $data = $this->withDefaults($collection, $data, $viewer);
+        if (isset($columns['author']) && ($columns['author']['system'] ?? false) && ($columns['author']['readOnly'] ?? false) && !array_key_exists('author', $data)) {
+            $data['author'] = $this->actor['id'] ?? null;
+        }
         if ($spec['drafts'] ?? false) {
             $data = $this->draftRules($data, $statusGiven ? null : 'published', null);
         }
         Extensions::write('create', $collection, $data, null, $viewer, $provided);
-        $this->rejectUnknown($columns, $data);
+        $this->rejectUnknown($columns, $data, null, true);
         $fills = $spec['beforeCreateFills'] ?? [];
         foreach ($columns as $name => $col) {
             if (Schema::isRequired($col) && !array_key_exists($name, $data) && !in_array($name, $fills, true)
@@ -856,7 +929,7 @@ final class Db
                 $result = $slot($data, $ctx);
                 if (is_array($result)) { $data = $result; }
             }
-            $this->rejectUnknown($columns, $data);
+            $this->rejectUnknown($columns, $data, null, true);
         }
 
         $norm = [];
@@ -931,7 +1004,7 @@ final class Db
         $previous = $existing;
         Extensions::write('update', $collection, $patch, $previous, $viewer, $provided);
         $patch = $values + $patch;
-        $this->checkPatch($spec, $previous, $patch);
+        $this->checkPatch($spec, $previous, $patch, true);
         $ctx = $this->hookCtx();
         if (isset($spec['hooks']['beforeUpdate'])) {
             $slot = $spec['hooks']['beforeUpdate'];
@@ -946,7 +1019,7 @@ final class Db
                 $result = $slot($patch, $existing, $ctx);
                 if (is_array($result)) { $patch = $result; }
             }
-            $this->checkPatch($spec, $previous, $patch);
+            $this->checkPatch($spec, $previous, $patch, true);
         }
         unset($patch[$pk]);
         $norm = [];
@@ -1013,12 +1086,36 @@ final class Db
         }
     }
 
-    private function deleteOne(string $collection, array $row, ?Viewer $viewer): void
+    private function deleteOne(string $collection, array $row, ?Viewer $viewer, ?string $group = null): array
     {
         $spec = $this->schema->collection($collection);
         $existing = $row;
         Extensions::write('delete', $collection, $row, $existing, $viewer, $existing);
         $this->hook($collection, $spec, 'beforeDelete', $row);
+        if (($spec['softDelete'] ?? false) && method_exists($this->store, 'softDelete')) {
+            $group ??= self::uuid();
+            $this->softReferentialActions($collection, $row, $group, $viewer);
+            $at = Js::iso(Js::now());
+            $userId = $this->actor['id'] ?? null;
+            $pkValue = $this->pkValue($spec, $row);
+            try {
+                $this->store->softDelete($collection, $pkValue, $at, is_int($userId) ? $userId : null, $group);
+            } catch (\Throwable $e) {
+                throw $this->store->mapError($e);
+            }
+            $row['deletedAt'] = $at;
+            $row['deletedBy'] = is_int($userId) ? $userId : null;
+            if (array_key_exists('deletedGroup', $row)) {
+                $row['deletedGroup'] = $group;
+            }
+            if (array_key_exists('_live', $row)) {
+                $row['_live'] = null;
+            }
+            $this->hook($collection, $spec, 'afterDelete', $row);
+            Extensions::written('delete', $collection, $row, $existing);
+
+            return $row;
+        }
         $this->referentialActions($collection, $row, $viewer);
         try {
             $this->store->delete($collection, $this->pkValue($spec, $row));
@@ -1027,6 +1124,121 @@ final class Db
         }
         $this->hook($collection, $spec, 'afterDelete', $row);
         Extensions::written('delete', $collection, $row, $existing);
+
+        return $row;
+    }
+
+    private function restoreOne(string $collection, array $row, ?Viewer $viewer, bool $cascadeChildren = true): array
+    {
+        $spec = $this->schema->collection($collection);
+        $pkValue = $this->pkValue($spec, $row);
+        $group = is_string($row['deletedGroup'] ?? null) && $row['deletedGroup'] !== '' ? $row['deletedGroup'] : null;
+        $this->hook($collection, $spec, 'beforeRestore', $row);
+        try {
+            $this->store->restore($collection, $pkValue);
+        } catch (\Throwable $e) {
+            throw $this->store->mapError($e);
+        }
+        if ($cascadeChildren && $group !== null) {
+            $this->restoreGroupChildren($collection, $pkValue, $group, $viewer);
+        }
+        [$restored] = $this->readByPk($collection, $spec, $pkValue);
+        $this->hook($collection, $spec, 'afterRestore', $restored);
+        Extensions::written('update', $collection, $restored, $row);
+
+        return $restored;
+    }
+
+    /** Restore any soft-deleted children across kinds that were cascade-deleted under the same deletedGroup. */
+    private function restoreGroupChildren(string $parentCollection, int|string $parentPk, string $group, ?Viewer $viewer): void
+    {
+        foreach ($this->schema->kinds() as $child => $cspec) {
+            if (!($cspec['softDelete'] ?? false) || !isset($cspec['columns']['deletedGroup'])) {
+                continue;
+            }
+            $opts = ['where' => ['deletedGroup' => $group], 'deleted' => 'only'];
+            $dependents = $this->selectDecoded((string) $child, $opts, '', null);
+            $cpk = $cspec['primaryKey'];
+            foreach ($dependents as $dep) {
+                if ((string) $child === $parentCollection && (string) $dep[$cpk] === (string) $parentPk) {
+                    continue;
+                }
+                $this->nested(fn () => $this->restoreOne((string) $child, $dep, $viewer, cascadeChildren: false));
+            }
+        }
+    }
+
+    private function purgeOne(string $collection, array $row, ?Viewer $viewer): void
+    {
+        $spec = $this->schema->collection($collection);
+        $existing = $row;
+        $this->hook($collection, $spec, 'beforePurge', $row);
+        $this->referentialActions($collection, $row, $viewer, purge: true);
+        try {
+            $this->store->delete($collection, $this->pkValue($spec, $row));
+        } catch (\Throwable $e) {
+            throw $this->store->mapError($e);
+        }
+        $this->hook($collection, $spec, 'afterPurge', $row);
+        Extensions::written('delete', $collection, $row, $existing);
+    }
+
+    /** Referential actions for soft delete: enforces restrict against active children, cascades deletedGroup, preserves many-ref links for restore. */
+    private function softReferentialActions(string $collection, array $row, string $group, ?Viewer $viewer = null): void
+    {
+        $this->requireDeleteVisibility($collection, $viewer);
+        foreach ($this->schema->kinds() as $child => $cspec) {
+            foreach ($cspec['columns'] as $col => $c) {
+                $ref = $c['references'] ?? null;
+                if ($c['type'] === 'refList') {
+                    // Links are preserved on soft delete so restore() recovers them intact; still enforce `restrict` against active owners.
+                    if ($ref === null || $ref['collection'] !== $collection || str_starts_with($ref['join'], 'term:')) {
+                        continue;
+                    }
+                    if (strtolower($ref['onDelete'] ?? 'cascade') === 'restrict') {
+                        $id = $row[$ref['column']];
+                        $links = $this->links()->links($ref['join'], 'target_id', [$id]);
+                        if ($links !== []) {
+                            $owners = array_values(array_unique(array_column($links, 'owner_id')));
+                            $cpk = $cspec['primaryKey'];
+                            $opts = ['where' => [$cpk => ['in' => $owners]], 'limit' => 1];
+                            if ($this->selectDecoded((string) $child, $opts, '', null) !== []) {
+                                throw new HttpError(409, 'reference_violation', "Rows in $child still link to this row");
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if ($ref === null || $ref['collection'] !== $collection || $row[$ref['column']] === null) {
+                    continue;
+                }
+                $where = [$col => $row[$ref['column']]];
+                $opts = ['where' => $where, 'limit' => 1];
+                $action = strtolower($ref['onDelete'] ?? 'no action');
+                if ($action === 'cascade') {
+                    $this->nested(function () use ($child, $where, $group, $viewer): void {
+                        $opts = ['where' => $where];
+                        foreach ($this->selectDecoded((string) $child, $opts, '', null) as $dependent) {
+                            $this->deleteOne((string) $child, $dependent, $viewer, $group);
+                        }
+                    });
+                } elseif ($action === 'set null' || $action === 'set default') {
+                    $value = $action === 'set default' && isset($c['default']) ? Schema::generate($c['default'], $c) : null;
+                    $this->update((string) $child, [$col => $value], $where, errorViewer: $viewer);
+                } elseif ($this->selectDecoded((string) $child, $opts, '', null) !== []) {
+                    throw new HttpError(409, 'reference_violation', "Rows in $child still reference this row");
+                }
+            }
+        }
+    }
+
+    private static function uuid(): string
+    {
+        $b = random_bytes(16);
+        $b[6] = chr((ord($b[6]) & 0x0f) | 0x40);
+        $b[8] = chr((ord($b[8]) & 0x3f) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
     }
 
     /** Check the whole cascading graph before looking for any children, including empty branches. */
@@ -1115,10 +1327,11 @@ final class Db
      * FK actions in the pipeline (§4.2, §11.12): for every column referencing this collection, apply
      * its onDelete to the rows pointing at $row before $row goes. Hooks and revisions apply.
      */
-    private function referentialActions(string $collection, array $row, ?Viewer $viewer = null): void
+    private function referentialActions(string $collection, array $row, ?Viewer $viewer = null, bool $purge = false): void
     {
         $this->requireDeleteVisibility($collection, $viewer);
         $spec = $this->schema->collection($collection);
+        $deletedMode = $purge ? 'include' : 'exclude';
         foreach ($this->schema->kinds() as $child => $cspec) {
             foreach ($cspec['columns'] as $col => $c) {
                 $ref = $c['references'] ?? null;
@@ -1142,13 +1355,17 @@ final class Db
                     continue;
                 }
                 $where = [$col => $row[$ref['column']]];
-                $opts = ['where' => $where, 'limit' => 1];
+                $opts = ['where' => $where, 'limit' => 1, 'deleted' => $deletedMode];
                 $action = strtolower($ref['onDelete'] ?? 'no action');
                 if ($action === 'cascade') {
-                    $this->nested(function () use ($child, $where, $viewer): void {
-                        $opts = ['where' => $where];
+                    $this->nested(function () use ($child, $where, $viewer, $purge, $deletedMode): void {
+                        $opts = ['where' => $where, 'deleted' => $deletedMode];
                         foreach ($this->selectDecoded((string) $child, $opts, '', null) as $dependent) {
-                            $this->deleteOne((string) $child, $dependent, $viewer);
+                            if ($purge) {
+                                $this->purgeOne((string) $child, $dependent, $viewer);
+                            } else {
+                                $this->deleteOne((string) $child, $dependent, $viewer);
+                            }
                         }
                     });
                 } elseif ($action === 'set null' || $action === 'set default') {
@@ -1455,12 +1672,15 @@ final class Db
         });
     }
 
-    /** Unknown fields, and fields storage computes (a term's `count` and `url`), are refused. */
-    private function rejectUnknown(array $columns, array $data, ?array $existing = null): void
+    /** Unknown fields, and fields storage computes (a term's `count` and `url`, system readOnly columns), are refused. */
+    private function rejectUnknown(array $columns, array $data, ?array $existing = null, bool $allowSystem = false): void
     {
         foreach ($data as $key => $v) {
             if (!isset($columns[$key])) {
                 throw HttpError::invalidInput("Unknown field '$key'", HttpError::seg($key));
+            }
+            if ($allowSystem && ($columns[$key]['system'] ?? false)) {
+                continue;
             }
             // An update may resend what it read, unchanged.
             if (($columns[$key]['readOnly'] ?? false) && ($existing === null || !Js::strictEq($v, $existing[$key] ?? null))) {
@@ -1469,9 +1689,9 @@ final class Db
         }
     }
 
-    private function checkPatch(array $spec, array $existing, array $patch): void
+    private function checkPatch(array $spec, array $existing, array $patch, bool $allowSystem = false): void
     {
-        $this->rejectUnknown($spec['columns'], $patch, $existing);
+        $this->rejectUnknown($spec['columns'], $patch, $existing, $allowSystem);
         $pk = $spec['primaryKey'];
         if (array_key_exists($pk, $patch) && !Js::strictEq($patch[$pk], $existing[$pk])) {
             throw HttpError::invalidInput('The primary key cannot be changed', HttpError::seg($pk));

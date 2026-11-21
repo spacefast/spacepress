@@ -57,6 +57,13 @@ final class Schema
      */
     public function commerce(): ?array { return $this->raw['store'] ?? null; }
 
+    public function raw(): array { return $this->raw; }
+
+    public function retention(): ?array
+    {
+        return is_array($this->raw['retention'] ?? null) ? $this->raw['retention'] : null;
+    }
+
     public function runtimeSchema(): ?array
     {
         return $this->raw['runtimeSchema'] ?? null;

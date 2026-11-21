@@ -2,7 +2,15 @@ CREATE TABLE `{prefix}tp_locations` (
 	`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 	`name` LONGTEXT NOT NULL,
 	`kind` VARCHAR(191) DEFAULT 'pantry' NOT NULL,
-	PRIMARY KEY (`id`)
+	`author` BIGINT,
+	`createdAt` CHAR(24) DEFAULT '1970-01-01T00:00:00.000Z' NOT NULL,
+	`updatedAt` CHAR(24) DEFAULT '1970-01-01T00:00:00.000Z' NOT NULL,
+	`deletedAt` CHAR(24),
+	`deletedBy` BIGINT,
+	`deletedGroup` VARCHAR(36),
+	`_live` TINYINT(1) DEFAULT 1,
+	PRIMARY KEY (`id`),
+	KEY `deletedAt_idx` (`deletedAt`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 --> statement-breakpoint
 CREATE TABLE `{prefix}tp_items` (
@@ -16,10 +24,16 @@ CREATE TABLE `{prefix}tp_items` (
 	`opened` TINYINT(1) DEFAULT 0 NOT NULL,
 	`locationId` BIGINT UNSIGNED,
 	`tags` LONGTEXT NOT NULL,
-	`createdAt` CHAR(24) NOT NULL,
-	`updatedAt` CHAR(24) NOT NULL,
+	`createdAt` CHAR(24) DEFAULT '1970-01-01T00:00:00.000Z' NOT NULL,
+	`updatedAt` CHAR(24) DEFAULT '1970-01-01T00:00:00.000Z' NOT NULL,
+	`author` BIGINT,
+	`deletedAt` CHAR(24),
+	`deletedBy` BIGINT,
+	`deletedGroup` VARCHAR(36),
+	`_live` TINYINT(1) DEFAULT 1,
 	PRIMARY KEY (`id`),
-	UNIQUE KEY `slug_unique` (`slug`),
+	UNIQUE KEY `slug_unique` (`slug`, `_live`),
+	KEY `deletedAt_idx` (`deletedAt`),
 	KEY `expiresOn_queried` (`expiresOn`),
 	KEY `quantity_queried` (`quantity`),
 	CONSTRAINT `tp_items_locationId_fk` FOREIGN KEY (`locationId`) REFERENCES `{prefix}tp_locations` (`id`) ON DELETE SET NULL
@@ -31,10 +45,16 @@ CREATE TABLE `{prefix}tp_shopping_list` (
 	`name` LONGTEXT NOT NULL,
 	`done` TINYINT(1) DEFAULT 0 NOT NULL,
 	`notifiedAt` CHAR(24),
-	`createdAt` CHAR(24) NOT NULL,
-	`updatedAt` CHAR(24) NOT NULL,
+	`createdAt` CHAR(24) DEFAULT '1970-01-01T00:00:00.000Z' NOT NULL,
+	`updatedAt` CHAR(24) DEFAULT '1970-01-01T00:00:00.000Z' NOT NULL,
+	`author` BIGINT,
+	`deletedAt` CHAR(24),
+	`deletedBy` BIGINT,
+	`deletedGroup` VARCHAR(36),
+	`_live` TINYINT(1) DEFAULT 1,
 	PRIMARY KEY (`id`),
-	UNIQUE KEY `itemId_unique` (`itemId`),
+	UNIQUE KEY `itemId_unique` (`itemId`, `_live`),
+	KEY `deletedAt_idx` (`deletedAt`),
 	KEY `done_queried` (`done`),
 	CONSTRAINT `tp_shopping_list_itemId_fk` FOREIGN KEY (`itemId`) REFERENCES `{prefix}tp_items` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

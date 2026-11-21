@@ -105,6 +105,25 @@ final class CompositeStore implements Store, Links
         $this->for($collection)->delete($collection, $pk);
     }
 
+    public function softDelete(string $collection, int|string $pk, string $at, ?int $userId, ?string $group): void
+    {
+        $store = $this->for($collection);
+        if (method_exists($store, 'softDelete')) {
+            $store->softDelete($collection, $pk, $at, $userId, $group);
+            return;
+        }
+        $store->delete($collection, $pk);
+    }
+
+    public function restore(string $collection, int|string $pk): void
+    {
+        $store = $this->for($collection);
+        if (!method_exists($store, 'restore')) {
+            throw new \LogicException("Store for $collection does not support restore()");
+        }
+        $store->restore($collection, $pk);
+    }
+
     public function dialect(): Dialect
     {
         return $this->tables->dialect();

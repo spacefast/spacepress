@@ -54,7 +54,7 @@ expectType<Equal<Hero, { layout: "hero"; heading: string }>>();
 expectType<Equal<Post["status"], "draft" | "published" | "scheduled">>();
 expectType<Equal<Post["publishedAt"], string | null>>();
 expectType<Equal<Author["status"], "draft" | "published" | "scheduled">>();
-expectType<Equal<keyof Comment, "id" | "postId" | "body" | "approved">>();
+expectType<Equal<keyof Comment, "id" | "postId" | "body" | "approved" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy">>();
 expectType<Equal<"status" extends keyof Item ? true : false, false>>();
 // title is required; slug({ source }) derives, so it's optional; status defaults to published.
 expectType<Equal<RequiredKeys<InferInsertModel<typeof posts>>, "title">>();
@@ -117,7 +117,7 @@ async function queries() {
     where: { itemId: { locationId: { kind: "fridge" } }, OR: [{ done: true }, { itemId: 3 }, { itemId: { in: [1, 2] } }] },
     orderBy: { name: "asc" },
   });
-  expectType<Equal<keyof (typeof lists)[number], "id" | "itemId" | "name">>();
+  expectType<Equal<keyof (typeof lists)[number], "id" | "itemId" | "name" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy">>();
 
   const inserted = await db.insert(items).values([{ name: "a" }, { name: "b", unit: "kg" }]).returning();
   expectType<Equal<typeof inserted, Item[]>>();
@@ -144,7 +144,7 @@ async function queries() {
 type PostAccess = NonNullable<NonNullable<Parameters<typeof import("typedpress").collection>[1]>["access"]>;
 declare const accessCtx: AccessCtx<Partial<InferInsertModel<typeof posts>>>;
 expectType<Equal<typeof accessCtx.user, User | null>>();
-expectType<Equal<typeof accessCtx.op, "read" | "create" | "update" | "delete">>();
+expectType<Equal<typeof accessCtx.op, "read" | "create" | "update" | "delete" | "restore" | "purge">>();
 expectType<Equal<NonNullable<typeof accessCtx.data>["status"], "draft" | "published" | "scheduled" | undefined>>();
 void (0 as unknown as PostAccess);
 declare const vctx: ValidateCtx;

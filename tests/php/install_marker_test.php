@@ -156,7 +156,9 @@ eq('which replaces it once Action Scheduler accepts', [$status, $maintenance()],
 // A migration the database refuses: the request that runs it fails, records nothing, and every request
 // after it retries (and fails) instead of skipping the check.
 $migrations = $wp->dir . '/content/plugins/typedpress-app-blog/tp/app/migrations';
-file_put_contents("$migrations/0002_broken.sql", "ALTER TABLE `{prefix}no_such_table` ADD COLUMN `x` INT;\n");
+$brokenMigDir = "$migrations/20261121180000_aaaaaa_broken";
+@mkdir($brokenMigDir, 0777, true);
+file_put_contents("$brokenMigDir/migration.sql", "ALTER TABLE `{prefix}no_such_table` ADD COLUMN `x` INT;\n");
 $broken = $schema;
 $broken['collections']['posts']['label'] = 'Broken build';
 $wp->writeSchema($broken);
@@ -165,7 +167,8 @@ check('a failing migration is tried', in_array('ledger', checks($statements), tr
 eq('and leaves no marker', $marker(), null);
 [$status, $statements] = request($url, '/__tp/api/v1/posts');
 eq('the next request retries it, and TypedPress refuses meanwhile', [$status, in_array('schema hash', checks($statements), true), $marker()], [503, true, null]);
-unlink("$migrations/0002_broken.sql");
+unlink("$brokenMigDir/migration.sql");
+rmdir($brokenMigDir);
 $wp->writeSchema($schema);
 request($url, '/');
 check('once the build is fixed, the marker is recorded again', $marker() !== null, $marker());

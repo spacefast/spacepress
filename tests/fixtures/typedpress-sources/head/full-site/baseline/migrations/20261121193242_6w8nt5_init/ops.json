@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "id": "20261121182417_weed7z_init",
+  "id": "20261121193242_6w8nt5_init",
   "ops": [
     {
       "op": "createTable",
@@ -47,8 +47,86 @@
             "enum": null,
             "default": 0,
             "references": null
+          },
+          "author": {
+            "type": "integer",
+            "notNull": false,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "createdAt": {
+            "type": "timestamp",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": "1970-01-01T00:00:00.000Z",
+            "references": null
+          },
+          "updatedAt": {
+            "type": "timestamp",
+            "notNull": true,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": "1970-01-01T00:00:00.000Z",
+            "references": null
+          },
+          "deletedAt": {
+            "type": "timestamp",
+            "notNull": false,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "deletedBy": {
+            "type": "integer",
+            "notNull": false,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "deletedGroup": {
+            "type": "text",
+            "notNull": false,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": 36.0,
+            "enum": null,
+            "default": null,
+            "references": null
+          },
+          "_live": {
+            "type": "boolean",
+            "notNull": false,
+            "primaryKey": false,
+            "autoIncrement": false,
+            "unique": false,
+            "max": null,
+            "enum": null,
+            "default": true,
+            "references": null
           }
         },
+        "softDelete": true,
         "queried": [
           "id",
           "noteId"

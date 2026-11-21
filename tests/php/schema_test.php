@@ -73,7 +73,7 @@ check('describe hides function names, hooks and wp identifiers',
     !str_contains($described, '__') && !str_contains($described, 'hooks') && !str_contains($described, 'postType') && !str_contains($described, 'handler'),
     $described);
 eq('describe summarises access', [$schema->describe()['collections']['posts']['access'], $schema->describe()['actions']['publishedCount']['access']],
-    [['read' => 'rule', 'create' => 'author', 'update' => 'rule', 'delete' => 'editor'], 'anyone']);
+    [['read' => 'rule', 'create' => 'author', 'update' => 'rule', 'delete' => 'editor', 'restore' => 'editor', 'purge' => false], 'anyone']);
 
 // ---------------------------------------------------------------- scalar formats
 

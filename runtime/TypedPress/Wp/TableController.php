@@ -60,6 +60,14 @@ final class TableController extends \WP_REST_Controller
             ['methods' => \WP_REST_Server::DELETABLE, 'callback' => [$this, 'delete_item'], 'permission_callback' => '__return_true', 'args' => []],
             'schema' => [$this, 'get_public_item_schema'],
         ]);
+        register_rest_route($this->namespace, '/' . $this->rest_base . '/(?P<id>[^/]+)/restore', [
+            'args' => $id,
+            ['methods' => \WP_REST_Server::CREATABLE, 'callback' => [$this, 'restore_item'], 'permission_callback' => '__return_true', 'args' => []],
+        ]);
+        register_rest_route($this->namespace, '/' . $this->rest_base . '/(?P<id>[^/]+)/purge', [
+            'args' => $id,
+            ['methods' => \WP_REST_Server::DELETABLE, 'callback' => [$this, 'purge_item'], 'permission_callback' => '__return_true', 'args' => []],
+        ]);
     }
 
     // Access is TypedPress's rules, decided inside each callback by the pipeline (one decision, one place):
@@ -68,13 +76,13 @@ final class TableController extends \WP_REST_Controller
     public function get_items($request)
     {
         return $this->run('list', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
-            $query = array_intersect_key($request->get_query_params(), array_flip(['where', 'orderBy', 'with', 'locale', 'search']));
+            $query = array_intersect_key($request->get_query_params(), array_flip(['where', 'orderBy', 'with', 'locale', 'search', 'deleted']));
             $opts = App::listOptions($query);
             $perPage = (int) $request['per_page'];
             $page = (int) $request['page'];
             $db = $this->db();
             // The total over the same pipeline (read rule, query checks), counted in SQL.
-            $count = $db->countQuery($this->collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true, 'search' => true]));
+            $count = $db->countQuery($this->collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true, 'search' => true, 'deleted' => true]));
             $total = (int) (Plugin::instance()?->connection()->run($count['sql'], $count['params'])[0]['n'] ?? 0);
             // `offset` (core's own list argument) wins over `page`, as on core's posts and users routes.
             $offset = $request['offset'] !== null ? (int) $request['offset'] : ($page - 1) * $perPage;
@@ -144,8 +152,27 @@ final class TableController extends \WP_REST_Controller
         return $this->run('delete', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
             $row = $this->db()->delete($this->collection, [$this->pk() => $this->id($request)], true, $viewer)[0]
                 ?? throw $this->missing($request);
-            // Core's shape for a permanent delete.
             return rest_ensure_response(['deleted' => true, 'previous' => $this->prepare_item_for_response($row, $request)->get_data()]);
+        });
+    }
+
+    public function restore_item($request)
+    {
+        return $this->run('delete', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
+            $row = $this->db()->restore($this->collection, [$this->pk() => $this->id($request)], true, $viewer)[0]
+                ?? throw $this->missing($request);
+
+            return $this->prepare_item_for_response($row, $request);
+        });
+    }
+
+    public function purge_item($request)
+    {
+        return $this->run('delete', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
+            $row = $this->db()->purge($this->collection, [$this->pk() => $this->id($request)], true, $viewer)[0]
+                ?? throw $this->missing($request);
+
+            return rest_ensure_response(['purged' => true, 'previous' => $this->prepare_item_for_response($row, $request)->get_data()]);
         });
     }
 
@@ -192,6 +219,7 @@ final class TableController extends \WP_REST_Controller
             'where' => ['description' => 'A TypedPress filter, as JSON: `{"email":{"like":"%@example.com"}}`.', 'type' => 'string'],
             'orderBy' => ['description' => 'TypedPress fields to sort by, comma-separated; `-field` sorts descending.', 'type' => 'string'],
             'with' => ['description' => 'Relations to attach: `team,signups` or a JSON object.', 'type' => 'string'],
+            'deleted' => ['description' => 'Soft-delete filter: exclude (default), include, or only.', 'type' => 'string', 'enum' => ['exclude', 'include', 'only']],
         ] + ((Plugin::instance()?->schema->collection($this->collection)['localized'] ?? false)
             ? ['locale' => ['description' => 'A TypedPress locale, or `*`: that locale\'s rows, else each translation group\'s fallback.', 'type' => 'string']]
             : []);

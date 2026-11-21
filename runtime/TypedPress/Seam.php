@@ -327,7 +327,7 @@ final class Seam
     {
         $viewer = self::as($trusted);
         $opts = self::query($collection, $opts);
-        return Db::instance()->count($collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true, 'search' => true]));
+        return Db::instance()->count($collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true, 'search' => true, 'deleted' => true]));
     }
 
     /**
@@ -366,6 +366,26 @@ final class Seam
         $db = Db::instance();
         $pk = $db->schema()->collection($collection)['primaryKey'];
         $row = $db->delete($collection, [$pk => self::toPhp($id)], true, self::as($trusted))[0] ?? null;
+
+        return self::rowToJs($collection, $row ?? throw HttpError::notFound("No $collection row with $pk " . Js::str($id)));
+    }
+
+    /** Restores a soft-deleted row (and any cascade-deleted children sharing its deletedGroup). */
+    public static function kindRestore(string $collection, mixed $id, bool $trusted): JsObject
+    {
+        $db = Db::instance();
+        $pk = $db->schema()->collection($collection)['primaryKey'];
+        $row = $db->restore($collection, [$pk => self::toPhp($id)], true, self::as($trusted))[0] ?? null;
+
+        return self::rowToJs($collection, $row ?? throw HttpError::notFound("No deleted $collection row with $pk " . Js::str($id)));
+    }
+
+    /** Permanently deletes a row (active or soft-deleted). Default access is "system". */
+    public static function kindPurge(string $collection, mixed $id, bool $trusted): JsObject
+    {
+        $db = Db::instance();
+        $pk = $db->schema()->collection($collection)['primaryKey'];
+        $row = $db->purge($collection, [$pk => self::toPhp($id)], true, self::as($trusted))[0] ?? null;
 
         return self::rowToJs($collection, $row ?? throw HttpError::notFound("No $collection row with $pk " . Js::str($id)));
     }

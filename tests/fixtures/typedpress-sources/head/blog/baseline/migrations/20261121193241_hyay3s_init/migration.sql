@@ -5,8 +5,15 @@ CREATE TABLE `{prefix}tp_comments` (
 	`body` LONGTEXT NOT NULL,
 	`approved` TINYINT(1) DEFAULT 0 NOT NULL,
 	`notifiedAt` CHAR(24),
-	`createdAt` CHAR(24) NOT NULL,
+	`createdAt` CHAR(24) DEFAULT '1970-01-01T00:00:00.000Z' NOT NULL,
+	`author` BIGINT,
+	`updatedAt` CHAR(24) DEFAULT '1970-01-01T00:00:00.000Z' NOT NULL,
+	`deletedAt` CHAR(24),
+	`deletedBy` BIGINT,
+	`deletedGroup` VARCHAR(36),
+	`_live` TINYINT(1) DEFAULT 1,
 	PRIMARY KEY (`id`),
+	KEY `deletedAt_idx` (`deletedAt`),
 	KEY `approved_queried` (`approved`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 --> statement-breakpoint

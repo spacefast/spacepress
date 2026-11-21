@@ -31,6 +31,29 @@ export type { ServicesConfig, ServiceForm, ServiceFormField, ServiceProduct } fr
 /** Flattens intersections so hovers show a plain object. */
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
+/** Branded primary-key / reference ID for a kind (e.g. `Id<"posts">`). Assignable to `number`, prevents cross-kind ID mixups. */
+export type Id<Kind extends string = string> = number & { readonly __tp_kind?: Kind };
+
+/** Retention duration: `"forever"` (default, never auto-purge) or a duration like `"30d"`, `"90d"`, `"1y"`. */
+export type RetentionDuration = "forever" | `${number}${"s" | "m" | "h" | "d" | "w" | "y"}`;
+
+/** Revision pruning policy: keep the latest `keepLast` revisions and/or prune revisions older than `maxAge`. */
+export interface RevisionRetention {
+  keepLast?: number;
+  maxAge?: RetentionDuration;
+}
+
+/** Retention policy for soft-deleted rows and revisions. Default is `"forever"` (never auto-purge). */
+export type RetentionConfig =
+  | "forever"
+  | {
+      deleted?: RetentionDuration;
+      revisions?: "forever" | RevisionRetention;
+    };
+
+/** Which rows a query includes when soft deletes are enabled. Default: `"exclude"`. */
+export type DeletedMode = "exclude" | "include" | "only";
+
 type Awaitable<T> = T | Promise<T>;
 
 /** Phantom keys: carry type information without showing up in autocomplete. */
@@ -452,8 +475,12 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   url?: `/${string}`;
   /** Native on collections; opt-in publication state on tables. */
   drafts?: boolean;
-  /** Keep a revision per update. Default true for collections, false for tables. */
+  /** Keep a revision per write. Default true for collections and tables. */
   revisions?: boolean;
+  /** Native soft deletes (Trash on collections, `_live`/`deletedAt` on tables). Default true; set `false` to hard-delete immediately. */
+  softDelete?: boolean;
+  /** Per-kind retention override (inherits config `retention`, default `"forever"`). */
+  retention?: RetentionConfig;
   /**
    * Staged versions: a change to an item saved beside the live one, then compared, promoted or
    * discarded. Default true for collections; `false` turns them off. collection() only.
@@ -568,11 +595,25 @@ type IdentityColumns<TUid extends boolean, TSync extends string | undefined> = T
   : TSync extends string ? { uid: ColumnBuilder<"text", string, true, true> } : {};
 type TranslatedColumns<TCols> = HasLocalized<TCols> extends true ? LocaleColumns<TCols> : {};
 
+/** Automatic system fields present on every collection() and table() unless declared explicitly. */
+export type SystemColumns = {
+  author: ColumnBuilder<"integer", number, false, true>;
+  createdAt: ColumnBuilder<"timestamp", string, true, true>;
+  updatedAt: ColumnBuilder<"timestamp", string, true, true>;
+};
+
+/** Soft-delete system fields present when `softDelete !== false` (the default). */
+export type SoftDeleteColumns = {
+  deletedAt: ColumnBuilder<"timestamp", string, false, true>;
+  deletedBy: ColumnBuilder<"integer", number, false, true>;
+};
+
 /** The implicit integer `id` every kind has. */
 type WithId<TCols extends ColumnsConfig> = [PrimaryKeyOf<TCols>] extends [never]
   ? "id" extends keyof TCols ? TCols : TCols & { id: ColumnBuilder<"id", number, true, true, false, true> }
   : TCols;
-type StoredColumns<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> = WithId<TCols> & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>;
+type WithSystem<TCols extends ColumnsConfig> = TCols & Omit<SystemColumns, keyof TCols> & Omit<SoftDeleteColumns, keyof TCols>;
+type StoredColumns<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> = WithId<TCols> & Omit<SystemColumns, keyof TCols> & Omit<SoftDeleteColumns, keyof TCols> & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>;
 
 /** WordPress posts, native editor, drafts and revisions. Registry key supplies identity. */
 export declare function collection<
@@ -610,7 +651,7 @@ type PostFields = ColumnsConfig & { [K in keyof PostColumns | keyof DraftColumns
 type PostKind<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> =
   Collection<string, StoredColumns<PostColumns & TCols, TUid, TSync> & DraftColumns>;
 /** Options a `wp.posts` kind takes: comments are on unless `comments: false`. */
-type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "url" | "comments" | "access" | "label" | "ui" | "sync" | "uid" | "agents" | "api" | "staged">;
+type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "url" | "comments" | "access" | "label" | "ui" | "sync" | "uid" | "agents" | "api" | "staged" | "softDelete" | "retention">;
 
 /**
  * WordPress's own kinds. `wp.posts` is WordPress's posts: the block editor, comments, drafts, revisions,
@@ -948,6 +989,7 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
     TWith extends WithConfig<TSchema, TRels, K> = {},
   >(config?: {
     locale?: Locale | "*";
+    deleted?: DeletedMode;
     where?: RelationsFilter<TSchema, TRels, K>;
     orderBy?: OrderBy<TSchema[K]>;
     limit?: number;
@@ -961,6 +1003,7 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
     TWith extends WithConfig<TSchema, TRels, K> = {},
   >(config?: {
     locale?: Locale | "*";
+    deleted?: DeletedMode;
     where?: RelationsFilter<TSchema, TRels, K>;
     orderBy?: OrderBy<TSchema[K]>;
     offset?: number;
@@ -996,6 +1039,8 @@ type RegisteredRelations = Register extends { relations: Relations<any, infer C>
 
 type KindListOptions<TSchema extends Schema, TRels, K extends keyof TSchema, TCols, TWith> = {
   locale?: Locale | "*";
+  /** Soft-delete filter: `"exclude"` (default), `"include"`, or `"only"`. Non-default modes require `restore` or `delete` access. */
+  deleted?: DeletedMode;
   where?: RelationsFilter<TSchema, TRels, K>;
   orderBy?: OrderBy<TSchema[K]>;
   /** A case-insensitive match on the kind's title, content and text fields the visitor may read. */
@@ -1021,14 +1066,18 @@ export interface KindApi<TSchema extends Schema, TRels, K extends keyof TSchema>
   /** One row by id or by a filter (`{ slug: "hello" }`); null when no row the visitor may read matches. A kind they may not read at all throws the API's 401/403. */
   get<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
     target: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id | RelationsFilter<TSchema, TRels, K> : RelationsFilter<TSchema, TRels, K>,
-    q?: { locale?: Locale | "*"; columns?: TCols; with?: TWith },
+    q?: { locale?: Locale | "*"; deleted?: DeletedMode; columns?: TCols; with?: TWith },
   ): Promise<QueryRow<TSchema, TRels, K, TCols, TWith> | null>;
-  count(q?: { locale?: Locale | "*"; where?: RelationsFilter<TSchema, TRels, K>; search?: string }): Promise<number>;
+  count(q?: { locale?: Locale | "*"; deleted?: DeletedMode; where?: RelationsFilter<TSchema, TRels, K>; search?: string }): Promise<number>;
   create(data: TSchema[K]["$inferInsert"]): Promise<TSchema[K]["$inferSelect"]>;
   /** The updated row; a 404 when no row has that id or the visitor's update rule doesn't cover it. */
   update(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, patch: Partial<TSchema[K]["$inferInsert"]>): Promise<TSchema[K]["$inferSelect"]>;
-  /** The deleted row; a 404 when no row has that id or the visitor's delete rule doesn't cover it. */
+  /** Soft-deletes the row (when `softDelete` is on, the default) or hard-deletes it; a 404 when no row has that id or the visitor's delete rule doesn't cover it. */
   delete(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
+  /** Restores a soft-deleted row and any cascade-deleted children sharing its `deletedGroup`. Throws 409 on unique collision. */
+  restore(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
+  /** Permanently deletes a row (active or soft-deleted). Default access is `"system"`. */
+  purge(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
 }
 
 /** The app's kinds by registered name: what `import { posts } from "typedpress:db"` gives you. */
@@ -1141,7 +1190,7 @@ export interface BeforeHookCtx<TData> extends HookCtx<TData> {
 
 export interface AccessCtx<TData = Record<string, unknown>> {
   user: User | null;
-  op: "read" | "create" | "update" | "delete";
+  op: "read" | "create" | "update" | "delete" | "restore" | "purge";
   /** create: the incoming row (after defaults, before beforeCreate). update: the patch. Absent otherwise. */
   data?: TData;
 }
@@ -1162,8 +1211,8 @@ export type AccessFilter<T extends AnyCollection> = {
   NOT?: AccessFilter<T>;
 } & { [relation: string]: unknown };
 
-/** `"anyone"` includes unauthenticated callers; `"authenticated"` is any user; a role admits itself and above. */
-export type AccessShorthand = boolean | "anyone" | "authenticated" | "self" | Role;
+/** `"anyone"` includes unauthenticated callers; `"authenticated"` is any user; `"system"` allows trusted/system callers only; a role admits itself and above. */
+export type AccessShorthand = boolean | "anyone" | "authenticated" | "self" | "system" | Role;
 
 /**
  * Who may perform an operation. Functions are compiled to PHP; they may read `ctx` and constants,
@@ -1178,12 +1227,14 @@ export type CreateAccessRule<T extends AnyCollection = AnyCollection> =
   | AccessShorthand
   | ((ctx: AccessCtx<Partial<Insert<T>>>) => boolean);
 
-/** Defaults: `read: "anyone"`, writes `"editor"`. Readers below editor only see published rows unless `read` is a function. */
+/** Defaults: `read: "anyone"`, writes `"editor"`, `restore` inherits `delete`, `purge: "system"`. Readers below editor only see published rows unless `read` is a function. */
 export interface AccessConfig<T extends AnyCollection = AnyCollection> {
   read?: AccessRule<T>;
   create?: Exclude<CreateAccessRule<T>, "self">;
   update?: AccessRule<T>;
   delete?: AccessRule<T>;
+  restore?: AccessRule<T>;
+  purge?: AccessRule<T>;
 }
 
 /** Actions and globals have no rows to filter: a shorthand or a boolean function. */
@@ -1213,8 +1264,16 @@ export interface CollectionHooks<T extends AnyCollection> {
    * null: WordPress empties its trash on a schedule, with nobody signed in.
    */
   beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
-  /** After a permanent delete, in its transaction. `ctx.user` can be null, as for `beforeDelete`. */
+  /** After a delete (soft delete when `softDelete` is on, permanent otherwise), in its transaction. */
   afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** Before a soft-deleted row is restored; a throw refuses it. */
+  beforeRestore?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** After a soft-deleted row is restored, in its transaction. */
+  afterRestore?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** Before a row is permanently purged; a throw refuses it. */
+  beforePurge?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** After a row is permanently purged, in its transaction. */
+  afterPurge?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   /** A collection's item became published: created published, updated into it, or its scheduled time came. */
   afterPublish?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
 }
@@ -1368,6 +1427,11 @@ export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
    * writes a site that needs no WordPress to serve it.
    */
   output?: "server" | "static";
+  /**
+   * Global retention policy for soft-deleted rows and revisions. Default `"forever"` (never auto-purge;
+   * WordPress's 30-day `wp_scheduled_delete` is unhooked for TypedPress post types unless configured).
+   */
+  retention?: RetentionConfig;
   /**
    * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
    * inferred from its compiled code and granted by the committed `tp/_generated/plugins.lock.json`.

@@ -1569,4 +1569,134 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
     eq('REST with loads the linked rows', [$r['status'], array_column($r['json']['data'][0]['labels'] ?? [], 'name')], [200, ['blue']]);
 })();
 
+// ================================================================ Slice 2: Soft deletes, retention, strict undefined filters, system fields
+(static function (): void {
+    $wp = $GLOBALS['wp'];
+    $now = ['now' => true];
+    $purgedLog = [];
+    $restoredLog = [];
+    $sdSchema = new \TypedPress\Schema([
+        'version' => 5,
+        'runtime' => \TypedPress\Schema::SERIES,
+        'retention' => ['deletedSeconds' => 86400, 'revisions' => null],
+        'collections' => [
+            'sd_parents' => [
+                'primaryKey' => 'id', 'editor' => false, 'softDelete' => true, 'table' => 'tp_sd_parents',
+                'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+                'hooks' => [
+                    'afterRestore' => static function (array $row) use (&$restoredLog): void { $restoredLog[] = $row['email']; },
+                    'afterPurge' => static function (array $row) use (&$purgedLog): void { $purgedLog[] = $row['email']; },
+                ],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'email' => ['type' => 'email', 'notNull' => true, 'unique' => true],
+                    'bio' => ['type' => 'text'],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now, 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                    '_live' => ['type' => 'boolean', 'default' => ['value' => true], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+            ],
+            'sd_children' => [
+                'primaryKey' => 'id', 'editor' => false, 'softDelete' => true, 'table' => 'tp_sd_children',
+                'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'parentId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'sd_parents', 'column' => 'id', 'onDelete' => 'cascade']],
+                    'note' => ['type' => 'text', 'notNull' => true],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now, 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                    '_live' => ['type' => 'boolean', 'default' => ['value' => true], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+            ],
+            'sd_articles' => [
+                'primaryKey' => 'id', 'editor' => true, 'drafts' => true, 'revisions' => true, 'softDelete' => true,
+                'title' => 'title', 'slug' => 'slug', 'wp' => ['postType' => 'tp_sd_articles', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_sd_articles_'],
+                'access' => ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => ['role' => 'editor'], 'delete' => ['role' => 'editor']],
+                'columns' => [
+                    'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                    'title' => ['type' => 'text', 'notNull' => true],
+                    'slug' => ['type' => 'slug', 'notNull' => true, 'unique' => true, 'source' => 'title'],
+                    'status' => ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true],
+                    'publishedAt' => ['type' => 'timestamp', 'system' => true],
+                    'author' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'createdAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'readOnly' => true, 'system' => true],
+                    'updatedAt' => ['type' => 'timestamp', 'notNull' => true, 'default' => $now, 'onUpdate' => $now, 'readOnly' => true, 'system' => true],
+                    'deletedAt' => ['type' => 'timestamp', 'readOnly' => true, 'system' => true],
+                    'deletedBy' => ['type' => 'integer', 'readOnly' => true, 'system' => true],
+                    'deletedGroup' => ['type' => 'text', 'rules' => ['max' => 36], 'hidden' => true, 'readOnly' => true, 'system' => true],
+                ],
+            ],
+        ],
+    ]);
+    register_post_type('tp_sd_articles', ['public' => false, 'supports' => ['title', 'revisions']]);
+    $wp->exec('CREATE TABLE {prefix}tp_sd_parents (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `email` VARCHAR(191) NOT NULL, `bio` LONGTEXT, `author` BIGINT, `createdAt` CHAR(24) NOT NULL, `updatedAt` CHAR(24) NOT NULL, `deletedAt` CHAR(24), `deletedBy` BIGINT, `deletedGroup` VARCHAR(36), `_live` TINYINT(1) DEFAULT 1, PRIMARY KEY (`id`), UNIQUE KEY `email_unique` (`email`, `_live`), INDEX `deletedAt_idx` (`deletedAt`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}tp_sd_children (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `parentId` BIGINT UNSIGNED NOT NULL, `note` LONGTEXT NOT NULL, `author` BIGINT, `createdAt` CHAR(24) NOT NULL, `updatedAt` CHAR(24) NOT NULL, `deletedAt` CHAR(24), `deletedBy` BIGINT, `deletedGroup` VARCHAR(36), `_live` TINYINT(1) DEFAULT 1, PRIMARY KEY (`id`), INDEX `deletedAt_idx` (`deletedAt`)) ENGINE=InnoDB');
+    $store = \TypedPress\Wp\CompositeStore::create($sdSchema, $wp->connection());
+    $db = new \TypedPress\Db($store, $sdSchema, \TypedPress\db()->media());
+    $editor = new \TypedPress\Viewer(['id' => 42, 'name' => 'Ed', 'role' => 'editor']);
+    $guest = new \TypedPress\Viewer(null);
+
+    // System fields auto-populated + read-only to callers
+    $db->setActor($editor->user);
+    problem('read-only system field rejected on create', fn () => $db->insert('sd_parents', ['email' => 'ro@x.test', 'createdAt' => '2020-01-01T00:00:00.000Z'], true), 422, 'invalid_input', '/createdAt');
+    $p1 = $db->insert('sd_parents', ['email' => 'alice@x.test', 'bio' => 'hello'], true)[0];
+    check('system fields populated on create (author, createdAt, updatedAt, deletedAt=null)', $p1['author'] === 42 && is_string($p1['createdAt']) && is_string($p1['updatedAt']) && $p1['deletedAt'] === null, $p1);
+    $c1 = $db->insert('sd_children', ['parentId' => $p1['id'], 'note' => 'child-1'], true)[0];
+
+    // Strict Drizzle 1.0 filter semantics: explicit undefined rejected, update ignores undefined and clears null
+    problem('undefined in where filter throws 422 invalid_input', fn () => $db->findMany('sd_parents', ['where' => ['email' => \TypedPress\JsUndefined::Value]]), 422, 'invalid_input', '/where/email');
+    problem('undefined in operator object throws 422 invalid_input', fn () => $db->findMany('sd_parents', ['where' => ['email' => ['eq' => \TypedPress\JsUndefined::Value]]]), 422, 'invalid_input', '/where/email/eq');
+    problem('undefined in in-list throws 422 invalid_input', fn () => $db->findMany('sd_parents', ['where' => ['id' => ['in' => [\TypedPress\JsUndefined::Value]]]]), 422, 'invalid_input', '/where/id/in/0');
+    $u1 = $db->update('sd_parents', ['email' => \TypedPress\JsUndefined::Value, 'bio' => null], ['id' => $p1['id']], true)[0];
+    eq('update ignores undefined and clears null', [$u1['email'], $u1['bio']], ['alice@x.test', null]);
+
+    // Soft delete + deletedGroup cascade
+    $del = $db->delete('sd_parents', ['id' => $p1['id']], true, $editor)[0];
+    check('soft delete sets deletedAt and deletedBy', is_string($del['deletedAt']) && $del['deletedBy'] === 42, $del);
+    eq('default list excludes soft-deleted parent and cascaded child', [count($db->findMany('sd_parents')), count($db->findMany('sd_children'))], [0, 0]);
+    problem('deleted: only refused to anonymous visitor without restore/delete access', fn () => $db->findMany('sd_parents', ['deleted' => 'only'], $guest), 401, 'unauthenticated');
+    eq('deleted: only visible to editor', [count($db->findMany('sd_parents', ['deleted' => 'only'], $editor)), count($db->findMany('sd_children', ['deleted' => 'only'], $editor))], [1, 1]);
+
+    // Active-row unique reuse while soft-deleted + restore 409 collision
+    $p2 = $db->insert('sd_parents', ['email' => 'alice@x.test', 'bio' => 'reused'], true, $editor)[0];
+    eq('unique email reused while original row is soft-deleted', $p2['email'], 'alice@x.test');
+    problem('restore collides with active row holding same unique email (409)', fn () => $db->restore('sd_parents', ['id' => $p1['id']], true, $editor), 409, 'unique_violation', '/email');
+
+    // Delete second row, then restore first -> restores parent AND cascaded child via deletedGroup!
+    $db->delete('sd_parents', ['id' => $p2['id']], true, $editor);
+    $restored = $db->restore('sd_parents', ['id' => $p1['id']], true, $editor)[0];
+    eq('restore clears deletedAt/deletedBy, restores cascaded child, fires afterRestore', [
+        $restored['deletedAt'], $restored['deletedBy'], count($db->findMany('sd_children')), $restoredLog,
+    ], [null, null, 1, ['alice@x.test']]);
+
+    // Purge: denied to untrusted editor (default "system"), succeeds when trusted, fires afterPurge
+    problem('purge denied to untrusted editor by default (system only)', fn () => $db->purge('sd_parents', ['id' => $p2['id']], true, $editor), 403, 'forbidden');
+    $db->purge('sd_parents', ['id' => $p2['id']], true);
+    eq('trusted purge permanently deletes row and fires afterPurge', [count($db->findMany('sd_parents', ['deleted' => 'include'])), $purgedLog], [1, ['alice@x.test']]);
+
+    // Soft delete on post-backed collection(): WP Trash + restore prior status + purge
+    $art = $db->insert('sd_articles', ['title' => 'Hello Trash'], true, $editor)[0];
+    eq('post collection system fields populated', [$art['author'], is_string($art['createdAt']), $art['deletedAt']], [42, true, null]);
+    $trashed = $db->delete('sd_articles', ['id' => $art['id']], true, $editor)[0];
+    eq('post soft delete moves to WP trash with deletedAt/deletedBy', [get_post_status($art['id']), is_string($trashed['deletedAt']), $trashed['deletedBy']], ['trash', true, 42]);
+    eq('post list excludes trashed by default, finds with deleted: only', [count($db->findMany('sd_articles')), count($db->findMany('sd_articles', ['deleted' => 'only'], $editor))], [0, 1]);
+    $untrashed = $db->restore('sd_articles', ['id' => $art['id']], true, $editor)[0];
+    eq('post restore calls wp_untrash_post and restores published status', [$untrashed['status'], $untrashed['deletedAt'], get_post_status($art['id'])], ['published', null, 'publish']);
+    $db->purge('sd_articles', ['id' => $art['id']], true);
+    eq('post purge permanently deletes post', get_post($art['id']), null);
+
+    // Retention helper: blocks wp_scheduled_delete for TypedPress softDelete post types + reads configured seconds
+    eq('Retention blocks wp_scheduled_delete for softDelete post types', \TypedPress\Wp\Retention::blocksWpScheduledDelete($sdSchema, 'tp_sd_articles'), true);
+    eq('Retention reads configured deletedSeconds', \TypedPress\Wp\Retention::deletedSeconds($sdSchema, 'sd_parents'), 86400);
+    $db->setActor(null);
+})();
+
 finish('db_test');

@@ -1193,6 +1193,12 @@ mod tests {
                 "page",
                 "status",
                 "publishedAt",
+                "author",
+                "createdAt",
+                "updatedAt",
+                "deletedAt",
+                "deletedBy",
+                "deletedGroup",
                 "subtitle"
             ]
         );

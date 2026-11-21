@@ -257,7 +257,9 @@ check('a member reads only their own reservation', !str_contains($second, (strin
 // ---- cancelling: db.delete, through the page's other form
 [$status, $cancelled] = submit('/events/bread-basics/', 'Cancel my reservation', [], 'subscriber');
 check('a member cancels their reservation', $status === 200 && notices($cancelled) === ['Your reservation of 1 seat(s) is cancelled.'], [$status, notices($cancelled) ?: $cancelled]);
-eq('the cancelled reservation is gone', (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations'), 1);
+eq('the cancelled reservation is soft-deleted',
+    [(int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations WHERE `_live` = 1'), (int) $site->scalar('SELECT COUNT(*) FROM {prefix}tp_registrations WHERE `deletedAt` IS NOT NULL')],
+    [1, 1]);
 
 // ---- media and the private handout on the workshop page
 $png = tempnam(sys_get_temp_dir(), 'kspng');
@@ -334,10 +336,14 @@ check('an editor has no link to the site settings', !str_contains($staff, 'optio
 [$status, $again] = $site->call('POST', '/actions/scheduleAgain', ['id' => $eventId], as: 'host');
 eq('the schedule screen copies a workshop to the next week as a draft', [$status, $again['startsOn'] ?? null, get_post_status((int) ($again['id'] ?? 0))], [200, '2027-01-22', 'draft']);
 check('the staff page counts the draft through the kind\'s system API', str_contains(visit('/staff/', as: 'host')[1], '1 draft workshop(s) waiting for review.'));
-eq('only an admin cancels a workshop; the delete hooks keep one that has reservations',
+eq('only an admin cancels a workshop (soft-delete to trash); the delete hooks keep one that has reservations',
     [$site->call('POST', '/actions/cancelWorkshop', ['id' => $again['id'] ?? 0], as: 'host')[0], $site->call('POST', '/actions/cancelWorkshop', ['id' => $again['id'] ?? 0], as: 'admin')[0],
-        get_post((int) ($again['id'] ?? 0)), $site->call('POST', '/actions/cancelWorkshop', ['id' => $eventId], as: 'admin')[1]['code'] ?? null],
-    [403, 200, null, 'has_registrations']);
+        get_post_status((int) ($again['id'] ?? 0)), $site->call('POST', '/actions/cancelWorkshop', ['id' => $eventId], as: 'admin')[1]['code'] ?? null],
+    [403, 200, 'trash', 'has_registrations']);
+eq('an admin can restore and then permanently purge a soft-deleted workshop',
+    [$site->call('POST', '/actions/restoreWorkshop', ['id' => $again['id'] ?? 0], as: 'admin')[0], get_post_status((int) ($again['id'] ?? 0)),
+        $site->call('POST', '/actions/purgeWorkshop', ['id' => $again['id'] ?? 0], as: 'admin')[0], get_post((int) ($again['id'] ?? 0))],
+    [200, 'draft', 200, null]);
 [$status, $recap] = $site->call('POST', '/actions/draftRecap', ['id' => $eventId], as: 'host');
 eq('the schedule screen\'s recap action drafts a WordPress post', [$status, $recap['title'] ?? null, $recap['status'] ?? null, get_post_type((int) ($recap['postId'] ?? 0))], [200, 'Recap: Bread basics', 'draft', 'post']);
 

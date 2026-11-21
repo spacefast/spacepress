@@ -240,6 +240,28 @@ final class Facade
 
             return self::json($status, ['data' => $data]);
         }
+        if (Kinds::first($kind) && count($segments) === 3 && in_array($segments[2], ['restore', 'purge'], true)) {
+            $id = self::id($kind, $segments[1]);
+            $op = $segments[2];
+            \TypedPress\App::allow($method, $op === 'restore' ? ['POST'] : ['DELETE']);
+            self::gate($kind, 'delete');
+            $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+            $db = $plugin->db();
+            $pk = $kind['spec']['primaryKey'];
+            $row = $db->transaction(static function () use ($db, $viewer, $kind, $pk, $id, $op): ?array {
+                $previous = $db->actor();
+                $db->setActor($viewer->user);
+                try {
+                    return $op === 'restore'
+                        ? ($db->restore((string) $kind['name'], [$pk => $id], true, $viewer)[0] ?? null)
+                        : ($db->purge((string) $kind['name'], [$pk => $id], true, $viewer)[0] ?? null);
+                } finally {
+                    $db->setActor($previous);
+                }
+            }) ?? throw HttpError::notFound("No {$kind['name']} row with id $id");
+
+            return self::json(200, ['data' => self::rev($kind, PostMeta::values((string) $kind['name'], $row, array_map('strval', array_keys($row))))]);
+        }
         if (count($segments) !== 2) {
             throw HttpError::notFound("No route for $path");
         }
@@ -256,7 +278,27 @@ final class Facade
             return self::json(200, ['data' => self::rev($kind, Kinds::row($kind, $row))]);
         }
         if ($method === 'DELETE') {
-            // TypedPress's delete is permanent: core trashes posts without `force`, and refuses users without it.
+            // Soft-deletable First kinds go through TypedPress's soft-delete pipeline (Trash for posts,
+            // _live = NULL for SQL tables). Non-soft-deletable kinds keep permanent core delete (`force: true`).
+            if (Kinds::first($kind) && ($kind['spec']['softDelete'] ?? false)) {
+                $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+                $db = $plugin->db();
+                $pk = $kind['spec']['primaryKey'];
+                $row = Rev::guarded((string) $kind['name'], $id, $query[Rev::FIELD] ?? null, ($query[Rev::TAKEOVER] ?? '') === '1', $viewer,
+                    static fn () => $db->transaction(static function () use ($db, $viewer, $kind, $pk, $id): array {
+                        $previous = $db->actor();
+                        $db->setActor($viewer->user);
+                        try {
+                            return $db->delete((string) $kind['name'], [$pk => $id], true, $viewer)[0]
+                                ?? throw HttpError::notFound("No {$kind['name']} row with id $id");
+                        } finally {
+                            $db->setActor($previous);
+                        }
+                    }));
+
+                return self::json(200, ['data' => PostMeta::values((string) $kind['name'], $row, array_map('strval', array_keys($row)))]);
+            }
+            // Non-soft-deletable delete is permanent: core trashes posts without `force`, and refuses users without it.
             $params = match ($kind['type']) {
                 'post', 'wp-post', 'comments', 'media', 'term' => ['force' => true],
                 'users' => ['force' => true, 'reassign' => false], // the member's posts are kept, unowned
@@ -336,8 +378,20 @@ final class Facade
         if (Kinds::first($kind)) {
             // `where` is always TypedPress's (an empty filter when none was given): TypedPress's pipeline picks the
             // rows, so its read rule and draft visibility decide, not core's default status filter.
-            $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale']))
+            $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale', 'deleted']))
                 + ['where' => '{}'] + $paging + self::context($kind);
+            if ($kind['type'] === 'post' && isset($query['deleted']) && $query['deleted'] !== 'exclude') {
+                // Soft-deleted post reads go straight through TypedPress's pipeline (core's WP_Query hides trash).
+                $plugin = Plugin::instance() ?? throw new \LogicException('No TypedPress app');
+                $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+                $db = $plugin->db();
+                $opts = \TypedPress\App::listOptions(array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale', 'deleted'])));
+                $total = $db->count((string) $kind['name'], $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true, 'search' => true, 'deleted' => true]));
+                $rows = $db->findMany((string) $kind['name'], ['limit' => $limit, 'offset' => $offset] + $opts, $viewer);
+                $rows = array_map(static fn (array $r) => self::rev($kind, PostMeta::values((string) $kind['name'], $r, array_map('strval', array_keys($r)))), $rows);
+
+                return self::json(200, ['data' => $rows, 'cursor' => self::cursor($offset + $limit, $total)]);
+            }
             if (isset($query['status'])) {
                 // `status` is shorthand for a filter on `status`, ANDed with `where`.
                 $where = Js::decodeJson((string) $params['where']);

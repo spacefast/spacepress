@@ -386,6 +386,9 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
         cols.insert(col.physical_name().to_string(), column_snapshot(col, schema));
     }
     let mut table = json!({ "editor": c.editor, "drafts": c.drafts, "columns": cols });
+    if c.soft_delete {
+        table["softDelete"] = true.into();
+    }
     if let Some(name) = &c.existing_table {
         table["existingTable"] = name.clone().into();
     }
@@ -436,6 +439,9 @@ fn column_snapshot(col: &Column, schema: &Schema) -> Json {
 fn sql_default(col: &Column) -> Json {
     match &col.default {
         Some(DefaultKind::Value(v)) if !v.is_null() => v.clone(),
+        // `defaultNow()` timestamps are populated by the runtime on every insert; giving the SQL column
+        // a valid ISO-8601 fallback lets forward-only migrations add required timestamp columns safely.
+        Some(DefaultKind::Now) => Json::String("1970-01-01T00:00:00.000Z".into()),
         _ => Json::Null,
     }
 }
@@ -609,6 +615,8 @@ pub fn index_report(snapshot: &Json) -> Json {
                         .join(", "),
                     if unique { ", { unique: true }" } else { "" }
                 )
+            } else if name == "deletedAt_idx" {
+                "softDelete: retention sweep and deleted queries".to_string()
             } else if name.ends_with("_unique") {
                 format!("`{}` is .unique()", ix_cols[0])
             } else if name == "status_publishedAt" {
@@ -640,10 +648,21 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
     let mut out = Vec::new();
     let empty = Map::new();
     let cols = def["columns"].as_object().unwrap_or(&empty);
+    let soft_delete = def["softDelete"].as_bool() == Some(true) && cols.contains_key("_live");
     for (name, c) in cols {
         if c["unique"].as_bool() == Some(true) && c["primaryKey"].as_bool() != Some(true) {
-            out.push((format!("{name}_unique"), true, vec![name.clone()]));
+            // Soft-deletable tables scope unique constraints to active rows via `_live` (NULL on soft-delete),
+            // except sync `uid` which stays globally unique across trashed rows so restore/sync never collide.
+            let ix_cols = if soft_delete && name != "uid" {
+                vec![name.clone(), "_live".into()]
+            } else {
+                vec![name.clone()]
+            };
+            out.push((format!("{name}_unique"), true, ix_cols));
         }
+    }
+    if soft_delete && cols.contains_key("deletedAt") {
+        out.push(("deletedAt_idx".to_string(), false, vec!["deletedAt".into()]));
     }
     if def["drafts"].as_bool() == Some(true) && cols.contains_key("status") && cols.contains_key("publishedAt") {
         out.push((
@@ -667,7 +686,7 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
         out.push(("row".into(), false, vec!["collection".into(), "pk".into()]));
     }
     for ix in def["indexes"].as_array().into_iter().flatten() {
-        let fields: Vec<String> = ix["columns"]
+        let mut fields: Vec<String> = ix["columns"]
             .as_array()
             .into_iter()
             .flatten()
@@ -676,6 +695,9 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
         if !fields.is_empty() && fields.iter().all(|f| cols.get(f).is_some_and(indexable)) {
             let unique = ix["unique"].as_bool() == Some(true);
             let name = format!("idx_{}", fields.join("_"));
+            if unique && soft_delete && !fields.iter().any(|f| f == "_live") {
+                fields.push("_live".into());
+            }
             if !out.iter().any(|(n, _, _)| n == &name) {
                 out.push((name, unique, fields));
             }
@@ -820,7 +842,7 @@ pub fn fits(before: &Json, after: &Json) -> Option<String> {
         (a, b) if a == b && a != "text" => None,
         ("text", "text") => match (width(before), width(after)) {
             (_, None) => None,
-            (Some(a), Some(b)) if a <= b && !char_target => None,
+            (Some(a), Some(b)) if a <= b && (!char_target || render(before).contains("` CHAR(")) => None,
             (_, Some(b)) => Some(fits_width(b)),
         },
         (_, "text") => width(after).map(fits_width),

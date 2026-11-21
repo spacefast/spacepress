@@ -301,7 +301,7 @@ $kindsVersion = $versions->apply($next, $set(
 ), $admin);
 $d = $described();
 eq('a collection added at runtime is a kind with its route', [$d['kinds']['events']['route'] ?? null, $d['kinds']['events']['label'] ?? null, array_keys($d['kinds']['events']['columns'] ?? [])],
-    ['/wp/v2/tp_events', 'Events', ['id', 'title', 'content', 'starts', 'status', 'publishedAt']]);
+    ['/wp/v2/tp_events', 'Events', ['id', 'title', 'content', 'starts', 'status', 'publishedAt', 'author', 'createdAt', 'updatedAt', 'deletedAt', 'deletedBy']]);
 eq('and a global added at runtime is a global', array_keys($d['globals']['banner']['fields'] ?? []), ['text', 'on']);
 $tables = static fn (): array => array_merge(...array_map('array_values', $GLOBALS['wp']->sql('SHOW TABLES')));
 check('no SQL table was created for either', array_filter($tables(), static fn (string $t): bool => str_contains($t, 'tp_events') || str_contains($t, 'banner')) === [], $tables());

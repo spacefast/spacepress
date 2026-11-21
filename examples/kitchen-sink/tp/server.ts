@@ -95,6 +95,18 @@ export const cancelWorkshop = mutation({ access: "admin", destructive: true }, a
   return { id: gone.id };
 });
 
+export const restoreWorkshop = mutation({ access: "admin" }, async ({ id }: { id: number }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
+  const back = await workshops.restore(id);
+  return { id: back.id };
+});
+
+export const purgeWorkshop = mutation({ access: "admin", destructive: true }, async ({ id }: { id: number }) => {
+  if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
+  const gone = await workshops.purge(id);
+  return { id: gone.id };
+});
+
 // The banner the layout shows on every page. Clearing the field takes it down.
 export const postAnnouncement = mutation({ access: "editor" }, async ({ announcement }: { announcement?: string }) => {
   if (announcement !== undefined && announcement.length > 280) throw new HttpError(422, "invalid_input", "announcement must be at most 280 characters", "/announcement");

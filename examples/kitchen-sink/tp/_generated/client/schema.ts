@@ -9,6 +9,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "registrations": {
@@ -45,6 +46,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {},
       "media": [],
@@ -56,6 +58,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "topicIds": {
@@ -73,6 +76,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": true,
       "revisions": true,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "parent": {
@@ -95,6 +99,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "eventId": {
@@ -117,6 +122,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": true,
       "localized": false,
       "relations": {
         "eventId": {
@@ -134,6 +140,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {
         "registrations": {
@@ -151,6 +158,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {
         "recipes": {
@@ -168,6 +176,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {
         "categories": {
@@ -194,6 +203,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {
         "supplies": {
@@ -211,6 +221,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {
         "supplies": {
@@ -228,6 +239,7 @@ export const SCHEMA = {
       "primaryKey": "id",
       "drafts": false,
       "revisions": false,
+      "softDelete": false,
       "localized": false,
       "relations": {},
       "media": [],
@@ -245,6 +257,8 @@ export const SCHEMA = {
     "closeRegistration",
     "scheduleAgain",
     "cancelWorkshop",
+    "restoreWorkshop",
+    "purgeWorkshop",
     "postAnnouncement",
     "draftRecap",
     "checkSchedule",

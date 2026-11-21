@@ -295,7 +295,7 @@ fn every_build_keeps_a_baseline_and_describes_its_storage() {
     assert_eq!(items["fields"]["opened"]["default"], false);
     assert_eq!(
         items["indexes"],
-        serde_json::json!([{ "columns": ["id"], "name": "PRIMARY", "unique": true }, { "columns": ["slug"], "name": "slug_unique", "unique": true }, { "columns": ["locationId"], "name": "tp_items_locationId_fk", "unique": false }])
+        serde_json::json!([{ "columns": ["id"], "name": "PRIMARY", "unique": true }, { "columns": ["slug", "_live"], "name": "slug_unique", "unique": true }, { "columns": ["deletedAt"], "name": "deletedAt_idx", "unique": false }, { "columns": ["locationId"], "name": "tp_items_locationId_fk", "unique": false }])
     );
     assert_eq!(
         described["kinds"]["locations"]["fields"]["kind"]["choices"],

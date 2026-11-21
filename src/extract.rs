@@ -150,10 +150,22 @@ const CONFIG_KEYS: &[&str] = &[
     "output",
     "runtimeSchema",
     "seed",
+    "retention",
 ];
 /// `wp.posts.extend(fields, options)`: what may change about WordPress's own posts.
 const POST_OPTIONS: &[&str] = &[
-    "url", "comments", "access", "label", "ui", "sync", "uid", "agents", "api", "staged",
+    "url",
+    "comments",
+    "access",
+    "label",
+    "ui",
+    "sync",
+    "uid",
+    "agents",
+    "api",
+    "staged",
+    "softDelete",
+    "retention",
 ];
 /// `wp.posts.clone(fields, options)`: the same, and its own stored name.
 const POST_CLONE_OPTIONS: &[&str] = &[
@@ -168,6 +180,8 @@ const POST_CLONE_OPTIONS: &[&str] = &[
     "api",
     "staged",
     "storageName",
+    "softDelete",
+    "retention",
 ];
 
 fn post_call(post: PostKind) -> &'static str {
@@ -185,6 +199,8 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "ui",
     "drafts",
     "revisions",
+    "softDelete",
+    "retention",
     "staged",
     "comments",
     "title",
@@ -351,6 +367,11 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     )?;
     out.schema.xmlrpc = bool_option(&cfg_map, "xmlrpc", true, span_of(ev, config, "xmlrpc", config_span))?;
     out.schema.pings = bool_option(&cfg_map, "pings", true, span_of(ev, config, "pings", config_span))?;
+    out.schema.retention = extract_retention(
+        cfg_map.get("retention"),
+        ev,
+        span_of(ev, config, "retention", config_span),
+    )?;
     let runtime_schema = span_of(ev, config, "runtimeSchema", config_span);
     out.schema.runtime_schema = bool_option(&cfg_map, "runtimeSchema", false, runtime_schema)?.then(Default::default);
     out.schema.frontend = match cfg_map.get("frontend") {
@@ -551,6 +572,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     editor: true,
                     drafts: true,
                     revisions: true,
+                    soft_delete: false,
+                    retention: None,
                     staged: true,
                     comments: false,
                     comment_policy: None,
@@ -733,6 +756,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
+        coll.soft_delete = opts.soft_delete;
+        coll.retention = opts.retention;
         coll.staged = opts.staged;
         coll.comments = opts.comment_policy.is_some();
         coll.comment_policy = opts.comment_policy;
@@ -819,6 +844,56 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             published_at.system = true;
             coll.columns.insert("status".into(), status);
             coll.columns.insert("publishedAt".into(), published_at);
+        }
+        // Automatic system fields on every collection() and table() (unless adopted existingTable or legacy capture).
+        if !ev.legacy() && !coll.auth && coll.existing_table.is_none() {
+            if !coll.columns.contains_key("author") {
+                let mut author = Column::new("author", ColType::Integer);
+                author.system = true;
+                author.read_only = true;
+                coll.columns.insert("author".into(), author);
+            }
+            if !coll.columns.contains_key("createdAt") {
+                let mut created_at = Column::new("createdAt", ColType::Timestamp);
+                created_at.not_null = true;
+                created_at.default = Some(DefaultKind::Now);
+                created_at.system = true;
+                created_at.read_only = true;
+                coll.columns.insert("createdAt".into(), created_at);
+            }
+            if !coll.columns.contains_key("updatedAt") {
+                let mut updated_at = Column::new("updatedAt", ColType::Timestamp);
+                updated_at.not_null = true;
+                updated_at.default = Some(DefaultKind::Now);
+                updated_at.on_update = Some(DefaultKind::Now);
+                updated_at.system = true;
+                updated_at.read_only = true;
+                coll.columns.insert("updatedAt".into(), updated_at);
+            }
+        }
+        if coll.soft_delete {
+            let mut deleted_at = Column::new("deletedAt", ColType::Timestamp);
+            deleted_at.system = true;
+            deleted_at.read_only = true;
+            let mut deleted_by = Column::new("deletedBy", ColType::Integer);
+            deleted_by.system = true;
+            deleted_by.read_only = true;
+            let mut deleted_group = Column::new("deletedGroup", ColType::Text);
+            deleted_group.rules.max = Some(36.0);
+            deleted_group.system = true;
+            deleted_group.read_only = true;
+            deleted_group.hidden = true;
+            coll.columns.insert("deletedAt".into(), deleted_at);
+            coll.columns.insert("deletedBy".into(), deleted_by);
+            coll.columns.insert("deletedGroup".into(), deleted_group);
+            if !coll.editor {
+                let mut live = Column::new("_live", ColType::Boolean);
+                live.default = Some(DefaultKind::Value(Json::Bool(true)));
+                live.system = true;
+                live.read_only = true;
+                live.hidden = true;
+                coll.columns.insert("_live".into(), live);
+            }
         }
     }
     crate::commerce::relations(&mut out.schema);
@@ -1554,6 +1629,8 @@ struct CollOpts {
     editor: bool,
     drafts: bool,
     revisions: bool,
+    soft_delete: bool,
+    retention: Option<Retention>,
     staged: bool,
     comment_policy: Option<crate::schema::CommentPolicy>,
     title: Option<String>,
@@ -1867,7 +1944,8 @@ fn taxonomy_kind(
     };
 
     // access (ruling 29): the spec's defaults, the same keys as every kind.
-    let mut access: IndexMap<String, Access> = ACCESS_OPS
+    const TAXONOMY_ACCESS_OPS: [&str; 4] = ["read", "create", "update", "delete"];
+    let mut access: IndexMap<String, Access> = TAXONOMY_ACCESS_OPS
         .iter()
         .map(|op| {
             (
@@ -1889,9 +1967,9 @@ fn taxonomy_kind(
         };
         for (op, rule) in am.borrow().iter() {
             let sp = access_spans.get(op).copied().unwrap_or(span("access"));
-            if !ACCESS_OPS.contains(&op.as_str()) {
+            if !TAXONOMY_ACCESS_OPS.contains(&op.as_str()) {
                 let mut d = Diag::new(sp, format!("`access` has no operation `{op}`"));
-                d = match suggest(op, ACCESS_OPS.iter().copied()) {
+                d = match suggest(op, TAXONOMY_ACCESS_OPS.iter().copied()) {
                     Some(s) => d.help(format!("did you mean `{s}`?")),
                     None => d.help("use read, create, update, delete"),
                 };
@@ -2101,6 +2179,33 @@ fn collection_options(
         Some(r) => r,
         None => editor,
     };
+    let soft_delete = match flag("softDelete")? {
+        Some(true) if auth => {
+            return Err(Diag::new(span("softDelete"), "userProjection() cannot enable softDelete")
+                .help("WordPress owns user records; remove `softDelete: true`"));
+        }
+        Some(true) if existing_table.is_some() => {
+            return Err(Diag::new(
+                span("softDelete"),
+                "`softDelete: true` isn't available on `existingTable` tables",
+            )
+            .help("remove `softDelete: true`; TypedPress does not alter adopted tables"));
+        }
+        Some(sd) => sd,
+        None => !auth && existing_table.is_none() && !ev.legacy(),
+    };
+    if soft_delete {
+        for reserved in ["deletedAt", "deletedBy", "deletedGroup", "_live"] {
+            if let Some(b) = c.columns.get(reserved) {
+                return Err(Diag::new(
+                    b.span,
+                    format!("`{reserved}` is reserved: softDelete adds these (deletedAt, deletedBy, deletedGroup, _live)"),
+                )
+                .help("remove the column, or opt out with `{ softDelete: false }`"));
+            }
+        }
+    }
+    let retention = extract_retention(o.get("retention"), ev, span("retention"))?;
     // Staged versions are WordPress revisions of a post: on for collections unless turned off.
     let staged = match flag("staged")? {
         Some(true) if !editor => {
@@ -2337,7 +2442,7 @@ fn collection_options(
     // capabilities decide whose posts): the rules narrow core's capabilities, never widen them.
     let owner = Owner::Collection(c.table().to_string());
     let native = c.post == Some(PostKind::Native);
-    let mut access: IndexMap<String, Access> = ACCESS_OPS
+    let mut access: IndexMap<String, Access> = ["read", "create", "update", "delete"]
         .iter()
         .map(|op| {
             (
@@ -2366,7 +2471,7 @@ fn collection_options(
                 if let Some(s) = suggest(op, ACCESS_OPS.iter().copied()) {
                     d = d.help(format!("did you mean `{s}`?"));
                 } else {
-                    d = d.help("use read, create, update, delete");
+                    d = d.help("use read, create, update, delete, restore, purge");
                 }
                 return Err(d);
             }
@@ -2408,6 +2513,8 @@ fn collection_options(
         editor,
         drafts,
         revisions,
+        soft_delete,
+        retention,
         staged,
         comment_policy,
         title,
@@ -2422,6 +2529,127 @@ fn collection_options(
         url,
         hierarchical,
     })
+}
+
+/// Parses a retention duration string: `"forever"` -> `None`, or `"<n><s|m|h|d|w|y>"` -> `Some(seconds)`.
+fn parse_retention_duration(spec: &str, span: Span) -> Result<Option<u64>> {
+    if spec == "forever" {
+        return Ok(None);
+    }
+    let bad = || {
+        Diag::new(span, format!("retention duration \"{spec}\" isn't valid"))
+            .help("use \"forever\" or a positive duration like \"30d\", \"90d\", \"24h\", \"1y\" (s, m, h, d, w, y)")
+    };
+    let digits = spec.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let n: u64 = digits.parse().map_err(|_| bad())?;
+    if n == 0 {
+        return Err(bad());
+    }
+    let seconds = match &spec[digits.len()..] {
+        "s" => n,
+        "m" => n.saturating_mul(60),
+        "h" => n.saturating_mul(3600),
+        "d" => n.saturating_mul(86_400),
+        "w" => n.saturating_mul(604_800),
+        "y" => n.saturating_mul(365 * 86_400),
+        _ => return Err(bad()),
+    };
+    Ok(Some(seconds))
+}
+
+/// Parses `retention: "forever" | { deleted?: ..., revisions?: ... }`.
+fn extract_retention(v: Option<&Value>, ev: &Evaluator<'_>, span: Span) -> Result<Option<Retention>> {
+    let Some(v) = v.filter(|v| !matches!(v, Value::Undef)) else {
+        return Ok(None);
+    };
+    if let Value::Str(s) = v {
+        if s.as_ref() == "forever" {
+            return Ok(Some(Retention::default()));
+        }
+        return Err(
+            Diag::new(span, format!("`retention` must be \"forever\" or an object, not \"{s}\""))
+                .help("write `retention: \"forever\"` or `retention: { deleted: \"90d\", revisions: { keepLast: 50, maxAge: \"365d\" } }`"),
+        );
+    }
+    let Value::Object(map) = v else {
+        return Err(
+            Diag::new(span, format!("`retention` must be \"forever\" or an object, not {}", v.describe()))
+                .help("write `retention: { deleted: \"90d\", revisions: \"forever\" }`"),
+        );
+    };
+    let map = map.borrow();
+    let mut ret = Retention::default();
+    for (k, val) in map.iter() {
+        let kspan = ev.key_span(v, k).unwrap_or(span);
+        match k.as_str() {
+            "deleted" => match val {
+                Value::Undef => {}
+                Value::Str(s) => ret.deleted_seconds = parse_retention_duration(s, kspan)?,
+                other => {
+                    return Err(Diag::new(
+                        kspan,
+                        format!("`retention.deleted` must be \"forever\" or a duration string, not {}", other.describe()),
+                    ));
+                }
+            },
+            "revisions" => match val {
+                Value::Undef => {}
+                Value::Str(s) if s.as_ref() == "forever" => ret.revisions = None,
+                Value::Object(rm) => {
+                    let rm = rm.borrow();
+                    let mut rr = RevisionRetention::default();
+                    for (rk, rv) in rm.iter() {
+                        let rspan = ev.key_span(val, rk).unwrap_or(kspan);
+                        match rk.as_str() {
+                            "keepLast" => match rv {
+                                Value::Undef => {}
+                                Value::Num(n) if n.fract() == 0.0 && *n >= 1.0 && *n <= u32::MAX as f64 => {
+                                    rr.keep_last = Some(*n as u32);
+                                }
+                                other => {
+                                    return Err(Diag::new(
+                                        rspan,
+                                        format!("`retention.revisions.keepLast` must be a positive integer, not {}", other.describe()),
+                                    ));
+                                }
+                            },
+                            "maxAge" => match rv {
+                                Value::Undef => {}
+                                Value::Str(s) => rr.max_age_seconds = parse_retention_duration(s, rspan)?,
+                                other => {
+                                    return Err(Diag::new(
+                                        rspan,
+                                        format!("`retention.revisions.maxAge` must be \"forever\" or a duration string, not {}", other.describe()),
+                                    ));
+                                }
+                            },
+                            other => {
+                                return Err(Diag::new(
+                                    rspan,
+                                    format!("`retention.revisions` has no option `{other}`"),
+                                )
+                                .help("use `keepLast` and/or `maxAge`"));
+                            }
+                        }
+                    }
+                    if rr.keep_last.is_some() || rr.max_age_seconds.is_some() {
+                        ret.revisions = Some(rr);
+                    }
+                }
+                other => {
+                    return Err(Diag::new(
+                        kspan,
+                        format!("`retention.revisions` must be \"forever\" or `{{ keepLast?, maxAge? }}`, not {}", other.describe()),
+                    ));
+                }
+            },
+            other => {
+                return Err(Diag::new(kspan, format!("`retention` has no option `{other}`"))
+                    .help("use `deleted` and/or `revisions`"));
+            }
+        }
+    }
+    Ok(Some(ret))
 }
 
 fn no_column(table: &str, name: &str, columns: &IndexMap<String, Column>, span: Span, what: &str) -> Diag {
@@ -2444,6 +2672,7 @@ fn describe_col(c: &Column) -> String {
 fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, out: &mut Extracted) -> Result<Access> {
     Ok(match v {
         Value::Bool(b) => Access::Allow(*b),
+        Value::Str(s) if &**s == "system" => Access::Allow(false),
         Value::Str(s) if &**s == "anyone" || &**s == "authenticated" || ROLES.contains(&&**s) => {
             Access::Role(s.to_string())
         }

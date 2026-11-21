@@ -45,7 +45,7 @@ export const events = collection({
 }, {
   label: "Workshops", title: "title", content: "description", comments: true,
   sync: "content/events/*.md", url: "/events/:slug",
-  access: { read: "anyone", create: "editor", update: "editor", delete: "admin" },
+  access: { read: "anyone", create: "editor", update: "editor", delete: "admin", restore: "admin", purge: "admin" },
 }).on({
   beforeCreate(data) {
     data.title = data.title.trim();
@@ -75,6 +75,19 @@ export const events = collection({
     await db.insert(activity).values({ summary: `Workshop deleted: ${event.title}` });
     const remaining = await db.query.events.findFirst({ columns: { id: true } });
     if (!remaining) delete_option("kitchen_has_workshops");
+  },
+  beforeRestore(event): void {
+    if (event.title.trim() === "") throw new HttpError(409, "invalid_workshop", "Cannot restore an untitled workshop.");
+  },
+  async afterRestore(event): Promise<void> {
+    await db.insert(activity).values({ eventId: event.id, summary: `Workshop restored: ${event.title}` });
+  },
+  async beforePurge(event): Promise<void> {
+    const booked = await db.query.registrations.findFirst({ where: { eventId: event.id } });
+    if (booked) throw new HttpError(409, "has_registrations", "Cannot purge a workshop that still has reservations.");
+  },
+  async afterPurge(event): Promise<void> {
+    await db.insert(activity).values({ summary: `Workshop purged: ${event.title}` });
   },
 });
 

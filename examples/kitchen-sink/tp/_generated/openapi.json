@@ -102,7 +102,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `description`, `startsOn`, `venue`, `poster`, `gallery`, `handout`, `format`, `equipment`, `registrationOpen`, `demoUrl`, `ingredients`, `host`, `sections`, `status`, `publishedAt`, `uid`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `description`, `startsOn`, `venue`, `poster`, `gallery`, `handout`, `format`, `equipment`, `registrationOpen`, `demoUrl`, `ingredients`, `host`, `sections`, `status`, `publishedAt`, `author`, `createdAt`, `updatedAt`, `deletedAt`, `deletedBy`, `uid`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -1323,7 +1323,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `content`, `excerpt`, `minutes`, `status`, `publishedAt`, `uid`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `content`, `excerpt`, `minutes`, `status`, `publishedAt`, `author`, `createdAt`, `updatedAt`, `deletedAt`, `deletedBy`, `uid`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -2532,7 +2532,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `content`, `excerpt`, `servings`, `topicIds`, `status`, `publishedAt`, `uid`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `content`, `excerpt`, `servings`, `topicIds`, `status`, `publishedAt`, `author`, `createdAt`, `updatedAt`, `deletedAt`, `deletedBy`, `uid`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -3753,7 +3753,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `content`, `parent`, `order`, `status`, `publishedAt`, `uid`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `title`, `slug`, `content`, `parent`, `order`, `status`, `publishedAt`, `author`, `createdAt`, `updatedAt`, `deletedAt`, `deletedBy`, `uid`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -4974,7 +4974,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `eventId`, `memberId`, `seats`, `code`, `preferences`, `bookedOn`, `updatedAt`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `eventId`, `memberId`, `seats`, `code`, `preferences`, `bookedOn`, `updatedAt`, `author`, `createdAt`, `deletedAt`, `deletedBy`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -5222,7 +5222,7 @@
           {
             "name": "orderBy",
             "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `eventId`, `summary`, `createdAt`.",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `eventId`, `summary`, `createdAt`, `author`, `updatedAt`, `deletedAt`, `deletedBy`.",
             "schema": { "type": "string" }
           },
           { "$ref": "#/components/parameters/limit" },
@@ -8026,6 +8026,108 @@
         }
       }
     },
+    "/actions/restoreWorkshop": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.restoreWorkshop",
+        "summary": "Call restoreWorkshop",
+        "x-typedpress-access": "admin",
+        "description": "Runs the `restoreWorkshop` action with the input sent and returns its result.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "number" }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": ["number", "null"] }
+                      },
+                      "required": ["id"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/actions/purgeWorkshop": {
+      "post": {
+        "tags": ["Actions"],
+        "operationId": "actions.purgeWorkshop",
+        "summary": "Call purgeWorkshop",
+        "x-typedpress-access": "admin",
+        "description": "Runs the `purgeWorkshop` action with the input sent and returns its result.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "requestBody": {
+          "required": true,
+          "description": "The action's input.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "number" }
+                },
+                "required": ["id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action's result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": ["number", "null"] }
+                      },
+                      "required": ["id"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
     "/actions/postAnnouncement": {
       "post": {
         "tags": ["Actions"],
@@ -10586,6 +10688,11 @@
           },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] },
           "uid": { "type": ["string", "null"] },
           "_rev": {
             "type": "string",
@@ -10905,6 +11012,11 @@
           "demoUrl": { "$ref": "#/components/schemas/StringFilter" },
           "status": { "$ref": "#/components/schemas/StringFilter" },
           "publishedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "uid": { "$ref": "#/components/schemas/StringFilter" },
           "registrations": { "type": "object", "description": "A filter on the related rows." },
           "activity": { "type": "object", "description": "A filter on the related rows." },
@@ -10930,6 +11042,11 @@
           "minutes": { "type": ["integer", "null"], "minimum": 1 },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] },
           "uid": { "type": ["string", "null"] },
           "_rev": {
             "type": "string",
@@ -10982,6 +11099,11 @@
           "minutes": { "$ref": "#/components/schemas/IntegerFilter" },
           "status": { "$ref": "#/components/schemas/StringFilter" },
           "publishedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "uid": { "$ref": "#/components/schemas/StringFilter" },
           "AND": {
             "type": "array",
@@ -11018,6 +11140,11 @@
           },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] },
           "uid": { "type": ["string", "null"] },
           "_rev": {
             "type": "string",
@@ -11081,6 +11208,11 @@
           "topicIds": { "$ref": "#/components/schemas/IntegerListFilter" },
           "status": { "$ref": "#/components/schemas/StringFilter" },
           "publishedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "uid": { "$ref": "#/components/schemas/StringFilter" },
           "AND": {
             "type": "array",
@@ -11114,6 +11246,11 @@
           "order": { "type": "integer" },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] },
           "uid": { "type": ["string", "null"] },
           "_rev": {
             "type": "string",
@@ -11171,6 +11308,11 @@
           "order": { "$ref": "#/components/schemas/IntegerFilter" },
           "status": { "$ref": "#/components/schemas/StringFilter" },
           "publishedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "uid": { "$ref": "#/components/schemas/StringFilter" },
           "children": { "type": "object", "description": "A filter on the related rows." },
           "AND": {
@@ -11218,7 +11360,11 @@
             "description": "Absent for callers who may not read it. Users with the `admin` role or a higher one may read this field."
           },
           "bookedOn": { "type": "string", "format": "date" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "author": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] }
         }
       },
       "RegistrationInsert": {
@@ -11256,6 +11402,10 @@
           "code": { "$ref": "#/components/schemas/StringFilter" },
           "bookedOn": { "$ref": "#/components/schemas/StringFilter" },
           "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "AND": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/RegistrationFilter" }
@@ -11283,7 +11433,11 @@
             ]
           },
           "summary": { "type": "string" },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "createdAt": { "type": "string", "format": "date-time" },
+          "author": { "type": ["integer", "null"] },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": ["string", "null"], "format": "date-time" },
+          "deletedBy": { "type": ["integer", "null"] }
         }
       },
       "ActivityInsert": {
@@ -11310,6 +11464,10 @@
           "eventId": { "$ref": "#/components/schemas/IntegerFilter" },
           "summary": { "$ref": "#/components/schemas/StringFilter" },
           "createdAt": { "$ref": "#/components/schemas/StringFilter" },
+          "author": { "$ref": "#/components/schemas/IntegerFilter" },
+          "updatedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedAt": { "$ref": "#/components/schemas/StringFilter" },
+          "deletedBy": { "$ref": "#/components/schemas/IntegerFilter" },
           "AND": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/ActivityFilter" }

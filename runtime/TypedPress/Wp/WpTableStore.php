@@ -133,6 +133,26 @@ final class WpTableStore implements Store, Links
         $this->db->run('DELETE FROM ' . $q($this->table($collection)) . ' WHERE ' . $q($pkCol) . ' = ?', [$pk]);
     }
 
+    public function softDelete(string $collection, int|string $pk, string $at, ?int $userId, ?string $group): void
+    {
+        $this->update($collection, $pk, [
+            'deletedAt' => $at,
+            'deletedBy' => $userId,
+            'deletedGroup' => $group,
+            '_live' => null,
+        ]);
+    }
+
+    public function restore(string $collection, int|string $pk): void
+    {
+        $this->update($collection, $pk, [
+            'deletedAt' => null,
+            'deletedBy' => null,
+            'deletedGroup' => null,
+            '_live' => 1,
+        ]);
+    }
+
     // ================================================================ many-ref links
 
     public function linkTable(string $join): string
@@ -276,13 +296,16 @@ final class WpTableStore implements Store, Links
         return $e;
     }
 
-    /** Index names emitted by the compiler: `<col>_unique`, or the column itself. */
+    /** Index names emitted by the compiler: `<col>_unique`, `<col>__live` (SQLite soft-delete unique), or the column itself. */
     private static function uniqueColumn(string $key): ?string
     {
         if ($key === 'translationGroup_locale') { // §7.3: one row per locale per group
             return 'locale';
         }
-        if (preg_match('/^(?:.*__)?([A-Za-z0-9]+)_unique$/', $key, $m)) {
+        if (str_ends_with($key, '__live')) {
+            $key = substr($key, 0, -strlen('__live'));
+        }
+        if (preg_match('/^(?:.*__)?([A-Za-z0-9_]+)_unique$/', $key, $m)) {
             return $m[1];
         }
 

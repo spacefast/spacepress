@@ -83,9 +83,15 @@ final class Plugin
         add_filter('wp_insert_post_empty_content', fn ($empty, $post) => $empty || ($this->unavailable() !== null && $this->touchesCollection($post)), PHP_INT_MAX, 2);
         $refuseDelete = fn ($check, $post) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touchesCollection((array) $post) ? false : $check;
         // WordPress empties its trash on a schedule (wp_scheduled_delete), with nobody there to read a
-        // refusal: a First item's before half runs here, where core still lets a delete be declined,
-        // so a refused item is skipped and logged and the run goes on.
-        add_filter('pre_delete_post', fn ($check, $post) => $refuseDelete($check, $post) ?? $this->prepareDelete($check, $post), PHP_INT_MAX, 2);
+        // refusal. For TypedPress post types with softDelete enabled, block wp_scheduled_delete so
+        // TypedPress's own `retention` policy (default `"forever"`) governs trash lifetime.
+        add_filter('pre_delete_post', function ($check, $post) use ($refuseDelete) {
+            if ($post instanceof \WP_Post && doing_action('wp_scheduled_delete') && Retention::blocksWpScheduledDelete($this->schema, $post->post_type)) {
+                return false;
+            }
+
+            return $refuseDelete($check, $post) ?? $this->prepareDelete($check, $post);
+        }, PHP_INT_MAX, 2);
         // The run's last prepared delete, if a later filter declined it, ends with the run.
         add_action('wp_scheduled_delete', [EditorSave::class, 'abandonPrepared'], PHP_INT_MAX, 0);
         add_filter('pre_trash_post', $refuseDelete, PHP_INT_MAX, 2);

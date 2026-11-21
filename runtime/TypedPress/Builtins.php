@@ -30,6 +30,8 @@ final class Builtins
         'typedpress.route' => null,
         'typedpress.env' => null,
         'typedpress.adminScreen' => null,
+        'typedpress.adminWidget' => null,
+        'typedpress.adminDashboard' => null,
         'typedpress.item' => null,
         'typedpress.files' => null,
         'typedpress.relation' => null,

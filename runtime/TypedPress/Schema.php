@@ -274,13 +274,23 @@ final class Schema
 
     /**
      * Compiled `"use client"` components: namespace => the store module under the app plugin's
-     * `tp/app/client/` and the server actions it calls.
+     * `tp/app/client/`, the server actions it calls, and any imported static assets.
      *
-     * @return array<string, array{file: string, actions: list<string>}>
+     * @return array<string, array{file: string, actions: list<string>, assets?: array<string, mixed>, live?: bool}>
      */
     public function islands(): array
     {
         return $this->raw['islands'] ?? [];
+    }
+
+    /**
+     * Intrinsic dimensions and format for imported image assets, by filename under `tp/app/assets/`.
+     *
+     * @return array<string, array{width: int, height: int, format: string}>
+     */
+    public function assetsMeta(): array
+    {
+        return $this->raw['assetsMeta'] ?? [];
     }
 
     /** `frontend` (spec §5): null (WordPress or tp/app/ renders), false (backend only) or the external site's URL. */

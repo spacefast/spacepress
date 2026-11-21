@@ -142,13 +142,15 @@ final class WpSite
             $site->appPlugin($repo, $name, $fixture);
             $activate[] = "typedpress-app-$name";
         }
-        // Test-only must-use plugin: no outgoing mail, and the private-file probe goes to our server.
-        file_put_contents("$dir/content/mu-plugins/typedpress-tests.php", <<<'PHP'
+        // Test-only must-use plugin: no outgoing mail, isolated public symlink root, and the private-file probe goes to our server.
+        $publicRoot = var_export("$dir/public-root", true);
+        file_put_contents("$dir/content/mu-plugins/typedpress-tests.php", <<<PHP
             <?php
             add_filter('pre_wp_mail', static fn () => true);
-            add_filter('tp_private_probe_url', static function (string $url): string {
-                $port = getenv('TP_TEST_SERVER_PORT');
-                return $port ? preg_replace('#^https?://[^/]+#', "http://127.0.0.1:$port", $url) : $url;
+            add_filter('tp_public_root', static fn (): string => $publicRoot);
+            add_filter('tp_private_probe_url', static function (string \$url): string {
+                \$port = getenv('TP_TEST_SERVER_PORT');
+                return \$port ? preg_replace('#^https?://[^/]+#', "http://127.0.0.1:\$port", \$url) : \$url;
             });
             PHP);
         // A suite's own must-use plugins (name => PHP source), loaded before anything else boots.

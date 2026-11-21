@@ -36,7 +36,8 @@ Every TypedPress file starts with `declare(strict_types=1);`. Namespace `TypedPr
     tp/app/client-version.php       `return '<12 hex>';`: digest of typedpress-client.js, its script version
     tp/app/client/<stem>.<12 hex>.js  "use client" stores, minified; the hex is SHA-256 of these bytes
     tp/app/client/.htaccess         an immutable year-long Cache-Control for those stores only
-    public/...                         copied from <project>/public if present
+    tp/app/public-files.json         manifest of safe `public/` files and their 12-hex digests
+    public/...                         safe static files copied from <project>/public (plus `.htaccess`)
   *.zip                                the same plugins, packaged
 ```
 

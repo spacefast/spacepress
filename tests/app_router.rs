@@ -908,16 +908,36 @@ fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
             ("tp/app/page.tsx", &styled),
             ("tp/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
         ],
-        "`@import` in an imported stylesheet isn't supported",
+        "`@import \"normalize.css\"` isn't a local relative stylesheet",
         "tp/app/x.css:1:1",
     );
     rejects(
         &dir,
         &[
             ("tp/app/page.tsx", &styled),
-            ("tp/app/x.css", ".a {\n  background: url(./bg.png);\n}\n"),
+            ("tp/app/x.css", "@import \"./y.css\";\n"),
+            ("tp/app/y.css", "@import \"./x.css\";\n"),
         ],
-        "`url(./bg.png)` is relative to the stylesheet",
+        "circular CSS `@import` involving tp/app/x.css",
+        "tp/app/y.css:1:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("tp/app/page.tsx", &styled),
+            ("tp/app/x.css", ".a {\n  background: url(./missing.png);\n}\n"),
+        ],
+        "can't find \"./missing.png\" referenced by `url(./missing.png)`",
+        "tp/app/x.css:2:15",
+    );
+    rejects(
+        &dir,
+        &[
+            ("tp/app/page.tsx", &styled),
+            ("tp/app/x.css", ".a {\n  background: url(./secret.php);\n}\n"),
+            ("tp/app/secret.php", "<?php echo 1;\n"),
+        ],
+        "can't bundle \"./secret.php\" from `url(./secret.php)`",
         "tp/app/x.css:2:15",
     );
     rejects(
@@ -947,22 +967,14 @@ fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
         "can't import \"./x.json\": expected TypeScript or JavaScript source",
         "tp/app/page.tsx:1:1",
     );
-    // A client component renders in the browser too; an image URL comes in as a prop.
     rejects(
         &dir,
         &[
-            (
-                "tp/app/page.tsx",
-                "import { C } from \"../components/C\";\nexport default function P() { return <C />; }\n",
-            ),
-            (
-                "tp/components/C.tsx",
-                "\"use client\";\nimport logo from \"./logo.svg\";\nexport function C() { return <img src={logo} />; }\n",
-            ),
-            ("tp/components/logo.svg", "<svg/>"),
+            ("tp/app/page.tsx", &page("import x from \"./a.svg?bogus\";")),
+            ("tp/app/a.svg", "<svg/>"),
         ],
-        "a \"use client\" component can't import tp/components/logo.svg",
-        "tp/components/C.tsx",
+        "unsupported import query \"?bogus\"",
+        "tp/app/page.tsx:1:1",
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -3850,16 +3862,18 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     let css = |page: &str, i: usize| seen[page]["links"][i]["css"].as_str().unwrap().to_string();
     assert_eq!(
         css("about", 0),
-        ":root { --ink: #1d2420; }\nbody { margin: 0; color: var(--ink); }\n.site { max-width: 48rem; }\n"
+        ":root{--ink:#1d2420}body{margin:0;color:var(--ink)}.site{max-width:48rem}"
     );
     assert_eq!(
         css("about", 1),
-        ".page_title { font-size: 2rem; }\n.page_card .page_title { color: #1f4d3a; }\n@media (min-width: 40rem) { .page_card { padding: 1rem; } }\n"
+        ".page_title{font-size:2rem}.page_card .page_title{color:#1f4d3a}@media (min-width:40rem){.page_card{padding:1rem}}"
     );
     assert_eq!(
         css("about", 2),
-        ".counter_button { border: 0; }\n.counter_on { background: #1f4d3a; }\n"
+        ".counter_button{border:0}.counter_on{background:#1f4d3a}"
     );
+    // Small stylesheets (<= 4 KB) are inlined into <head> automatically.
+    assert_eq!(seen["about"]["links"][0]["inline"], true);
     // The plain stylesheet's link is the same file on both pages.
     assert_eq!(seen["about"]["links"][0]["file"], seen["plain"]["links"][0]["file"]);
     assert_eq!(
@@ -3872,6 +3886,262 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["type"].as_str().unwrap().starts_with("image/svg+xml"), "{image}");
     assert!(image["src"].as_str().unwrap().starts_with("compass-"), "{image}");
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
+}
+
+/// Binary static assets (images, fonts, etc.) imported from TSX or referenced by relative `url(...)`
+/// in imported stylesheets and CSS modules are copied under content-hashed names in `tp/app/assets/`
+/// (served from `wp-content/`), deduplicated by bytes, and round-trip through hosted source bundles.
+#[cfg(feature = "host")]
+#[test]
+fn imported_binary_assets_and_css_urls_bundle_into_app_assets() {
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    std::fs::create_dir_all(project.join("tp/app/about")).unwrap();
+    std::fs::create_dir_all(project.join("tp/app/fonts")).unwrap();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"binassets\", admin: false });\n",
+    )
+    .unwrap();
+    // Non-UTF-8 binary bytes for PNG, WebP, and WOFF2.
+    let png_bytes: Vec<u8> = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0xfe];
+    let webp_bytes: Vec<u8> = vec![b'R', b'I', b'F', b'F', 0xff, 0x80, 0x01, 0x02, b'W', b'E', b'B', b'P'];
+    let font_bytes: Vec<u8> = vec![b'w', b'O', b'F', b'2', 0x00, 0xff, 0xde, 0xad, 0xbe, 0xef];
+    std::fs::write(project.join("tp/app/about/hero.png"), &png_bytes).unwrap();
+    std::fs::write(project.join("tp/app/about/tile.webp"), &webp_bytes).unwrap();
+    std::fs::write(project.join("tp/app/fonts/inter.woff2"), &font_bytes).unwrap();
+    std::fs::write(
+        project.join("tp/app/about/theme.css"),
+        "@font-face { font-family: Inter; src: url(\"../fonts/inter.woff2?v=1#f\") format(\"woff2\"); }\n.banner { background: url(./hero.png); }\n.root { background: url(/public-root.png); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/about/card.module.css"),
+        ".card { background-image: url('./tile.webp'); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/about/page.tsx"),
+        "import \"./theme.css\";\nimport styles from \"./card.module.css\";\nimport hero from \"./hero.png\";\nimport font from \"../fonts/inter.woff2\";\nexport default function About() {\n  return <div className={styles.card} data-font={font}><img src={hero} alt=\"Hero\" /></div>;\n}\n",
+    )
+    .unwrap();
+
+    build(project);
+    let assets_dir = project.join("tp/dist/wp-content/plugins/typedpress-app-binassets/tp/app/assets");
+    let entries: std::collections::BTreeMap<String, Vec<u8>> = std::fs::read_dir(&assets_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name() != ".htaccess")
+        .map(|e| {
+            (
+                e.file_name().to_string_lossy().into_owned(),
+                std::fs::read(e.path()).unwrap(),
+            )
+        })
+        .collect();
+    let find = |prefix: &str, ext: &str| -> (String, Vec<u8>) {
+        entries
+            .iter()
+            .find(|(name, _)| name.starts_with(prefix) && name.ends_with(ext))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .unwrap_or_else(|| panic!("missing {prefix}*{ext} in {:?}", entries.keys().collect::<Vec<_>>()))
+    };
+    let (hero_file, hero_out) = find("hero-", ".png");
+    let (tile_file, tile_out) = find("tile-", ".webp");
+    let (font_file, font_out) = find("inter-", ".woff2");
+    let (_, theme_out) = find("theme-", ".css");
+    let (_, card_out) = find("card-", ".css");
+    assert_eq!(hero_out, png_bytes);
+    assert_eq!(tile_out, webp_bytes);
+    assert_eq!(font_out, font_bytes);
+    // Deduplicated: only 5 asset files total (hero, tile, inter, theme, card).
+    assert_eq!(entries.len(), 5, "{:?}", entries.keys().collect::<Vec<_>>());
+    let theme_css = String::from_utf8(theme_out).unwrap();
+    assert!(
+        theme_css.contains(&format!("url(\"./{font_file}?v=1#f\")")),
+        "{theme_css}"
+    );
+    assert!(theme_css.contains(&format!("url(./{hero_file})")), "{theme_css}");
+    assert!(theme_css.contains("url(/public-root.png)"), "{theme_css}");
+    let card_css = String::from_utf8(card_out).unwrap();
+    assert_eq!(card_css, format!(".card_card{{background-image:url('./{tile_file}')}}"));
+    let functions = std::fs::read_to_string(
+        project.join("tp/dist/wp-content/plugins/typedpress-app-binassets/tp/app/functions.php"),
+    )
+    .unwrap();
+    assert!(
+        functions.contains(&format!("\\TypedPress\\Assets::url( '{hero_file}' )")),
+        "{functions}"
+    );
+    assert!(
+        functions.contains(&format!("\\TypedPress\\Assets::url( '{font_file}' )")),
+        "{functions}"
+    );
+
+    // Hosted capture + compile round-trips binary assets byte-for-byte identically.
+    let work = tempfile::tempdir().unwrap();
+    let (sources, store) = (work.path().join("sources"), work.path().join("store"));
+    typedpress::host::sources(project, &sources).unwrap();
+    let built = typedpress::host::compile_to_store(&sources, &store, project, None).unwrap();
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(store.join(format!("build/{}.json", built.build_id))).unwrap())
+            .unwrap();
+    let hosted_assets = store.join(format!(
+        "app/{}/plugins/typedpress-app-binassets/tp/app/assets",
+        manifest["app"].as_str().unwrap()
+    ));
+    for (name, bytes) in &entries {
+        assert_eq!(
+            &std::fs::read(hosted_assets.join(name)).unwrap(),
+            bytes,
+            "hosted asset {name}"
+        );
+    }
+}
+
+/// End-to-end WordPress verification of the full modern asset pipeline:
+/// CSS `@import` bundling + minification + small-CSS inlining (<= 4 KB) + large-CSS external linking,
+/// `@font-face` + priority `<Image>` preloading, automatic intrinsic image dimensions, Vite query
+/// modifiers (`?raw`, `?inline`, `?url`, `?meta`), and `"use client"` component asset imports.
+#[test]
+fn modern_asset_pipeline_works_end_to_end_on_wordpress() {
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    std::fs::create_dir_all(project.join("tp/app/fonts")).unwrap();
+    std::fs::create_dir_all(project.join("tp/components")).unwrap();
+    std::fs::write(
+        project.join("typedpress.config.ts"),
+        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"modernassets\", admin: false });\n",
+    )
+    .unwrap();
+    // Valid 40x20 PNG (IHDR header) + WOFF2/TTF font bytes + SVG.
+    let png_bytes: Vec<u8> = vec![
+        0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H', b'D', b'R', 0x00, 0x00,
+        0x00, 40, 0x00, 0x00, 0x00, 20, 0x08, 0x02, 0x00, 0x00, 0x00,
+    ];
+    let woff2_bytes: Vec<u8> = vec![b'w', b'O', b'F', b'2', 0x00, 0xff, 0x01, 0x02];
+    let ttf_bytes: Vec<u8> = vec![0x00, 0x01, 0x00, 0x00, 0xaa, 0xbb];
+    std::fs::write(project.join("tp/app/hero.png"), &png_bytes).unwrap();
+    std::fs::write(project.join("tp/app/fonts/inter.woff2"), &woff2_bytes).unwrap();
+    std::fs::write(project.join("tp/app/fonts/inter.ttf"), &ttf_bytes).unwrap();
+    std::fs::write(project.join("tp/app/note.txt"), "hello raw text").unwrap();
+    std::fs::write(
+        project.join("tp/app/tokens.css"),
+        "@font-face { font-family: Inter; src: url(\"./fonts/inter.woff2\") format(\"woff2\"), url(\"./fonts/inter.ttf\") format(\"truetype\"); }\n:root { --accent: #ffffff; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/small.css"),
+        "@import \"./tokens.css\";\n.hero { background: url(./hero.png); color: var(--accent); }\n",
+    )
+    .unwrap();
+    // > 4 KB stylesheet so it links externally instead of inlining.
+    let mut big_css = String::new();
+    for i in 0..260 {
+        big_css.push_str(&format!(".big-rule-{i}{{padding:{i}px;margin:0}}\n"));
+    }
+    std::fs::write(project.join("tp/app/large.css"), &big_css).unwrap();
+    std::fs::write(project.join("tp/app/standalone.css"), ".only-url { color: #aabbcc; }\n").unwrap();
+    std::fs::write(
+        project.join("tp/components/icon.svg"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><rect width=\"16\" height=\"16\"/></svg>",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/components/Badge.tsx"),
+        "\"use client\";\nimport { useState } from \"typedpress/client\";\nimport icon from \"./icon.svg\";\nimport inlineIcon from \"./icon.svg?inline\";\nexport function Badge() {\n  const [alt, setAlt] = useState(false);\n  return <button type=\"button\" onClick={() => setAlt(!alt)}><img className=\"client-img\" src={alt ? inlineIcon : icon} alt=\"Badge\" /></button>;\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("tp/app/page.tsx"),
+        "import { Image } from \"typedpress/app\";\nimport \"./small.css\";\nimport \"./large.css\";\nimport heroUrl from \"./hero.png\";\nimport heroMeta from \"./hero.png?meta\";\nimport heroInline from \"./hero.png?inline\";\nimport rawNote from \"./note.txt?raw\";\nimport standaloneCssUrl from \"./standalone.css?url\";\nimport { Badge } from \"../components/Badge\";\nexport default function Home() {\n  return (\n    <main data-raw={rawNote} data-css-url={standaloneCssUrl}>\n      <Image className=\"priority-img\" src={heroMeta} alt=\"Hero\" priority />\n      <Image className=\"lazy-img\" src={heroUrl} alt=\"Lazy\" />\n      <img className=\"plain-img\" src={heroUrl} alt=\"Plain\" />\n      <img className=\"inline-img\" src={heroInline} alt=\"Inline\" />\n      <Badge />\n    </main>\n  );\n}\n",
+    )
+    .unwrap();
+
+    build(project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_assets_modern.php"))
+        .arg(project.join("tp/dist/wp-content"))
+        .env("TP_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["status"], 200, "{seen}");
+    // Small CSS (with bundled @import tokens.css) is minified, inlined, and its relative url(./...) resolved to wp-content/.
+    let inlines = seen["inlineStyles"].as_array().unwrap();
+    assert_eq!(inlines.len(), 1, "{seen}");
+    let inline_css = inlines[0].as_str().unwrap();
+    assert!(inline_css.contains("--accent:#fff"), "{inline_css}");
+    assert!(
+        inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/hero-"),
+        "{inline_css}"
+    );
+    assert!(
+        inline_css.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/inter-"),
+        "{inline_css}"
+    );
+    // Large CSS (> 4 KB) is linked externally.
+    let externals = seen["externalStyles"].as_array().unwrap();
+    assert_eq!(externals.len(), 1, "{seen}");
+    assert!(externals[0]["file"].as_str().unwrap().starts_with("large-"), "{seen}");
+    assert_eq!(externals[0]["status"], 200);
+    // Preloads: woff2 font (NOT ttf) + priority hero image.
+    let preloads = seen["preloads"].as_array().unwrap();
+    assert_eq!(preloads.len(), 2, "{seen}");
+    let font_preload = preloads.iter().find(|p| p["as"] == "font").unwrap();
+    assert_eq!(font_preload["type"], "font/woff2");
+    assert_eq!(font_preload["crossorigin"], "anonymous");
+    assert!(
+        font_preload["file"].as_str().unwrap().ends_with(".woff2"),
+        "{font_preload}"
+    );
+    assert_eq!(font_preload["status"], 200);
+    let img_preload = preloads.iter().find(|p| p["as"] == "image").unwrap();
+    assert_eq!(img_preload["fetchpriority"], "high");
+    assert!(
+        img_preload["file"].as_str().unwrap().starts_with("hero-"),
+        "{img_preload}"
+    );
+    assert_eq!(img_preload["status"], 200);
+    // <Image priority>, <Image lazy>, plain <img> auto-dimensions, ?inline data URI, and client component asset!
+    let imgs = &seen["imgs"];
+    assert_eq!(imgs["priority-img"]["width"], "40");
+    assert_eq!(imgs["priority-img"]["height"], "20");
+    assert_eq!(imgs["priority-img"]["loading"], "eager");
+    assert_eq!(imgs["priority-img"]["decoding"], "async");
+    assert_eq!(imgs["priority-img"]["fetchpriority"], "high");
+    assert_eq!(imgs["priority-img"]["status"], 200);
+    assert_eq!(imgs["lazy-img"]["width"], "40");
+    assert_eq!(imgs["lazy-img"]["height"], "20");
+    assert_eq!(imgs["lazy-img"]["loading"], "lazy");
+    assert_eq!(imgs["plain-img"]["width"], "40");
+    assert_eq!(imgs["plain-img"]["height"], "20");
+    assert!(
+        imgs["inline-img"]["src"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,")
+    );
+    assert_eq!(imgs["client-img"]["width"], "16");
+    assert_eq!(imgs["client-img"]["height"], "16");
+    assert_eq!(imgs["client-img"]["status"], 200);
+    // ?raw and ?url on CSS (without auto-enqueuing standalone.css).
+    assert_eq!(seen["raw"], "hello raw text");
+    assert_eq!(seen["cssUrlStatus"], 200);
+    assert!(seen["cssUrlFile"].as_str().unwrap().starts_with("standalone-"));
+    // Client component Interactivity config carries its imported asset URL.
+    let client_icon = seen["clientConfigAssets"]["icon"].as_str().unwrap();
+    assert!(
+        client_icon.contains("/wp-content/plugins/typedpress-app-modernassets/tp/app/assets/icon-"),
+        "{client_icon}"
+    );
 }
 
 /// `typedpress doctor --site <url> --links` on a served TypedPress site: every link and `#anchor` the docs
@@ -4199,6 +4469,18 @@ fn public_files_serve_at_the_site_root() {
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
+        seen["packaged"],
+        serde_json::json!({
+            "env": false,
+            "php": false,
+            "htaccess": true,
+            "indexSymlinked": false,
+            "existingPreserved": "real-root-file",
+            "logoIsSymlink": true,
+            "logoTargetInWpContent": true
+        })
+    );
+    assert_eq!(
         seen["served"],
         serde_json::json!({
             "/compiler.wasm": [200, "application/wasm", 8],
@@ -4210,9 +4492,12 @@ fn public_files_serve_at_the_site_root() {
             "/.well-known/ai.json": [200, "application/json", 13],
             "/notes.md": [200, "text/markdown; charset=utf-8", 15],
             "/robots-extra.txt": [200, "text/plain; charset=utf-8", 14],
-            "/index.html": [200, "text/html; charset=utf-8", 21],
             "/it's.txt": [200, "text/plain; charset=utf-8", 1]
         })
+    );
+    assert_eq!(
+        seen["wpIndex"],
+        serde_json::json!([200, "text/html; charset=utf-8", 21])
     );
     // robots.txt, llms.txt, feeds and TypedPress Identity's discovery document stay WordPress's.
     for (path, kept) in seen["wordpress"].as_object().unwrap() {
@@ -4223,7 +4508,7 @@ fn public_files_serve_at_the_site_root() {
     assert_eq!(seen["home"], false);
     // `tp/app/about/page.tsx` wins over `public/about`.
     assert_eq!(seen["about"], serde_json::json!([200, true, false]));
-    // `<Link>` to a file in `public/` keeps its path, though the root `[slug]` route also matches it;
+    // `<Link>` to a file in `public/` keeps its root path, though the root `[slug]` route also matches it;
     // a link to a page is written at the page's one address.
     assert_eq!(
         seen["about links"],
@@ -4236,14 +4521,25 @@ fn public_files_serve_at_the_site_root() {
     }
     assert_eq!(seen["refused"].as_object().unwrap().len(), 15);
     assert_eq!(seen["head"], serde_json::json!([200, "", "11"]));
-    // A matching ETag, its weak form, or one of a list: 304; another: 200.
-    assert_eq!(seen["not modified"], serde_json::json!([304, 304, 304, 200]));
-    assert_eq!(seen["svg policy"], true);
-    assert_eq!(seen["cache"], "public, max-age=300");
-    // Any origin may read a public file, on a 200 and a 304; a page says nothing of the kind.
-    assert_eq!(seen["other origins"], serde_json::json!(["*", "*", null]));
+    // /.well-known/* stays served at the site root through PHP with ETag, 304, cache and CORS headers.
+    assert_eq!(
+        seen["wellKnown"],
+        serde_json::json!({
+            "cache": "public, max-age=300",
+            "notModified": [304, 304, 304, 200],
+            "cors": ["*", "*", null]
+        })
+    );
     // A POST isn't served a file; the `[slug]` page answers it as pages do (405).
     assert_eq!(seen["post"], 405);
+    assert_eq!(
+        seen["cleaned"],
+        serde_json::json!({
+            "logoRemoved": true,
+            "filesDirRemoved": true,
+            "existingStillThere": "real-root-file"
+        })
+    );
 }
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
@@ -6733,14 +7029,16 @@ export default function Page() { return <p>With scripts</p>; }"#,
         let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
         let base = seen["base"].as_str().unwrap();
         use sha2::Digest;
-        let version: String = sha2::Sha256::digest(body).iter().map(|b| format!("{b:02x}")).collect();
-        assert_eq!(
-            seen["scripts"],
-            serde_json::json!([
-                format!("{base}/scripts/module%20name.mjs?mode=one&mode=two&tpv={version}#ready"),
-                "https://cdn.example/remote.js?mode=one#ready",
-            ])
-        );
+        let version: String = sha2::Sha256::digest(body)[..6]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let expected = serde_json::json!([
+            format!("{base}/scripts/module%20name.mjs?mode=one&mode=two&tpv={version}#ready"),
+            "https://cdn.example/remote.js?mode=one#ready",
+        ]);
+        assert_eq!(seen["scripts"], expected);
+        assert_eq!(seen["managedScripts"], expected);
         assert_eq!(seen["plain"], serde_json::json!([]));
         assert_eq!(seen["body"], body);
         version

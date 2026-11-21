@@ -583,6 +583,7 @@ pub const EXPORTS: &[&str] = &[
     "Comments",
     "Content",
     "Html",
+    "Image",
     "Link",
     "Live",
     "LoginForm",

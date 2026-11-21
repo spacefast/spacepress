@@ -13,7 +13,9 @@ repository = "https://github.com/spacefast/zero"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
+imagesize = "0.15.0"
 indexmap = "2.14.2"
+oxc-css-parser = "0.0.22"
 oxc_allocator = "=0.158.0"
 oxc_ast = "=0.158.0"
 oxc_parser = "=0.158.0"

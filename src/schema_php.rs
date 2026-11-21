@@ -538,13 +538,51 @@ pub fn render(schema: &Schema) -> String {
     if !schema.islands.is_empty() {
         out.push_str("    ],\n    'islands' => [\n");
         for (namespace, island) in &schema.islands {
+            let assets = if island.assets.is_empty() {
+                String::new()
+            } else {
+                let entries: Vec<String> = island
+                    .assets
+                    .iter()
+                    .map(|(name, asset)| match asset {
+                        crate::schema::IslandAsset::Url(file) => {
+                            format!("{} => {}", php_str(name), php_str(file))
+                        }
+                        crate::schema::IslandAsset::Meta {
+                            file,
+                            width,
+                            height,
+                            format: fmt,
+                        } => format!(
+                            "{} => ['file' => {}, 'width' => {width}, 'height' => {height}, 'format' => {}]",
+                            php_str(name),
+                            php_str(file),
+                            php_str(fmt)
+                        ),
+                    })
+                    .collect();
+                format!(", 'assets' => [{}]", entries.join(", "))
+            };
             let _ = writeln!(
                 out,
-                "        {} => ['file' => {}, 'actions' => [{}]{}],",
+                "        {} => ['file' => {}, 'actions' => [{}]{assets}{}],",
                 php_str(namespace),
                 php_str(&island.file),
                 island.actions.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", "),
                 if island.live { ", 'live' => true" } else { "" }
+            );
+        }
+    }
+    if !schema.assets_meta.is_empty() {
+        out.push_str("    ],\n    'assetsMeta' => [\n");
+        for (file, meta) in &schema.assets_meta {
+            let _ = writeln!(
+                out,
+                "        {} => ['width' => {}, 'height' => {}, 'format' => {}],",
+                php_str(file),
+                meta.width,
+                meta.height,
+                php_str(&meta.format)
             );
         }
     }
@@ -597,8 +635,18 @@ pub fn render(schema: &Schema) -> String {
                     ""
                 }
             );
+            let preloads = if r.preloads.is_empty() {
+                String::new()
+            } else {
+                let items: Vec<String> = r
+                    .preloads
+                    .iter()
+                    .map(|p| format!("['file' => {}, 'type' => {}]", php_str(&p.file), php_str(p.mime)))
+                    .collect();
+                format!(", 'preloads' => [{}]", items.join(", "))
+            };
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}{navigation}{}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}]{preloads}, 'kind' => {kind}{navigation}{}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),

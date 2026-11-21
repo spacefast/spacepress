@@ -419,6 +419,7 @@ final class Plugin
             wp_die(esc_html($error->getMessage()), 'TypedPress', ['back_link' => true]);
         }
         // migrateLocked() already provisioned identity and backfilled members.
+        PublicFiles::syncSymlinks($this);
     }
 
     /** Existing WordPress users are members too (§6.2): give them the member columns' defaults. */

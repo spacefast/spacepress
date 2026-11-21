@@ -1,5 +1,5 @@
 use crate::app_plugin::{readme, substitute};
-use crate::{pipeline::Built, platform, runtime_files, schema_php};
+use crate::{pipeline::Built, platform, runtime_files};
 use std::path::Path;
 
 /// Writes `content` to `path` unless the file already holds exactly those bytes, so an unchanged
@@ -235,8 +235,8 @@ pub(crate) type Files = Vec<(String, Vec<u8>)>;
 /// The app plugin's files (path below the plugins directory, bytes), and the `schema.php` they
 /// were made with.
 pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std::io::Result<(String, Files)> {
-    let schema_php = schema_php::render(&built.schema);
-    let mut files = crate::app_plugin::files(built, &schema_php, read_migrations(migrations)?, public_files(project)?);
+    let (schema_php, mut files) =
+        crate::app_plugin::package(built, read_migrations(migrations)?, public_files(project)?);
     if built.schema.ships_seed() {
         let seeds = crate::bundle::seed_records(&crate::loader::Disk, project, &built.schema, true)
             .map_err(|e| std::io::Error::other(e.message))?;

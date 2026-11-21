@@ -5451,6 +5451,7 @@ mod legacy {
                 error: None,
                 kind: None,
                 styles: Vec::new(),
+                preloads: Vec::new(),
                 prerender: false,
             });
         }

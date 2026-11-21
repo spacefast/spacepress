@@ -47,14 +47,22 @@ foreach (['about', 'plain', 'colophon'] as $path) {
     @$html->loadHTML($page['body']);
     $xpath = new DOMXPath($html);
     $styleOrder = [];
-    foreach ($xpath->query('//style[@id="global-styles-inline-css" or @id="late-theme-inline-css" or @id="owner-override-inline-css"] | //link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")]') as $style) {
+    foreach ($xpath->query('//style[@id="global-styles-inline-css" or @id="late-theme-inline-css" or @id="owner-override-inline-css"] | //link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")] | //style[starts-with(@id, "typedpress-app-")]') as $style) {
         $styleOrder[] = $style->getAttribute('id');
     }
     $links = [];
-    foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")]') as $link) {
-        $href = (string) $link->getAttribute('href');
-        $file = get($href);
-        $links[] = ['file' => basename((string) parse_url($href, PHP_URL_PATH)), 'status' => $file['status'], 'type' => $file['type'], 'css' => $file['body']];
+    foreach ($xpath->query('//link[@rel="stylesheet"][starts-with(@id, "typedpress-app-")] | //style[starts-with(@id, "typedpress-app-")]') as $node) {
+        if ($node->nodeName === 'link') {
+            $href = (string) $node->getAttribute('href');
+            $file = get($href);
+            $links[] = ['file' => basename((string) parse_url($href, PHP_URL_PATH)), 'inline' => false, 'status' => $file['status'], 'type' => $file['type'], 'css' => $file['body']];
+        } else {
+            $id = (string) $node->getAttribute('id');
+            // typedpress-app-<stem>-<hash>-css-inline-css -> <stem>-<hash>.css
+            $stem = preg_replace('/^typedpress-app-|-css-inline-css$/', '', $id);
+            $css = (string) preg_replace('/\s*\/\*#\s*sourceURL=[^*]+\*\/\s*$/', '', trim($node->textContent));
+            $links[] = ['file' => $stem . '.css', 'inline' => true, 'status' => 200, 'type' => 'text/css', 'css' => $css];
+        }
     }
     $classes = [];
     foreach ($xpath->query('//*[@data-wp-router-region]//*[@class]') as $element) {

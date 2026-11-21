@@ -187,9 +187,9 @@ fn run(flags: Flags) -> Result<(), String> {
     if flags.site.is_some() {
         // The checkout's compiled app plugin, hashed as the site hashes its own (Prebuilt::appHash):
         // every file below tp/app/, so a change to any page, component or action counts.
-        let schema_php = crate::schema_php::render(&built.schema);
         let public = crate::emit::public_files(&project).map_err(|e| format!("couldn't read public/: {e}"))?;
-        let mut files: Vec<(String, Vec<u8>)> = crate::app_plugin::files(&built, &schema_php, Vec::new(), public)
+        let (_, packaged) = crate::app_plugin::package(&built, Vec::new(), public);
+        let mut files: Vec<(String, Vec<u8>)> = packaged
             .into_iter()
             .filter_map(|(path, bytes)| {
                 let rest = path.split_once('/')?.1.strip_prefix("tp/app/")?;
@@ -1100,7 +1100,7 @@ fn public_module_query(suffix: &str) -> Option<&str> {
     query
         .strip_prefix('?')?
         .split('&')
-        .any(|part| part.starts_with("tpv="))
+        .any(|part| part.starts_with("ver=") || part.starts_with("tpv="))
         .then_some(query)
 }
 

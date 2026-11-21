@@ -44,6 +44,7 @@ final class Mount
             \TypedPress\Loader\Loader::load($root, $build, [
                 'variables' => self::variables(),
                 'url' => Site::url(),
+                'assetsDir' => Site::assets(),
                 // The receiver's requests run none of the app's own code: a dry run's `/site` and
                 // uploads mount the live build only to report whether it mounts.
                 'inspect' => $mode === 'inspect' || ($mode === 'live' && Site::route() !== null),

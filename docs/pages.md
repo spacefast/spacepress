@@ -504,14 +504,34 @@ import compass from "./compass.svg";
   `styles.dek` is that name. If two modules define the same class name, the
   later one by path gets a number (`note_dek2`). A `"use client"` component may
   import a CSS module, and its class can depend on state.
-- `import logo from "./x.svg"` gives the file's URL.
-- Every file is copied into the app plugin under `tp/app/assets/`, named by a
-  hash of its bytes, with a year's cache. A changed file gets a new URL.
-- These are refused at the line, with the fix: `@import` (import each file from
-  TSX), a relative `url(...)` (put the file in `public/` and write
-  `url(/name.png)`), `:global`, `:local` and `composes` in a module, and an SVG
-  imported by a `"use client"` component (pass the URL as a prop). Other files,
-  binary images and fonts among them, go in `public/`, by their URL.
+- `import hero from "./hero.png"` (or `.svg`, `.webp`, `.woff2`, `.mp4`, `.pdf`,
+  and other static assets) copies the file into `wp-content/.../tp/app/assets/`
+  under a content-hashed name with a year's immutable cache and evaluates to its
+  URL. Imported images also record intrinsic dimensions so `<img>` and `<Image>`
+  fill in `width`/`height` automatically.
+- Vite-compatible query modifiers work on relative imports: `?raw` (UTF-8
+  string), `?inline` (`data:<mime>;base64,...` URI), `?url` (explicit URL,
+  including `.css?url` without auto-enqueuing), and `?meta` (`{ src, width,
+  height, format }` for `<Image>`).
+- `<Image src={hero} alt="…" priority? />` from `"typedpress/app"` accepts an
+  imported URL, a `?meta` object, or a WordPress media object, sets `width`,
+  `height`, `decoding="async"`, `loading="lazy"` (or `loading="eager"`,
+  `fetchpriority="high"`, and `<link rel="preload" as="image">` when `priority`
+  is set), and emits responsive `srcset` for WordPress media sizes.
+- Local relative `@import "./tokens.css";` and relative `url("./bg.png")` /
+  `url("../fonts/inter.woff2")` inside imported stylesheets are bundled,
+  rewritten to hashed sibling names, and minified (`oxc-css-parser`). Small
+  stylesheets (<= 4 KB) are inlined into `<head>`; larger ones link externally.
+  `@font-face` fonts automatically emit `<link rel="preload" as="font">`.
+- `"use client"` components can import CSS modules, static assets, and query
+  modifiers (`?raw`, `?inline`, `?url`, `?meta`) directly.
+- Refused at the line: non-relative `@import`, circular `@import`, missing or
+  non-asset relative `url(...)`, and `:global`, `:local`, or `composes` in CSS
+  modules.
+- Files that must live at a fixed root URL (`/favicon.ico`, `/ads.txt`,
+  `/.well-known/*`) go in `public/`: TypedPress ships them under `wp-content/`
+  and symlinks them into the document root (`ABSPATH`) so the web server serves
+  them directly without booting PHP (only `/.well-known/*` is served through PHP).
 
 Install [`@typedpress/frontend`](../packages/frontend/README.md) and Tailwind,
 then import a plain stylesheet containing `@import "tailwindcss"` from a

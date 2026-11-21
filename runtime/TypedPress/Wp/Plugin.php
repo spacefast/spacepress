@@ -41,6 +41,7 @@ final class Plugin
 
     /** A standalone deploy can replace schema.php mid-request. A managed build's files are immutable. */
     private ?string $loadedHash = null;
+    private ?string $loadedSchemaHash = null;
 
     public function __construct(public readonly string $dir, string $mainFile, public readonly Schema $schema)
     {
@@ -668,7 +669,7 @@ final class Plugin
         wp_cache_delete($this->schemaOption(), 'options');
         clearstatcache(true, $this->dir . '/tp/app/schema.php');
 
-        $loaded = $this->buildHash();
+        $loaded = $this->loadedSchemaHash ??= $this->schemaHash();
         return get_option($this->schemaOption()) === $loaded && $this->schemaHash() === $loaded;
     }
 
@@ -692,7 +693,7 @@ final class Plugin
     /** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
     public function buildHash(): string
     {
-        return $this->loadedHash ??= $this->schemaHash();
+        return $this->loadedHash ??= (string) @hash_file('sha256', $this->dir . '/tp/app/schema.php');
     }
 
     /** The manifest for this exact immutable app tree, when the build loader mounted it. */

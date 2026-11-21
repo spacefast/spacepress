@@ -2377,9 +2377,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let _ = writeln!(out, "{p}{source} = {src};\n{p}foreach ({source} as {value}) {{");
                 } else {
+                    let len = self.tmp_var();
                     let _ = writeln!(
                         out,
-                        "{p}{source} = {src};\n{p}for ({index} = 0; {index} < \\count({source}->a); {index}++) {{"
+                        "{p}{source} = {src};\n{p}{len} = \\count({source}->a);\n{p}for ({index} = 0; {index} < {len}; {index}++) {{"
                     );
                     let _ = writeln!(out, "{}{value} = {source}->a[{index}];", pad(indent + 1));
                 }
@@ -2915,9 +2916,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     constraint: default_binding_type(&constraint, &d.ty, mutable),
                 };
                 let tmp = self.tmp_var();
-                let assigned = format!("{tmp} = {src}");
-                let missing = format!("({assigned}) === \\TypedPress\\Js::undefined()");
-                let _ = writeln!(out, "{p}{tmp} = ({missing} ? {} : {tmp});", d.php);
+                let _ = writeln!(out, "{p}{tmp} = {src};");
+                let _ = writeln!(out, "{p}if ({tmp} === \\TypedPress\\Js::undefined()) {{");
+                let _ = writeln!(out, "{}{tmp} = {};", pad(indent + 1), d.php);
+                let _ = writeln!(out, "{p}}}");
                 self.bind_pattern_types(inner, &tmp, types, mutable, out, indent)?;
             }
             Pat::Obj { props, rest, span } => {
@@ -4476,38 +4478,36 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // (it may assign the left variable, as in `x < (x = 5)`), the left one is read first.
         let copy_a = !literal(&a) && (!plain(&a) || !plain(&b));
         let copy_b = !plain(&b);
-        let mut assign = Vec::new();
+        if copy_a || copy_b {
+            // Avoid inline assignment inside conditions (flagged by WPCS); `dynamicBinary` handles
+            // left-to-right operand evaluation and numeric comparisons directly.
+            return Out::atom(
+                format!(
+                    "\\TypedPress\\Js::dynamicBinary({}, {}, {})",
+                    php_str(sym),
+                    a.php,
+                    b.php
+                ),
+                Ty::Bool,
+            );
+        }
         let mut test = Vec::new();
-        let mut side = |c: &mut Self, v: &Out, copy: bool| {
-            let php = if copy {
-                let tmp = c.tmp_var();
-                assign.push(format!("{tmp} = {}", v.php));
-                tmp
-            } else {
-                v.php.clone()
-            };
+        for v in [&a, &b] {
             if !literal(v) {
-                test.push(format!("(\\is_int({php}) || \\is_float({php}))"));
+                test.push(format!("(\\is_int({}) || \\is_float({}))", v.php, v.php));
             }
-            php
-        };
-        let x = side(self, &a, copy_a);
-        let y = side(self, &b, copy_b);
-        let native = format!("(float) {x} {sym} (float) {y}");
+        }
+        let native = format!("(float) {} {sym} (float) {}", a.php, b.php);
         if test.is_empty() {
             return Out::new(native, Ty::Bool);
         }
-        // A non-empty array literal is truthy: it only sequences the assignments.
-        let prefix = if assign.is_empty() {
-            String::new()
-        } else {
-            format!("[{}] && ", assign.join(", "))
-        };
         Out::atom(
             format!(
-                "({prefix}{} ? {native} : \\TypedPress\\Js::dynamicBinary({}, {x}, {y}))",
+                "({} ? {native} : \\TypedPress\\Js::dynamicBinary({}, {}, {}))",
                 test.join(" && "),
-                php_str(sym)
+                php_str(sym),
+                a.php,
+                b.php
             ),
             Ty::Bool,
         )

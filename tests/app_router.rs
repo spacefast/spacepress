@@ -4565,7 +4565,7 @@ fn public_files_serve_at_the_site_root() {
         seen["wellKnown"],
         serde_json::json!({
             "cache": "public, max-age=300",
-            "notModified": [304, 304, 304, 200],
+            "notModified": [304, 304, 304, 304, 200, 200, 200, 200],
             "cors": ["*", "*", null]
         })
     );

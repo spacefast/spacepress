@@ -105,7 +105,11 @@ $out['wellKnown'] = [
         fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: $etag"])['status'],
         fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: W/$etag"])['status'],
         fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: \"other\", $etag"])['status'],
+        fetch("$url/.well-known/ai.json", 'GET', ['If-None-Match: *'])['status'],
         fetch("$url/.well-known/ai.json", 'GET', ['If-None-Match: "other"'])['status'],
+        fetch("$url/.well-known/ai.json", 'GET', ['If-None-Match: "a,*,b"'])['status'],
+        fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: w/$etag"])['status'],
+        fetch("$url/.well-known/ai.json", 'GET', ["If-None-Match: *, $etag"])['status'],
     ],
     'cors' => [
         fetch("$url/.well-known/ai.json", 'GET', ['Origin: https://playground.wordpress.net'])['headers']['access-control-allow-origin'] ?? null,

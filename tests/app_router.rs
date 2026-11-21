@@ -886,6 +886,12 @@ fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
     let module = page("import s from \"./x.module.css\";");
     rejects(
         &dir,
+        &[("tp/app/page.tsx", &styled), ("tp/app/x.ts", "export {};")],
+        "can't find \"./x.css\"",
+        "tp/app/page.tsx:1:1",
+    );
+    rejects(
+        &dir,
         &[
             ("tp/app/page.tsx", &styled),
             ("tp/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
@@ -3764,6 +3770,17 @@ fn page_caches_drop_what_a_write_changed() {
 #[test]
 fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     let project = fixture("app-assets", "serve");
+    // An explicit asset import keeps its extension even when a TypeScript module shares its stem.
+    for (path, source) in [
+        ("tp/app/site.ts", "export {};"),
+        (
+            "tp/app/about/page.module.ts",
+            r#"export default { card: "other-card", title: "other-title" };"#,
+        ),
+        ("tp/app/about/compass.ts", r#"export default "";"#),
+    ] {
+        std::fs::write(project.join(path), source).unwrap();
+    }
     build(&project);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])

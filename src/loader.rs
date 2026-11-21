@@ -1691,7 +1691,10 @@ fn resolve_with(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions: Co
 
 fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<PathBuf> {
     // An explicit asset never names same-stem TypeScript (shop.css beside shop.ts).
-    if crate::assets::kind(base).is_some() && fs.is_file(base) {
+    if crate::assets::kind(base).is_some() {
+        if !fs.is_file(base) {
+            return Err(Diag::new(span, format!("can't find \"{spec}\"")));
+        }
         return fs.canonicalize(base).map_err(|e| Diag::new(span, e.to_string()));
     }
     let stripped = base.with_extension("");
@@ -1728,9 +1731,6 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
         }
     }
     if fs.is_file(base) {
-        if crate::assets::kind(base).is_some() {
-            return fs.canonicalize(base).map_err(|e| Diag::new(span, e.to_string()));
-        }
         return Err(Diag::new(
             span,
             format!("can't import \"{spec}\": expected TypeScript or JavaScript source"),

@@ -29,9 +29,9 @@ the database enforces. Both kinds share the field builders, access rules,
 `ref()`, hooks, the API and the typed client, so one app can use both and a
 table row can belong to a post.
 
-A new project from `npm create typedpress` is content only. `typedpress add
-db` adds the database half: an example `tp/tables.ts`, typed client calls
-for it and a note on migrations. It only creates files that are missing.
+A new project from `npm create typedpress` stores its notes as WordPress posts.
+`typedpress add db` adds example SQL tables in `tp/tables.ts`, typed client calls,
+and a note on migrations. It only creates files that are missing.
 
 A collection can't be stored in a table. The earlier `editor: false` option is
 gone and `collection()` refuses it at the option; write `table()` instead. A
@@ -65,6 +65,20 @@ resolve inside `tp/`. Anything else, such as `import { x } from "./lib/x"`
 at the root or `"../src/x"` from `tp/`, fails with `F1210` and names the
 file to move. Packages (`"typedpress"`, `"php/wordpress"`, npm packages) are always
 allowed, and an installed package's own relative imports are its business.
+
+Set `seed: true` in `defineConfig()` to include records from synced files in the
+standalone WordPress plugin. WordPress imports missing records when the plugin
+starts. It preserves edits to existing editorial records and skips records
+already in the trash. Use `typedpress sync` to merge edits from source files into
+an existing site.
+
+`typedpress build` and `typedpress check` read those files first. A file the import
+would refuse fails the build at its path and line: a field the kind doesn't have,
+a required field left out, a value over a `.max()`, an HTML block in a Markdown
+body, or a `uid` two files share. A record refused only on the site (a reference
+to a record that isn't there, a `validate` rule) is reported in wp-admin and the
+PHP error log with the file it came from. WordPress keeps that refusal and does
+not run the import again until a new build changes the content or the schema.
 
 ### Exports register by name
 
@@ -1778,7 +1792,10 @@ export function POST(req: RouteRequest) {
   sets its own. Any other return type is a compile error.
 - The handler runs in one transaction. A throw rolls it back, and
   `throw new HttpError(status, code, message)` answers with a problem+json
-  document. `db`, `jobs` and `once` work as they do in actions.
+  document. `db`, `jobs` and `once` work as they do in actions. A `GET` or
+  `HEAD` handler starts its transaction at the first write or locking read.
+  A handler that only runs ordinary reads sends neither `START TRANSACTION`
+  nor `COMMIT`.
 - Cookie sessions authenticate `GET` and `HEAD` routes. On other methods a
   signed-in visitor counts only with a valid `X-WP-Nonce` (`wp_rest`) header;
   otherwise the request runs anonymously, so another site cannot post as your

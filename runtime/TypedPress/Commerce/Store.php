@@ -73,6 +73,10 @@ final class Store implements \TypedPress\Store
     {
         $spec = $this->schema->collection($collection);
         $rows = $this->db->run($q['sql'], $q['params']);
+        if ($spec['commerce'] === 'product' && count($rows) > 1) {
+            // wc_get_product() primes one product at a time (posts, terms, meta: three reads each).
+            _prime_post_caches(array_map('intval', array_column($rows, 'id')));
+        }
         foreach ($rows as &$row) {
             if (!isset($row['id'])) { continue; }
             $object = $spec['commerce'] === 'order' ? wc_get_order((int) $row['id']) : wc_get_product((int) $row['id']);

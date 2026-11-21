@@ -203,9 +203,19 @@ final class AppRouter
         return in_array($first, $this->app['reserved'] ?? [], true) || str_starts_with($first, 'wp-sitemap');
     }
 
+    /**
+     * The request's path, as WordPress and WooCommerce read it: `//host/shop/` is the path
+     * `/host/shop/`, not `/shop/` on another host. Every reader of the request path uses this one,
+     * so no two of them take the same request for different pages.
+     */
+    public static function requestPath(): string
+    {
+        return (string) (wp_parse_url('/' . ltrim((string) ($_SERVER['REQUEST_URI'] ?? '/'), '/'), PHP_URL_PATH) ?? '/');
+    }
+
     private function path(): ?string
     {
-        $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
+        $path = self::requestPath();
         $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
         if ($base !== '') {
             if ($path !== $base && !str_starts_with($path, $base . '/')) {
@@ -778,7 +788,7 @@ final class AppRouter
                     $props->p['item'] = $item;
                 }
                 return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
-            }, $reads);
+            }, $reads, $also);
         } catch (Halt $halt) {
             if ($halt->location !== null) {
                 self::privateResponse();
@@ -812,9 +822,14 @@ final class AppRouter
         // purge its URL.
         // A page a form came back to (`?_flash=`), or one that ran a search, shows that visitor's
         // result: never shared, never recorded for purges.
-        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Cache::viewerCookie() && !\TypedPress\Commerce\Module::privatePath($this->plugin, (string) wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)) && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
+        [$this->cacheControl, $shared] = \TypedPress\Render\Cache::policy($status, $viewer->user === null && !\TypedPress\Render\Cache::viewerCookie() && !\TypedPress\Commerce\Module::privateRequest($this->plugin) && !\TypedPress\Commerce\Module::cartSession($this->plugin) && !\TypedPress\Render\Forms::marked() && !\TypedPress\Render\SearchView::marked() && !\TypedPress\Render\LoginView::private(), $guards !== []);
         if ($shared) {
-            \TypedPress\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
+            $shared = \TypedPress\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads, $also, array_keys($page['search'] ?? []));
+        }
+        // A URL the read index can't hold (a query parameter the page doesn't declare, one query
+        // variant too many) can't be purged, so its response is this visitor's alone.
+        if (!$shared) {
+            $this->cacheControl = \TypedPress\Render\Cache::PRIVATE;
         }
         do_action('tp_app_rendered', (string) $route['id'], (string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         $this->document($status, $head, $body);
@@ -864,7 +879,8 @@ final class AppRouter
         // without `locale` would see only the default locale's rows (Locale\Read).
         $locale = \TypedPress\Locale\Module::localized($name) ? ['locale' => '*'] : [];
         try {
-            $row = Seam::findFirst($name, ['where' => $where] + $locale);
+            // The row this URL names: the page depends on that row, not on a listing of its kind.
+            $row = Reads::named($name, static fn () => Seam::findFirst($name, ['where' => $where] + $locale));
         } catch (\TypedPress\HttpError) {
             return null;
         }
@@ -889,6 +905,12 @@ final class AppRouter
             if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
                 return null;
             }
+        }
+        // The visitor read the item just now: what the page renders around it (its comments) need
+        // not ask the kind's read rule about it again.
+        if (($reader = Seam::viewer()) !== null && ($spec['wp']['postType'] ?? null) !== null
+            && \TypedPress\Extensions::constraintReadsSafe()) {
+            CoreAccess::readable($name, [$id], $reader);
         }
         return $row;
     }
@@ -974,14 +996,19 @@ final class AppRouter
      * output"): the page rendered as an anonymous visitor, its title as the heading, the page's own
      * HTML (not its layouts' navigation) converted to Markdown. Null when the URL is not an app
      * page, so the WordPress twin answers. A missing item or `notFound()` is a 404 twin. `$reads`
-     * gets what the render read, for the caller that serves the twin to record (rendering.md §6.2).
+     * gets what the render read, `$also` the globals among it and `$search` the page's declared
+     * query parameters, for the caller that serves the twin to record (rendering.md §6.2).
      *
      * @param-out array<string, array{ids: list<int|string>, listed: bool}> $reads
+     * @param-out list<string> $also
+     * @param-out list<string> $search
      * @return ?array{int, string}
      */
-    public function twin(string $url, ?array &$reads = null): ?array
+    public function twin(string $url, ?array &$reads = null, ?array &$also = null, ?array &$search = null): ?array
     {
         $reads = [];
+        $also = [];
+        $search = [];
         $match = $this->twinRoute($url);
         if ($match === null) {
             return null;
@@ -990,6 +1017,7 @@ final class AppRouter
         $viewer = new Viewer(null);
         $route = $match['route'];
         $page = $this->file($route['page']);
+        $search = array_keys($page['search'] ?? []);
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
         try {
             $rendered = Reads::during(function () use ($match, $route, $page, $layouts, $viewer): ?array {
@@ -1011,12 +1039,13 @@ final class AppRouter
                 }
                 // The page alone: its layouts add navigation and chrome, which a twin leaves out.
                 return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props, false));
-            }, $reads);
+            }, $reads, $also);
             if ($rendered === null) {
                 return [404, "# Not found\n\nNothing is published at this address.\n"];
             }
             if (isset($rendered['wordpress'])) {
                 $reads = [];
+                $also = [];
                 return null;
             }
             [$head, $body] = $rendered;
@@ -1441,7 +1470,7 @@ final class AppRouter
         remove_action('wp_head', '_block_template_render_title_tag', 1);
         remove_action('wp_head', 'rel_canonical');
         $robots = $head['robots'] ?? null;
-        if (\TypedPress\Render\SearchView::marked() || \TypedPress\Commerce\Module::privatePath($this->plugin, (string) wp_parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH))) {
+        if (\TypedPress\Render\SearchView::marked() || \TypedPress\Commerce\Module::privateRequest($this->plugin)) {
             // A results page is no page to index: as the header and the meta tag.
             $robots = ['index' => false] + (is_array($robots) ? $robots : []);
             header('X-Robots-Tag: noindex');

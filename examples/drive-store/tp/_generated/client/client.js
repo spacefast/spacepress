@@ -1422,47 +1422,95 @@ function wooErrorCart(payload) {
 export function createCartClient(options = {}) {
 	const request = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const base = (options.base ?? "/wp-json/wc/store/v1").replace(/\/$/, "");
+	const page = globalThis.location?.href;
+	let resolved;
+	let crossOrigin = false;
+	try {
+		const url = new URL(base, page);
+		resolved = url.href;
+		crossOrigin = page !== undefined && url.origin !== new URL(page).origin;
+	} catch {}
+	const root = resolved ?? base;
+	// A browser sends another origin no Woo cookie, so every write there would start a new, empty cart.
+	if (options.session === "cookie" && crossOrigin) throw new Error(`A cookie cart needs WooCommerce on this page's origin. Use session: "token" for ${root}.`);
+	const tokenMode = options.session === "token" || options.session === undefined && crossOrigin;
+	const storageKey = `typedpress:woo-cart:${root}`;
+	let token = null;
 	let nonce = null;
 	let pending = Promise.resolve();
 	const listeners = new Set();
+	// Every tab shares one cart: the token is read before each request and saved after each response.
+	// Blocked or absent storage leaves it in this client, for as long as the page stays open.
+	function storedToken() {
+		try {
+			token = globalThis.localStorage.getItem(storageKey) ?? token;
+		} catch {}
+		return token;
+	}
+	function storeToken(next) {
+		token = next;
+		try {
+			next === null ? globalThis.localStorage.removeItem(storageKey) : globalThis.localStorage.setItem(storageKey, next);
+		} catch {}
+	}
 	async function send(path, body) {
-		const response = await request(`${base}/cart${path}`, {
+		const headers = new Headers();
+		const sent = tokenMode ? storedToken() : nonce;
+		if (tokenMode && sent) headers.set("Cart-Token", sent);
+		if (body !== undefined) {
+			headers.set("Content-Type", "application/json");
+			if (!tokenMode && sent) headers.set("Nonce", sent);
+		}
+		const response = await request(`${base}${path}`, {
 			method: body === undefined ? "GET" : "POST",
-			credentials: "same-origin",
+			credentials: tokenMode ? "omit" : "same-origin",
 			cache: "no-store",
-			headers: body === undefined ? {} : {
-				"Content-Type": "application/json",
-				...nonce ? { Nonce: nonce } : {}
-			},
+			// The token belongs to the configured Store API, including when a server redirects.
+			...tokenMode ? { redirect: "error" } : {},
+			headers,
 			...body === undefined ? {} : { body: JSON.stringify(body) }
 		});
-		nonce = response.headers.get("Nonce") ?? nonce;
+		if (!tokenMode) nonce = response.headers.get("Nonce") ?? nonce;
 		// An HTML maintenance or proxy page is not JSON: report the status, not the parse failure.
 		const data = await response.json().catch(() => undefined);
 		if (!response.ok || data === undefined) {
 			const error = isWooRecord(data) ? data : {};
 			throw new WooStoreError(typeof error.code === "string" ? error.code : "http_error", typeof error.message === "string" ? wooPlainText(error.message) : "The cart request failed", response.status, wooErrorCart(error));
 		}
-		const cart = wooCart(data);
+		if (tokenMode) {
+			const next = response.headers.get("Cart-Token");
+			if (!next) throw new WooStoreError("cart_token_unavailable", "WooCommerce did not return a cart token. Check the Store API and its CORS settings.", response.status);
+			storeToken(next);
+		}
+		return data;
+	}
+	async function readCart(path, body) {
+		const cart = wooCart(await send(`/cart${path}`, body));
 		for (const listener of listeners) listener(cart);
 		return cart;
 	}
-	function queue(path, body) {
-		const next = pending.catch(() => undefined).then(async () => {
-			if (body !== undefined && !nonce) await send("");
-			try {
-				return await send(path, body);
-			} catch (error) {
-				if (body !== undefined && error instanceof WooStoreError && error.code === "woocommerce_rest_invalid_nonce") {
-					nonce = null;
-					await send("");
-					return send(path, body);
-				}
-				throw error;
-			}
-		});
+	function queue(run) {
+		const next = pending.catch(() => undefined).then(run);
 		pending = next;
 		return next;
+	}
+	// Woo asks a write for a nonce when it did not accept the credential sent: a stale nonce in a
+	// cookie session, or a Cart-Token past its expiry (CartTokenUtils, 48 hours by default).
+	const refused = tokenMode ? "woocommerce_rest_missing_nonce" : "woocommerce_rest_invalid_nonce";
+	function cartRequest(path, body) {
+		return queue(async () => {
+			if (body !== undefined && !(tokenMode ? storedToken() : nonce)) await readCart("");
+			try {
+				return await readCart(path, body);
+			} catch (error) {
+				if (body === undefined || !(error instanceof WooStoreError) || error.code !== refused) throw error;
+				// An expired token's cart is gone from Woo too: the write goes to the cart the read starts.
+				nonce = null;
+				if (tokenMode) storeToken(null);
+				await readCart("");
+				return readCart(path, body);
+			}
+		});
 	}
 	const address = (input) => Object.fromEntries(Object.entries(input).map(([key, value]) => [{
 		firstName: "first_name",
@@ -1470,22 +1518,22 @@ export function createCartClient(options = {}) {
 		address1: "address_1",
 		address2: "address_2"
 	}[key] ?? key, value]));
-	return {
-		get: () => queue(""),
-		add: (id, quantity = 1) => queue("/add-item", {
+	const cart = {
+		get: () => cartRequest(""),
+		add: (id, quantity = 1) => cartRequest("/add-item", {
 			id,
 			quantity
 		}),
-		update: (key, quantity) => quantity === 0 ? queue("/remove-item", { key }) : queue("/update-item", {
+		update: (key, quantity) => quantity === 0 ? cartRequest("/remove-item", { key }) : cartRequest("/update-item", {
 			key,
 			quantity
 		}),
-		remove: (key) => queue("/remove-item", { key }),
-		updateCustomer: (input) => queue("/update-customer", {
+		remove: (key) => cartRequest("/remove-item", { key }),
+		updateCustomer: (input) => cartRequest("/update-customer", {
 			...input.billing ? { billing_address: address(input.billing) } : {},
 			...input.shipping ? { shipping_address: address(input.shipping) } : {}
 		}),
-		selectShipping: (packageId, rateId) => queue("/select-shipping-rate", {
+		selectShipping: (packageId, rateId) => cartRequest("/select-shipping-rate", {
 			package_id: packageId,
 			rate_id: rateId
 		}),
@@ -1496,12 +1544,53 @@ export function createCartClient(options = {}) {
 			};
 		}
 	};
+	if (!tokenMode) return cart;
+	const tokenCart = {
+		...cart,
+		checkoutLink: (checkoutUrl) => {
+			const sent = storedToken();
+			if (!sent) throw new WooStoreError("cart_token_unavailable", "Load your cart before checking out.", 0);
+			// Without the Store API's own address (a relative root outside a browser) the origin cannot be checked.
+			const link = resolved === undefined ? undefined : new URL(checkoutUrl, resolved);
+			if (!link || link.origin !== new URL(resolved).origin) throw new Error(`The checkout link must be on the Store API's origin (${root}): it carries the cart token.`);
+			link.searchParams.set("session", sent);
+			return link.href;
+		},
+		checkout: (input) => queue(async () => {
+			if (!storedToken()) throw new WooStoreError("cart_token_unavailable", "Load your cart before checking out.", 0);
+			let data;
+			try {
+				data = await send("/checkout", input);
+			} catch (error) {
+				if (!(error instanceof WooStoreError) || error.code !== refused) throw error;
+				// The expired token's cart is gone from Woo: subscribers get the new, empty one.
+				storeToken(null);
+				await readCart("").catch(() => undefined);
+				throw new WooStoreError("cart_token_expired", "Your cart expired. Add the items again before checking out.", error.status);
+			}
+			if (typeof data !== "object" || data === null || !("order_id" in data) || typeof data.order_id !== "number" || !("status" in data) || typeof data.status !== "string" || !("payment_result" in data) || typeof data.payment_result !== "object" || data.payment_result === null || !("payment_status" in data.payment_result) || typeof data.payment_result.payment_status !== "string" || !("redirect_url" in data.payment_result) || typeof data.payment_result.redirect_url !== "string" || !("payment_details" in data.payment_result)) {
+				throw new WooStoreError("invalid_checkout_response", "WooCommerce returned an unexpected checkout response. Check your order before retrying.", 0);
+			}
+			const result = {
+				order_id: data.order_id,
+				status: data.status,
+				payment_result: {
+					payment_status: data.payment_result.payment_status,
+					redirect_url: data.payment_result.redirect_url,
+					payment_details: data.payment_result.payment_details
+				}
+			};
+			// Woo emptied the cart. The order stands whether or not this read answers.
+			await readCart("").catch(() => undefined);
+			return result;
+		})
+	};
+	return tokenCart;
 }
 export const cart = createCartClient();
 const wooCartStores = new WeakMap();
 /** A tab shown again reads the cart only when Woo last answered at least this long ago. */
 const SHOWN_AGAIN_MS = 5e3;
-/** One cart store per client, shared by React hooks and other browser subscribers. */
 export function createCartStore(client = cart) {
 	const shared = wooCartStores.get(client);
 	if (shared) return shared;
@@ -1582,7 +1671,8 @@ export function createCartStore(client = cart) {
 		reading = next;
 		return next;
 	}
-	function write(run, update) {
+	/** `cartOf` gives the cart in Woo's answer. An answer with none (an order) uses the cart the client read after it. */
+	function write(run, update, cartOf) {
 		optimistic.add(update);
 		// A read queued or sent before this write answers with the cart from before it, so a later refresh() asks again.
 		reading = undefined;
@@ -1590,9 +1680,10 @@ export function createCartStore(client = cart) {
 			writing = true;
 			let changes = { loading: false };
 			try {
-				confirmed = await run();
+				const answer = await run();
+				confirmed = cartOf(answer) ?? receivedDuringWrite ?? confirmed;
 				changes = answered();
-				return confirmed;
+				return answer;
 			} catch (error) {
 				// Woo sends the current cart with a 409. Any other refusal rolls back to the confirmed cart.
 				const current = (error instanceof WooStoreError ? error.cart : undefined) ?? receivedDuringWrite;
@@ -1630,9 +1721,10 @@ export function createCartStore(client = cart) {
 			itemsCount: current.itemsCount + next - item.quantity
 		};
 	}
+	const cartWrite = (run, update) => write(run, update, (cart) => cart);
 	const actions = {
 		refresh,
-		add: (id, count = 1) => write(() => client.add(id, count), (current) => {
+		add: (id, count = 1) => cartWrite(() => client.add(id, count), (current) => {
 			if (!Number.isSafeInteger(count) || count <= 0) return current;
 			// A variation's line has the variation's id. Two lines with one id differ in data only Woo can compare.
 			const matches = current.items.filter((item) => item.id === id);
@@ -1643,9 +1735,9 @@ export function createCartStore(client = cart) {
 				itemsCount: current.itemsCount + count
 			};
 		}),
-		update: (key, count) => write(() => client.update(key, count), (current) => quantity(current, key, count)),
-		remove: (key) => write(() => client.remove(key), (current) => quantity(current, key, 0)),
-		selectShipping: (packageId, rateId) => write(() => client.selectShipping(packageId, rateId), (current) => ({
+		update: (key, count) => cartWrite(() => client.update(key, count), (current) => quantity(current, key, count)),
+		remove: (key) => cartWrite(() => client.remove(key), (current) => quantity(current, key, 0)),
+		selectShipping: (packageId, rateId) => cartWrite(() => client.selectShipping(packageId, rateId), (current) => ({
 			...current,
 			shippingRates: current.shippingRates.map((pack) => pack.packageId === packageId && pack.rates.some((rate) => rate.id === rateId) ? {
 				...pack,
@@ -1655,7 +1747,7 @@ export function createCartStore(client = cart) {
 				}))
 			} : pack)
 		})),
-		updateCustomer: (input) => write(() => client.updateCustomer(input), (current) => ({
+		updateCustomer: (input) => cartWrite(() => client.updateCustomer(input), (current) => ({
 			...current,
 			...input.billing ? { billingAddress: {
 				...current.billingAddress,
@@ -1667,6 +1759,11 @@ export function createCartStore(client = cart) {
 			} } : {}
 		}))
 	};
+	// The order is queued behind the cart's writes and holds `pending`. The cart shown stays as it is
+	// until the read the client makes after the order answers.
+	if ("checkout" in client) {
+		actions.checkout = (input) => write(() => client.checkout(input), (current) => current, () => undefined);
+	}
 	const page = () => globalThis.document;
 	const reread = () => {
 		refresh().catch(() => undefined);

@@ -251,6 +251,9 @@ fn collection(out: &mut String, c: &Collection) {
     if c.taxonomy.is_some() {
         out.push_str("            'taxonomy' => true,\n");
     }
+    if let Some(ui) = &c.ui {
+        let _ = writeln!(out, "            'ui' => {},", php_json(ui));
+    }
     let _ = writeln!(out, "            'title' => {},", opt(&c.title));
     let _ = writeln!(out, "            'content' => {},", opt(&c.content));
     let _ = writeln!(out, "            'slug' => {},", opt(&c.slug));
@@ -702,6 +705,9 @@ pub fn render(schema: &Schema) -> String {
         let n = &g.name;
         let _ = writeln!(out, "        {} => [", php_str(n));
         let _ = writeln!(out, "            'label' => {},", php_str(&g.label));
+        if let Some(ui) = &g.ui {
+            let _ = writeln!(out, "            'ui' => {},", php_json(ui));
+        }
         let _ = writeln!(out, "            'agents' => {},", g.agents);
         let _ = writeln!(out, "            'fields' => {},", fields_block(&g.fields, 3));
         let rules: Vec<String> = g
@@ -748,6 +754,20 @@ pub fn render(schema: &Schema) -> String {
         out.push_str("    'screens' => [\n");
         for (id, screen) in &schema.screens {
             let _ = writeln!(out, "        {} => {},", php_str(id), php_json(screen));
+        }
+        out.push_str("    ],\n");
+    }
+    if !schema.widgets.is_empty() {
+        out.push_str("    'widgets' => [\n");
+        for (id, widget) in &schema.widgets {
+            let _ = writeln!(out, "        {} => {},", php_str(id), php_json(widget));
+        }
+        out.push_str("    ],\n");
+    }
+    if !schema.dashboards.is_empty() {
+        out.push_str("    'dashboards' => [\n");
+        for (id, dashboard) in &schema.dashboards {
+            let _ = writeln!(out, "        {} => {},", php_str(id), php_json(dashboard));
         }
         out.push_str("    ],\n");
     }

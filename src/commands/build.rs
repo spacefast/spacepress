@@ -26,7 +26,7 @@ pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
 
 /// The in-memory pipeline over this project's last snapshot, migration numbering and plugin lock.
 fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Result<Built, Diag> {
-    pipeline::build(
+    let built = pipeline::build(
         project,
         program,
         || {
@@ -35,7 +35,18 @@ fn build_program(project: &Path, program: &loader::Program, frozen: bool) -> Res
             Ok(previous)
         },
         runtime_file,
-    )
+    )?;
+    Ok(built)
+}
+
+/// A build that ships its synced files as the seed checks them, so a file the seed would refuse
+/// on the site is a diagnostic at that file. Only `build` and `check` run it: commands that compile
+/// for another reason (`add`, `pull`, `styles`, `init`) aren't blocked by a content typo.
+fn check_seed(project: &Path, built: &Built) -> Result<(), Diag> {
+    if built.schema.ships_seed() {
+        crate::bundle::seed_records(&loader::Disk, project, &built.schema, true)?;
+    }
+    Ok(())
 }
 
 fn migrations_dir(project: &Path) -> PathBuf {
@@ -506,7 +517,9 @@ fn remove_empty_dirs(dir: &Path) -> std::io::Result<bool> {
 pub(crate) fn check(project: &Path, frozen: bool) -> (serde_json::Value, Option<Built>) {
     let built = match loader::load_all(&project.join("typedpress.config.ts")) {
         Err(diagnostics) => Err(diagnostics),
-        Ok(program) => build_program(project, &program, frozen).map_err(|d| vec![d]),
+        Ok(program) => build_program(project, &program, frozen)
+            .and_then(|built| check_seed(project, &built).map(|()| built))
+            .map_err(|d| vec![d]),
     };
     let mut envelope = diag::envelope(built.as_ref().err().map_or(&[], Vec::as_slice), project);
     if let Ok(built) = &built {
@@ -544,18 +557,43 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         };
     }
     let started = std::time::Instant::now();
-    let built = match build(&project, frozen) {
+    // `--diagnostics-file` (typedpress dev's): the compile's envelope, written whether it compiled or
+    // not. A failure after the compile (a refused migration, a file that can't be written) is no
+    // compiler diagnostic and stays on stderr alone.
+    let report = |diagnostics: &[diag::Diag]| {
+        if let Some(path) = &args.diagnostics_file {
+            let bytes =
+                serde_json::to_vec(&diag::envelope(diagnostics, &project)).expect("diagnostic envelope serializes");
+            if let Err(error) = write(path, bytes) {
+                eprintln!("error: couldn't write diagnostics: {error}");
+            }
+        }
+    };
+    let built = match build(&project, frozen).and_then(|built| check_seed(&project, &built).map(|()| built)) {
         Ok(b) => b,
         Err(d) => {
-            eprint!("{}", diag::render(&d, &project));
+            report(std::slice::from_ref(&d));
+            // `build` names the code in the heading; `check` keeps the plain `error:` others match on.
+            let render = if args.command == "build" {
+                diag::render_with_code
+            } else {
+                diag::render
+            };
+            eprint!("{}", render(&d, &project));
             return ExitCode::from(1);
         }
     };
+    report(&[]);
     for line in &built.plugin_changes {
         eprintln!("{line}");
     }
     for w in &built.unsupported_plugins {
         eprintln!("warning: {w}");
+    }
+    if built.schema.seed && built.schema.collections.values().all(|c| c.sync.is_none()) {
+        eprintln!(
+            "warning: `seed: true` imports the files of synced kinds, and no kind has `sync`: nothing is seeded. Add `sync: \"content/<kind>/*.md\"` to a kind, or remove `seed`."
+        );
     }
     // A project that ran `typedpress init`: its agent files follow the config and the compiler.
     let agent_files = (!args.quiet)

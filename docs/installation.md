@@ -14,9 +14,9 @@ npm run dev
 
 The creator installs the matching `typedpress` version and TypeScript. The compiler package downloads the exact version for your operating system and CPU and verifies the archive's SHA-256. `typedpress dev` uses pinned WordPress Studio CLI 2.2.0 to supply native PHP, WordPress and SQLite.
 
-Open `/index.html` on the WordPress URL printed in the terminal: the project's `public/` folder is served at the site root. Your public frontend, API, login and native WordPress admin share that origin. WordPress's theme retains its homepage. Add a note through “Write a note”; the example permits public reads and restricts writes to WordPress editors. Use the local admin credentials printed by TypedPress only for development.
+Open the **Website** URL printed in the terminal. The homepage, the **Notes** list, and each note are rendered by WordPress from `tp/app/`. WordPress imports the sample entries in `content/notes/` on first start. **Account** uses the local WordPress login printed in the terminal.
 
-Edit `public/` for the frontend and `typedpress.config.ts` for the backend. TypedPress watches both. Refresh to see changes. The generated client in `tp/_generated/client/` is ready for a TypeScript frontend, and `client.ts` demonstrates its types. A frontend framework is optional. Backend TypeScript compiles to PHP; unsupported language/library behavior fails compiler checks rather than becoming a Node.js service.
+Start by editing `tp/app/page.tsx`. Wait for the rebuild and refresh your browser. Edit `typedpress.config.ts` to change the note fields or site settings. The starter's README shows where to edit layouts, styles, and actions. [Starter source](https://github.com/spacefast/zero/tree/main/packages/create-typedpress/template)
 
 ```sh
 npm run check
@@ -27,7 +27,7 @@ npm run wp -- core version
 npm run stop
 ```
 
-The site answers on `http://localhost:<port>` only. To open it from another machine, either put a proxy in front and name its address with `npm run dev -- --url https://box.example.ts.net:8443` (WordPress writes that address into its pages; the proxy points at the localhost one), or listen on one of this machine's addresses with `npm run dev -- --host 10.0.0.24`. Anyone who can reach that address can sign in as the local administrator, so use it on a network you trust.
+The site answers on `http://localhost:<port>` only. To open it from another machine, either put a proxy in front and name its address with `npm run dev -- --url https://box.example.ts.net:8443` (WordPress writes that address into its pages; the proxy points at the localhost one), or listen on one of this machine's addresses with `npm run dev -- --host 10.0.0.24`. Anyone who can reach that address can sign in as the local administrator, so use it on a network you trust. Reload on save and the error overlay work at that address too: the page reads them from the site itself, so the proxy needs no second port.
 
 Stopping preserves your local SQLite content. Commit generated migrations and client files; keep `.tp/`, dependencies and secrets out of Git. The emitted deployment artifact is `tp/dist/wp-content`, not the local Studio database. Production provisioning and data migration require the deployment lifecycle for your target WordPress site.
 

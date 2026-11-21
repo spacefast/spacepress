@@ -1100,6 +1100,12 @@ importers:
       '@wordpress/data':
         specifier: 10.54.2-next.v.202608281122.0
         version: 10.54.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/html-entities':
+        specifier: 4.54.1-next.v.202608281122.0
+        version: 4.54.1-next.v.202608281122.0
+      '@wordpress/icons':
+        specifier: 15.5.1-next.v.202608281122.0
+        version: 15.5.1-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1174,6 +1180,42 @@ importers:
       '@wordpress/views':
         specifier: 1.21.1-next.v.202608281122.0
         version: 1.21.1-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+
+  packages/widgets:
+    dependencies:
+      '@typedpress-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../admin-toolkit
+      '@typedpress-admin/boot':
+        specifier: workspace:*
+        version: link:../boot
+      '@typedpress-admin/dashboard':
+        specifier: workspace:*
+        version: link:../dashboard
+      '@typedpress-admin/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@wordpress/api-fetch':
+        specifier: 7.54.1-next.v.202608281122.0
+        version: 7.54.1-next.v.202608281122.0
+      '@wordpress/components':
+        specifier: 40.1.1-next.v.202608281122.0
+        version: 40.1.1-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/data':
+        specifier: 10.54.2-next.v.202608281122.0
+        version: 10.54.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/html-entities':
+        specifier: 4.54.1-next.v.202608281122.0
+        version: 4.54.1-next.v.202608281122.0
+      '@wordpress/i18n':
+        specifier: 6.27.1-next.v.202608281122.0
+        version: 6.27.1-next.v.202608281122.0
+      '@wordpress/icons':
+        specifier: 15.5.1-next.v.202608281122.0
+        version: 15.5.1-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react:
+        specifier: 'catalog:'
+        version: 18.3.1
 
   packages/wp-build:
     dependencies:
@@ -1331,6 +1373,39 @@ importers:
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
+  routes/custom-dashboard:
+    dependencies:
+      '@typedpress-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@typedpress-admin/boot':
+        specifier: workspace:*
+        version: link:../../packages/boot
+      '@typedpress-admin/dashboard':
+        specifier: workspace:*
+        version: link:../../packages/dashboard
+      '@typedpress-admin/widgets':
+        specifier: workspace:*
+        version: link:../../packages/widgets
+      '@wordpress/components':
+        specifier: 40.1.1-next.v.202608281122.0
+        version: 40.1.1-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/data':
+        specifier: 10.54.2-next.v.202608281122.0
+        version: 10.54.2-next.v.202608281122.0(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/i18n':
+        specifier: 6.27.1-next.v.202608281122.0
+        version: 6.27.1-next.v.202608281122.0
+      '@wordpress/preferences':
+        specifier: 4.54.2-next.v.202608281122.0
+        version: 4.54.2-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/route':
+        specifier: 0.20.1-next.v.202608281122.0
+        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react:
+        specifier: 'catalog:'
+        version: 18.3.1
+
   routes/dashboard:
     dependencies:
       '@typedpress-admin/admin-toolkit':
@@ -1348,6 +1423,9 @@ importers:
       '@typedpress-admin/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
+      '@typedpress-admin/widgets':
+        specifier: workspace:*
+        version: link:../../packages/widgets
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1598,6 +1676,24 @@ importers:
       '@wordpress/route':
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+
+  routes/identity:
+    dependencies:
+      '@typedpress-admin/admin-toolkit':
+        specifier: workspace:*
+        version: link:../../packages/admin-toolkit
+      '@wordpress/api-fetch':
+        specifier: 7.54.1-next.v.202608281122.0
+        version: 7.54.1-next.v.202608281122.0
+      '@wordpress/components':
+        specifier: 40.1.1-next.v.202608281122.0
+        version: 40.1.1-next.v.202608281122.0(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wordpress/i18n':
+        specifier: 6.27.1-next.v.202608281122.0
+        version: 6.27.1-next.v.202608281122.0
+      react:
+        specifier: 'catalog:'
+        version: 18.3.1
 
   routes/media:
     dependencies:
@@ -2393,6 +2489,9 @@ importers:
       '@typedpress-admin/views':
         specifier: workspace:*
         version: link:../../packages/views
+      '@wordpress/api-fetch':
+        specifier: 7.54.1-next.v.202608281122.0
+        version: 7.54.1-next.v.202608281122.0
       '@wordpress/components':
         specifier: 40.1.1-next.v.202608281122.0
         version: 40.1.1-next.v.202608281122.0(@date-fns/tz@1.5.0)(@emotion/is-prop-valid@1.4.0)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)

@@ -154,9 +154,15 @@ the database, uploads and other installed plugins remain in
 `examples/pantry/.tp/dev/wordpress` for the next start. The login above is
 for disposable local development only, never production.
 
+Open pages reload when a rebuild changes the app, and a compile error is
+shown over the page until a save builds. That covers app pages, HTML files
+from `public/`, the login page and wp-admin, at whatever address the site is
+opened (`--url`, `--host`).
+
 `typedpress dev --detach` does the same in the background: it returns once the site
 is up, keeps rebuilding on save, and writes its output to
-`.tp/dev/dev.log`. A coding agent's shell gets that without the flag (the
+`.tp/dev/dev.log`. If the first build fails it prints the error and exits 1,
+with WordPress running and the watcher waiting for a fix. A coding agent's shell gets that without the flag (the
 output is not a terminal and `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or
 `AGENT` is set, outside CI); `--foreground` keeps the command attached.
 `typedpress dev status --json` reports the URL, the port and that process.

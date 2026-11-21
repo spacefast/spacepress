@@ -212,7 +212,7 @@ update abilities. Jobs are exposed only when explicitly opted in with
 The app server lists named tools directly. The adapter's separate default
 server has discovery and execution meta-tools; it is not the app endpoint above.
 Both are built on `/wp-json` requests only: a request to TypedPress's own API
-(`/__tp/api/v1`) never reaches `/mcp`, so it builds neither server and
+(`/wp-json/typedpress/v1`) never reaches `/mcp`, so it builds neither server and
 registers no abilities it doesn't run.
 
 The owning code is
@@ -254,9 +254,9 @@ data*) and shows each password's scope.
 A scope only narrows. The user's role, each kind's access rules and its field
 rules still decide first, so a subscriber's credential with `--write` writes
 what a subscriber may. It is enforced wherever the app can be reached: the
-abilities run route, the MCP server, `/__tp/api/v1`, core's `/wp/v2` routes,
+abilities run route, the MCP server, `/wp-json/typedpress/v1`, core's `/wp/v2` routes,
 `/batch/v1` sub-requests, `?rest_route=` and method overrides. `GET
-/__tp/api/v1` reports the scope of the credential asking, under
+/wp-json/typedpress/v1` reports the scope of the credential asking, under
 `runtime.credential`.
 
 Whatever its grants and its user's role, a scoped credential can't do the
@@ -275,7 +275,10 @@ abilities of an app's users kind.
 
 An agent that has to do one of these needs an unscoped credential, which is a
 choice its owner makes on purpose. A credential limited to named abilities also
-sees only those in core's abilities list and in the MCP tool list.
+sees only those in core's abilities list and in the MCP tool list. The list
+covers what an action calls with `abilities.call` too: the inner ability runs as
+the same credential, so it is named on the list beside the action, and a refusal
+says which ability is missing.
 
 A refusal is a 403 with the code `scope` (`tp_scope` on core routes; a tool
 error over MCP) and says which grant is missing. Without `personal`, emails and

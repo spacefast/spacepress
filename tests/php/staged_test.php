@@ -166,12 +166,12 @@ $public = static function () use ($url, $pid, $basic): array {
     $item = json_decode(fetch("$url/wp-json/wp/v2/tp_posts/$pid")['body'], true);
 
     return [
-        'api item' => fetch("$url/__tp/api/v1/posts/$pid")['body'],
-        'api item, subscriber' => fetch("$url/__tp/api/v1/posts/$pid", [$basic('sub')])['body'],
-        'api list' => fetch("$url/__tp/api/v1/posts")['body'],
-        'api search' => fetch("$url/__tp/api/v1/posts?search=stagedmarker")['body'],
-        'site-wide search' => fetch("$url/__tp/api/v1/search?q=stagedmarker")['body'],
-        'api markdown' => fetch("$url/__tp/api/v1/posts/$pid?format=md")['body'],
+        'api item' => fetch("$url/wp-json/typedpress/v1/posts/$pid")['body'],
+        'api item, subscriber' => fetch("$url/wp-json/typedpress/v1/posts/$pid", [$basic('sub')])['body'],
+        'api list' => fetch("$url/wp-json/typedpress/v1/posts")['body'],
+        'api search' => fetch("$url/wp-json/typedpress/v1/posts?search=stagedmarker")['body'],
+        'site-wide search' => fetch("$url/wp-json/typedpress/v1/search?q=stagedmarker")['body'],
+        'api markdown' => fetch("$url/wp-json/typedpress/v1/posts/$pid?format=md")['body'],
         'core item' => [$item['title'] ?? null, $item['content'] ?? null, $item['slug'] ?? null, $item['modified_gmt'] ?? null, $item['meta'] ?? null],
         'core item links' => [$item['_links']['version-history'] ?? null, $item['_links']['predecessor-version'] ?? null],
         'core list search' => fetch("$url/wp-json/wp/v2/tp_posts?search=stagedmarker")['body'],
@@ -270,8 +270,8 @@ foreach ([null, 'sub', 'bob'] as $actor) {
     }
 }
 eq('refused actors changed nothing', api('GET', "/posts/$pid/staged", as: 'ed')[1]['row']['title'], 'Staged title');
-eq('over HTTP an anonymous client gets the 404 too', [fetch("$url/__tp/api/v1/posts/$pid/staged")['status'], fetch("$url/__tp/api/v1/posts/$pid/staged/compare", [$basic('sub')])['status']], [404, 404]);
-$served = json_decode(fetch("$url/__tp/api/v1/posts/$pid/staged", [$basic('ed')])['body'], true);
+eq('over HTTP an anonymous client gets the 404 too', [fetch("$url/wp-json/typedpress/v1/posts/$pid/staged")['status'], fetch("$url/wp-json/typedpress/v1/posts/$pid/staged/compare", [$basic('sub')])['status']], [404, 404]);
+$served = json_decode(fetch("$url/wp-json/typedpress/v1/posts/$pid/staged", [$basic('ed')])['body'], true);
 eq('an application password of an editor reads the staged version over HTTP', [$served['data']['row']['title'] ?? null, $served['data']['fields'] ?? null], ['Staged title', ['title', 'slug', 'body', 'excerpt']]);
 
 // ================================================================ compare
@@ -304,7 +304,7 @@ eq('the refused promote changed nothing and kept the staged version', [$db->find
 // ================================================================ preview links
 
 [, $link] = api('POST', "/posts/$pid/staged/preview", as: 'ed');
-check('a preview link names the API read and the page', str_starts_with($link['api'], "$url/__tp/api/v1/posts/$pid/staged?preview=") && str_starts_with((string) $link['url'], "$url/blog/live-post/?tp_preview="), $link);
+check('a preview link names the API read and the page', str_starts_with($link['api'], "$url/wp-json/typedpress/v1/posts/$pid/staged?preview=") && str_starts_with((string) $link['url'], "$url/blog/live-post/?tp_preview="), $link);
 $preview = json_decode(fetch($link['api'])['body'], true)['data'] ?? null;
 eq('the link reads the staged row without signing in', [$preview['row']['title'] ?? null, $preview['row']['body'] ?? null], ['Staged title', $stagedBody]);
 check('… through an anonymous visitor\'s field masks, without who staged it', !array_key_exists('memo', $preview['row']) && !in_array('memo', $preview['fields'], true) && !array_key_exists('by', $preview), $preview);
@@ -320,8 +320,8 @@ check('a previewed page is never stored by a cache, indexed, or named in a Refer
 eq('the page without the link is the live page', fetch("$url/blog/live-post/")['body'], $before['page']);
 eq('the twin ignores a preview link', fetch("$url/blog/live-post.md?tp_preview=" . $link['token'])['body'], $before['twin']);
 $tampered = substr($link['token'], 0, -2) . (str_ends_with($link['token'], 'AA') ? 'BB' : 'AA');
-eq('a tampered link is not a link', [fetch("$url/__tp/api/v1/posts/$pid/staged?preview=$tampered")['status'], fetch("$url/blog/live-post/?tp_preview=$tampered")['body']], [404, $before['page']]);
-eq('a link names one item only', fetch("$url/__tp/api/v1/posts/{$other['id']}/staged?preview=" . $link['token'])['status'], 404);
+eq('a tampered link is not a link', [fetch("$url/wp-json/typedpress/v1/posts/$pid/staged?preview=$tampered")['status'], fetch("$url/blog/live-post/?tp_preview=$tampered")['body']], [404, $before['page']]);
+eq('a link names one item only', fetch("$url/wp-json/typedpress/v1/posts/{$other['id']}/staged?preview=" . $link['token'])['status'], 404);
 check('a link is valid now', Staged::previewed('posts', $pid, $link['token']) !== null);
 putenv('TP_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 3601));
 eq('a link expires after an hour by default', Staged::previewed('posts', $pid, $link['token']), null);

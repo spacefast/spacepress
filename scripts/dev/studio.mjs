@@ -895,7 +895,7 @@ async function main() {
       await configure(allowDestructive);
       allowDestructive = false;
       publishedRevision = initialRevision;
-      const response = await fetch(`${local}/__tp/api/v1`, { signal: AbortSignal.timeout(15000) });
+      const response = await fetch(`${local}/wp-json/typedpress/v1`, { signal: AbortSignal.timeout(15000) });
       if (!response.ok) throw new Error(`TypedPress application is not ready: HTTP ${response.status}. Run typedpress doctor --site ${local}`);
     }
     // The session starts once the site holds this build, so a page left open from an earlier

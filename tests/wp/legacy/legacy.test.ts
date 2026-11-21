@@ -1,7 +1,7 @@
 // Migrating an ORIGINAL Zero (0.8) site to the new app (lane M), against real WordPress: run.sh
 // seeded the site through the original kernel (or replayed the rows it wrote), with the app that
 // `typedpress migrate config --from zero` made from capsule.ts active. Everything is read back through
-// /__tp/api/v1, the API the migrated app serves.
+// /wp-json/typedpress/v1, the API the migrated app serves.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -163,7 +163,7 @@ test("a failed term recount, the last write, rolls the whole migration back", ()
   }
 });
 
-test("the migration keeps every record, field, status, date and author, read through /__tp/api/v1", async () => {
+test("the migration keeps every record, field, status, date and author, read through /wp-json/typedpress/v1", async () => {
   const r = migrate();
   assert.equal(r.code, 0, JSON.stringify(r.out));
   const published = (id: number) => site.posts.find((p: any) => Number(p.ID) === id).post_date_gmt.replace(" ", "T") + ".000Z";

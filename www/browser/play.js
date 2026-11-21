@@ -291,7 +291,7 @@ class Play extends HTMLElement {
     if (Object.keys(changed).length === 0) { this.sharedNote.textContent = "Nothing to share yet: change a file first."; return; }
     this.sharedNote.textContent = "Saving…";
     try {
-      const response = await fetch("/__tp/api/v1/actions/share", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ example: this.name, files: changed }) });
+      const response = await fetch("/wp-json/typedpress/v1/actions/share", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ example: this.name, files: changed }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message ?? body?.message ?? `the site answered ${response.status}`);
       const url = new URL(`/play?s=${body.data.key}`, location.href).href;

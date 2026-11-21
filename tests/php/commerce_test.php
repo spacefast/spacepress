@@ -652,10 +652,10 @@ $request = static function (string $path, string $method = 'GET', ?array $body =
     $text = curl_exec($ch);
     return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), json_decode((string) $text, true), $responseHeaders];
 };
-eq('scoped read credential reads public catalog', $request('/__tp/api/v1/products')[0], 200);
-$scopedGuide = array_values(array_filter($request('/__tp/api/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
+eq('scoped read credential reads public catalog', $request('/wp-json/typedpress/v1/products')[0], 200);
+$scopedGuide = array_values(array_filter($request('/wp-json/typedpress/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
 check('a credential without personal scope cannot export download locations', !array_key_exists('file', $scopedGuide['downloads'][0]));
-eq('orders need the personal grant on the facade', $request('/__tp/api/v1/orders')[0], 403);
+eq('orders need the personal grant on the facade', $request('/wp-json/typedpress/v1/orders')[0], 403);
 eq('orders need the personal grant on native TypedPress REST', $request('/wp-json/wp/v2/tp_orders')[0], 403);
 eq('orders need the personal grant on abilities', $request('/wp-json/wp-abilities/v1/abilities/shop/orders-list/run?input=%7B%7D')[0], 403);
 eq('scoped credentials cannot run Woo abilities', $request('/wp-json/wp-abilities/v1/abilities/woocommerce/orders-query/run?input=%7B%7D')[0], 403);
@@ -663,29 +663,29 @@ $initialize = $request('/wp-json/mcp/typedpress-shop', 'POST', ['jsonrpc' => '2.
 $tools = $request('/wp-json/mcp/typedpress-shop', 'POST', ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list', 'params' => new stdClass()], ['Mcp-Session-Id: ' . ($initialize[2]['mcp-session-id'] ?? ''), 'Mcp-Protocol-Version: 2025-11-25']);
 $names = array_column($tools[1]['result']['tools'] ?? [], 'name');
 check('an agent without personal scope sees product and store tools, no order or Woo tools', $tools[0] === 200 && in_array('shop-products-list', $names, true) && in_array('shop-store-get', $names, true) && !array_filter($names, static fn ($n) => str_starts_with($n, 'shop-orders-') || str_starts_with($n, 'woocommerce-')), $tools);
-eq('a read-only agent cannot edit a product', $request('/__tp/api/v1/products/' . $guide['id'], 'PATCH', ['name' => 'Refused'])[0], 403);
+eq('a read-only agent cannot edit a product', $request('/wp-json/typedpress/v1/products/' . $guide['id'], 'PATCH', ['name' => 'Refused'])[0], 403);
 \TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], ['write' => true, 'personal' => false, 'abilities' => null]);
-eq('a write grant alone cannot change protected download locations', $request('/__tp/api/v1/products/' . $guide['id'], 'PATCH', ['downloads' => [['id' => 'field-guide', 'name' => 'Field guide', 'file' => 'https://private.example.test/new.pdf']]])[0], 403);
+eq('a write grant alone cannot change protected download locations', $request('/wp-json/typedpress/v1/products/' . $guide['id'], 'PATCH', ['downloads' => [['id' => 'field-guide', 'name' => 'Field guide', 'file' => 'https://private.example.test/new.pdf']]])[0], 403);
 $protectedCreate = ['name' => 'Scoped download create probe', 'virtual' => true, 'downloadable' => true, 'downloads' => [['id' => 'scoped-file', 'name' => 'Scoped file', 'file' => 'https://create-scope.example.test/files/file.pdf']]];
 $beforeScopedApproval = $directories->count(true);
-$refusedCreate = $request('/__tp/api/v1/products', 'POST', $protectedCreate);
+$refusedCreate = $request('/wp-json/typedpress/v1/products', 'POST', $protectedCreate);
 eq('a write grant alone cannot create protected download locations, and the refusal names the missing grant', [$refusedCreate[0], $refusedCreate[1]['code'] ?? null], [403, 'scope']);
 eq('refused scoped creation leaves no product', $db->findFirst('products', ['where' => ['name' => $protectedCreate['name']]]), null);
 eq('refused scoped creation leaves download approvals unchanged', $directories->count(true), $beforeScopedApproval);
-eq('a write grant can still create a product without protected fields', $request('/__tp/api/v1/products', 'POST', ['name' => 'Scoped ordinary create probe', 'price' => '1.00'])[0], 201);
+eq('a write grant can still create a product without protected fields', $request('/wp-json/typedpress/v1/products', 'POST', ['name' => 'Scoped ordinary create probe', 'price' => '1.00'])[0], 201);
 eq('Woo REST cannot bypass the app scope', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('Woo core product REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product')[0], 403);
 eq('Woo core term REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product_cat')[0], 403);
 \TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
 $protectedCreate['name'] = 'Personal download create probe';
-eq('the personal grant permits protected product creation', $request('/__tp/api/v1/products', 'POST', $protectedCreate)[0], 201);
+eq('the personal grant permits protected product creation', $request('/wp-json/typedpress/v1/products', 'POST', $protectedCreate)[0], 201);
 eq('authorized creation persists the protected download location', $db->findFirst('products', ['where' => ['name' => $protectedCreate['name']]])['downloads'][0]['file'], $protectedCreate['downloads'][0]['file']);
-eq('personal grant permits authorized order reads', $request('/__tp/api/v1/orders')[0], 200);
-$privateGuide = array_values(array_filter($request('/__tp/api/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
+eq('personal grant permits authorized order reads', $request('/wp-json/typedpress/v1/orders')[0], 200);
+$privateGuide = array_values(array_filter($request('/wp-json/typedpress/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
 check('an administrator credential with personal scope retains download management', is_string($privateGuide['downloads'][0]['file'] ?? null));
 eq('even a personal write agent cannot use Woo REST', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('even a personal write agent cannot use Woo core aliases', $request('/wp-json/wp/v2/product')[0], 403);
-eq('orders remain read-only with every grant', $request('/__tp/api/v1/orders', 'POST', [])[0], 405);
+eq('orders remain read-only with every grant', $request('/wp-json/typedpress/v1/orders', 'POST', [])[0], 405);
 // An administrator who turns HPOS synchronization on closes the shop, not wp-admin. Woo itself
 // refuses HPOS as the authoritative storage while orders are unsynchronized, so this is the first step.
 foreach (['woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
@@ -694,12 +694,12 @@ foreach (['woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
     curl_setopt_array($login, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60]);
     curl_exec($login);
     eq('WordPress login survives ' . $option, (int) curl_getinfo($login, CURLINFO_RESPONSE_CODE), 200);
-    $closed = $request('/__tp/api/v1/store');
+    $closed = $request('/wp-json/typedpress/v1/store');
     eq('the shop is unavailable under ' . $option, [$closed[0], $closed[1]['code'] ?? null], [503, 'unavailable']);
     check('the reason is logged for the administrator', str_contains($site->debugLog(), 'TypedPress commerce requires legacy order storage'));
     eq('native checkout is refused under ' . $option, $request('/wp-json/wc/store/v1/checkout', 'POST', [])[0], 503);
     update_option($option, 'no');
-    eq('the shop returns once storage is changed back from ' . $option, $request('/__tp/api/v1/store')[0], 200);
+    eq('the shop returns once storage is changed back from ' . $option, $request('/wp-json/typedpress/v1/store')[0], 200);
 }
 // A request-time install failure refuses TypedPress and leaves core admin available for repairs.
 \TypedPress\Wp\InstallMarker::forget(); delete_option('tp_shop_shipping');

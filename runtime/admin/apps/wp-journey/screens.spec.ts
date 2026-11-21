@@ -21,7 +21,7 @@ const auth = ( role: string ) => ( {
 
 /** A post for the comments to belong to. */
 async function post( request: APIRequestContext ): Promise< number > {
-	const made = await request.post( `${ site }/__tp/api/v1/posts`, { headers: auth( 'admin' ), data: { title: `Screen post ${ Date.now() }` } } );
+	const made = await request.post( `${ site }/wp-json/typedpress/v1/posts`, { headers: auth( 'admin' ), data: { title: `Screen post ${ Date.now() }` } } );
 	expect( made.status(), await made.text() ).toBe( 201 );
 	return ( await made.json() ).data.id;
 }
@@ -31,7 +31,7 @@ async function post( request: APIRequestContext ): Promise< number > {
  * create (tests/wp/app/typedpress.config.ts, comments.afterCreate).
  */
 async function comment( request: APIRequestContext, postId: number, body: string ): Promise< number > {
-	const made = await request.post( `${ site }/__tp/api/v1/comments`, { headers: auth( 'subscriber' ), data: { postId, name: 'Reader', body } } );
+	const made = await request.post( `${ site }/wp-json/typedpress/v1/comments`, { headers: auth( 'subscriber' ), data: { postId, name: 'Reader', body } } );
 	expect( made.status(), await made.text() ).toBe( 201 );
 	const row = ( await made.json() ).data;
 	expect( row.approved ).toBe( false );
@@ -115,7 +115,7 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		await rowMenu( page ).getByRole( 'menuitem', { name: 'Approve' } ).click();
 		expect( ( await ran ).status() ).toBe( 200 );
 		await expect( page.locator( '[data-screen="test-comments"]' ).getByText( 'Approve: done.' ) ).toBeVisible();
-		const stored = await request.get( `${ site }/__tp/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
+		const stored = await request.get( `${ site }/wp-json/typedpress/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
 		expect( ( await stored.json() ).data.approved ).toBe( true );
 		// The list reruns its ability: an approved comment is no longer waiting.
 		await expect( page.locator( '[data-screen="test-comments"]' ).getByRole( 'row' ).filter( { hasText: body } ) ).toHaveCount( 0 );
@@ -143,7 +143,7 @@ test( 'the server decides access, the same way in both admins', async ( { page, 
 		await expect( page.locator( '[data-screen="test-comments"]' ).locator( '.components-notice.is-error' ) ).toBeVisible();
 	}
 	await developerMode( request, 'subscriber', false );
-	const stored = await request.get( `${ site }/__tp/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
+	const stored = await request.get( `${ site }/wp-json/typedpress/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
 	expect( ( await stored.json() ).data.approved ).toBe( false );
 	// The declaration itself is refused to a user below the screen's capability, by the same route both read.
 	const anonymous = await request.get( `${ site }/wp-json/typedpress-admin/v1/screens/test-comments` );

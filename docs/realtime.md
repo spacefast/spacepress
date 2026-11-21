@@ -105,7 +105,7 @@ import * as React from "react";
 import { createClient } from "./tp/_generated/client/index.ts";
 import { createHooks } from "./tp/_generated/client/react.ts";
 
-export const first = createClient({ url: "https://example.com/__tp/api/v1" });
+export const first = createClient({ url: "https://example.com/wp-json/typedpress/v1" });
 export const { useQuery, useMutation } = createHooks(React);
 ```
 
@@ -185,12 +185,12 @@ Spacefast poll like on any other host.
 
 ## Server side: the subscription endpoint
 
-Polling without a transport does not repeat each read. One request, `POST /__tp/api/v1/_live`,
+Polling without a transport does not repeat each read. One request, `POST /wp-json/typedpress/v1/_live`,
 carries every read a page is subscribed to with the token of the answer it last got, and answers
 each with "not modified" or the fresh result, evaluated as the caller:
 
 ```http
-POST /__tp/api/v1/_live
+POST /wp-json/typedpress/v1/_live
 { "queries": [{ "kind": "todos", "op": "list", "args": { "where": { "done": false } }, "token": "…" }] }
 
 { "data": { "results": [{ "changed": false, "token": "…" }], "poll": { "minMs": 2000, "maxMs": 30000 } } }

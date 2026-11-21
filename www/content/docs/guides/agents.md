@@ -257,8 +257,8 @@ data*) and shows each password's scope.
 A scope only narrows. The user's role, each kind's access rules and its field
 rules still decide first, so a subscriber's credential with `--write` writes
 what a subscriber may. It is enforced wherever the app can be reached: the
-abilities run route, the MCP server, `/__tp/api/v1`, core's `/wp/v2` routes,
-`/batch/v1` sub-requests, `?rest_route=` and method overrides. `GET /__tp/api/v1` reports the scope of the credential asking, under
+abilities run route, the MCP server, `/wp-json/typedpress/v1`, core's `/wp/v2` routes,
+`/batch/v1` sub-requests, `?rest_route=` and method overrides. `GET /wp-json/typedpress/v1` reports the scope of the credential asking, under
 `runtime.credential`.
 
 Whatever its grants and its user's role, a scoped credential can't do the

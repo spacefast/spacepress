@@ -283,11 +283,11 @@ async function clients(saved) {
   );
   return {
     publicClient: createClient({
-      url: `${saved.url}/__tp/api/v1`,
+      url: `${saved.url}/wp-json/typedpress/v1`,
       fetch: http,
     }),
     editor: createClient({
-      url: `${saved.url}/__tp/api/v1`,
+      url: `${saved.url}/wp-json/typedpress/v1`,
       fetch: http,
       headers: {
         authorization: `Basic ${Buffer.from(`editor:${saved.users.editor.appPassword}`).toString("base64")}`,

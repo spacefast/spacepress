@@ -207,6 +207,8 @@ pub struct Column {
     pub hidden: bool,
     /// Computed by storage and never written: a term's `count` and `url`.
     pub read_only: bool,
+    /// An authored Woo product field, stored via Woo's product metadata API.
+    pub commerce_meta: bool,
     /// `json<T>()` annotation, module and call position.
     pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
     /// `.was("old")`: the stored name before a rename (spec §2.5).
@@ -241,6 +243,7 @@ impl Column {
             derived: false,
             hidden: false,
             read_only: false,
+            commerce_meta: false,
             ts_type: None,
             was: None,
         }
@@ -519,6 +522,12 @@ pub struct Action {
     pub signature: Option<Json>,
     /// The handler's result as a JSON Schema, from its TypeScript return type (filled after compile).
     pub output: Option<Json>,
+    /// The handler's code reads a WooCommerce order kind, calls an ability that needs a credential's
+    /// `personal` grant (an order kind's, `complete-order`), or calls an action that is itself
+    /// personal (filled after compile, in `pipeline.rs`). Marked from the code on every branch, not
+    /// from one call: a credential without the grant is not shown the action, and a call is refused
+    /// where it reaches that read or ability.
+    pub personal: bool,
 }
 
 /// One `wp-hooks/` handler, registered with `add_filter`/`add_action`.

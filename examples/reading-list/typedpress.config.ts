@@ -38,7 +38,7 @@ export const reads = table({
   },
 });
 
-// POST /__tp/api/v1/actions/logRead, typed in the generated client.
+// POST /wp-json/typedpress/v1/actions/logRead, typed in the generated client.
 export const logRead = action({
   input: { bookId: integer(), minutes: integer() },
   access: "authenticated",

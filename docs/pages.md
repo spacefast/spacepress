@@ -140,7 +140,7 @@ export default function Page() {
 ```
 
 - The form posts form-encoded to the action's endpoint
-  (`/__tp/api/v1/actions/<name>`), with a hidden `_tp_return` (the page's
+  (`/wp-json/typedpress/v1/actions/<name>`), with a hidden `_tp_return` (the page's
   path and query). The action runs as the visitor, exactly as a JSON call runs
   it, and the answer is `303 See Other` back to that page.
 - Fields read as the action's input types them: `integer()` and `number()` from

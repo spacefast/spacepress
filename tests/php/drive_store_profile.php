@@ -73,7 +73,7 @@ final class DriveStoreProfile
 
     public function save(): void
     {
-        $report = ['wordpress' => $GLOBALS['wp_version'], 'php' => PHP_VERSION, 'warm_gets_per_state' => 5, 'states' => $this->states];
+        $report = ['wordpress' => $GLOBALS['wp_version'], 'woocommerce' => WC_VERSION, 'php' => PHP_VERSION, 'warm_gets_per_state' => 5, 'states' => $this->states];
         if (file_put_contents($this->output, json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n") === false) {
             throw new RuntimeException("Could not write {$this->output}");
         }

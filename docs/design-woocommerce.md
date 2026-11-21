@@ -115,7 +115,7 @@ over WordPress users: it creates no post type, taxonomy or table of its own.
 - The fields are fixed in v1: a builder takes options and no field list. Authored fields on a
   product are later work.
 - `access` is refused in v1; the defaults under [access boundaries](#access-boundaries) apply.
-- Being kinds, they need nothing of their own for the API (`/__tp/api/v1/products`), the typed
+- Being kinds, they need nothing of their own for the API (`/wp-json/typedpress/v1/products`), the typed
   client, `db.query.products`, OpenAPI, abilities, item URLs, purges or sync: each comes from
   the kind machinery. What is new is one store behind each, beside the post and term stores,
   that reads and writes through Woo CRUD.

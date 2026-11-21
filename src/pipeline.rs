@@ -189,6 +189,7 @@ pub fn build(
     let mut hooks: HookFunctions = indexmap::IndexMap::new();
     let plugin_lock = read_plugin_lock(program, &project.join(crate::plugins::LOCK_PATH))?;
     let previous_value;
+    let mut personal_actions = Vec::new();
     let (functions, slots, settled) = {
         let mut c = compile::Compiler::new(&schema, &mut ev, &ext, program);
         c.abilities = catalog.clone();
@@ -217,19 +218,55 @@ pub fn build(
             }
         }
         // The lock settles before anything is emitted, so a refused plugin generates nothing.
-        let mut handlers = Vec::new();
-        for ((_, name), root) in slots.iter().zip(&roots) {
-            if let Some(plugin) = root.plugin {
-                let mut reached = std::collections::BTreeSet::from([name.clone()]);
-                let mut stack = vec![name.clone()];
-                while let Some(f) = stack.pop() {
-                    for callee in c.calls.get(&f).into_iter().flatten() {
-                        if reached.insert(callee.clone()) {
-                            stack.push(callee.clone());
-                        }
+        let reach = |name: &String| {
+            let mut reached = std::collections::BTreeSet::from([name.clone()]);
+            let mut stack = vec![name.clone()];
+            while let Some(f) = stack.pop() {
+                for callee in c.calls.get(&f).into_iter().flatten() {
+                    if reached.insert(callee.clone()) {
+                        stack.push(callee.clone());
                     }
                 }
-                handlers.push((plugin, name.clone(), reached));
+            }
+            reached
+        };
+        let mut handlers = Vec::new();
+        // Each action: its ability's name, and every function its handler reaches.
+        let app = crate::wordpress::abilities::kebab(&schema.name);
+        let mut actions = Vec::new();
+        for ((slot, name), root) in slots.iter().zip(&roots) {
+            if let Some(plugin) = root.plugin {
+                handlers.push((plugin, name.clone(), reach(name)));
+            }
+            if let Slot::ActionHandler { action } = slot {
+                let ability = format!("{app}/{}", crate::wordpress::abilities::kebab(action));
+                actions.push((action.clone(), ability, reach(name)));
+            }
+        }
+        // An action is personal when its code reads orders or calls an ability that needs the grant,
+        // or calls an action that is. Repeated until nothing changes, so a chain of actions calling
+        // actions is followed to its end.
+        let mut personal_abilities = std::collections::BTreeSet::new();
+        loop {
+            let found: Vec<_> = actions
+                .iter()
+                .filter(|(_, ability, reached)| {
+                    !personal_abilities.contains(ability)
+                        && reached.iter().any(|f| {
+                            c.personal.contains(f)
+                                || c.ability_calls
+                                    .get(f)
+                                    .is_some_and(|called| called.iter().any(|a| personal_abilities.contains(a)))
+                        })
+                })
+                .map(|(action, ability, _)| (action.clone(), ability.clone()))
+                .collect();
+            if found.is_empty() {
+                break;
+            }
+            for (action, ability) in found {
+                personal_abilities.insert(ability);
+                personal_actions.push(action);
             }
         }
         let prev = previous()?;
@@ -257,6 +294,9 @@ pub fn build(
             .expect("collection")
             .hooks
             .insert(kind, name);
+    }
+    for action in personal_actions {
+        schema.actions.get_mut(&action).expect("action").personal = true;
     }
     for (slot, name) in slots {
         match slot {

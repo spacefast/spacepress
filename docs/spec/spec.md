@@ -348,7 +348,7 @@ build. The full design and what was measured are in
 - **Surfaces.** Abilities `<app>/schema-read`, `<app>/schema-propose` (validate
   and return the diff, apply nothing) and `<app>/schema-apply` (its own
   capability, so a credential can be denied it); `typedpress schema list | diff |
-  apply | rollback`; the active version in `GET /__tp/api/v1`; a wp-admin
+  apply | rollback`; the active version in `GET /wp-json/typedpress/v1`; a wp-admin
   screen that lists versions with their diffs.
 - A runtime field or kind is registered by the same code as a compiled one,
   so it gets the same protection from edits in wp-admin and over core REST.
@@ -384,7 +384,7 @@ already does for collections:
 
 The block editor, wp-admin and other plugins keep working against them unchanged.
 
-**One clean shape: `/__tp/api/v1`.** It's a thin facade: every request is
+**One clean shape: `/wp-json/typedpress/v1`.** It's a thin facade: every request is
 dispatched internally to the core route with `rest_do_request()`, and only the
 input and output are mapped. There is no second permission check, no second
 query path and no second write path, so the facade can't disagree with core.
@@ -394,23 +394,24 @@ pagination in headers.
 
 | Facade | Dispatched to | Mapping |
 |---|---|---|
-| `GET /__tp/api/v1/posts?where=…&with=…&limit=…&cursor=…` | `GET /wp/v2/posts` | First rows (`title`, `body`, fields flat, `status: "pending"`), `{ data, cursor }` |
-| `GET /__tp/api/v1/posts/42` (`/posts/slug:hello`) | `GET /wp/v2/posts/42` | one row; `?format=md` gives markdown |
-| `POST /__tp/api/v1/posts`, `PATCH …/42`, `DELETE …/42` | `POST /wp/v2/posts[/42]`, `DELETE` | TypedPress input → core input (`meta`, `status`) |
-| `/__tp/api/v1/<kind>` for every kind (comments, users, media, your collections, taxonomies, tables) | the matching core route; tables use the one new `wp/v2/<table>` controller | same |
-| `GET /__tp/api/v1/me` | `GET /wp/v2/users/me` | the user row with extended fields |
-| `GET/PATCH /__tp/api/v1/settings`, `/__tp/api/v1/<global>` | settings, or the read-only Ability for public fields | flat object |
-| `POST /__tp/api/v1/actions/<name>` (`GET` if `readonly`) | `/wp-abilities/v1/abilities/<app>/<name>/run` | `{ data }` |
-| `GET /__tp/api/v1` | `/wp-json` index + Abilities list | the app's schema as the site runs it (the active runtime version included, §2.10): kinds, fields, actions (what `typedpress pull` reads) |
-| `GET /__tp/api/v1/openapi.json` | the build's `_generated/openapi.json` (§7) | the API as an OpenAPI 3.1 document, with the site's address |
+| `GET /wp-json/typedpress/v1/posts?where=…&with=…&limit=…&cursor=…` | `GET /wp/v2/posts` | First rows (`title`, `body`, fields flat, `status: "pending"`), `{ data, cursor }` |
+| `GET /wp-json/typedpress/v1/posts/42` (`/posts/slug:hello`) | `GET /wp/v2/posts/42` | one row; `?format=md` gives markdown |
+| `POST /wp-json/typedpress/v1/posts`, `PATCH …/42`, `DELETE …/42` | `POST /wp/v2/posts[/42]`, `DELETE` | TypedPress input → core input (`meta`, `status`) |
+| `/wp-json/typedpress/v1/<kind>` for every kind (comments, users, media, your collections, taxonomies, tables) | the matching core route; tables use the one new `wp/v2/<table>` controller | same |
+| `GET /wp-json/typedpress/v1/me` | `GET /wp/v2/users/me` | the user row with extended fields |
+| `GET/PATCH /wp-json/typedpress/v1/settings`, `/wp-json/typedpress/v1/<global>` | settings, or the read-only Ability for public fields | flat object |
+| `POST /wp-json/typedpress/v1/actions/<name>` (`GET` if `readonly`) | `/wp-abilities/v1/abilities/<app>/<name>/run` | `{ data }` |
+| `GET /wp-json/typedpress/v1` | `/wp-json` index + Abilities list | the app's schema as the site runs it (the active runtime version included, §2.10): kinds, fields, actions (what `typedpress pull` reads) |
+| `GET /wp-json/typedpress/v1/openapi.json` | the build's `_generated/openapi.json` (§7) | the API as an OpenAPI 3.1 document, with the site's address |
 
 - **Errors:** RFC 9457 problem documents (`code`, `detail`, `pointer`), mapped
   from core's `WP_Error`.
 - **Auth:** what core accepts: the cookie with `X-WP-Nonce`, application
   passwords, and TypedPress Identity bearer tokens.
-- **Location:** the facade sits outside `/wp-json`, like `/__spacefast/`. It's
-  served by TypedPress's front-controller route, before the theme loads, so it costs
-  one internal REST dispatch.
+- **Location:** the facade is one route on WordPress's REST server, namespace
+  `typedpress/v1`. Core handles its authentication, CORS and preflights, method
+  override and `HEAD`, as for any `/wp-json` route; each request costs one
+  internal REST dispatch to the core route underneath.
 - **Who uses which:**
   - the typed client, the framework adapters, `curl` and agents use the facade;
   - WordPress, plugins and the block editor use core routes.
@@ -442,7 +443,7 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 - **`action`** takes its types from the handler signature. Options: `access`
   (default `editor`), `idempotent`, `readonly`, `signature`, `abilities`,
   `name`. Each action is an Ability `<app>/<name>` (core's run route and MCP),
-  `POST /__tp/api/v1/actions/<name>` on the facade (§3a), and a typed client
+  `POST /wp-json/typedpress/v1/actions/<name>` on the facade (§3a), and a typed client
   method `first.<name>()`. The name is the export name (§1.1). A `signature` action
   (an inbound webhook) is an `app/**/route.ts` instead, since its caller signs
   the raw body.

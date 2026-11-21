@@ -477,6 +477,12 @@ pub struct Compiler<'a, 'p> {
     pub uses: Vec<crate::plugins::Use>,
     /// Which compiled functions each function calls, for the read→send report.
     pub calls: HashMap<String, HashSet<String>>,
+    /// The compiled functions that read a WooCommerce order kind, or call an ability that needs the
+    /// `personal` grant ([`Catalog::personal`](crate::wordpress::abilities::Catalog)).
+    pub personal: HashSet<String>,
+    /// The app's own abilities each compiled function calls with `abilities.call`, by ability name.
+    /// The pipeline follows the ones that are actions to settle [`Action::personal`].
+    pub ability_calls: HashMap<String, HashSet<String>>,
     plugin_names: Vec<String>,
     /// Each plugin's PHP function answering its locked fetch hosts, written once the lock settles.
     pub host_functions: Vec<String>,
@@ -557,6 +563,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             current: String::new(),
             uses: Vec::new(),
             calls: HashMap::new(),
+            personal: HashSet::new(),
+            ability_calls: HashMap::new(),
             host_functions: Vec::new(),
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
@@ -678,12 +686,31 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// Records a capability the plugin compiling now uses; app code is unrestricted.
     fn uses(&mut self, kind: &'static str, value: impl Into<String>, span: Span) {
+        let value = value.into();
+        let personal = match kind {
+            "read" => self
+                .schema
+                .collections
+                .values()
+                .any(|c| c.key == value && c.commerce.as_deref() == Some("order")),
+            "abilities" => {
+                self.ability_calls
+                    .entry(self.current.clone())
+                    .or_default()
+                    .insert(value.clone());
+                self.abilities.personal.contains(&value)
+            }
+            _ => false,
+        };
+        if personal {
+            self.personal.insert(self.current.clone());
+        }
         if let Some((plugin, _)) = &self.plugin {
             self.uses.push(crate::plugins::Use {
                 plugin: *plugin,
                 function: self.current.clone(),
                 kind,
-                value: value.into(),
+                value,
                 span,
             });
         }
@@ -1000,12 +1027,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             if let Slot::WpHook { index } = &root.slot {
                 let hook = &self.schema.wp_hooks[*index];
-                let returns = crate::wordpress::hook(&hook.hook).expect("catalog hook").returns;
+                let catalog = crate::wordpress::hook(&hook.hook).expect("catalog hook");
+                let returns = catalog.returns;
                 let ret = match self.helper_types.get(&key) {
                     Some(Ty::Fn(_, ret)) => (**ret).clone(),
                     _ => Ty::Unknown,
                 };
-                if matches!(ret, Ty::Promise(_)) {
+                if matches!(ret, Ty::Promise(_)) && !catalog.async_handler {
                     return err_help(
                         root.closure.func.span,
                         format!("a `{}` handler can't be async", hook.hook),

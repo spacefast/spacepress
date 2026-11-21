@@ -43,10 +43,10 @@ const { Content } = await render(post);
   second request. `media: false` keeps them as ids.
 - **`render(entry)`** renders WordPress's own HTML of the kind's content field: blocks, shortcodes and
   embeds as the site renders them.
-- **The schema** comes from the site (`GET /__tp/api/v1`), so `entry.data` is typed in the editor
+- **The schema** comes from the site (`GET /wp-json/typedpress/v1`), so `entry.data` is typed in the editor
   with no schema written in the Astro project. A `schema` you pass to `defineCollection` wins.
 - **Each build pulls only what changed.** The collection is read as primary-key ranges of up to 100
-  rows through the site's subscription endpoint (`POST /__tp/api/v1/_live`). Each range keeps the
+  rows through the site's subscription endpoint (`POST /wp-json/typedpress/v1/_live`). Each range keeps the
   token of its last answer in the content layer's `meta` store; the next build sends the tokens back,
   and a range nobody wrote to answers "not modified" without its rows. A changed range returns its
   rows, and Astro's digest skips the ones that didn't change. Deleted and unpublished rows leave the

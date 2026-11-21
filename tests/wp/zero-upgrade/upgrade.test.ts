@@ -208,10 +208,10 @@ test("after the upgrade, the site serves TypedPress's API and a tab still runnin
   const client = createClient({ url: `${site}/wp-json/zero/v1` });
   await assert.rejects(client.notes.list(), (e: any) => e.name === "ZeroError" && e.status === 404 && e.code === "rest_no_route");
   await assert.rejects(client.actions.later({ id: seeded.note }), (e: any) => e.name === "ZeroError" && e.status === 404);
-  // The client the recompiled build serves is TypedPress's, on /__tp/api/v1.
+  // The client the recompiled build serves is TypedPress's, on /wp-json/typedpress/v1.
   const built = String(process.env.TP_ZERO_UPGRADE_CLIENT ?? "");
   assert.ok(built !== "", "run.sh passes the recompiled client");
   const fresh = await import(built);
-  const rows = await fresh.createClient({ url: `${site}/__tp/api/v1` }).notes.list();
+  const rows = await fresh.createClient({ url: `${site}/wp-json/typedpress/v1` }).notes.list();
   assert.deepEqual(rows.map((n: any) => n.title).sort(), ["Kept note", "Second note"]);
 });

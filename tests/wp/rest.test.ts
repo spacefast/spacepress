@@ -1,5 +1,5 @@
 // WordPress lane of the blog scenario (design §9.1): the shared function in tests/e2e/blog-scenario.ts
-// runs, driven by the generated typed client over /__tp/api/v1 with application passwords.
+// runs, driven by the generated typed client over /wp-json/typedpress/v1 with application passwords.
 // Promotion is WordPress's own: `future` post + its cron event, run through WP-CLI.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +15,7 @@ before(() => {
   }
 });
 
-test("blog scenario over /__tp/api/v1", async (t) => {
+test("blog scenario over /wp-json/typedpress/v1", async (t) => {
   await blogScenario(
     {
       client: (role: ScenarioRole) =>
